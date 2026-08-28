@@ -3,29 +3,33 @@ export const prerender = true;
 import Content from '../../layouts/Content.astro';
 
 const posts = [
+  // [WEB-REPOSITION-2 2026-08-28] All three rewritten as creator-platform posts.
+  // The SLUGS are deliberately unchanged even though they no longer match the
+  // titles: these URLs are indexed, and keeping them beats a 404. If you ever
+  // want tidy slugs, add redirects from the old paths rather than renaming.
   {
     slug: 'never-miss-a-call',
-    title: 'Never miss a call again',
-    date: '2026-06-29',
+    title: 'Never miss a booking',
+    date: '2026-08-28',
     excerpt:
-      'Meet your AI receptionist. Ava answers on your behalf, has a short natural conversation with the caller, and takes a voice message — so nothing important slips through.',
-    tag: 'AI Receptionist',
-  },
-  {
-    slug: 'your-private-number',
-    title: 'Stop giving out your real phone number',
-    date: '2026-06-29',
-    excerpt:
-      'Your AvaTok number is a private line you can share freely with friends or business — while your real number stays hidden and scammers stay out.',
-    tag: 'Private Number',
+      'Publish a listing, open the hours you are actually free, and let people book a real slot. No back-and-forth, no double-booking, no waiting on someone who was never going to show.',
+    tag: 'Getting booked',
   },
   {
     slug: 'ai-in-every-chat',
-    title: 'Your AI brain, in every chat',
-    date: '2026-06-29',
+    title: 'How to price your first listing',
+    date: '2026-08-28',
     excerpt:
-      'Find old files, set reminders, auto-reply while you’re away, and pull documents and email from your Google and Microsoft apps — all with #ava, inside the conversation.',
-    tag: 'AI Messaging',
+      'One token is one rupee — beyond that the number is yours. Why you should price the outcome instead of the hour, start where you can raise it, and know what you actually keep.',
+    tag: 'Getting started',
+  },
+  {
+    slug: 'your-private-number',
+    title: 'Work in public without giving out your number',
+    date: '2026-08-28',
+    excerpt:
+      'What you publish on avaTOK is a listing, not a phone number. Be findable, get booked and get paid while your personal line stays personal.',
+    tag: 'Privacy',
   },
 ];
 

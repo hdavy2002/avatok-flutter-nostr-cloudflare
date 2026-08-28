@@ -1,51 +1,85 @@
 ---
+/*
+ * [WEB-REPOSITION-2 2026-08-28] Rewritten from "Your AI brain, in every chat",
+ * which sold the in-chat Ava assistant — a feature the 2026-08-27 pivot is
+ * taking DARK. Leaving it published would have advertised something we are
+ * switching off. The URL is kept alive rather than 404'd.
+ *
+ * Replaced with the question a new creator actually has: what do I charge.
+ * Deliberately NO invented numbers — the commission rate and any payout minimum
+ * are "shown before you commit" per /pricing-fees and /payouts, and a blog post
+ * must not contradict the policy pages. 1 token = ₹1 IS fixed and published,
+ * so that one is safe to state.
+ */
 export const prerender = true;
 import Content from '../../layouts/Content.astro';
 ---
 
 <Content
-  kicker="Blog · AI Messaging"
-  title="Your AI brain, in every chat"
-  lead="Find files, set reminders, auto-reply, and pull in docs and email — all with Ava, inside the conversation."
-  updated="2026-06-29"
+  kicker="Blog · Getting started"
+  title="How to price your first listing"
+  description="A practical guide to setting your price on avaTOK — how tokens work, what to charge for a first session, and how the money reaches your bank."
+  lead="1 token = ₹1. Beyond that, the number is yours to choose — here is how to choose it."
+  updated="2026-08-28"
 >
   <p>
-    Messaging apps are where we live, but they’re surprisingly dumb. Search is bad, files get lost,
-    and you’re forever switching to other apps to grab a document or an email. AvaTok puts an AI
-    brain — Ava — right inside your chats.
+    Most people setting a price for the first time do the same two things: they guess, and they
+    guess low. It is worth a few minutes of thought instead, because the number you publish is the
+    single biggest lever on whether this is worth your evening.
   </p>
 
-  <h2>Chat privately with Ava</h2>
+  <h2>First, the unit</h2>
   <p>
-    Ava is your personal AI. Chat with her privately to think things through, draft a reply, or get
-    an answer — and ask her to instantly find an old file or revisit a past conversation you’ve had
-    with someone.
+    avaTOK prices everything in <strong>tokens</strong>, and <strong>1 token = ₹1</strong>. That
+    rate is fixed, both directions — it is what a customer pays to buy tokens, and what an unused
+    token is worth on the way out. There is no exchange rate to work around and nothing to convert
+    in your head: a 500-token session is a ₹500 session. Full detail is in
+    <a href="/tokens">Tokens &amp; Wallet</a>.
   </p>
 
-  <h2>She keeps watch for you</h2>
+  <h2>Price the outcome, not the minutes</h2>
   <p>
-    Ava watches your chats so you don’t have to. She sets reminders, surfaces smart suggestions, and
-    can auto-reply while you’re away — so you’re never the person who left someone on read for three
-    days.
+    "₹X per hour" is the instinctive framing, and it is usually the weakest one. People are not
+    buying an hour; they are buying the thing that is true afterwards — the doubt resolved, the
+    thing they finally understand, the evening they did not spend alone. A session that gets someone
+    there in twenty minutes is worth more to them than one that takes ninety, not less.
   </p>
 
-  <h2>Use AI right inside any conversation</h2>
+  <h2>Start where you can raise it</h2>
   <p>
-    Upload a file and ask <strong>#ava</strong> anything about it. Pull in documents from your Google
-    and Microsoft apps without leaving the chat. Whether it’s a group thread or a private chat, ask
-    Ava to fetch an email or a document on the spot — and even send emails as you chat, with no
-    app-switching.
+    Set a price you would be content to be booked at ten times this month, then raise it when you
+    are. Raising a price on a listing that is filling up is easy and nobody resents it. Cutting a
+    price you announced too confidently is harder, and it teaches the people who already paid that
+    they overpaid.
   </p>
 
-  <h2>@ava is private. #ava is shared.</h2>
+  <h2>Know what you actually keep</h2>
   <p>
-    Use <strong>@ava</strong> when you want a private answer only you can see, and
-    <strong>#ava</strong> when you want Ava’s answer posted to the whole thread — perfect for group
-    plans, recaps, and shared files.
+    The customer pays your listed price. avaTOK deducts a platform commission, which is shown to you
+    before you publish a listing or accept a booking — we do not spring it on you afterwards. What
+    remains is credited to your wallet in tokens. Withdrawal has its own transfer fee, any tax that
+    applies, and possibly a minimum balance, all shown on the withdrawal screen before you confirm.
+    See <a href="/pricing-fees">Pricing &amp; Fees</a> and
+    <a href="/payouts">Payouts &amp; Withdrawals</a> for the rules in full.
   </p>
 
+  <h2>Then get the calendar right</h2>
   <p>
-    AI-powered messaging is part of AvaTok and free to use. <a href="/#download">Download AvaTok</a>
-    and put an AI brain in every chat.
+    A good price on hours you resent is still a bad deal. Open the slots you actually want to work —
+    see <a href="/blog/never-miss-a-call">how bookings work</a>.
+  </p>
+
+  <div class="note">
+    <p>
+      <strong>avaTOK is still in testing.</strong> We are an early-stage, currently unregistered
+      business in India, access is invite-only, and our payment gateway application is under review,
+      so payments are not yet live to the public. Prices shown on the site are indicative during
+      this period. <a href="/terms#status">Read our full status</a>.
+    </p>
+  </div>
+
+  <p>
+    <a href="/sign-up">Publish your first listing</a> — it is free — or
+    <a href="/marketplace">see how other creators have priced theirs</a>.
   </p>
 </Content>

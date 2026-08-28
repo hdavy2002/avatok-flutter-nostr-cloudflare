@@ -1,42 +1,80 @@
 ---
+/*
+ * [WEB-REPOSITION-2 2026-08-28] Rewritten from "Never miss a call again", which
+ * was a post about the AI receptionist — a feature the 2026-08-27 product pivot
+ * is retiring. The URL is kept alive on purpose: it is indexed, and a 404 loses
+ * whatever authority it has earned. Same idea ("don't miss the thing that
+ * matters"), told about bookings, which is what avaTOK actually sells now.
+ *
+ * Every claim here is checked against what ships: calendar slots, booking,
+ * paid live sessions, wallet, UPI payout. Commission and payout minimums are
+ * deliberately NOT quoted as numbers — /pricing-fees and /payouts say they are
+ * shown before you commit, and a blog post must not contradict the policy.
+ */
 export const prerender = true;
 import Content from '../../layouts/Content.astro';
 ---
 
 <Content
-  kicker="Blog · AI Receptionist"
-  title="Never miss a call again"
-  lead="Meet your AI receptionist. When you can’t pick up, Ava does — and takes a message."
-  updated="2026-06-29"
+  kicker="Blog · Getting booked"
+  title="Never miss a booking"
+  description="How avaTOK turns your free hours into bookable slots — you publish a listing, open your calendar, and people book the time you actually have."
+  lead="Your calendar does the chasing. Open the hours you're free, and let people book them."
+  updated="2026-08-28"
 >
   <p>
-    We all miss calls. You're in a meeting, driving, asleep, or just away from your phone. Most of
-    the time the caller hangs up, and you're left with a missed-call badge and no idea whether it
-    mattered. AvaTok fixes that with an AI receptionist that picks up for you.
+    The hardest part of getting paid for your time is rarely the work itself. It is the
+    back-and-forth before it: what do you charge, when are you free, did they actually confirm, and
+    are you going to be sitting there at 7pm for someone who never intended to show up.
+  </p>
+  <p>
+    avaTOK removes that negotiation. You publish what you offer, you mark when you are available,
+    and people book a real slot.
   </p>
 
-  <h2>Ava answers on your behalf</h2>
+  <h2>Publish once, get booked repeatedly</h2>
   <p>
-    When you can’t take a call, Ava answers it for you. She greets the caller, lets them know you’re
-    unavailable right now, and offers to help — exactly like a great human receptionist would.
+    A listing is the thing people find and buy: a category, a description of what you offer, a
+    session length, and a price in tokens (1 token = ₹1). Publishing one is free. It keeps working
+    while you are asleep, which is the whole point — you are not answering "are you available
+    Thursday?" for the ninth time.
   </p>
 
-  <h2>A short, natural conversation</h2>
+  <h2>Your calendar is the source of truth</h2>
   <p>
-    Ava doesn’t just play a recording. She holds a short, natural conversation with the caller,
-    understands why they’re calling, and makes sure nothing important slips through. If they need to
-    reach you, she takes the details.
+    You open the slots you are genuinely free for. Someone books one of those slots or nothing at
+    all. There is no double-booking to untangle and no "let me check and get back to you", because
+    the answer is already on the screen they are looking at.
   </p>
 
-  <h2>You wake up to a tidy message</h2>
+  <h2>The session happens on avaTOK</h2>
   <p>
-    Every call Ava handles becomes a clear voice message and summary waiting for you — who called,
-    what it was about, and the recording. No more guessing whether a missed call was your dentist or
-    a robocall.
+    When the time comes, the session runs inside avaTOK — a private 1:1 video session, or a paid
+    live event people join. Nobody swaps phone numbers, and nobody has to install something else
+    ten minutes beforehand. Your real number stays private throughout; see
+    <a href="/blog/your-private-number">why you should never hand out your real number</a>.
   </p>
 
+  <h2>Getting paid is the boring part, and that is the goal</h2>
   <p>
-    The AI receptionist is part of AvaTok and free to use. <a href="/#download">Download AvaTok</a>
-    and stop missing what matters.
+    The customer pays in tokens when they book. Your earnings, less the platform commission shown
+    to you before you publish, land in your avaTOK wallet, and you withdraw to a verified UPI
+    address. The exact fees, taxes and any minimum are shown on screen before you confirm anything —
+    see <a href="/pricing-fees">Pricing &amp; Fees</a> and
+    <a href="/payouts">Payouts &amp; Withdrawals</a>.
+  </p>
+
+  <div class="note">
+    <p>
+      <strong>avaTOK is still in testing.</strong> We are an early-stage, currently unregistered
+      business in India, access is invite-only, and our payment gateway application is under review,
+      so payments are not yet live to the public.
+      <a href="/terms#status">Read our full status</a>.
+    </p>
+  </div>
+
+  <p>
+    Ready to open your calendar? <a href="/sign-up">Create a free listing</a> or
+    <a href="/marketplace">see what other creators are offering</a>.
   </p>
 </Content>

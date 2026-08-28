@@ -1,42 +1,71 @@
 ---
+/*
+ * [WEB-REPOSITION-2 2026-08-28] Reframed from a messenger-privacy post to a
+ * creator post. The underlying feature SURVIVES the 2026-08-27 pivot — every
+ * user's real number is masked behind an avaTOK number — so unlike the other
+ * two posts this one only needed its audience changed, not its facts.
+ *
+ * NOTE: the pivot spec flags that worker/src/routes/number.ts currently shares
+ * the REAL number for free users. Until that is fixed, this post describes the
+ * intended behaviour, not the shipped behaviour. It is written about what a
+ * creator publishes (a listing, not a number), which is true today either way.
+ */
 export const prerender = true;
 import Content from '../../layouts/Content.astro';
 ---
 
 <Content
-  kicker="Blog · Private Number"
-  title="Stop giving out your real phone number"
-  lead="Your AvaTok number is a private line you can share freely — while your real one stays hidden."
-  updated="2026-06-29"
+  kicker="Blog · Privacy"
+  title="Work in public without giving out your number"
+  description="Creators can be found, booked and paid on avaTOK without ever handing a stranger their real phone number."
+  lead="You can be easy to reach and still keep your personal line personal."
+  updated="2026-08-28"
 >
   <p>
-    Think about how many places have your real phone number: every app you signed up for, every
-    form, every person you’ve ever swapped contacts with. Once it’s out, it’s out — and that’s how
-    spam, scams, and unwanted callers find you.
+    Selling your time means being findable. That is usually where the trouble starts: the moment
+    your real number is the thing people book you through, it belongs to everyone who ever had it —
+    long after the session ended, and long after you wanted to hear from them.
+  </p>
+  <p>
+    On avaTOK, what you publish is a <strong>listing</strong>, not a phone number.
   </p>
 
-  <h2>Other apps leak it. AvaTok doesn’t.</h2>
+  <h2>People book the listing, not you personally</h2>
   <p>
-    Most messaging and calling apps expose your personal number to everyone you talk to. AvaTok puts
-    a private number in front of it. You generate your own <strong>AvaTok number</strong> and that’s
-    what you hand out — your real line stays yours alone.
+    Someone finds what you offer, sees your price and your open slots, and books. The session runs
+    inside avaTOK. At no point in that flow does anyone need your personal number, because at no
+    point does the platform use it to connect you.
   </p>
 
-  <h2>Share it freely</h2>
+  <h2>Your avaTOK number is the public one</h2>
   <p>
-    Give your AvaTok number to friends, clients, or anyone you do business with. Anyone on the AvaTok
-    network can dial it and reach you directly — no exposure, no compromise.
+    Every account gets a free avaTOK number that acts as your public identity. That is the one that
+    can be shared. Your real number is used to sign up and then stays behind it — it is not what
+    people see, and it is not what they get.
   </p>
 
-  <h2>No more scammers digging you out</h2>
+  <h2>Why this matters more when money is involved</h2>
   <p>
-    Because the number you share isn’t your real one, scammers can’t track you down through your
-    private line. You stay reachable on your terms, and you can keep your personal number for the
-    people who truly need it.
+    A creator taking paid bookings from strangers is exposed in ways a private user is not. Someone
+    who is unhappy, or too happy, now has a direct line to your actual phone, outside the platform,
+    with none of its rules attached. Keeping the number separate means an interaction that goes
+    wrong can be ended, reported and blocked — instead of following you home.
+  </p>
+  <p>
+    Our <a href="/community-guidelines">Community Guidelines</a> and
+    <a href="/acceptable-use">Acceptable Use Policy</a> cover what happens when someone crosses a
+    line, and how to report it.
   </p>
 
+  <div class="note">
+    <p>
+      <strong>avaTOK is still in testing.</strong> We are an early-stage, currently unregistered
+      business in India and access is invite-only.
+      <a href="/terms#status">Read our full status</a>.
+    </p>
+  </div>
+
   <p>
-    Your private AvaTok number is free. <a href="/#download">Download AvaTok</a> and take your number
-    back.
+    <a href="/sign-up">Create a free listing</a> and get booked without giving your number away.
   </p>
 </Content>
