@@ -28,6 +28,38 @@ class RemoteConfig {
   static Map<String, dynamic> _cfg = const {};
   static Timer? _timer;
 
+  /// [SHELL-TEST-SEAM-1] Test-only seam so a widget/unit test can pin
+  /// `RemoteConfig`'s flag values instead of always reading the compiled-in
+  /// defaults (`_cfg` starts empty in tests, since nothing ever calls
+  /// [start]/[refresh]/[hydrateFromDisk]). This is what let a real regression
+  /// slip through once: [messengerCallingEnabled] shipped defaulting to
+  /// `false`, and an existing accept-flow contract test never noticed it had
+  /// started exercising the "feature off" branch instead of the ordering
+  /// guarantee it was written to pin, because it had no way to force the flag
+  /// on. See `test/call_accept_nonblocking_contract_test.dart`.
+  ///
+  /// Deliberately does NOT touch [_cfgSig] or bump [revision]: those exist to
+  /// make [refresh]'s 15-minute poll skip a rebuild when the fetched blob is
+  /// byte-identical to what's already loaded, and to drive
+  /// `ValueListenableBuilder<RemoteConfig.revision>` repaints when a real
+  /// fetch changes something. A test that calls this wants the new getter
+  /// values to take effect on the very next read, synchronously, with no
+  /// dependency on anything observing [revision] first — exactly the
+  /// no-listener-required contract that plain field reads already have in
+  /// production. Sequencing [_cfgSig]/[revision] the same way [refresh] does
+  /// would add a step tests must additionally reason about for no return.
+  @visibleForTesting
+  static void debugSetConfigForTest(Map<String, dynamic> cfg) {
+    _cfg = Map<String, dynamic>.from(cfg);
+  }
+
+  /// [SHELL-TEST-SEAM-1] Restores the empty, all-defaults state so a test's
+  /// `tearDown` can't leak an override into the next test in the same run.
+  @visibleForTesting
+  static void debugResetConfigForTest() {
+    _cfg = const {};
+  }
+
   /// [BOOT-FLASH-1] Disk cache of the LAST-KNOWN-GOOD server config.
   ///
   /// Until 2026-08-06 `_cfg` lived in memory only, so EVERY cold start began on

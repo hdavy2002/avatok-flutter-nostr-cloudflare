@@ -22,21 +22,36 @@
 //
 // Pure Dart `test()`, no widget pumping, no plugins — matches the existing
 // "Pure functions only" convention (widget_test.dart).
+// [PIVOT-MSGR-CALL-OFF-1 regression, SHELL-TEST-SEAM-1] The marketplace-first
+// pivot added `RemoteConfig.messengerCallingEnabled` (default FALSE) as the
+// Messenger-1:1-calling kill switch, enforced in `push_service.dart`'s
+// `_showIncoming`/`_routeToBrandedIncoming`/`_openCall`. In this test file
+// `RemoteConfig._cfg` is empty (nothing here ever calls
+// `RemoteConfig.start`/`refresh`), so every test used to read the FALSE
+// default and `acceptRingingCall` refused before CallScreen was ever
+// requested — silently exercising the "feature off" branch instead of the
+// accept-flash ordering contract these tests exist to pin. `setUp` now turns
+// the flag ON via `RemoteConfig.debugSetConfigForTest` so the ordering
+// contract is genuinely exercised again, and a new test below pins the
+// opposite: with the flag OFF, CallScreen must never be requested at all.
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:avatok_call/core/remote_config.dart';
 import 'package:avatok_call/push/push_service.dart';
 
 void main() {
   setUp(() {
     PushService.debugClaimHumanAcceptOverride = null;
     PushService.debugOnCallScreenOpenAttempt = null;
+    RemoteConfig.debugSetConfigForTest({'messengerCallingEnabled': true});
   });
 
   tearDown(() {
     PushService.debugClaimHumanAcceptOverride = null;
     PushService.debugOnCallScreenOpenAttempt = null;
+    RemoteConfig.debugResetConfigForTest();
   });
 
   Map<String, dynamic> fallbackExtraFor(String callId) => {
@@ -122,5 +137,40 @@ void main() {
     // `_trackClaimAfterOpen`, which must not surface as an unhandled
     // rejection in this test's zone.
     await Future<void>.delayed(const Duration(milliseconds: 10));
+  });
+
+  test(
+      '[PIVOT-MSGR-CALL-OFF-1] with messengerCallingEnabled false, '
+      'acceptRingingCall does NOT request CallScreen', () async {
+    // This is the regression-catching test: it is the inverse of the two
+    // contract tests above, and it is what would have failed the moment
+    // `messengerCallingEnabled` shipped defaulting to off while these tests
+    // had no way to force it on.
+    RemoteConfig.debugSetConfigForTest({'messengerCallingEnabled': false});
+
+    final events = <String>[];
+    final claimCompleter = Completer<String?>();
+    PushService.debugClaimHumanAcceptOverride = (room) {
+      events.add('claim_started');
+      return claimCompleter.future;
+    };
+    PushService.debugOnCallScreenOpenAttempt = (callId) {
+      events.add('call_screen_open_attempted');
+    };
+
+    final callId =
+        'contract_flagoff_${DateTime.now().microsecondsSinceEpoch}';
+    final accepted = PushService.acceptRingingCall(
+      callId,
+      fallbackExtra: fallbackExtraFor(callId),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(events, isNot(contains('call_screen_open_attempted')),
+        reason: 'Messenger calling is killed while the flag is off — '
+            'CallScreen must never be requested');
+
+    if (!claimCompleter.isCompleted) claimCompleter.complete(null);
+    await accepted;
   });
 }
