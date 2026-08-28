@@ -3534,5 +3534,53 @@
         "why": "Catches the version-bump failing. If users still land on AvaTOK and switch away from it, the persisted shellv2_root_order key was not actually reset and the old saved order is still winning - the exact way this change becomes invisible while looking shipped."
       }
     ]
+  },
+  "PIVOT-AI-SWITCHES-2": {
+    "description": "Build fix. [PIVOT-AI-SWITCHES-1] committed shell_v2.dart with an explicit FILE path, but another agent had uncommitted edits in that SAME file adding a PillMorseFooter reference. Passing a file path does NOT protect against a co-edited file, only against unrelated files - a sharper version of the directory-path sweeping lesson. main therefore referenced a widget whose definition (in core/ui/rajasthani_motifs.dart) was never committed, and CI run #627 failed the compile gate with 'shell_v2.dart:742:47: Not a constant expression'. This lands the PillMorseFooter definition so the reference resolves. Note flutter analyze passed LOCALLY throughout, because the local working tree had the uncommitted definition - only CI, building from committed code, could see it.",
+    "shipped": "",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Publishes an existing widget definition to unbreak the build; no gate, flag or behaviour change of its own. Verified by the check that matters: flutter test now compiles and passes 141/141."
+  },
+  "SHELL-STATIC-BAR-1": {
+    "description": "Owner decision 2026-08-28: the ShellV2 footer bar becomes STATIC. Removed the expand/collapse handle, its caret and its 'Swipe up'/'Swipe down' pill; neither a tap nor a vertical drag does anything now. The app-switcher icon row is hidden behind a new compile-time const _kShowAppSwitcherIcons=false. A const rather than a RemoteConfig flag ON PURPOSE: with the handle gone there is no way for a user to reach the icon row, so a server flag that flipped it back on would render a row nobody could open and whose long-press reorder gestures are no longer discoverable. The slot builders and reorder machinery stay COMPILED but unreachable - the same keep-the-engine-remove-the-reachability approach used for the legacy Cloudflare call screen - so restoring the bar is a one-line change. The band keeps its 40px height because the RAJ-INDIGO-1 footer seam in shell_v2.dart pins itself to this bar's top edge.",
+    "shipped": "",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Presentation-only removal of an affordance, no gate, flag or new event. The contract is enforced by a source-text test instead: test/ui/app_type_scale_contract_test.dart asserts the 40px band height survives and that the swipe pill is gone."
+  },
+  "SHELL-STATIC-BAR-2": {
+    "description": "Restates the app-menu contract test after [SHELL-STATIC-BAR-1]. The old test pinned the compact PILL treatment ('Swipe up' text, AD.bubbleOutPlay background, 12px type) which was deliberately removed. Following this test file's own stated convention - restate the contract rather than delete it - it now asserts the band's 40px height SURVIVES (the app-wide footer seam is positioned against it, so silently losing the height would move the seam on every screen), that the swipe labels are gone, and that the icon row remains gated off.",
+    "shipped": "",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Test-only. It exists so a future edit cannot silently restore the pill or drop the band height."
+  },
+  "DESIGN-GUARD-ICONS-2": {
+    "description": "Follow-up to [DESIGN-GUARD-ICONS-1]. messenger_call_billing_ui_test.dart looked the HUD icon up by Icons.account_balance_wallet, which no longer exists there after the Phosphor migration. Updated to PhosphorIcons.wallet(PhosphorIconsStyle.regular). The assertion that matters is unchanged: the low-balance state tints the icon with AD.destructiveInk.",
+    "shipped": "",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Test-only; follows an icon rename. The behavioural assertion it guards is untouched."
+  },
+  "SHELL-TEST-SEAM-1": {
+    "description": "Fixes a regression [PIVOT-MSGR-CALL-OFF-3] caused in test/call_accept_nonblocking_contract_test.dart. Those tests pin the hard-won [CALL-ACCEPT-FLASH-1] ordering contract - acceptRingingCall must request CallScreen BEFORE the human-accept claim resolves - traced from real PostHog data. RemoteConfig._cfg is empty in tests, so messengerCallingEnabled read its false default and the new gate refused before CallScreen was ever requested. Rather than weaken the assertions or change push_service.dart, added @visibleForTesting RemoteConfig.debugSetConfigForTest / debugResetConfigForTest and enabled the flag in setUp, so the ordering contract is genuinely exercised again - it still matters for the paid consultation lane, which shares the accept machinery. ALSO ADDED the missing test: with messengerCallingEnabled false, acceptRingingCall must NOT request CallScreen. That is the assertion whose absence let the kill switch land untested. The seam deliberately does not touch _cfgSig/revision, which exist to skip rebuilds on an unchanged poll; a test wants values live on the next getter read.",
+    "shipped": "",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Adds a test-only seam and test coverage; no production behaviour change. Verified by the suite: 141/141 pass, including the new flag-off assertion."
+  },
+  "COMMERCIAL-TEST-GREEN-1": {
+    "description": "A REAL PRODUCTION CRASH, found while clearing the red build - and pre-existing, not caused by the pivot: CI runs #624, #625 and #626 had all failed this same test since 2026-08-25 with '139 tests passed, 1 failed', and nobody noticed. The last green build was #623, which is exactly why prod latestAppBuild sat at 10623. In _MySessionsScreenState (features/booking/commercial_customer_screens.dart), _tabs was a `late final TabController` initialised LAZILY. With both commercial flags off, build() renders the unavailable message instead of the TabBar, so nothing touches _tabs while the element is alive; the first access is _tabs.dispose() inside dispose(), which runs the lazy initialiser AT THAT MOMENT, constructing a TabController whose vsync does an inherited-widget lookup (TickerMode.getValuesNotifier) on an already-deactivating element - 'Looking up a deactivated widget's ancestor is unsafe'. Any real user opening My Sessions with commercial flags off and navigating away would hit it. Fixed by constructing the controller eagerly in initState() while the element is still active.",
+    "shipped": "",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "The observable symptom is a thrown assertion on dispose, which surfaces as a client $exception via the PostHog error-tracking already wired in main.dart rather than as a bespoke event. The meaningful verification is the test that catches it, which now passes as part of a fully green 141/141 suite."
   }
 }
