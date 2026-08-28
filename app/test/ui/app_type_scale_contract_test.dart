@@ -3,12 +3,31 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('app menu affordance uses the compact pill treatment', () {
+  // [SHELL-STATIC-BAR-1 2026-08-28] This test used to pin the compact PILL
+  // treatment on the app-menu affordance: the "Swipe up" label, its
+  // AD.bubbleOutPlay background and its 12px type.
+  //
+  // That affordance no longer exists. The owner made the footer bar STATIC —
+  // no expand handle, no caret, no "Swipe up"/"Swipe down" label, and no
+  // app-switcher icon row. Pinning the pill would now be pinning a design
+  // that was deliberately removed.
+  //
+  // Following this file's own convention (see the [RESP-SMALL-1] note below),
+  // the contract is RESTATED rather than deleted. What still matters is that
+  // the band keeps its 40px height — the RAJ-INDIGO-1 footer seam in
+  // shell_v2.dart pins itself to this bar's top edge, so silently losing the
+  // height would move the seam across every screen in the app.
+  test('app menu affordance is static — no swipe pill, band height preserved', () {
     final switcher = File('lib/shell/v2/app_switcher_bar.dart').readAsStringSync();
-    expect(switcher, contains("'Swipe up'"));
-    expect(switcher, contains('height: 40'));
-    expect(switcher, contains('color: AD.bubbleOutPlay'));
-    expect(switcher, contains('fontSize: 12'));
+    expect(switcher, contains('height: 40'),
+        reason: 'the footer band must keep its 40px height — the app-wide '
+            'footer seam is positioned against this bar');
+    expect(switcher, isNot(contains("'Swipe up'")),
+        reason: 'the bar is static; the swipe pill was removed on purpose');
+    expect(switcher, isNot(contains("'Swipe down'")),
+        reason: 'the bar is static; the swipe pill was removed on purpose');
+    expect(switcher, contains('_kShowAppSwitcherIcons = false'),
+        reason: 'the app-switcher icon row stays compiled but unreachable');
   });
 
   // [RESP-SMALL-1 2026-08-21] This test previously pinned the exact source line
