@@ -7,12 +7,14 @@ import { useEffect, useState } from 'react';
 import { getActiveTokenWaited as getActiveToken } from '../../lib/clerk';
 import { request } from '../../lib/apiClient';
 import { Spinner } from '../../components/Spinner';
+import { inr } from '../../lib/money';
 
 type Totals = { lifetime_coins?: number; month_coins?: number; held_coins?: number; links?: number; referred_users?: number };
 type Me = { registered?: boolean; code?: string; status?: string; link_url_base?: string; totals?: Totals };
 type Link = { id: string; url?: string; clicks?: number; created_at?: number; bound_users?: number; purchases?: number; earned_coins?: number };
 
-const usd = (c?: number) => `$${((c ?? 0) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+// [TOKENS-INR-RAIL-1] Token counts, 1 token = ₹1. Was $((c)/100).
+const usd = inr;
 
 function Stat({ label, value, tone }: { label: string; value: string; tone: string }) {
   return (

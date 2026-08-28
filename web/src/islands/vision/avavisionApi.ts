@@ -24,6 +24,7 @@
 
 import { request, ApiError } from '../../lib/apiClient';
 import { API_BASE } from '../../lib/config';
+import { inrOrFree } from '../../lib/money';
 
 export { ApiError };
 
@@ -44,8 +45,8 @@ export type Platform = 'android' | 'ios' | 'web';
 export const MAX_CONCURRENT_CALLS = 10; // D1 active-session cap (avavoice baseline)
 export const MAX_SESSION_MINUTES = 60;
 export const SESSION_LIMITS = [5, 10, 30, 60] as const;
-export const CREATOR_PAYS_RATE_PER_HOUR = 500; // $5/hr flat, vision bundled
-export const MIN_RATE_PER_HOUR = 300; // $3/hr AvaVision floor (PRICING.md §4; server enforces 300)
+export const CREATOR_PAYS_RATE_PER_HOUR = 500; // 500 tokens = ₹500/hr flat, vision bundled
+export const MIN_RATE_PER_HOUR = 300; // 300 tokens = ₹300/hr AvaVision floor (server enforces 300)
 
 // ─────────────────────────── template catalog ─────────────────────────────
 // Shape of `GET /api/avavision/templates?platform=web` (serves
@@ -222,7 +223,7 @@ function voiceFromJson(j: Record<string, unknown>): Voice {
   };
 }
 
-// ─────────────────────────── price helpers (coins = USD cents) ─────────────
+// ─────────── price helpers (coins = TOKENS; [TOKENS-INR-RAIL-1] 1 token = ₹1) ─
 export function isFreeForCallers(a: Pick<VisionAgent, 'payerMode'>): boolean {
   return a.payerMode === 'creator_pays';
 }
@@ -231,10 +232,7 @@ export function isBusy(a: Pick<VisionAgent, 'activeCalls'>): boolean {
   return (a.activeCalls ?? 0) >= MAX_CONCURRENT_CALLS;
 }
 
-export function fmtCoins(coins: number): string {
-  if (coins === 0) return 'Free';
-  return `$${(coins / 100).toFixed(coins % 100 === 0 ? 0 : 2)}`;
-}
+export const fmtCoins = inrOrFree;
 
 export function rateLabel(a: Pick<VisionAgent, 'payerMode' | 'ratePerHourCoins'>): string {
   if (isFreeForCallers(a)) return 'Free to call';

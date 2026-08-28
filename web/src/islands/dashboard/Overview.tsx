@@ -8,8 +8,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { getActiveTokenWaited as getActiveToken } from '../../lib/clerk';
 import { request } from '../../lib/apiClient';
 import { Spinner } from '../../components/Spinner';
+import { inr } from '../../lib/money';
 
-const usd = (c?: number | null) => `$${((c ?? 0) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+// [TOKENS-INR-RAIL-1] Token counts, 1 token = ₹1. Was $((c)/100).
+const usd = inr;
 const dt = (ms?: number) => (ms ? new Date(ms).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
 const ago = (ms?: number) => {
   if (!ms) return '';

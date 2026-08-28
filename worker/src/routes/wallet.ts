@@ -36,22 +36,39 @@ import { txDetailFor, labelFor } from "./wallet_statement";
 // This is an owner pricing decision, FIXED, not an FX conversion (see
 // lib/fx_rates.ts). India is the only market for now.
 //
-// The legacy USD basis (1 token = $0.01 = 1 US cent) is kept ONLY for the
-// Stripe/Play rails, which are denominated in USD upstream. It happens to be
-// near-parity: at cfg.usdInrRate = 96.4, one US cent is \u20b90.964, so the two
-// bases differ by ~3.6% and no stored balance changed value when the user-facing
-// unit became the rupee. Do NOT read $0.01 as the price the user sees.
-// AvaPayout (routes/payout.ts) already converts tokens→USD at this same rate.
-// NOTE: this is a RENAME of the old "coins" unit at the SAME value (100/USD), so
-// stored balances are unchanged. Internal D1 columns (amount_coins), Stripe
+// [TOKENS-INR-RAIL-1 2026-08-28, owner decision] THE RUPEE IS THE DEFAULT
+// CURRENCY OF THE MONEY-IN RAIL, not just of the display layer.
+//
+// Before this change money-OUT was already INR (upi_payout.ts:
+// gross_inr_paise = tokens * 100) and the app's PaymentIntent rail could ASK
+// for INR, but the WEB Checkout rail (walletTopup, below) hard-wired
+// `currency: "usd"`. So avatok.ai published "1 token = \u20b91" while Stripe
+// actually charged $0.01 per token. A payment-gateway reviewer comparing the
+// published price against a real charge fails you for exactly that, and it was
+// also simply untrue. Both halves now speak rupees.
+//
+// TOKENS_PER_USD survives ONLY for the two rails genuinely denominated in US
+// dollars upstream, which cannot be re-priced from this file:
+//   * Google Play (PLAY_TOPUP_PRODUCTS) - fixed USD-defined SKUs; Play converts
+//     to the buyer's local currency at its own rate.
+//   * the legacy `{ usd_cents }` body on /topup/intent, kept working for app
+//     builds shipped before this change.
+// It is NOT a price anyone is quoted. Do NOT reintroduce it as one.
+//
+// NOTE: "coins" is the legacy wire/DB name for a token at the SAME value, so no
+// stored balance changed. Internal D1 columns (amount_coins), Stripe
 // `metadata[coins]`, and analytics prop keys keep their legacy names to protect
 // live balances / in-flight payments / dashboards; the user-facing term is "Tokens".
 const TOKENS_PER_USD = 100;
 const usdCentsForTokens = (tokens: number) => Math.round((tokens * 100) / TOKENS_PER_USD); // tokens → USD cents (== tokens)
+/** Tokens → paise. The whole rail, exactly: 1 token = \u20b91 = 100 paise. */
+const paiseForTokens = (tokens: number) => tokens * 100;
+/** Default money-in currency. India is the only market (see the PRODUCT PIVOT). */
+const TOPUP_CURRENCY = "inr";
 // [TOKENS-FX-1] Min lowered 500→100 tokens so the region-aware quote presets
 // ($1 minimum / ₹100 minimum, both = 100 tokens) are actually payable on the
 // Stripe rail. Play's own floor stays $5 (its lowest fixed product).
-const MIN_TOPUP = 100, MAX_TOPUP = 50_000; // in TOKENS: $1 (= ₹100) .. $500
+const MIN_TOPUP = 100, MAX_TOPUP = 50_000; // in TOKENS: \u20b9100 .. \u20b950,000
 
 function walletStub(env: Env, uid: string) {
   return env.WALLET_DO.get(env.WALLET_DO.idFromName(uid));
@@ -326,7 +343,14 @@ function topupEnabled(env: Env): boolean {
   return env.WALLET_TOPUP_ENABLED === "1" && !!env.STRIPE_SECRET_KEY && !!env.STRIPE_WEBHOOK_SECRET;
 }
 
-// POST /api/wallet/topup { amountUsdCents } (legacy { amount } in coins also accepted).
+// POST /api/wallet/topup { tokens } (legacy { amountUsdCents } / { amount } also
+// accepted - all three have ALWAYS carried the TOKEN COUNT, never a cash amount,
+// so the rename is a clarification and old clients keep working unchanged).
+//
+// [TOKENS-INR-RAIL-1] This is the WEB rail (Stripe Checkout redirect) and it now
+// charges INR: `tokens` rupees, billed as `tokens * 100` paise. It used to build
+// a USD line item at `usdCentsForTokens(tokens)`, which is where the published
+// price and the real charge came apart.
 // Money route: requires Idempotency-Key header (A1); rate-limited 5/h (A3).
 export async function walletTopup(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
@@ -338,8 +362,10 @@ export async function walletTopup(req: Request, env: Env): Promise<Response> {
 
 async function topupCore(req: Request, env: Env, uid: string): Promise<Response> {
   const b = (await req.json().catch(() => ({}))) as any;
-  // 1 coin = 1 cent, so amountUsdCents IS the coin amount.
-  const amount = Math.trunc(Number(b.amountUsdCents ?? b.amount));
+  // Every accepted key carries the TOKEN COUNT. `amountUsdCents` is a legacy
+  // name from when 1 token was priced at 1 US cent and the two numbers were
+  // numerically identical; it is still the token count, not cents.
+  const amount = Math.trunc(Number(b.tokens ?? b.amountUsdCents ?? b.amount));
   if (!(amount >= MIN_TOPUP && amount <= MAX_TOPUP)) return json({ error: `amount must be ${MIN_TOPUP}..${MAX_TOPUP} tokens` }, 400);
 
   if (!topupEnabled(env)) {
@@ -348,7 +374,8 @@ async function topupCore(req: Request, env: Env, uid: string): Promise<Response>
   }
 
   const id = crypto.randomUUID();
-  const cents = usdCentsForTokens(amount);
+  // 1 token = \u20b91, so the charge is `amount` rupees expressed in paise.
+  const minor = paiseForTokens(amount);
   // Stripe Checkout Session (server-side; client redirects to session.url).
   const form = new URLSearchParams();
   form.set("mode", "payment");
@@ -359,8 +386,8 @@ async function topupCore(req: Request, env: Env, uid: string): Promise<Response>
   form.set("metadata[topup_id]", id);
   form.set("metadata[coins]", String(amount));
   form.set("line_items[0][quantity]", "1");
-  form.set("line_items[0][price_data][currency]", "usd");
-  form.set("line_items[0][price_data][unit_amount]", String(cents));
+  form.set("line_items[0][price_data][currency]", TOPUP_CURRENCY);
+  form.set("line_items[0][price_data][unit_amount]", String(minor));
   form.set("line_items[0][price_data][product_data][name]", `${amount} Tokens`);
 
   const res = await fetch("https://api.stripe.com/v1/checkout/sessions", {
@@ -372,9 +399,10 @@ async function topupCore(req: Request, env: Env, uid: string): Promise<Response>
   if (!res.ok) return json({ error: "stripe error", detail: session?.error?.message }, 502);
 
   await env.DB_WALLET.prepare(
-    "INSERT INTO topup_records (id, uid, stripe_session_id, amount_coins, amount_cents, currency, status, created_at) VALUES (?1,?2,?3,?4,?5,'usd','pending',?6)",
-  ).bind(id, uid, session.id, amount, cents, Date.now()).run();
-  track(env, uid, "wallet_topup_initiated", "avawallet", { amount, cents });
+    // amount_cents holds MINOR units of `currency` - paise here, not cents.
+    "INSERT INTO topup_records (id, uid, stripe_session_id, amount_coins, amount_cents, currency, status, created_at) VALUES (?1,?2,?3,?4,?5,?7,'pending',?6)",
+  ).bind(id, uid, session.id, amount, minor, Date.now(), TOPUP_CURRENCY).run();
+  track(env, uid, "wallet_topup_initiated", "avawallet", { amount, cents: minor, currency: TOPUP_CURRENCY, via: "checkout" });
   return json({ checkout_url: session.url, session_id: session.id, topup_id: id });
 }
 
@@ -408,17 +436,24 @@ export async function walletTopupIntent(req: Request, env: Env): Promise<Respons
   if (limited) return limited;
 
   const b = (await req.json().catch(() => ({}))) as any;
-  // [TOKENS-FX-1] Region-aware: the quote-driven client sends { amount_minor,
-  // currency: "usd"|"inr" }; legacy { usd_cents } stays USD. INR is India's
-  // FIXED price — 1 Token = ₹1 (tokens = rupees, NOT FX-converted), min ₹100.
-  // USD is canonical: 1 USD = 100 Tokens. The server, never the client, decides
-  // the token conversion either way.
-  const currency = String(b.currency ?? "usd").toLowerCase() === "inr" ? "inr" : "usd";
+  // [TOKENS-INR-RAIL-1] INR IS THE DEFAULT. The quote-driven client sends
+  // { amount_minor, currency }, and the currency it is told to use is now INR
+  // for everyone (see walletTopupQuote). 1 Token = \u20b91 FIXED - tokens ARE
+  // rupees, never FX-converted - minimum \u20b9100.
+  //
+  // USD survives for exactly one caller: an app build shipped BEFORE this change
+  // that posts the legacy `{ usd_cents }` body with no `currency`. Defaulting
+  // those to INR would read 500 US cents as 500 paise and credit 5 tokens
+  // instead of 500 - a silent 100x underpay - so the legacy key still pins USD.
+  // Anything else, including a bare `{ amount_minor }`, is rupees.
+  const legacyUsdBody = b.currency == null && b.usd_cents != null;
+  const explicit = String(b.currency ?? "").toLowerCase();
+  const currency = explicit === "usd" || (legacyUsdBody && explicit === "") ? "usd" : "inr";
   const cents = Math.trunc(Number(b.amount_minor ?? b.usd_cents ?? b.amountUsdCents)); // minor units of `currency`
   if (!(cents > 0)) return json({ error: "amount_minor required (amount in minor units)" }, 400);
   const coins = currency === "inr"
-    ? Math.round(cents / 100)                       // paise → whole rupees → tokens (₹1 = 1 Token, fixed)
-    : Math.round((cents * TOKENS_PER_USD) / 100);   // USD cents → tokens (1 token == 1 cent)
+    ? Math.round(cents / 100)                       // paise → whole rupees → tokens (1 Token = Rs 1, fixed)
+    : Math.round((cents * TOKENS_PER_USD) / 100);   // legacy USD cents → tokens (1 token == 1 cent)
   if (!(coins >= MIN_TOPUP && coins <= MAX_TOPUP)) {
     return json({
       error: currency === "inr"
@@ -701,16 +736,26 @@ async function creditTopup(
   const { uid, coins, topupId, ref } = p;
   if (!uid || !(coins > 0) || !topupId) return json({ received: true });
 
-  const rec = await env.DB_WALLET.prepare("SELECT status, amount_coins FROM topup_records WHERE id=?1 AND uid=?2")
-    .bind(topupId, uid).first<{ status: string; amount_coins: number }>();
+  const rec = await env.DB_WALLET.prepare("SELECT status, amount_coins, amount_cents, currency FROM topup_records WHERE id=?1 AND uid=?2")
+    .bind(topupId, uid).first<{ status: string; amount_coins: number; amount_cents: number | null; currency: string | null }>();
   if (!rec) return json({ received: true, ignored: "no matching topup record" });
   if (rec.status !== "pending") return json({ received: true, duplicate: true });
   if (rec.amount_coins !== coins) return json({ received: true, ignored: "amount mismatch" });
 
-  // Ledger meta drives the in-app receipt + log-detail sheet: the real USD charged,
-  // and HOW it was paid (card brand/last4, Apple/Google Pay, …) so a user can see
-  // "$10 paid with Visa ···4242 → 10,000 Tokens".
-  const meta: any = { title: `Top-up ${coins} Tokens`, cents: usdCentsForTokens(coins), source: "topup" };
+  // Ledger meta drives the in-app receipt + log-detail sheet: the real amount
+  // charged, and HOW it was paid (card brand/last4, Apple/Google Pay, ...) so a
+  // user can see "Rs 500 paid with Visa ...4242 -> 500 Tokens".
+  //
+  // [TOKENS-INR-RAIL-1] `cents` is MINOR UNITS OF `currency`, read from the
+  // top-up record rather than recomputed as USD. It used to be
+  // usdCentsForTokens(coins), which printed a dollar figure on an INR charge.
+  // The key keeps its legacy name because shipped clients read it.
+  const meta: any = {
+    title: `Top-up ${coins} Tokens`,
+    cents: Number(rec.amount_cents ?? paiseForTokens(coins)),
+    currency: String(rec.currency || TOPUP_CURRENCY).toLowerCase(),
+    source: "topup",
+  };
   meta.method = p.method ?? "card";
   if (p.brand) meta.card_brand = p.brand;
   if (p.last4) meta.card_last4 = p.last4;

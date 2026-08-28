@@ -13,6 +13,7 @@ import { cfImage } from '../../lib/config';
 import { Spinner } from '../../components/Spinner';
 import * as visionApi from '../vision/avavisionApi';
 import * as voiceApi from '../agent/api';
+import { inr } from '../../lib/money';
 
 type Agent = { id: string; name: string; role: string; status: string; ratePerHourCoins: number; images: string[]; avatarUrl?: string | null; callsTotal: number; ratingAvg?: number | null };
 
@@ -35,7 +36,7 @@ function adapter(service: 'vision' | 'voice') {
 
 function coins(n?: number | null) {
   if (!n) return 'Free';
-  return `$${(n / 100).toFixed(0)}/hr`;
+  return `${inr(n)}/hr`;   // [TOKENS-INR-RAIL-1] tokens, 1 token = ₹1
 }
 
 function Inner({ service }: { service: 'vision' | 'voice' }) {

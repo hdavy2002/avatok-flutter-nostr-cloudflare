@@ -11,6 +11,7 @@
 // carry an Idempotency-Key + one safe retry with the SAME key, like the app.
 
 import { request, ApiError } from '../../lib/apiClient';
+import { inrOrFree } from '../../lib/money';
 
 const BASE = '/api/avavoice';
 
@@ -70,17 +71,15 @@ export function isBusy(a: VoiceAgent): boolean {
   return (a.activeCalls ?? 0) >= MAX_CONCURRENT_CALLS;
 }
 
-/** "Free to call" or "$X/hr · $Y/min" — coins are USD cents. */
+/** "Free to call" or "₹X/hr · ₹Y/min" — coins are TOKENS, and 1 token = ₹1. */
 export function rateLabel(a: VoiceAgent): string {
   if (isFreeForCallers(a)) return 'Free to call';
   const perMin = Math.ceil(a.ratePerHourCoins / 60);
   return `${fmtCoins(a.ratePerHourCoins)}/hr · ${fmtCoins(perMin)}/min`;
 }
 
-export function fmtCoins(coins: number): string {
-  if (coins === 0) return 'Free';
-  return `$${(coins / 100).toFixed(coins % 100 === 0 ? 0 : 2)}`;
-}
+// [TOKENS-INR-RAIL-1] 1 token = ₹1, so there is no divide-by-100 and no "$".
+export const fmtCoins = inrOrFree;
 
 // ── ephemeral ticket returned by sessions/start ────────────────────────────
 export interface SessionTicket {

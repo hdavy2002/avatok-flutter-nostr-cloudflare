@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react';
 import { request, ApiError } from '../../lib/apiClient';
 import { getActiveToken } from '../../lib/clerk';
+import { inr } from '../../lib/money';
 
 // ───────────────────────── response shapes ─────────────────────────
 export interface Overview {
@@ -129,7 +130,7 @@ export function useAdminGate(): { state: GateState; error: string | null; retry:
   return { state, error, retry: () => setNonce((n) => n + 1) };
 }
 
-export const coins = (c: number | null | undefined): string =>
-  c == null ? '—' : `$${(Number(c) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// [TOKENS-INR-RAIL-1] These are TOKEN counts, and 1 token = ₹1 — not US cents.
+export const coins = inr;
 export const fmtTime = (ms: number | null | undefined): string => (ms ? new Date(ms).toLocaleString() : '—');
 export const minsAgo = (ms: number): string => { const m = Math.floor((Date.now() - ms) / 60000); return m < 1 ? 'now' : m < 60 ? `${m}m` : `${Math.floor(m / 60)}h${m % 60}m`; };

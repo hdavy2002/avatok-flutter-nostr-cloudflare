@@ -649,15 +649,26 @@ export async function walletSummary(req: Request, env: Env): Promise<Response> {
   });
 }
 
-// ── [TOKENS-FX-1] Region-aware top-up quote ─────────────────────────────────
+// ── [TOKENS-INR-RAIL-1] Top-up quote — RUPEES FOR EVERYONE ──────────────────
 // GET /api/wallet/topup-quote[?country=XX]   (requireUser)
 //
-// Canonical economics: 1 USD = 100 Tokens (1 Token = $0.01), site-wide.
-// India special case (owner decision): 1 Token = ₹1 FIXED — NOT FX-converted —
-// with a ₹100 minimum (= 100 Tokens). Everyone outside India tops up in USD
-// only. Country comes from Cloudflare's edge geo (req.cf.country); ?country=
-// is a testing override. fx_usd_rate is INFORMATIONAL only (lib/fx_rates.ts)
-// — no price or balance is ever derived from it.
+// Canonical economics, no longer a regional special case: 1 Token = Rs 1 FIXED,
+// minimum Rs 100 (= 100 Tokens). This is an owner PRICING decision, never an FX
+// conversion, and it applies to every caller because India is the only market
+// (see the PRODUCT PIVOT section in CLAUDE.md).
+//
+// This endpoint used to return INR only when Cloudflare's edge geo said IN, and
+// USD to everyone else. That geo branch is gone. Two reasons it had to go:
+//   1. The site publishes "1 token = Rs 1" with no country qualifier, so a
+//      non-IN visitor was quoted a price the site does not advertise.
+//   2. This response DRIVES THE FLUTTER APP's top-up sheet, which falls back to
+//      USD whenever the quote is unavailable or says USD. Fixing it here fixes
+//      the app with no rebuild and no store release.
+//
+// `country` is still resolved and returned, because analytics and support use
+// it, and ?country= remains a testing override — but it no longer changes the
+// price. fx_usd_rate stays INFORMATIONAL only (lib/fx_rates.ts): no price or
+// balance is ever derived from it.
 export async function walletTopupQuote(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
@@ -665,16 +676,16 @@ export async function walletTopupQuote(req: Request, env: Env): Promise<Response
   const override = (u.searchParams.get("country") || "").trim().toUpperCase();
   const cfCountry = String(((req as any).cf?.country as string | undefined) || "").toUpperCase();
   const country = /^[A-Z]{2}$/.test(override) ? override : (cfCountry || "US");
-  const india = country === "IN";
+  const india = country === "IN";   // reported for analytics; does NOT set the price
 
-  const currency = india ? "INR" : "USD";
-  const tokensPerUnit = india ? 1 : 100;   // ₹1 = 1 Token (fixed) · $1 = 100 Tokens
-  const minAmount = india ? 100 : 1;       // ₹100 minimum · $1 minimum
-  const presetAmounts = india ? [100, 200, 500, 1000] : [1, 2, 5, 10];
+  const currency = "INR";
+  const tokensPerUnit = 1;                 // 1 Token = Rs 1, fixed, everywhere
+  const minAmount = 100;                   // Rs 100 minimum
+  const presetAmounts = [100, 200, 500, 1000];
   const presets = presetAmounts.map((amount) => ({ amount, tokens: amount * tokensPerUnit }));
 
   const fx = await getUsdRate(env, currency);
-  track(env, ctx.uid, "wallet_topup_quote", "avawallet", { country, currency, fx_source: fx.source });
+  track(env, ctx.uid, "wallet_topup_quote", "avawallet", { country, currency, india, fx_source: fx.source });
   return json({
     country,
     currency,
@@ -683,8 +694,6 @@ export async function walletTopupQuote(req: Request, env: Env): Promise<Response
     presets,
     fx_usd_rate: fx.rate,       // informational: live USD→currency (1 for USD)
     fx_source: fx.source,
-    note: india
-      ? "1 Token = ₹1 (fixed for India). Minimum top-up ₹100 = 100 Tokens."
-      : "1 USD = 100 Tokens. Minimum top-up $1.",
+    note: "1 Token = Rs 1 (fixed). Minimum top-up Rs 100 = 100 Tokens.",
   });
 }

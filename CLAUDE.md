@@ -476,16 +476,47 @@ Removing it is a real user-facing and Play-listing change.
 `amountUsdCents`; `worker/src/routes/wallet.ts` hard-writes `currency:'usd'`) while
 receipts print ₹. **Payments cannot move to the web until this is fixed.**
 
-**The web POLICY pages are now ₹, the web CHECKOUT CODE is not — and that gap is the
-whole risk.** `[LEGAL-UNREG-1 2026-08-28]` rewrote `/tokens`, `/pricing-fees`,
-`/payouts` and `/refunds` to state **1 token = ₹1**, matching `[TOKENS-INR-1]` and the
-app. Nothing in `islands/checkout/` or `worker/src/routes/wallet.ts` was touched,
-deliberately: changing the displayed currency without changing the charged currency
-would have the site promise ₹500 and the rail take $5. **Until `amountUsdCents` and
-`currency:'usd'` are fixed, the published price and the actual charge disagree** — which
-is exactly the kind of thing a payment-gateway reviewer fails you for. Fix them together,
-in one change, or not at all. Marketplace listings keep their own multi-currency unit
-(`ListingTile.tsx`, `intent_theme.dart`) and are NOT part of this.
+✅ **CLOSED by `[TOKENS-INR-RAIL-1 2026-08-28]` — the rail speaks rupees now.** The
+gap above (site published ₹, Stripe charged $) is fixed; the paragraph is kept so
+nobody "restores" the USD rail thinking it was deliberate. What changed:
+
+- `walletTopup` (the WEB Stripe **Checkout** rail, the one that was hard-wired USD)
+  now bills `tokens * 100` **paise** with `currency: "inr"`, and stores
+  `topup_records.currency='inr'` with `amount_cents` in paise. Its body key is now
+  `{ tokens }`; `amountUsdCents` / `amount` still work and **always carried the token
+  count, never cents** — the old name was the whole confusion.
+- `walletTopupIntent` (app PaymentSheet rail) **defaults to INR**. USD survives for
+  exactly one caller: a pre-2026-08-28 app build posting legacy `{ usd_cents }` with
+  no `currency`. Defaulting THAT to INR would read 500 cents as 500 paise and credit
+  5 tokens instead of 500 — a silent 100× underpay — so `legacyUsdBody` pins it to USD.
+  **Do not "simplify" that branch away.**
+- `walletTopupQuote` (`/api/wallet/topup-quote`) **no longer geo-branches**. It was
+  INR only for `cf.country === 'IN'`. It now returns INR to everyone, because the site
+  advertises ₹1 with no country qualifier. This response **drives the Flutter top-up
+  sheet**, which falls back to USD whenever the quote is missing or says USD — so this
+  one server change fixed the app with **no rebuild and no store release**.
+- `creditTopup` receipt meta reads `amount_cents`/`currency` **off the top-up record**
+  instead of recomputing `usdCentsForTokens(coins)`, which printed a dollar figure on
+  an INR charge. `wallet_statement.ts:formatMoney` already handled ₹ correctly.
+- Web display: **one** helper, `web/src/lib/money.ts`. Eight modules each carried
+  `` `$${(coins/100).toFixed(2)}` `` — wrong twice over, since 500 tokens are **₹500,
+  not ₹5**. The divide-by-100 had to go, not just the `$`. `AgentForm.tsx`'s rate
+  field now takes **rupees** (seed = the ₹300 floor) instead of dollars ×100.
+
+⚠️ **`TOKENS_PER_USD` still exists and must NOT be deleted** — Google Play's
+`PLAY_TOPUP_PRODUCTS` are fixed USD-defined SKUs and the legacy `usd_cents` body needs
+it. It is not a price anyone is quoted.
+
+⚠️ **Stripe is on TEST keys in prod** (`wrangler.toml:101`,
+`WALLET_TOPUP_ENABLED="1"` with `sk_test`), and `billingEnabled=false` /
+`walletRealMoney=false`. No real money moves, which is why this was safe to change
+live. **Before real money-in: a LIVE Stripe account that can actually charge INR.**
+Stripe India requires a registered business — which avaTOK is not (see the no-company
+section) — so the real rail is expected to be **Cashfree**, not Stripe. Wiring that is
+a separate project; this change makes the currency honest on the rail that exists.
+
+Marketplace listings keep their own genuinely multi-currency unit (`ListingTile.tsx`,
+`intent_theme.dart`) and are NOT part of this.
 
 ### Marketplace as the default screen — the risk is ShellV2, not Marketplace
 

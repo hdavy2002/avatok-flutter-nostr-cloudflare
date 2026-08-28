@@ -19,6 +19,7 @@ import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
 import { Pill } from '../../components/Pill';
 import { ApiError } from '../../lib/apiClient';
+import { inr } from '../../lib/money';
 import {
   createAgent,
   publishAgent,
@@ -87,7 +88,11 @@ function seedFromTemplate(t: VisionTemplate): AgentDraftInput {
 
 function AgentFormInner({ category, template, onBack }: AgentFormProps) {
   const [d, setD] = useState<AgentDraftInput>(() => seedFromTemplate(template));
-  const [rateDollars, setRateDollars] = useState<string>(() => (300 / 100).toFixed(0));
+  // [TOKENS-INR-RAIL-1] The creator now types RUPEES, and 1 token = ₹1, so the
+  // field value IS the token count. It used to be dollars at 100 tokens/$, which
+  // meant typing "3" stored 300 tokens — the same rate, quoted in the wrong
+  // currency. Seed = the ₹300/hr floor.
+  const [rateRupees, setRateRupees] = useState<string>(() => String(MIN_RATE_PER_HOUR));
   const [publishing, setPublishing] = useState(false);
   const [done, setDone] = useState<{ id: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -108,7 +113,7 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
     if (!d.systemProfile.trim()) errs.push('The coaching prompt cannot be empty.');
     if (!d.platforms.web) errs.push('Web must be enabled to publish on the web.');
     if (!creatorPays && d.ratePerHourCoins < MIN_RATE_PER_HOUR) {
-      errs.push(`Rate must be at least ${(MIN_RATE_PER_HOUR / 100).toFixed(0)}/hr.`);
+      errs.push(`Rate must be at least ${inr(MIN_RATE_PER_HOUR)}/hr.`);
     }
     // overlay/scoring coherence: geometry scoring needs an overlay capability.
     if (d.scoringMode === 'geometry' && d.capability === 'gemini_only') {
@@ -180,9 +185,10 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
   useEffect(() => () => stopPreview(), [stopPreview]);
 
   const onRateChange = (val: string) => {
-    setRateDollars(val);
-    const dollars = Number(val);
-    if (Number.isFinite(dollars) && dollars >= 0) set('ratePerHourCoins', Math.round(dollars * 100));
+    setRateRupees(val);
+    const rupees = Number(val);
+    // 1 token = ₹1 — no scaling. The server independently enforces the floor.
+    if (Number.isFinite(rupees) && rupees >= 0) set('ratePerHourCoins', Math.round(rupees));
   };
 
   const publish = async () => {
@@ -337,20 +343,20 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
 
           {!creatorPays ? (
             <Field
-              label="Rate per hour (USD)"
-              lead="$"
-              inputMode="decimal"
-              value={rateDollars}
-              onChange={(e) => onRateChange(e.target.value.replace(/[^0-9.]/g, ''))}
+              label="Rate per hour (₹)"
+              lead="₹"
+              inputMode="numeric"
+              value={rateRupees}
+              onChange={(e) => onRateChange(e.target.value.replace(/[^0-9]/g, ''))}
               error={
                 d.ratePerHourCoins < MIN_RATE_PER_HOUR
-                  ? `Minimum ${(MIN_RATE_PER_HOUR / 100).toFixed(0)}/hr`
+                  ? `Minimum ${inr(MIN_RATE_PER_HOUR)}/hr`
                   : null
               }
             />
           ) : (
             <p className="rounded-zineField border-zine border-inkMute bg-paper2 px-3.5 py-3 font-body font-bold text-[14px] text-inkSoft">
-              Free for users — you fund it at ${(CREATOR_PAYS_RATE_PER_HOUR / 100).toFixed(0)}/hr flat from your
+              Free for users — you fund it at {inr(CREATOR_PAYS_RATE_PER_HOUR)}/hr flat from your
               AvaWallet. Vision + snapshots are bundled.
             </p>
           )}
@@ -621,7 +627,7 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
 
           <p className="mt-3 font-body font-bold text-[14px] text-inkSoft">{d.name || 'Your agent'}</p>
           <p className="font-body text-[13px] text-inkMute">
-            {creatorPays ? 'Free to users' : `$${(effectiveRateCoins / 100).toFixed(2)}/hr`} ·{' '}
+            {creatorPays ? 'Free to users' : `${inr(effectiveRateCoins)}/hr`} ·{' '}
             {d.sessionLimitMin}m max
           </p>
         </div>

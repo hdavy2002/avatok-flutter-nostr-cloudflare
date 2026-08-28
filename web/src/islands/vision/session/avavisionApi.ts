@@ -19,6 +19,7 @@
 // both the studio (Phase 4) and the session (Phase 5) import from there.
 
 import { request, ApiError } from '../../../lib/apiClient';
+import { inrOrFree } from '../../../lib/money';
 
 const BASE = '/api/avavision';
 
@@ -133,10 +134,8 @@ export function isBusy(a: { activeCalls?: number | null }): boolean {
   return (a.activeCalls ?? 0) >= MAX_CONCURRENT_CALLS;
 }
 
-export function fmtCoins(coins: number): string {
-  if (coins === 0) return 'Free';
-  return `$${(coins / 100).toFixed(coins % 100 === 0 ? 0 : 2)}`;
-}
+// [TOKENS-INR-RAIL-1] 1 token = ₹1, so there is no divide-by-100 and no "$".
+export const fmtCoins = inrOrFree;
 
 /** "Free to call" or "$X/hr · $Y/min" — coins are USD cents. */
 export function rateLabel(a: VisionAgent): string {

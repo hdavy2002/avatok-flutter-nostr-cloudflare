@@ -2,8 +2,8 @@
  *
  * Money is sensitive: we show EXACT amounts, never auto-retry a charge, and
  * surface failures plainly. We only drive the EXISTING flow:
- *   • balance  → GET  /api/wallet/balance        (coins; 1 coin = 1 cent)
- *   • top-up   → POST /api/wallet/topup { amountUsdCents }  → Stripe checkout_url
+ *   • balance  → GET  /api/wallet/balance        (tokens; 1 token = ₹1)
+ *   • top-up   → POST /api/wallet/topup { tokens }          → Stripe checkout_url
  *                (settlement is server-side via /webhooks/stripe — not our job)
  *   • book     → POST /api/calendar/book { slot_id }     (consult/event/live)
  *                POST /api/avavoice/bookings { ... }      (agent)
@@ -18,10 +18,11 @@ import { Card } from '../../components/Card';
 import { Pill } from '../../components/Pill';
 import { Spinner } from '../../components/Spinner';
 import type { BookSelection, BookingResult, TopupResult, WalletBalance } from './types';
+import { inr } from '../../lib/money';
 
-function usd(coins: number): string {
-  return `$${(coins / 100).toFixed(2)}`;
-}
+// [TOKENS-INR-RAIL-1] Was `$${(coins/100).toFixed(2)}` — a token priced at one
+// US cent. A token is ₹1, so 500 tokens are ₹500, not $5.00.
+const usd = inr;
 
 export interface PayStepProps {
   selection: BookSelection;
@@ -64,7 +65,10 @@ export function PayStep({ selection, token, onBooked, onBack }: PayStepProps) {
       const r = await request<TopupResult>('/api/wallet/topup', {
         method: 'POST',
         auth: token,
-        body: { amountUsdCents: coins },
+        // `tokens` is the token count. The server charges that many rupees
+        // (paise upstream). The old key `amountUsdCents` carried the same
+        // number and is still accepted server-side for older clients.
+        body: { tokens: coins },
       });
       // Hand off to Stripe Checkout (settlement is server-side).
       window.location.href = r.checkout_url;

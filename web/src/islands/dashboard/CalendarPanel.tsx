@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { getActiveTokenWaited as getActiveToken } from '../../lib/clerk';
 import { request } from '../../lib/apiClient';
 import { Spinner } from '../../components/Spinner';
+import { inrOrFree } from '../../lib/money';
 
 type Ev = { booking_id?: string; title?: string; role?: string; start_at?: number; end_at?: number; price_coins?: number; status?: string };
 type Rule = { id?: string; weekday: number; start_min: number; end_min: number; tz?: string; slot_min?: number };
@@ -16,7 +17,8 @@ type Rule = { id?: string; weekday: number; start_min: number; end_min: number; 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const hhmm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
 const toMin = (s: string) => { const [h, m] = s.split(':').map(Number); return (h || 0) * 60 + (m || 0); };
-const usd = (c?: number) => (c ? `$${(c / 100).toFixed(0)}` : 'Free');
+// [TOKENS-INR-RAIL-1] Token counts, 1 token = ₹1. Was $((c)/100).
+const usd = (c?: number) => inrOrFree(c ?? 0);
 const fmt = (ms?: number) => (ms ? new Date(ms).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
 
 function Inner() {
