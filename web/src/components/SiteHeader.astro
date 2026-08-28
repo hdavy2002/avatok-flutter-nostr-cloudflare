@@ -20,7 +20,12 @@
  * page. That was the point of the exercise — the menu is editable on demand
  * now, which it could never be while it lived inside a JPEG.
  */
-import HeaderAuth from '../islands/site/HeaderAuth.tsx';
+// [WEB-AUTH-STATE-1 2026-08-28] HeaderAuth is no longer imported: the header's
+// auth CTAs are plain links toggled by CSS from the cookie-derived
+// html[data-avatok-auth] attribute. The island (and its <ClerkProvider>) was the
+// reason the `static` and `in` modes had to exist at all. The file is kept for
+// now rather than deleted, in case another surface still wants a React-side
+// signal, but nothing renders it.
 import TruckBorder from './TruckBorder.astro';
 // [LEGAL-UNREG-1 2026-08-28] Site-wide product-status disclosure. Lives here
 // rather than in a layout because the home page emits its own document and
@@ -35,22 +40,21 @@ interface Props {
   /** Sticky by default; the home page pins it over the poster. */
   sticky?: boolean;
   /**
-   * How the right-hand CTA decides what to show.
+   * @deprecated [WEB-AUTH-STATE-1 2026-08-28] IGNORED. Accepted only so the ~15
+   * pages that still pass it keep compiling; remove those and then remove this.
    *
-   * [WEB-HEADER-4 2026-08-26] `auto` mounts a Clerk island to read the live
-   * session. That island brings its own <ClerkProvider>, and
-   * @clerk/clerk-react THROWS "multiple <ClerkProvider>" if two of them mount
-   * on one page — the React root then renders nothing and the CTA silently
-   * vanishes. Caught on the live dashboard: the sidebar's SidebarUser already
-   * owns a provider, so the header's disappeared. 15 pages mount a body Clerk
-   * island (dashboard, all 7 admin pages, book, consult, agent, 4 vision).
+   * It used to make each PAGE assert its visitor's auth state:
+   *   'in'     — assume signed in  (dashboard, admin)
+   *   'static' — assume signed OUT (pages with their own Clerk island)
+   *   'auto'   — mount a Clerk island and actually check
+   * ...which existed because a second <ClerkProvider> crashes
+   * @clerk/clerk-react, so most pages could not ask. An assumption is wrong
+   * whenever it is wrong: signed-out visitors on a dashboard URL saw "Sign out",
+   * signed-in visitors on 'static' pages saw "Log in", and the mobile panel
+   * showed signed-out links to everyone, always.
    *
-   * So pages that already know the answer say so instead of asking Clerk:
-   *   'in'     — signed-in-only pages (dashboard, admin): static Dashboard link
-   *   'static' — pages with their own Clerk island: static Log in / Sign up
-   *   'auto'   — everywhere else: the island reads the real session
-   *
-   * Static means no second provider, no crash, and no JavaScript needed.
+   * The header now reads the real state from a cookie, before paint, with no
+   * island. See lib/authState.ts.
    */
   auth?: 'auto' | 'in' | 'static';
 }
@@ -65,7 +69,8 @@ const DEFAULT_LINKS: HeaderLink[] = [
   { href: '/sign-up', label: 'For creators' },
 ];
 
-const { links = DEFAULT_LINKS, sticky = true, auth = 'auto' } = Astro.props;
+// `auth` is destructured and ignored on purpose — see the deprecation note above.
+const { links = DEFAULT_LINKS, sticky = true } = Astro.props;
 ---
 
 {/* [WEB-THEME-1] The five brand faces. Loaded by the component rather than
@@ -82,6 +87,27 @@ const { links = DEFAULT_LINKS, sticky = true, auth = 'auto' } = Astro.props;
     outside would scroll the band away and pin the bar on its own. */}
 <BetaBanner />
 
+{/* [WEB-AUTH-STATE-1] Runs BEFORE paint (is:inline, no bundle, no await), so the
+    correct buttons are the first ones drawn — no flash of "Log in" for a
+    signed-in user. Duplicated from lib/authState.ts on purpose: an inline
+    pre-paint script cannot import a module. Keep the two in step; the module is
+    the documented original. */}
+<script is:inline>
+  (function () {
+    try {
+      var c = document.cookie;
+      var m = c.match(/(?:^|;\s*)__client_uat(?:_[A-Za-z0-9]+)?=([^;]*)/);
+      var signedIn = !!(m && m[1] && m[1] !== '0');
+      if (!signedIn) {
+        try { signedIn = !!localStorage.getItem('avatok_guest_jwt'); } catch (e) {}
+      }
+      document.documentElement.setAttribute('data-avatok-auth', signedIn ? 'in' : 'out');
+    } catch (e) {
+      document.documentElement.setAttribute('data-avatok-auth', 'out');
+    }
+  })();
+</script>
+
 <header class:list={['avh', sticky && 'avh--sticky']}>
   <TruckBorder kind="jhalar" count={60} class="avh-band" />
   <div class="avh-bar">
@@ -96,24 +122,21 @@ const { links = DEFAULT_LINKS, sticky = true, auth = 'auto' } = Astro.props;
   <div class="avh-right">
     {/* [WEB-HEADER-2 2026-08-26] Search pill removed at the owner's request.
         Browsing is reachable via the Marketplace link. */}
-    {auth === 'in' ? (
-      <Fragment>
-        {/* [WEB-HEADER-SIGNOUT-2 2026-08-28] Dashboard AND Sign out. Signed-in
-            pages previously rendered the Dashboard link alone, on the assumption
-            that SidebarUser's profile card carried sign out — but in the current
-            dashboard shell that card is below the fold, so there was no way out
-            on screen. /sign-out works without a Clerk island on the page. */}
-        <a class="avh-cta avh-cta--solid" href="/dashboard">Dashboard</a>
-        <a class="avh-cta" href="/sign-out">Sign out</a>
-      </Fragment>
-    ) : auth === 'static' ? (
-      <Fragment>
-        <a class="avh-cta" href="/sign-in">Log in</a>
-        <a class="avh-cta avh-cta--solid" href="/sign-up">Sign up</a>
-      </Fragment>
-    ) : (
-      <HeaderAuth client:idle />
-    )}
+    {/* [WEB-AUTH-STATE-1 2026-08-28] BOTH states are rendered, and CSS shows one.
+        See lib/authState.ts for why. In short: the old three-way `auth` prop made
+        each PAGE assert whether its visitor was signed in, so a signed-out
+        visitor on a dashboard URL saw "Sign out", a signed-in visitor on a
+        `static` page saw "Log in", and the mobile panel showed signed-out links
+        to everyone. The truth lives in a cookie; the page should not be guessing.
+
+        No Clerk island is needed for this any more, which also removes the
+        double-<ClerkProvider> crash that forced the `static` mode to exist. */}
+    <Fragment>
+      <a class="avh-cta avh-auth-out" href="/sign-in">Log in</a>
+      <a class="avh-cta avh-cta--solid avh-auth-out" href="/sign-up">Sign up</a>
+      <a class="avh-cta avh-cta--solid avh-auth-in" href="/dashboard">Dashboard</a>
+      <a class="avh-cta avh-auth-in" href="/sign-out">Sign out</a>
+    </Fragment>
     <img class="avh-orn" src="/ornament-flower.png" alt="" width="85" height="80" aria-hidden="true" />
   </div>
 
@@ -127,22 +150,18 @@ const { links = DEFAULT_LINKS, sticky = true, auth = 'auto' } = Astro.props;
 
 <nav class="avh-mobile" id="avh-mobile" aria-label="Main (mobile)" hidden>
   {links.map((l) => <a href={l.href}>{l.label}</a>)}
-  {/* [WEB-HEADER-10] Auth moves OUT of the bar and in here below 1100px. In the
-      bar it sat between the wordmark and the burger and read as the header's
-      main content on a phone. These are static links on purpose even when
-      auth="auto": the bar's HeaderAuth island already owns a <ClerkProvider>,
-      and a second one on the same page makes @clerk/clerk-react throw. */}
-  {auth === 'in' ? (
-    <Fragment>
-      <a class="avh-mobile-auth avh-mobile-auth--solid" href="/dashboard">Dashboard</a>
-      <a class="avh-mobile-auth" href="/sign-out">Sign out</a>
-    </Fragment>
-  ) : (
-    <Fragment>
-      <a class="avh-mobile-auth" href="/sign-in">Log in</a>
-      <a class="avh-mobile-auth avh-mobile-auth--solid" href="/sign-up">Sign up</a>
-    </Fragment>
-  )}
+  {/* [WEB-HEADER-10] Auth moves OUT of the bar and in here below 1100px.
+      [WEB-AUTH-STATE-1 2026-08-28] These used to be signed-OUT links on every
+      page regardless of session — the comment here said so, blaming the
+      double-<ClerkProvider> crash. The result was that a signed-in user on a
+      phone was shown "Log in / Sign up" with no way to reach their dashboard or
+      sign out. CSS-driven state fixes it with no provider at all. */}
+  <Fragment>
+    <a class="avh-mobile-auth avh-auth-out" href="/sign-in">Log in</a>
+    <a class="avh-mobile-auth avh-mobile-auth--solid avh-auth-out" href="/sign-up">Sign up</a>
+    <a class="avh-mobile-auth avh-mobile-auth--solid avh-auth-in" href="/dashboard">Dashboard</a>
+    <a class="avh-mobile-auth avh-auth-in" href="/sign-out">Sign out</a>
+  </Fragment>
 </nav>
 
 <script>
@@ -158,6 +177,15 @@ const { links = DEFAULT_LINKS, sticky = true, auth = 'auto' } = Astro.props;
 </script>
 
 <style is:global>
+  /* [WEB-AUTH-STATE-1 2026-08-28] Which auth CTAs are visible.
+     Default — attribute absent, e.g. JS disabled — is SIGNED OUT, because
+     offering "Log in" to someone already signed in is a mild annoyance while
+     offering "Dashboard / Sign out" to an anonymous visitor is a broken page.
+     `display: none !important` because .avh-cta sets its own display. */
+  .avh-auth-in { display: none !important; }
+  html[data-avatok-auth='in'] .avh-auth-in { display: inline-flex !important; }
+  html[data-avatok-auth='in'] .avh-auth-out { display: none !important; }
+
   /* Published header height. The dashboard pins its sidebar and its own toolbar
      to the viewport, so it needs to offset both by exactly this much or they
      slide underneath. Exposed as a variable so the two can never drift apart —

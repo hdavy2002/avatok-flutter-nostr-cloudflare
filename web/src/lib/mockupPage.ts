@@ -37,17 +37,20 @@ const ASSET_ORIGIN = 'https://avatok-design.pages.dev/';
 const FONT_CSS =
   'https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@0,700;0,900;1,700;1,900&family=Instrument+Sans:wght@400;500;600;700&family=Baloo+2:wght@600;700;800&family=Kalam:wght@400;700&family=Nunito:wght@400;600;700;800;900&display=swap';
 
-// [WEB-HEADER-SIGNOUT-1 2026-08-28] Make the comp's baked-in header reflect the
+// [WEB-AUTH-STATE-1 2026-08-28] Make the comp's baked-in header reflect the
 // real session.
 //
 // These pages are static design documents. Their header is <dc-import>ed at
 // runtime from the design origin with "Log in" / "Sign up" hardcoded into the
 // markup, and NO Clerk island runs on the page — so a signed-in visitor landing
 // here saw a signed-out header and reasonably concluded the login had failed.
-// SiteHeader.astro's auth handling cannot help: this route never renders it.
+// SiteHeader.astro cannot help: this route never renders it.
 //
-// So: ask Clerk's API whether there is an active session (one credentialed GET,
-// no SDK, no bundle) and rewrite the two anchors in place if there is.
+// The signed-in test is the SAME one the rest of the site now uses — the
+// `__client_uat` cookie, read synchronously (see lib/authState.ts). The first
+// version of this script did a credentialed fetch to Clerk's API instead, which
+// worked but was a fourth independent implementation of "are they signed in",
+// and slower: the buttons could not be right until a round trip finished.
 //
 // Written as an injected script rather than a fix in the .dc.html because that
 // file is served from the SEPARATE avatok-design Pages project — editing it
@@ -55,7 +58,13 @@ const FONT_CSS =
 // the standalone design preview, which is meant to look signed-out.
 const AUTH_SCRIPT = `<script>
 (function () {
-  var FAPI = 'https://clerk.avatok.ai/v1/client?_clerk_js_version=5.127.2';
+  function signedIn() {
+    try {
+      var m = document.cookie.match(/(?:^|;\\s*)__client_uat(?:_[A-Za-z0-9]+)?=([^;]*)/);
+      if (m && m[1] && m[1] !== '0') return true;
+      return !!localStorage.getItem('avatok_guest_jwt');
+    } catch (e) { return false; }
+  }
 
   function swap() {
     var links = document.querySelectorAll('a[href$="/sign-in"], a[href$="/sign-up"]');
@@ -69,22 +78,16 @@ const AUTH_SCRIPT = `<script>
     return true;
   }
 
-  fetch(FAPI, { credentials: 'include' })
-    .then(function (r) { return r.ok ? r.json() : null; })
-    .then(function (j) {
-      var res = (j && (j.response || j)) || {};
-      var sessions = res.sessions || [];
-      var active = sessions.some(function (s) { return s && s.status === 'active'; });
-      if (!active) return;
-      // The header is <dc-import>ed asynchronously, so the anchors may not exist
-      // yet. Try now, then watch the DOM until they appear. Give up after 10s so
-      // this never observes forever on a page that has no header.
-      if (swap()) return;
-      var obs = new MutationObserver(function () { if (swap()) obs.disconnect(); });
-      obs.observe(document.documentElement, { childList: true, subtree: true });
-      setTimeout(function () { obs.disconnect(); }, 10000);
-    })
-    .catch(function () { /* signed-out is the safe default */ });
+  document.documentElement.setAttribute('data-avatok-auth', signedIn() ? 'in' : 'out');
+  if (!signedIn()) return;
+
+  // The header is <dc-import>ed asynchronously, so the anchors may not exist
+  // yet. Try now, then watch the DOM until they appear. Give up after 10s so
+  // this never observes forever on a page that has no header.
+  if (swap()) return;
+  var obs = new MutationObserver(function () { if (swap()) obs.disconnect(); });
+  obs.observe(document.documentElement, { childList: true, subtree: true });
+  setTimeout(function () { obs.disconnect(); }, 10000);
 })();
 </script>`;
 
