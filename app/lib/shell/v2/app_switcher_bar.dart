@@ -27,11 +27,32 @@ import '../shell_v2.dart';
 ///
 /// Rendered ONCE by [ShellV2] itself (not by each root), so the same icons stay in
 /// the same place across every app — switching apps never moves or hides this bar.
+///
+/// ⚠️ [SHELL-STATIC-BAR-1] (owner decision 2026-08-28) MUCH OF THE ABOVE IS NOW
+/// DORMANT. The bar is STATIC: the expand/collapse handle, its caret and its
+/// "Swipe up"/"Swipe down" pill are gone, neither a tap nor a vertical drag does
+/// anything, and the app-switcher icon row is not rendered. What ships is a plain
+/// 40px band. The slot builders below ([_draggableSlot], [_inboxSlot],
+/// [_avaBrainSlot]) and the long-press reorder machinery are deliberately KEPT
+/// COMPILED but unreachable behind [_kShowAppSwitcherIcons] — the same "keep the
+/// engine, remove the reachability" approach used for the legacy Cloudflare call
+/// screen — so restoring the bar is a one-line change rather than a rebuild.
 /// Full-size icons/labels (66px bar) — a shrunk 50px variant was tried and reverted
 /// per owner feedback (2026-07-12) since it made everything too small to read.
 ///
 /// The FIRST root in [order] is the landing app on cold open. Reorders are
 /// committed via [onReorder]; taps via [onSelect]; Inbox via [onOpenInbox].
+/// [SHELL-STATIC-BAR-1] Master switch for the app-switcher icon row inside the
+/// footer band. FALSE per the owner's 2026-08-28 decision to make the bar static.
+///
+/// A compile-time `const` rather than a RemoteConfig flag ON PURPOSE: with the
+/// expand handle removed there is no way for a user to reach the icon row, so a
+/// server flag that flipped it back on would render a row nobody could have
+/// opened and whose reorder gestures are no longer discoverable. Restoring the
+/// bar is a deliberate code change (flip this to true and restore the handle in
+/// `build`), not a KV flip.
+const bool _kShowAppSwitcherIcons = false;
+
 class AppSwitcherBar extends StatefulWidget {
   final List<RootId> order;
   final RootId activeRoot;
@@ -185,6 +206,10 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
     widget.onReorder(next);
   }
 
+  /// [SHELL-STATIC-BAR-1] Kept, not deleted: its only caller was the expand
+  /// handle removed in `build`, and it is half of the one-line restore path
+  /// described on [_kShowAppSwitcherIcons].
+  // ignore: unused_element
   void _setExpanded(bool value) {
     if (_expanded == value) return;
     HapticFeedback.selectionClick();
@@ -226,63 +251,21 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Semantics(
-                  button: true,
-                  label:
-                      _expanded ? 'Hide app menu' : 'Swipe up to show app menu',
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => _setExpanded(!_expanded),
-                    onVerticalDragEnd: (details) {
-                      final velocity = details.primaryVelocity ?? 0;
-                      if (velocity < -80) _setExpanded(true);
-                      if (velocity > 80) _setExpanded(false);
-                    },
-                    child: SizedBox(
-                      height: 40,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          // [UI-HEADER-2026] Was a bare Material
-                          // `Icons.keyboard_arrow_*_rounded` pair — the ONLY two
-                          // icon violations the design guard reported under
-                          // `shell/**` (its icons baseline is 0, so they failed the
-                          // check on every PR). Phosphor carets are the app's
-                          // standard and read the same at 18px.
-                          PhosphorIcon(
-                            _expanded
-                                ? PhosphorIcons.caretDown(
-                                    PhosphorIconsStyle.bold)
-                                : PhosphorIcons.caretUp(
-                                    PhosphorIconsStyle.bold),
-                            size: 18,
-                            color: _onBand,
-                          ),
-                          const SizedBox(width: Msg.s1),
-                          DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: AD.bubbleOutPlay,
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 4),
-                              child: Text(
-                                _expanded ? 'Swipe down' : 'Swipe up',
-                                style: ADText.sectionLabel(c: Colors.white)
-                                    .copyWith(
-                                  fontSize: 12,
-                                  height: 1.1,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                if (_expanded)
+                // [SHELL-STATIC-BAR-1] The bar is STATIC (owner decision
+                // 2026-08-28). What used to live here was a tappable,
+                // vertically-draggable handle carrying a caret and a "Swipe
+                // up" / "Swipe down" pill, which expanded the app-switcher
+                // icon row below.
+                //
+                // All of that is gone: no gesture detector (so neither a tap
+                // nor a swipe can expand it), no caret, and no "Swipe up"
+                // label. The plain SizedBox keeps the band's 40px height so
+                // the layout above it — and the RAJ-INDIGO-1 footer seam in
+                // shell_v2.dart, which pins itself to this bar's top edge —
+                // is unchanged. Only the affordance is removed, not the band.
+                const SizedBox(height: 40),
+                // The app-switcher icon row is hidden with it.
+                if (_kShowAppSwitcherIcons)
                   // Keep the proven full-size cells when open. Only the closed state
                   // is compact; users never have to target shrunken icons.
                   SizedBox(
