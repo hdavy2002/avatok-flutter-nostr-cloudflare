@@ -108,6 +108,23 @@ const columns = [
     </div>
   </div>
 
+  {/* [LEGAL-UNREG-1 2026-08-28] Operating entity, address and product status,
+      visible on every page. A payment-gateway reviewer looks for exactly this,
+      and it is also the honest answer to "who am I paying?". */}
+  <div class="bf-entity">
+    <p class="bf-entity-line">
+      <strong>avaTOK</strong> is an early-stage startup, currently an <strong>unregistered
+      business in India</strong>. Company registration in Mumbai is in process. The service is in
+      testing and access is invite-only; our payment gateway application is under review.
+      <a href="/terms#status">Read the full status</a>
+    </p>
+    <p class="bf-entity-line">
+      Ekta Vihar, Sahastradhara Road, Dehradun, Uttarakhand, India ·
+      <a href="mailto:support@avatok.ai">support@avatok.ai</a> ·
+      <a href="/grievance">Grievance Officer</a>
+    </p>
+  </div>
+
   <div class="bf-legal">
     <div class="bf-legal-inner">
       <span>BURI NAZAR WALE, TERA MUH KALA · USE DIPPER AT NIGHT</span>
@@ -121,6 +138,26 @@ const columns = [
 </footer>
 
 <style>
+  .bf-entity {
+    max-width: 100rem;
+    margin: 0 auto;
+    padding: 0 clamp(16px, 4vw, 40px) 26px;
+  }
+
+  .bf-entity-line {
+    margin: 0 0 8px;
+    font-family: 'Nunito', system-ui, sans-serif;
+    font-size: 13.5px;
+    font-weight: 700;
+    line-height: 1.55;
+    letter-spacing: 0.04em;
+    color: #cdc3aa;
+    max-width: 78ch;
+  }
+
+  .bf-entity-line strong { font-weight: 900; letter-spacing: 0.05em; color: #fdf1d3; }
+  .bf-entity-line a { color: #ffc94d; text-underline-offset: 3px; }
+
   /* Colours are literals rather than tokens because this footer is a direct port
      of the comp, which is the source of truth for the bazaar palette. */
   .bazaar-footer {

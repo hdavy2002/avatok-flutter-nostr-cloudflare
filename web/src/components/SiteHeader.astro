@@ -22,6 +22,10 @@
  */
 import HeaderAuth from '../islands/site/HeaderAuth.tsx';
 import TruckBorder from './TruckBorder.astro';
+// [LEGAL-UNREG-1 2026-08-28] Site-wide product-status disclosure. Lives here
+// rather than in a layout because the home page emits its own document and
+// never touches Base.astro — the header is the one thing every page shares.
+import BetaBanner from './BetaBanner.astro';
 
 export interface HeaderLink { href: string; label: string }
 
@@ -76,6 +80,8 @@ const { links = DEFAULT_LINKS, sticky = true, auth = 'auto' } = Astro.props;
 {/* [WEB-HEADER-5 2026-08-26] Owner: the bazaar band belongs above the site
     header. Inside <header> on purpose — a sticky header that left the band
     outside would scroll the band away and pin the bar on its own. */}
+<BetaBanner />
+
 <header class:list={['avh', sticky && 'avh--sticky']}>
   <TruckBorder kind="jhalar" count={60} class="avh-band" />
   <div class="avh-bar">

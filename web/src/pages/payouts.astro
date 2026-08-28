@@ -1,6 +1,7 @@
 ---
 export const prerender = true;
 import Content from '../layouts/Content.astro';
+import LegalStatus from '../components/LegalStatus.astro';
 ---
 
 <Content
@@ -28,20 +29,21 @@ import Content from '../layouts/Content.astro';
     </p>
   </div>
 
-  <h2>1. Who pays you</h2>
+  <h2 id="status">1. Who pays you</h2>
+  <LegalStatus variant="full" />
   <p>
-    Which company handles your payout depends on where you are:
+    Payouts are made by the avaTOK founding team from India, under Indian law. There is no separate
+    overseas entity: everything on avaTOK is operated by the same unregistered Indian business until
+    we complete company registration.
   </p>
-  <ul>
-    <li><strong>Ava Global International Pvt Ltd</strong>, Mumbai, India — contracts with and serves
-      customers in India, and handles India transactions and payouts under Indian law and GST.</li>
-    <li><strong>Ava Global International, Inc.</strong>, Delaware, USA — contracts with and serves
-      international (non-India) customers, and handles international transactions and payouts.</li>
-  </ul>
-  <p>
-    Your location and the account details you provide determine which entity pays you. You cannot
-    choose the entity.
-  </p>
+  <div class="note">
+    <p>
+      <strong>Payouts are in test and are not open to the public.</strong> Our application for a
+      payment gateway as an unregistered business is under review. Until it is approved, withdrawals
+      are limited to invited users, are processed manually, and may be delayed or paused. Do not
+      treat avaTOK as a source of income during this period.
+    </p>
+  </div>
 
   <h2>2. Who can withdraw</h2>
   <p>
@@ -71,12 +73,10 @@ import Content from '../layouts/Content.astro';
     address that you supplied may not be recoverable.
   </p>
 
-  <h2>4. International payouts</h2>
+  <h2>4. Payouts outside India</h2>
   <p>
-    For customers outside India, payouts are handled by <strong>Ava Global International, Inc.</strong>
-    using the payout methods available in your country, typically in USD or the currency shown at
-    the time of withdrawal. Availability, supported methods, and any conversion applied are shown
-    during the withdrawal flow.
+    While we are testing, payouts are available in India only. We are not able to pay out to
+    accounts outside India during this period. When that changes we will update this page.
   </p>
 
   <h2>5. Verification before payout</h2>

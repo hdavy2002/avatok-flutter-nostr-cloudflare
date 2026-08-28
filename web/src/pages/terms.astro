@@ -1,6 +1,7 @@
 ---
 export const prerender = true;
 import Content from '../layouts/Content.astro';
+import LegalStatus from '../components/LegalStatus.astro';
 ---
 
 <Content
@@ -8,24 +9,32 @@ import Content from '../layouts/Content.astro';
   title="Terms of Service"
   description="The agreement between you and avaTOK — your account, acceptable use, payments, and the limits of what we promise."
   image="/og/terms.png"
-  lead="The agreement between you and Ava Global International Pvt Ltd for using avaTOK."
-  updated="2026-06-16"
+  lead="The agreement between you and the avaTOK team for using avaTOK, while we are an unregistered startup testing an early product."
+  updated="2026-08-28"
 >
   <p>
     These Terms of Service ("Terms") govern your access to and use of the avaTOK websites, apps, and
-    services (the "Services"), provided by <strong>Ava Global International Pvt Ltd</strong>,
-    headquartered in Mumbai, India ("AvaGlobal", "AvaTOK", "we", "us", or "our"). By using the
-    Services, you agree to these Terms. If you do not agree, do not use the Services.
+    services (the "Services"), provided by the avaTOK founding team ("avaTOK", "we", "us", or
+    "our"). By using the Services, you agree to these Terms. If you do not agree, do not use the
+    Services.
   </p>
 
-  <h2>1. Eligibility & accounts</h2>
+  <h2 id="status">1. Who we are, and where we are in our journey</h2>
+  <LegalStatus variant="full" />
+  <p>
+    Because we are early, please read section 10 (Disclaimers) and section 11 (Limitation of
+    liability) carefully. avaTOK is offered on a trial basis to invited users and you should not
+    rely on it for anything critical.
+  </p>
+
+  <h2>2. Eligibility & accounts</h2>
   <p>
     You must be able to form a binding contract and meet any minimum age requirements in your
     jurisdiction. You are responsible for your account, for keeping your credentials secure, and for
     all activity under your account.
   </p>
 
-  <h2>2. Your content</h2>
+  <h2>3. Your content</h2>
   <p>
     You retain ownership of the content you create or upload. You grant us a limited, worldwide,
     non-exclusive license to host, store, reproduce, and display your content solely to operate and
@@ -33,26 +42,34 @@ import Content from '../layouts/Content.astro';
     share it.
   </p>
 
-  <h2>3. Acceptable use</h2>
+  <h2>4. Acceptable use</h2>
   <p>
     You agree to follow our <a href="/community-guidelines">Community Guidelines</a> and not to
     misuse the Services — including no illegal activity, harassment, infringement, spam, malware, or
     attempts to disrupt or reverse-engineer the Services.
   </p>
 
-  <h2>4. Payments, payouts & fees</h2>
+  <h2>5. Payments, payouts & fees</h2>
   <p>
     Some features let you earn or spend money. Payments and payouts are handled by third-party
-    processors (such as PayPal and Wise) subject to their terms. Applicable fees, revenue shares, and
-    taxes are your responsibility where required by law. We may change pricing with notice.
+    processors subject to their terms. Applicable fees, revenue shares, and taxes are your
+    responsibility where required by law. We may change pricing with notice.
+  </p>
+  <p>
+    <strong>Payments are not yet live to the public.</strong> Our application for a payment gateway
+    as an unregistered business in India is under review, and until it is approved, payment and
+    payout flows on avaTOK are in test and available only to invited users. Amounts, fees and token
+    values shown during this period are indicative. If a payment is taken from you in error during
+    testing, tell us at <a href="mailto:support@avatok.ai">support@avatok.ai</a> and we will return
+    it. See our <a href="/refunds">Refunds &amp; Cancellations</a> policy.
   </p>
 
-  <h2 id="ai">5. Artificial intelligence — important disclaimer</h2>
+  <h2 id="ai">6. Artificial intelligence — important disclaimer</h2>
   <div class="note">
     <p>
       avaTOK is an AI-centric product, and some features and content are generated or assisted by
       artificial intelligence. <strong>AI can make mistakes.</strong> AI-generated outputs may be
-      inaccurate, incomplete, outdated, or otherwise unreliable, and <strong>AvaGlobal is not
+      inaccurate, incomplete, outdated, or otherwise unreliable, and <strong>avaTOK is not
       responsible or liable</strong> for decisions you make based on them. Always use your own
       judgment and verify important information independently.
     </p>
@@ -64,61 +81,63 @@ import Content from '../layouts/Content.astro';
     </p>
   </div>
 
-  <h2>6. Third-party services</h2>
+  <h2>7. Third-party services</h2>
   <p>
     The Services may link to or integrate third-party products. We are not responsible for
     third-party services, and your use of them is governed by their own terms.
   </p>
 
-  <h2>7. Intellectual property</h2>
+  <h2>8. Intellectual property</h2>
   <p>
-    The Services, including software, design, and trademarks, are owned by AvaGlobal or its
+    The Services, including software, design, and trademarks, are owned by avaTOK or its
     licensors and protected by law. These Terms do not grant you rights to our branding except as
     needed to use the Services.
   </p>
 
-  <h2>8. Termination</h2>
+  <h2>9. Termination</h2>
   <p>
     You may stop using the Services at any time. We may suspend or terminate access if you violate
     these Terms or to protect the Services and our community. Some provisions survive termination.
   </p>
 
-  <h2>9. Disclaimers</h2>
+  <h2>10. Disclaimers</h2>
   <p>
     The Services are provided "as is" and "as available" without warranties of any kind, to the
     fullest extent permitted by law. We do not warrant that the Services will be uninterrupted,
-    error-free, or secure.
+    error-free, or secure. avaTOK is a pre-release product built by an unregistered startup and is
+    being tested: features may break, change or be withdrawn, and test data may be reset.
   </p>
 
-  <h2>10. Limitation of liability</h2>
+  <h2>11. Limitation of liability</h2>
   <p>
-    To the maximum extent permitted by law, AvaGlobal and its affiliates will not be liable for any
+    To the maximum extent permitted by law, avaTOK, its founders and its team will not be liable for any
     indirect, incidental, special, consequential, or punitive damages, or for lost profits or data,
     arising from your use of the Services.
   </p>
 
-  <h2>11. Indemnification</h2>
+  <h2>12. Indemnification</h2>
   <p>
-    You agree to indemnify and hold AvaGlobal harmless from claims arising out of your content, your
+    You agree to indemnify and hold avaTOK and its founders harmless from claims arising out of your content, your
     use of the Services, or your violation of these Terms or applicable law.
   </p>
 
-  <h2>12. Governing law</h2>
+  <h2>13. Governing law</h2>
   <p>
-    These Terms are governed by the laws applicable in India,
-    without regard to
-    conflict-of-laws rules, except where local mandatory consumer-protection laws apply to you.
+    These Terms are governed by the laws of India, without regard to conflict-of-laws rules, except
+    where local mandatory consumer-protection laws apply to you. Our operating base is Dehradun,
+    Uttarakhand, India.
   </p>
 
-  <h2>13. Changes</h2>
+  <h2>14. Changes</h2>
   <p>
     We may update these Terms from time to time. We will post the updated version here and revise
     the "Last updated" date. Continued use after changes means you accept the updated Terms.
   </p>
 
-  <h2>14. Contact</h2>
+  <h2>15. Contact</h2>
   <p>
     Questions about these Terms? Email <a href="mailto:support@avatok.ai">support@avatok.ai</a> or
-    visit our <a href="/contact">contact page</a>.
+    visit our <a href="/contact">contact page</a>. Our operating address is Ekta Vihar,
+    Sahastradhara Road, Dehradun, Uttarakhand, India.
   </p>
 </Content>

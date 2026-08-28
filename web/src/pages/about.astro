@@ -1,6 +1,7 @@
 ---
 export const prerender = true;
 import Content from '../layouts/Content.astro';
+import LegalStatus from '../components/LegalStatus.astro';
 ---
 
 <Content
@@ -8,15 +9,16 @@ import Content from '../layouts/Content.astro';
   title="About avaTOK"
   description="avaTOK is an AI-powered messenger for real life — messaging, calling, a private number, and a marketplace for digital services."
   image="/og/about.png"
-  lead="AvaTOK is built by Ava Global International Pvt Ltd in Mumbai, India — a modern messenger that remembers with you, helps on cue, protects the conversation, and keeps your private number private."
-  updated="2026-08-02"
+  lead="AvaTOK is a brand-new Indian startup, still testing — a modern messenger that remembers with you, helps on cue, protects the conversation, and keeps your private number private."
+  updated="2026-08-28"
 >
-  <h2>A Mumbai company, built in India</h2>
+  <h2 id="status">A brand-new startup, built in India</h2>
   <p>
-    avaTOK is a product of <strong>Ava Global International Pvt Ltd</strong>, headquartered in Mumbai,
-    India. We build AI-first digital products for everyday life, with our product and engineering
-    work led from Mumbai and Dehra Dun.
+    avaTOK is built in India by a small founding team working from Dehradun. We build AI-first
+    digital products for everyday life, and right now we are doing the earliest part of that work:
+    turning an idea into a product and testing it with people we invite.
   </p>
+  <LegalStatus variant="full" />
 
   <figure class="editorial-photo">
     <img src="/genz-friends.jpg" alt="Four friends laughing together over a phone" />
@@ -61,11 +63,12 @@ import Content from '../layouts/Content.astro';
 
   <h2>Indian builders, made for real life</h2>
   <p>
-    AvaTok is made with care by Indian developers in Mumbai and Dehra Dun. Our team is building
+    AvaTok is made with care by Indian developers in Dehradun. Our team is building
     a modern messenger powered by Sarvam AI, a made-in-India large language model built from scratch,
     with a distinctly Indian understanding of language, culture, and everyday life. Want to help build
     the future of personal AI communication? See our
-    <a href="/careers">open roles</a>.
+    <a href="/careers">open roles</a>. And if you are an investor who wants to back an early Indian
+    AI startup, we would like to hear from you — <a href="mailto:hello@avatok.ai">hello@avatok.ai</a>.
   </p>
 
   <h2 id="press">Press & media</h2>

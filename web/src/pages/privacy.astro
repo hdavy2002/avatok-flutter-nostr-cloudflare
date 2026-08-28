@@ -1,6 +1,7 @@
 ---
 export const prerender = true;
 import Content from '../layouts/Content.astro';
+import LegalStatus from '../components/LegalStatus.astro';
 ---
 
 <Content
@@ -8,13 +9,23 @@ import Content from '../layouts/Content.astro';
   title="Privacy Policy"
   description="What avaTOK collects, why we collect it, how we protect it, and the control you have over your information."
   image="/og/privacy.png"
-  lead="How Ava Global International Pvt Ltd collects, uses, and protects your information when you use avaTOK."
-  updated="2026-08-02"
+  lead="How the avaTOK team collects, uses, and protects your information while we test an early product with a small group of invited users."
+  updated="2026-08-28"
 >
   <p>
-    This Privacy Policy explains how <strong>Ava Global International Pvt Ltd</strong> ("AvaGlobal",
-    "AvaTOK", "we", "us", or "our"), headquartered in Mumbai, India, handles personal information in
-    connection with the avaTOK websites, apps, and services (collectively, the "Services").
+    This Privacy Policy explains how the avaTOK founding team ("avaTOK", "we", "us", or "our")
+    handles personal information in connection with the avaTOK websites, apps, and services
+    (collectively, the "Services").
+  </p>
+
+  <LegalStatus variant="full" />
+
+  <p>
+    Because we are at the testing stage, please note that avaTOK is a pre-release product, that
+    access is invite-only, and that <strong>test data may be reset</strong> as we build. Do not put
+    information into avaTOK that you could not afford to lose or would not want handled by an
+    early-stage service. We still protect what you give us as described below, and you can ask us
+    to delete it at any time.
   </p>
 
   <p>
@@ -124,7 +135,7 @@ import Content from '../layouts/Content.astro';
   <h2>11. Contact us</h2>
   <p>
     Questions about privacy? Email <a href="mailto:support@avatok.ai">support@avatok.ai</a> or use
-    our <a href="/contact">contact page</a>. Ava Global International Pvt Ltd is headquartered in
-    Mumbai, India.
+    our <a href="/contact">contact page</a>. The avaTOK team operates from Ekta Vihar,
+    Sahastradhara Road, Dehradun, Uttarakhand, India.
   </p>
 </Content>

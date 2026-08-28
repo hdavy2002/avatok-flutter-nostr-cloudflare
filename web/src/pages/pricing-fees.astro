@@ -1,6 +1,7 @@
 ---
 export const prerender = true;
 import Content from '../layouts/Content.astro';
+import LegalStatus from '../components/LegalStatus.astro';
 ---
 
 <Content
@@ -19,16 +20,14 @@ import Content from '../layouts/Content.astro';
     <a href="/refunds">Refunds &amp; Cancellations</a> policy.
   </p>
 
-  <h2>1. Who charges you</h2>
+  <h2 id="status">1. Who charges you</h2>
+  <LegalStatus variant="full" />
   <p>
-    Which company handles your transaction depends on where you are:
+    All transactions on avaTOK are with the avaTOK founding team in India, under Indian law. While
+    our payment gateway application is under review, charges are in test, limited to invited users,
+    and any amount taken in error is refunded in full — see
+    <a href="/refunds">Refunds &amp; Cancellations</a>.
   </p>
-  <ul>
-    <li><strong>Ava Global International Pvt Ltd</strong>, Mumbai, India — contracts with and serves
-      customers in India, and handles India transactions and payouts under Indian law and GST.</li>
-    <li><strong>Ava Global International, Inc.</strong>, Delaware, USA — contracts with and serves
-      international (non-India) customers, and handles international transactions and payouts.</li>
-  </ul>
 
   <h2>2. The screen you confirm on is the authoritative price</h2>
   <p>

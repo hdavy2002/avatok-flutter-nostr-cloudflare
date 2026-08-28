@@ -1,6 +1,7 @@
 ---
 export const prerender = true;
 import Content from '../layouts/Content.astro';
+import LegalStatus from '../components/LegalStatus.astro';
 ---
 
 <Content
@@ -27,16 +28,13 @@ import Content from '../layouts/Content.astro';
     </p>
   </div>
 
-  <h2>1. Who you are dealing with</h2>
+  <h2 id="status">1. Who you are dealing with</h2>
+  <LegalStatus variant="full" />
   <p>
-    Which company holds your balance depends on where you are:
+    Your token balance is held by the avaTOK founding team in India, under Indian law. Because we
+    are testing, balances are not a stored-value or payment instrument, are not open to the public,
+    and test balances may be adjusted or reset while the product is in development.
   </p>
-  <ul>
-    <li><strong>Ava Global International Pvt Ltd</strong>, Mumbai, India — contracts with and serves
-      customers in India, and handles India transactions and payouts under Indian law and GST.</li>
-    <li><strong>Ava Global International, Inc.</strong>, Delaware, USA — contracts with and serves
-      international (non-India) customers, and handles international transactions and payouts.</li>
-  </ul>
 
   <h2>2. What a token is</h2>
   <p>

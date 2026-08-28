@@ -1,0 +1,94 @@
+---
+/*
+ * BetaBanner — site-wide honesty strip.
+ *
+ * [LEGAL-UNREG-1 2026-08-28] AvaTOK is pre-incorporation. The site previously
+ * described itself as a product of "Ava Global International Pvt Ltd", a
+ * company that does not exist. Every legal page has been rewritten to say what
+ * is actually true, and this banner carries the same disclosure on every page
+ * so a visitor (or a payment-gateway reviewer) meets it before the marketing
+ * copy rather than after it.
+ *
+ * Rendered by SiteHeader.astro, which is site-wide, so there is nothing to add
+ * per page. Dismissal is per-browser only (sessionStorage) and deliberately
+ * does NOT persist across visits — this is a standing disclosure, not a
+ * cookie notice.
+ */
+---
+
+<div class="beta-strip" id="beta-strip" role="note" aria-label="Product status">
+  <p class="beta-strip__text">
+    <strong>Early access.</strong> AvaTOK is an unregistered startup in India,
+    still testing its product. The site is not fully operational, access is
+    invite-only, and payments are in test while our gateway application is under
+    review. <a href="/terms#status">What this means</a>
+  </p>
+  <button class="beta-strip__x" type="button" aria-label="Dismiss this notice">&times;</button>
+</div>
+
+<style>
+  .beta-strip {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 9px 18px;
+    background: #1d1b16;
+    color: #f7ead5;
+    font-family: 'Nunito', system-ui, sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.4;
+    letter-spacing: 0.04em;
+    word-spacing: 0.06em;
+    text-align: center;
+  }
+
+  .beta-strip__text { margin: 0; max-width: 1020px; }
+
+  .beta-strip__text strong {
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    color: #ffc94d;
+  }
+
+  .beta-strip__text a {
+    color: #f7ead5;
+    text-underline-offset: 3px;
+    white-space: nowrap;
+  }
+
+  .beta-strip__x {
+    flex: none;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font-size: 22px;
+    line-height: 1;
+    padding: 2px 6px;
+    cursor: pointer;
+    opacity: 0.7;
+  }
+
+  .beta-strip__x:hover { opacity: 1; }
+
+  @media (max-width: 700px) {
+    .beta-strip { padding: 8px 12px; font-size: 12.5px; gap: 8px; }
+  }
+</style>
+
+<script>
+  // Per-session dismissal only. A fresh visit shows the notice again on purpose.
+  const strip = document.getElementById('beta-strip');
+  try {
+    if (sessionStorage.getItem('avatok_beta_notice') === 'hidden' && strip) {
+      strip.hidden = true;
+      strip.style.display = 'none';
+    }
+  } catch { /* storage blocked — show the notice, which is the safe default */ }
+
+  strip?.querySelector('.beta-strip__x')?.addEventListener('click', () => {
+    strip.style.display = 'none';
+    try { sessionStorage.setItem('avatok_beta_notice', 'hidden'); } catch { /* ignore */ }
+  });
+</script>

@@ -1,6 +1,7 @@
 ---
 export const prerender = true;
 import Content from '../layouts/Content.astro';
+import LegalStatus from '../components/LegalStatus.astro';
 ---
 
 <Content
@@ -15,8 +16,12 @@ import Content from '../layouts/Content.astro';
   <p>
     You can always email us directly at <a href="mailto:support@avatok.ai">support@avatok.ai</a>, or
     use the form below. For copyright issues see our <a href="/dmca">DMCA / Copyright</a> policy; for
-    anything about your data, see our <a href="/privacy">Privacy Policy</a>.
+    anything about your data, see our <a href="/privacy">Privacy Policy</a>. To file a formal
+    complaint, use <a href="/grievance">Grievance Redressal</a>.
   </p>
+
+  <h2 id="status">Who we are and where to find us</h2>
+  <LegalStatus variant="full" />
 
   <form id="contact-form" class="cform" novalidate>
     <label class="honeypot" aria-hidden="true">

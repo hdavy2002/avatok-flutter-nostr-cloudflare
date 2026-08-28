@@ -1,0 +1,79 @@
+---
+/*
+ * LegalStatus — the single source of truth for who operates avaTOK.
+ *
+ * [LEGAL-UNREG-1 2026-08-28] Every legal page used to open by naming
+ * "Ava Global International Pvt Ltd" (Mumbai) and, on the commerce pages, a
+ * second contracting entity in Delaware. Neither described reality: there is no
+ * registered Indian company, and the owner's decision (2026-08-28) is that the
+ * site names no other entity either. This component states the true position —
+ * unregistered, testing stage, incorporation intended once funded — and every
+ * page imports it instead of writing its own version. One edit updates the site.
+ *
+ * `variant`:
+ *   'full'  — who we are + current status + address. Use on terms, privacy,
+ *             about, refunds and the other commerce/policy pages.
+ *   'who'   — who we are + address only. For pages that already describe the
+ *             testing stage in their own words.
+ *   'short' — one paragraph, for pages where the block would crowd the page.
+ */
+export interface Props {
+  variant?: 'full' | 'who' | 'short';
+  heading?: string;
+}
+
+const { variant = 'full', heading } = Astro.props;
+---
+
+{heading && <h2 id="status">{heading}</h2>}
+
+<div class="note" id={heading ? undefined : 'status'}>
+  {variant === 'short' ? (
+    <p>
+      avaTOK is built and operated by an independent founding team in India. We are
+      an <strong>unregistered business</strong> at the ideation and testing stage, and
+      we intend to register a company in Mumbai, India once funding is in place. The
+      service is invite-only and is not yet fully operational. Contact:
+      <a href="mailto:support@avatok.ai">support@avatok.ai</a>.
+    </p>
+  ) : (
+    <Fragment>
+      <p>
+        <strong>Who you are dealing with.</strong> avaTOK is built and operated by an
+        independent founding team in India. We are a brand-new startup at the
+        ideation and testing stage: we are still building the product and validating
+        the idea with a small, invited group of users.
+      </p>
+      <p style="margin-top:12px">
+        <strong>We are currently an unregistered business in India.</strong> No company
+        has been incorporated yet, so avaTOK is not operated by any registered
+        company, and no entity name should be read into our branding. We have begun
+        the formalities to register a company in Mumbai, India, and intend to complete
+        registration as soon as our funding is in place. When that happens we will
+        update these pages and tell affected users. If you are an investor and would
+        like to talk to us, write to <a href="mailto:hello@avatok.ai">hello@avatok.ai</a>.
+      </p>
+
+      {variant === 'full' && (
+        <p style="margin-top:12px">
+          <strong>The site is not fully operational.</strong> Features are being tested
+          and may change, be paused, or be removed. Access is currently
+          <strong> invite-only</strong>. Our online payment facility is not live to the
+          public: our application for a payment gateway as an unregistered business is
+          <strong> under review</strong>, and until it is approved, payment flows are in
+          test. Prices, fees and token values shown on the site are indicative during
+          this period. Test data may be reset.
+        </p>
+      )}
+
+      <p style="margin-top:12px">
+        <strong>Operating address.</strong> Ekta Vihar, Sahastradhara Road, Dehradun,
+        Uttarakhand, India.<br />
+        <strong>Contact.</strong> <a href="mailto:support@avatok.ai">support@avatok.ai</a>
+        (support and billing) · <a href="mailto:hello@avatok.ai">hello@avatok.ai</a>
+        (general and investor enquiries) ·
+        <a href="mailto:privacy@avatok.ai">privacy@avatok.ai</a> (privacy).
+      </p>
+    </Fragment>
+  )}
+</div>

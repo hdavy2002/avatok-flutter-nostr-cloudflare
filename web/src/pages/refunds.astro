@@ -1,6 +1,7 @@
 ---
 export const prerender = true;
 import Content from '../layouts/Content.astro';
+import LegalStatus from '../components/LegalStatus.astro';
 ---
 
 <Content
@@ -9,7 +10,7 @@ import Content from '../layouts/Content.astro';
   description="How refunds, cancellations, and billing disputes work on avaTOK, including app-store purchases and the rules for tokens."
   image="/og/refunds.png"
   lead="What can be refunded on avaTOK, what cannot, and how to raise a billing problem."
-  updated="2026-08-05"
+  updated="2026-08-28"
 >
   <p>
     This policy explains how refunds and cancellations work on avaTOK — our messaging, audio and
@@ -18,23 +19,32 @@ import Content from '../layouts/Content.astro';
     <a href="/pricing-fees">Pricing &amp; Fees</a> page.
   </p>
 
-  <h2>1. Who you are dealing with</h2>
+  <h2 id="status">1. Who you are dealing with</h2>
+  <LegalStatus variant="full" />
   <p>
-    avaTOK is operated by two companies, and which one you contract with depends on where you are:
-  </p>
-  <ul>
-    <li><strong>Ava Global International Pvt Ltd</strong>, Mumbai, India — contracts with and serves
-      customers in India, and handles India transactions and payouts under Indian law and GST.</li>
-    <li><strong>Ava Global International, Inc.</strong>, Delaware, USA — contracts with and serves
-      international (non-India) customers, and handles international transactions and payouts.</li>
-  </ul>
-  <p>
-    Your location at the time of the transaction determines which entity is responsible for it. If
-    you are unsure which applies to you, email
-    <a href="mailto:support@avatok.ai">support@avatok.ai</a>.
+    Your agreement is with the avaTOK founding team, operating from Dehradun, Uttarakhand, India,
+    under Indian law. Once we complete company registration, the registered company will take over
+    these obligations and we will publish its details here. If anything on this page is unclear,
+    email <a href="mailto:support@avatok.ai">support@avatok.ai</a> before you pay.
   </p>
 
-  <h2>2. Tokens are generally non-refundable — but unused ones can be withdrawn</h2>
+  <h2>2. Payments are in test, and we will return anything taken in error</h2>
+  <div class="note">
+    <p>
+      avaTOK is not yet open to the public and our online payment facility is not live. Our
+      application for a payment gateway as an unregistered business is <strong>under review</strong>,
+      so payment and payout flows are being tested with a small number of invited users.
+    </p>
+    <p style="margin-top:12px">
+      During this testing period, <strong>if any amount is charged to you in error, or a feature you
+      paid to try does not work, tell us and we will refund it in full</strong> to the original
+      payment method. This is deliberately more generous than the rules below, and it applies for as
+      long as the service is in testing. Email
+      <a href="mailto:support@avatok.ai">support@avatok.ai</a>.
+    </p>
+  </div>
+
+  <h2>3. Tokens are generally non-refundable — but unused ones can be withdrawn</h2>
   <p>
     When you top up, your payment is converted into <a href="/tokens">tokens</a> inside the app at a
     fixed rate of <strong>1 token = 1 US cent (US$0.01)</strong>. Tokens are the in-app unit used to
@@ -50,12 +60,12 @@ import Content from '../layouts/Content.astro';
     <p>
       That is about reversing a completed top-up. It does not mean your money is stuck:
       <strong>tokens you have not spent can be withdrawn</strong>, subject to verification and to
-      any transfer fee and tax shown before you confirm. See section 5 and
+      any transfer fee and tax shown before you confirm. See section 6 and
       <a href="/payouts">Payouts &amp; Withdrawals</a>.
     </p>
   </div>
 
-  <h2>3. Purchases made through an app store</h2>
+  <h2>4. Purchases made through an app store</h2>
   <p>
     If you bought a top-up or subscription inside the Android or iOS app, the payment was taken by
     the app store, not by us. Refunds for those purchases are handled by the store under its own
@@ -73,7 +83,7 @@ import Content from '../layouts/Content.astro';
     balance may go to zero and your account may be restricted until the position is corrected.
   </p>
 
-  <h2>4. Cancelling a subscription vs consuming tokens</h2>
+  <h2>5. Cancelling a subscription vs consuming tokens</h2>
   <p>
     These are two different things:
   </p>
@@ -90,7 +100,7 @@ import Content from '../layouts/Content.astro';
     Cancelling a plan does not by itself remove tokens already in your balance.
   </p>
 
-  <h2>5. Unused vs consumed tokens</h2>
+  <h2>6. Unused vs consumed tokens</h2>
   <p>
     <strong>Consumed tokens</strong> — tokens already spent on a delivered feature or service — are
     not refundable, except where required by law.
@@ -103,7 +113,7 @@ import Content from '../layouts/Content.astro';
     <a href="/payouts">Payouts &amp; Withdrawals</a>.
   </p>
 
-  <h2>6. Marketplace purchases and consultations</h2>
+  <h2>7. Marketplace purchases and consultations</h2>
   <p>
     The marketplace and live consultancy connect you with other users who provide digital services.
     We may apply the following where a booking or order goes wrong:
@@ -133,7 +143,7 @@ import Content from '../layouts/Content.astro';
     payment back to your card or bank.
   </p>
 
-  <h2>7. Chargebacks</h2>
+  <h2>8. Chargebacks</h2>
   <p>
     If you believe a charge is wrong, please contact us first — a chargeback is slower for everyone
     and may restrict your account while it is open. Where a chargeback or payment reversal is raised
@@ -142,13 +152,13 @@ import Content from '../layouts/Content.astro';
     unresolved dispute.
   </p>
 
-  <h2>8. Fraud and abuse</h2>
+  <h2>9. Fraud and abuse</h2>
   <p>
     We may refuse, reverse, or hold a refund where we reasonably suspect fraud, abuse of promotional
     credit, or a breach of our <a href="/terms">Terms of Service</a>.
   </p>
 
-  <h2>9. How to raise a billing issue</h2>
+  <h2>10. How to raise a billing issue</h2>
   <p>
     Email <a href="mailto:support@avatok.ai">support@avatok.ai</a> from the address on your account
     and include:
@@ -162,16 +172,16 @@ import Content from '../layouts/Content.astro';
   </ul>
   <p>
     We will look into it and respond. We cannot promise a specific turnaround, and any refund we do
-    make is returned by the same method and to the same entity that took the payment where possible.
+    make is returned by the same method that took the payment where possible.
   </p>
 
-  <h2>10. Changes to this policy</h2>
+  <h2>11. Changes to this policy</h2>
   <p>
     We may update this policy from time to time. We will post the updated version here and revise
     the "Last updated" date above.
   </p>
 
-  <h2>11. Contact</h2>
+  <h2>12. Contact</h2>
   <p>
     Billing and payout questions: <a href="mailto:support@avatok.ai">support@avatok.ai</a>. General
     enquiries: <a href="mailto:hello@avatok.ai">hello@avatok.ai</a>. Privacy questions:
