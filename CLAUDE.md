@@ -476,6 +476,17 @@ Removing it is a real user-facing and Play-listing change.
 `amountUsdCents`; `worker/src/routes/wallet.ts` hard-writes `currency:'usd'`) while
 receipts print ₹. **Payments cannot move to the web until this is fixed.**
 
+**The web POLICY pages are now ₹, the web CHECKOUT CODE is not — and that gap is the
+whole risk.** `[LEGAL-UNREG-1 2026-08-28]` rewrote `/tokens`, `/pricing-fees`,
+`/payouts` and `/refunds` to state **1 token = ₹1**, matching `[TOKENS-INR-1]` and the
+app. Nothing in `islands/checkout/` or `worker/src/routes/wallet.ts` was touched,
+deliberately: changing the displayed currency without changing the charged currency
+would have the site promise ₹500 and the rail take $5. **Until `amountUsdCents` and
+`currency:'usd'` are fixed, the published price and the actual charge disagree** — which
+is exactly the kind of thing a payment-gateway reviewer fails you for. Fix them together,
+in one change, or not at all. Marketplace listings keep their own multi-currency unit
+(`ListingTile.tsx`, `intent_theme.dart`) and are NOT part of this.
+
 ### Marketplace as the default screen — the risk is ShellV2, not Marketplace
 
 Production lands on `ChatListScreen` (`shell/ava_shell.dart:662`) with a hardcoded 3-chip
@@ -485,6 +496,50 @@ also needs `marketplaceEnabled=true`, a default-root reorder in BOTH
 `shell/v2/root_order_store.dart:34-38` and `shell_v2.dart:183`, and a version bump of the
 persisted key `shellv2_root_order_v1` (or existing users keep their saved order and never
 see the change). Keep `avaAffiliateEnabled=false` or Affiliate hijacks the slot.
+
+---
+
+## 🏢 THERE IS NO COMPANY — DO NOT PUT ONE BACK (owner decision 2026-08-28)
+
+**avaTOK is an unregistered business in India.** No Indian company has been
+incorporated. The public site must never say otherwise.
+
+Until 2026-08-28 every legal page opened by naming **"Ava Global International Pvt
+Ltd", Mumbai**, and the commerce pages named a second contracting entity, **"Ava
+Global International, Inc.", Delaware**. The Pvt Ltd does not exist. The owner's
+decision is that **the US Inc is not named on the site either** — it complicates the
+Indian payment-gateway story and no user contracts with it. `[LEGAL-UNREG-1]` removed
+both from all 18 pages plus the waitlist email footer.
+
+The published position, and the only one to write:
+
+- Built and operated by an **independent founding team in India** — no entity name.
+- **Currently an unregistered business.** Registration of a company in **Mumbai** is
+  in process, intended once funding is in place.
+- **Ideation and testing stage**: site not fully operational, access **invite-only**,
+  payment gateway application for an unregistered business **under review**, prices
+  indicative, test data may be reset.
+- **Operating address: Ekta Vihar, Sahastradhara Road, Dehradun, Uttarakhand, India.**
+  (Dehradun is where the team is; Mumbai is where the company will be registered.
+  Both are correct and they are not the same thing.)
+
+**Two components own this text — edit them, never a page.**
+`web/src/components/LegalStatus.astro` (the who-we-are block, `variant` =
+`full` | `who` | `short`) and `web/src/components/BetaBanner.astro` (the site-wide
+strip, rendered from `SiteHeader.astro` so it reaches the home page too, which emits
+its own document and never touches `Base.astro`). `SiteFooter.astro` carries the
+entity line and address sitewide. Writing a fresh entity sentence into a page is how
+the site drifted out of truth the first time.
+
+⚠️ **`web/src/pages/grievance.astro` names a Grievance Officer.** With no company
+there are no employees — the page says "a member of the avaTOK team", which is the
+correct phrasing for an unregistered business under the IT Rules 2021. Do not restore
+"employee of <company>".
+
+**When the company is actually registered**, update `LegalStatus.astro`,
+`BetaBanner.astro` and `SiteFooter.astro`, publish CIN/GSTIN, and tell the payment
+provider — see the Cashfree note: an unregistered merchant must update its business
+information with the provider once it incorporates.
 
 ---
 
