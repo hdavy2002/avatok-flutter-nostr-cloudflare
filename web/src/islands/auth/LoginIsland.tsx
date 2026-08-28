@@ -16,11 +16,18 @@
  * that isn't set up here yet", which stranded them on a page with nowhere to
  * go. Clerk was in fact offering a perfectly good route: email a code.
  *
- * So the flow now has two stages:
- *   1. password  -> complete            -> done
- *   2. password  -> needs_first_factor  -> email a 6-digit code -> complete
+ * So the flow now has these stages:
+ *   1. password  -> complete                                    -> done
+ *   2. password  -> needs_first_factor -> ATTEMPT PASSWORD FACTOR -> done
+ *   3. only if that fails -> email a 6-digit code               -> complete
  * and `needs_second_factor` is handled too (currently no second factors are
  * enabled, but an account-level TOTP would otherwise strand the user again).
+ *
+ * [WEB-AUTH-PASSWORD-FIRST-1 2026-08-28] Stage 2 is new and it matters. Without
+ * it, `needs_first_factor` went STRAIGHT to the emailed code, which meant a
+ * correct password was never attempted and every single sign-in on this
+ * instance turned into an OTP sign-in. `password` is in the offered first-factor
+ * list; it just was not being used. See the block in `advance()`.
  *
  * The rule this encodes: never leave the user on a screen with no next action.
  */
@@ -109,6 +116,41 @@ function Inner() {
     if (!signIn) return false;
 
     if (res.status === 'needs_first_factor') {
+      // [WEB-AUTH-PASSWORD-FIRST-1 2026-08-28] TRY THE PASSWORD BEFORE EMAILING
+      // A CODE. This is the fix for "why am I always asked for a 6-digit code
+      // even though I typed the right password".
+      //
+      // `signIn.create({ identifier, password })` does not always CONSUME the
+      // password. When it comes back `needs_first_factor` it is saying "I still
+      // need a first factor, and here are the strategies you may use" — and on
+      // this instance that list INCLUDES `password` (see the header note: the
+      // owner's own account advertises password · email_code ·
+      // reset_password_email_code). The previous code read that status as
+      // "password didn't work" and jumped straight to email_code, so a correct
+      // password was never actually attempted and EVERY sign-in became an OTP
+      // sign-in.
+      //
+      // Attempting the password factor explicitly, with the password the person
+      // already typed, is the intended Clerk call for this state. It is not a
+      // bypass of anything: a wrong password still fails here, and if the
+      // instance genuinely requires a second factor Clerk returns
+      // needs_second_factor and the block below handles it.
+      const passwordOffered = res.supportedFirstFactors?.some((f) => f.strategy === 'password');
+      if (passwordOffered && password) {
+        try {
+          const pw = (await signIn.attemptFirstFactor({
+            strategy: 'password', password,
+          })) as unknown as SignInLike;
+          if (pw.status === 'complete' && pw.createdSessionId) { await finish(pw); return true; }
+          // Not complete, but possibly moved on to a second factor.
+          if (pw.status === 'needs_second_factor') return await advance(pw);
+        } catch {
+          // A genuinely wrong password lands here. Fall through to email_code so
+          // the person still has a way in — the rule this file already encodes:
+          // never leave the user on a screen with no next action.
+        }
+      }
+
       let emailAddressId = factorWithId(res.supportedFirstFactors, 'email_code', 'emailAddressId');
 
       // [WEB-AUTH-CODE-2 2026-08-26] THE BUG BEHIND "we can't finish signing in
