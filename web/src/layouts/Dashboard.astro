@@ -49,9 +49,13 @@ const I = {
 };
 
 const groups: { title: string; items: Item[] }[] = [
+  // [DASH-NAV-1 2026-08-28, owner decision] Marketplace and AvaVision removed
+  // from the menu. The ROUTES still exist and still work — /dashboard/marketplace
+  // and /dashboard/vision are reachable by direct link and by anything that links
+  // to them — they are simply no longer advertised in the rail. Re-add a line
+  // here to bring either back; nothing else was deleted.
   { title: 'Featured', items: [
     { key: 'overview', label: 'Dashboard', icon: I.grid, href: '/dashboard', tone: 'bg-lilac' },
-    { key: 'marketplace', label: 'Marketplace', icon: I.store, href: '/dashboard/marketplace', tone: 'bg-blue' },
     { key: 'library', label: 'Library', icon: I.folder, href: '/dashboard/library', tone: 'bg-mint' },
   ]},
   { title: 'Studio', items: [
@@ -61,7 +65,6 @@ const groups: { title: string; items: Item[] }[] = [
     { key: 'calendar', label: 'AvaCalendar', icon: I.calendar, href: '/dashboard/calendar', tone: 'bg-card' },
   ]},
   { title: 'Apps', items: [
-    { key: 'vision', label: 'AvaVision', icon: I.eye, href: '/dashboard/vision', tone: 'bg-blue' },
     { key: 'voice', label: 'AvaVoice', icon: I.mic, href: '/dashboard/voice', tone: 'bg-lilac' },
     { key: 'consult', label: 'AvaConsult', icon: I.video, href: '/dashboard/consult', tone: 'bg-mint' },
     { key: 'inbox', label: 'AvaInbox', icon: I.inbox, href: '/dashboard/inbox', tone: 'bg-card' },
@@ -100,9 +103,25 @@ const plainType = !Astro.url.pathname.startsWith('/dashboard/marketplace');
     <div id="dash-scrim" class="fixed inset-0 z-40 hidden bg-ink/40 lg:hidden"></div>
 
     <!-- Sidebar -->
+    {/* [DASH-NAV-1 2026-08-28] The rail is PART OF THE PAGE on desktop, not a
+        panel bolted onto it.
+        
+        It used to be a fixed-height column (`lg:h-[calc(100vh-var(--avh-h))]`)
+        whose <nav> was `overflow-y-auto` — i.e. its own scroll container. That
+        produced a second scrollbar sitting inside the page, and the rail scrolled
+        independently of the content beside it, which is exactly what made it read
+        as an embedded iframe rather than part of the document.
+        
+        Now: `lg:self-start` + `lg:sticky` with NO fixed height and NO inner
+        overflow. The rail is as tall as its own content, stays pinned under the
+        site header while you scroll, and if it is ever taller than the viewport
+        the PAGE scrolls — one scrollbar, one surface.
+        
+        The mobile drawer is unchanged: off-canvas there is deliberate, and it
+        keeps `fixed` + its own scrolling because it overlays the page. */}
     <aside
       id="dash-sidebar"
-      class="fixed inset-y-0 left-0 z-50 flex w-[272px] -translate-x-full flex-col border-r-zine border-ink bg-paper2 transition-transform duration-200 ease-out lg:sticky lg:top-[var(--avh-h)] lg:h-[calc(100vh-var(--avh-h))] lg:translate-x-0"
+      class="fixed inset-y-0 left-0 z-50 flex w-[272px] -translate-x-full flex-col overflow-y-auto border-r-zine border-ink bg-paper2 transition-transform duration-200 ease-out lg:sticky lg:top-[var(--avh-h)] lg:z-10 lg:h-auto lg:max-h-none lg:translate-x-0 lg:self-start lg:overflow-visible lg:border-r-0 lg:bg-transparent"
     >
       <!-- Brand -->
       {/* [WEB-HEADER-3] Hidden on desktop: SiteHeader carries the wordmark a
@@ -118,7 +137,8 @@ const plainType = !Astro.url.pathname.startsWith('/dashboard/marketplace');
       </div>
 
       <!-- Nav -->
-      <nav class="flex-1 overflow-y-auto px-3 py-3">
+      {/* `lg:overflow-visible` is the actual fix for the second scrollbar. */}
+      <nav class="flex-1 overflow-y-auto px-3 py-3 lg:overflow-visible">
         {groups.map((g) => (
           <div class="mb-3">
             <div class="px-3 pb-1.5 pt-2 font-mono font-bold uppercase text-[10px] tracking-[0.12em] text-inkMute">{g.title}</div>
@@ -139,7 +159,7 @@ const plainType = !Astro.url.pathname.startsWith('/dashboard/marketplace');
       </nav>
 
       <!-- Profile / auth -->
-      <div class="border-t-zine border-ink p-3">
+      <div class="border-t-zine border-ink p-3 lg:border-t-0">
         <SidebarUser client:load />
       </div>
     </aside>
