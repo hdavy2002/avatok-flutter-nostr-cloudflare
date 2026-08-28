@@ -35,6 +35,8 @@ function Inner() {
   const [txs, setTxs] = useState<Tx[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [reviewer, setReviewer] = useState(false);
+  useEffect(() => { setReviewer(isReviewerMode()); }, []);
 
   useEffect(() => {
     void (async () => {
@@ -96,7 +98,11 @@ function Inner() {
               <span className="text-[14px]">Tokens</span>
             </div>
           </div>
-          <Button variant="lime" label="Top up" loading={busy} onClick={topUp} />
+          {/* [REVIEWER-ONBOARD-1] Reviewer accounts are browse-only: no money
+              affordance. Server-side, money-in is off for EVERYONE right now
+              (billingEnabled=false, Stripe test keys) — this only removes the
+              button, it is not the guarantee. */}
+          {!reviewer && <Button variant="lime" label="Top up" loading={busy} onClick={topUp} />}
         </div>
       </Card>
 

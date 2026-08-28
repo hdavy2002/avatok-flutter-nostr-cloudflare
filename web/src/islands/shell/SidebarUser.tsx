@@ -11,6 +11,10 @@ import { useAuth, useUser } from '@clerk/clerk-react';
 import { ClerkIsland } from '../../lib/clerk';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/config';
 import { Avatar } from '../../components/Avatar';
+// [REVIEWER-ONBOARD-1] Rendered inside THIS island's Clerk tree on purpose:
+// SidebarUser owns the dashboard's single <ClerkProvider>, and a second one
+// makes @clerk/clerk-react throw and the React root render nothing.
+import { ReviewerOnboarding } from './ReviewerOnboarding';
 
 const GUEST_JWT_KEY = 'avatok_guest_jwt';
 const GUEST_HANDLE_KEY = 'avatok_guest_handle';
@@ -88,23 +92,26 @@ function ClerkUser() {
     user?.fullName || user?.firstName || (user?.primaryEmailAddress?.emailAddress ?? '').split('@')[0] || 'You';
 
   return (
-    <Card
-      name={name}
-      handle={handle}
-      onSignOut={async () => {
-        try {
-          localStorage.removeItem(GUEST_JWT_KEY);
-        } catch {
-          /* ignore */
-        }
-        try {
-          await signOut();
-        } catch {
-          /* ignore */
-        }
-        location.href = '/';
-      }}
-    />
+    <>
+      <ReviewerOnboarding email={user?.primaryEmailAddress?.emailAddress ?? null} />
+      <Card
+        name={name}
+        handle={handle}
+        onSignOut={async () => {
+          try {
+            localStorage.removeItem(GUEST_JWT_KEY);
+          } catch {
+            /* ignore */
+          }
+          try {
+            await signOut();
+          } catch {
+            /* ignore */
+          }
+          location.href = '/';
+        }}
+      />
+    </>
   );
 }
 

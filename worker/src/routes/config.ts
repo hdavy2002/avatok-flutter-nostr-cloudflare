@@ -964,6 +964,41 @@ export interface PlatformConfig {
   // agreed to (BIPA §15(b)). Bump when the disclosure text or retention period
   // changes; the value is stored per-user so we can prove WHICH text they saw.
   biometricConsentVersion: string;
+  /**
+   * [REVIEWER-ONBOARD-1 2026-08-28] Payment-gateway / app-store REVIEWER mode.
+   *
+   * `reviewerEmails` is a comma-separated allowlist of account emails that get
+   * (a) the onboarding + terms-acceptance screen on first sign-in, and (b) a
+   * browse-only surface with every money affordance hidden.
+   *
+   * IT LIVES IN KV, NOT IN SOURCE, AND THAT IS DELIBERATE: this repo is PUBLIC.
+   * Committing a reviewer's address would publish which account is a standing
+   * shared login. It also means the reviewer can be revoked the moment a review
+   * ends, with a flag flip and no deploy. Default "" = nobody is in reviewer
+   * mode, which is the correct state between reviews.
+   *
+   * This is an allowlist of IDENTIFIERS, never a credential. No password, token
+   * or bypass secret belongs in remote config or in this repo — sign-in stays
+   * entirely Clerk's job, unchanged, for reviewers exactly as for everyone else.
+   *
+   * String → NOT in numericKeys. Client mirror: RemoteConfig.reviewerEmails.
+   */
+  reviewerEmails: string;
+  /**
+   * [REVIEWER-ONBOARD-1] Master switch for the above. Off → `reviewerEmails` is
+   * ignored entirely and every account behaves normally, so a stale allowlist
+   * cannot quietly keep a surface restricted. Boolean → NOT in numericKeys.
+   * Client mirror: RemoteConfig.reviewerModeEnabled.
+   */
+  reviewerModeEnabled: boolean;
+  /**
+   * [REVIEWER-ONBOARD-1] Version of the onboarding terms text. Acceptance is
+   * stored against this string, so changing the TEXT invalidates prior
+   * acceptance and the screen is shown again — nobody is recorded as having
+   * accepted wording they never saw. Bump it whenever the copy changes.
+   * String → NOT in numericKeys. Client mirror: RemoteConfig.reviewerTermsVersion.
+   */
+  reviewerTermsVersion: string;
   // [LIVE-DIDIT-1] didit.me-hosted liveness. Default ON — this IS the liveness path.
   // [LIVE-DIDIT-5] When ON, only didit-provider liveness counts for L2.
   // ── DRIFT FIX 2026-07-18: both keys existed in DEFAULTS but NOT here. That is the
@@ -1909,6 +1944,12 @@ const DEFAULTS: PlatformConfig = {
   // update app/.../biometric_consent_screen.dart:_kRetentionDays + the published
   // schedule at /biometric-retention in the same commit. All three must agree.
   biometricConsentVersion: "2026-07-10-v2",
+  // [REVIEWER-ONBOARD-1] Empty by default: nobody is in reviewer mode until an
+  // email is put in KV for a live review, and it is removed afterwards. The
+  // repo is public, so no address is ever hardcoded here.
+  reviewerEmails: "",
+  reviewerModeEnabled: false,
+  reviewerTermsVersion: "2026-08-28-v1",
   // [LIVE-DIDIT-1] didit.me-hosted liveness (owner decision 2026-07-09). Default
   // ON — this IS the liveness path now; v2/v3 above are retired. The client
   // routes the human check to DiditLivenessScreen when this is true.
