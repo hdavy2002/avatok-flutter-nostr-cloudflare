@@ -135,7 +135,21 @@ function Inner() {
       // bypass of anything: a wrong password still fails here, and if the
       // instance genuinely requires a second factor Clerk returns
       // needs_second_factor and the block below handles it.
-      const passwordOffered = res.supportedFirstFactors?.some((f) => f.strategy === 'password');
+      // [WEB-AUTH-PASSWORD-FIRST-2 2026-08-28] DO NOT GATE THIS ON THE FACTOR
+      // LIST. The first version of this fix only attempted the password when
+      // `supportedFirstFactors` contained `password` — and that check is ALWAYS
+      // FALSE here, for the exact reason [WEB-AUTH-CODE-2] documents forty lines
+      // below: a create() carrying a password comes back with
+      // `supportedFirstFactors` EMPTY, because Clerk only fills that list on the
+      // identifier-only call. So the guard skipped the attempt every single time
+      // and the OTP screen kept appearing. The warning was already written in
+      // this file; the fix just did not read it.
+      //
+      // An absent or empty list means "unknown", not "password is unavailable".
+      // Only skip when Clerk actually returned a populated list that omits
+      // password.
+      const factors = res.supportedFirstFactors;
+      const passwordOffered = !factors?.length || factors.some((f) => f.strategy === 'password');
       if (passwordOffered && password) {
         try {
           const pw = (await signIn.attemptFirstFactor({
@@ -144,10 +158,16 @@ function Inner() {
           if (pw.status === 'complete' && pw.createdSessionId) { await finish(pw); return true; }
           // Not complete, but possibly moved on to a second factor.
           if (pw.status === 'needs_second_factor') return await advance(pw);
-        } catch {
-          // A genuinely wrong password lands here. Fall through to email_code so
-          // the person still has a way in — the rule this file already encodes:
-          // never leave the user on a screen with no next action.
+          console.warn('[avatok] password first factor did not complete', { status: pw.status });
+        } catch (err) {
+          // Lands here when the password is wrong, when the account has NO
+          // password set, or when Clerk rejects it (this instance has
+          // `enforce_hibp_on_sign_in` on, so a breached password is refused even
+          // when it is the correct one). Logged so the difference is diagnosable
+          // from the console — the three cases look identical to the user.
+          console.warn('[avatok] password first factor rejected', err);
+          // Fall through to email_code so the person still has a way in — the
+          // rule this file encodes: never leave the user with no next action.
         }
       }
 
