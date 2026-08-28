@@ -233,7 +233,22 @@ function Inner() {
     }
 
     if (res.status === 'needs_new_password') {
-      location.href = '/forgot-password';
+      // [WEB-AUTH-NEWPW-1 2026-08-28] DO NOT BOUNCE SILENTLY. This status is
+      // Clerk saying "the credentials are fine, but this account must set a new
+      // password before it can sign in". On this instance the usual cause is
+      // `enforce_hibp_on_sign_in: true` (verified in /v1/environment): a
+      // password found in a Have I Been Pwned breach corpus is refused at
+      // sign-in even when it is the CORRECT password, and Clerk demands a
+      // replacement rather than reporting it as wrong.
+      //
+      // Redirecting straight to /forgot-password made that look insane from the
+      // outside: you type the right password and land on "Forgot your
+      // password?" with no explanation, so you conclude the site is broken and
+      // retype the same password forever. Say what happened, then move.
+      setFormError(
+        'Your password is correct, but it appears in a known public data breach, so it can no longer be used to sign in. You need to set a new one — taking you there now.',
+      );
+      window.setTimeout(() => { location.href = '/forgot-password'; }, 2600);
       return true;
     }
 
@@ -279,9 +294,16 @@ function Inner() {
       // message ("Wrong email or password", "That password has appeared in a
       // data breach") tells the person what to actually do; the generic line
       // sends them to check an email address that was never the problem.
+      // [WEB-AUTH-NEWPW-1] Include Clerk's error CODE. Three sign-in failures
+      // read identically to a user but need completely different actions, and
+      // chasing the difference through the browser console cost this project a
+      // whole debugging session. The code is not sensitive — it names the rule
+      // that fired, never a credential.
+      const pwCode = (lastPwError.current as { errors?: { code?: string }[] } | null)
+        ?.errors?.[0]?.code;
       setFormError(
         lastPwError.current
-          ? clerkError(lastPwError.current)
+          ? `${clerkError(lastPwError.current)}${pwCode ? ` (${pwCode})` : ''}`
           : 'We couldn’t sign you in or email you a code. Please check the email address, or use “Forgot password”.',
       );
     } catch (err) {
@@ -345,9 +367,14 @@ function Inner() {
       //
       // A reset code IS available, and it is a real way in, so offer that.
       if (!emailAddressId) {
+        // [WEB-AUTH-NEWPW-1] Earlier this auto-navigated to /forgot-password.
+        // That was wrong: it HIJACKED a deliberate sign-in attempt and turned it
+        // into a password reset with no consent, which is indistinguishable from
+        // the site being broken. Offer the route; never take it for them.
         if (factors?.some((f) => f.strategy === 'reset_password_email_code')) {
-          setFormError('This account signs in with a password. Sending you a reset link instead…');
-          location.href = '/forgot-password';
+          setFormError(
+            'This account signs in with a password — emailed sign-in codes are not enabled for it. If you have lost the password, use “Forgot password” below.',
+          );
           return true;
         }
         return false;
