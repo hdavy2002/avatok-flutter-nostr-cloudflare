@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../lib/core/ui/avatok_dark.dart';
 import '../lib/core/calls/call_session.dart';
@@ -478,7 +479,13 @@ void main() {
     expect(find.text('Low wallet balance'), findsOneWidget);
     expect(find.textContaining('You pay for both connected participants.'), findsNothing);
     expect(find.text('42s'), findsOneWidget);
-    final icon = tester.widget<Icon>(find.byIcon(Icons.account_balance_wallet));
+    // [DESIGN-GUARD-ICONS-1] Was `Icons.account_balance_wallet`. The HUD moved
+    // to Phosphor, the app's icon system, because the design guard forbids bare
+    // Material `Icons.*` under `features/**`. The assertion that MATTERS is
+    // unchanged and is the line below: the low-balance state tints the icon
+    // with the destructive ink.
+    final icon = tester.widget<Icon>(
+        find.byIcon(PhosphorIcons.wallet(PhosphorIconsStyle.regular)));
     expect(icon.color, AD.destructiveInk);
   });
 
