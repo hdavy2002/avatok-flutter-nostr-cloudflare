@@ -21,11 +21,24 @@
  * root then renders nothing, so this must never bring its own ClerkIsland on
  * /dashboard — SidebarUser already owns the page's single provider.
  *
- * Acceptance is stored per-browser (localStorage), keyed by the terms version
- * from remote config, so changing the copy re-shows the screen. Per the owner's
- * 2026-08-28 decision this gate is REVIEWER-ONLY and acceptance is NOT recorded
- * server-side; a product-wide, server-recorded acceptance is a separate piece
- * of work and is what a compliance audit would actually want.
+ * ── HOW OFTEN IT SHOWS ──────────────────────────────────────────────────────
+ * [REVIEWER-ONBOARD-3 2026-08-28, owner decision] ONCE PER LOGIN. Acceptance is
+ * keyed by the Clerk SESSION ID and held in sessionStorage, so signing out and
+ * back in produces a new session id and the screen returns. It was previously
+ * keyed only by terms version in localStorage, which meant one dismissal
+ * silenced it on that browser forever — the opposite of what a per-visit
+ * disclosure is for.
+ *
+ * Changing the copy still re-shows it too: the key carries the version from
+ * remote config as well as the session id.
+ *
+ * ── WHAT THIS IS NOT ────────────────────────────────────────────────────────
+ * Per the owner's 2026-08-28 decision this gate is REVIEWER-ONLY by default
+ * (`reviewerTermsForAll` opens it to everyone) and acceptance is NOT recorded
+ * server-side. Nothing here can be produced as evidence that a given user
+ * accepted a given version — it is a disclosure, not a consent record. A
+ * product-wide, server-recorded acceptance is separate work and is what a
+ * compliance audit would actually want.
  */
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -37,11 +50,18 @@ interface ReviewerConfig {
   reviewerModeEnabled?: boolean;
   reviewerEmails?: string;
   reviewerTermsVersion?: string;
+  reviewerTermsForAll?: boolean;
 }
 
-/** True when `email` is on the KV allowlist AND reviewer mode is switched on. */
-function isReviewer(cfg: ReviewerConfig | null, email: string | null): boolean {
-  if (!cfg?.reviewerModeEnabled || !email) return false;
+/**
+ * Who sees the screen: everyone when `reviewerTermsForAll` is on, otherwise the
+ * `reviewerEmails` allowlist. Both are gated by `reviewerModeEnabled`, so one
+ * flag still switches the whole feature off.
+ */
+function shouldShow(cfg: ReviewerConfig | null, email: string | null): boolean {
+  if (!cfg?.reviewerModeEnabled) return false;
+  if (cfg.reviewerTermsForAll) return true;
+  if (!email) return false;
   return String(cfg.reviewerEmails ?? '')
     .split(',')
     .map((e) => e.trim().toLowerCase())
@@ -52,9 +72,14 @@ function isReviewer(cfg: ReviewerConfig | null, email: string | null): boolean {
 export interface ReviewerOnboardingProps {
   /** Primary email of the signed-in account, or null when not yet known. */
   email: string | null;
+  /**
+   * Clerk session id. This is what makes the screen appear ONCE PER LOGIN:
+   * acceptance is stored against it, and a new sign-in mints a new one.
+   */
+  sessionId?: string | null;
 }
 
-export function ReviewerOnboarding({ email }: ReviewerOnboardingProps) {
+export function ReviewerOnboarding({ email, sessionId }: ReviewerOnboardingProps) {
   const [cfg, setCfg] = useState<ReviewerConfig | null>(null);
   const [accepted, setAccepted] = useState<boolean | null>(null);
   const [checked, setChecked] = useState(false);
@@ -83,7 +108,9 @@ export function ReviewerOnboarding({ email }: ReviewerOnboardingProps) {
   }, []);
 
   const version = cfg?.reviewerTermsVersion || 'v1';
-  const show = isReviewer(cfg, email);
+  const show = shouldShow(cfg, email);
+  // Version AND session: new copy re-shows it, and so does a new login.
+  const acceptKey = `${ACCEPT_KEY_PREFIX}${version}_${sessionId ?? 'nosession'}`;
 
   // Publish the verdict for money-affordance hiding elsewhere on the surface.
   // Only once config has actually loaded (cfg != null), so a slow fetch never
@@ -95,19 +122,21 @@ export function ReviewerOnboarding({ email }: ReviewerOnboardingProps) {
   useEffect(() => {
     if (!show) return;
     try {
-      setAccepted(localStorage.getItem(ACCEPT_KEY_PREFIX + version) === 'yes');
+      // sessionStorage, NOT localStorage: it dies with the tab, which is the
+      // right lifetime for something that must reappear on the next login.
+      setAccepted(sessionStorage.getItem(acceptKey) === 'yes');
     } catch {
       // Storage blocked (private window, site data off) — show the screen. The
       // safe default for a disclosure is to display it, not to skip it.
       setAccepted(false);
     }
-  }, [show, version]);
+  }, [show, acceptKey]);
 
   if (!show || accepted !== false || !mounted) return null;
 
   const accept = () => {
     try {
-      localStorage.setItem(ACCEPT_KEY_PREFIX + version, 'yes');
+      sessionStorage.setItem(acceptKey, 'yes');
     } catch {
       /* acceptance simply won't persist; the screen reappears next visit */
     }

@@ -999,6 +999,23 @@ export interface PlatformConfig {
    * String → NOT in numericKeys. Client mirror: RemoteConfig.reviewerTermsVersion.
    */
   reviewerTermsVersion: string;
+  /**
+   * [REVIEWER-ONBOARD-3 2026-08-28] Show the onboarding + terms screen to EVERY
+   * signed-in user, not just the `reviewerEmails` allowlist.
+   *
+   * Off by default: the owner's 2026-08-28 decision was reviewer-only, and
+   * turning this on puts a blocking modal in front of every user's first page
+   * after login — a real product change, not a tweak. It exists as a flag so it
+   * can be switched on for a review window and off again with no deploy.
+   *
+   * NOTE this is still a per-login, per-browser acknowledgement stored in
+   * sessionStorage. It is NOT a recorded consent: nothing is written server-side,
+   * so it cannot be produced as evidence that a particular user accepted a
+   * particular version. If you need that, build the server-recorded version.
+   *
+   * Boolean → NOT in numericKeys. Client mirror: RemoteConfig.reviewerTermsForAll.
+   */
+  reviewerTermsForAll: boolean;
   // [LIVE-DIDIT-1] didit.me-hosted liveness. Default ON — this IS the liveness path.
   // [LIVE-DIDIT-5] When ON, only didit-provider liveness counts for L2.
   // ── DRIFT FIX 2026-07-18: both keys existed in DEFAULTS but NOT here. That is the
@@ -1950,6 +1967,7 @@ const DEFAULTS: PlatformConfig = {
   reviewerEmails: "",
   reviewerModeEnabled: false,
   reviewerTermsVersion: "2026-08-28-v1",
+  reviewerTermsForAll: false,
   // [LIVE-DIDIT-1] didit.me-hosted liveness (owner decision 2026-07-09). Default
   // ON — this IS the liveness path now; v2/v3 above are retired. The client
   // routes the human check to DiditLivenessScreen when this is true.

@@ -57,7 +57,7 @@ function Card({
 
 /** Inner component used only when a Clerk key exists (inside ClerkProvider). */
 function ClerkUser() {
-  const { isLoaded, isSignedIn, signOut } = useAuth();
+  const { isLoaded, isSignedIn, signOut, sessionId } = useAuth();
   const { user } = useUser();
   const [ready, setReady] = useState(false);
 
@@ -93,7 +93,10 @@ function ClerkUser() {
 
   return (
     <>
-      <ReviewerOnboarding email={user?.primaryEmailAddress?.emailAddress ?? null} />
+      <ReviewerOnboarding
+        email={user?.primaryEmailAddress?.emailAddress ?? null}
+        sessionId={sessionId}
+      />
       <Card
         name={name}
         handle={handle}
