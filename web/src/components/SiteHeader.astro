@@ -97,7 +97,15 @@ const { links = DEFAULT_LINKS, sticky = true, auth = 'auto' } = Astro.props;
     {/* [WEB-HEADER-2 2026-08-26] Search pill removed at the owner's request.
         Browsing is reachable via the Marketplace link. */}
     {auth === 'in' ? (
-      <a class="avh-cta avh-cta--solid" href="/dashboard">Dashboard</a>
+      <Fragment>
+        {/* [WEB-HEADER-SIGNOUT-2 2026-08-28] Dashboard AND Sign out. Signed-in
+            pages previously rendered the Dashboard link alone, on the assumption
+            that SidebarUser's profile card carried sign out — but in the current
+            dashboard shell that card is below the fold, so there was no way out
+            on screen. /sign-out works without a Clerk island on the page. */}
+        <a class="avh-cta avh-cta--solid" href="/dashboard">Dashboard</a>
+        <a class="avh-cta" href="/sign-out">Sign out</a>
+      </Fragment>
     ) : auth === 'static' ? (
       <Fragment>
         <a class="avh-cta" href="/sign-in">Log in</a>
@@ -125,7 +133,10 @@ const { links = DEFAULT_LINKS, sticky = true, auth = 'auto' } = Astro.props;
       auth="auto": the bar's HeaderAuth island already owns a <ClerkProvider>,
       and a second one on the same page makes @clerk/clerk-react throw. */}
   {auth === 'in' ? (
-    <a class="avh-mobile-auth avh-mobile-auth--solid" href="/dashboard">Dashboard</a>
+    <Fragment>
+      <a class="avh-mobile-auth avh-mobile-auth--solid" href="/dashboard">Dashboard</a>
+      <a class="avh-mobile-auth" href="/sign-out">Sign out</a>
+    </Fragment>
   ) : (
     <Fragment>
       <a class="avh-mobile-auth" href="/sign-in">Log in</a>

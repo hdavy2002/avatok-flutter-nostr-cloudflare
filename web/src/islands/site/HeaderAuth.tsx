@@ -50,16 +50,28 @@ function Inner() {
 }
 
 /*
- * [WEB-HEADER-2 2026-08-26] Signed in = ONE Dashboard button, replacing both
+ * [WEB-HEADER-2 2026-08-26] Signed in = a Dashboard button, replacing both
  * Log in and Sign up (owner request).
  *
- * Sign out deliberately does NOT live here any more. It is not lost: the
- * dashboard sidebar's profile card (islands/shell/SidebarUser.tsx) carries it,
- * and that is now the only place — checked before removing this one, because a
- * header with no way out and no alternative would trap the user signed in.
+ * [WEB-HEADER-SIGNOUT-2 2026-08-28] SIGN OUT IS BACK IN THE HEADER. The 2026-08-26
+ * note below this used to say it lived only in the dashboard sidebar's profile
+ * card (islands/shell/SidebarUser.tsx), and that this had been "checked before
+ * removing this one". That check did not survive the dashboard being rebuilt:
+ * in the current shell the card sits at the bottom of a long, scrolling sidebar,
+ * BELOW THE FOLD, so from the owner's seat there was no sign out anywhere on the
+ * page. A single off-screen affordance is not a way out.
+ *
+ * It links to /sign-out (pages/sign-out.astro) rather than calling signOut()
+ * here, so the identical markup works on pages that have no Clerk island — the
+ * static design comps at /marketplace and the listing routes.
  */
 function DashboardCta() {
-  return <a className="avh-cta avh-cta--solid" href="/dashboard">Dashboard</a>;
+  return (
+    <>
+      <a className="avh-cta avh-cta--solid" href="/dashboard">Dashboard</a>
+      <a className="avh-cta" href="/sign-out">Sign out</a>
+    </>
+  );
 }
 
 export function HeaderAuth() {
