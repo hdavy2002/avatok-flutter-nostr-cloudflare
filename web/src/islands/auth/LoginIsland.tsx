@@ -31,7 +31,7 @@
  *
  * The rule this encodes: never leave the user on a screen with no next action.
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useSignIn } from '@clerk/clerk-react';
 import { ClerkIsland } from '../../lib/clerk';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/config';
@@ -93,6 +93,12 @@ function Inner() {
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [resent, setResent] = useState(false);
+  // [WEB-AUTH-PWNED-1 2026-08-28] The password attempt happens inside advance(),
+  // whose catch used to swallow the error — so a precise, actionable Clerk
+  // failure (a breached password, a wrong password) was replaced by the generic
+  // "we couldn't sign you in or email you a code". Stash it so the final error
+  // message can be the true one.
+  const lastPwError = useRef<unknown>(null);
   const stalled = useClerkStalled(isLoaded);
 
   function set<T>(setter: (v: T) => void, key: string) {
@@ -160,14 +166,24 @@ function Inner() {
           if (pw.status === 'needs_second_factor') return await advance(pw);
           console.warn('[avatok] password first factor did not complete', { status: pw.status });
         } catch (err) {
-          // Lands here when the password is wrong, when the account has NO
-          // password set, or when Clerk rejects it (this instance has
-          // `enforce_hibp_on_sign_in` on, so a breached password is refused even
-          // when it is the correct one). Logged so the difference is diagnosable
-          // from the console — the three cases look identical to the user.
           console.warn('[avatok] password first factor rejected', err);
-          // Fall through to email_code so the person still has a way in — the
-          // rule this file encodes: never leave the user with no next action.
+          lastPwError.current = err;
+
+          // [WEB-AUTH-PWNED-1] `enforce_hibp_on_sign_in` is ON for this instance
+          // (verified against /v1/environment). Clerk therefore refuses a
+          // password that appears in a Have I Been Pwned breach corpus EVEN WHEN
+          // IT IS THE CORRECT PASSWORD. That is not a "wrong password" and it is
+          // not something retrying or an emailed code can solve — the only way
+          // through is to set a different password. Say exactly that, and stop.
+          const code = (err as { errors?: { code?: string }[] })?.errors?.[0]?.code;
+          if (code === 'form_password_pwned') {
+            setFormError(
+              'This password is correct but has appeared in a known data breach, so it is refused at sign-in. Use “Forgot password” below to set a new one.',
+            );
+            return true;
+          }
+          // Otherwise fall through to email_code so the person still has a way
+          // in — the rule this file encodes: never leave them with no next action.
         }
       }
 
@@ -237,6 +253,7 @@ function Inner() {
 
     setSubmitting(true);
     setFormError(null);
+    lastPwError.current = null;
     try {
       const res = await signIn.create({ identifier: email.trim(), password });
       if (res.status === 'complete' && res.createdSessionId) { await finish(res); return; }
@@ -258,7 +275,15 @@ function Inner() {
       // password path stopped, and this route depends on none of it. Only if
       // THIS also fails is there genuinely nothing left to offer.
       if (await sendEmailCode()) return;
-      setFormError('We couldn’t sign you in or email you a code. Please check the email address, or use “Forgot password”.');
+      // [WEB-AUTH-PWNED-1] Prefer the REAL reason over the catch-all. Clerk's
+      // message ("Wrong email or password", "That password has appeared in a
+      // data breach") tells the person what to actually do; the generic line
+      // sends them to check an email address that was never the problem.
+      setFormError(
+        lastPwError.current
+          ? clerkError(lastPwError.current)
+          : 'We couldn’t sign you in or email you a code. Please check the email address, or use “Forgot password”.',
+      );
     } catch (err) {
       setFormError(clerkError(err));
     } finally {
@@ -307,11 +332,26 @@ function Inner() {
     if (!signIn) return false;
     try {
       const res = await signIn.create({ identifier: email.trim() });
-      const emailAddressId = factorWithId(
-        res.supportedFirstFactors as Factor[] | null | undefined,
-        'email_code', 'emailAddressId',
-      );
-      if (!emailAddressId) return false;
+      const factors = res.supportedFirstFactors as Factor[] | null | undefined;
+      const emailAddressId = factorWithId(factors, 'email_code', 'emailAddressId');
+
+      // [WEB-AUTH-PWNED-1] `email_code` is NOT guaranteed to be a sign-in factor.
+      // Verified live on this instance for a real account: Clerk offers only
+      // `password` and `reset_password_email_code`. When that is the case this
+      // function used to return false, and the caller told the person "we can't
+      // email a code to that address" — which reads as "your email is wrong"
+      // when nothing is wrong with it. The "Email me a code instead" button was
+      // therefore dead for everyone on this instance.
+      //
+      // A reset code IS available, and it is a real way in, so offer that.
+      if (!emailAddressId) {
+        if (factors?.some((f) => f.strategy === 'reset_password_email_code')) {
+          setFormError('This account signs in with a password. Sending you a reset link instead…');
+          location.href = '/forgot-password';
+          return true;
+        }
+        return false;
+      }
       await signIn.prepareFirstFactor({ strategy: 'email_code', emailAddressId });
       setCodeKind('first');
       setStage('code');
