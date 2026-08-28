@@ -99,11 +99,6 @@ class SquiggleSeam extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // [RESP-SMALL-1] Seams are unscrollable chrome, and this app draws one at
-    // the top AND one at the bottom of nearly every screen. At full size that
-    // is 62px of a ~480dp-tall phone spent on decoration before a single row of
-    // content. The strip and the wave geometry inside it scale by the SAME
-    // factor so the wave keeps its proportions instead of being clipped.
     final s = ZineBreakpoints.chromeScale(context);
     return SizedBox(
       width: double.infinity,
@@ -183,10 +178,6 @@ class DoubleWaveSeam extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // [RESP-SMALL-1] Same reasoning as SquiggleSeam — see the note there. This
-    // one is the taller of the two (36px) and, since [RAJ-SINGLEWAVE-1], it is
-    // the seam used at BOTH ends of the messenger, so it is the single biggest
-    // block of fixed chrome in the app.
     final s = ZineBreakpoints.chromeScale(context);
     return SizedBox(
       width: double.infinity,
@@ -251,11 +242,7 @@ class BubbleCloudSeam extends StatelessWidget {
   const BubbleCloudSeam({super.key, required this.bandColor, this.flip = false});
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-        width: double.infinity,
-        height: 32,
-        child: CustomPaint(painter: _BubbleCloudPainter(bandColor, flip)),
-      );
+  Widget build(BuildContext context) => const PillMorseStrip();
 }
 
 class _BubbleCloudPainter extends CustomPainter {
@@ -325,7 +312,7 @@ class PillMorseStrip extends StatelessWidget {
     // rhythm at any width and cannot overflow: only the fixed 7px gaps consume
     // hard space, and they total 63px.
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 7),
       child: Row(children: [
         for (var i = 0; i < _widths.length; i++) ...[
           if (i > 0) const SizedBox(width: 7),
@@ -344,6 +331,38 @@ class PillMorseStrip extends StatelessWidget {
       ]),
     );
   }
+}
+
+/// [UI-PILL-FOOTER-2026] THE app-wide FOOTER seam: [PillMorseStrip] on paper,
+/// closed by the hard 3px ink rule that meets the indigo bar below it.
+///
+/// Owner decision, replacing the flipped `DoubleWaveSeam` everywhere a FOOTER
+/// used it — `shellNavBar()` in `shell/v2/shell_chrome.dart` and the shell's
+/// bottom-pinned overlay in `shell/shell_v2.dart`, which together cover every
+/// screen in the app. Headers are untouched and keep their wave.
+///
+/// Deliberately NOT a `SeamOverlay`-style transparent seam and deliberately
+/// not `flip`-able: unlike the wave seams this strip is OPAQUE paper. That is
+/// the look in the mockup — content ends above the strip instead of scrolling
+/// through scallops — and it is also what makes the footer hairline-proof:
+/// paper, then a 3px ink rule, then the band, with no half-transparent pixels
+/// for the Scaffold cream to show through on a fractional devicePixelRatio.
+class PillMorseFooter extends StatelessWidget {
+  /// The paper the pills sit on. Defaults to the Scaffold cream; a screen
+  /// whose composer sits directly above passes [AD.card] so the strip reads as
+  /// the bottom of the composer rather than a cut across it.
+  final Color paper;
+  const PillMorseFooter({super.key, this.paper = _cream});
+
+  @override
+  Widget build(BuildContext context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ColoredBox(color: paper, child: const PillMorseStrip()),
+          const SizedBox(
+              width: double.infinity, height: 3, child: ColoredBox(color: _ink)),
+        ],
+      );
 }
 
 // ------------------------------------------------------------ 2E Flower chain
