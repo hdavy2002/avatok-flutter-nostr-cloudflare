@@ -180,7 +180,21 @@ class MySessionsScreen extends StatefulWidget {
 
 class _MySessionsScreenState extends State<MySessionsScreen>
     with SingleTickerProviderStateMixin {
-  late final TabController _tabs = TabController(length: 4, vsync: this);
+  // [COMMERCIAL-TEST-GREEN-1] `_tabs` used to be `late final TabController
+  // _tabs = TabController(length: 4, vsync: this);` — a lazily-initialized
+  // field. When both commercial flags are off, `build()` never renders the
+  // TabBar/TabBarView and `initState()` never calls `_load()`, so nothing
+  // ever touched `_tabs` while the widget was live. The first access ended
+  // up being `_tabs.dispose()` inside `dispose()`, which ran the lazy
+  // initializer at that point: constructing a new `TabController(vsync:
+  // this)` calls `TickerMode.getValuesNotifier(context)`, which looks up an
+  // inherited widget via this element's `context` — unsafe once the element
+  // is deactivating. That is the "Looking up a deactivated widget's
+  // ancestor is unsafe" assertion. Fixed by constructing `_tabs`
+  // unconditionally and eagerly in `initState()`, while the element is
+  // still active, so `dispose()` only ever disposes an already-built
+  // controller and never triggers construction.
+  late final TabController _tabs;
   CommercialSessionsResponse? _response;
   bool _loading = true;
   String? _error;
@@ -193,6 +207,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
   @override
   void initState() {
     super.initState();
+    _tabs = TabController(length: 4, vsync: this);
     if (_enabled) {
       _load();
     } else {
