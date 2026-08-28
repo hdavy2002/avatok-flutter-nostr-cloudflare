@@ -37,6 +37,57 @@ const ASSET_ORIGIN = 'https://avatok-design.pages.dev/';
 const FONT_CSS =
   'https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@0,700;0,900;1,700;1,900&family=Instrument+Sans:wght@400;500;600;700&family=Baloo+2:wght@600;700;800&family=Kalam:wght@400;700&family=Nunito:wght@400;600;700;800;900&display=swap';
 
+// [WEB-HEADER-SIGNOUT-1 2026-08-28] Make the comp's baked-in header reflect the
+// real session.
+//
+// These pages are static design documents. Their header is <dc-import>ed at
+// runtime from the design origin with "Log in" / "Sign up" hardcoded into the
+// markup, and NO Clerk island runs on the page — so a signed-in visitor landing
+// here saw a signed-out header and reasonably concluded the login had failed.
+// SiteHeader.astro's auth handling cannot help: this route never renders it.
+//
+// So: ask Clerk's API whether there is an active session (one credentialed GET,
+// no SDK, no bundle) and rewrite the two anchors in place if there is.
+//
+// Written as an injected script rather than a fix in the .dc.html because that
+// file is served from the SEPARATE avatok-design Pages project — editing it
+// there would not reach this site without a second deploy, and would also alter
+// the standalone design preview, which is meant to look signed-out.
+const AUTH_SCRIPT = `<script>
+(function () {
+  var FAPI = 'https://clerk.avatok.ai/v1/client?_clerk_js_version=5.127.2';
+
+  function swap() {
+    var links = document.querySelectorAll('a[href$="/sign-in"], a[href$="/sign-up"]');
+    if (!links.length) return false;
+    links.forEach(function (a) {
+      var isIn = /\\/sign-in$/.test(a.getAttribute('href') || '');
+      a.setAttribute('href', isIn ? '/dashboard' : '/sign-out');
+      // Preserve the comp's own styling classes; only the words change.
+      a.textContent = isIn ? 'Dashboard' : 'Sign out';
+    });
+    return true;
+  }
+
+  fetch(FAPI, { credentials: 'include' })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (j) {
+      var res = (j && (j.response || j)) || {};
+      var sessions = res.sessions || [];
+      var active = sessions.some(function (s) { return s && s.status === 'active'; });
+      if (!active) return;
+      // The header is <dc-import>ed asynchronously, so the anchors may not exist
+      // yet. Try now, then watch the DOM until they appear. Give up after 10s so
+      // this never observes forever on a page that has no header.
+      if (swap()) return;
+      var obs = new MutationObserver(function () { if (swap()) obs.disconnect(); });
+      obs.observe(document.documentElement, { childList: true, subtree: true });
+      setTimeout(function () { obs.disconnect(); }, 10000);
+    })
+    .catch(function () { /* signed-out is the safe default */ });
+})();
+</script>`;
+
 const escapeHtml = (value: string): string =>
   value.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
@@ -133,7 +184,8 @@ export function renderMockupPage({
 <base href="${ASSET_ORIGIN}" />
 <style>@import url("${FONT_CSS}");</style>
 <title>${escapeHtml(title)}</title>
-<meta name="robots" content="noindex, nofollow" />`,
+<meta name="robots" content="noindex, nofollow" />
+${AUTH_SCRIPT}`,
   );
 
   // noindex above and a short cache here, deliberately: these are design comps on

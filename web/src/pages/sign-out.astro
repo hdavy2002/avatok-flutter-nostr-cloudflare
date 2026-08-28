@@ -1,0 +1,56 @@
+---
+/*
+ * /sign-out — end the Clerk session and go home.
+ *
+ * [WEB-HEADER-SIGNOUT-1 2026-08-28] Exists because pages that are NOT rendered
+ * by SiteHeader need somewhere to send a "Sign out" link. The /marketplace and
+ * listing routes are static design comps (see lib/mockupPage.ts) with their
+ * header markup baked in and no Clerk island on the page, so they cannot call
+ * signOut() themselves. A plain link to this route can.
+ *
+ * Deliberately its own page rather than a query param on the home page: signing
+ * out is a state change and should have a URL you can point at, not a side
+ * effect hidden in a redirect.
+ */
+export const prerender = false;
+
+import Base from '../layouts/Base.astro';
+import SignOutIsland from '../islands/auth/SignOutIsland.tsx';
+
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+---
+
+<Base
+  title="Signing out · avaTOK"
+  description="Signing you out of avaTOK."
+  chrome={false}
+  noindex
+>
+  <main class="so-wrap">
+    <p class="so-msg">Signing you out…</p>
+    <SignOutIsland client:load />
+    <noscript>
+      <p class="so-msg">
+        JavaScript is required to sign out. <a href="/">Return home</a>.
+      </p>
+    </noscript>
+  </main>
+
+  <style>
+    .so-wrap {
+      min-height: 70vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+    }
+    .so-msg {
+      font-family: 'Nunito', system-ui, sans-serif;
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      color: #161614;
+      text-align: center;
+    }
+  </style>
+</Base>

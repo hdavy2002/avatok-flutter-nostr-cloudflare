@@ -47,7 +47,12 @@ function nextUrl(): string {
     const n = new URLSearchParams(location.search).get('next');
     if (n && n.startsWith('/')) return n;
   } catch { /* SSR */ }
-  return '/marketplace';
+  // [WEB-AUTH-LANDING-1 2026-08-28] Signing in lands on the DASHBOARD, not the
+  // public marketplace. /marketplace is currently a static design comp with a
+  // painted-in "Log in / Sign up" header and no Clerk island, so a freshly
+  // signed-in user landed on a page that still looked signed-out — which reads
+  // as "the login silently failed".
+  return '/dashboard';
 }
 
 type Stage = 'password' | 'code';

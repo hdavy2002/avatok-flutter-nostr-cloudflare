@@ -28,6 +28,7 @@
  * of work and is what a compliance audit would actually want.
  */
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { setReviewerMode } from '../../lib/reviewer';
 
 const ACCEPT_KEY_PREFIX = 'avatok_reviewer_terms_';
@@ -57,6 +58,10 @@ export function ReviewerOnboarding({ email }: ReviewerOnboardingProps) {
   const [cfg, setCfg] = useState<ReviewerConfig | null>(null);
   const [accepted, setAccepted] = useState<boolean | null>(null);
   const [checked, setChecked] = useState(false);
+  // [REVIEWER-ONBOARD-2 2026-08-28] Needed for the portal below: document does
+  // not exist during SSR, so the portal can only be created after mount.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   // Remote config is public and unauthenticated; a failure here must leave the
   // product usable, so every error path ends with "not a reviewer".
@@ -98,7 +103,7 @@ export function ReviewerOnboarding({ email }: ReviewerOnboardingProps) {
     }
   }, [show, version]);
 
-  if (!show || accepted !== false) return null;
+  if (!show || accepted !== false || !mounted) return null;
 
   const accept = () => {
     try {
@@ -109,7 +114,19 @@ export function ReviewerOnboarding({ email }: ReviewerOnboardingProps) {
     setAccepted(true);
   };
 
-  return (
+  // [REVIEWER-ONBOARD-2 2026-08-28] PORTALLED TO <body>, and it has to be.
+  // This component renders inside SidebarUser, which lives in the dashboard's
+  // left sidebar — a narrow, scrolling, transformed container. `position: fixed`
+  // is NOT relative to the viewport when any ancestor has a transform, filter or
+  // container-type: it is relative to that ancestor. So the "full-screen" modal
+  // rendered as a ~180px-wide column INSIDE the sidebar, with the terms text
+  // wrapping one or two words per line. Moving the node to document.body takes
+  // it out of that containing block and it covers the viewport as intended.
+  //
+  // Do NOT "fix" this by giving the sidebar a higher z-index or by making the
+  // scrim absolute — neither addresses the containing block, which is the actual
+  // cause.
+  return createPortal(
     <div className="ro-scrim" role="dialog" aria-modal="true" aria-labelledby="ro-title">
       <div className="ro-card">
         <p className="ro-kicker">Welcome to avaTOK</p>
@@ -217,7 +234,8 @@ export function ReviewerOnboarding({ email }: ReviewerOnboardingProps) {
           margin: 16px 0 0; font-size: 12.5px; line-height: 1.5; color: #5c584d;
         }
       `}</style>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
