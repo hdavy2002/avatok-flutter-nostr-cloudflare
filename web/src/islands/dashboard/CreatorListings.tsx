@@ -15,6 +15,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { getActiveTokenWaited as getActiveToken } from '../../lib/clerk';
 import { request } from '../../lib/apiClient';
 import { cfImage } from '../../lib/config';
+import { toCardView } from '../../lib/card';
+import { inrOrFree } from '../../lib/money';
 import { Spinner } from '../../components/Spinner';
 import type { Card as ListingCard } from '../../lib/types';
 
@@ -37,10 +39,13 @@ const STATUS_TONE: Record<string, string> = {
   cancelled: 'bg-paper2 text-inkMute line-through',
 };
 
+/**
+ * [CARD-MODEL-2 2026-08-30] Was `${n} coins` — the pre-[TOKENS-INR-1] wording, so a
+ * published listing read "500 coins" on the creator's own dashboard while the public
+ * card next to it read "₹500". One token is ₹1; the unit is a token and the symbol is ₹.
+ */
 function coins(n?: number | null) {
-  if (n == null) return 'Free';
-  if (n === 0) return 'Free';
-  return `${n.toLocaleString()} coins`;
+  return inrOrFree(n);
 }
 
 function Inner({ kind, createHref, emptyTitle, emptyBody }: {
@@ -130,11 +135,16 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {filtered.map((l) => {
             const st = (l.status ?? 'draft') as string;
+            const view = toCardView(l);
             return (
               <div key={l.id} className="flex flex-col overflow-hidden rounded-zine border-zine border-ink bg-card shadow-zine-sm transition-transform duration-zine hover:-translate-y-[2px]">
                 <div className="relative aspect-[16/10] w-full border-b-zine border-ink bg-paper2">
-                  {l.poster ? (
-                    <img src={cfImage(l.poster, { width: 480 })} alt="" className="h-full w-full object-cover" loading="lazy" />
+                  {/* [CARD-MODEL-2] `poster` is a field the worker has never sent — it
+                      sends `cover_media`. This card showed "No cover photo" on a listing
+                      that HAS one, which is the same bug [CARD-MODEL-1] fixed in
+                      ListingTile and missed here. toCardView resolves both. */}
+                  {view.poster ? (
+                    <img src={cfImage(view.poster, { width: 480 })} alt="" className="h-full w-full object-cover" loading="lazy" />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center font-mono text-[12px] text-inkMute">No cover photo</div>
                   )}

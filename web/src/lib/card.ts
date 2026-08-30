@@ -37,7 +37,17 @@ function firstCoverUrl(media: unknown): string | null {
   return null;
 }
 
+/**
+ * A number, or null. `Number(null)` is 0 and `Number('')` is 0 — NOT NaN — so a plain
+ * `Number.isFinite(Number(v))` treats "absent" as "zero". That is how a brand-new listing
+ * with `rating_avg: null` rendered as "★ 0.0" on the live marketplace: the worker
+ * correctly sent null, and this turned it into a real rating of zero.
+ *
+ * Absent must stay absent, because the card uses null to decide whether to show a field
+ * at all. Zero is a value; null is the lack of one.
+ */
 function num(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
