@@ -30,7 +30,7 @@ import { listingErrorMessage } from '../../lib/listingErrors';
 import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
 import { Card } from '../../components/Card';
-import { RequireAccount } from '../auth/RequireAccount';
+import { RequireAccountInline } from '../auth/RequireAccount';
 
 type Kind = 'live_event' | 'consult';
 type Category = { id: string; label: string; emoji?: string | null };
@@ -284,9 +284,9 @@ export function CreateListing() {
   // claimed "Gated by RequireAccount" since this component was written, while the body
   // rendered <Form/> bare.
   return (
-    <RequireAccount label="Create a listing">
+    <RequireAccountInline label="Create a listing">
       <Form />
-    </RequireAccount>
+    </RequireAccountInline>
   );
 }
 

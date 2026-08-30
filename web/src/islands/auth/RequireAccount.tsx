@@ -75,6 +75,27 @@ function Gate({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+/**
+ * The gate WITHOUT its own <ClerkProvider>. Use this inside a tree that already has
+ * one — every /dashboard/* page does, because SidebarUser mounts it (see the comment
+ * at islands/shell/SidebarUser.tsx:15: "SidebarUser owns the dashboard's single
+ * <ClerkProvider>").
+ *
+ * [LIST-WEB-GATE-1 2026-08-30] This exists because using <RequireAccount> on a dashboard
+ * page mounted a SECOND provider and Clerk threw "You've added multiple <ClerkProvider>
+ * components", which killed the whole island — the New Listing form rendered as a bare
+ * heading with no form under it. Nothing failed at build or typecheck; it only appeared
+ * in a browser, on the deployed site.
+ */
+export function RequireAccountInline({ label = 'This', children }: { label?: string; children: ReactNode }) {
+  return <Gate label={label}>{children}</Gate>;
+}
+
+/**
+ * The gate PLUS its own provider, for a page that has none (Base-layout pages such as
+ * /vision/studio via GatedStudio). On a dashboard page use RequireAccountInline instead,
+ * or Clerk throws and the island silently disappears.
+ */
 export function RequireAccount({ label = 'This', children }: { label?: string; children: ReactNode }) {
   return (
     <ClerkIsland>

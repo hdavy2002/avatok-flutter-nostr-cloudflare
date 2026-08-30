@@ -23,7 +23,7 @@ import { API_BASE, cfImage } from '../../lib/config';
 import { listingErrorMessage, isKycGate, isLivenessGate } from '../../lib/listingErrors';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
-import { RequireAccount } from '../auth/RequireAccount';
+import { RequireAccountInline } from '../auth/RequireAccount';
 
 type Cover = { type: string; url: string };
 type Listing = {
@@ -298,9 +298,9 @@ export function ListingPublish() {
   }, []);
   if (!id) return <p className="font-body font-bold text-inkSoft">No listing selected.</p>;
   return (
-    <RequireAccount label="Publish a listing">
+    <RequireAccountInline label="Publish a listing">
       <Panel id={id} />
-    </RequireAccount>
+    </RequireAccountInline>
   );
 }
 
