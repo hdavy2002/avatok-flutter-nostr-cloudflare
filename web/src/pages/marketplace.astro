@@ -1,50 +1,41 @@
 ---
-// [DEMO-MARKET-1 2026-08-26] Public marketplace — currently the DESIGN COMP.
+// Public marketplace (logged-out). Logged-in users are routed to the
+// dashboard-wrapped /dashboard/marketplace by <AuthRedirect/>.
 //
-// Owner decision: the Marketplace entry in the header menu and the footer must
-// land on the new bazaar mockup. Both already point at /marketplace, and a dozen
-// other links do too (hero CTAs, the 25 category tiles, "Explore Marketplace",
-// "See who's live"), so this route serves the comp rather than every one of
-// those links being repointed at a preview URL and later repointed back.
+// [DEMO-MARKET-2 2026-08-29] RESTORED TO REAL DATA (owner decision).
 //
-// WHAT THIS REPLACED, AND HOW TO PUT IT BACK
-//   This page used to render <MarketplaceBrowse hrefBase="" .../> inside Base,
-//   with <AuthRedirect/> sending signed-in visitors to /dashboard/marketplace.
-//   That component is untouched and still live at /dashboard/marketplace, so
-//   restoring the real page is `git show <this commit>^:web/src/pages/marketplace.astro`
-//   — nothing was deleted.
+// This route served the bazaar design comp from 2026-08-26 ([DEMO-MARKET-1]) — hardcoded
+// mock cards that could not be searched, filtered or booked, with every card linking to
+// the same demo listing. Real visitors were seeing fiction on the marketplace page the
+// header, the footer and a dozen CTAs all point at.
 //
-//   Worth knowing while the comp is up: the real browse grid renders from
-//   GET /api/explore, which returns zero listings in production today
-//   ({"vertical":"commerce","listings":[],"cursor":null}), so the page it
-//   replaces currently shows "Nothing here yet".
+// The trade the owner accepted: production currently has ZERO published listings
+// (`/api/explore` returns `{"listings":[]}`), so this page shows MarketplaceBrowse's
+// "Nothing here yet" empty state until listings exist. An honest empty marketplace beats
+// a convincing fake one — a visitor who books nothing is better than a visitor who tries
+// to book a listing that does not exist.
 //
-// The comp runs on hardcoded mock data and cannot be searched, filtered or
-// booked for real. Its cards link to /<creator>/<listing>, which serves the
-// listing-details comp — see pages/[username]/[slug].astro.
+// MarketplaceBrowse was never deleted and has been live at /dashboard/marketplace the
+// whole time, so this is a straight restore, not a rebuild. The comp itself also still
+// exists in web/src/generated/ and is still served at /[username]/[slug].
 export const prerender = false;
 
-import { renderMockupPage } from '../lib/mockupPage';
-// Staged into web/src/generated/ by prebuild; see scripts/copy-design-demo.mjs
-// for why it is generated rather than committed, and why it is not in public/.
-import mockupHtml from '../generated/marketplace.dc.html?raw';
+import Base from '../layouts/Base.astro';
+import AuthRedirect from '../components/AuthRedirect.astro';
+import MarketplaceBrowse from '../components/MarketplaceBrowse.astro';
 
-return renderMockupPage({
-  siteUrl: Astro.url,
-  html: mockupHtml,
-  title: 'Marketplace · avaTOK',
-  // Every card in the comp shares one handler, so they all land on the same demo
-  // listing — the comp carries no per-card id to build a real URL from. Passing
-  // a real id is the first piece of the backend work, not a bug.
-  //
-  // FULLY ABSOLUTE, on purpose. <base href="https://avatok-design.pages.dev/">
-  // rebases root-relative URLs too, not just bare filenames — a plain
-  // '/avatok/mock-listing' navigates to avatok-design.pages.dev/avatok/mock-listing
-  // and dumps the visitor on the preview site's index.
-  listingHref: new URL('/avatok/mock-listing', Astro.url).href,
-  // The creator avatar + name on each card open the profile instead of the
-  // listing. One demo creator for now, same reason as the listing above: the
-  // comp carries no per-card handle to build a real URL from.
-  profileHref: new URL('/avatok', Astro.url).href,
-});
+const category = Astro.url.searchParams.get('category') ?? undefined;
+const kind = Astro.url.searchParams.get('kind') ?? undefined;
+
+Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
 ---
+
+<Base
+  title="Marketplace · avatok.ai"
+  description="Browse live streams, 1:1 sessions, events and AI agents from creators worldwide — no app required."
+>
+  <AuthRedirect slot="head" />
+  <main class="mx-auto max-w-6xl px-4 py-2">
+    <MarketplaceBrowse hrefBase="" category={category} kind={kind} showHero={true} showSplit={true} />
+  </main>
+</Base>
