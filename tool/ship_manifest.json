@@ -3639,5 +3639,61 @@
       }
     ],
     "_verified_at": "worker/src/lib/identity_gate.ts:44-55 PublicAction union; :57-93 ACTION_CLASS table + isContentAction; :190-215 gatePublicAction contentOn read and the content-exempt branch; worker/src/routes/config.ts identityGateContentActionsEnabled + listingPublishKycRequired in the PlatformConfig interface and in DEFAULTS; worker/src/routes/listings.ts listingPublishKycRequired() helper and the publishListing creator-services branch; app/lib/features/identity/public_action_gate.dart:34-46 PublicAction strings (client is REACTIVE to the 403, so no app change was needed); app/lib/core/remote_config.dart:564 listingLivenessGate drives the app's pre-emptive prompt and is flipped in KV, not code. npx tsc --noEmit clean in worker/ on 2026-08-29."
+  },
+  "COMM-CONSULT-ENT-1": {
+    "description": "[COMM-CONSULT-ENT-1] A paid 1:1 consult could not run, once, ever. commercialConsultJoin requires the creator to hold an entitlement with role='creator', and NOTHING in the repo ever wrote one - the only two INSERTs into commercial_entitlements were checkout's buyer row (viewer/buyer) and the live_event host self-grant. The expert was 403'd out of their own session, so creator x buyer overlap was zero, the two-party delivery check in commercial_settlement.ts failed, and the buyer's money parked in review_pending. Checkout now writes the creator row alongside the buyer's for consult_1to1 and verifies it to the same standard, aborting the checkout on a partial write rather than returning ok:true and failing at join time an hour later. SIDE EFFECT, INTENDED: the paid-extension path (commercial_stream_sessions.ts) asserts >=2 entitlements on the booking and could never see them, so every paid extension charged then auto-refunded; with the creator row it now passes. ALSO FIXED: entitlement() was role-BLIND (ORDER BY created_at DESC LIMIT 1 across all roles) with callers post-checking the role. Safe only while one account held at most one row per booking - which this change ends, since a creator booking their OWN consult now holds two rows differing only by role and stamped with the same created_at, making the old query return an arbitrary one and 409 intermittently. role is now a required FILTER on entitlement(); canViewSession keeps a separate, explicitly role-blind query because visibility is a different question from admission.",
+    "shipped": "2026-08-29",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "commercialConsultCheckoutEnabled",
+      "commercialConsultListingsEnabled",
+      "commercialConsultJoinEnabled"
+    ],
+    "success": [
+      {
+        "event": "commercial join",
+        "where": {
+          "kind": "consult_1to1"
+        },
+        "property": "outcome",
+        "equals": "authorized",
+        "min_events": 2,
+        "note": "TWO distinct persons on one booking_id - the creator AND the buyer. min_events 2 is the point: one authorized join has always been possible (the buyer's), so asserting >=1 would have passed on the broken build. Ship-gate rule 2 applies: count DISTINCT persons on the newest build, not events."
+      },
+      {
+        "event": "commercial join",
+        "where": {
+          "kind": "consult_1to1"
+        },
+        "property": "reason",
+        "not_in": [
+          "entitlement_role_mismatch"
+        ],
+        "min_events": 0,
+        "note": "FAILURE VALUE. entitlement_role_mismatch means the role filter and the written role disagree - most likely a creator who booked their own consult hitting the old non-deterministic lookup."
+      },
+      {
+        "event": "commercial_settlement",
+        "where": {
+          "kind": "consult_1to1"
+        },
+        "property": "state",
+        "equals": "settled",
+        "min_events": 1,
+        "note": "The end of the chain. A consult that ran produces a settled job, NOT review_pending. review_pending here means the two-party delivery evidence still is not being produced, i.e. one side still never joined."
+      },
+      {
+        "event": "commercial_extension",
+        "where": {},
+        "property": "outcome",
+        "not_in": [
+          "reversed"
+        ],
+        "min_events": 0,
+        "note": "FAILURE VALUE for the side effect. Every paid extension used to charge and auto-refund because the >=2 entitlement assertion could not pass. A reversed extension after this ships means the creator row is not being written."
+      }
+    ],
+    "_verified_at": "worker/src/routes/commercial_checkout.ts creator entitlement INSERT OR IGNORE (role='creator', account_id=listing.creator_id) plus the read-back authority check; worker/src/routes/commercial_stream_sessions.ts entitlement() role filter, the live_event call site (role: isHost?'host':'viewer'), the consult call site (role: isCreator?'creator':'buyer'), and canViewSession's separate role-blind query; extension assertion COUNT(*)>=2 on commercial_entitlements confirmed at commercial_stream_sessions.ts:846-850; UNIQUE(kind,listing_id,booking_id,account_id,role) confirmed at worker/migrations/2026-08-24-commercial-stream-sessions.sql:33-53. npx tsc --noEmit clean in worker/ on 2026-08-29."
   }
 }

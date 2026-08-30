@@ -548,6 +548,34 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
     ).bind(entitlementId, route.kind, listing.id, bookingId, orderId, auth.uid,
       route.kind === "live_event" ? "viewer" : "buyer", price > 0 ? "held" : "reserved",
       route.kind === "live_event" ? startsAt : slotStart, route.kind === "live_event" ? endsAt : slotEnd, now).run();
+
+    // [COMM-CONSULT-ENT-1] The consult creator's own admission.
+    //
+    // commercialConsultJoin (commercial_stream_sessions.ts) requires the creator to hold
+    // an entitlement with role='creator'. Before this, NOTHING in the repo ever wrote one
+    // — checkout wrote the buyer's row and live_event hosts self-granted 'host', and that
+    // was the entire set. So every paid consult 403'd the expert out of their own
+    // session, produced zero creator×buyer overlap, failed the two-party delivery check
+    // in commercial_settlement.ts, and parked the buyer's money in review_pending. The
+    // product could not run, once, ever.
+    //
+    // Written HERE and not lazily at join time, deliberately. The live_event host
+    // self-grant is what makes [COMM-LIVE-AUTH-1] possible (a NULL order_id landing on a
+    // shared session row), and — more importantly — the refund and lifecycle paths sweep
+    // commercial_entitlements BY order_id (commercial_lifecycle.ts:245-268). A row that
+    // exists only after someone joins is a row those sweeps can miss.
+    //
+    // Idempotent for the same reason the buyer row is: INSERT OR IGNORE against
+    // UNIQUE(kind, listing_id, booking_id, account_id, role).
+    const creatorEntitlementId = `${entitlementId}:creator`;
+    if (route.kind === "consult_1to1") {
+      await metaDb(env).prepare(
+        `INSERT OR IGNORE INTO commercial_entitlements
+         (entitlement_id,kind,listing_id,booking_id,order_id,account_id,role,state,starts_at,ends_at,created_at,updated_at)
+         VALUES (?1,?2,?3,?4,?5,?6,'creator',?7,?8,?9,?10,?10)`,
+      ).bind(creatorEntitlementId, route.kind, listing.id, bookingId, orderId, listing.creator_id,
+        price > 0 ? "held" : "reserved", slotStart, slotEnd, now).run();
+    }
     const entitlement = await metaDb(env).prepare(
       `SELECT entitlement_id,kind,listing_id,booking_id,order_id,account_id,role,state,starts_at,ends_at
          FROM commercial_entitlements WHERE entitlement_id=?1`,
@@ -584,6 +612,28 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
       || entitlement.role !== expectedRole || entitlement.state !== expectedState
       || Number(entitlement.starts_at) !== expectedStart || Number(entitlement.ends_at) !== expectedEnd) {
       throw new Error("entitlement authority mismatch");
+    }
+    // [COMM-CONSULT-ENT-1] Read the creator row back and hold it to the same standard as
+    // the buyer's. A consult authorized with only half its entitlements is exactly the
+    // failure this issue exists to remove, so a partial write must abort the checkout
+    // rather than return ok:true and fail invisibly at join time an hour later.
+    if (route.kind === "consult_1to1") {
+      const creatorGrant = await metaDb(env).prepare(
+        `SELECT entitlement_id,kind,listing_id,booking_id,order_id,account_id,role,state,starts_at,ends_at
+           FROM commercial_entitlements WHERE entitlement_id=?1`,
+      ).bind(creatorEntitlementId).first<{
+        entitlement_id: string; kind: CheckoutKind; listing_id: string; booking_id: string | null;
+        order_id: string; account_id: string; role: string; state: string;
+        starts_at: number | null; ends_at: number | null;
+      }>();
+      if (!creatorGrant) throw new Error("creator entitlement missing");
+      if (creatorGrant.kind !== route.kind || creatorGrant.listing_id !== listing.id
+        || (creatorGrant.booking_id ?? null) !== bookingId || creatorGrant.order_id !== orderId
+        || creatorGrant.account_id !== listing.creator_id || creatorGrant.role !== "creator"
+        || creatorGrant.state !== expectedState
+        || Number(creatorGrant.starts_at) !== slotStart || Number(creatorGrant.ends_at) !== slotEnd) {
+        throw new Error("creator entitlement authority mismatch");
+      }
     }
     const response = {
       ok: true,

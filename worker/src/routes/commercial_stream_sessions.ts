@@ -231,18 +231,34 @@ function joinWindow(config: PlatformConfig, kind: CommercialSessionKind, startsA
     };
 }
 
+/**
+ * [COMM-CONSULT-ENT-1] `role` is REQUIRED, and it is a filter, not a post-check.
+ *
+ * This lookup used to be role-blind — `ORDER BY created_at DESC LIMIT 1` over every row
+ * for the uid — and every caller then compared `grant.role` to the role it expected. That
+ * was safe only while one account could hold at most one entitlement per booking. Since
+ * checkout now also writes the creator's row, a creator who books their OWN consult holds
+ * two rows for the same (kind, listing, booking, account) that differ only by role, both
+ * stamped with the same `created_at`. The old query would return an arbitrary one of them
+ * and the caller's own role check would then 409 the session, intermittently, with a
+ * "authority mismatch" that describes nothing real.
+ *
+ * Filtering on role makes the query return the row the caller is asking about or nothing
+ * at all, which is what every call site actually meant.
+ */
 async function entitlement(env: Env, args: {
   kind: CommercialSessionKind;
   listingId: string;
   bookingId?: string | null;
   uid: string;
+  role: string;
 }): Promise<{ entitlement_id: string; order_id: string | null; role: string } | null> {
   return await metaDb(env).prepare(
     `SELECT entitlement_id, order_id, role FROM commercial_entitlements
       WHERE kind=?1 AND listing_id=?2 AND COALESCE(booking_id,'')=COALESCE(?3,'')
-        AND account_id=?4 AND state IN ('reserved','held','active','consumed')
+        AND account_id=?4 AND role=?5 AND state IN ('reserved','held','active','consumed')
       ORDER BY created_at DESC LIMIT 1`,
-  ).bind(args.kind, args.listingId, args.bookingId ?? null, args.uid)
+  ).bind(args.kind, args.listingId, args.bookingId ?? null, args.uid, args.role)
     .first<{ entitlement_id: string; order_id: string | null; role: string }>();
 }
 
@@ -486,7 +502,9 @@ async function commercialLiveJoinUnsafe(req: Request, env: Env): Promise<Respons
       return json({ error: "commercial entitlement authority mismatch" }, 409);
     }
   }
-  const grant = await entitlement(env, { kind: "live_event", listingId, uid: auth.uid });
+  const grant = await entitlement(env, {
+    kind: "live_event", listingId, uid: auth.uid, role: isHost ? "host" : "viewer",
+  });
   if (!grant) return json({ error: "ticket required" }, 403);
   if (grant.role !== (isHost ? "host" : "viewer")) {
     commercialEvent(env, "join", auth.uid, { kind: "live_event", outcome: "refused", reason: "entitlement_role_mismatch" });
@@ -540,6 +558,7 @@ async function commercialConsultJoinUnsafe(req: Request, env: Env): Promise<Resp
   if (row.status !== "confirmed") return json({ error: "booking unavailable" }, 409);
   const grant = await entitlement(env, {
     kind: "consult_1to1", listingId: row.listing_id, bookingId, uid: auth.uid,
+    role: isCreator ? "creator" : "buyer",
   });
   if (!grant) return json({ error: "booking entitlement required" }, 403);
   if (grant.role !== (isCreator ? "creator" : "buyer")) {
@@ -1097,10 +1116,18 @@ async function canViewSession(env: Env, session: SessionAuthority, uid: string):
     "SELECT 1 ok FROM commercial_session_members WHERE commercial_session_id=?1 AND account_id=?2 LIMIT 1",
   ).bind(session.commercial_session_id, uid).first<{ ok: number }>();
   if (member) return true;
-  return Boolean(await entitlement(env, {
-    kind: session.kind, listingId: session.listing_id,
-    bookingId: session.booking_id, uid,
-  }));
+  // [COMM-CONSULT-ENT-1] Deliberately role-BLIND, and therefore deliberately NOT
+  // entitlement() — which now requires a role because admission is always "may this uid
+  // enter AS this role". Visibility is a different question: "does this uid have any
+  // stake in this session at all", answered yes for a viewer, a buyer or the creator
+  // alike. Routing this through entitlement() would have meant guessing a role in order
+  // to answer a question that does not have one.
+  const anyGrant = await metaDb(env).prepare(
+    `SELECT 1 ok FROM commercial_entitlements
+      WHERE kind=?1 AND listing_id=?2 AND COALESCE(booking_id,'')=COALESCE(?3,'')
+        AND account_id=?4 AND state IN ('reserved','held','active','consumed') LIMIT 1`,
+  ).bind(session.kind, session.listing_id, session.booking_id ?? null, uid).first<{ ok: number }>();
+  return Boolean(anyGrant);
 }
 
 function safeSessionState(session: SessionAuthority): Record<string, unknown> {
