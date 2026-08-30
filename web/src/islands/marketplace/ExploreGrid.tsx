@@ -124,7 +124,10 @@ export function ExploreGrid({ initialCategory, initialKind, pageSize = PAGE, sho
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      {/* [CARD-BAZAAR-1] The comp uses auto-fill/minmax(14.5rem) rather than fixed
+          breakpoints, and the card's 6x7px hard shadow needs gutter room — a tight
+          4-column grid clipped it. gap-6 keeps the shadows clear of each other. */}
+      <div className="grid gap-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(14.5rem, 1fr))' }}>
         {items.map((l) => (
           <ListingTile key={l.id} listing={l} href={hrefBase ? `${hrefBase}/l/${encodeURIComponent(l.id)}` : undefined} />
         ))}

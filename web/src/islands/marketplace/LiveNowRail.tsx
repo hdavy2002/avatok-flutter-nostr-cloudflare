@@ -45,10 +45,13 @@ export function LiveNowRail({ title = 'Live now', hideWhenEmpty = true }: LiveNo
           <Spinner size={18} /> <span className="font-body font-bold text-[14px]">Loading live…</span>
         </div>
       ) : (
-        <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {/* [CARD-BAZAAR-1] 232/248px, not 200/220: the bazaar card carries two chips
+              and two CTAs side by side and the comp's grid never goes below 14.5rem
+              (232px); narrower than that the buttons wrap. pb-3 is shadow clearance. */}
           {items.map((l) => (
-            <div key={l.id} className="w-[200px] shrink-0 snap-start sm:w-[220px]">
-              <ListingTile listing={l} href={`/watch/${encodeURIComponent(l.id)}`} width={300} />
+            <div key={l.id} className="w-[232px] shrink-0 snap-start sm:w-[248px]">
+              <ListingTile listing={l} href={`/watch/${encodeURIComponent(l.id)}`} width={520} />
             </div>
           ))}
         </div>

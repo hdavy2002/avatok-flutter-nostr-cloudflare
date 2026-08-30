@@ -1,7 +1,6 @@
 import { cfImage } from '../lib/config';
 import { toCardView, durationLabel, languageLabel, priceLabel } from '../lib/card';
-import type { Card as CardModel } from '../lib/types';
-import { Pill } from './Pill';
+import type { Card as CardModel, CardView } from '../lib/types';
 
 export interface ListingTileProps {
   listing: CardModel;
@@ -22,9 +21,6 @@ export interface ListingTileProps {
 export function listingHref(listing: CardModel): string {
   const handle = listing.creator?.handle?.trim();
   if (!handle) return `/l/${encodeURIComponent(listing.id)}`;
-  // Prefer a server-supplied slug; otherwise derive one from the title. The id
-  // is appended when deriving so two listings with the same title can't collide
-  // on one URL — a slug is only a label until the Worker owns it.
   const slug =
     listing.slug?.trim() ||
     `${listing.title ?? ''}`
@@ -36,132 +32,243 @@ export function listingHref(listing: CardModel): string {
   return `/${encodeURIComponent(handle)}/${encodeURIComponent(slug)}`;
 }
 
-/** "Tonight 8 PM", "Fri 9 PM", "12 Sep" — the status line the new card comps show. */
-function whenLabel(startsAt: number | null): string | null {
-  if (!startsAt) return null;
-  const d = new Date(startsAt);
-  if (!Number.isFinite(d.getTime())) return null;
+/* ── The bazaar palette ──────────────────────────────────────────────────────
+ * Lifted verbatim from design/live-streaming/avaTOK Marketplace.dc.html (the
+ * PAL object), so the real cards and the comp cannot drift apart. `dark` flips
+ * the whole card to cream-on-colour, which changes text, chip and hairline
+ * colours together — that is why it is one table and not four loose values.
+ */
+type Pal = {
+  fill: string; photo: string; shad: string; dark: boolean; stub: string;
+};
+
+const PAL: Record<string, Pal> = {
+  teal: { fill: '#2d7180', photo: '#1e5f66', shad: '#0f3f45', dark: true, stub: '#d6ecee' },
+  butter: { fill: '#f4d8a0', photo: '#c9a86a', shad: '', dark: false, stub: '#5a3d33' },
+  oat: { fill: '#d9c3a0', photo: '#b09a76', shad: '', dark: false, stub: '#5a3d33' },
+  brick: { fill: '#b8382a', photo: '#a4352a', shad: '#7d271e', dark: true, stub: '#fbe4df' },
+};
+const PAL_ORDER = ['teal', 'butter', 'oat', 'brick'] as const;
+
+const INK = '#161614';
+const CREAM = '#fdf1d3';
+
+/**
+ * Which colour a listing gets. Derived from its id, NOT its position in the
+ * grid, so a card keeps the same colour when the list is filtered, sorted or
+ * paginated — a tile that changes colour when you sort looks like a bug.
+ */
+function paletteFor(id: string): Pal {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return PAL[PAL_ORDER[h % PAL_ORDER.length]];
+}
+
+/** "TONIGHT 2 AM", "FRI 9 PM", "6 SEPT" — the comp's status pill copy. */
+function statusLabel(c: CardView): string {
+  if (c.live) return 'LIVE';
+  if (!c.startsAt) return 'AVAILABLE NOW';
+  const d = new Date(c.startsAt);
+  if (!Number.isFinite(d.getTime())) return 'AVAILABLE NOW';
+  const time = d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }).toUpperCase();
   const now = new Date();
-  const time = d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
-  const sameDay = d.toDateString() === now.toDateString();
-  if (sameDay) return `Tonight ${time}`;
+  if (d.toDateString() === now.toDateString()) return `TONIGHT ${time}`;
   const days = Math.round((d.getTime() - now.getTime()) / 86_400_000);
-  if (days > 0 && days < 7) return `${d.toLocaleDateString('en-IN', { weekday: 'short' })} ${time}`;
-  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  if (days > 0 && days < 7) return `${d.toLocaleDateString('en-IN', { weekday: 'short' }).toUpperCase()} ${time}`;
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }).toUpperCase();
 }
 
 /**
- * Poster card used in marketplace grids (mirrors the app's listing tile):
- * ink-bordered poster with hard shadow, title, creator + price footer, and a
- * LIVE pill when joinable.
+ * The comp's two social-proof chips, ALWAYS both filled so the row never
+ * collapses and every card has the same shape.
  *
- * [CARD-MODEL-1] Everything below now comes through toCardView(). It used to read
- * `listing.poster`, `listing.rating` and `listing.currency` — three fields the worker
- * has never sent — so in production every card fell through to the "no poster"
- * placeholder and no rating ever rendered. The price label was wrong twice over as
- * well: it printed `$` and divided by 100 above 1000, so a ₹1,500 listing displayed as
- * "$15". Per [TOKENS-INR-1] the unit is a token, 1 token = ₹1, and no wallet or listing
- * amount ever prints a `$`.
+ * ⚠️ THEY ARE FILLED FROM REAL DATA, NOT FROM THE COMP'S STRINGS. The comp reads
+ * "♡ 300 REGULARS" and "★ 4.9 · 620" on every card; those are mock copy. Printing
+ * them on a live listing would show a buyer a rating and a following that do not
+ * exist, next to a real Book button — invented evidence at the exact moment
+ * someone decides to spend money. So the SLOTS are always filled (the owner asked
+ * for that, and the layout needs it), but with facts the listing actually has:
+ * bookings, seats, rating, language, category, or an honest "NEW LISTING".
  */
-export function ListingTile({ listing, href, width = 360, className = '' }: ListingTileProps) {
+function chipsFor(c: CardView): [string, string] {
+  const one =
+    c.joinedCount > 0 ? `✓ ${c.joinedCount.toLocaleString('en-IN')} BOOKED`
+      : c.capacity ? `${c.capacity} SEATS`
+        : c.durationMin ? `${durationLabel(c.durationMin)?.toUpperCase()}`
+          : 'NEW LISTING';
+  const two =
+    c.ratingAvg != null
+      ? `★ ${c.ratingAvg.toFixed(1)}${c.ratingCount > 0 ? ` · ${c.ratingCount}` : ''}`
+      : c.seatsLeft != null && c.seatsLeft > 0 && c.seatsLeft <= 5 ? `◷ ${c.seatsLeft} LEFT`
+        : c.location ? c.location.toUpperCase()
+          : c.live && c.watching ? `👁 ${c.watching} WATCHING`
+            : 'JUST ADDED';
+  return [one, two];
+}
+
+/**
+ * The bazaar marketplace card, rendered from REAL listing data.
+ *
+ * [CARD-BAZAAR-1 2026-08-30, owner decision] This replaces the plain poster tile
+ * with the design from design/live-streaming/avaTOK Marketplace.dc.html: 3px ink
+ * border, 26px radius, a 6×7px hard shadow, a coloured card body, the scalloped
+ * ticket edge under the photo, status pill, favourite heart, two stub lines, two
+ * chips, BOOK NOW / CALENDAR and a creator footer.
+ *
+ * Every measurement here is the comp's. What differs is the SOURCE: the comp is
+ * hardcoded mock data and this reads the API, so anything the comp faked either
+ * comes from a real column or is replaced by something true (see chipsFor).
+ */
+export function ListingTile({ listing, href, width = 520, className = '' }: ListingTileProps) {
   const c = toCardView(listing);
   const target = href ?? listingHref(listing);
+  const p = paletteFor(c.id);
   const price = priceLabel(c.price, listing.price_semantics);
-  const discounted = c.promoPct > 0 && c.listPrice != null && c.listPrice !== c.price;
-  const duration = durationLabel(c.durationMin);
+  const [chip1, chip2] = chipsFor(c);
   const language = languageLabel(c.spokenLang);
-  const when = c.live ? null : whenLabel(c.startsAt);
-  const place = c.location;
+  const duration = durationLabel(c.durationMin);
+  const initials = (c.creator?.name || c.creator?.handle || '?')
+    .split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+
+  const textCol = p.dark ? CREAM : INK;
+  const bodyCol = p.dark ? CREAM : '#4a3a20';
+  const chipCol = p.dark ? CREAM : INK;
+  const hairCol = p.dark ? 'rgba(253,241,211,.28)' : 'rgba(22,22,20,.2)';
+  const stripe = p.dark
+    ? 'repeating-linear-gradient(135deg, rgba(253,241,211,.14) 0 9px, transparent 9px 20px)'
+    : 'repeating-linear-gradient(135deg, rgba(22,22,20,.12) 0 9px, transparent 9px 20px)';
 
   return (
     <a
       href={target}
-      className={[
-        'group block rounded-zine border-zine border-ink bg-card shadow-zine-sm overflow-hidden',
-        'transition-transform duration-zine ease-out',
-        'hover:-translate-x-[1px] hover:-translate-y-[1px] active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed',
-        className,
-      ].join(' ')}
+      className={['group flex flex-col overflow-hidden no-underline', className].join(' ')}
+      style={{
+        border: `3px solid ${INK}`,
+        borderRadius: 26,
+        background: p.fill,
+        boxShadow: `6px 7px 0 ${INK}`,
+        transition: 'transform 120ms ease-out, box-shadow 120ms ease-out',
+      }}
     >
-      <div className="relative aspect-[4/5] w-full bg-paper2 border-b-zine border-ink overflow-hidden">
-        {c.poster ? (
+      {/* Photo band. The comp is a flat colour; a real listing has a cover, so the
+          colour becomes the backdrop the photo sits on and the fallback when there
+          is none. */}
+      <div style={{ height: 186, background: p.photo, position: 'relative' }}>
+        {c.poster && (
           <img
             src={cfImage(c.poster, { width, fit: 'cover' })}
             alt={c.title}
             loading="lazy"
-            className="h-full w-full object-cover"
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
           />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center font-mono uppercase text-inkMute text-[12px] tracking-[0.08em]">
-            {c.kind ?? 'listing'}
-          </div>
         )}
-        {c.live ? (
-          <span className="absolute left-2 top-2"><Pill kind="no">● Live</Pill></span>
-        ) : when ? (
-          <span className="absolute left-2 top-2"><Pill kind="plain">{when}</Pill></span>
-        ) : null}
-        {c.category && (
-          <span className="absolute right-2 top-2"><Pill kind="plain">{c.category}</Pill></span>
-        )}
-        {c.adultsOnly && (
-          <span className="absolute bottom-2 right-2"><Pill kind="plain">18+</Pill></span>
-        )}
+        <div style={{ position: 'absolute', inset: 0, backgroundImage: stripe }} />
+
+        <div style={{
+          position: 'absolute', top: 12, left: 12, right: 12,
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8,
+        }}>
+          <span style={{
+            fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800, fontSize: '0.6875rem',
+            letterSpacing: '.08em', background: c.live ? '#d93825' : '#1e5f66', color: CREAM,
+            borderRadius: 100, padding: '6px 11px', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0,
+          }}>
+            <span style={{
+              width: 6, height: 6, borderRadius: '50%',
+              background: c.live ? '#ffd0c4' : '#8fd0c0', flex: 'none',
+            }} />
+            {statusLabel(c)}
+          </span>
+          {c.adultsOnly && (
+            <span style={{
+              fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800, fontSize: '0.6875rem',
+              background: CREAM, color: INK, border: `1.5px solid ${INK}`,
+              borderRadius: 100, padding: '5px 9px', flex: 'none',
+            }}>18+</span>
+          )}
+        </div>
+
+        {/* The ticket-stub scallop that joins the photo to the card body. */}
+        <div style={{
+          position: 'absolute', left: 0, right: 0, bottom: -1, height: 18,
+          background: `radial-gradient(circle at 11px 15px, ${p.fill} 11px, transparent 12px) 0 0/22px 18px repeat-x`,
+        }} />
       </div>
 
-      <div className="p-3">
-        {/* The comps' two-part micro line: category context on the left, language or
-            place on the right. Both come from columns that already existed. */}
-        {(language || place) && (
-          <div className="mb-1 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.08em] text-inkMute">
-            {language && <span className="truncate">{language}</span>}
-            {language && place && <span aria-hidden="true">·</span>}
-            {place && <span className="truncate">{place}</span>}
-          </div>
-        )}
+      <div style={{ padding: '15px 17px 17px', display: 'flex', flexDirection: 'column', gap: 11, flex: 1 }}>
+        {/* Stub line: category on the left, language on the right — the comp's s1/s2. */}
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', gap: 8,
+          fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800, fontSize: '0.6875rem',
+          letterSpacing: '.1em', color: p.stub, textTransform: 'uppercase',
+        }}>
+          <span className="truncate">{c.category ?? c.kind ?? 'LISTING'}</span>
+          <span className="truncate">{language ?? 'AVATOK'}</span>
+        </div>
 
-        <h3 className="font-display font-semibold text-[17px] leading-tight text-ink line-clamp-2">{c.title}</h3>
+        <h4 style={{
+          fontFamily: 'Anton, Impact, sans-serif', fontWeight: 400, fontSize: '1.4375rem',
+          lineHeight: 1.07, textTransform: 'uppercase', color: textCol, margin: 0,
+          // Never negative tracking on display type — CLAUDE.md standing rule.
+          letterSpacing: '.02em', wordSpacing: '.08em',
+          textShadow: p.dark && p.shad ? `3px 3px 0 ${p.shad}` : 'none',
+        }}>
+          {c.title}{price ? ` · ${price}` : ''}
+        </h4>
+
         {c.oneLiner && (
-          <p className="mt-1 font-body font-bold text-[13px] leading-snug text-inkSoft line-clamp-2">{c.oneLiner}</p>
+          <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 500, lineHeight: 1.45, color: bodyCol }}>
+            {c.oneLiner}
+          </p>
         )}
 
-        {/* Social proof. Only rendered when it is real — an unrated new listing shows
-            nothing rather than "★ 0 · 0", which reads worse than silence. */}
-        {(c.ratingAvg != null || c.joinedCount > 0 || c.watching || c.seatsLeft != null) && (
-          <div className="mt-2 flex items-center gap-3 font-mono text-[11px] text-inkSoft">
-            {/* [CARD-SCHEMA-1] Live viewers first — it is the most perishable fact on the
-                card and the reason someone taps now rather than later. */}
-            {c.live && c.watching ? <span>👁 {c.watching} watching</span> : null}
-            {c.ratingAvg != null && (
-              <span>★ {c.ratingAvg.toFixed(1)}{c.ratingCount > 0 ? ` · ${c.ratingCount}` : ''}</span>
-            )}
-            {c.joinedCount > 0 && <span>✓ {c.joinedCount} booked</span>}
-            {/* Scarcity is only shown when it is REAL and nearly out. `null` means the
-                count was unavailable and must render nothing — an invented "sold out"
-                costs a sale, and an invented "seats left" is a promise we cannot keep. */}
-            {c.seatsLeft === 0 && <span className="text-coral">Sold out</span>}
-            {c.seatsLeft != null && c.seatsLeft > 0 && c.seatsLeft <= 5 && (
-              <span>◷ {c.seatsLeft} left</span>
-            )}
-          </div>
-        )}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+          {[chip1, chip2].map((chip) => (
+            <span key={chip} style={{
+              fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800, fontSize: '0.6875rem',
+              letterSpacing: '.05em', border: `1.5px solid ${chipCol}`, borderRadius: 100,
+              padding: '6px 10px', color: chipCol,
+            }}>{chip}</span>
+          ))}
+        </div>
 
-        <div className="mt-2 flex items-center justify-between gap-2">
-          <span className="flex min-w-0 items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.06em] text-inkSoft">
-            <span className="truncate">
-              {c.creator?.handle ? `@${c.creator.handle}` : (c.creator?.name ?? '')}
-            </span>
-            {c.creator?.verified && <span className="text-blueInk" title="Identity verified">✓</span>}
+        <div style={{ display: 'flex', gap: 9, marginTop: 'auto' }}>
+          <span style={{
+            flex: 1, textAlign: 'center', fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800,
+            fontSize: '0.75rem', letterSpacing: '.08em', padding: '13px 8px', borderRadius: 100,
+            border: `2px solid ${INK}`, background: '#d93825', color: CREAM,
+          }}>BOOK NOW</span>
+          <span style={{
+            flex: 1, textAlign: 'center', fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800,
+            fontSize: '0.75rem', letterSpacing: '.08em', padding: '13px 8px', borderRadius: 100,
+            border: `2px solid ${INK}`, background: CREAM, color: INK,
+          }}>DETAILS</span>
+        </div>
+
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 9,
+          paddingTop: 11, borderTop: `1.5px solid ${hairCol}`,
+        }}>
+          <span style={{
+            width: 26, height: 26, flex: 'none', borderRadius: '50%', border: `1.5px solid ${chipCol}`,
+            display: 'grid', placeItems: 'center', fontFamily: 'Nunito, system-ui, sans-serif',
+            fontWeight: 800, fontSize: '0.6875rem', color: chipCol, overflow: 'hidden',
+          }}>
+            {c.creator?.avatar
+              ? <img src={cfImage(c.creator.avatar, { width: 52 })} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : initials}
           </span>
-          <span className="flex items-center gap-2 whitespace-nowrap">
-            {duration && <span className="font-mono text-[11px] text-inkMute">{duration}</span>}
-            {discounted && (
-              <span className="font-mono text-[11px] text-inkMute line-through">
-                {priceLabel(c.listPrice, listing.price_semantics)}
-              </span>
-            )}
-            {price && <span className="font-display font-semibold text-[16px] text-ink">{price}</span>}
+          <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: textCol }} className="truncate">
+            {c.creator?.name ?? (c.creator?.handle ? `@${c.creator.handle}` : 'avaTOK')}
+            {/* The tick is EARNED — the comp draws it on every card unconditionally. */}
+            {c.creator?.verified ? ' ✓' : ''}
           </span>
+          {duration && (
+            <span style={{
+              marginLeft: 'auto', fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800,
+              fontSize: '0.6875rem', letterSpacing: '.08em', color: p.stub, whiteSpace: 'nowrap',
+            }}>{duration.toUpperCase()}</span>
+          )}
         </div>
       </div>
     </a>
