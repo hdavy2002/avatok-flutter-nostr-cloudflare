@@ -23,7 +23,6 @@ import { API_BASE, cfImage } from '../../lib/config';
 import { listingErrorMessage, isKycGate, isLivenessGate } from '../../lib/listingErrors';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
-import { RequireAccountInline } from '../auth/RequireAccount';
 
 type Cover = { type: string; url: string };
 type Listing = {
@@ -291,6 +290,33 @@ function Panel({ id }: { id: string }) {
   );
 }
 
+/*
+ * [LIST-WEB-GATE-1 2026-08-30] NO CLIENT-SIDE ACCOUNT GATE HERE, DELIBERATELY.
+ *
+ * An earlier pass wrapped this island in <RequireAccount> because the file header had
+ * always CLAIMED it was gated and it was not. That broke the page in two different ways,
+ * neither visible to the typechecker or the build — only in a browser, on the live site:
+ *
+ *   1. <RequireAccount> mounts <ClerkIsland> -> <ClerkProvider>. SidebarUser already
+ *      mounts one on every dashboard page (see islands/shell/SidebarUser.tsx:15, which
+ *      says so in as many words). Clerk's provider check is global, not per React root,
+ *      so the second one threw "You've added multiple <ClerkProvider> components" and the
+ *      WHOLE island failed to render: the New Listing page showed a heading and no form.
+ *
+ *   2. Dropping the provider (RequireAccountInline) moved the failure rather than fixing
+ *      it. Astro islands are SEPARATE React roots, so this island is not inside
+ *      SidebarUser's provider — and the gate's own <SignInButton> then threw
+ *      "SignInButton can only be used within <ClerkProvider>".
+ *
+ * The gate was also solving nothing. /dashboard/* is reached only when signed in, every
+ * call this island makes carries a bearer token, and the WORKER rejects an unauthenticated
+ * create outright. The server is the authority; a client gate here was decoration that
+ * cost the page its form.
+ *
+ * If a gate is ever genuinely wanted on a dashboard island, it must reuse SidebarUser's
+ * provider rather than mount a second one — which means solving the cross-island problem
+ * first, not wrapping the component.
+ */
 export function ListingPublish() {
   const [id, setId] = useState<string | null>(null);
   useEffect(() => {
@@ -298,9 +324,7 @@ export function ListingPublish() {
   }, []);
   if (!id) return <p className="font-body font-bold text-inkSoft">No listing selected.</p>;
   return (
-    <RequireAccountInline label="Publish a listing">
-      <Panel id={id} />
-    </RequireAccountInline>
+    <Panel id={id} />
   );
 }
 

@@ -19,7 +19,7 @@
  * Everything mirrored here is ALSO enforced server-side. The client checks exist to
  * spare a round trip, never to be the authority — see publishListing.
  *
- * Gated by RequireAccount. New: POST /api/listings (draft) → publish screen.
+ * New: POST /api/listings (draft) → publish screen.
  * Edit (?id=): GET /api/listings/:id to prefill, PUT /api/listings/:id to save.
  * ?kind=live_event|consult preselects the type for a new listing.
  */
@@ -30,7 +30,6 @@ import { listingErrorMessage } from '../../lib/listingErrors';
 import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
 import { Card } from '../../components/Card';
-import { RequireAccountInline } from '../auth/RequireAccount';
 
 type Kind = 'live_event' | 'consult';
 type Category = { id: string; label: string; emoji?: string | null };
@@ -279,14 +278,36 @@ function location_assign(href: string): void {
   if (typeof window !== 'undefined') window.location.href = href;
 }
 
+/*
+ * [LIST-WEB-GATE-1 2026-08-30] NO CLIENT-SIDE ACCOUNT GATE HERE, DELIBERATELY.
+ *
+ * An earlier pass wrapped this island in <RequireAccount> because the file header had
+ * always CLAIMED it was gated and it was not. That broke the page in two different ways,
+ * neither visible to the typechecker or the build — only in a browser, on the live site:
+ *
+ *   1. <RequireAccount> mounts <ClerkIsland> -> <ClerkProvider>. SidebarUser already
+ *      mounts one on every dashboard page (see islands/shell/SidebarUser.tsx:15, which
+ *      says so in as many words). Clerk's provider check is global, not per React root,
+ *      so the second one threw "You've added multiple <ClerkProvider> components" and the
+ *      WHOLE island failed to render: the New Listing page showed a heading and no form.
+ *
+ *   2. Dropping the provider (RequireAccountInline) moved the failure rather than fixing
+ *      it. Astro islands are SEPARATE React roots, so this island is not inside
+ *      SidebarUser's provider — and the gate's own <SignInButton> then threw
+ *      "SignInButton can only be used within <ClerkProvider>".
+ *
+ * The gate was also solving nothing. /dashboard/* is reached only when signed in, every
+ * call this island makes carries a bearer token, and the WORKER rejects an unauthenticated
+ * create outright. The server is the authority; a client gate here was decoration that
+ * cost the page its form.
+ *
+ * If a gate is ever genuinely wanted on a dashboard island, it must reuse SidebarUser's
+ * provider rather than mount a second one — which means solving the cross-island problem
+ * first, not wrapping the component.
+ */
 export function CreateListing() {
-  // [LIST-WEB-FORM-1] Actually wrapped now. The file header and new.astro have both
-  // claimed "Gated by RequireAccount" since this component was written, while the body
-  // rendered <Form/> bare.
   return (
-    <RequireAccountInline label="Create a listing">
-      <Form />
-    </RequireAccountInline>
+    <Form />
   );
 }
 
