@@ -3809,5 +3809,51 @@
       }
     ],
     "_verified_at": "worker/src/routes/config.ts: three keys in the PlatformConfig interface, in DEFAULTS (100/100/0), and in the numericKeys set. worker/src/routes/commercial_checkout.ts: CheckoutPolicy gains the three fields, refundPercents() validates 0..100 integers and returns null on failure, policyFor() takes config and spreads pct into BOTH the live_event and consult branches, call site passes config. worker/src/routes/commercial_lifecycle.ts: CancellationDecision union gains no_refund, outcomeForPct() resolves 100/0/partial, provider_outage reads provider_failure_refund_pct, caller handles no_refund via finishOperation('completed') without touching refund() or claimCommercialMoney(). NEW worker/src/routes/commercial_admin_claims.ts wired at worker/src/index.ts. Schema verified against migrations/2026-08-24 (commercial_settlement_jobs states pending|processing|review_pending|settled|refunded; commercial_policy_snapshots columns) and migrations/2026-08-25-commercial-lifecycle.sql (commercial_refund_receipts NOT NULL columns and issued_at, not created_at). npx tsc --noEmit clean in worker/ on 2026-08-29."
+  },
+  "COMM-FLAG-UNIFY-1": {
+    "description": "[COMM-FLAG-UNIFY-1] Two lanes could take money for the same listing. The legacy bookListing fence in listings.ts read only commercial{Live,Consult}ListingsEnabled; commercial_checkout.ts read only commercial{Live,Consult}CheckoutEnabled. With Checkout ON and Listings OFF both routes accepted a purchase for one listing - the legacy one taking a hold() into ord_* escrow, the commercial one into commercial-order:* escrow - two unrelated orders, two escrow buckets and two refund paths for one seat. Flipping four flags in the right order was load-bearing and nothing enforced it. NEW lib/commercial_lane.ts returns a THREE-state answer (on = both true, off = both false, mixed = disagreement) read by both files. mixed is a distinct state deliberately: collapsing to `listings && checkout` would fail safe but SILENTLY, so a half-configured money lane would look like a normal 'unavailable' and nobody would learn the config is wrong. mixed returns 503 on both surfaces and emits telemetry carrying the actual flag values. configAllows() was deleted rather than rewritten - a boolean cannot express mixed, and that collapse is the silence that allowed the window.",
+    "shipped": "2026-08-29",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "commercialLiveListingsEnabled",
+      "commercialLiveCheckoutEnabled",
+      "commercialConsultListingsEnabled",
+      "commercialConsultCheckoutEnabled"
+    ],
+    "success": [
+      {
+        "event": "commercial checkout",
+        "where": {},
+        "property": "reason",
+        "not_in": [
+          "lane_misconfigured"
+        ],
+        "min_events": 0,
+        "note": "FAILURE VALUE and the operator alarm. Any occurrence means the four flags disagree in prod right now - fix the flags, do not fix the code. Zero is the expected steady state."
+      },
+      {
+        "event": "commercial_lane_misconfigured",
+        "where": {
+          "surface": "legacy_book"
+        },
+        "property": "listing_kind",
+        "in": [
+          "live_event",
+          "consult"
+        ],
+        "min_events": 0,
+        "note": "Same alarm from the legacy fence. Emitted with the actual flag values so the half-flip is visible without a KV read."
+      },
+      {
+        "event": "commercial checkout",
+        "where": {},
+        "property": "outcome",
+        "equals": "authorized",
+        "min_events": 1,
+        "note": "The lane still works when all four flags agree. Asserted because the risk of this change is over-refusing: if `on` were computed wrongly, checkout would 503 every purchase and the two FAILURE VALUE assertions above would still be green."
+      }
+    ],
+    "_verified_at": "NEW worker/src/lib/commercial_lane.ts (commercialLaneState, commercialLaneFlags); worker/src/routes/listings.ts bookListing switches on the three states and commercialBookingLaneOn() removed; worker/src/routes/commercial_checkout.ts laneState() replaces configAllows() at the checkout entry gate. Four flag names unchanged - renaming any would silently revert it to DEFAULTS since the override blob already sits in prod KV. npx tsc --noEmit clean in worker/ on 2026-08-29."
   }
 }

@@ -46,6 +46,7 @@ import { emailBookingConfirmed } from "../cal/emails";
 // [AVA-IDGATE-1] readConfig is no longer read here — gatePublicAction() owns the
 // flag check (identityGatingEnabled) and the fail-closed posture.
 import { gatePublicAction, emailOf, type PublicAction } from "../lib/identity_gate";
+import { commercialLaneState, commercialLaneFlags, type CommercialLaneState } from "../lib/commercial_lane";
 // [AVA-MKT-VERT-1] Taxonomy: verticals, pinned category versions, attrs validation.
 // Spec: Specs/PLAN-2026-07-17-ai-listing-creation-DRAFT.md §2.0, §2.2, §2.3, §2.4.
 import { DEFAULT_VERTICAL, resolveCategoryVersion, validateAttrs } from "./categories";
@@ -78,14 +79,10 @@ async function marketplacePublishOn(env: Env): Promise<boolean> {
 // Once a commercial service lane is enabled, the legacy booking endpoint must
 // not be able to create an order that has no commercial entitlement or policy
 // snapshot. Keep the old booking behavior intact while that lane is dark.
-async function commercialBookingLaneOn(env: Env, kind: string): Promise<boolean | null> {
-  try {
-    const cfg = await readConfig(env);
-    return kind === "live_event"
-      ? cfg.commercialLiveListingsEnabled === true
-      : kind === "consult" && cfg.commercialConsultListingsEnabled === true;
-  } catch { return null; }
-}
+// [COMM-FLAG-UNIFY-1] `commercialBookingLaneOn` REMOVED. It read only the
+// *ListingsEnabled flags, which was half the question — see lib/commercial_lane.ts.
+// bookListing now calls commercialLaneState() directly so both sides of the fence read
+// the same four flags through the same function.
 
 // [LIVE-CARVE-1] Is the publish-time KYC check on? Returns null when the config is
 // unreadable so the caller can 503 rather than guess. FAILS CLOSED by intent: an
@@ -1665,9 +1662,26 @@ export async function bookListing(req: Request, env: Env, id: string): Promise<R
   if (!l || !["published", "live"].includes(l.status)) return json({ error: "listing not available" }, 404);
   if (l.creator_id === ctx.uid) return json({ error: "cannot book your own listing" }, 400);
   if (l.kind === "live_event" || l.kind === "consult") {
-    const commercialOn = await commercialBookingLaneOn(env, String(l.kind));
-    if (commercialOn === null) return json({ error: "commercial configuration unavailable" }, 503);
-    if (commercialOn) {
+    // [COMM-FLAG-UNIFY-1] One predicate, shared with commercial_checkout.ts. This fence
+    // used to read only the *ListingsEnabled flags while checkout read only the
+    // *CheckoutEnabled ones, so a half-flip left BOTH lanes taking money for one listing
+    // into two unrelated escrow buckets. `mixed` is now its own state and refuses here
+    // too — a half-configured money lane must never be the reason a charge succeeds.
+    const kind = l.kind === "live_event" ? "live_event" : "consult_1to1";
+    let lane: CommercialLaneState;
+    try {
+      lane = commercialLaneState(await readConfig(env), kind);
+    } catch {
+      return json({ error: "commercial configuration unavailable" }, 503);
+    }
+    if (lane === "mixed") {
+      track(env, ctx.uid, "commercial_lane_misconfigured", APP, {
+        listing_id: id, listing_kind: l.kind, surface: "legacy_book",
+        ...commercialLaneFlags(await readConfig(env), kind),
+      });
+      return json({ error: "commercial configuration unavailable", reason: "lane_misconfigured" }, 503);
+    }
+    if (lane === "on") {
       return json({
         error: "commercial_checkout_required",
         message: "This service must be purchased through commercial checkout.",

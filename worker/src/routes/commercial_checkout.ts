@@ -14,6 +14,7 @@ import { readConfig, type PlatformConfig } from "./config";
 import { hold, refund } from "../ledger";
 import { json } from "../util";
 import { commercialEvent } from "../lib/commercial_telemetry";
+import { commercialLaneState, commercialLaneFlags, type CommercialLaneState } from "../lib/commercial_lane";
 import { claimBlock, releaseBlocks } from "../cal/engine";
 import { notifyCommercialUsers } from "../lib/commercial_notifications";
 
@@ -256,10 +257,15 @@ function policyFor(kind: CheckoutKind, attrs: Record<string, unknown>, config: P
   };
 }
 
-function configAllows(kind: CheckoutKind, config: PlatformConfig): boolean {
-  return kind === "live_event"
-    ? config.commercialLiveCheckoutEnabled === true
-    : config.commercialConsultCheckoutEnabled === true;
+// [COMM-FLAG-UNIFY-1] Same predicate as the legacy fence in listings.ts. This used to
+// read ONLY commercial*CheckoutEnabled while that fence read ONLY commercial*ListingsEnabled,
+// so a half-flip opened both lanes on one listing — two holds, two escrow buckets, two
+// refund paths, one seat. `mixed` refuses here too rather than quietly behaving like off.
+// `configAllows` is gone: a boolean cannot express `mixed`, and collapsing the
+// misconfiguration into `false` is exactly the silence that let the double-charge window
+// exist. Callers switch on the three states.
+function laneState(kind: CheckoutKind, config: PlatformConfig): CommercialLaneState {
+  return commercialLaneState(config, kind);
 }
 
 function safeResponse(raw: string | null): Record<string, unknown> | null {
@@ -314,7 +320,18 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
   const idem = idempotencyKey(req);
   if (!idem) return json({ error: "valid Idempotency-Key required" }, 400);
   const config = await readConfig(env);
-  if (!configAllows(route.kind, config)) {
+  // [COMM-FLAG-UNIFY-1] `mixed` is reported separately from `off`. Both refuse, but only
+  // one is an operator error, and a half-configured money lane must be loud — the whole
+  // reason this bug survived is that nothing anywhere said the four flags disagreed.
+  const lane = laneState(route.kind, config);
+  if (lane === "mixed") {
+    commercialEvent(env, "checkout", auth.uid, {
+      kind: route.kind, outcome: "refused", reason: "lane_misconfigured",
+      ...commercialLaneFlags(config, route.kind),
+    });
+    return json({ error: "commercial checkout unavailable", reason: "lane_misconfigured" }, 503);
+  }
+  if (lane !== "on") {
     commercialEvent(env, "checkout", auth.uid, { kind: route.kind, outcome: "refused", reason: "checkout_disabled" });
     return json({ error: "commercial checkout disabled" }, 404);
   }
