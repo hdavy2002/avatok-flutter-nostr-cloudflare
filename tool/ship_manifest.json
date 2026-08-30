@@ -3894,5 +3894,38 @@
       }
     ],
     "_verified_at": "NEW worker/src/lib/commercial_tax.ts (ACCT_PLATFORM_TAX, taxFor). NEW worker/migrations/2026-08-29-commercial-gst.sql adds gst_rate_pct/gst_amount/taxable_base to commercial_policy_snapshots and gst_amount to commercial_refund_receipts (NOT auto-applied). worker/src/routes/config.ts: gstEnabled/gstRatePct in the interface, in DEFAULTS (false/18), gstRatePct in numericKeys and gstEnabled correctly NOT in it. worker/src/routes/commercial_checkout.ts holds tax.buyerTotal and snapshots the breakdown. worker/src/commercial_settlement.ts: SettlementAuthority.gst_amount, loadAuthority selects p.gst_amount, authorityError validates it without folding it into the split identity, escrowRequired = gross + gst, releaseSnapshot queues the ACCT_PLATFORM_TAX leg last. worker/src/routes/commercial_lifecycle.ts and routes/commercial_admin_claims.ts both refund gross+gst and record gst on the receipt. Every column referenced by the new SQL was verified to exist by parsing migrations/*.sql - which caught commercial_settlement_jobs having settlement_job_id, not job_id, in the admin route's query. npx tsc --noEmit clean in worker/ on 2026-08-29."
+  },
+  "LIST-WEB-PUBLISH-1": {
+    "description": "[LIST-WEB-PUBLISH-1 / LIST-WEB-FORM-1 / LIST-WEB-MEDIA-1 / LIST-IDGATE-UX-1] Every listing ever created on the web was a permanent draft. The form collected FOUR fields (kind/title/one-liner/price) while publishListing requires seven things; there was no photo upload anywhere in web/ (grep for cover_media and api/media returned zero hits); there was no publish call at all (CreatorListings' only mutation was status:'cancelled'); and the page the form promised - 'Next you'll add cover photos and publish' - was never built, dashboard/listings/ held only index.astro and new.astro. The SERVER was never the bottleneck: normFields() already accepts 26 fields. FIXED: the form now collects category (previously defaulted silently to 'teachers' - creators were publishing under a category they never chose), starts_at + duration for live events, capacity for consults, plus language, location and 18+; NEW ListingPublish.tsx does raw-bytes upload to /upload/public with x-content-type exactly as create_listing_flow.dart does, and shows the publish requirements as a CHECKLIST before the button rather than as a refusal after it; NEW /dashboard/listings/publish page; a 'Finish' action on draft cards so pre-existing stranded drafts are reachable. CreateListing is now actually wrapped in RequireAccount, which its own header and new.astro had both claimed since it was written while rendering <Form/> bare. NEW lib/listingErrors.ts maps worker codes to sentences - the owner's screenshot literally read 'identity_required', and the two identity gates emit two different strings from two different tables, neither handled. The form copy claiming identity is checked at publish was wrong and is fixed: the liveness gate fires at DRAFT CREATION.",
+    "shipped": "2026-08-29",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "identityGateContentActionsEnabled",
+      "listingPublishKycRequired",
+      "marketplacePublishEnabled"
+    ],
+    "success": [
+      {
+        "event": "listing_published",
+        "where": {},
+        "property": "surface",
+        "equals": "web",
+        "min_events": 1,
+        "note": "A listing goes draft -> published entirely from the browser. This event has NEVER fired from web because no publish call existed; its first appearance is the whole proof. If the worker does not tag surface, assert on any listing_published from a web session instead."
+      },
+      {
+        "event": "listing_blocked_identity_unverified",
+        "where": {},
+        "property": "listing_kind",
+        "not_in": [
+          "live_event",
+          "consult"
+        ],
+        "min_events": 0,
+        "note": "FAILURE VALUE shared with LIVE-CARVE-1. Creators still gated means the carve-out flags did not land and the new form cannot help."
+      }
+    ],
+    "_verified_at": "web/src/islands/dashboard/CreateListing.tsx (category/starts_at/duration_min/capacity/spoken_lang/location/adults_only, RequireAccount wrapper, redirect to the publish screen); NEW web/src/islands/dashboard/ListingPublish.tsx (upload + checklist + POST /api/listings/:id/publish); NEW web/src/pages/dashboard/listings/publish.astro; NEW web/src/lib/listingErrors.ts; web/src/islands/dashboard/CreatorListings.tsx Finish action on drafts. Endpoints confirmed against the worker: GET /api/explore/categories -> {categories:[{id,label,emoji}]} (listings.ts exploreCategories, same listing_categories table publishListing validates against), POST /upload/public reads req.arrayBuffer() and returns {hash,key,url,status,id} (media.ts), CAPACITIES {1,10,20} and duration 5-480 from publishListing. cfImage() used rather than a hand-built /cdn-cgi path because it splices the transform after the ORIGIN of an absolute URL. `npx tsc --noEmit -p tsconfig.json` in web/ clean apart from three PRE-EXISTING @types/node errors in astro.config.mjs, src/lib/config.ts and tailwind.config.ts. NOTE: `astro check` could not run in the Linux sandbox - node_modules carries the darwin-arm64 rollup binary - so .astro files were not type-checked; the new page is a thin island wrapper."
   }
 }

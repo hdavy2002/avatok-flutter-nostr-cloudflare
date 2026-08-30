@@ -147,6 +147,12 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
                   </div>
                   <h3 className="line-clamp-2 font-display font-semibold text-[16px] leading-tight text-ink">{l.title}</h3>
                   <div className="mt-auto flex items-center gap-1.5 pt-2">
+                    {/* [LIST-WEB-PUBLISH-1] Drafts made before the publish screen existed
+                        are otherwise unreachable — Edit was the only action, and editing a
+                        draft that can never be published is not a way out of one. */}
+                    {st === 'draft' && (
+                      <a href={`/dashboard/listings/publish?id=${encodeURIComponent(l.id)}`} className="flex-1 rounded-zineField border-zine border-ink bg-lime px-2 py-1.5 text-center font-mono font-bold uppercase text-[11px] tracking-[0.04em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">Finish</a>
+                    )}
                     <a href={`/dashboard/listings/new?id=${encodeURIComponent(l.id)}`} className="flex-1 rounded-zineField border-zine border-ink bg-paper px-2 py-1.5 text-center font-mono font-bold uppercase text-[11px] tracking-[0.04em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">Edit</a>
                     {st !== 'cancelled' && (
                       <button type="button" disabled={busy === l.id} onClick={() => archive(l.id)} className="flex-1 rounded-zineField border-zine border-ink bg-paper2 px-2 py-1.5 font-mono font-bold uppercase text-[11px] tracking-[0.04em] text-inkSoft shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50">Archive</button>

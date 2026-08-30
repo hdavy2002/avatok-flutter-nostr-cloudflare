@@ -1,0 +1,21 @@
+---
+// [LIST-WEB-PUBLISH-1] /dashboard/listings/publish?id=<listing>
+//
+// The page CreateListing.tsx has been promising since it was written ("Next you'll add
+// cover photos and publish") and which did not exist — this directory held only
+// index.astro and new.astro, so every draft made on the web was a dead end.
+//
+// The island reads ?id= on the client and gates itself with RequireAccount.
+export const prerender = false;
+
+import Dashboard from '../../../layouts/Dashboard.astro';
+import ListingPublish from '../../../islands/dashboard/ListingPublish.tsx';
+---
+
+<Dashboard title="Publish listing · avatok.ai" active="listings">
+  <header class="mb-6">
+    <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">Almost there</span>
+    <h1 class="mt-2 font-display font-semibold text-[30px] leading-tight text-ink">Photos &amp; publish</h1>
+  </header>
+  <ListingPublish client:load />
+</Dashboard>
