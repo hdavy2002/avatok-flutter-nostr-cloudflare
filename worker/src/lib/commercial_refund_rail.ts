@@ -105,3 +105,52 @@ export async function executeCommercialRefund(env: Env, args: {
   // NOT "refunded". Cashfree has accepted, not completed.
   return { ok: true, state: "refund_pending", rail: "cashfree" };
 }
+
+/**
+ * [COMM-NOSHOW-1] Write the terminal refund record: receipt, order, booking,
+ * entitlements, settlement job. Everything except moving the money, which
+ * `executeCommercialRefund` has already done.
+ *
+ * Shared by the admin claims route and the settlement cron so the two cannot disagree
+ * about what "refunded" leaves behind. Idempotent — `INSERT OR IGNORE` on a receipt id
+ * derived from the order, and every UPDATE is a state assignment rather than a delta.
+ */
+export async function finalizeCommercialRefund(env: Env, args: {
+  orderId: string;
+  sessionId: string | null;
+  listingId: string;
+  bookingId: string | null;
+  buyerId: string;
+  creatorId: string;
+  kind: string;
+  grossAmount: number;      // taxable base
+  refundedAmount: number;   // what the buyer gets back: base + tax
+  gstAmount: number;
+  currency: string;
+  policySnapshotId: string;
+  reason: string;
+  actor: "buyer" | "creator" | "provider" | "system";
+}): Promise<string> {
+  const receiptId = `commercial-refund:${args.orderId}`;
+  const now = Date.now();
+  await metaDb(env).batch([
+    metaDb(env).prepare(
+      `INSERT OR IGNORE INTO commercial_refund_receipts
+       (refund_receipt_id,order_id,commercial_session_id,listing_id,booking_id,buyer_id,creator_id,
+        kind,gross_amount,refunded_amount,remaining_amount,platform_fee_amount,creator_amount,
+        currency,settlement_state,reason,actor,policy_snapshot_id,issued_at,gst_amount)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,0,0,0,?11,'refunded',?12,?13,?14,?15,?16)`,
+    ).bind(receiptId, args.orderId, args.sessionId, args.listingId, args.bookingId,
+      args.buyerId, args.creatorId, args.kind, args.grossAmount, args.refundedAmount,
+      args.currency, args.reason.slice(0, 200), args.actor, args.policySnapshotId, now, args.gstAmount),
+    metaDb(env).prepare("UPDATE orders SET status='refunded',updated_at=?2 WHERE id=?1").bind(args.orderId, now),
+    metaDb(env).prepare("UPDATE bookings SET status='refunded',updated_at=?2 WHERE order_id=?1").bind(args.orderId, now),
+    metaDb(env).prepare(
+      "UPDATE commercial_entitlements SET state='refunded',updated_at=?2 WHERE order_id=?1",
+    ).bind(args.orderId, now),
+    metaDb(env).prepare(
+      "UPDATE commercial_settlement_jobs SET state='refunded',last_error=?2,updated_at=?3 WHERE order_id=?1",
+    ).bind(args.orderId, args.reason.slice(0, 500), now),
+  ]);
+  return receiptId;
+}

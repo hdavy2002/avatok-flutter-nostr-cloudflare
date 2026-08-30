@@ -12,6 +12,7 @@ import { ACCT_PLATFORM_TAX } from "./lib/commercial_tax";
 import { commercialEvent } from "./lib/commercial_telemetry";
 import { notifyCommercialUsers } from "./lib/commercial_notifications";
 import { claimCommercialMoney, completeCommercialMoneyClaim } from "./commercial_money_claim";
+import { executeCommercialRefund, finalizeCommercialRefund } from "./lib/commercial_refund_rail";
 
 type SettlementJob = {
   settlement_job_id: string;
@@ -261,6 +262,29 @@ async function releaseSnapshot(
   return { duplicate };
 }
 
+/**
+ * [COMM-NOSHOW-1] How long the party who OWES the session was actually connected.
+ *
+ * deliveryError() answers "was it delivered"; this answers "by whom was it not". The
+ * distinction decides who keeps the money: a creator who never showed owes a refund,
+ * while a buyer who never showed is `no_show_policy: session_charged` and the creator
+ * is paid. Collapsing the two — which is what parking everything in review_pending did —
+ * treats a creator no-show and a buyer no-show identically, and one of those is theft
+ * from the buyer while the other is theft from the creator.
+ */
+async function creatorConnectedMs(env: Env, sessionId: string, kind: string): Promise<number> {
+  const role = kind === "live_event" ? "host" : "creator";
+  const row = await metaDb(env).prepare(
+    `SELECT COALESCE(SUM(i.connected_ms),0) total
+       FROM commercial_participant_intervals i
+       JOIN commercial_session_members m
+         ON m.commercial_session_id=i.commercial_session_id AND m.account_id=i.account_id
+      WHERE i.commercial_session_id=?1 AND m.role=?2
+        AND i.reconciliation_state IN ('closed','reconciled')`,
+  ).bind(sessionId, role).first<{ total: number }>();
+  return Math.max(0, Math.trunc(Number(row?.total ?? 0)));
+}
+
 async function connectedMs(env: Env, sessionId: string, buyerId: string): Promise<number> {
   const row = await metaDb(env).prepare(
     `SELECT COALESCE(SUM(connected_ms),0) total FROM commercial_participant_intervals
@@ -356,7 +380,68 @@ async function processJob(env: Env, job: SettlementJob): Promise<void> {
   const invalid = authorityError(authority);
   if (invalid) return await markReview(env, job.settlement_job_id, invalid);
   const delivery = await deliveryError(env, job.commercial_session_id, authority);
-  if (delivery) return await markReview(env, job.settlement_job_id, delivery);
+  if (delivery) {
+    // [COMM-NOSHOW-1] A delivery failure used to mean review_pending, always — which is
+    // why `creator_no_show` was unreachable from anywhere in the product and money sat
+    // frozen with no screen behind it. Ask WHO failed to deliver, and if it was the
+    // creator, honour the snapshotted creator-cancellation policy automatically.
+    //
+    // Only evidence failures are re-classified. A bad policy snapshot or a config
+    // problem is still a human's problem and still goes to review.
+    const evidenceFailure = delivery.startsWith("insufficient signed")
+      || delivery.startsWith("live event never reached");
+    if (!evidenceFailure) return await markReview(env, job.settlement_job_id, delivery);
+
+    let policy: Record<string, unknown> = {};
+    try { policy = JSON.parse(authority.cancellation_policy_json) as Record<string, unknown>; } catch { /* handled below */ }
+    const minimumMs = Number.isFinite(Number(policy.min_connected_ms))
+      ? Math.trunc(Number(policy.min_connected_ms)) : 60_000;
+    const creatorMs = await creatorConnectedMs(env, job.commercial_session_id, authority.kind);
+
+    if (creatorMs >= minimumMs) {
+      // The creator delivered; the other side did not turn up. `no_show_policy` is
+      // `session_charged`, so this settles normally rather than refunding — the whole
+      // point of that policy is that a creator who showed up gets paid.
+      commercialEvent(env, "settlement", null, { outcome: "buyer_no_show", kind: authority.kind });
+    } else {
+      const pct = Number(policy.creator_cancel_refund_pct);
+      // 100 is the only percentage the refund machinery can express (receipts are
+      // written refunded_amount = gross, remaining = 0). Anything else is a human's call.
+      if (pct !== 100) return await markReview(env, job.settlement_job_id, `creator_no_show:${delivery}`);
+      const gross = Math.trunc(Number(authority.gross_amount));
+      const gstAmount = Math.max(0, Math.trunc(Number(authority.gst_amount ?? 0)));
+      const refundable = gross + gstAmount;
+      const claimed = await claimCommercialMoney(env, {
+        orderId: authority.order_id, claimType: "refund", claimId: `no-show:${job.settlement_job_id}`,
+      });
+      if (!claimed.owned) return await markReview(env, job.settlement_job_id, "money claim held elsewhere");
+      const money = await executeCommercialRefund(env, {
+        orderId: authority.order_id,
+        buyerId: authority.buyer_id,
+        amount: refundable,
+        reason: "creator_no_show",
+      });
+      if (!money.ok) return await markReview(env, job.settlement_job_id, `creator_no_show_refund_failed:${money.error}`);
+      await finalizeCommercialRefund(env, {
+        orderId: authority.order_id,
+        sessionId: job.commercial_session_id,
+        listingId: authority.listing_id,
+        bookingId: authority.booking_id,
+        buyerId: authority.buyer_id,
+        creatorId: authority.creator_id,
+        kind: authority.kind,
+        grossAmount: gross,
+        refundedAmount: refundable,
+        gstAmount,
+        currency: authority.currency,
+        policySnapshotId: authority.policy_snapshot_id,
+        reason: "creator_no_show",
+        actor: "system",
+      });
+      commercialEvent(env, "settlement", null, { outcome: "refunded", reason: "creator_no_show", kind: authority.kind });
+      return;
+    }
+  }
 
   // [TAX-GST-1] Escrow holds base + tax in one hold (see commercial_checkout.ts), so
   // the sufficiency check must cover BOTH. Checking only gross would pass on an escrow

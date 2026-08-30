@@ -33,7 +33,7 @@ import { json } from "../util";
 import { metaDb } from "../db/shard";
 import { requireAdmin } from "./admin_money";
 import { escrowBalance } from "../ledger";
-import { executeCommercialRefund } from "../lib/commercial_refund_rail";
+import { executeCommercialRefund, finalizeCommercialRefund } from "../lib/commercial_refund_rail";
 import { claimCommercialMoney } from "../commercial_money_claim";
 import { commercialEvent } from "../lib/commercial_telemetry";
 
@@ -182,30 +182,24 @@ export async function adminResolveCommercialClaim(req: Request, env: Env, orderI
     });
     if (!money.ok) return json({ error: "refund failed", reason: money.error }, 502);
   }
-  const receiptId = `commercial-refund:${orderId}`;
-  await metaDb(env).batch([
-    metaDb(env).prepare(
-      `INSERT OR IGNORE INTO commercial_refund_receipts
-       (refund_receipt_id,order_id,commercial_session_id,listing_id,booking_id,buyer_id,creator_id,
-        kind,gross_amount,refunded_amount,remaining_amount,platform_fee_amount,creator_amount,
-        currency,settlement_state,reason,actor,policy_snapshot_id,issued_at,gst_amount)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?14,0,0,0,?10,'refunded',?11,'system',?12,?13,?15)`,
-    ).bind(receiptId, orderId, row.commercial_session_id, row.listing_id, row.booking_id,
-      row.buyer_id, row.creator_id, row.kind, gross,
-      row.currency ?? "INR", `admin_review:${reason}`.slice(0, 200),
-      row.policy_snapshot_id ?? "unknown", now, refundable, gstAmount),
-    metaDb(env).prepare("UPDATE orders SET status='refunded',updated_at=?2 WHERE id=?1").bind(orderId, now),
-    metaDb(env).prepare(
-      "UPDATE bookings SET status='refunded',updated_at=?2 WHERE order_id=?1",
-    ).bind(orderId, now),
-    metaDb(env).prepare(
-      "UPDATE commercial_entitlements SET state='refunded',updated_at=?2 WHERE order_id=?1",
-    ).bind(orderId, now),
-    metaDb(env).prepare(
-      `UPDATE commercial_settlement_jobs SET state='refunded',last_error=?2,updated_at=?3
-        WHERE order_id=?1`,
-    ).bind(orderId, `admin_refund:${a.uid}:${reason}`.slice(0, 500), now),
-  ]);
+  // [COMM-NOSHOW-1] One shared finalizer with the settlement cron, so an admin refund
+  // and an automatic no-show refund cannot disagree about what state they leave behind.
+  const receiptId = await finalizeCommercialRefund(env, {
+    orderId,
+    sessionId: row.commercial_session_id,
+    listingId: row.listing_id,
+    bookingId: row.booking_id,
+    buyerId: row.buyer_id,
+    creatorId: row.creator_id,
+    kind: row.kind,
+    grossAmount: gross,
+    refundedAmount: refundable,
+    gstAmount,
+    currency: row.currency ?? "INR",
+    policySnapshotId: row.policy_snapshot_id ?? "unknown",
+    reason: `admin_review:${reason}`,
+    actor: "system",
+  });
   commercialEvent(env, "admin_claim", a.uid, {
     kind: row.kind ?? "unknown", outcome: "refunded", reason,
   });

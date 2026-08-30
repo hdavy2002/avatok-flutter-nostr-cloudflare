@@ -4168,5 +4168,45 @@
       }
     ],
     "_verified_at": "worker/src/routes/listings.ts cardStatsFor() + shapeCard's fourth arg + nine call sites updated by regex and confirmed with `grep -c 'cardStatsFor(env'` = 9; seats_taken/seats_left/watching added to the card payload. web/src/lib/types.ts Card + CardView, web/src/lib/card.ts toCardView, web/src/components/ListingTile.tsx render. Column names checked against migrations/2026-08-24-commercial-stream-sessions.sql: commercial_entitlements(listing_id, role, state), commercial_participant_intervals(commercial_session_id, reconciliation_state), commercial_sessions(commercial_session_id, listing_id). npx tsc --noEmit clean in worker/; tsc clean in web/ apart from the three pre-existing @types/node errors."
+  },
+  "COMM-NOSHOW-1": {
+    "description": "[COMM-NOSHOW-1] `creator_no_show` and `provider_outage` were unreachable from the product: the public lifecycle route only ever emits creator_cancel or buyer_cancel, and the settlement cron sent EVERY delivery failure to review_pending. So a creator who simply did not turn up left the buyer's money frozen, indefinitely, waiting for a human. The missing question was WHO failed to deliver. deliveryError() answers 'was it delivered'; NEW creatorConnectedMs() answers 'by whom was it not', measuring the owing party's presence on its own (role='host' for live, 'creator' for consult). That distinction decides who keeps the money: a creator who never showed owes a refund, while a buyer who never showed is no_show_policy=session_charged and the creator is PAID. Collapsing the two is theft from the buyer in one direction and from the creator in the other. Now: creator present but no two-party overlap -> buyer no-show, settle normally; creator absent -> honour the snapshotted creator_cancel_refund_pct automatically, refunding base+tax on the correct rail. ONLY EVIDENCE FAILURES are re-classified - a bad policy snapshot or a config problem is still a human's problem and still goes to review - and only pct===100 auto-refunds, because commercial_refund_receipts is written refunded_amount=gross/remaining=0 and cannot express a partial. Uses the same claimCommercialMoney primitive as every other money path, so the cron and a concurrent admin action cannot both refund. ALSO: NEW finalizeCommercialRefund() is the single definition of what 'refunded' leaves behind (receipt, order, booking, entitlements, job), shared by the cron and the admin claims route, which previously carried its own copy.",
+    "shipped": "2026-08-29",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "commercialLiveJoinEnabled",
+      "commercialConsultJoinEnabled",
+      "commercialCreatorCancelRefundPct"
+    ],
+    "success": [
+      {
+        "event": "commercial settlement",
+        "where": {},
+        "property": "outcome",
+        "equals": "refunded",
+        "min_events": 0,
+        "note": "A creator no-show now refunds automatically. Must carry reason=creator_no_show; check the buyer's balance or the gateway reversal actually moved, not just that the event fired."
+      },
+      {
+        "event": "commercial settlement",
+        "where": {},
+        "property": "outcome",
+        "equals": "buyer_no_show",
+        "min_events": 0,
+        "note": "The OTHER half, and the one most likely to be got wrong. A creator who showed up while the buyer did not must still be PAID - this event followed by a settled job proves it. If this outcome is instead followed by a refund, the presence check is inverted."
+      },
+      {
+        "event": "commercial settlement",
+        "where": {},
+        "property": "reason",
+        "not_in": [
+          "creator_no_show_refund_failed"
+        ],
+        "min_events": 0,
+        "note": "FAILURE VALUE. The refund was decided but the rail refused - money still frozen, and now with a decision attached that nobody acted on."
+      }
+    ],
+    "_verified_at": "worker/src/commercial_settlement.ts creatorConnectedMs() + the delivery re-classification in settleOne; worker/src/lib/commercial_refund_rail.ts finalizeCommercialRefund(); worker/src/routes/commercial_admin_claims.ts switched onto it. Roles confirmed against the entitlement writers: live_event host self-grant writes role='host' (commercial_stream_sessions.ts), consult creator row writes role='creator' (commercial_checkout.ts, [COMM-CONSULT-ENT-1]) - both are commercial_session_members roles by the time an interval exists. min_connected_ms read from the snapshot with the same 60_000 fallback deliveryError uses. npx tsc --noEmit clean in worker/."
   }
 }
