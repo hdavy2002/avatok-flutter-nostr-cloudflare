@@ -434,6 +434,14 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
     return json({ error: route.kind === "live_event" ? "ticket already owned" : "consultation already booked" }, 409);
   }
 
+  // [TAX-GST-1 fix] Computed OUT here, not inside the try, because the failure path in
+  // the catch has to refund exactly what was charged. It previously refunded `price`
+  // while the hold took `tax.buyerTotal` — so with GST switched on, an aborted checkout
+  // would have returned the base and quietly kept the tax. Caught by reading the catch
+  // block; `gstEnabled` is false in production, so it never reached a real buyer.
+  const tax = taxFor(config, price);
+  if (!tax) return json({ error: "commercial tax configuration invalid" }, 503);
+
   let holdWasFresh = false;
   const calendarClaims: CalendarClaim[] = [];
   try {
@@ -465,8 +473,6 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
     // buyer's statement for one purchase. Settlement pays the tax leg out of escrow to
     // 'platform:tax' before splitting, and a refund returns everything the buyer paid
     // because everything the buyer paid is in one place.
-    const tax = taxFor(config, price);
-    if (!tax) throw new Error("commercial tax configuration invalid");
     if (tax.buyerTotal > 0) {
       const held = await hold(env, auth.uid, orderId, tax.buyerTotal, {
         opId: `commercial:hold:${orderId}`,
@@ -782,10 +788,14 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
     if (!validEntitlement) {
       for (const claim of calendarClaims) await releaseBlocks(env, "avaconsult", claim.sourceRef);
     }
-    if (!validEntitlement && price > 0) {
-      try { await refund(env, orderId, auth.uid, price, { opId: `commercial:checkout-failure:${orderId}`, reason: "commercial checkout failed", title: listing.title }); } catch { /* review via ledger */ }
+    // [TAX-GST-1 fix] tax.buyerTotal, NOT price. The hold took base + tax in one debit,
+    // so an aborted checkout must give back base + tax. Refunding `price` here left the
+    // GST sitting in escrow on a purchase that never happened — money owed to a tax
+    // authority for a supply that did not occur, and the buyer short by the tax.
+    if (!validEntitlement && tax.buyerTotal > 0) {
+      try { await refund(env, orderId, auth.uid, tax.buyerTotal, { opId: `commercial:checkout-failure:${orderId}`, reason: "commercial checkout failed", title: listing.title }); } catch { /* review via ledger */ }
     }
-    if (!validEntitlement && (holdWasFresh || price === 0 || collision || slotConflict || ticketRace)) {
+    if (!validEntitlement && (holdWasFresh || tax.buyerTotal === 0 || collision || slotConflict || ticketRace)) {
       await metaDb(env).batch([
         metaDb(env).prepare(
           "UPDATE orders SET status='refunded',updated_at=?2 WHERE id=?1 AND status IN ('held','free')",
