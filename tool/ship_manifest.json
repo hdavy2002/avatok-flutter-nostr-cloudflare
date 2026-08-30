@@ -3985,5 +3985,45 @@
       }
     ],
     "_verified_at": "NEW worker/migrations/2026-08-29-listings-series-id.sql (nullable series_id + idx_listings_series on creator_id/series_id/starts_at, NOT auto-applied); worker/src/routes/listings.ts repeatListing() with weeks bounded 1-12, live_event only, starts_at required, versions re-pinned via catVersions like duplicateListing does; worker/src/index.ts route regex extended to (publish|status|duplicate|repeat|book|reviews|promotions) and repeatListing imported; web ListingPublish.tsx repeat control. Week arithmetic is plain 7-day epoch addition - correct because India has no DST and is the only market (CLAUDE.md 'no company' section); a DST market would need local-calendar shifting instead, and that is noted in the code. npx tsc --noEmit clean in worker/; tsc clean in web/ apart from the three pre-existing @types/node errors."
+  },
+  "PAY-CASHFREE-1": {
+    "description": "[PAY-CASHFREE-1] Inbound UPI via Cashfree - the rail, NOT yet the whole flow. Before this there was NO inbound UPI anywhere in the repo: a search for razorpay|cashfree|phonepe|paytm|payu|instamojo|juspay across worker/src, web/src and app/lib returned exactly ONE hit, an unrelated intent-classifier regex. UPI was payout-only. Cashfree rather than Stripe because Stripe India requires a registered company and avaTOK is unregistered (CLAUDE.md 'THERE IS NO COMPANY'). SHIPPED: env vars scoped per environment; lib/cashfree.ts (order create, order read-back, constant-time HMAC signature verification, async refund); migration for direct_purchases, a durable row written BEFORE the gateway call so a lost webhook is reconcilable instead of being an unrecoverable 'they paid and got nothing'; routes for order/webhook/status; ledger primitives holdExternal and refundExternal that debit external:cashfree instead of user:<uid> and credit the SAME escrow:<orderId>, so release(), the 80/20 split, commercial_settlement and refund all work unchanged - the entire reason to shape it that way instead of a parallel settlement path. Rejected alternative: credit the wallet then hold() - it makes the money briefly the buyer's SPENDABLE balance, so a failure between the steps leaves them holding tokens instead of a ticket and a reverse-to-source refund then claws back a balance they may have spent. The webhook verifies the signature over the RAW body before parsing, then RE-READS the order from the gateway rather than believing the delivered body, and checks the paid amount against what was quoted. Price is computed server-side from the listing; no client-supplied amount is accepted. 🚧 DELIBERATELY INCOMPLETE AND FENCED: the step after funding escrow - creating the commercial order, policy snapshot, booking and ENTITLEMENT - is NOT wired. Without it a buyer pays and receives no ticket, which is the exact shape of the Phase 1 bugs. Flags are not enough protection (one KV write is not a code review), so ENTITLEMENT_HANDOFF_IMPLEMENTED=false makes order creation return 503 outright, putting 'charged but nothing delivered' out of reach rather than merely behind a switch. TO FINISH: extract the order/snapshot/booking/entitlement block out of commercialCheckout into a shared function taking the funding step as a parameter - hold() for the wallet lane, holdExternal() for this one. ⚠️ NEVER RUN AGAINST A LIVE OR SANDBOX GATEWAY - no credentials existed; every Cashfree field name is a claim from the v2023-08-01 docs, not a verified fact.",
+    "shipped": "2026-08-29",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "cashfreeEnabled",
+      "guestCheckoutEnabled",
+      "gstEnabled",
+      "commercialLiveCheckoutEnabled",
+      "commercialConsultCheckoutEnabled"
+    ],
+    "success": [
+      {
+        "event": "cashfree_order_created",
+        "where": {},
+        "property": "total_paise",
+        "gte": 1,
+        "min_events": 0,
+        "note": "Zero is the CORRECT value today - order creation returns 503 while ENTITLEMENT_HANDOFF_IMPLEMENTED is false. A non-zero count before that constant flips to true means the fence was removed without the handoff being built, which is the single most dangerous regression in this issue."
+      },
+      {
+        "event": "cashfree_payment_credited",
+        "where": {},
+        "property": "total_paise",
+        "gte": 1,
+        "min_events": 0,
+        "note": "Escrow funded from a verified gateway payment. Must be accompanied by a matching entitlement row before anyone calls this shipped - the whole point of the fence is that this event without an entitlement means a buyer paid for nothing."
+      },
+      {
+        "event": "cashfree_amount_mismatch",
+        "where": {},
+        "property": "expected",
+        "exists": true,
+        "min_events": 0,
+        "note": "FAILURE VALUE. The gateway reported a different amount than was quoted - tampering, or a price that moved between order creation and payment. Any occurrence needs a human."
+      }
+    ],
+    "_verified_at": "NEW worker/src/lib/cashfree.ts; NEW worker/src/routes/cashfree.ts; NEW worker/migrations/2026-08-29-direct-purchases.sql (NOT auto-applied); worker/src/ledger.ts holdExternal + refundExternal + ACCT_EXTERNAL; worker/src/types.ts CASHFREE_* env; worker/src/routes/config.ts cashfreeEnabled/guestCheckoutEnabled in the interface and DEFAULTS (both false, both booleans so correctly NOT in numericKeys); worker/src/index.ts three routes registered beside the Stripe webhook, which confirms the webhook path sits outside any auth wall. Lane gating reuses commercialLaneState from [COMM-FLAG-UNIFY-1] so a new door cannot bypass a half-configured lane; pricing reuses taxFor from [TAX-GST-1]. npx tsc --noEmit clean in worker/; ship-gate flags check OK."
   }
 }

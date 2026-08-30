@@ -335,6 +335,22 @@ export interface Env {
   STRIPE_WEBHOOK_SECRET?: string;
   STRIPE_PUBLISHABLE_KEY?: string; // public pk_test/pk_live — returned to the app for the in-app PaymentSheet
 
+  // [PAY-CASHFREE-1] Inbound UPI. Cashfree, not Stripe: Stripe India requires a
+  // registered company and avaTOK is an unregistered business (CLAUDE.md, "THERE IS NO
+  // COMPANY"). Cashfree onboards unregistered merchants.
+  //
+  // Scope these PER ENVIRONMENT in wrangler.toml — sandbox keys in the staging block,
+  // production keys in the top-level block. Bare `wrangler` resolves the TOP-LEVEL
+  // block, which is production; everything goes through scripts/cf.sh.
+  //
+  // Absent ⇒ the routes 503. There is no test-key fallback: a payment rail that silently
+  // works against the wrong environment is worse than one that is plainly off.
+  CASHFREE_APP_ID?: string;
+  CASHFREE_SECRET_KEY?: string;
+  CASHFREE_WEBHOOK_SECRET?: string;
+  CASHFREE_ENV?: string;           // "sandbox" | "production"
+  CASHFREE_RETURN_URL?: string;    // where the browser lands after paying
+
   // AvaPayout (Phase 4). Production transfers flag-gated OFF pending legal (§10.3).
   PAYOUT_ENABLED?: string;         // "1" enables Wise transfers (ONLY after legal)
   WISE_API_KEY?: string;

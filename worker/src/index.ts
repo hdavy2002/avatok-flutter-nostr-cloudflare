@@ -52,6 +52,7 @@ import { walletTopup, walletTopupIntent, walletTopupPlayVerify, runPlayVoidedPur
 import { walletStatement, walletStatementExport, walletSummary, walletTopupQuote } from "./routes/wallet_statement";
 import { adminLedger, adminRefund, adminAdjust, adminAccount, adminRecon, adminEscrowHold, adminEscrowRelease, adminTaxExport, adminFailedSettlements, adminRetrySettlement, requireAdmin } from "./routes/admin_money";
 import { adminCommercialClaims, adminResolveCommercialClaim } from "./routes/commercial_admin_claims";
+import { cashfreeCreateOrder, cashfreeWebhook, cashfreeStatus } from "./routes/cashfree";
 import { dynwAcceptance } from "./routes/dynw_test"; // [DYNW-CORE-1] Phase 0 acceptance battery (admin-only, dark behind dynamicWorkersEnabled)
 import { receptRules } from "./routes/recept_rules"; // [DYNW-RECEPT-RULES-1] owner receptionist rule scripts
 import { welcomeBackfill } from "./routes/welcome_bonus"; // [WELCOME-100-1]
@@ -1143,6 +1144,12 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/wallet/topup/intent" && req.method === "POST") return await walletTopupIntent(req, env);
       if (p === "/api/wallet/topup/play/verify" && req.method === "POST") return await walletTopupPlayVerify(req, env);
       if (p === "/api/wallet/topup" && req.method === "POST") return await walletTopup(req, env);
+      // [PAY-CASHFREE-1] Inbound UPI — pay for a ticket in rupees with no wallet top-up.
+      // The webhook is deliberately NOT under requireUser: Cashfree authenticates with a
+      // signature over the raw body, which cashfreeWebhook verifies before parsing it.
+      if (p === "/api/pay/cashfree/order" && req.method === "POST") return await cashfreeCreateOrder(req, env);
+      if (p === "/api/pay/cashfree/webhook" && req.method === "POST") return await cashfreeWebhook(req, env);
+      if (p === "/api/pay/cashfree/status" && req.method === "GET") return await cashfreeStatus(req, env);
       if ((p === "/webhooks/stripe" || p === "/api/wallet/stripe-webhook") && req.method === "POST") return await stripeWebhook(req, env);
       if (p === "/api/wallet/spend" && req.method === "POST") return await walletSpend(req, env);
       // --- AvaReferral (invite → coins; inviter-only, server-priced reward) ---

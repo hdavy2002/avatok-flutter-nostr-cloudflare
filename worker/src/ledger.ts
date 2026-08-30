@@ -58,6 +58,93 @@ export async function hold(env: Env, uid: string, orderId: string, amount: numbe
 }
 
 /**
+ * [PAY-CASHFREE-1] Gateway-funded escrow. Money the buyer paid at a payment gateway,
+ * moved straight into the order's escrow bucket WITHOUT ever being a wallet balance.
+ *
+ * WHY THIS EXISTS. `hold()` debits `user:<uid>` through the WalletDO, so it can only
+ * spend a balance the buyer already funded — the top-up-then-spend two-step the whole
+ * Cashfree lane exists to remove. This debits `external:cashfree` instead and credits
+ * the SAME `escrow:<orderId>`, so everything downstream — release(), the 80/20 split,
+ * commercial_settlement.ts, refund() — works unchanged. That is the entire reason to
+ * shape it this way rather than inventing a parallel settlement path.
+ *
+ * REJECTED ALTERNATIVE: credit the wallet with the ticket price on `PAID`, then call
+ * the existing hold(). It reuses more code, but it makes the money briefly the buyer's
+ * SPENDABLE BALANCE — so a failure between the two steps leaves them holding tokens
+ * instead of a ticket, and a reverse-to-source refund then has to claw back a balance
+ * they may already have spent elsewhere. Direct charge has no such window.
+ *
+ * LEDGER-ONLY, so there is no DO to enforce idempotency for us. The `id` on the queue
+ * message is the idempotency key (the consumer's INSERT is ON CONFLICT DO NOTHING), so
+ * a replayed webhook cannot double-credit escrow. Callers MUST pass a stable opId
+ * derived from the gateway's own order id, never a random one.
+ *
+ * `uid` is recorded in meta, not in the debit account: the buyer's wallet is not party
+ * to this movement, but their statement still needs to show the purchase.
+ */
+export const ACCT_EXTERNAL = (source: string) => `external:${source}`;
+
+export async function holdExternal(
+  env: Env,
+  orderId: string,
+  amount: number,
+  opts: { opId: string; uid?: string | null; source?: string; title?: string; ref?: string | null },
+): Promise<LedgerResult> {
+  amount = Math.trunc(Number(amount));
+  if (!(amount > 0)) return { ok: false, status: 400, body: { error: "amount>0 required" } };
+  if (!opts.opId) return { ok: false, status: 400, body: { error: "opId required" } };
+  const source = opts.source ?? "cashfree";
+  await sendLedgerRow(
+    env,
+    opts.opId,
+    ACCT_EXTERNAL(source),
+    acctEscrow(orderId),
+    amount,
+    "external_purchase_hold",
+    orderId,
+    { source, gateway_ref: opts.ref ?? null, uid: opts.uid ?? null, title: opts.title ?? null, gross: amount },
+  );
+  return { ok: true, status: 200, body: { ok: true, amount, source } };
+}
+
+/**
+ * [PAY-REFUND-1] The mirror of holdExternal: escrow → back out to the gateway.
+ *
+ * Called ONLY after the gateway has confirmed it reversed the payment to the payer's
+ * source (their UPI handle). This records where the money went; it does not move it at
+ * the gateway. Refunding to a wallet instead uses the ordinary refund().
+ */
+export async function refundExternal(
+  env: Env,
+  orderId: string,
+  amount: number,
+  opts: { opId: string; uid?: string | null; source?: string; reason?: string; ref?: string | null },
+): Promise<LedgerResult> {
+  amount = Math.trunc(Number(amount));
+  if (!(amount > 0)) return { ok: false, status: 400, body: { error: "amount>0 required" } };
+  if (!opts.opId) return { ok: false, status: 400, body: { error: "opId required" } };
+  const source = opts.source ?? "cashfree";
+  const avail = await escrowBalance(env, orderId);
+  // Refusing rather than clamping: a short escrow here means the queue consumer is
+  // behind or the hold never landed, and silently reversing less than the buyer paid
+  // is the worst possible way to discover that.
+  if (avail < amount) {
+    return { ok: false, status: 409, body: { error: "escrow below refund amount", available: avail, amount } };
+  }
+  await sendLedgerRow(
+    env,
+    opts.opId,
+    acctEscrow(orderId),
+    ACCT_EXTERNAL(source),
+    amount,
+    "external_refund",
+    orderId,
+    { source, gateway_ref: opts.ref ?? null, uid: opts.uid ?? null, reason: opts.reason ?? null },
+  );
+  return { ok: true, status: 200, body: { ok: true, amount, source } };
+}
+
+/**
  * release — settle a completed order: 80% to the creator (into the standard
  * 7-day earnings hold — shows as "pending" in the UI), 20% platform fee.
  * Gross defaults to the escrow bucket's full balance. Idempotent per order.

@@ -63,6 +63,22 @@ export interface PlatformConfig {
    */
   gstEnabled: boolean;
   gstRatePct: number;
+  /**
+   * [PAY-CASHFREE-1] Inbound UPI through Cashfree. BOTH default false, and both are
+   * additionally gated on real CASHFREE_* credentials being present — a half-configured
+   * payment rail must be off, not half-working.
+   *
+   * `cashfreeEnabled`      the gateway integration itself
+   * `guestCheckoutEnabled` the buy-without-a-wallet flow that uses it
+   *
+   * Kept separate so the rail can be exercised in sandbox without opening the buying
+   * surface to anyone.
+   *
+   * ⚠️ NEVER TESTED AGAINST A LIVE GATEWAY. Run Cashfree sandbox end to end before
+   * either goes true. billingEnabled and walletRealMoney are false in prod today.
+   */
+  cashfreeEnabled: boolean;
+  guestCheckoutEnabled: boolean;
   commercialConsultJoinEarlyMin: number;
   commercialConsultJoinLateMin: number;
   commercialConsultExtensionEnabled: boolean;
@@ -1739,6 +1755,10 @@ const DEFAULTS: PlatformConfig = {
   // that decides whether a real person is charged a tax we cannot yet remit.
   gstEnabled: false,
   gstRatePct: 18,
+  // [PAY-CASHFREE-1] See the interface comment. Both OFF until the sandbox has been
+  // exercised end to end and real credentials are configured.
+  cashfreeEnabled: false,
+  guestCheckoutEnabled: false,
   commercialConsultJoinEarlyMin: 10,
   commercialConsultJoinLateMin: 2,
   // Paid consultation extensions stay dark until an owner-configured duration
