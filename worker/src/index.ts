@@ -191,7 +191,7 @@ import {
 import { marketplaceStub } from "./routes/stubs";
 import { verseSummary, verseAnnounce, verseStatement, reviewReply } from "./routes/verse";
 import {
-  createListing, updateListing, publishListing, setListingStatus, duplicateListing, cancelListing,
+  createListing, updateListing, publishListing, setListingStatus, duplicateListing, repeatListing, cancelListing,
   myListings, listingPromotions, deletePromotion, exploreBrowse, exploreLiveNow, exploreSearch,
   exploreCategories, getListing, getCreator, updateMyChannel, followCreator, unfollowCreator,
   blockCreator, report, bookListing, createReview,
@@ -1651,12 +1651,14 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       {
         const ls = p.match(/^\/api\/listings\/([A-Za-z0-9-]{1,64})\/stats$/);
         if (ls && req.method === "GET") return await listingStats(req, env, ls[1]);
-        const la = p.match(/^\/api\/listings\/([A-Za-z0-9-]{1,64})\/(publish|status|duplicate|book|reviews|promotions)$/);
+        const la = p.match(/^\/api\/listings\/([A-Za-z0-9-]{1,64})\/(publish|status|duplicate|repeat|book|reviews|promotions)$/);
         if (la) {
           const lid = la[1], act = la[2];
           if (act === "publish" && req.method === "POST") return await publishListing(req, env, lid);
           if (act === "status" && req.method === "POST") return await setListingStatus(req, env, lid);
           if (act === "duplicate" && req.method === "POST") return await duplicateListing(req, env, lid);
+          // [CARD-SLOTS-1] "repeat weekly for N weeks" -> N standalone drafts sharing a series_id.
+          if (act === "repeat" && req.method === "POST") return await repeatListing(req, env, lid);
           if (act === "book" && req.method === "POST") return await bookListing(req, env, lid);
           if (act === "reviews" && req.method === "POST") return await createReview(req, env, lid);
           if (act === "promotions" && (req.method === "GET" || req.method === "POST")) return await listingPromotions(req, env, lid);

@@ -3957,5 +3957,33 @@
       }
     ],
     "_verified_at": "NEW web/src/lib/card.ts (toCardView, durationLabel, languageLabel, priceLabel); web/src/lib/types.ts Card realigned to shapeCard + new CardView and CoverMedia; web/src/components/ListingTile.tsx rewritten to render from CardView. Field names confirmed against worker/src/routes/listings.ts shapeCard() lines 314-372: one_liner, cover_media, effective_price, promo_pct, currency_display, rating_avg, rating_count, review_count, joined_count, duration_min, capacity, spoken_lang, location, adults_only, favorited, created_at, and creator {uid, handle, name, avatar_url, kyc_verified}. app/lib/features/marketplace/intent_theme.dart priceLabel gains per_minute/per_hour. `npx tsc --noEmit -p tsconfig.json` in web/ clean apart from three PRE-EXISTING @types/node errors; `flutter analyze lib/features/marketplace/intent_theme.dart` shows only one PRE-EXISTING prefer_const_constructors info at line 521."
+  },
+  "CARD-SLOTS-1": {
+    "description": "[CARD-SLOTS-1] Repeating events, decided the cheap way. The card comps promise recurrence (days:[7,14,21,28], 'every Friday', an availability dialog) and per-slot seats ('44 OF 60 FREE') that the schema cannot express - listings has ONE starts_at and ONE duration_min, and availability_rules is per-USER not per-listing. OWNER DECISION 2026-08-29: one listing is one event. A weekly show is N listings sharing a nullable series_id, produced by POST /api/listings/:id/repeat {weeks:1..12}. The rejected alternative - a listing_sessions table with claimBlock moved onto the session - is the honest model for recurrence and the only one that can express per-slot seats, and it is a rewrite of the booking grain touching bookings, entitlements, settlement, calendar and every card. Not built speculatively. series_id is a LABEL, not a second grain: every row stays standalone with its own calendar block, seats, order and settlement. COPIES ARE DRAFTS, deliberately - publishing claims a calendar block and can 409 on a clash, so publishing N at once would either fail halfway leaving a partly-created series with no obvious repair, or need a transaction across N calendar claims that D1 will not give us; each copy goes through the normal publish path one at a time where a clash is something the creator can see and move. Repeating twice reuses the existing series_id rather than fragmenting into two identical-looking series. The source is stamped LAST so a mid-loop failure leaves it untouched rather than producing an empty series header. live_event only: a consult has no fixed start to shift and its recurrence is availability_rules, which already exists.",
+    "shipped": "2026-08-29",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "marketplacePublishEnabled"
+    ],
+    "success": [
+      {
+        "event": "listing_repeated",
+        "where": {},
+        "property": "created",
+        "gte": 1,
+        "min_events": 1,
+        "note": "The route ran and made copies. `created` is the ACTUAL number of rows inserted, not the requested weeks, so a partial loop shows up as a smaller number rather than passing silently."
+      },
+      {
+        "event": "listing_published",
+        "where": {},
+        "property": "listing_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "A COPY publishes on its own, with its own calendar claim. The failure this guards is every copy sharing one calendar block and the second publish 409ing on conflict - which is what would happen if series_id had been treated as a shared booking grain."
+      }
+    ],
+    "_verified_at": "NEW worker/migrations/2026-08-29-listings-series-id.sql (nullable series_id + idx_listings_series on creator_id/series_id/starts_at, NOT auto-applied); worker/src/routes/listings.ts repeatListing() with weeks bounded 1-12, live_event only, starts_at required, versions re-pinned via catVersions like duplicateListing does; worker/src/index.ts route regex extended to (publish|status|duplicate|repeat|book|reviews|promotions) and repeatListing imported; web ListingPublish.tsx repeat control. Week arithmetic is plain 7-day epoch addition - correct because India has no DST and is the only market (CLAUDE.md 'no company' section); a DST market would need local-calendar shifting instead, and that is noted in the code. npx tsc --noEmit clean in worker/; tsc clean in web/ apart from the three pre-existing @types/node errors."
   }
 }

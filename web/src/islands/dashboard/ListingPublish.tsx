@@ -54,6 +54,8 @@ function Panel({ id }: { id: string }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [gate, setGate] = useState<'liveness' | 'kyc' | null>(null);
+  const [repeatWeeks, setRepeatWeeks] = useState(4);
+  const [repeating, setRepeating] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async () => {
@@ -121,6 +123,26 @@ function Panel({ id }: { id: string }) {
     if (busy || uploading) return;
     try { await saveCovers(covers.filter((c) => c.url !== url)); }
     catch { setError('Could not remove that photo.'); }
+  }
+
+  async function repeat() {
+    if (repeating || busy) return;
+    setRepeating(true); setError(null);
+    try {
+      const token = await getActiveToken();
+      const r = await request<{ listing_ids?: string[] }>(
+        `/api/listings/${encodeURIComponent(id)}/repeat`,
+        { method: 'POST', auth: token, body: { weeks: repeatWeeks } },
+      );
+      const n = r.listing_ids?.length ?? 0;
+      // Straight to the list: the copies are drafts and each needs its own publish, so
+      // the useful next screen is the one that shows all of them.
+      window.location.href = `/dashboard/listings?repeated=${n}`;
+    } catch (e) {
+      setError(e instanceof ApiError
+        ? listingErrorMessage(e.error, (e.body as { detail?: unknown } | null)?.detail)
+        : 'Could not make the copies. Try again.');
+    } finally { setRepeating(false); }
   }
 
   async function publish() {
@@ -239,6 +261,26 @@ function Panel({ id }: { id: string }) {
           <a href="/dashboard/identity" className="mt-2 inline-block font-body font-bold text-[14px] text-blueInk underline">
             Verify now
           </a>
+        </Card>
+      )}
+
+      {/* [CARD-SLOTS-1] One listing is one event (owner decision 2026-08-29), so a weekly
+          show is N listings sharing a series_id — not one listing with N sessions. Each
+          copy is a DRAFT: publishing claims a calendar block and can clash, and doing N
+          claims at once would fail halfway with no obvious repair. */}
+      {isLive && !published && (
+        <Card fillClassName="bg-paper2">
+          <p className="font-body font-bold text-[13px] text-inkSoft">
+            Runs every week? Make copies now — each one gets its own date and its own seats,
+            and you publish them one at a time.
+          </p>
+          <div className="mt-2 flex items-center gap-2">
+            <select value={repeatWeeks} onChange={(e) => setRepeatWeeks(Number(e.target.value))}
+              className="rounded-zineField border-zine border-ink bg-card px-3 py-2 font-body font-bold text-[14px] text-ink">
+              {[1, 2, 3, 4, 6, 8, 12].map((w) => <option key={w} value={w}>{w} more week{w === 1 ? '' : 's'}</option>)}
+            </select>
+            <Button variant="blue" label="Make copies" loading={repeating} onClick={repeat} />
+          </div>
         </Card>
       )}
 

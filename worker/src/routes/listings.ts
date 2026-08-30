@@ -1080,6 +1080,82 @@ export async function duplicateListing(req: Request, env: Env, id: string): Prom
   return json({ ok: true, listing_id: nid });
 }
 
+/**
+ * [CARD-SLOTS-1] POST /api/listings/:id/repeat  { weeks: 1..12 }
+ *
+ * "Repeat this weekly for N weeks" → N NEW DRAFTS, each a standalone bookable event with
+ * its own starts_at, sharing a `series_id` with the source.
+ *
+ * WHY DRAFTS AND NOT PUBLISHED. Publishing claims a calendar block and can conflict
+ * (claimBlock → 409). Publishing N at once would either fail halfway, leaving a partly
+ * created series with no obvious repair, or need a transaction across N calendar claims
+ * that D1 will not give us. Each copy goes through the normal publish path, one at a
+ * time, where a clash is a thing the creator can see and move.
+ *
+ * WHY NOT `listing_sessions`. See the migration. One listing is one event; this groups
+ * copies, it does not introduce a second grain.
+ *
+ * live_event only — a consult has no fixed start to shift; its recurrence is
+ * availability_rules in AvaCalendar, which already exists.
+ */
+export async function repeatListing(req: Request, env: Env, id: string): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const b = (await req.json().catch(() => ({}))) as { weeks?: unknown };
+  const weeks = Math.trunc(Number(b.weeks));
+  // Bounded because each week is a row, a calendar claim and a card. Twelve is a quarter.
+  if (!Number.isInteger(weeks) || weeks < 1 || weeks > 12) {
+    return json({ error: "weeks must be a whole number from 1 to 12" }, 400);
+  }
+  const db = metaDb(env);
+  const l = await db.prepare("SELECT * FROM listings WHERE id=?1").bind(id).first<any>();
+  if (!l || l.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
+  if (l.kind !== "live_event") {
+    return json({ error: "only live events repeat", detail: "A consult repeats through your availability in AvaCalendar." }, 400);
+  }
+  const baseStart = Number(l.starts_at);
+  if (!Number.isFinite(baseStart) || baseStart <= 0) {
+    return json({ error: "set a start date and time before repeating" }, 400);
+  }
+
+  // The source joins its own series so "cancel the series" includes the original. An
+  // existing series_id is reused, so repeating twice extends one series instead of
+  // fragmenting it into two that look identical to the creator.
+  const seriesId = String(l.series_id ?? `series:${id}`);
+  const now = Date.now();
+  const versions = await catVersions(env, String(l.category ?? ""));
+  const created: string[] = [];
+  const WEEK_MS = 7 * 86_400_000;
+
+  for (let i = 1; i <= weeks; i++) {
+    const nid = crypto.randomUUID();
+    // Plain 7-day arithmetic on a UTC epoch. India has no DST, which is the only market
+    // (see the "no company" section of CLAUDE.md), so a fixed week is exactly a week and
+    // the local clock time is preserved. Revisit if a DST market is ever added — there
+    // the honest version shifts the local calendar date, not the epoch.
+    const startsAt = baseStart + i * WEEK_MS;
+    await db.prepare(
+      `INSERT INTO listings (id, creator_id, kind, title, description, category, price, currency_display,
+         country, adults_only, badges, cover_media, starts_at, duration_min, capacity, translation_enabled,
+         spoken_lang, location, status, created_at, updated_at,
+         vertical, attrs, video_url, cat_version, playbook_version, template_version, series_id)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,'draft',?19,?19,?20,?21,?22,?23,?24,?25,?26)`,
+    ).bind(nid, ctx.uid, l.kind, l.title, l.description, l.category, l.price, l.currency_display,
+      l.country, l.adults_only, l.badges, l.cover_media, startsAt, l.duration_min, l.capacity,
+      l.translation_enabled ?? 0, l.spoken_lang ?? null, l.location ?? null, now,
+      l.vertical ?? DEFAULT_VERTICAL, l.attrs ?? null, l.video_url ?? null,
+      versions?.cat ?? 1, versions?.playbook ?? 1, versions?.template ?? 1, seriesId).run();
+    created.push(nid);
+  }
+  // Stamp the source last: if the loop threw partway, the source is untouched and the
+  // creator sees exactly the copies that were made rather than an empty series header.
+  await db.prepare("UPDATE listings SET series_id=?2, updated_at=?3 WHERE id=?1 AND creator_id=?4")
+    .bind(id, seriesId, now, ctx.uid).run();
+
+  track(env, ctx.uid, "listing_repeated", APP, { weeks, series_id: seriesId, created: created.length });
+  return json({ ok: true, series_id: seriesId, listing_ids: created, weeks });
+}
+
 // DELETE /api/listings/:id — cancel + release the slot.
 export async function cancelListing(req: Request, env: Env, id: string): Promise<Response> {
   const ctx = await requireUser(req, env);
