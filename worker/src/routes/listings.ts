@@ -605,7 +605,11 @@ function normFields(b: any): Record<string, unknown> {
   // Voice translation options ("Voice translation available" + creator's
   // language of transmission, e.g. 'hi' for Hindi).
   if (b.translation_enabled !== undefined) out.translation_enabled = b.translation_enabled ? 1 : 0;
-  if (b.spoken_lang !== undefined) out.spoken_lang = b.spoken_lang ? String(b.spoken_lang).slice(0, 12) : null;
+  // [LIST-CREATE-LANG-1] 64, not 12. The cap was written when this held ONE language
+  // code; the web form lets a creator pick several and sends them comma-separated, and
+  // "Hindi,English" is 13 characters — it truncated to "Hindi,Englis", mid-word, with
+  // no error. TEXT column, so nothing in the schema needed changing.
+  if (b.spoken_lang !== undefined) out.spoken_lang = b.spoken_lang ? String(b.spoken_lang).slice(0, 64) : null;
   // AvaMarketplace: the agent mandate + language/persona + type metadata.
   if (b.agent_instructions !== undefined) out.agent_instructions = b.agent_instructions ? String(b.agent_instructions).slice(0, 2000) : null;
   if (b.agent_lang !== undefined) out.agent_lang = b.agent_lang ? String(b.agent_lang).slice(0, 32) : null;
@@ -730,9 +734,10 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
     `INSERT INTO listings (id, creator_id, kind, title, description, category, price, currency_display,
        country, adults_only, badges, cover_media, starts_at, duration_min, capacity, status, created_at, updated_at,
        agent_instructions, agent_lang, agent_voice_persona, market_type, social_sub, location, expiry_days,
-       vertical, attrs, video_url, proposed_category, cat_version, playbook_version, template_version)
+       vertical, attrs, video_url, proposed_category, cat_version, playbook_version, template_version,
+       spoken_lang, translation_enabled)
      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,'draft',?16,?16,?17,?18,?19,?20,?21,?22,?23,
-             ?24,?25,?26,?27,?28,?29,?30)`,
+             ?24,?25,?26,?27,?28,?29,?30,?31,?32)`,
   ).bind(id, ctx.uid, kind, (f.title as string) ?? "Untitled", f.description ?? null, category,
     f.price ?? 0, f.currency_display ?? "USD", f.country ?? null, f.adults_only ?? 0, f.badges ?? null,
     f.cover_media ?? null, f.starts_at ?? null, f.duration_min ?? null,
@@ -740,7 +745,15 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
     f.agent_instructions ?? null, f.agent_lang ?? null, f.agent_voice_persona ?? null,
     f.market_type ?? (MARKET_KINDS.has(kind) ? kind : null), f.social_sub ?? null, f.location ?? null,
     f.expiry_days ?? null,
-    vertical, f.attrs ?? null, f.video_url ?? null, f.proposed_category ?? null, catV, pbV, tplV).run();
+    vertical, f.attrs ?? null, f.video_url ?? null, f.proposed_category ?? null, catV, pbV, tplV,
+    // [LIST-CREATE-LANG-1 2026-08-30] spoken_lang and translation_enabled were ACCEPTED by
+    // normFields, length-checked, and then silently dropped: neither appeared in this
+    // INSERT's column list, though both are in EDITABLE and both are written by
+    // updateListing. So a language chosen at CREATE vanished, and the only way to set one
+    // was to create the listing and then edit it. No error, no warning — the field simply
+    // did not exist afterwards. Found by picking Hindi+English in the new web form and
+    // reading `spoken_lang` back as NULL from prod.
+    f.spoken_lang ?? null, f.translation_enabled ?? 0).run();
   track(env, ctx.uid, "listing_draft_created", APP, {
     kind, vertical, category, proposed_category: f.proposed_category ?? null,
     cat_version: catV, playbook_version: pbV, template_version: tplV,
