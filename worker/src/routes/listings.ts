@@ -87,6 +87,17 @@ async function commercialBookingLaneOn(env: Env, kind: string): Promise<boolean 
   } catch { return null; }
 }
 
+// [LIVE-CARVE-1] Is the publish-time KYC check on? Returns null when the config is
+// unreadable so the caller can 503 rather than guess. FAILS CLOSED by intent: an
+// unreadable config must never be the reason an unverified account ships a paid
+// listing, which is the opposite posture to gatePublicAction's (that one fails open
+// because bricking every public action is worse than one ungated post).
+async function listingPublishKycRequired(env: Env): Promise<boolean | null> {
+  try {
+    return (await readConfig(env)).listingPublishKycRequired !== false;
+  } catch { return null; }
+}
+
 function marketplaceOff(): Response {
   return json({
     error: "marketplace_publish_disabled",
@@ -870,8 +881,28 @@ export async function publishListing(req: Request, env: Env, id: string): Promis
     if (!(Number(l.price) >= 0)) return json({ error: "bad price" }, 400);
   } else {
     // Creator services (live_event/consult) — KYC + photos + valid category + slot/availability.
-    const gate = await requireKyc(env, ctx.uid);
-    if (gate) return json({ error: gate.error, reason: "kyc" }, gate.status);
+    //
+    // [LIVE-CARVE-1] This is a SECOND, DIFFERENT gate from the liveness one at
+    // createListing:617. It reads `kyc_status` (authz.ts:45), which is written by the
+    // Rekognition-liveness path AND the Stripe Identity path — so turning liveness off
+    // leaves creators with no way to satisfy it, and every publish 403s
+    // "identity verification required" immediately after the draft succeeds. Two walls,
+    // one behind the other, is how the owner's screenshot fix would have looked fixed
+    // and stayed broken.
+    //
+    // ⚠️ RESTORE THIS BEFORE REAL MONEY-IN. Relaxing it means an unverified account can
+    // publish a listing that sells tickets. That is acceptable ONLY while
+    // billingEnabled=false and walletRealMoney=false and every commercial* flag is off,
+    // which is prod's state on 2026-08-29. `listingPublishKycRequired` back to true is a
+    // prerequisite in Specs/SPEC-2026-08-29-PAID-SESSIONS-FIX-AND-GUEST-PAY.md Phase 4.
+    const kycRequired = await listingPublishKycRequired(env);
+    if (kycRequired === null) return json({ error: "identity configuration unavailable" }, 503);
+    if (kycRequired) {
+      const gate = await requireKyc(env, ctx.uid);
+      if (gate) return json({ error: gate.error, reason: "kyc" }, gate.status);
+    } else {
+      track(env, ctx.uid, "listing_publish_kyc_exempt", APP, { listing_id: id, listing_kind: l.kind });
+    }
     if (!l.title || !l.category) return json({ error: "title and category required" }, 400);
     // Listing photos are mandatory: 1–5 (owner decision 2026-06-11).
     const covers = parseJson(l.cover_media, [] as unknown[]);

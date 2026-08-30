@@ -54,6 +54,43 @@ export type PublicAction =
   | "call_stranger"
   | "upload";
 
+/**
+ * [LIVE-CARVE-1] (owner decision 2026-08-29) The two enforcement classes.
+ *
+ * CONTENT = the actor publishes something they chose to make public. Relaxable as a
+ * group via `identityGateContentActionsEnabled`.
+ *
+ * CONTACT = the actor pushes themselves at a person who did not ask for them. NEVER
+ * relaxable by that switch, and deliberately given no exemption path of its own. The
+ * only way to ungate these is `identityGatingEnabled`, whose DEFAULTS comment in
+ * config.ts records the ungated first-message-to-a-stranger path as the confirmed
+ * CSAM-risk hole.
+ *
+ * ONE table, not two lists. `Record<PublicAction, ...>` makes TypeScript refuse to
+ * compile if a new PublicAction variant is added to the union and left unclassified —
+ * so the classification cannot silently drift from the type the way two hand-kept Sets
+ * would, and a new action can never fall through unclassified into the relaxed path.
+ */
+const ACTION_CLASS: Record<PublicAction, "content" | "contact"> = {
+  post: "content",
+  listing: "content",
+  comment: "content",
+  live: "content",
+  group_post: "content",
+  group_create: "content",
+  upload: "content",
+  forward: "content",
+  dm_stranger: "contact",
+  call_stranger: "contact",
+  group_join: "contact",
+};
+
+/** True only for actions the content switch is allowed to relax. Anything unknown at
+ *  runtime (a value that escaped the type) is treated as CONTACT — strict. */
+function isContentAction(action: PublicAction): boolean {
+  return ACTION_CLASS[action] === "content";
+}
+
 export type GateReason = "never_passed" | "expired" | "grandfather_expired";
 
 interface LivenessRow {
@@ -165,13 +202,26 @@ export async function gatePublicAction(
   action: PublicAction,
 ): Promise<Response | null> {
   let on = false;
+  let contentOn = true;
   try {
-    on = (await readConfig(env)).identityGatingEnabled === true;
+    const cfg = await readConfig(env);
+    on = cfg.identityGatingEnabled === true;
+    // [LIVE-CARVE-1] Absent/!== false ⇒ TRUE. Only an explicit `false` relaxes anything,
+    // so an unreadable or partially-populated config cannot silently open the gate.
+    contentOn = cfg.identityGateContentActionsEnabled !== false;
   } catch {
     on = false; // flag unreadable ⇒ gate off. The gate is new; do not brick the app.
   }
   if (!on) {
     void trackUserContact(env, uid, email, null, "identity_gate_flag_off", APP, { action });
+    return null;
+  }
+
+  // [LIVE-CARVE-1] Content actions only. dm_stranger / call_stranger / group_join are
+  // classified CONTACT in ACTION_CLASS above and never reach this branch, so flipping
+  // identityGateContentActionsEnabled cannot reopen the stranger-contact hole.
+  if (!contentOn && isContentAction(action)) {
+    void trackUserContact(env, uid, email, null, "identity_gate_content_exempt", APP, { action });
     return null;
   }
 

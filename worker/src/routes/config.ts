@@ -956,6 +956,29 @@ export interface PlatformConfig {
   // Ships DARK. Flip ON in KV only AFTER the backfill migration has run — otherwise
   // every existing user is gated on their next public action (spec §11.1).
   identityGatingEnabled: boolean;
+  // [LIVE-CARVE-1] (owner decision 2026-08-29) Second, NARROWER switch that relaxes the
+  // gate for CONTENT actions only — post/listing/comment/live/group_post/group_create/
+  // upload/forward. Set it false and creators stop being face-scanned to publish.
+  //
+  // CONTACT actions (dm_stranger, call_stranger, group_join) are NOT affected by this
+  // key and have no exemption path at all. That is deliberate: identityGatingEnabled is
+  // one global switch, and turning IT off ungates the first-message-to-a-stranger path,
+  // which the comment at DEFAULTS below records as the confirmed CSAM-risk hole. The
+  // owner asked to stop face-scanning creators; he did not ask to reopen that. Two
+  // switches is how you do one without the other.
+  //
+  // DEFAULT true = today's behaviour. Only an explicit KV override relaxes anything.
+  identityGateContentActionsEnabled: boolean;
+  // [LIVE-CARVE-1] The SECOND identity wall, at publish, for live_event/consult only
+  // (listings.ts). It reads `kyc_status` (authz.ts:45), NOT identity_proofs — a
+  // different table, written by the Rekognition-liveness and Stripe Identity paths. So
+  // relaxing the liveness gate alone leaves creators 403'd one step later, which is why
+  // this key exists rather than a second flip of the first one.
+  //
+  // DEFAULT true. ⚠️ Setting it false lets an unverified account publish a listing that
+  // sells tickets — acceptable only while billingEnabled/walletRealMoney/commercial* are
+  // all false. Restore to true before real money-in.
+  listingPublishKycRequired: boolean;
   // Liveness validity window in days (owner decision: 90). Widening this is the
   // no-code contingency if Didit's per-call price above the 500/mo free cap bites
   // (spec §9) — it divides check volume directly.
@@ -1952,6 +1975,14 @@ const DEFAULTS: PlatformConfig = {
   // per the staging-then-prod protocol in CLAUDE.md. Test per the "what to test"
   // checklist in IDGATE-WHAT-WE-DID-2026-07-10.md before promoting to prod.
   identityGatingEnabled: true,
+  // [LIVE-CARVE-1] See the interface comment. TRUE keeps today's behaviour; the owner
+  // sets this false in prod KV to stop face-scanning creators. It can never ungate
+  // dm_stranger / call_stranger / group_join — those are not in CONTENT_ACTIONS.
+  identityGateContentActionsEnabled: true,
+  // [LIVE-CARVE-1] See the interface comment. TRUE = today's behaviour. Set false in
+  // prod KV alongside identityGateContentActionsEnabled, and RESTORE BOTH before
+  // real money-in.
+  listingPublishKycRequired: true,
   livenessValidityDays: 90,           // owner decision 2026-07-10
   // [AVA-IDGATE-1] BUMPED v1→v2 when retention changed 584d → 256d. The version is
   // stored per-user, and hasCurrentConsent() only accepts the CURRENT one — so a

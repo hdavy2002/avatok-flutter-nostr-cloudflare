@@ -3582,5 +3582,62 @@
     "min_devices_on_build": 1,
     "flags": [],
     "no_telemetry": "The observable symptom is a thrown assertion on dispose, which surfaces as a client $exception via the PostHog error-tracking already wired in main.dart rather than as a bespoke event. The meaningful verification is the test that catches it, which now passes as part of a fully green 141/141 suite."
+  },
+  "LIVE-CARVE-1": {
+    "description": "[LIVE-CARVE-1] Stop face-scanning creators without reopening the stranger-contact hole. gatePublicAction read ONE global boolean (identityGatingEnabled), so the only way to unblock listing creation was to ungate dm_stranger too - which config.ts DEFAULTS records as the confirmed CSAM-risk hole. Split PublicAction into CONTENT (post/listing/comment/live/group_post/group_create/upload/forward) and CONTACT (dm_stranger/call_stranger/group_join) via ONE Record<PublicAction,...> table so TypeScript refuses to compile an unclassified new variant, and added identityGateContentActionsEnabled (default true) which relaxes CONTENT only. CONTACT has no exemption path at all, by design. SECOND WALL ALSO REMOVED: publishListing gates live_event/consult on requireKyc, which reads kyc_status - a DIFFERENT table from identity_proofs - so relaxing liveness alone left every publish 403ing one step later; listingPublishKycRequired (default true) gates that, and FAILS CLOSED on an unreadable config (opposite posture to gatePublicAction, deliberately: an unreadable config must never be why an unverified account ships a paid listing). RESTORE BOTH FLAGS TO TRUE BEFORE REAL MONEY-IN.",
+    "shipped": "2026-08-29",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "identityGatingEnabled",
+      "identityGateContentActionsEnabled",
+      "listingPublishKycRequired",
+      "listingLivenessGate"
+    ],
+    "success": [
+      {
+        "event": "identity_gate_content_exempt",
+        "where": {
+          "action": "listing"
+        },
+        "property": "action",
+        "equals": "listing",
+        "min_events": 1,
+        "note": "The carve-out fired for listing creation - the owner's reported 403. Emitted at identity_gate.ts gatePublicAction only on the content-exempt branch, so absence means the flag did not land or KV still overrides it."
+      },
+      {
+        "event": "listing_publish_kyc_exempt",
+        "where": {},
+        "property": "listing_kind",
+        "in": [
+          "live_event",
+          "consult"
+        ],
+        "min_events": 1,
+        "note": "Proves the SECOND wall was cleared. requireKyc reads kyc_status, a different table from identity_proofs, so without this a draft is created and publish still 403s one step later - fixed-looking and still broken."
+      },
+      {
+        "event": "identity_gate_hit",
+        "where": {
+          "action": "dm_stranger"
+        },
+        "property": "action",
+        "equals": "dm_stranger",
+        "min_events": 1,
+        "note": "THE ASSERTION THAT MATTERS. This event must STILL FIRE for an unverified user messaging a stranger. Its absence means the carve-out gutted the stranger-contact gate instead of carving it - the difference between the change the owner asked for and reopening the hole config.ts DEFAULTS names as the confirmed CSAM risk. Verify by hand with an unverified test account if traffic is too low to assert."
+      },
+      {
+        "event": "listing_blocked_identity_unverified",
+        "where": {},
+        "property": "listing_kind",
+        "not_in": [
+          "live_event",
+          "consult"
+        ],
+        "min_events": 0,
+        "note": "FAILURE VALUE. This is the block event from listings.ts identityGate. Seeing live_event/consult here after the flag flip means creators are still gated - the fix did not take."
+      }
+    ],
+    "_verified_at": "worker/src/lib/identity_gate.ts:44-55 PublicAction union; :57-93 ACTION_CLASS table + isContentAction; :190-215 gatePublicAction contentOn read and the content-exempt branch; worker/src/routes/config.ts identityGateContentActionsEnabled + listingPublishKycRequired in the PlatformConfig interface and in DEFAULTS; worker/src/routes/listings.ts listingPublishKycRequired() helper and the publishListing creator-services branch; app/lib/features/identity/public_action_gate.dart:34-46 PublicAction strings (client is REACTIVE to the 403, so no app change was needed); app/lib/core/remote_config.dart:564 listingLivenessGate drives the app's pre-emptive prompt and is flipped in KV, not code. npx tsc --noEmit clean in worker/ on 2026-08-29."
   }
 }
