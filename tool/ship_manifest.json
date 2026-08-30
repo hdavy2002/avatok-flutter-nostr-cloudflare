@@ -3695,5 +3695,64 @@
       }
     ],
     "_verified_at": "worker/src/routes/commercial_checkout.ts creator entitlement INSERT OR IGNORE (role='creator', account_id=listing.creator_id) plus the read-back authority check; worker/src/routes/commercial_stream_sessions.ts entitlement() role filter, the live_event call site (role: isHost?'host':'viewer'), the consult call site (role: isCreator?'creator':'buyer'), and canViewSession's separate role-blind query; extension assertion COUNT(*)>=2 on commercial_entitlements confirmed at commercial_stream_sessions.ts:846-850; UNIQUE(kind,listing_id,booking_id,account_id,role) confirmed at worker/migrations/2026-08-24-commercial-stream-sessions.sql:33-53. npx tsc --noEmit clean in worker/ on 2026-08-29."
+  },
+  "COMM-LIVE-AUTH-1": {
+    "description": "[COMM-LIVE-AUTH-1] Only ONE ticket holder could ever enter a paid live event. authorizeProviderJoin stamped the first joiner's order_id onto the SHARED commercial_sessions row and then re-verified it for every subsequent joiner, so buyer #2 got 409 'commercial session authority mismatch'. Worse, the live_event host entitlement carries order_id NULL, so whenever the HOST joined first every paying viewer was refused - while live settlement, which checks only HOST connected time, still released 80% to the creator and 20% to the platform. Buyer pays, cannot get in, creator gets paid, and the only recourse is a lifecycle cancel that itself defaults to review_pending. GRAIN ERROR: order_id is a property of a PURCHASE; commercial_sessions is a property of an EVENT; one live event has one session and N purchases. Fix: order_id leaves the session authority set (every remaining field - session id, kind, listing, booking, creator, provider, call type, call id, scheduled_at - derives from the LISTING, not from a buyer, so the concurrent-insert guarantee the check exists for is intact); commercial_sessions.order_id is written only for consult_1to1, which genuinely is one order; the per-ticket order moves to commercial_session_members.order_id (new nullable column + index, migration 2026-08-29-commercial-member-order-id.sql, NOT auto-applied) and is verified per member on join, where it is a real constraint rather than a lockout. ALSO FIXED: canViewSession looked up refund receipts by session.order_id, now NULL for live - a refunded live buyer could no longer open their own receipt (entitlement 'refunded' fails the grant check, and a buyer who never got in has no member row). It now scopes by listing_id+booking_id, which commercial_refund_receipts carries itself. NOT DENORMALIZED onto commercial_participant_intervals: those are written from signed provider webhooks that carry no order, and the order is already reachable by joining members on (session, account).",
+    "shipped": "2026-08-29",
+    "two_sided": true,
+    "min_devices_on_build": 3,
+    "flags": [
+      "commercialLiveCheckoutEnabled",
+      "commercialLiveListingsEnabled",
+      "commercialLiveJoinEnabled"
+    ],
+    "success": [
+      {
+        "event": "commercial join",
+        "where": {
+          "kind": "live_event",
+          "role": "viewer"
+        },
+        "property": "outcome",
+        "equals": "authorized",
+        "min_events": 3,
+        "note": "THREE distinct viewers admitted to ONE listing, plus the host. min_devices_on_build is 3 for exactly this reason: the bug is INVISIBLE with fewer than two paying viewers, which is how it survived review. Asserting >=1 would have passed green on the broken build. Ship-gate rule 2 - count DISTINCT persons on the newest build."
+      },
+      {
+        "event": "commercial join",
+        "where": {
+          "kind": "live_event"
+        },
+        "property": "reason",
+        "not_in": [
+          "session_authority_mismatch"
+        ],
+        "min_events": 0,
+        "note": "FAILURE VALUE, and the precise string this issue removes. Any occurrence after this ships means order_id is back in the session authority set or the members migration was not applied."
+      },
+      {
+        "event": "commercial join",
+        "where": {
+          "kind": "live_event"
+        },
+        "property": "reason",
+        "not_in": [
+          "membership_authority_mismatch"
+        ],
+        "min_events": 0,
+        "note": "FAILURE VALUE for the new per-member order_id check. Occurrences mean commercial_session_members.order_id is missing - i.e. the migration did not run - and the read-back is comparing NULL against a real order."
+      },
+      {
+        "event": "commercial_settlement",
+        "where": {
+          "kind": "live_event"
+        },
+        "property": "state",
+        "equals": "settled",
+        "min_events": 1,
+        "note": "A live event with multiple ticket holders settles. Before this fix a live event could settle while every buyer had been refused at the door, so this assertion is only meaningful TOGETHER with the >=3 viewer assertion above - check both or neither."
+      }
+    ],
+    "_verified_at": "worker/src/routes/commercial_stream_sessions.ts: order_id removed from the persistedSession comparison; commercial_sessions INSERT binds order_id only when kind==='consult_1to1'; commercial_session_members INSERT and read-back now carry order_id; canViewSession refund-receipt lookup rescoped to listing_id+booking_id. worker/migrations/2026-08-29-commercial-member-order-id.sql adds the nullable column and idx_commercial_member_order. Confirmed no other reader depends on commercial_sessions.order_id: grep 'FROM commercial_sessions' across worker/src returns 17 sites, all selecting listing/booking/state/scheduled_at. commercial_refund_receipts.listing_id and .booking_id confirmed at worker/migrations/2026-08-25-commercial-lifecycle.sql:42-48. npx tsc --noEmit clean in worker/ on 2026-08-29."
   }
 }

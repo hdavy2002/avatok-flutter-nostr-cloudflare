@@ -349,7 +349,11 @@ async function authorizeProviderJoin(args: {
         settlement_state,recording_state,replay_state,created_at,updated_at)
        VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,1,?10,'scheduled',1,'not_ready',?11,?12,?13,?13)`,
     ).bind(
-      sessionId, args.kind, args.listingId, args.bookingId ?? null, args.orderId ?? null,
+      // [COMM-LIVE-AUTH-1] consult_1to1 genuinely IS one order, so the session may carry
+      // it. A live_event is one session over N tickets and must carry NULL — writing the
+      // first joiner's order here is what locked every other ticket holder out.
+      sessionId, args.kind, args.listingId, args.bookingId ?? null,
+      args.kind === "consult_1to1" ? (args.orderId ?? null) : null,
       args.creatorId, identity.provider, identity.callType, identity.callId, args.startsAt,
       args.config.commercialRecordingEnabled ? "requested" : "disabled",
       args.config.commercialReplayEnabled ? "processing" : "disabled", insertedAt,
@@ -376,12 +380,19 @@ async function authorizeProviderJoin(args: {
     scheduled_at: number;
     state: string;
   }>();
+  // [COMM-LIVE-AUTH-1] order_id is NOT part of session authority — see the migration
+  // 2026-08-29-commercial-member-order-id.sql for the full reasoning. Short version: a
+  // live event has ONE session and N ticket purchases, so comparing the shared session's
+  // order_id against the joiner's ticket refused every buyer after the first, and refused
+  // ALL of them when the host (whose entitlement carries order_id NULL) joined first.
+  // Every remaining field below derives from the listing, not from a buyer, so the
+  // guarantee this check exists for — that a concurrent insert cannot authorize against a
+  // different session — is intact.
   if (!persistedSession
     || persistedSession.commercial_session_id !== sessionId
     || persistedSession.kind !== args.kind
     || persistedSession.listing_id !== args.listingId
     || (persistedSession.booking_id ?? null) !== (args.bookingId ?? null)
-    || (persistedSession.order_id ?? null) !== (args.orderId ?? null)
     || persistedSession.creator_id !== args.creatorId
     || persistedSession.provider !== identity.provider
     || persistedSession.provider_call_type !== identity.callType
@@ -403,27 +414,35 @@ async function authorizeProviderJoin(args: {
 
   await metaDb(args.env).batch([
     metaDb(args.env).prepare(
+      // [COMM-LIVE-AUTH-1] The per-ticket order lives HERE, one row per joiner, instead
+      // of on the shared session row. This is the audit trail the session-row check was
+      // reaching for, at a grain that does not constrain anyone else's admission.
       `INSERT OR IGNORE INTO commercial_session_members
-       (commercial_session_id,account_id,entitlement_id,provider_user_id,role,added_at)
-       VALUES (?1,?2,?3,?2,?4,?5)`,
-    ).bind(sessionId, args.uid, args.entitlementId, args.role, Date.now()),
+       (commercial_session_id,account_id,entitlement_id,provider_user_id,role,order_id,added_at)
+       VALUES (?1,?2,?3,?2,?4,?5,?6)`,
+    ).bind(sessionId, args.uid, args.entitlementId, args.role, args.orderId ?? null, Date.now()),
     metaDb(args.env).prepare(
       "UPDATE commercial_entitlements SET state='active', updated_at=?2 WHERE entitlement_id=?1 AND state IN ('reserved','held')",
     ).bind(args.entitlementId, Date.now()),
   ]);
   const member = await metaDb(args.env).prepare(
-    `SELECT entitlement_id,provider_user_id,role,removed_at
+    `SELECT entitlement_id,provider_user_id,role,order_id,removed_at
        FROM commercial_session_members WHERE commercial_session_id=?1 AND account_id=?2`,
   ).bind(sessionId, args.uid).first<{
     entitlement_id: string;
     provider_user_id: string;
     role: string;
+    order_id: string | null;
     removed_at: number | null;
   }>();
+  // [COMM-LIVE-AUTH-1] order_id is verified HERE, per member, which is the check the
+  // session-row comparison was trying to be. Per member it is a real constraint (this
+  // person was admitted on this ticket); on the shared row it was a lockout.
   if (!member
     || member.entitlement_id !== args.entitlementId
     || member.provider_user_id !== args.uid
     || member.role !== args.role
+    || (member.order_id ?? null) !== (args.orderId ?? null)
     || member.removed_at !== null) {
     return refused("membership_authority_mismatch", { error: "commercial membership authority mismatch" }, 409);
   }
@@ -1107,10 +1126,20 @@ export async function commercialConsultState(req: Request, env: Env): Promise<Re
 
 async function canViewSession(env: Env, session: SessionAuthority, uid: string): Promise<boolean> {
   if (session.creator_id === uid) return true;
-  const refundReceipt = session.order_id ? await metaDb(env).prepare(
+  // [COMM-LIVE-AUTH-1] Scoped by listing+booking, NOT by session.order_id.
+  //
+  // This used to key off session.order_id, which is now NULL for every live_event (the
+  // session is shared across N tickets — see the migration). Left as it was, a live-event
+  // buyer whose ticket was refunded could no longer open their own refund receipt: their
+  // entitlement is 'refunded' so the check below rejects them, and if they never got in
+  // they have no member row either. commercial_refund_receipts carries listing_id and
+  // booking_id itself, so scoping on those answers the same question without depending
+  // on a field that legitimately has no single value here.
+  const refundReceipt = await metaDb(env).prepare(
     `SELECT 1 ok FROM commercial_refund_receipts
-       WHERE order_id=?1 AND (buyer_id=?2 OR creator_id=?2) LIMIT 1`,
-  ).bind(session.order_id, uid).first<{ ok: number }>() : null;
+       WHERE listing_id=?1 AND COALESCE(booking_id,'')=COALESCE(?2,'')
+         AND (buyer_id=?3 OR creator_id=?3) LIMIT 1`,
+  ).bind(session.listing_id, session.booking_id ?? null, uid).first<{ ok: number }>();
   if (refundReceipt) return true;
   const member = await metaDb(env).prepare(
     "SELECT 1 ok FROM commercial_session_members WHERE commercial_session_id=?1 AND account_id=?2 LIMIT 1",
