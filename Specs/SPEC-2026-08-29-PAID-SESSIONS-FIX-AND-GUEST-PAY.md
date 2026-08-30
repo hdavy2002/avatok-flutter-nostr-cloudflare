@@ -48,12 +48,14 @@ Nothing below is deployed. Everything is committed to `main` and typechecks clea
 | `[LIST-WEB-FORM-1]` `[LIST-WEB-MEDIA-1]` `[LIST-WEB-PUBLISH-1]` `[LIST-IDGATE-UX-1]` | ✅ built as one commit |
 | `[CARD-MODEL-1]` `[CARD-PRICE-SEM-1]` | ✅ built — **found two live production bugs**, see below |
 | `[CARD-SLOTS-1]` | ✅ built — `POST /api/listings/:id/repeat`, migration `2026-08-29-listings-series-id.sql` |
-| `[PAY-CASHFREE-1]` | 🚧 **rail only, fenced.** Escrow funding works; the entitlement handoff does not exist, so order creation returns 503 regardless of flags |
-| `[PAY-HANDOFF-1]` | ⬜️ NEW, blocks the rest of Phase 4 — **deliberately not rushed**, see the note below |
+| `[PAY-CASHFREE-1]` | ✅ built — Cashfree client, `direct_purchases`, `holdExternal`/`refundExternal` |
+| `[PAY-HANDOFF-1]` | ✅ built — one `provisionCommercialPurchase` for both rails; the fence is down |
 | `[BUY-OTP-1]` | ✅ built — and it was **far bigger than checkout**: see below |
-| `[PAY-REFUND-1]` | 🚧 ledger primitive `refundExternal` exists; not wired into `commercial_lifecycle` |
-| `[BUY-CHECKOUT-1]` `[GUEST-AFFIL-BOUNTY-1]` | ⬜️ not started |
-| `[CARD-SCHEMA-1]` `[COMM-NOSHOW-1]` | ⬜️ not started |
+| `[PAY-REFUND-1]` | ✅ built — rail-aware; a gateway reversal stays `refund_pending` until confirmed |
+| `[GUEST-AFFIL-BOUNTY-1]` | ✅ built — one bounty per referred buyer, out of the platform's cut only |
+| `[CARD-SCHEMA-1]` | ✅ built — seats-left and watchers derived, never stored |
+| `[COMM-NOSHOW-1]` | ✅ built — creator no-show auto-refunds; buyer no-show still pays the creator |
+| `[BUY-CHECKOUT-1]` | ⬜️ **BLOCKED on a real Cashfree account.** See below |
 
 **Five live bugs found while building, none of them in the original audit:**
 
@@ -81,15 +83,25 @@ Nothing below is deployed. Everything is committed to `main` and typechecks clea
 commercial lane, it is an **empty function**. Wiring it would have shipped green and paid
 nobody. See `[COMM-AFFIL-1]`.
 
-**On `[PAY-HANDOFF-1]`, deliberately deferred.** The extraction moves ~370 lines of
-working money code — order, policy snapshot, booking, entitlement, and a recovery path
-that decides when to refund — into a function both funding rails call. The safe way to do
-it is a verbatim move with a `ctx` object destructured to the SAME identifier names, so no
-variable is ever renamed and the body needs zero edits. That removes the one error class
-that matters here: a swapped uid of the same type, which `tsc` cannot catch and which
-would send money to the wrong person. It is not hard, but it wants a focused pass rather
-than the tail of a long session, and the `ENTITLEMENT_HANDOFF_IMPLEMENTED` fence means
-nothing is broken while it waits.
+**`[PAY-HANDOFF-1]` was done as a verbatim move, and that is why it can be trusted.**
+The ~370-line body was moved out of `commercialCheckout` unchanged, with the parameter
+object destructured to the SAME identifier names, so not one variable was renamed. The
+error class that matters here is a swapped uid of the same type — invisible to `tsc`, and
+it sends money to the wrong person. The move was verified by diffing the extracted body
+against `git HEAD`: the only differences are the funding call, its reversal, two `rail`
+telemetry properties, and one result-shape change. Nothing else moved.
+
+**`[BUY-CHECKOUT-1]` is the one thing left, and it is blocked on you, not on code.**
+The "Join now" page needs Cashfree's JS SDK to redirect a buyer into their hosted payment
+page, and that means a real Cashfree merchant account and their SDK added as a dependency.
+Building a Pay button now would mean shipping one that cannot complete a payment, which is
+worse than not shipping it. Everything behind that button — order creation, the signed
+webhook, escrow funding, ticket issue, refunds, the affiliate bounty — is built and
+waiting.
+
+⚠️ **Nothing in the Cashfree lane has ever been run against a gateway**, sandbox or live.
+Every field name in `lib/cashfree.ts` comes from the v2023-08-01 documentation, not from a
+response anyone has seen. Run the sandbox end to end before a rupee moves.
 
 **Before any of this reaches production:** six migrations are pending and **none is
 auto-applied** — `2026-08-29-commercial-member-order-id.sql`, `-commercial-gst.sql`,
