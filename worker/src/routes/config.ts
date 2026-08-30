@@ -44,6 +44,25 @@ export interface PlatformConfig {
   commercialCreatorCancelRefundPct: number;
   commercialProviderFailureRefundPct: number;
   commercialLateCancelRefundPct: number;
+  /**
+   * [TAX-GST-1] (owner decision 2026-08-29) 18% GST on top of the listing price.
+   *
+   * ⚠️ `gstEnabled` DEFAULTS FALSE AND MUST STAY FALSE UNTIL avaTOK HAS A GSTIN.
+   * In India GST is collected against a registration number, and avaTOK is an
+   * unregistered business (see the "THERE IS NO COMPANY" section of CLAUDE.md).
+   * Charging a tax under no registration number and printing it on a receipt is far
+   * harder to unwind than not charging it. The engine ships now so it is ready and
+   * exercised; collection waits for the registration and an accountant's sign-off on
+   * the rate, the place-of-supply treatment and the invoice format.
+   *
+   * With gstEnabled=false the computation still runs and stores zeros — the path is live
+   * in production long before it touches anyone's money.
+   *
+   * The rate is SNAPSHOTTED per order (commercial_policy_snapshots.gst_rate_pct), so a
+   * rate change never restates the tax on a ticket already sold.
+   */
+  gstEnabled: boolean;
+  gstRatePct: number;
   commercialConsultJoinEarlyMin: number;
   commercialConsultJoinLateMin: number;
   commercialConsultExtensionEnabled: boolean;
@@ -1716,6 +1735,10 @@ const DEFAULTS: PlatformConfig = {
   commercialCreatorCancelRefundPct: 100,
   commercialProviderFailureRefundPct: 100,
   commercialLateCancelRefundPct: 0,
+  // [TAX-GST-1] See the interface comment. OFF until there is a GSTIN — this is the flag
+  // that decides whether a real person is charged a tax we cannot yet remit.
+  gstEnabled: false,
+  gstRatePct: 18,
   commercialConsultJoinEarlyMin: 10,
   commercialConsultJoinLateMin: 2,
   // Paid consultation extensions stay dark until an owner-configured duration
@@ -2404,6 +2427,8 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // matching, sending every creator cancellation to review_pending again.
     "commercialCreatorCancelRefundPct", "commercialProviderFailureRefundPct",
     "commercialLateCancelRefundPct",
+    // [TAX-GST-1] gstRatePct is an integer; gstEnabled is a boolean and must NOT be here.
+    "gstRatePct",
     "commercialConsultJoinEarlyMin", "commercialConsultJoinLateMin",
     "commercialConsultExtensionMinutes", "commercialConsultExtensionRate",
     "commercialLiveBackstageEarlyMin", "commercialLiveStartGraceMin",

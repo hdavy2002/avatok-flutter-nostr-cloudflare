@@ -8,6 +8,7 @@ import type { Env } from "./types";
 import { metaDb } from "./db/shard";
 import { walletOp } from "./routes/wallet";
 import { ACCT_PLATFORM_FEES, acctEscrow, acctUser, escrowBalance } from "./ledger";
+import { ACCT_PLATFORM_TAX } from "./lib/commercial_tax";
 import { commercialEvent } from "./lib/commercial_telemetry";
 import { notifyCommercialUsers } from "./lib/commercial_notifications";
 import { claimCommercialMoney, completeCommercialMoneyClaim } from "./commercial_money_claim";
@@ -43,6 +44,8 @@ type SettlementAuthority = {
   cancellation_policy_json: string;
   conversion_snapshot_json: string | null;
   policy_version: string;
+  // [TAX-GST-1] Nullable so a snapshot written before the gst migration still loads.
+  gst_amount: number | null;
 };
 
 async function markReview(env: Env, jobId: string, reason: string): Promise<void> {
@@ -68,7 +71,8 @@ async function loadAuthority(env: Env, job: SettlementJob): Promise<SettlementAu
       o.id order_id,o.buyer_id,o.creator_id order_creator_id,o.amount order_amount,
       o.status order_status,p.policy_snapshot_id,p.gross_amount,p.currency,
       p.creator_fee_pct,p.settlement_hold_hours,p.platform_fee_amount,p.creator_amount,
-      p.cancellation_policy_json,p.conversion_snapshot_json,p.policy_version
+      p.cancellation_policy_json,p.conversion_snapshot_json,p.policy_version,
+      p.gst_amount
      FROM commercial_sessions s
      JOIN commercial_policy_snapshots p ON p.order_id=?2
        AND p.listing_id=s.listing_id
@@ -163,6 +167,11 @@ function authorityError(value: SettlementAuthority): string | null {
   if (!Number.isFinite(pct) || pct < 0 || pct > 100) return "creator percentage invalid";
   if (creator !== Math.round(gross * pct / 100)) return "creator amount does not match percentage";
   if (!Number.isFinite(hold) || hold < 0 || hold > 365 * 24) return "settlement hold invalid";
+  // [TAX-GST-1] Tax is validated but NOT folded into the split assertion above: the
+  // creator + platform === gross identity is exactly what proves the creator is not being
+  // paid out of tax money, and it must keep holding with tax switched on.
+  const gst = Math.trunc(Number(value.gst_amount ?? 0));
+  if (!Number.isInteger(gst) || gst < 0) return "gst snapshot invalid";
   if (!["held", "free", "settled"].includes(value.order_status)) return "order is not settleable";
   return null;
 }
@@ -174,7 +183,10 @@ async function releaseSnapshot(
   const gross = Math.trunc(Number(authority.gross_amount));
   const creatorAmount = Math.trunc(Number(authority.creator_amount));
   const platformAmount = Math.trunc(Number(authority.platform_fee_amount));
-  if (gross === 0) return { duplicate: false };
+  const gstAmount = Math.max(0, Math.trunc(Number(authority.gst_amount ?? 0)));
+  // [TAX-GST-1] A free listing can still carry no tax; both being zero means nothing to
+  // move. Guard on the total so a hypothetical zero-price-with-tax order is not skipped.
+  if (gross === 0 && gstAmount === 0) return { duplicate: false };
 
   const opId = `commercial:release:${authority.order_id}`;
   let duplicate = false;
@@ -218,6 +230,29 @@ async function releaseSnapshot(
         meta: JSON.stringify({
           gross,
           creator_fee_pct: authority.creator_fee_pct,
+          policy_snapshot_id: authority.policy_snapshot_id,
+        }),
+      },
+    });
+  }
+  // [TAX-GST-1] The tax leg. Out of escrow, into the platform's TAX-LIABILITY account —
+  // never ACCT_PLATFORM_FEES, which is revenue. GST is money held on behalf of a tax
+  // authority and mixing it into fees makes it unremittable and overstates income.
+  // Paid LAST so a failure here cannot strand a creator unpaid; the money stays in escrow
+  // and the job's own retry picks it up (the op id makes the earlier legs idempotent).
+  if (gstAmount > 0) {
+    await env.Q_WALLET.send({
+      id: `commercial:gst:${authority.order_id}`,
+      ts: Date.now(),
+      amount: gstAmount,
+      ledger: {
+        debit: acctEscrow(authority.order_id),
+        credit: ACCT_PLATFORM_TAX,
+        type: "commercial_gst",
+        ref: authority.order_id,
+        meta: JSON.stringify({
+          gst_amount: gstAmount,
+          taxable_base: gross,
           policy_snapshot_id: authority.policy_snapshot_id,
         }),
       },
@@ -323,9 +358,14 @@ async function processJob(env: Env, job: SettlementJob): Promise<void> {
   const delivery = await deliveryError(env, job.commercial_session_id, authority);
   if (delivery) return await markReview(env, job.settlement_job_id, delivery);
 
-  if (!job.funds_verified_at && Number(authority.gross_amount) > 0) {
+  // [TAX-GST-1] Escrow holds base + tax in one hold (see commercial_checkout.ts), so
+  // the sufficiency check must cover BOTH. Checking only gross would pass on an escrow
+  // short by exactly the tax, and the tax leg below would then fail after the creator had
+  // already been paid.
+  const escrowRequired = Number(authority.gross_amount) + Math.max(0, Math.trunc(Number(authority.gst_amount ?? 0)));
+  if (!job.funds_verified_at && escrowRequired > 0) {
     const available = await escrowBalance(env, authority.order_id);
-    if (available < Number(authority.gross_amount)) {
+    if (available < escrowRequired) {
       return await markReview(env, job.settlement_job_id, "escrow balance below immutable gross");
     }
     const verifiedAt = Date.now();

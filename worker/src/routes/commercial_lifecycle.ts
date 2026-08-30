@@ -23,6 +23,8 @@ type Authority = {
   policy_snapshot_id: string; currency: string;
   cancellation_policy_json: string;
   creator_fee_pct: number; platform_fee_amount: number; creator_amount: number;
+  // [TAX-GST-1] Nullable so a snapshot written before the gst migration still loads.
+  gst_amount: number | null;
   event_starts_at: number | null;
   buyer_entitlement_id: string | null;
   booking_starts_at: number | null; booking_ends_at: number | null; booking_status: string | null;
@@ -82,7 +84,7 @@ async function loadAuthorities(env: Env, args: { kind: Kind; id: string; uid: st
     `SELECT o.id order_id,o.listing_id,o.booking_id,o.buyer_id,o.creator_id,o.kind,
         o.amount order_amount,o.status order_status,
         p.policy_snapshot_id,p.currency,p.cancellation_policy_json,p.creator_fee_pct,
-        p.platform_fee_amount,p.creator_amount,l.starts_at event_starts_at,
+        p.platform_fee_amount,p.creator_amount,p.gst_amount,l.starts_at event_starts_at,
         (SELECT e.entitlement_id FROM commercial_entitlements e
           WHERE e.order_id=o.id AND e.account_id=o.buyer_id
             AND e.state IN ('reserved','held','active','consumed') LIMIT 1) buyer_entitlement_id,
@@ -241,7 +243,13 @@ async function cancelOne(env: Env, authority: Authority, uid: string, idem: stri
     return await markReview(env, authority, operationId, "order_not_refundable_from_escrow");
   }
   const gross = Math.max(0, Math.trunc(Number(authority.order_amount)));
-  if (gross > 0 && (await escrowBalance(env, authority.order_id)) < gross) {
+  // [TAX-GST-1] The buyer paid base + tax in one hold, so a refund must return base + tax.
+  // Refunding only `gross` would keep the GST on a purchase that never happened — money
+  // owed to a tax authority for a supply that was cancelled, and silently short-changing
+  // the buyer by the tax.
+  const gstAmount = Math.max(0, Math.trunc(Number(authority.gst_amount ?? 0)));
+  const refundable = gross + gstAmount;
+  if (refundable > 0 && (await escrowBalance(env, authority.order_id)) < refundable) {
     return await markReview(env, authority, operationId, "escrow_balance_below_snapshot_gross");
   }
   const claim = await claimCommercialMoney(env, {
@@ -255,8 +263,8 @@ async function cancelOne(env: Env, authority: Authority, uid: string, idem: stri
       : "unknown";
     return await markReview(env, authority, operationId, `commercial money claim owned by ${owner}`);
   }
-  if (gross > 0) {
-    const money = await refund(env, authority.order_id, authority.buyer_id, gross, {
+  if (refundable > 0) {
+    const money = await refund(env, authority.order_id, authority.buyer_id, refundable, {
       opId: `commercial:refund:${authority.order_id}`,
       reason: decision.reason,
     });
@@ -267,16 +275,19 @@ async function cancelOne(env: Env, authority: Authority, uid: string, idem: stri
     `INSERT OR IGNORE INTO commercial_refund_receipts
       (refund_receipt_id,order_id,commercial_session_id,listing_id,booking_id,buyer_id,creator_id,kind,
        gross_amount,refunded_amount,remaining_amount,platform_fee_amount,creator_amount,currency,
-       settlement_state,reason,actor,policy_snapshot_id,issued_at)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?9,0,0,0,?10,'refunded',?11,?12,?13,?14)`,
+       settlement_state,reason,actor,policy_snapshot_id,issued_at,gst_amount)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?15,0,0,0,?10,'refunded',?11,?12,?13,?14,?16)`,
   ).bind(receiptId, authority.order_id, authority.session_id, authority.listing_id, authority.booking_id,
     authority.buyer_id, authority.creator_id, authority.kind, gross, authority.currency, decision.reason,
     action === "buyer_cancel" ? "buyer" : action === "creator_cancel" || action === "creator_no_show" ? "creator" : action === "insufficient_delivery_evidence" ? "system" : "provider",
-    authority.policy_snapshot_id, Date.now()).run();
+    authority.policy_snapshot_id, Date.now(),
+    // [TAX-GST-1] gross_amount stays the taxable base; refunded_amount is what the buyer
+    // actually gets back, which INCLUDES the tax. They are equal only when tax is off.
+    refundable, gstAmount).run();
   const receipt = await metaDb(env).prepare(
     `SELECT refund_receipt_id,order_id,commercial_session_id,listing_id,booking_id,buyer_id,creator_id,kind,
        gross_amount,refunded_amount,remaining_amount,platform_fee_amount,creator_amount,currency,
-       settlement_state,reason,actor,policy_snapshot_id
+       settlement_state,reason,actor,policy_snapshot_id,gst_amount
      FROM commercial_refund_receipts WHERE refund_receipt_id=?1`,
   ).bind(receiptId).first<Record<string, unknown>>();
   if (!receipt || receipt.refund_receipt_id !== receiptId || receipt.order_id !== authority.order_id
@@ -284,7 +295,8 @@ async function cancelOne(env: Env, authority: Authority, uid: string, idem: stri
     || receipt.listing_id !== authority.listing_id || (receipt.booking_id ?? null) !== (authority.booking_id ?? null)
     || receipt.buyer_id !== authority.buyer_id || receipt.creator_id !== authority.creator_id
     || receipt.kind !== authority.kind || Number(receipt.gross_amount) !== gross
-    || Number(receipt.refunded_amount) !== gross || Number(receipt.remaining_amount) !== 0
+    || Number(receipt.refunded_amount) !== refundable || Number(receipt.gst_amount ?? 0) !== gstAmount
+    || Number(receipt.remaining_amount) !== 0
     || Number(receipt.platform_fee_amount) !== 0 || Number(receipt.creator_amount) !== 0
     || receipt.currency !== authority.currency || receipt.reason !== decision.reason
     || receipt.actor !== (action === "buyer_cancel" ? "buyer" : action === "creator_cancel" || action === "creator_no_show" ? "creator" : action === "insufficient_delivery_evidence" ? "system" : "provider")
@@ -331,7 +343,7 @@ async function cancelOne(env: Env, authority: Authority, uid: string, idem: stri
   for (const entitlement of calendarEntitlements.results ?? []) {
     await releaseBlocks(env, "avacommercial", `commercial-calendar:${entitlement.entitlement_id}`);
   }
-  const response = { ok: true, state: "refunded", order_id: authority.order_id, refund_receipt_id: receiptId, refunded_amount: gross };
+  const response = { ok: true, state: "refunded", order_id: authority.order_id, refund_receipt_id: receiptId, refunded_amount: refundable, gst_amount: gstAmount };
   await finishOperation(env, operationId, "completed", response);
   await notifyCommercialUsers(env, [authority.buyer_id, authority.creator_id], {
     type: "commercial_session_cancelled",

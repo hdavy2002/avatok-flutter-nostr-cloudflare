@@ -15,6 +15,7 @@ import { hold, refund } from "../ledger";
 import { json } from "../util";
 import { commercialEvent } from "../lib/commercial_telemetry";
 import { commercialLaneState, commercialLaneFlags, type CommercialLaneState } from "../lib/commercial_lane";
+import { taxFor } from "../lib/commercial_tax";
 import { claimBlock, releaseBlocks } from "../cal/engine";
 import { notifyCommercialUsers } from "../lib/commercial_notifications";
 
@@ -458,8 +459,16 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
         calendarClaims.push(claimed.claim);
       }
     }
-    if (price > 0) {
-      const held = await hold(env, auth.uid, orderId, price, {
+    // [TAX-GST-1] The buyer is charged base + tax in ONE debit, and the whole amount sits
+    // in escrow. Two separate debits (one to escrow, one to platform:tax) would leave a
+    // window where the base is held and the tax is not, and would put two lines on the
+    // buyer's statement for one purchase. Settlement pays the tax leg out of escrow to
+    // 'platform:tax' before splitting, and a refund returns everything the buyer paid
+    // because everything the buyer paid is in one place.
+    const tax = taxFor(config, price);
+    if (!tax) throw new Error("commercial tax configuration invalid");
+    if (tax.buyerTotal > 0) {
+      const held = await hold(env, auth.uid, orderId, tax.buyerTotal, {
         opId: `commercial:hold:${orderId}`,
         title: listing.title,
         app: route.kind === "live_event" ? "avalive" : "avaconsult",
@@ -467,7 +476,7 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
       if (!held.ok) {
         commercialEvent(env, "checkout_hold", auth.uid, { kind: route.kind, outcome: "refused", reason: held.status === 402 ? "insufficient_funds" : "wallet_failure" });
         for (const claim of calendarClaims) await releaseBlocks(env, "avaconsult", claim.sourceRef);
-        const response = { error: held.status === 402 ? "insufficient_funds" : "payment_failed", needed: price };
+        const response = { error: held.status === 402 ? "insufficient_funds" : "payment_failed", needed: tax.buyerTotal };
         await finishOperation(env, operationId, "failed", response);
         return json(response, held.status === 402 ? 402 : 502);
       }
@@ -499,12 +508,12 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
         `INSERT OR IGNORE INTO commercial_policy_snapshots
          (policy_snapshot_id,order_id,listing_id,booking_id,buyer_id,creator_id,kind,gross_amount,currency,
           creator_fee_pct,settlement_hold_hours,platform_fee_amount,creator_amount,cancellation_policy_json,
-          conversion_snapshot_json,policy_version,created_at)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)`,
+          conversion_snapshot_json,policy_version,created_at,gst_rate_pct,gst_amount,taxable_base)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)`,
       ).bind(policySnapshotId, orderId, listing.id, bookingId, auth.uid, listing.creator_id, route.kind, price,
         listing.currency_display ?? "USD", creatorFeePct, settlementHoldHours, platformFeeAmount, creatorAmount,
         policyJson, JSON.stringify({ request_sha256: requestHash, price_source: "listing.price" }),
-        CHECKOUT_POLICY_VERSION, now),
+        CHECKOUT_POLICY_VERSION, now, tax.gstRatePct, tax.gstAmount, tax.taxableBase),
     ]);
 
     const order = await metaDb(env).prepare(
@@ -695,7 +704,15 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
       order_id: orderId,
       entitlement_id: entitlementId,
       policy_snapshot_id: policySnapshotId,
+      // [TAX-GST-1] gross_amount stays the SPLITTABLE base (what the 80/20 runs on).
+      // The buyer's actual charge is charged_amount. Keeping gross_amount meaning the
+      // same thing it always meant is why no settlement reader had to change its
+      // interpretation of it.
       gross_amount: price,
+      taxable_base: tax.taxableBase,
+      gst_rate_pct: tax.gstRatePct,
+      gst_amount: tax.gstAmount,
+      charged_amount: tax.buyerTotal,
       currency: listing.currency_display ?? "USD",
       starts_at: route.kind === "live_event" ? startsAt : slotStart,
       ends_at: route.kind === "live_event" ? endsAt : slotEnd,

@@ -3855,5 +3855,44 @@
       }
     ],
     "_verified_at": "NEW worker/src/lib/commercial_lane.ts (commercialLaneState, commercialLaneFlags); worker/src/routes/listings.ts bookListing switches on the three states and commercialBookingLaneOn() removed; worker/src/routes/commercial_checkout.ts laneState() replaces configAllows() at the checkout entry gate. Four flag names unchanged - renaming any would silently revert it to DEFAULTS since the override blob already sits in prod KV. npx tsc --noEmit clean in worker/ on 2026-08-29."
+  },
+  "TAX-GST-1": {
+    "description": "[TAX-GST-1] 18% GST (owner decision 2026-08-29), BUILT AND SWITCHED OFF. The pipeline had no fee and no tax model at all - the bazaar comp computed base + Rs6 + 18% entirely in mockup JavaScript while commercial_checkout split exactly `price` into 80/20 with nothing above it. SHAPE: taxableBase = P + F (F=0 today, carried so a platform fee can be switched on without reshaping anything); gst = round(taxableBase * ratePct/100); buyer pays taxableBase + gst; escrow holds ALL of it in ONE hold; settlement pays creator and platform fee out of taxableBase and sends gst to a separate account. THE INVARIANT: the creator's payout does not change when tax is turned on - they set P and earn 80% of P either way. The failure mode is computing the split off the tax-inclusive total, paying creators out of tax money (80% of 118 instead of 80% of 100) and leaving nothing to remit; authorityError()'s creator+platform===gross assertion is what proves it and was deliberately NOT relaxed to include gst. GST goes to a new ACCT_PLATFORM_TAX, never ACCT_PLATFORM_FEES - it is a liability held for a tax authority, not revenue, and mixing it into fees makes it unremittable and overstates income. ONE hold rather than two debits: two would leave a window where the base is held and the tax is not, and would put two lines on a buyer's statement for one purchase. Tax leg is queued LAST in releaseSnapshot so a failure there cannot strand a creator unpaid. REFUNDS RETURN THE TAX: commercial_lifecycle and the admin claims route both refund gross+gst, and the receipt records refunded_amount=base+tax with gross_amount still the taxable base. Rate is SNAPSHOTTED per order so a rate change never restates a ticket already sold. COLLECTION IS OFF (gstEnabled=false): avaTOK has no GSTIN and is an unregistered business; with the flag off the computation runs and stores zeros so the path is exercised in production long before it charges anyone. Do not switch on without a GSTIN and an accountant.",
+    "shipped": "2026-08-29",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "gstEnabled",
+      "gstRatePct",
+      "commercialLiveCheckoutEnabled",
+      "commercialConsultCheckoutEnabled"
+    ],
+    "success": [
+      {
+        "event": "commercial checkout",
+        "where": {},
+        "property": "outcome",
+        "equals": "authorized",
+        "min_events": 1,
+        "note": "With gstEnabled=false the buyer is charged exactly P and commercial_policy_snapshots.gst_amount is 0 - nothing about today's behaviour changes. This asserts the tax code path did not break the untaxed case, which is the ONLY case in production right now."
+      },
+      {
+        "event": "commercial settlement",
+        "where": {},
+        "property": "state",
+        "equals": "settled",
+        "min_events": 1,
+        "note": "Settlement still completes with the new escrowRequired = gross + gst check and the third ledger leg. A rise in review_pending with reason 'escrow balance below immutable gross' after this ships means the hold and the check disagree."
+      },
+      {
+        "event": "commercial_lifecycle",
+        "where": {},
+        "property": "outcome",
+        "equals": "refunded",
+        "min_events": 0,
+        "note": "When a refund happens, response.refunded_amount must equal base+gst. With tax off they are equal, so this only becomes a real assertion once gstEnabled=true - check it explicitly on staging before flipping."
+      }
+    ],
+    "_verified_at": "NEW worker/src/lib/commercial_tax.ts (ACCT_PLATFORM_TAX, taxFor). NEW worker/migrations/2026-08-29-commercial-gst.sql adds gst_rate_pct/gst_amount/taxable_base to commercial_policy_snapshots and gst_amount to commercial_refund_receipts (NOT auto-applied). worker/src/routes/config.ts: gstEnabled/gstRatePct in the interface, in DEFAULTS (false/18), gstRatePct in numericKeys and gstEnabled correctly NOT in it. worker/src/routes/commercial_checkout.ts holds tax.buyerTotal and snapshots the breakdown. worker/src/commercial_settlement.ts: SettlementAuthority.gst_amount, loadAuthority selects p.gst_amount, authorityError validates it without folding it into the split identity, escrowRequired = gross + gst, releaseSnapshot queues the ACCT_PLATFORM_TAX leg last. worker/src/routes/commercial_lifecycle.ts and routes/commercial_admin_claims.ts both refund gross+gst and record gst on the receipt. Every column referenced by the new SQL was verified to exist by parsing migrations/*.sql - which caught commercial_settlement_jobs having settlement_job_id, not job_id, in the admin route's query. npx tsc --noEmit clean in worker/ on 2026-08-29."
   }
 }

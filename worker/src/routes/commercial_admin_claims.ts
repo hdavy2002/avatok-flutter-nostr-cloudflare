@@ -53,17 +53,18 @@ type StuckRow = {
   order_status: string | null;
   policy_snapshot_id: string | null;
   gross_amount: number | null;
+  gst_amount: number | null;
   creator_amount: number | null;
   platform_fee_amount: number | null;
   currency: string | null;
 };
 
 const STUCK_SQL = `
-  SELECT j.job_id, j.order_id, j.commercial_session_id, j.state, j.last_error, j.attempts,
-         j.updated_at,
+  SELECT j.settlement_job_id job_id, j.order_id, j.commercial_session_id, j.state,
+         j.last_error, j.attempts, j.updated_at,
          o.listing_id, o.buyer_id, o.creator_id, o.amount order_amount, o.status order_status,
          p.booking_id, p.kind, p.policy_snapshot_id, p.gross_amount, p.creator_amount,
-         p.platform_fee_amount, p.currency
+         p.platform_fee_amount, p.currency, p.gst_amount
     FROM commercial_settlement_jobs j
     LEFT JOIN orders o ON o.id = j.order_id
     LEFT JOIN commercial_policy_snapshots p ON p.order_id = j.order_id
@@ -116,6 +117,11 @@ export async function adminResolveCommercialClaim(req: Request, env: Env, orderI
 
   const now = Date.now();
   const gross = Math.max(0, Math.trunc(Number(row.gross_amount ?? row.order_amount ?? 0)));
+  // [TAX-GST-1] The buyer paid base + tax in one hold, so an admin refund returns both.
+  // Refunding only the base here while the automated path returns base+tax would make an
+  // admin decision quietly worse for the buyer than the machine's.
+  const gstAmount = Math.max(0, Math.trunc(Number(row.gst_amount ?? 0)));
+  const refundable = gross + gstAmount;
 
   if (decision === "release") {
     // Hand it back to the cron rather than paying it out here. runCommercialSettlements
@@ -138,14 +144,14 @@ export async function adminResolveCommercialClaim(req: Request, env: Env, orderI
   if (!["held", "free"].includes(String(row.order_status))) {
     return json({ error: "order is not refundable from escrow", order_status: row.order_status }, 409);
   }
-  if (gross > 0) {
+  if (refundable > 0) {
     const bal = await escrowBalance(env, orderId).catch(() => null);
     if (bal === null) return json({ error: "escrow balance unavailable" }, 503);
     // Same guard the automated path uses. A short balance usually means the wallet queue
     // consumer has not caught up, NOT that the money is gone — refunding against it would
     // create a ledger row with nothing behind it.
-    if (bal < gross) {
-      return json({ error: "escrow balance below gross", escrow_balance: bal, gross }, 409);
+    if (bal < refundable) {
+      return json({ error: "escrow balance below gross", escrow_balance: bal, gross, gst_amount: gstAmount }, 409);
     }
   }
   // Same claim primitive as the automated paths, so an admin refund and a cron settlement
@@ -159,11 +165,11 @@ export async function adminResolveCommercialClaim(req: Request, env: Env, orderI
       owner: claim.existing ? `${claim.existing.claim_type}:${claim.existing.claim_id}` : "unknown",
     }, 409);
   }
-  if (gross > 0) {
+  if (refundable > 0) {
     // Same opId as the automated refund. If the automated path already refunded this
     // order and merely failed to record it, the DO returns the original result and no
     // second ledger row is written.
-    const money = await refund(env, orderId, row.buyer_id, gross, {
+    const money = await refund(env, orderId, row.buyer_id, refundable, {
       opId: `commercial:refund:${orderId}`,
       reason: `admin:${reason}`.slice(0, 200),
     });
@@ -175,12 +181,12 @@ export async function adminResolveCommercialClaim(req: Request, env: Env, orderI
       `INSERT OR IGNORE INTO commercial_refund_receipts
        (refund_receipt_id,order_id,commercial_session_id,listing_id,booking_id,buyer_id,creator_id,
         kind,gross_amount,refunded_amount,remaining_amount,platform_fee_amount,creator_amount,
-        currency,settlement_state,reason,actor,policy_snapshot_id,issued_at)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?9,0,0,0,?10,'refunded',?11,'system',?12,?13)`,
+        currency,settlement_state,reason,actor,policy_snapshot_id,issued_at,gst_amount)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?14,0,0,0,?10,'refunded',?11,'system',?12,?13,?15)`,
     ).bind(receiptId, orderId, row.commercial_session_id, row.listing_id, row.booking_id,
       row.buyer_id, row.creator_id, row.kind, gross,
       row.currency ?? "INR", `admin_review:${reason}`.slice(0, 200),
-      row.policy_snapshot_id ?? "unknown", now),
+      row.policy_snapshot_id ?? "unknown", now, refundable, gstAmount),
     metaDb(env).prepare("UPDATE orders SET status='refunded',updated_at=?2 WHERE id=?1").bind(orderId, now),
     metaDb(env).prepare(
       "UPDATE bookings SET status='refunded',updated_at=?2 WHERE order_id=?1",
@@ -196,5 +202,5 @@ export async function adminResolveCommercialClaim(req: Request, env: Env, orderI
   commercialEvent(env, "admin_claim", a.uid, {
     kind: row.kind ?? "unknown", outcome: "refunded", reason,
   });
-  return json({ ok: true, order_id: orderId, decision, refunded_amount: gross, refund_receipt_id: receiptId });
+  return json({ ok: true, order_id: orderId, decision, refunded_amount: refundable, gst_amount: gstAmount, refund_receipt_id: receiptId });
 }
