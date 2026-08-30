@@ -279,6 +279,21 @@ String priceLabel(
     case 'per_month':
       if (price <= 0) return 'Free';
       return '${_amount(price, currencyDisplay)}/mo';
+    // [CARD-PRICE-SEM-1] Paid sessions are rated by TIME, and the card designs show
+    // both (`₹8/min`, `₹50/hr`). Without these two cases a per-minute consult fell to
+    // the `asking` default and rendered a bare `₹8`, which reads as the price of the
+    // whole session — off by the length of the call, in the customer's favour, on the
+    // screen where they decide to buy.
+    //
+    // `price_semantics` is a COLUMN on listing_categories (worker/src/routes/
+    // categories.ts), not a code enum, so a category can be switched to these with a
+    // data change once the client understands them.
+    case 'per_minute':
+      if (price <= 0) return 'Free';
+      return '${_amount(price, currencyDisplay)}/min';
+    case 'per_hour':
+      if (price <= 0) return 'Free';
+      return '${_amount(price, currencyDisplay)}/hr';
     case 'asking':
     default:
       if (price <= 0) return 'Free';

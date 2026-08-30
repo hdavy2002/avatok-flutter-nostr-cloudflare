@@ -3927,5 +3927,35 @@
       }
     ],
     "_verified_at": "web/src/islands/dashboard/CreateListing.tsx (category/starts_at/duration_min/capacity/spoken_lang/location/adults_only, RequireAccount wrapper, redirect to the publish screen); NEW web/src/islands/dashboard/ListingPublish.tsx (upload + checklist + POST /api/listings/:id/publish); NEW web/src/pages/dashboard/listings/publish.astro; NEW web/src/lib/listingErrors.ts; web/src/islands/dashboard/CreatorListings.tsx Finish action on drafts. Endpoints confirmed against the worker: GET /api/explore/categories -> {categories:[{id,label,emoji}]} (listings.ts exploreCategories, same listing_categories table publishListing validates against), POST /upload/public reads req.arrayBuffer() and returns {hash,key,url,status,id} (media.ts), CAPACITIES {1,10,20} and duration 5-480 from publishListing. cfImage() used rather than a hand-built /cdn-cgi path because it splices the transform after the ORIGIN of an absolute URL. `npx tsc --noEmit -p tsconfig.json` in web/ clean apart from three PRE-EXISTING @types/node errors in astro.config.mjs, src/lib/config.ts and tailwind.config.ts. NOTE: `astro check` could not run in the Linux sandbox - node_modules carries the darwin-arm64 rollup binary - so .astro files were not type-checked; the new page is a thin island wrapper."
+  },
+  "CARD-MODEL-1": {
+    "description": "[CARD-MODEL-1 / CARD-PRICE-SEM-1] TWO LIVE PRODUCTION BUGS, found while closing the card gap. (1) The web Card interface declared `poster`, `rating`, `currency` and `creator.avatar` - FOUR fields the worker's shapeCard() has never emitted. It sends cover_media (an ARRAY of {type,url}), rating_avg, currency_display and creator.avatar_url. request<CardPage>() casts without validating, so the mismatch typechecked and every field read undefined: on avatok.ai today EVERY listing card falls through to the 'no poster' placeholder and no rating renders at all. Not a missing feature - a rename nobody propagated. (2) ListingTile's price label printed `$` and divided by 100 above 1000, so a 1500-token listing displayed as '$15'. Per [TOKENS-INR-1] the unit is a token, 1 token = Rs 1, and no listing or wallet amount ever prints a $. FIX: new lib/card.ts toCardView() resolves every alias, derives the poster from the cover array, and returns a camelCase CardView; Card in types.ts now mirrors shapeCard FIELD FOR FIELD with legacy aliases kept optional for hand-built cards (the mockup pages build their own). ListingTile renders what was already on the wire and previously discarded: one-liner, duration, language, location, rating, booked count, 18+, verified tick, promo strike-through, and a start-time pill. GAP CLOSED WITHOUT A MIGRATION - the Flutter ListingCard has parsed all 30+ of these fields off the SAME endpoint since June while web declared twelve. Separately, price_semantics gained per_minute and per_hour on both clients; it is a COLUMN on listing_categories, not a code enum, so a category can move to them with a data change. Without those cases a per-minute consult fell to the `asking` default and rendered a bare Rs 8 - reading as the price of the whole session, on the screen where someone decides to buy.",
+    "shipped": "2026-08-29",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "marketplaceEnabled"
+    ],
+    "success": [
+      {
+        "event": "ui_content_flash",
+        "where": {},
+        "property": "store",
+        "not_in": [
+          "listing_poster_missing"
+        ],
+        "min_events": 0,
+        "note": "Placeholder note: the card render itself emits no event today. THE REAL CHECK IS VISUAL and must be done by eye on /marketplace and /explore - posters and ratings appear on real listings where they previously never did. Do not mark this shipped on telemetry alone; there is none to read."
+      },
+      {
+        "event": "listing_viewed",
+        "where": {},
+        "property": "listing_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "Cards still link correctly after the model change - a listing detail is still reached from a grid. Guards against toCardView breaking listingHref's creator.handle read, which moved from creator.handle to the same field via the alias resolver."
+      }
+    ],
+    "_verified_at": "NEW web/src/lib/card.ts (toCardView, durationLabel, languageLabel, priceLabel); web/src/lib/types.ts Card realigned to shapeCard + new CardView and CoverMedia; web/src/components/ListingTile.tsx rewritten to render from CardView. Field names confirmed against worker/src/routes/listings.ts shapeCard() lines 314-372: one_liner, cover_media, effective_price, promo_pct, currency_display, rating_avg, rating_count, review_count, joined_count, duration_min, capacity, spoken_lang, location, adults_only, favorited, created_at, and creator {uid, handle, name, avatar_url, kyc_verified}. app/lib/features/marketplace/intent_theme.dart priceLabel gains per_minute/per_hour. `npx tsc --noEmit -p tsconfig.json` in web/ clean apart from three PRE-EXISTING @types/node errors; `flutter analyze lib/features/marketplace/intent_theme.dart` shows only one PRE-EXISTING prefer_const_constructors info at line 521."
   }
 }

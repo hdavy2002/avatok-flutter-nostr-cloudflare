@@ -3,27 +3,63 @@
 // (optional fields) because the Worker is the source of truth — phases A–E may
 // narrow/extend locally, but should not redefine these core shapes.
 
-/** A marketplace card as returned by /api/explore, /api/explore/* and search. */
+/**
+ * A marketplace card as returned by /api/explore, /api/explore/* and search.
+ *
+ * [CARD-MODEL-1] These names now match the worker's shapeCard()
+ * (worker/src/routes/listings.ts) FIELD FOR FIELD. They did not before: this interface
+ * declared `poster`, `rating` and `currency`, none of which the worker has ever sent —
+ * it sends `cover_media`, `rating_avg` and `currency_display`. `request<CardPage>` casts
+ * without validating, so the mismatch typechecked and every card rendered an empty
+ * placeholder in production.
+ *
+ * Do not read these fields directly in a component. Run the card through `toCardView()`
+ * in lib/card.ts, which resolves the aliases and derives the poster from the cover array.
+ */
 export interface Card {
   id: string;
   kind?: ListingKind;
   title: string;
-  /** Poster / cover image path (run through cfImage for transforms). */
+  /** First line of the description, sent by the worker as `one_liner`. */
+  one_liner?: string | null;
+  /** LEGACY/hand-built only. The worker sends `cover_media`; toCardView derives it. */
   poster?: string | null;
-  /** Price in minor units (or display string from the Worker). */
+  /** Worker truth: an array of {type,url}. The poster is the first entry. */
+  cover_media?: CoverMedia[] | null;
+  /** Price in tokens (1 token = ₹1). `effective_price` applies an active promo. */
   price?: number | null;
+  effective_price?: number | null;
+  promo_pct?: number | null;
+  /** Worker sends `currency_display`; `currency` is the legacy alias. */
+  currency_display?: string | null;
   currency?: string | null;
   category?: string | null;
   country?: string | null;
+  location?: string | null;
+  /** Worker sends `rating_avg` + `rating_count`; `rating` is the legacy alias. */
+  rating_avg?: number | null;
+  rating_count?: number | null;
   rating?: number | null;
+  review_count?: number | null;
+  joined_count?: number | null;
   /** Creator summary embedded on the card. */
   creator?: CreatorRef | null;
   /** Present on /api/explore/live-now items. */
   joinable?: boolean;
   /** Live state hint when applicable. */
   live?: boolean;
+  status?: string | null;
   starts_at?: number | null;
   ends_at?: number | null;
+  duration_min?: number | null;
+  capacity?: number | null;
+  /** Comma-separated, e.g. "Hindi,English". */
+  spoken_lang?: string | null;
+  adults_only?: boolean;
+  favorited?: boolean;
+  /** How the price should read: per_minute | per_hour | per_month | from | asking | none. */
+  price_semantics?: string | null;
+  created_at?: number | null;
   /**
    * [DEMO-LISTING-1 2026-08-26] URL slug for the shareable /<handle>/<slug>
    * route. Optional because the Worker does not emit it yet — listingHref()
@@ -35,11 +71,64 @@ export interface Card {
 
 export type ListingKind = 'live' | 'consult' | 'event' | 'agent' | 'content' | string;
 
+/** One entry of the worker's `cover_media` array. */
+export interface CoverMedia {
+  type?: string;
+  url?: string;
+  /** Older rows, and a stale schema comment in migrations/listings.sql. */
+  r2_key?: string;
+}
+
 export interface CreatorRef {
-  id: string;
-  handle?: string;
+  /** Worker sends `uid`; `id` is the legacy/hand-built alias. */
+  uid?: string;
+  id?: string;
+  handle?: string | null;
   name?: string | null;
+  /** Worker sends `avatar_url`; `avatar` is the legacy alias. */
+  avatar_url?: string | null;
   avatar?: string | null;
+  /** The A4 trust badge. Every new card comp draws a ✓ — this is what earns it. */
+  kyc_verified?: boolean;
+}
+
+/**
+ * [CARD-MODEL-1] What a card component renders. Produced by `toCardView()`; never
+ * built by hand. Names are camelCase and unambiguous, so a component can never again
+ * read a field the API does not send and silently get `undefined`.
+ */
+export interface CardView {
+  id: string;
+  kind: string | null;
+  title: string;
+  oneLiner: string | null;
+  poster: string | null;
+  category: string | null;
+  price: number | null;
+  listPrice: number | null;
+  promoPct: number;
+  currency: string | null;
+  ratingAvg: number | null;
+  ratingCount: number;
+  reviewCount: number;
+  joinedCount: number;
+  startsAt: number | null;
+  durationMin: number | null;
+  capacity: number | null;
+  spokenLang: string | null;
+  location: string | null;
+  country: string | null;
+  adultsOnly: boolean;
+  status: string | null;
+  live: boolean;
+  favorited: boolean;
+  creator: {
+    id: string;
+    handle: string | null;
+    name: string | null;
+    avatar: string | null;
+    verified: boolean;
+  } | null;
 }
 
 /** Full listing detail from /api/listings/:id. */
