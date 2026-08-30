@@ -32,7 +32,8 @@ import type { Env } from "../types";
 import { json } from "../util";
 import { metaDb } from "../db/shard";
 import { requireAdmin } from "./admin_money";
-import { refund, escrowBalance } from "../ledger";
+import { escrowBalance } from "../ledger";
+import { executeCommercialRefund } from "../lib/commercial_refund_rail";
 import { claimCommercialMoney } from "../commercial_money_claim";
 import { commercialEvent } from "../lib/commercial_telemetry";
 
@@ -169,11 +170,17 @@ export async function adminResolveCommercialClaim(req: Request, env: Env, orderI
     // Same opId as the automated refund. If the automated path already refunded this
     // order and merely failed to record it, the DO returns the original result and no
     // second ledger row is written.
-    const money = await refund(env, orderId, row.buyer_id, refundable, {
-      opId: `commercial:refund:${orderId}`,
+    // [PAY-REFUND-1] Same rail selection as the automated path. An admin decision must
+    // not be quietly worse for the buyer than the machine's — refunding a Cashfree
+    // purchase into a wallet would strand it behind the payout lane's KYC and ₹1,000
+    // minimum.
+    const money = await executeCommercialRefund(env, {
+      orderId,
+      buyerId: row.buyer_id,
+      amount: refundable,
       reason: `admin:${reason}`.slice(0, 200),
     });
-    if (!money.ok) return json({ error: "refund ledger write failed" }, 502);
+    if (!money.ok) return json({ error: "refund failed", reason: money.error }, 502);
   }
   const receiptId = `commercial-refund:${orderId}`;
   await metaDb(env).batch([

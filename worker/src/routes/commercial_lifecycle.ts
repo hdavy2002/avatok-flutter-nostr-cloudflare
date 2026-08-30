@@ -7,6 +7,7 @@ import type { Env } from "../types";
 import { isFail, requireUser } from "../authz";
 import { metaDb } from "../db/shard";
 import { escrowBalance, refund } from "../ledger";
+import { executeCommercialRefund } from "../lib/commercial_refund_rail";
 import { commercialEvent } from "../lib/commercial_telemetry";
 import { json } from "../util";
 import { claimBlock, releaseBlocks } from "../cal/engine";
@@ -263,12 +264,20 @@ async function cancelOne(env: Env, authority: Authority, uid: string, idem: stri
       : "unknown";
     return await markReview(env, authority, operationId, `commercial money claim owned by ${owner}`);
   }
+  // [PAY-REFUND-1] Back the way it came in. A Cashfree-funded ticket reverses to the
+  // buyer's UPI handle; a wallet-funded one credits the wallet. Refunding a gateway
+  // purchase into a wallet the buyer never funded would invent a balance and strand the
+  // money behind the payout lane's KYC and ₹1,000 minimum.
+  let refundState: "refunded" | "refund_pending" = "refunded";
   if (refundable > 0) {
-    const money = await refund(env, authority.order_id, authority.buyer_id, refundable, {
-      opId: `commercial:refund:${authority.order_id}`,
+    const money = await executeCommercialRefund(env, {
+      orderId: authority.order_id,
+      buyerId: authority.buyer_id,
+      amount: refundable,
       reason: decision.reason,
     });
-    if (!money.ok) return await markReview(env, authority, operationId, "refund_ledger_failed");
+    if (!money.ok) return await markReview(env, authority, operationId, money.error);
+    refundState = money.state;
   }
   const receiptId = `commercial-refund:${authority.order_id}`;
   await metaDb(env).prepare(
@@ -343,7 +352,10 @@ async function cancelOne(env: Env, authority: Authority, uid: string, idem: stri
   for (const entitlement of calendarEntitlements.results ?? []) {
     await releaseBlocks(env, "avacommercial", `commercial-calendar:${entitlement.entitlement_id}`);
   }
-  const response = { ok: true, state: "refunded", order_id: authority.order_id, refund_receipt_id: receiptId, refunded_amount: refundable, gst_amount: gstAmount };
+  // `refund_pending` for a gateway reversal: Cashfree has ACCEPTED it, and the money is
+  // not back until their refund webhook says so. Telling a buyer "refunded" before that
+  // is a promise the system cannot keep.
+  const response = { ok: true, state: refundState, order_id: authority.order_id, refund_receipt_id: receiptId, refunded_amount: refundable, gst_amount: gstAmount };
   await finishOperation(env, operationId, "completed", response);
   await notifyCommercialUsers(env, [authority.buyer_id, authority.creator_id], {
     type: "commercial_session_cancelled",

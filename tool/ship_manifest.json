@@ -4107,5 +4107,45 @@
       }
     ],
     "_verified_at": "worker/src/routes/commercial_checkout.ts: PurchaseFunding type, provisionCommercialPurchase (body moved verbatim from commercialCheckout), commercialCheckout reduced to a delegating call with the wallet funding rail, NEW provisionFromGatewayPurchase. Move verified by `git show HEAD:...| sed -n '445,814p'` diffed against the extracted body - only the four intended edits. worker/src/routes/cashfree.ts: fence removed, webhook calls provisionFromGatewayPurchase, slot captured at order time, affiliate bounty after the ticket. worker/src/routes/affiliate.ts payAffiliateBountyOnPurchase (TOPUP_AFFILIATE_RATE 10%, clamped to platformCut, id keyed on referred uid so it fires once per person). worker/migrations/2026-08-29-direct-purchases.sql gains slot_start/slot_end. npx tsc --noEmit clean in worker/; ship-gate flags OK. STILL NEVER RUN AGAINST A GATEWAY."
+  },
+  "PAY-REFUND-1": {
+    "description": "[PAY-REFUND-1] Refunds go back the way the money came in. Owner decision 2026-08-29: reverse to the source UPI handle by default, wallet credit as an opt-in. WALLET-ONLY WAS REJECTED and the reason is recorded so it is not retried: a refund parked in the wallet is unreachable for most buyers, because cashing out runs through upiPayoutRequest which needs Stripe KYC, a verified VPA, admin approval with a hand-entered UTR AND coins >= upiPayoutMinCoins - 1,000 in production. Someone refunded Rs 49 for an event the CREATOR cancelled would need full KYC and twenty more cancelled events before they could withdraw their own money. That lane is built for creator earnings, not for giving a customer their money back. NEW lib/commercial_refund_rail.ts picks the rail from direct_purchases (its ABSENCE is the answer for every wallet-funded order, and a missing table - the migration is not auto-applied - correctly means wallet, since before it exists no order can have been gateway-funded). Ledger row FIRST, then the gateway: refundExternal refuses when escrow is short rather than reversing money that is not there, and asking Cashfree first would leave them reversing money the books still show as held. ASYNCHRONY IS THE TRAP: Cashfree refunds are async, so a gateway reversal returns state `refund_pending`, NEVER `refunded`, until their refund webhook confirms - marking it complete on the API response tells a buyer they were refunded when they were not. Wired into BOTH the automated lifecycle path and the admin claims route, because an admin decision must not be quietly worse for the buyer than the machine's.",
+    "shipped": "2026-08-29",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "cashfreeEnabled",
+      "guestCheckoutEnabled",
+      "upiPayoutEnabled"
+    ],
+    "success": [
+      {
+        "event": "commercial_lifecycle",
+        "where": {},
+        "property": "outcome",
+        "equals": "refunded",
+        "min_events": 1,
+        "note": "The wallet rail still refunds after the rail split. This is the REGRESSION guard - wallet refunds worked before this change and must still work."
+      },
+      {
+        "event": "commercial admin_claim",
+        "where": {},
+        "property": "outcome",
+        "equals": "refunded",
+        "min_events": 0,
+        "note": "The admin path uses the same rail selection. A wallet credit appearing here for a Cashfree-funded order means refundRailFor did not find the direct_purchases row."
+      },
+      {
+        "event": "$exception",
+        "where": {},
+        "property": "$exception_message",
+        "not_in": [
+          "gateway_refund_failed"
+        ],
+        "min_events": 0,
+        "note": "FAILURE VALUE. A gateway reversal that the ledger already recorded but Cashfree refused leaves escrow debited with no money moving - it needs a human, and the ledger-first ordering is what makes it detectable rather than silent."
+      }
+    ],
+    "_verified_at": "NEW worker/src/lib/commercial_refund_rail.ts (refundRailFor, executeCommercialRefund); worker/src/routes/commercial_lifecycle.ts refund path switched to it and the response now carries refundState (refunded | refund_pending); worker/src/routes/commercial_admin_claims.ts likewise. refundCashfreeOrder uses a stable refundId derived from the purchase id, so a retry cannot issue a second reversal. upi_payout.ts:53 requireStripeKyc and :60 upiPayoutMinCoins re-read to confirm the payout-lane constraints quoted above; upiPayoutMinCoins is 1000 in prod per the live /api/config read. npx tsc --noEmit clean in worker/. NEVER RUN AGAINST A GATEWAY."
   }
 }
