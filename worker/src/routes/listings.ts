@@ -311,7 +311,7 @@ function activePromoPct(promos: any[], now: number, code?: string | null): { pct
   return best ? { pct: Math.min(100, Math.max(0, Number(best.pct_off))), promo: best } : { pct: 0, promo: null };
 }
 
-function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set<string>) {
+function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set<string>, stats?: Map<string, { seats_taken: number; watching: number }>) {
   const now = Date.now();
   const promos = promosByListing?.get(r.id) ?? [];
   const { pct } = activePromoPct(promos.filter((p) => p.kind === "early_bird"), now);
@@ -362,6 +362,13 @@ function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set
     cat_version: Number(r.cat_version ?? 1),
     playbook_version: Number(r.playbook_version ?? 1),
     template_version: Number(r.template_version ?? 1),
+    // [CARD-SCHEMA-1] Derived, and null (not 0) when unknown, so a card can tell
+    // "nobody has booked" apart from "we could not count".
+    seats_taken: stats?.get(String(r.id))?.seats_taken ?? null,
+    seats_left: r.capacity != null && stats?.get(String(r.id))
+      ? Math.max(0, Number(r.capacity) - Number(stats.get(String(r.id))!.seats_taken))
+      : null,
+    watching: stats?.get(String(r.id))?.watching ?? null,
     creator: {
       uid: r.creator_id, handle: r.creator_handle ?? null,
       name: r.creator_name ?? null, avatar_url: r.creator_avatar ?? null,
@@ -369,6 +376,60 @@ function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set
       kyc_verified: r.creator_kyc === "verified",                     // A4 trust badge
     },
   };
+}
+
+
+/**
+ * [CARD-SCHEMA-1] Card stats that are DERIVED, never stored.
+ *
+ * The new card designs promise "3 slots left" and "428 watching". Both are already
+ * computable from tables the commercial lane maintains, so storing them would create a
+ * second place for the same fact to be wrong — and a counter that drifts from the
+ * entitlements it counts is worse than no counter, because people book against it.
+ *
+ *   seats_taken — live entitlements for the listing. [COMM-LIVE-AUTH-1] moved the
+ *                 per-ticket order onto the member row, which is what makes this an
+ *                 honest count of admitted buyers rather than of sessions.
+ *   watching    — participant intervals still OPEN, i.e. people connected right now.
+ *
+ * FAILS SOFT. The commercial migrations are not auto-applied, so these tables may not
+ * exist yet; an empty map means the card simply omits the stat. A missing seat count
+ * must never take down a marketplace page.
+ *
+ * One IN query each, no N+1 — same shape as promosFor above.
+ */
+async function cardStatsFor(env: Env, ids: string[]): Promise<Map<string, { seats_taken: number; watching: number }>> {
+  const map = new Map<string, { seats_taken: number; watching: number }>();
+  if (!ids.length) return map;
+  const placeholders = ids.map((_, i) => `?${i + 1}`).join(",");
+  try {
+    const seats = await metaSession(env).prepare(
+      `SELECT listing_id, COUNT(*) n FROM commercial_entitlements
+        WHERE listing_id IN (${placeholders})
+          AND role IN ('viewer','buyer')
+          AND state IN ('reserved','held','active','consumed')
+        GROUP BY listing_id`,
+    ).bind(...ids).all();
+    for (const r of (seats.results ?? []) as any[]) {
+      map.set(String(r.listing_id), { seats_taken: Number(r.n ?? 0), watching: 0 });
+    }
+  } catch { /* migration not applied — no seat counts, not an error */ }
+  try {
+    const live = await metaSession(env).prepare(
+      `SELECT s.listing_id listing_id, COUNT(*) n
+         FROM commercial_participant_intervals i
+         JOIN commercial_sessions s ON s.commercial_session_id = i.commercial_session_id
+        WHERE s.listing_id IN (${placeholders})
+          AND i.reconciliation_state = 'open'
+        GROUP BY s.listing_id`,
+    ).bind(...ids).all();
+    for (const r of (live.results ?? []) as any[]) {
+      const key = String(r.listing_id);
+      const prev = map.get(key) ?? { seats_taken: 0, watching: 0 };
+      map.set(key, { ...prev, watching: Number(r.n ?? 0) });
+    }
+  } catch { /* same */ }
+  return map;
 }
 
 /** Fetch early-bird promos for a page of listing ids (one IN query, no N+1). */
@@ -1203,8 +1264,9 @@ export async function myListings(req: Request, env: Env): Promise<Response> {
   ).bind(ctx.uid, vertical).all();
   const rows = (rs.results ?? []) as any[];
   const promos = await promosFor(env, rows.map((r) => r.id));
+  const cardStats = await cardStatsFor(env, rows.map((r) => r.id));
   const favs = await favoritesFor(env, ctx.uid, rows.map((r) => String(r.id))); // [UI-MKT-3]
-  return json({ listings: rows.map((r) => shapeCard(r, promos, favs)) });
+  return json({ listings: rows.map((r) => shapeCard(r, promos, favs, cardStats)) });
 }
 
 // ---------------------------------------------------------------------------
@@ -1295,9 +1357,10 @@ export async function exploreBrowse(req: Request, env: Env): Promise<Response> {
   const rows = (rs.results ?? []) as any[];
   const page = rows.slice(0, limit);
   const promos = await promosFor(env, page.map((r) => r.id));
+  const cardStats = await cardStatsFor(env, page.map((r) => r.id));
   const favs = await favoritesFor(env, uid, page.map((r) => String(r.id))); // [UI-MKT-3] hydrate heart state per fetch
   trackImpressions(env, req, uid, APP, "explore", page.map((r) => String(r.id)));
-  return json({ vertical, listings: page.map((r) => shapeCard(r, promos, favs)), cursor: rows.length > limit ? String(offset + limit) : null });
+  return json({ vertical, listings: page.map((r) => shapeCard(r, promos, favs, cardStats)), cursor: rows.length > limit ? String(offset + limit) : null });
 }
 
 // GET /api/explore/live-now — the red-dot rail.
@@ -1314,9 +1377,10 @@ export async function exploreLiveNow(req: Request, env: Env): Promise<Response> 
   ).bind(...binds).all();
   const rows = (rs.results ?? []) as any[];
   const promos = await promosFor(env, rows.map((r) => r.id));
+  const cardStats = await cardStatsFor(env, rows.map((r) => r.id));
   const favs = await favoritesFor(env, uid, rows.map((r) => String(r.id))); // [UI-MKT-3]
   trackImpressions(env, req, uid, APP, "live_now", rows.map((r) => String(r.id)));
-  return json({ vertical, listings: rows.map((r) => ({ ...shapeCard(r, promos, favs), joinable: true })) });
+  return json({ vertical, listings: rows.map((r) => ({ ...shapeCard(r, promos, favs, cardStats), joinable: true })) });
 }
 
 // GET /api/explore/search — A1: FTS5 + filters + sorts; partial title AND creator name hit.
@@ -1403,11 +1467,12 @@ export async function exploreSearch(req: Request, env: Env): Promise<Response> {
   const rows = (rs.results ?? []) as any[];
   const page = rows.slice(0, limit);
   const promos = await promosFor(env, page.map((r) => r.id));
+  const cardStats = await cardStatsFor(env, page.map((r) => r.id));
   const favs = await favoritesFor(env, uid, page.map((r) => String(r.id))); // [UI-MKT-3]
   const g = geoOf(req);
   track(env, uid ?? "guest", "explore_search", APP, { q: q.slice(0, 40), sort, n: page.length, guest: !uid, vertical, country: g.country, city: g.city });
   trackImpressions(env, req, uid, APP, "search", page.map((r) => String(r.id)));
-  return json({ vertical, listings: page.map((r) => shapeCard(r, promos, favs)), cursor: rows.length > limit ? String(offset + limit) : null });
+  return json({ vertical, listings: page.map((r) => shapeCard(r, promos, favs, cardStats)), cursor: rows.length > limit ? String(offset + limit) : null });
 }
 
 // GET /api/listings/:id — full details + creator card + reviews page 1.
@@ -1418,8 +1483,9 @@ export async function getListing(req: Request, env: Env, id: string): Promise<Re
   const isOwner = uid === r.creator_id;
   if (r.status === "draft" && !isOwner) return json({ error: "not found" }, 404);
   const promos = await promosFor(env, [id]);
+  const cardStats = await cardStatsFor(env, [id]);
   const favs = await favoritesFor(env, uid, [id]); // [UI-MKT-3] heart state on the detail page
-  const card = shapeCard(r, promos, favs);
+  const card = shapeCard(r, promos, favs, cardStats);
   const reviews = await metaSession(env).prepare(
     `SELECT rv.id, rv.author_id, rv.rating, rv.body, rv.reply, rv.reply_at, rv.created_at, u.display_name AS author_name, u.avatar_url AS author_avatar
        FROM reviews rv LEFT JOIN users u ON u.uid=rv.author_id WHERE rv.listing_id=?1 ORDER BY rv.created_at DESC LIMIT 20`,
@@ -1508,6 +1574,7 @@ export async function getCreator(req: Request, env: Env, id: string): Promise<Re
   ).bind(id, vertical).all();
   const lrows = (ls.results ?? []) as any[];
   const promos = await promosFor(env, lrows.map((r) => r.id));
+  const cardStats = await cardStatsFor(env, lrows.map((r) => r.id));
   const favs = await favoritesFor(env, uid, lrows.map((r) => String(r.id))); // [UI-MKT-3]
   const reviews = await metaSession(env).prepare(
     `SELECT rv.id, rv.listing_id, rv.author_id, rv.rating, rv.body, rv.reply, rv.reply_at, rv.created_at, u.display_name AS author_name, u.avatar_url AS author_avatar
@@ -1535,7 +1602,7 @@ export async function getCreator(req: Request, env: Env, id: string): Promise<Re
       intro_video_ref: prof?.intro_video_ref ?? null,
       pinned_listing_id: prof?.pinned_listing_id ?? null,
     },
-    listings: lrows.map((r) => shapeCard(r, promos, favs)),
+    listings: lrows.map((r) => shapeCard(r, promos, favs, cardStats)),
     reviews: reviews.results ?? [],
     viewer: { following, notify },
   });
@@ -1718,8 +1785,9 @@ export async function listFavorites(req: Request, env: Env): Promise<Response> {
   ).bind(ctx.uid, vertical).all();
   const rows = (rs.results ?? []) as any[];
   const promos = await promosFor(env, rows.map((r) => r.id));
+  const cardStats = await cardStatsFor(env, rows.map((r) => r.id));
   const favs = new Set(rows.map((r) => String(r.id))); // all favorited by definition
-  return json({ vertical, listings: rows.map((r) => shapeCard(r, promos, favs)) });
+  return json({ vertical, listings: rows.map((r) => shapeCard(r, promos, favs, cardStats)) });
 }
 
 // ---------------------------------------------------------------------------
@@ -1792,6 +1860,7 @@ export async function bookListing(req: Request, env: Env, id: string): Promise<R
 
   // A5: best single promotion (early-bird auto; promo code when provided).
   const promos = await promosFor(env, [id]);
+  const cardStats = await cardStatsFor(env, [id]);
   const { pct, promo } = activePromoPct(promos.get(id) ?? [], Date.now(), b.promo_code ?? null);
   const amount = pct > 0 ? Math.round(Number(l.price) * (100 - pct) / 100) : Number(l.price);
 

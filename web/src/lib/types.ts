@@ -59,6 +59,11 @@ export interface Card {
   favorited?: boolean;
   /** How the price should read: per_minute | per_hour | per_month | from | asking | none. */
   price_semantics?: string | null;
+  /** [CARD-SCHEMA-1] Derived server-side, never stored. `null` means "could not count",
+   *  which is deliberately different from 0. */
+  seats_taken?: number | null;
+  seats_left?: number | null;
+  watching?: number | null;
   created_at?: number | null;
   /**
    * [DEMO-LISTING-1 2026-08-26] URL slug for the shareable /<handle>/<slug>
@@ -119,6 +124,8 @@ export interface CardView {
   location: string | null;
   country: string | null;
   adultsOnly: boolean;
+  seatsLeft: number | null;
+  watching: number | null;
   status: string | null;
   live: boolean;
   favorited: boolean;

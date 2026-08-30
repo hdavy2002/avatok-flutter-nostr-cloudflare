@@ -127,12 +127,22 @@ export function ListingTile({ listing, href, width = 360, className = '' }: List
 
         {/* Social proof. Only rendered when it is real — an unrated new listing shows
             nothing rather than "★ 0 · 0", which reads worse than silence. */}
-        {(c.ratingAvg != null || c.joinedCount > 0) && (
+        {(c.ratingAvg != null || c.joinedCount > 0 || c.watching || c.seatsLeft != null) && (
           <div className="mt-2 flex items-center gap-3 font-mono text-[11px] text-inkSoft">
+            {/* [CARD-SCHEMA-1] Live viewers first — it is the most perishable fact on the
+                card and the reason someone taps now rather than later. */}
+            {c.live && c.watching ? <span>👁 {c.watching} watching</span> : null}
             {c.ratingAvg != null && (
               <span>★ {c.ratingAvg.toFixed(1)}{c.ratingCount > 0 ? ` · ${c.ratingCount}` : ''}</span>
             )}
             {c.joinedCount > 0 && <span>✓ {c.joinedCount} booked</span>}
+            {/* Scarcity is only shown when it is REAL and nearly out. `null` means the
+                count was unavailable and must render nothing — an invented "sold out"
+                costs a sale, and an invented "seats left" is a promise we cannot keep. */}
+            {c.seatsLeft === 0 && <span className="text-coral">Sold out</span>}
+            {c.seatsLeft != null && c.seatsLeft > 0 && c.seatsLeft <= 5 && (
+              <span>◷ {c.seatsLeft} left</span>
+            )}
           </div>
         )}
 

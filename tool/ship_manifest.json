@@ -4147,5 +4147,26 @@
       }
     ],
     "_verified_at": "NEW worker/src/lib/commercial_refund_rail.ts (refundRailFor, executeCommercialRefund); worker/src/routes/commercial_lifecycle.ts refund path switched to it and the response now carries refundState (refunded | refund_pending); worker/src/routes/commercial_admin_claims.ts likewise. refundCashfreeOrder uses a stable refundId derived from the purchase id, so a retry cannot issue a second reversal. upi_payout.ts:53 requireStripeKyc and :60 upiPayoutMinCoins re-read to confirm the payout-lane constraints quoted above; upiPayoutMinCoins is 1000 in prod per the live /api/config read. npx tsc --noEmit clean in worker/. NEVER RUN AGAINST A GATEWAY."
+  },
+  "CARD-SCHEMA-1": {
+    "description": "[CARD-SCHEMA-1] Seats-left and live-watcher counts on cards, DERIVED and never stored. The new card designs promise '3 slots left' and '428 watching'; both are computable from tables the commercial lane already maintains, and storing them would create a second place for the same fact to be wrong. A counter that drifts from the entitlements it counts is worse than no counter, because people book against it. NEW cardStatsFor() in listings.ts: one IN query for seats (live commercial_entitlements with role viewer/buyer) and one for watchers (commercial_participant_intervals still 'open', joined to the session's listing) - same no-N+1 shape as promosFor, threaded through shapeCard at all nine page-fetch sites. FAILS SOFT: the commercial migrations are not auto-applied, so a missing table yields an empty map and the card simply omits the stat - a seat count must never take down a marketplace page. NULL IS NOT ZERO, and that distinction is load-bearing: `null` means 'could not count' and renders nothing, `0` means sold out and renders 'Sold out'. An invented 'sold out' costs a sale; an invented 'seats left' is a promise the system cannot keep. Scarcity is shown only at <=5 remaining, so it is information rather than permanent theatre. NOT BUILT, and deliberately: response-time SLA and repeat-customer rate. Those are per-creator REPUTATION, and reputation computed on demand from a page request is both expensive and gameable; they belong on a schedule into creator_profiles and must never be creator-declared. Followers-on-card also deferred - creator_follows already has the count, it just needs to reach the card payload.",
+    "shipped": "2026-08-29",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "marketplaceEnabled",
+      "commercialLiveCheckoutEnabled"
+    ],
+    "success": [
+      {
+        "event": "listing_viewed",
+        "where": {},
+        "property": "listing_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "REGRESSION guard. cardStatsFor runs on every explore/search/live-now/detail fetch; if either query throws outside its try, the whole marketplace page 500s. Listing views continuing to flow is what proves the fail-soft actually fails soft."
+      }
+    ],
+    "_verified_at": "worker/src/routes/listings.ts cardStatsFor() + shapeCard's fourth arg + nine call sites updated by regex and confirmed with `grep -c 'cardStatsFor(env'` = 9; seats_taken/seats_left/watching added to the card payload. web/src/lib/types.ts Card + CardView, web/src/lib/card.ts toCardView, web/src/components/ListingTile.tsx render. Column names checked against migrations/2026-08-24-commercial-stream-sessions.sql: commercial_entitlements(listing_id, role, state), commercial_participant_intervals(commercial_session_id, reconciliation_state), commercial_sessions(commercial_session_id, listing_id). npx tsc --noEmit clean in worker/; tsc clean in web/ apart from the three pre-existing @types/node errors."
   }
 }
