@@ -116,18 +116,50 @@ async function finishOperation(env: Env, operationId: string, state: LifecycleOp
   ).bind(operationId, state, JSON.stringify(response), Date.now()).run();
 }
 
-function cancellationDecision(authority: Authority, action: Action, now: number):
-  { state: "refund"; reason: string } | { state: "review_pending"; reason: string } {
+type CancellationDecision =
+  | { state: "refund"; reason: string }
+  | { state: "no_refund"; reason: string }
+  | { state: "review_pending"; reason: string };
+
+/**
+ * [COMM-REFUND-POL-1] Resolve a percentage into one of three OUTCOMES.
+ *
+ * The old code was `pct === 100 ? refund : review_pending`, which conflated two
+ * completely different situations: "the policy says this buyer gets nothing" and "we do
+ * not know what the policy says". Both froze the money and waited for a human. With the
+ * percentages now snapshotted (they never were before), 0 is an ANSWER — the creator
+ * keeps it and the order settles normally — not an absence of one.
+ *
+ * A partial percentage is still review_pending, and honestly so: commercial_refund_receipts
+ * is written with refunded_amount = gross and remaining_amount = 0 (commercial_lifecycle
+ * refund path), so the refund machinery cannot express a partial today. Returning
+ * "refund" for 40% would silently refund 100%.
+ */
+function outcomeForPct(raw: unknown, action: string): CancellationDecision {
+  const pct = Number(raw);
+  if (!Number.isInteger(pct) || pct < 0 || pct > 100) {
+    return { state: "review_pending", reason: `${action}_policy_missing` };
+  }
+  if (pct === 100) return { state: "refund", reason: action };
+  if (pct === 0) return { state: "no_refund", reason: `${action}_no_refund_policy` };
+  return { state: "review_pending", reason: `${action}_partial_refund_unsupported` };
+}
+
+function cancellationDecision(authority: Authority, action: Action, now: number): CancellationDecision {
   const policy = safeJson(authority.cancellation_policy_json);
   if (!policy) return { state: "review_pending", reason: "invalid_policy_snapshot" };
   if (action === "insufficient_delivery_evidence") return { state: "review_pending", reason: "insufficient_delivery_evidence" };
 
-  // Creator cancellation/no-show and provider outage require an explicit
-  // snapshot decision. Older commercial snapshots do not contain one, so the
-  // safe result is review_pending rather than borrowing legacy rules.
-  if (action === "creator_cancel" || action === "creator_no_show" || action === "provider_outage") {
-    const pct = Number(policy.creator_cancel_refund_pct ?? policy.provider_failure_refund_pct);
-    return pct === 100 ? { state: "refund", reason: action } : { state: "review_pending", reason: `${action}_policy_missing` };
+  // [COMM-REFUND-POL-1] provider_outage now reads the PROVIDER percentage.
+  // It used to read `creator_cancel_refund_pct ?? provider_failure_refund_pct`, so once
+  // both keys exist the ?? never falls through and an infrastructure failure would be
+  // judged by the creator-cancellation policy. Two different situations, two keys, and
+  // the whole point of having a separate provider key is that they can differ.
+  if (action === "provider_outage") {
+    return outcomeForPct(policy.provider_failure_refund_pct, action);
+  }
+  if (action === "creator_cancel" || action === "creator_no_show") {
+    return outcomeForPct(policy.creator_cancel_refund_pct, action);
   }
 
   const startsAt = authority.booking_starts_at ?? authority.event_starts_at ?? null;
@@ -137,8 +169,7 @@ function cancellationDecision(authority: Authority, action: Action, now: number)
     : Number(policy.cancellation_window_hours);
   if (!Number.isInteger(windowHours) || windowHours < 0) return { state: "review_pending", reason: "cancellation_window_missing" };
   if (now <= startsAt - windowHours * 3_600_000) return { state: "refund", reason: "buyer_cancel_within_policy_window" };
-  const latePct = Number(policy.late_cancel_refund_pct);
-  return latePct === 100 ? { state: "refund", reason: "late_cancel_policy_full_refund" } : { state: "review_pending", reason: "late_cancel_policy_missing" };
+  return outcomeForPct(policy.late_cancel_refund_pct, "late_cancel");
 }
 
 async function markReview(env: Env, authority: Authority, operationId: string, reason: string): Promise<Response> {
@@ -187,6 +218,25 @@ async function cancelOne(env: Env, authority: Authority, uid: string, idem: stri
   }
   const decision = cancellationDecision(authority, action, Date.now());
   if (decision.state === "review_pending") return await markReview(env, authority, operationId, decision.reason);
+  // [COMM-REFUND-POL-1] The policy says this cancellation earns no money back. That is a
+  // COMPLETED decision, not a pending one: the order keeps its escrow and settles through
+  // the normal cron, so we finish the operation and touch neither the ledger nor the money
+  // claim. Routing this to markReview (the old behaviour, because 0 !== 100) parked a
+  // fully-decided case in a queue with no screen behind it.
+  if (decision.state === "no_refund") {
+    const noRefund = {
+      ok: true,
+      state: "no_refund",
+      order_id: authority.order_id,
+      reason: decision.reason,
+      refunded_amount: 0,
+    };
+    await finishOperation(env, operationId, "completed", noRefund);
+    commercialEvent(env, "lifecycle", uid, {
+      kind: authority.kind, outcome: "no_refund", reason: decision.reason,
+    });
+    return json(noRefund, 200);
+  }
   if (!["held", "free"].includes(authority.order_status)) {
     return await markReview(env, authority, operationId, "order_not_refundable_from_escrow");
   }

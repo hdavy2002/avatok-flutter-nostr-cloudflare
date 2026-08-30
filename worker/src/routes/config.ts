@@ -24,6 +24,26 @@ export interface PlatformConfig {
   commercialConsultJoinEnabled: boolean;
   commercialCreatorFeePct: number;
   commercialSettlementHoldHours: number;
+  /**
+   * [COMM-REFUND-POL-1] The three refund percentages the cancellation decision needs.
+   *
+   * cancellationDecision() in commercial_lifecycle.ts auto-refunds ONLY when the policy
+   * percentage is exactly 100, and reads it off the immutable policy snapshot. The
+   * snapshot written at checkout carried none of these keys, so creator cancel, creator
+   * no-show, provider outage and EVERY late buyer cancel all resolved to review_pending
+   * — money frozen in escrow with no admin screen to release it. These produce the
+   * missing values into the snapshot.
+   *
+   * SNAPSHOTTED, NOT READ LIVE. A ticket sold under one policy settles under that policy
+   * even if the flag changes afterwards — the same reason the 80/20 split is snapshotted.
+   * Never "simplify" cancellationDecision into a readConfig() call.
+   *
+   * Defaults: the platform eats its own failures (creator cancel, provider outage → the
+   * buyer is made whole), and a buyer who cancels after the window does not (0).
+   */
+  commercialCreatorCancelRefundPct: number;
+  commercialProviderFailureRefundPct: number;
+  commercialLateCancelRefundPct: number;
   commercialConsultJoinEarlyMin: number;
   commercialConsultJoinLateMin: number;
   commercialConsultExtensionEnabled: boolean;
@@ -1691,6 +1711,11 @@ const DEFAULTS: PlatformConfig = {
   commercialConsultJoinEnabled: false,
   commercialCreatorFeePct: 80,
   commercialSettlementHoldHours: 24,
+  // [COMM-REFUND-POL-1] See the interface comment. Snapshotted at checkout, never read
+  // live at settlement time.
+  commercialCreatorCancelRefundPct: 100,
+  commercialProviderFailureRefundPct: 100,
+  commercialLateCancelRefundPct: 0,
   commercialConsultJoinEarlyMin: 10,
   commercialConsultJoinLateMin: 2,
   // Paid consultation extensions stay dark until an owner-configured duration
@@ -2374,6 +2399,11 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
   const next: Record<string, unknown> = { ...current };
   const numericKeys = new Set([
     "commercialCreatorFeePct", "commercialSettlementHoldHours",
+    // [COMM-REFUND-POL-1] Integers → they MUST be here or putConfig stores them as
+    // strings and `Number(policy.creator_cancel_refund_pct) === 100` quietly stops
+    // matching, sending every creator cancellation to review_pending again.
+    "commercialCreatorCancelRefundPct", "commercialProviderFailureRefundPct",
+    "commercialLateCancelRefundPct",
     "commercialConsultJoinEarlyMin", "commercialConsultJoinLateMin",
     "commercialConsultExtensionMinutes", "commercialConsultExtensionRate",
     "commercialLiveBackstageEarlyMin", "commercialLiveStartGraceMin",

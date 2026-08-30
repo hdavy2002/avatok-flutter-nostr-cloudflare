@@ -51,6 +51,7 @@ import { idStatus, idEmailStart, idEmailVerify, idPasswordStart, idPasswordSet }
 import { walletTopup, walletTopupIntent, walletTopupPlayVerify, runPlayVoidedPurchaseSweep, stripeWebhook, walletSpend, walletBalance, walletTransactions, walletEarnings, walletLive, walletLedger, walletLedgerDetail, walletReceiptResend } from "./routes/wallet";
 import { walletStatement, walletStatementExport, walletSummary, walletTopupQuote } from "./routes/wallet_statement";
 import { adminLedger, adminRefund, adminAdjust, adminAccount, adminRecon, adminEscrowHold, adminEscrowRelease, adminTaxExport, adminFailedSettlements, adminRetrySettlement, requireAdmin } from "./routes/admin_money";
+import { adminCommercialClaims, adminResolveCommercialClaim } from "./routes/commercial_admin_claims";
 import { dynwAcceptance } from "./routes/dynw_test"; // [DYNW-CORE-1] Phase 0 acceptance battery (admin-only, dark behind dynamicWorkersEnabled)
 import { receptRules } from "./routes/recept_rules"; // [DYNW-RECEPT-RULES-1] owner receptionist rule scripts
 import { welcomeBackfill } from "./routes/welcome_bonus"; // [WELCOME-100-1]
@@ -1175,6 +1176,13 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/admin/adjust" && req.method === "POST") return await adminAdjust(req, env);
       if (p === "/api/admin/recon" && req.method === "GET") return await adminRecon(req, env);
       if (p === "/api/admin/commercial/diagnostics" && req.method === "GET") return await commercialDiagnostics(req, env);
+      // [COMM-REFUND-POL-1] The screen behind review_pending. Before this there was no
+      // route anywhere that could move a commercial settlement job out of that state.
+      if (p === "/api/admin/commercial/claims" && req.method === "GET") return await adminCommercialClaims(req, env);
+      {
+        const cc = p.match(/^\/api\/admin\/commercial\/claims\/([A-Za-z0-9:_-]{1,128})$/);
+        if (cc && req.method === "POST") return await adminResolveCommercialClaim(req, env, cc[1]);
+      }
       if (p === "/api/admin/tax-export" && req.method === "GET") return await adminTaxExport(req, env);
       if (p === "/api/admin/escrow/hold" && req.method === "POST") return await adminEscrowHold(req, env);
       if (p === "/api/admin/escrow/release" && req.method === "POST") return await adminEscrowRelease(req, env);

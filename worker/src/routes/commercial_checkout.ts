@@ -85,6 +85,12 @@ type CheckoutPolicy = {
   no_show_policy: "session_charged";
   auto_release_on_provider_end: true;
   min_connected_ms: number;
+  // [COMM-REFUND-POL-1] Read by cancellationDecision() in commercial_lifecycle.ts. Their
+  // absence from the snapshot is what sent every creator cancel, creator no-show,
+  // provider outage and late buyer cancel to review_pending.
+  creator_cancel_refund_pct: number;
+  provider_failure_refund_pct: number;
+  late_cancel_refund_pct: number;
 };
 
 type CalendarClaim = { userId: string; sourceRef: string; blockId: string };
@@ -176,7 +182,33 @@ function hasAttr(attrs: Record<string, unknown>, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(attrs, key);
 }
 
-function policyFor(kind: CheckoutKind, attrs: Record<string, unknown>): CheckoutPolicy | null {
+/**
+ * [COMM-REFUND-POL-1] The three refund percentages, validated as integers 0..100.
+ *
+ * Returns null on ANY bad value so the caller refuses the checkout rather than
+ * snapshotting a NaN. A snapshot is immutable and settles a real order months later —
+ * writing garbage into one is not a thing to recover from gracefully at settlement time,
+ * where the only available answer is review_pending.
+ */
+function refundPercents(config: PlatformConfig): Pick<
+  CheckoutPolicy, "creator_cancel_refund_pct" | "provider_failure_refund_pct" | "late_cancel_refund_pct"
+> | null {
+  const creator = Math.trunc(Number(config.commercialCreatorCancelRefundPct));
+  const provider = Math.trunc(Number(config.commercialProviderFailureRefundPct));
+  const late = Math.trunc(Number(config.commercialLateCancelRefundPct));
+  for (const v of [creator, provider, late]) {
+    if (!Number.isInteger(v) || v < 0 || v > 100) return null;
+  }
+  return {
+    creator_cancel_refund_pct: creator,
+    provider_failure_refund_pct: provider,
+    late_cancel_refund_pct: late,
+  };
+}
+
+function policyFor(kind: CheckoutKind, attrs: Record<string, unknown>, config: PlatformConfig): CheckoutPolicy | null {
+  const pct = refundPercents(config);
+  if (!pct) return null;
   if (kind === "live_event") {
     if (!hasAttr(attrs, "commercial_refund_window_hours")) return null;
     const refundWindow = boundedInt(attrs.commercial_refund_window_hours, 0, REFUND_WINDOWS);
@@ -190,6 +222,7 @@ function policyFor(kind: CheckoutKind, attrs: Record<string, unknown>): Checkout
       no_show_policy: "session_charged",
       auto_release_on_provider_end: true,
       min_connected_ms: 60_000,
+      ...pct,
     };
   }
   const required = [
@@ -219,6 +252,7 @@ function policyFor(kind: CheckoutKind, attrs: Record<string, unknown>): Checkout
     no_show_policy: "session_charged",
     auto_release_on_provider_end: true,
     min_connected_ms: 60_000,
+    ...pct,
   };
 }
 
@@ -303,7 +337,7 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
     return json({ error: "consultation must have exactly one buyer" }, 409);
   }
 
-  const policy = policyFor(route.kind, parseAttrs(listing.attrs));
+  const policy = policyFor(route.kind, parseAttrs(listing.attrs), config);
   if (!policy) return json({ error: "commercial policy unavailable" }, 409);
   const price = Math.trunc(Number(listing.price));
   if (!Number.isSafeInteger(price) || price < 0) return json({ error: "invalid commercial price" }, 409);

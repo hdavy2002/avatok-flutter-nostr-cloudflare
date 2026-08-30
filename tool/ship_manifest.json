@@ -3754,5 +3754,60 @@
       }
     ],
     "_verified_at": "worker/src/routes/commercial_stream_sessions.ts: order_id removed from the persistedSession comparison; commercial_sessions INSERT binds order_id only when kind==='consult_1to1'; commercial_session_members INSERT and read-back now carry order_id; canViewSession refund-receipt lookup rescoped to listing_id+booking_id. worker/migrations/2026-08-29-commercial-member-order-id.sql adds the nullable column and idx_commercial_member_order. Confirmed no other reader depends on commercial_sessions.order_id: grep 'FROM commercial_sessions' across worker/src returns 17 sites, all selecting listing/booking/state/scheduled_at. commercial_refund_receipts.listing_id and .booking_id confirmed at worker/migrations/2026-08-25-commercial-lifecycle.sql:42-48. npx tsc --noEmit clean in worker/ on 2026-08-29."
+  },
+  "COMM-REFUND-POL-1": {
+    "description": "[COMM-REFUND-POL-1] Cancellations froze money with no way to unfreeze it. cancellationDecision() auto-refunds only when the policy pct is exactly 100 and reads it off the immutable snapshot - but the snapshot written at checkout carried NONE of creator_cancel_refund_pct / provider_failure_refund_pct / late_cancel_refund_pct, so creator cancel, creator no-show, provider outage and every late buyer cancel resolved to review_pending. THREE fixes. (1) The percentages are produced into the snapshot from three new integer flags (defaults 100/100/0: the platform eats its own failures, a late buyer cancel does not). Snapshotted, never read live at settlement - a ticket sold under one policy settles under it. refundPercents() returns null on any non-integer or out-of-range value so checkout REFUSES rather than snapshotting a NaN that can only ever resolve to review_pending months later. (2) pct===100?refund:review_pending conflated 'the policy says nothing back' with 'we do not know the policy'. Now three outcomes: 100 refunds, 0 is a DECISION (new no_refund state - operation completes, escrow settles normally through the cron, ledger and money-claim untouched), and a partial is review_pending honestly, because commercial_refund_receipts is written refunded_amount=gross/remaining=0 and cannot express a partial - returning 'refund' for 40% would silently refund 100%. Also: provider_outage read `creator_cancel_refund_pct ?? provider_failure_refund_pct`, so once BOTH keys exist the ?? never falls through and an infrastructure failure would be judged by the creator-cancellation policy; it now reads its own key. (3) NEW ADMIN ROUTE - there was no route anywhere in worker/src that could move a settlement job out of review_pending, only the generic ledger adjust() which leaves the job, order, entitlements and receipts inconsistent. GET /api/admin/commercial/claims lists what is stuck with LIVE escrow balances (a lagging wallet queue consumer is itself a reason jobs land there); POST .../claims/:orderId takes refund or release. 'release' hands the job back to the cron rather than paying out inline - a second implementation of the 80/20 split in an admin route is a guarantee the two drift. Partial refunds are refused, not faked. NOT DONE HERE, split to [COMM-NOSHOW-1]: the public lifecycle route still only emits creator_cancel/buyer_cancel, so creator_no_show and provider_outage remain unreachable from the product and must be produced by the settlement cron from participant-interval evidence.",
+    "shipped": "2026-08-29",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "commercialCreatorCancelRefundPct",
+      "commercialProviderFailureRefundPct",
+      "commercialLateCancelRefundPct",
+      "commercialLiveCheckoutEnabled",
+      "commercialConsultCheckoutEnabled"
+    ],
+    "success": [
+      {
+        "event": "commercial_lifecycle",
+        "where": {},
+        "property": "outcome",
+        "equals": "refunded",
+        "min_events": 1,
+        "note": "A creator-cancelled paid booking auto-refunds. Before this it could not: the pct was absent from the snapshot so the 100 comparison never matched."
+      },
+      {
+        "event": "commercial cancellation",
+        "where": {},
+        "property": "reason",
+        "not_in": [
+          "creator_cancel_policy_missing",
+          "provider_outage_policy_missing",
+          "late_cancel_policy_missing"
+        ],
+        "min_events": 0,
+        "note": "FAILURE VALUE, and the precise strings this issue removes. Any of them after this ships means the percentages are not reaching the snapshot - most likely the numericKeys entry is missing so putConfig stored them as strings and Number(...)===100 stopped matching."
+      },
+      {
+        "event": "commercial_lifecycle",
+        "where": {},
+        "property": "outcome",
+        "equals": "no_refund",
+        "min_events": 0,
+        "note": "The new third outcome. A late buyer cancel under the default 0% policy should land here and COMPLETE, not in review_pending. Its absence alongside a rise in review_pending means the no_refund branch is not being taken."
+      },
+      {
+        "event": "commercial admin_claim",
+        "where": {},
+        "property": "outcome",
+        "in": [
+          "refunded",
+          "released_to_settlement"
+        ],
+        "min_events": 0,
+        "note": "Emitted only by the new admin route. Zero is fine and expected while the lane is dark; a non-zero count proves the screen behind review_pending actually works end to end."
+      }
+    ],
+    "_verified_at": "worker/src/routes/config.ts: three keys in the PlatformConfig interface, in DEFAULTS (100/100/0), and in the numericKeys set. worker/src/routes/commercial_checkout.ts: CheckoutPolicy gains the three fields, refundPercents() validates 0..100 integers and returns null on failure, policyFor() takes config and spreads pct into BOTH the live_event and consult branches, call site passes config. worker/src/routes/commercial_lifecycle.ts: CancellationDecision union gains no_refund, outcomeForPct() resolves 100/0/partial, provider_outage reads provider_failure_refund_pct, caller handles no_refund via finishOperation('completed') without touching refund() or claimCommercialMoney(). NEW worker/src/routes/commercial_admin_claims.ts wired at worker/src/index.ts. Schema verified against migrations/2026-08-24 (commercial_settlement_jobs states pending|processing|review_pending|settled|refunded; commercial_policy_snapshots columns) and migrations/2026-08-25-commercial-lifecycle.sql (commercial_refund_receipts NOT NULL columns and issued_at, not created_at). npx tsc --noEmit clean in worker/ on 2026-08-29."
   }
 }
