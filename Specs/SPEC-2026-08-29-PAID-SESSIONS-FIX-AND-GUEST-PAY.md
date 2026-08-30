@@ -374,25 +374,59 @@ only who reads them and how they combine.
 commercial checkout route return 503 — neither takes money. PostHog:
 `commercial_lane_misconfigured` emitted with both flag values.
 
-### `[COMM-AFFIL-1]` Affiliates are paid nothing on ticket sales
+### `[COMM-AFFIL-1]` ⛔️ RESCOPED 2026-08-29 — this is a product decision, not a wiring job
 
-**Problem.** `settleAffiliate` is called from `money_engine.ts:145`, `avavoice.ts:782`
-and `avavision.ts:1070` — **never from any `commercial_*` file.** The pivot's stated
-traffic sources include "an affiliate created link", and today such a sale pays the
-affiliate zero.
+**The audit was right that affiliates earn nothing on ticket sales and wrong about why**,
+and the difference changes what to build. Corrected on reading the code:
 
-**Change.** Call `settleAffiliate` from the commercial release path in
-`commercial_settlement.ts:170-227`, funded from the **platform's 20%**, never from the
-creator's 80% — matching the legacy behaviour at `money_engine.ts` where `platformCut`
-is the source. Use `opId: commercial:affiliate:${orderId}` so it is idempotent with the
-release itself. The existing affiliate caps (`affiliateDailyEarnCapCoins`,
-`affiliateMonthlyEarnCapCoins`, `affiliatePerReferredCapCoins`, all live in prod) apply
-unchanged.
+`settleAffiliate` (`worker/src/routes/affiliate.ts:1094-1109`) **is a no-op**. Its body is
+a comment and `return 0`:
 
-**Done when.** A settled order with an `affiliate_attributions` row produces a ledger row
-`debit: platform:fees, credit: user:<affiliate>`, and creator net is **unchanged** at 80%.
-Assert the creator amount explicitly — funding an affiliate out of the creator's share
-would be the quiet way to get this wrong.
+> *"PURCHASE COMMISSIONS RETIRED (2026-06-18). Affiliates now earn 10% of their referred
+> users' TOP-UPS for life (`payAffiliateOnTopup`) instead of a cut of listing purchases.
+> No-op so the existing callers (money_engine, avavision, avavoice) keep compiling
+> without paying purchase commissions."*
+
+So calling it from `commercial_settlement.ts` — the fix this issue originally proposed —
+**would pay nobody anything.** It would look like a fix, ship green, and change no money.
+That is precisely the failure mode `tool/check_ship_readiness.py` exists to catch, and it
+is worth noting that a manifest entry asserting "a ledger row appears" would have caught
+it while one asserting "settleAffiliate was called" would not.
+
+The live model is: **10% of a referred user's top-ups, for life**, paid by
+`payAffiliateOnTopup` (`affiliate.ts:841`), called from exactly two places, both in
+`wallet.ts` (`:622` Play top-up, `:771` Stripe top-up). Caps
+`affiliateDailyEarnCapCoins` / `affiliateMonthlyEarnCapCoins` /
+`affiliatePerReferredCapCoins` are live in prod.
+
+> ### 🚨 The collision with Phase 4
+>
+> **The affiliate program is paid out of top-ups, and Phase 4 removes top-ups.**
+>
+> The whole point of `[PAY-CASHFREE-1]` is that a buyer pays ₹ per ticket by UPI and never
+> funds a wallet. If they never top up, `payAffiliateOnTopup` never fires. An affiliate
+> who drives a thousand ticket sales through their link earns **zero** — while the
+> attribution machinery dutifully records every one of them.
+>
+> This is not a bug in either system. It is two correct designs that assume different
+> things about how money enters, and the pivot is what put them in the same room.
+
+**Owner decision required. Three options:**
+
+- **(a) Un-retire purchase commissions for the commercial lane only.** Implement a real
+  body for the commercial path, funded from the **platform's 20%**, never the creator's
+  80% (`money_engine.ts:145` shows the intended shape: `platformCut` is the source).
+  Existing caps apply. Cost: the 2026-06-18 decision to retire purchase commissions is
+  partially reversed, and two commission models coexist.
+- **(b) Pay the affiliate a percentage of the guest's first purchase**, once, at Cashfree
+  webhook time — a referral bounty rather than a commission. Simpler than (a), does not
+  touch settlement, and does not resurrect a retired model.
+- **(c) Accept that affiliates earn only from top-ups.** Coherent only if buyers still
+  top up, which Phase 4 is designed to stop. Effectively ends the affiliate program for
+  the new traffic.
+
+**Nothing is built for this issue until that is answered.** Wiring the no-op would be
+worse than leaving it alone, because it would look done.
 
 ---
 

@@ -353,6 +353,16 @@ Also: the public lifecycle route can only ever emit `creator_cancel` or `buyer_c
   `commercial_*` file.** An affiliate-driven ticket sale pays the affiliate nothing today.
   This directly contradicts the "affiliate-created link" traffic source in the new plan.
 
+  > ⚠️ **CORRECTED 2026-08-29 while implementing.** The conclusion above is right; the
+  > diagnosis is wrong, and the difference matters. **`settleAffiliate` is a no-op** —
+  > `affiliate.ts:1094-1109` is a comment and `return 0`. Purchase commissions were
+  > *deliberately retired* on 2026-06-18 in favour of "10% of a referred user's top-ups,
+  > for life" (`payAffiliateOnTopup`, `affiliate.ts:841`, called only from `wallet.ts:622`
+  > and `:771`). So wiring `settleAffiliate` into the commercial lane would pay nobody and
+  > ship green. The real finding is bigger: **the affiliate program is funded by top-ups,
+  > and the guest-pay pivot removes top-ups**, so an affiliate driving ticket sales earns
+  > nothing. See `[COMM-AFFIL-1]` in the spec — it is now an owner decision, not a fix.
+
 ---
 
 ## 5. The guest-pay pivot — what exists, and what has to be built
