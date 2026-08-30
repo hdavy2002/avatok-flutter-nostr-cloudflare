@@ -49,13 +49,13 @@ Nothing below is deployed. Everything is committed to `main` and typechecks clea
 | `[CARD-MODEL-1]` `[CARD-PRICE-SEM-1]` | ✅ built — **found two live production bugs**, see below |
 | `[CARD-SLOTS-1]` | ✅ built — `POST /api/listings/:id/repeat`, migration `2026-08-29-listings-series-id.sql` |
 | `[PAY-CASHFREE-1]` | 🚧 **rail only, fenced.** Escrow funding works; the entitlement handoff does not exist, so order creation returns 503 regardless of flags |
-| `[PAY-HANDOFF-1]` | ⬜️ NEW, blocks the rest of Phase 4 |
-| `[BUY-OTP-1]` | ⬜️ not started |
+| `[PAY-HANDOFF-1]` | ⬜️ NEW, blocks the rest of Phase 4 — **deliberately not rushed**, see the note below |
+| `[BUY-OTP-1]` | ✅ built — and it was **far bigger than checkout**: see below |
 | `[PAY-REFUND-1]` | 🚧 ledger primitive `refundExternal` exists; not wired into `commercial_lifecycle` |
 | `[BUY-CHECKOUT-1]` `[GUEST-AFFIL-BOUNTY-1]` | ⬜️ not started |
 | `[CARD-SCHEMA-1]` `[COMM-NOSHOW-1]` | ⬜️ not started |
 
-**Three live bugs found while building, none of them in the original audit:**
+**Five live bugs found while building, none of them in the original audit:**
 
 1. **Every listing card on avatok.ai renders an empty placeholder.** `Card` declared
    `poster`, `rating`, `currency`, `creator.avatar` — four fields `shapeCard()` has never
@@ -66,10 +66,30 @@ Nothing below is deployed. Everything is committed to `main` and typechecks clea
 3. **A second identity wall at publish.** Relaxing liveness alone would have left every
    publish 403ing on `kyc_status` one step later — fixed-looking and still broken. Fixed
    in `[LIVE-CARVE-1]`.
+4. **Every gated action on the website 401s for a logged-out visitor.** `lib/clerk.tsx`
+   claimed `requireGuestAuth()` returns "a valid `requireUser` JWT". It returns the HMAC
+   handle-reservation token, which `requireUser` has never accepted. That is not just
+   checkout — it is **six call sites**: live-stream join, consult room, agent call, vision
+   publish, `RequireAccount`, `AuthGate`. Fixed at the source in `[BUY-OTP-1]`, so all six
+   are fixed by one change.
+5. **An aborted checkout refunded the base and kept the tax** — a bug introduced by
+   `[TAX-GST-1]` earlier the same day and caught by re-reading the catch block. The hold
+   took `base + tax`; the failure path refunded `price`. Never reached a buyer
+   (`gstEnabled` is false), fixed the same day.
 
 **And one correction to the audit:** `settleAffiliate` is not merely uncalled from the
 commercial lane, it is an **empty function**. Wiring it would have shipped green and paid
 nobody. See `[COMM-AFFIL-1]`.
+
+**On `[PAY-HANDOFF-1]`, deliberately deferred.** The extraction moves ~370 lines of
+working money code — order, policy snapshot, booking, entitlement, and a recovery path
+that decides when to refund — into a function both funding rails call. The safe way to do
+it is a verbatim move with a `ctx` object destructured to the SAME identifier names, so no
+variable is ever renamed and the body needs zero edits. That removes the one error class
+that matters here: a swapped uid of the same type, which `tsc` cannot catch and which
+would send money to the wrong person. It is not hard, but it wants a focused pass rather
+than the tail of a long session, and the `ENTITLEMENT_HANDOFF_IMPLEMENTED` fence means
+nothing is broken while it waits.
 
 **Before any of this reaches production:** six migrations are pending and **none is
 auto-applied** — `2026-08-29-commercial-member-order-id.sql`, `-commercial-gst.sql`,
