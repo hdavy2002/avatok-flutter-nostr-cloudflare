@@ -25,6 +25,11 @@ CREATE TABLE IF NOT EXISTS direct_purchases (
   listing_id        TEXT NOT NULL,
   booking_id        TEXT,
   kind              TEXT NOT NULL CHECK (kind IN ('live_event','consult_1to1')),
+  -- Consults only. The slot the buyer chose, captured at order time: the webhook fires
+  -- minutes later and has no request to read it from, and a consult cannot be provisioned
+  -- without one. NULL for live events, which take their schedule from the listing.
+  slot_start        INTEGER,
+  slot_end          INTEGER,
   -- The split of what the buyer paid, frozen here so a receipt can be reprinted without
   -- recomputing it from config that may since have changed.
   base_paise        INTEGER NOT NULL CHECK (base_paise >= 0),

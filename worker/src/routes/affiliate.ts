@@ -1191,3 +1191,81 @@ export async function reverseAffiliate(env: Env, orderId: string, refundAmount: 
     return 0;
   }
 }
+
+/**
+ * [GUEST-AFFIL-BOUNTY-1] A one-off bounty on a buyer's FIRST gateway purchase.
+ *
+ * WHY THIS EXISTS AT ALL. The affiliate programme pays 10% of a referred user's TOP-UPS,
+ * for life (`payAffiliateOnTopup`). Phase 4 removes top-ups — a buyer pays by UPI per
+ * ticket and never funds a wallet — so an affiliate who drives a thousand ticket sales
+ * would earn exactly nothing while the attribution machinery dutifully recorded every
+ * one of them. Owner decision 2026-08-29: pay a bounty on the first purchase instead.
+ *
+ * NOT `settleAffiliate`. That function is a NO-OP — purchase commissions were retired on
+ * 2026-06-18 and its body is a comment and `return 0`. Calling it would have shipped
+ * green and paid nobody, which is exactly what the audit first proposed doing.
+ *
+ * FUNDED FROM THE PLATFORM'S 20%, never the creator's 80%. The commission row records
+ * `gross_coins` as the platform cut, so the existing caps and the existing reversal path
+ * (`reverseAffiliate`, called when the purchase is refunded) both work unchanged.
+ *
+ * ONCE PER REFERRED BUYER. `affiliate_commissions.id` is keyed on the referred uid, not
+ * the purchase, so a second purchase by the same person inserts nothing — that is what
+ * makes it a bounty rather than a per-sale commission.
+ *
+ * Best-effort and never throws: an affiliate accounting failure must not cost a paying
+ * buyer their ticket.
+ */
+export async function payAffiliateBountyOnPurchase(env: Env, args: {
+  referredUid: string;
+  purchaseId: string;
+  grossCoins: number;      // what the buyer paid, base + tax
+  platformCut: number;     // the platform's share — the bounty's funding ceiling
+  listingId: string;
+}): Promise<number> {
+  try {
+    const cfg = await readConfig(env);
+    if (cfg.avaAffiliateEnabled !== true) return 0;
+    const gross = Math.trunc(Number(args.grossCoins));
+    const ceiling = Math.max(0, Math.trunc(Number(args.platformCut)));
+    if (!(gross > 0) || !args.referredUid || !args.purchaseId) return 0;
+
+    const attr = await metaDb(env).prepare(
+      "SELECT link_id, affiliate_uid FROM affiliate_attributions WHERE referred_uid=?1 ORDER BY bound_at ASC LIMIT 1",
+    ).bind(args.referredUid).first<{ link_id: string; affiliate_uid: string }>();
+    if (!attr) return 0;
+    if (attr.affiliate_uid === args.referredUid) return 0; // self-referral
+    const affiliate = await loadAffiliate(env, attr.affiliate_uid);
+    if (!affiliate || affiliate.status !== "active") return 0;
+
+    // Same 10% the top-up rail pays, CLAMPED to the platform cut so a bounty can never
+    // dip into the creator's share no matter how the rate or the split is configured.
+    const bounty = Math.min(Math.floor(gross * TOPUP_AFFILIATE_RATE), ceiling);
+    if (!(bounty > 0)) return 0;
+
+    const now = Date.now();
+    const qualifyDays = numFlag(cfg.affiliateQualifyDays, DEFAULT_QUALIFY_DAYS);
+    const qualifyAt = now + qualifyDays * 86_400_000;
+    // Keyed on the REFERRED USER: one bounty per person, ever.
+    const commId = `aff_bounty:${attr.affiliate_uid}:${args.referredUid}`;
+    const ins = await env.DB_WALLET.prepare(
+      `INSERT INTO affiliate_commissions (id, order_id, link_id, affiliate_uid, referred_uid, listing_id, app, gross_coins, affiliate_coins, admin_coins, reversed_coins, status, created_at, qualify_at)
+       VALUES (?1,?2,?3,?4,?5,?6,'avapay',?7,?8,0,0,'pending',?9,?10) ON CONFLICT(id) DO NOTHING`,
+    ).bind(commId, args.purchaseId, attr.link_id, attr.affiliate_uid, args.referredUid,
+      args.listingId, gross, bounty, now, qualifyAt).run();
+    if ((ins.meta?.changes ?? 0) > 0) {
+      track(env, attr.affiliate_uid, "affiliate_purchase_bounty", APP, {
+        coins: gross, affiliate_coins: bounty, platform_cut: ceiling,
+        status: "pending", pending: true, wallet_credited: false,
+        qualify_at: qualifyAt, referred_uid: args.referredUid,
+        link_id: attr.link_id, purchase_id: args.purchaseId, listing_id: args.listingId,
+      });
+      metric(env, "affiliate_purchase_bounty_pending", [bounty, gross]);
+      return bounty;
+    }
+    return 0; // already paid for this referred buyer
+  } catch (e) {
+    console.error("payAffiliateBountyOnPurchase failed:", String(e));
+    return 0;
+  }
+}

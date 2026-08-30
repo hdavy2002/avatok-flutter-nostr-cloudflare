@@ -4053,5 +4053,59 @@
       }
     ],
     "_verified_at": "NEW web/src/islands/auth/EmailCodeSignIn.tsx (useSignUp/useSignIn from @clerk/clerk-react 5.61.3, both confirmed exported at node_modules/@clerk/clerk-react/dist/index.d.ts:239 and :285); web/src/lib/clerk.tsx GuestGateHost swapped to the Clerk flow, false contract note corrected, GuestGate marked deprecated; web/src/islands/checkout/BookingFlow.tsx identify step rendered inline. Bug verified in the code, not from notes: worker/src/routes/ladder.ts:136 returns guest_token from mintGuestToken (g1. HMAC), worker/src/authz.ts:16-22 requireUser -> verifyClerk, and grep of worker/src/auth.ts for guest/g1. returns nothing. tsc -p tsconfig.json clean in web/ apart from the three pre-existing @types/node errors. NOT RUN IN A BROWSER - the Clerk hook calls are written from the v5 API surface and need a real sign-in to confirm."
+  },
+  "PAY-HANDOFF-1": {
+    "description": "[PAY-HANDOFF-1 / GUEST-AFFIL-BOUNTY-1] The fence from [PAY-CASHFREE-1] comes down. Everything that turns MONEY IN ESCROW into A TICKET - order row, immutable policy snapshot, consult booking and calendar events, both entitlements, each written then read back and verified - is now provisionCommercialPurchase(), called by BOTH funding rails. The alternative was a second copy of ~370 lines of money code, and two copies of a settlement path do not stay identical; they drift, and the drift shows up as a buyer who paid and cannot get in. HOW IT WAS EXTRACTED, because that is the risk: the body was MOVED VERBATIM and the parameter object destructures to the SAME identifier names it already used, so NOT ONE VARIABLE WAS RENAMED. The failure this avoids is swapping a buyer uid for a creator uid - same type, invisible to tsc, sends money to the wrong person. Verified by diffing the moved block against git HEAD: the ONLY differences are the funding call, its reversal, two `rail` telemetry properties and the held.duplicate shape. NEW provisionFromGatewayPurchase() is the gateway entry point; it re-derives policy, schedule and tax FROM THE LISTING rather than trusting the purchase row, and REFUSES when the listing price no longer matches what the buyer was charged - an under-charge silently gifts the difference, an over-charge silently keeps it. The webhook now funds and provisions in ONE call with one outcome, because funding without provisioning is precisely what the fence existed to prevent; a 5xx returns 500 so Cashfree retries (money taken, buyer has nothing), a 4xx returns 200 to stop retries that cannot help. Consult slots are captured at ORDER time onto direct_purchases (slot_start/slot_end) because the webhook arrives minutes later with no request to read them from. AFFILIATE BOUNTY: payAffiliateBountyOnPurchase() pays the referring affiliate once per referred BUYER, out of the platform's cut only, clamped to it so a bounty can never dip into the creator's 80%. Deliberately NOT settleAffiliate - that is a no-op whose body is a comment and `return 0`, and calling it would have shipped green and paid nobody.",
+    "shipped": "2026-08-29",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "cashfreeEnabled",
+      "guestCheckoutEnabled",
+      "commercialLiveCheckoutEnabled",
+      "commercialConsultCheckoutEnabled",
+      "avaAffiliateEnabled",
+      "gstEnabled"
+    ],
+    "success": [
+      {
+        "event": "commercial checkout_hold",
+        "where": {},
+        "property": "rail",
+        "in": [
+          "wallet",
+          "cashfree"
+        ],
+        "min_events": 1,
+        "note": "THE REGRESSION GUARD, and the one to check first. `rail=wallet` must still appear after the extraction - it proves the EXISTING, WORKING lane still funds and provisions through the moved code. If wallet events stop, the refactor broke the lane that was fine before this change touched it."
+      },
+      {
+        "event": "cashfree_payment_credited",
+        "where": {},
+        "property": "total_paise",
+        "gte": 1,
+        "min_events": 0,
+        "note": "Zero while the flags are off. When it appears it must be accompanied by a commercial_entitlements row for the same order - funding without a ticket is the failure the fence prevented and this issue is supposed to have made impossible."
+      },
+      {
+        "event": "affiliate_purchase_bounty",
+        "where": {},
+        "property": "status",
+        "equals": "pending",
+        "min_events": 0,
+        "note": "Bounty accrued, not yet paid - `pending` is asserted explicitly so a reader never mistakes accrual for payment. Also check affiliate_coins <= platform_cut on the same event: exceeding it means the bounty is eating the creator's share."
+      },
+      {
+        "event": "commercial checkout",
+        "where": {},
+        "property": "outcome",
+        "not_in": [
+          "retryable"
+        ],
+        "min_events": 0,
+        "note": "FAILURE VALUE. A rise in `retryable` after the extraction points at the moved recovery path - most likely ctx destructuring dropping a value the catch block reads."
+      }
+    ],
+    "_verified_at": "worker/src/routes/commercial_checkout.ts: PurchaseFunding type, provisionCommercialPurchase (body moved verbatim from commercialCheckout), commercialCheckout reduced to a delegating call with the wallet funding rail, NEW provisionFromGatewayPurchase. Move verified by `git show HEAD:...| sed -n '445,814p'` diffed against the extracted body - only the four intended edits. worker/src/routes/cashfree.ts: fence removed, webhook calls provisionFromGatewayPurchase, slot captured at order time, affiliate bounty after the ticket. worker/src/routes/affiliate.ts payAffiliateBountyOnPurchase (TOPUP_AFFILIATE_RATE 10%, clamped to platformCut, id keyed on referred uid so it fires once per person). worker/migrations/2026-08-29-direct-purchases.sql gains slot_start/slot_end. npx tsc --noEmit clean in worker/; ship-gate flags OK. STILL NEVER RUN AGAINST A GATEWAY."
   }
 }

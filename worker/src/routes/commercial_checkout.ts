@@ -11,11 +11,11 @@ import type { Env } from "../types";
 import { isFail, requireUser } from "../authz";
 import { metaDb } from "../db/shard";
 import { readConfig, type PlatformConfig } from "./config";
-import { hold, refund } from "../ledger";
+import { hold, refund, holdExternal, refundExternal } from "../ledger";
 import { json } from "../util";
 import { commercialEvent } from "../lib/commercial_telemetry";
 import { commercialLaneState, commercialLaneFlags, type CommercialLaneState } from "../lib/commercial_lane";
-import { taxFor } from "../lib/commercial_tax";
+import { taxFor, type TaxBreakdown } from "../lib/commercial_tax";
 import { claimBlock, releaseBlocks } from "../cal/engine";
 import { notifyCommercialUsers } from "../lib/commercial_notifications";
 
@@ -442,6 +442,85 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
   const tax = taxFor(config, price);
   if (!tax) return json({ error: "commercial tax configuration invalid" }, 503);
 
+  return await provisionCommercialPurchase(env, {
+    auth, route, listing, config, policy, price, tax, startsAt, endsAt,
+    slotStart, slotEnd, orderId, operationId, bookingId, requestHash,
+    funding: {
+      rail: "wallet",
+      // The original behaviour, unchanged: debit the buyer's WalletDO balance.
+      async fund(amount) {
+        const r = await hold(env, auth.uid, orderId, amount, {
+          opId: `commercial:hold:${orderId}`,
+          title: listing.title,
+          app: route.kind === "live_event" ? "avalive" : "avaconsult",
+        });
+        return { ok: r.ok, status: r.status, duplicate: r.body?.duplicate === true };
+      },
+      async reverse(amount) {
+        await refund(env, orderId, auth.uid, amount, {
+          opId: `commercial:checkout-failure:${orderId}`,
+          reason: "commercial checkout failed",
+          title: listing.title,
+        });
+      },
+    },
+  });
+}
+
+/** [PAY-HANDOFF-1] How a purchase is funded. The only thing that differs between the
+ *  wallet lane and the gateway lane. */
+export type PurchaseFunding = {
+  rail: "wallet" | "cashfree";
+  /** Move `amount` into escrow:<orderId>. `duplicate` means it was already there. */
+  fund(amount: number): Promise<{ ok: boolean; status: number; duplicate: boolean }>;
+  /** Take `amount` back out of escrow when provisioning fails after funding. */
+  reverse(amount: number): Promise<void>;
+};
+
+/**
+ * [PAY-HANDOFF-1] Everything that turns MONEY IN ESCROW into A TICKET: the order row,
+ * the immutable policy snapshot, the consult booking and calendar events, and both
+ * entitlements — each one written, then read back and verified before the next.
+ *
+ * WHY IT IS ITS OWN FUNCTION. Cashfree needed the same steps, and the alternative was a
+ * second copy of ~370 lines of money code. Two copies of a settlement path do not stay
+ * identical; they drift, and the drift shows up as a buyer who paid and cannot get in.
+ * The same argument is written into commercial_admin_claims.ts for why the admin route
+ * hands work back to the cron instead of re-implementing the split.
+ *
+ * HOW IT WAS EXTRACTED, because it matters. The body was MOVED VERBATIM out of
+ * commercialCheckout and the parameter object destructures to the SAME identifier names
+ * it already used, so not one variable was renamed. The failure this avoids is swapping
+ * a buyer uid for a creator uid — same type, invisible to tsc, and it sends money to the
+ * wrong person. Only two things changed: the funding call and its reversal, which are
+ * the only real difference between the rails.
+ *
+ * THROWS NOTHING. Every path returns a Response; the catch is part of the moved body and
+ * owns the recovery decision (when to refund, when a retry is still safe, when a
+ * concurrent buyer won the ticket).
+ */
+export async function provisionCommercialPurchase(env: Env, ctx: {
+  auth: { uid: string };
+  route: { kind: CheckoutKind };
+  listing: Listing;
+  config: PlatformConfig;
+  policy: CheckoutPolicy;
+  price: number;
+  tax: TaxBreakdown;
+  startsAt: number | null;
+  endsAt: number | null;
+  slotStart: number | null;
+  slotEnd: number | null;
+  orderId: string;
+  operationId: string;
+  bookingId: string | null;
+  requestHash: string;
+  funding: PurchaseFunding;
+}): Promise<Response> {
+  const {
+    auth, route, listing, config, policy, price, tax, startsAt, endsAt,
+    slotStart, slotEnd, orderId, operationId, bookingId, requestHash, funding,
+  } = ctx;
   let holdWasFresh = false;
   const calendarClaims: CalendarClaim[] = [];
   try {
@@ -474,20 +553,20 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
     // 'platform:tax' before splitting, and a refund returns everything the buyer paid
     // because everything the buyer paid is in one place.
     if (tax.buyerTotal > 0) {
-      const held = await hold(env, auth.uid, orderId, tax.buyerTotal, {
-        opId: `commercial:hold:${orderId}`,
-        title: listing.title,
-        app: route.kind === "live_event" ? "avalive" : "avaconsult",
-      });
+      // [PAY-HANDOFF-1] The ONLY difference between the two purchase rails. The wallet
+      // lane debits the buyer's balance; the Cashfree lane credits escrow from money
+      // already taken at the gateway. Everything else below is identical, which is the
+      // whole reason this function exists rather than a second copy of it.
+      const held = await funding.fund(tax.buyerTotal);
       if (!held.ok) {
-        commercialEvent(env, "checkout_hold", auth.uid, { kind: route.kind, outcome: "refused", reason: held.status === 402 ? "insufficient_funds" : "wallet_failure" });
+        commercialEvent(env, "checkout_hold", auth.uid, { kind: route.kind, outcome: "refused", reason: held.status === 402 ? "insufficient_funds" : "wallet_failure", rail: funding.rail });
         for (const claim of calendarClaims) await releaseBlocks(env, "avaconsult", claim.sourceRef);
         const response = { error: held.status === 402 ? "insufficient_funds" : "payment_failed", needed: tax.buyerTotal };
         await finishOperation(env, operationId, "failed", response);
         return json(response, held.status === 402 ? 402 : 502);
       }
-      holdWasFresh = held.body?.duplicate !== true;
-      commercialEvent(env, "checkout_hold", auth.uid, { kind: route.kind, outcome: "authorized", duplicate: !holdWasFresh });
+      holdWasFresh = held.duplicate !== true;
+      commercialEvent(env, "checkout_hold", auth.uid, { kind: route.kind, outcome: "authorized", duplicate: !holdWasFresh, rail: funding.rail });
     } else {
       commercialEvent(env, "checkout_hold", auth.uid, { kind: route.kind, outcome: "free" });
     }
@@ -792,8 +871,11 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
     // so an aborted checkout must give back base + tax. Refunding `price` here left the
     // GST sitting in escrow on a purchase that never happened — money owed to a tax
     // authority for a supply that did not occur, and the buyer short by the tax.
+    // [PAY-HANDOFF-1] Reverse on the SAME rail the money arrived on. Refunding a
+    // gateway-funded purchase into a wallet the buyer never funded would invent a
+    // balance out of nothing and leave the escrow leg unbalanced.
     if (!validEntitlement && tax.buyerTotal > 0) {
-      try { await refund(env, orderId, auth.uid, tax.buyerTotal, { opId: `commercial:checkout-failure:${orderId}`, reason: "commercial checkout failed", title: listing.title }); } catch { /* review via ledger */ }
+      try { await funding.reverse(tax.buyerTotal); } catch { /* review via ledger */ }
     }
     if (!validEntitlement && (holdWasFresh || tax.buyerTotal === 0 || collision || slotConflict || ticketRace)) {
       await metaDb(env).batch([
@@ -812,4 +894,114 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
     await finishOperation(env, operationId, "failed", response);
     return json(response, ticketRace || slotConflict ? 409 : 503);
   }
+}
+
+/**
+ * [PAY-HANDOFF-1] The gateway lane's entry into the shared provisioning path.
+ *
+ * Called from the Cashfree webhook AFTER the payment is verified against the gateway.
+ * Re-derives everything from the LISTING — policy, schedule, tax — rather than trusting
+ * anything carried on the purchase row, so a listing that changed between order creation
+ * and payment cannot provision a ticket on stale terms. The one thing it does trust is
+ * `chargedTokens`, because that is what the buyer actually paid; if it disagrees with
+ * what the listing now costs, the purchase is refused rather than silently reconciled.
+ *
+ * `funding.fund` is holdExternal — money already taken at the gateway, credited into the
+ * same escrow bucket the wallet lane uses, so release/split/settlement/refund all run
+ * unchanged. `funding.reverse` is refundExternal, which records the money going back OUT
+ * to the gateway; the actual reversal to the payer's UPI handle is the caller's job.
+ */
+export async function provisionFromGatewayPurchase(env: Env, args: {
+  uid: string;
+  listingId: string;
+  bookingId: string | null;
+  kind: CheckoutKind;
+  chargedTokens: number;
+  purchaseId: string;
+  gatewayRef: string;
+  slot?: { start_at: number; end_at: number } | null;
+}): Promise<Response> {
+  const config = await readConfig(env);
+  const listing = await metaDb(env).prepare(
+    `SELECT id,creator_id,kind,title,status,price,currency_display,starts_at,duration_min,capacity,attrs
+       FROM listings WHERE id=?1`,
+  ).bind(args.listingId).first<Listing>();
+  if (!listing) return json({ error: "listing unavailable" }, 404);
+  if (listing.creator_id === args.uid) return json({ error: "cannot buy your own service" }, 400);
+
+  const policy = policyFor(args.kind, parseAttrs(listing.attrs), config);
+  if (!policy) return json({ error: "commercial policy unavailable" }, 409);
+  const price = Math.trunc(Number(listing.price));
+  if (!Number.isSafeInteger(price) || price < 0) return json({ error: "invalid commercial price" }, 409);
+  const tax = taxFor(config, price);
+  if (!tax) return json({ error: "commercial tax configuration invalid" }, 503);
+  // The buyer paid a specific number. If the listing no longer agrees, do NOT provision:
+  // an under-charge silently gifts the difference and an over-charge silently keeps it.
+  if (tax.buyerTotal !== Math.trunc(args.chargedTokens)) {
+    return json({ error: "price changed since payment", charged: args.chargedTokens, now: tax.buyerTotal }, 409);
+  }
+
+  const startsAt = args.kind === "live_event" ? Math.trunc(Number(listing.starts_at)) : null;
+  const endsAt = args.kind === "live_event" && startsAt !== null
+    ? startsAt + Math.max(1, Math.trunc(Number(listing.duration_min ?? 60))) * 60_000
+    : null;
+  if (args.kind === "live_event"
+    && (startsAt === null || endsAt === null || !Number.isSafeInteger(startsAt) || startsAt <= 0 || endsAt <= startsAt)) {
+    return json({ error: "event schedule unavailable" }, 409);
+  }
+  const slotStart = args.kind === "consult_1to1" ? Math.trunc(Number(args.slot?.start_at)) : null;
+  const slotEnd = args.kind === "consult_1to1" ? Math.trunc(Number(args.slot?.end_at)) : null;
+  if (args.kind === "consult_1to1"
+    && (slotStart === null || slotEnd === null || !Number.isSafeInteger(slotStart)
+      || !Number.isSafeInteger(slotEnd) || slotEnd <= slotStart)) {
+    return json({ error: "consultation slot required" }, 400);
+  }
+
+  // Derived from the purchase, so a webhook redelivery lands on the same ids and the
+  // whole path is idempotent exactly as the wallet lane's is.
+  const orderId = `cashfree-order:${args.purchaseId}`;
+  const operationId = `commercial-checkout:cashfree:${args.purchaseId}`;
+  const requestHash = await sha256Hex(`cashfree:${args.purchaseId}:${args.gatewayRef}`);
+  if (!await assertCheckoutSchema(env)) return json({ error: "commercial checkout unavailable" }, 503);
+  // finishOperation() UPDATEs this row; without it the outcome would be recorded nowhere.
+  await metaDb(env).prepare(
+    `INSERT OR IGNORE INTO commercial_checkout_operations
+       (operation_id,account_id,kind,listing_id,request_sha256,order_id,state,created_at,updated_at)
+     VALUES (?1,?2,?3,?4,?5,?6,'started',?7,?7)`,
+  ).bind(operationId, args.uid, args.kind, listing.id, requestHash, orderId, Date.now()).run();
+
+  return await provisionCommercialPurchase(env, {
+    auth: { uid: args.uid },
+    route: { kind: args.kind },
+    listing, config, policy, price, tax,
+    startsAt, endsAt, slotStart, slotEnd,
+    orderId, operationId,
+    bookingId: args.bookingId,
+    requestHash,
+    funding: {
+      rail: "cashfree",
+      async fund(amount) {
+        const r = await holdExternal(env, orderId, amount, {
+          opId: `cashfree:hold:${args.gatewayRef}`,
+          uid: args.uid,
+          source: "cashfree",
+          ref: args.gatewayRef,
+          title: listing.title,
+        });
+        // holdExternal is a queued ledger row, idempotent on opId at the consumer, so it
+        // has no "already existed" signal to report. `false` is the safe answer: it only
+        // widens the failure path's cleanup, never narrows it.
+        return { ok: r.ok, status: r.status, duplicate: false };
+      },
+      async reverse(amount) {
+        await refundExternal(env, orderId, amount, {
+          opId: `cashfree:reverse:${args.gatewayRef}`,
+          uid: args.uid,
+          source: "cashfree",
+          reason: "commercial provisioning failed",
+          ref: args.gatewayRef,
+        });
+      },
+    },
+  });
 }

@@ -18,42 +18,37 @@ import { json } from "../util";
 import { isFail, requireUser } from "../authz";
 import { metaDb } from "../db/shard";
 import { readConfig } from "./config";
-import { holdExternal } from "../ledger";
 import { taxFor } from "../lib/commercial_tax";
+import { provisionFromGatewayPurchase } from "./commercial_checkout";
 import { commercialLaneState } from "../lib/commercial_lane";
 import { commercialEvent } from "../lib/commercial_telemetry";
 import {
   cashfreeConfigured, createCashfreeOrder, fetchCashfreeOrder, verifyCashfreeSignature,
 } from "../lib/cashfree";
 import { track } from "../hooks";
+import { payAffiliateBountyOnPurchase } from "./affiliate";
 
 const APP = "avapay";
 
 /**
- * 🚧 INCOMPLETE ON PURPOSE, AND FENCED SO IT CANNOT SHIP HALF-DONE.
+ * [PAY-HANDOFF-1] The fence is DOWN.
  *
- * The rail below funds escrow correctly, but the step AFTER that — creating the
- * commercial order, the immutable policy snapshot, the booking and the ENTITLEMENT — is
- * not wired yet. Without it a buyer pays, escrow fills, and they receive no ticket: the
- * exact shape of the bugs Phase 1 existed to remove.
+ * This was `ENTITLEMENT_HANDOFF_IMPLEMENTED = false`, and order creation returned 503
+ * regardless of flags, because escrow could be funded but no ticket could be issued —
+ * "charged and given nothing", the exact class of bug Phase 1 existed to remove. The
+ * handoff now exists: `provisionFromGatewayPurchase` (routes/commercial_checkout.ts)
+ * runs the SAME order/snapshot/booking/entitlement path the wallet lane runs, with the
+ * funding step swapped for holdExternal.
  *
- * Flags alone are not enough protection here. `cashfreeEnabled` is one KV write away
- * from true, and a flag flip is not a code review. So order creation refuses outright
- * while this is false, which makes "charged but nothing delivered" unreachable rather
- * than merely unlikely.
- *
- * TO FINISH: extract the order/snapshot/booking/entitlement block from
- * commercialCheckout (routes/commercial_checkout.ts) into a function both lanes call,
- * with the funding step passed in — hold() for the wallet lane, holdExternal() for this
- * one. Then flip this to true, run the Cashfree sandbox end to end, and confirm a real
- * entitlement row exists before the flags go on.
+ * Still gated by `cashfreeEnabled` + `guestCheckoutEnabled` + real credentials, and
+ * still never exercised against a live or sandbox gateway.
  */
-const ENTITLEMENT_HANDOFF_IMPLEMENTED = false;
 
 type PurchaseRow = {
   purchase_id: string; gateway_order_id: string; uid: string; listing_id: string;
   booking_id: string | null; kind: string; base_paise: number; gst_paise: number;
   total_paise: number; status: string; affiliate_uid: string | null; order_id: string | null;
+  slot_start: number | null; slot_end: number | null;
 };
 
 async function schemaReady(env: Env): Promise<boolean> {
@@ -89,13 +84,9 @@ export async function cashfreeCreateOrder(req: Request, env: Env): Promise<Respo
   if (isFail(auth)) return json({ error: auth.error }, auth.status);
   const gate = await payEnabled(env);
   if (!gate.ok) return json({ error: "checkout unavailable", reason: gate.reason }, gate.status);
-  // See ENTITLEMENT_HANDOFF_IMPLEMENTED. Refuse to take money we cannot yet turn into a
-  // ticket, no matter what the flags say.
-  if (!ENTITLEMENT_HANDOFF_IMPLEMENTED) {
-    return json({ error: "checkout unavailable", reason: "entitlement_handoff_incomplete" }, 503);
-  }
-
-  const b = (await req.json().catch(() => ({}))) as { listingId?: unknown; bookingId?: unknown };
+  const b = (await req.json().catch(() => ({}))) as {
+    listingId?: unknown; bookingId?: unknown; slot?: unknown;
+  };
   const listingId = String(b.listingId || "");
   const bookingId = b.bookingId ? String(b.bookingId) : null;
   if (!listingId) return json({ error: "listingId required" }, 400);
@@ -129,6 +120,22 @@ export async function cashfreeCreateOrder(req: Request, env: Env): Promise<Respo
     return json({ error: "free listings use the standard checkout" }, 400);
   }
 
+  // A consult's slot is chosen HERE and stored, because the webhook arrives minutes
+  // later with no request to read it from and cannot provision a booking without one.
+  let slotStart: number | null = null;
+  let slotEnd: number | null = null;
+  if (kind === "consult_1to1") {
+    const raw = (b.slot && typeof b.slot === "object" && !Array.isArray(b.slot))
+      ? b.slot as Record<string, unknown> : null;
+    if (!raw) return json({ error: "slot {start_at,end_at} required" }, 400);
+    slotStart = Math.trunc(Number(raw.start_at));
+    slotEnd = Math.trunc(Number(raw.end_at ?? (slotStart + Number(listing.duration_min ?? 60) * 60_000)));
+    if (!Number.isSafeInteger(slotStart) || !Number.isSafeInteger(slotEnd)
+      || slotEnd <= slotStart || slotStart <= Date.now()) {
+      return json({ error: "future consultation slot required" }, 400);
+    }
+  }
+
   const purchaseId = crypto.randomUUID();
   const gatewayOrderId = `avatok_${purchaseId.replace(/-/g, "").slice(0, 24)}`;
   const now = Date.now();
@@ -139,9 +146,10 @@ export async function cashfreeCreateOrder(req: Request, env: Env): Promise<Respo
   await db.prepare(
     `INSERT INTO direct_purchases
       (purchase_id,gateway,gateway_order_id,uid,listing_id,booking_id,kind,
-       base_paise,gst_paise,total_paise,status,affiliate_uid,created_at,updated_at)
-     VALUES (?1,'cashfree',?2,?3,?4,?5,?6,?7,?8,?9,'pending',?10,?11,?11)`,
+       slot_start,slot_end,base_paise,gst_paise,total_paise,status,affiliate_uid,created_at,updated_at)
+     VALUES (?1,'cashfree',?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,'pending',?12,?13,?13)`,
   ).bind(purchaseId, gatewayOrderId, auth.uid, listing.id, bookingId, kind,
+    slotStart, slotEnd,
     tax.taxableBase * 100, tax.gstAmount * 100, tax.buyerTotal * 100,
     affiliateDeviceFrom(req), now).run();
 
@@ -209,8 +217,8 @@ export async function cashfreeWebhook(req: Request, env: Env): Promise<Response>
 
   const db = metaDb(env);
   const row = await db.prepare(
-    `SELECT purchase_id,gateway_order_id,uid,listing_id,booking_id,kind,base_paise,gst_paise,
-            total_paise,status,affiliate_uid,order_id
+    `SELECT purchase_id,gateway_order_id,uid,listing_id,booking_id,kind,slot_start,slot_end,
+            base_paise,gst_paise,total_paise,status,affiliate_uid,order_id
        FROM direct_purchases WHERE gateway_order_id=?1`,
   ).bind(gatewayOrderId).first<PurchaseRow>();
   if (!row) return json({ ok: true, ignored: "unknown order" });
@@ -239,26 +247,62 @@ export async function cashfreeWebhook(req: Request, env: Env): Promise<Response>
   await db.prepare("UPDATE direct_purchases SET status='paid',cf_order_id=?2,updated_at=?3 WHERE purchase_id=?1")
     .bind(row.purchase_id, truth.cf_order_id ?? null, Date.now()).run();
 
-  // Step 3. Fund escrow. Internal amounts are whole tokens (1 token = ₹1); paise exist
-  // only at the gateway boundary.
+  // Step 3+4. Fund escrow AND issue the ticket, through the same function the wallet
+  // lane uses. [PAY-HANDOFF-1] — funding without provisioning is what the old fence
+  // existed to prevent, so the two are one call and one outcome.
   const orderId = `cashfree-order:${row.purchase_id}`;
   const totalTokens = Math.round(row.total_paise / 100);
-  const funded = await holdExternal(env, orderId, totalTokens, {
-    opId: `cashfree:hold:${gatewayOrderId}`,
+  const provisioned = await provisionFromGatewayPurchase(env, {
     uid: row.uid,
-    source: "cashfree",
-    ref: gatewayOrderId,
+    listingId: row.listing_id,
+    bookingId: row.booking_id,
+    kind: row.kind === "live_event" ? "live_event" : "consult_1to1",
+    chargedTokens: totalTokens,
+    purchaseId: row.purchase_id,
+    gatewayRef: gatewayOrderId,
+    slot: row.slot_start != null && row.slot_end != null
+      ? { start_at: Number(row.slot_start), end_at: Number(row.slot_end) }
+      : null,
   });
-  if (!funded.ok) {
+  if (!provisioned.ok) {
+    const detail = await provisioned.clone().text().catch(() => "");
     await db.prepare("UPDATE direct_purchases SET last_error=?2,updated_at=?3 WHERE purchase_id=?1")
-      .bind(row.purchase_id, "escrow funding failed", Date.now()).run();
-    // 500 so Cashfree retries: the money IS taken and the buyer has nothing yet, so
-    // giving up quietly is the worst available option.
-    return json({ error: "escrow funding failed" }, 500);
+      .bind(row.purchase_id, `provision failed: ${detail}`.slice(0, 300), Date.now()).run();
+    // 5xx ⇒ transient, so 500 and let Cashfree retry: the money IS taken and the buyer
+    // has nothing yet, and giving up quietly is the worst available option. 4xx ⇒ a
+    // decided refusal (price changed, listing gone); retrying cannot help, so 200 stops
+    // the retries and leaves the row for the refund sweep and a human.
+    return provisioned.status >= 500
+      ? json({ error: "provisioning failed", retry: true }, 500)
+      : json({ ok: true, provisioning_refused: true, status: provisioned.status });
   }
 
   await db.prepare("UPDATE direct_purchases SET status='credited',order_id=?2,updated_at=?3 WHERE purchase_id=?1")
     .bind(row.purchase_id, orderId, Date.now()).run();
+
+  // [GUEST-AFFIL-BOUNTY-1] Pay the affiliate who sent this buyer, once, out of the
+  // PLATFORM's share. Deliberately after the ticket exists and deliberately
+  // fire-and-forget: an affiliate accounting failure must never cost a paying buyer
+  // their seat. The bounty row is keyed on the referred user, so a redelivered webhook
+  // or a second purchase inserts nothing.
+  try {
+    const creatorPct = Math.trunc(Number((await readConfig(env)).commercialCreatorFeePct));
+    const grossTokens = Math.round(row.total_paise / 100);
+    const baseTokens = Math.round(row.base_paise / 100);
+    // The platform's cut is a share of the BASE, never of the tax.
+    const platformCut = baseTokens - Math.round(baseTokens * creatorPct / 100);
+    const paid = await payAffiliateBountyOnPurchase(env, {
+      referredUid: row.uid,
+      purchaseId: row.purchase_id,
+      grossCoins: grossTokens,
+      platformCut,
+      listingId: row.listing_id,
+    });
+    if (paid > 0) {
+      await db.prepare("UPDATE direct_purchases SET bounty_paid=1,updated_at=?2 WHERE purchase_id=?1")
+        .bind(row.purchase_id, Date.now()).run();
+    }
+  } catch { /* never blocks the ticket */ }
 
   track(env, row.uid, "cashfree_payment_credited", APP, {
     listing_id: row.listing_id, kind: row.kind, total_paise: row.total_paise,
