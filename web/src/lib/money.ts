@@ -45,3 +45,44 @@ export function inrOrFree(tokens: number | null | undefined): string {
 export function inrWithTokens(tokens: number): string {
   return `${inr(tokens)} · ${Number(tokens).toLocaleString('en-IN')} Tokens`;
 }
+
+/**
+ * [TAX-GST-DISPLAY-1] The tax line, shown but not yet charged.
+ *
+ * Owner decision 2026-08-29: show 18% GST and the total a buyer would pay, while
+ * checkout stays closed. Nothing here collects anything — the money path is governed by
+ * the server's `gstEnabled` flag, which is FALSE, and by the commercial checkout flags,
+ * which are also false. This is the price a buyer is quoted, not a charge.
+ *
+ * MIRRORS `gstRatePct` in worker/src/routes/config.ts. Two copies of a tax rate is one
+ * too many, so when the server rate changes this constant changes with it — and until
+ * checkout exists there is nothing for them to disagree about.
+ *
+ * ⚠️ THIS IS A QUOTE, NOT A TAX INVOICE. avaTOK has no GSTIN yet, so nothing rendered
+ * from this may be labelled a GST invoice or carry a registration number. Have an
+ * accountant confirm the rate, the place-of-supply treatment and the invoice format
+ * before a single rupee of it is collected.
+ */
+export const GST_RATE_PCT = 18;
+
+export interface PriceBreakdown {
+  /** The creator's price, in tokens (₹1 each). */
+  base: number;
+  /** Platform fee. Zero today; carried so it can be switched on without reshaping this. */
+  fee: number;
+  gstRatePct: number;
+  gst: number;
+  /** base + fee + gst — what the buyer would pay. */
+  total: number;
+}
+
+/** Compute the quoted breakdown for a listing price. Rounds tax the same way the
+ *  server does (`Math.round`), so the displayed total matches what will be charged. */
+export function priceBreakdown(base: number | null | undefined, feeTokens = 0): PriceBreakdown | null {
+  const b = Number(base);
+  if (!Number.isFinite(b) || b <= 0) return null;
+  const fee = Math.max(0, Math.trunc(Number(feeTokens) || 0));
+  const taxable = Math.trunc(b) + fee;
+  const gst = Math.round(taxable * GST_RATE_PCT / 100);
+  return { base: Math.trunc(b), fee, gstRatePct: GST_RATE_PCT, gst, total: taxable + gst };
+}
