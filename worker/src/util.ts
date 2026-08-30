@@ -1,10 +1,39 @@
 // Shared helpers: HTTP/CORS, hashing, hex, phone normalization.
 import { avaReason } from "./lib/ava_reason"; // One Brain B1: unified reasoning gateway
 
+/**
+ * [UPLOAD-CORS-1 2026-08-30] The allow-headers list is the browser's whitelist, and a
+ * request carrying ANY header not on it is rejected at preflight — the fetch never
+ * reaches the Worker, so there is no status code and no log line, only "Failed to fetch".
+ *
+ * `/upload/public` and `/upload/private` read x-file-name, x-app, x-folder, x-uncommitted,
+ * x-encrypted, x-real-mime, x-source-media-id and the two x-ava-* approval headers
+ * (routes/media.ts). Only x-content-type was listed here, so a BROWSER could never upload
+ * a file with a name or an app tag — the very first web upload attempt failed at the
+ * preflight. The Flutter app never hit it because native HTTP has no preflight, which is
+ * exactly why this survived: the feature worked on the platform that was tested.
+ *
+ * Keep this in step with the headers routes/media.ts actually reads.
+ */
 export const CORS: Record<string, string> = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
-  "access-control-allow-headers": "content-type,authorization,x-content-type,idempotency-key",
+  "access-control-allow-headers": [
+    "content-type",
+    "authorization",
+    "idempotency-key",
+    // upload metadata — see routes/media.ts
+    "x-content-type",
+    "x-file-name",
+    "x-app",
+    "x-folder",
+    "x-uncommitted",
+    "x-encrypted",
+    "x-real-mime",
+    "x-source-media-id",
+    "x-ava-readable",
+    "x-ava-approval",
+  ].join(","),
 };
 
 export function json(data: unknown, status = 200, extra: Record<string, string> = {}): Response {
