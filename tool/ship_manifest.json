@@ -4025,5 +4025,33 @@
       }
     ],
     "_verified_at": "NEW worker/src/lib/cashfree.ts; NEW worker/src/routes/cashfree.ts; NEW worker/migrations/2026-08-29-direct-purchases.sql (NOT auto-applied); worker/src/ledger.ts holdExternal + refundExternal + ACCT_EXTERNAL; worker/src/types.ts CASHFREE_* env; worker/src/routes/config.ts cashfreeEnabled/guestCheckoutEnabled in the interface and DEFAULTS (both false, both booleans so correctly NOT in numericKeys); worker/src/index.ts three routes registered beside the Stripe webhook, which confirms the webhook path sits outside any auth wall. Lane gating reuses commercialLaneState from [COMM-FLAG-UNIFY-1] so a new door cannot bypass a half-configured lane; pricing reuses taxFor from [TAX-GST-1]. npx tsc --noEmit clean in worker/; ship-gate flags check OK."
+  },
+  "BUY-OTP-1": {
+    "description": "[BUY-OTP-1] Every gated action on the website was broken for logged-out visitors, and had been since the auth layer was written. lib/clerk.tsx's own header stated the contract: 'requireGuestAuth() resolves the guest_token (a valid requireUser JWT)'. IT IS NOT. guestCreate (worker/src/routes/ladder.ts) mints g1.<uid>.<exp>.<hmac>, and THAT file's header says 'Guests NEVER pass requireUser'. requireUser (worker/src/authz.ts) calls verifyClerk, which accepts only a Clerk RS256 JWT - grep worker/src/auth.ts for 'guest' or 'g1.' returns ZERO hits. So the token came back fine and 401'd on the very next request. Not just checkout: requireGuestAuth has SIX other call sites - LiveViewer join, ConsultRoom, AgentCall, vision AgentForm publish, RequireAccount, AuthGate - and all of them fail identically for anyone without an existing Clerk session. FIX AT THE SOURCE rather than per-caller: GuestGateHost now renders NEW islands/auth/EmailCodeSignIn (Clerk's own passwordless email_code flow) and resolves with getActiveTokenWaited() AFTER setActive, so requireGuestAuth keeps its exact signature and every call site gets a token the Worker actually accepts. Sign-UP is tried first and falls back to sign-IN on form_identifier_exists: we cannot know whether an email has an account, and asking would be both a wasted step and an account-enumeration oracle. NO PASSWORD FIELD - owner decision 2026-08-29; avaTOK's auth IS Clerk and Clerk owns credentials, so hand-rolling password storage would be a security regression, and one fewer field at the moment someone decides to pay is worth real completed checkouts. BookingFlow's identify step is now inline rather than a modal - no redirect out of checkout. GuestGate is kept exported but marked deprecated and broken, since components/index.ts and the README still reference it and step 1 (handle reservation) is still a real thing.",
+    "shipped": "2026-08-29",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "checkout_identify",
+        "where": {},
+        "property": "outcome",
+        "equals": "verified",
+        "min_events": 1,
+        "note": "PLACEHOLDER EVENT NAME - not emitted yet. The real proof is behavioural and must be checked by hand: open /book/<id> in a private window with no Clerk session, complete email + code, and confirm the pay step renders. Before this change that path 401'd 100% of the time."
+      },
+      {
+        "event": "$exception",
+        "where": {},
+        "property": "$exception_message",
+        "not_in": [
+          "auth: bad jwt"
+        ],
+        "min_events": 0,
+        "note": "FAILURE VALUE. 'auth: bad jwt' is what requireUser returns for the g1. token. Its presence from a web session after this ships means some caller is still handing the guest token to an authenticated route."
+      }
+    ],
+    "_verified_at": "NEW web/src/islands/auth/EmailCodeSignIn.tsx (useSignUp/useSignIn from @clerk/clerk-react 5.61.3, both confirmed exported at node_modules/@clerk/clerk-react/dist/index.d.ts:239 and :285); web/src/lib/clerk.tsx GuestGateHost swapped to the Clerk flow, false contract note corrected, GuestGate marked deprecated; web/src/islands/checkout/BookingFlow.tsx identify step rendered inline. Bug verified in the code, not from notes: worker/src/routes/ladder.ts:136 returns guest_token from mintGuestToken (g1. HMAC), worker/src/authz.ts:16-22 requireUser -> verifyClerk, and grep of worker/src/auth.ts for guest/g1. returns nothing. tsc -p tsconfig.json clean in web/ apart from the three pre-existing @types/node errors. NOT RUN IN A BROWSER - the Clerk hook calls are written from the v5 API surface and need a real sign-in to confirm."
   }
 }

@@ -15,7 +15,8 @@
  * host mounted. This is the ONE island the /book/[id].astro page hydrates.
  */
 import { useState } from 'react';
-import { ClerkIsland, getActiveToken, requireGuestAuth } from '../../lib/clerk';
+import { ClerkIsland, getActiveToken } from '../../lib/clerk';
+import { EmailCodeSignIn } from '../auth/EmailCodeSignIn';
 import type { Listing } from '../../lib/types';
 import { Card } from '../../components/Card';
 import { Spinner } from '../../components/Spinner';
@@ -54,6 +55,15 @@ function FlowInner({ listing }: { listing: Listing }) {
   const [result, setResult] = useState<BookingResult | null>(null);
   const [working, setWorking] = useState(false);
 
+  // [BUY-OTP-1] `requireGuestAuth()` is GONE from this flow.
+  //
+  // It resolved the HMAC guest token from /api/identity/guest and handed it to
+  // /api/id/email/{start,verify} — routes that call requireUser, which only accepts a
+  // Clerk RS256 JWT. Every new visitor got a 401 and checkout could not complete, with
+  // or without a payment gateway. The sign-in step is now Clerk's own email-code flow
+  // (EmailCodeSignIn), which ends with a real session, so getActiveToken() returns a
+  // token the Worker actually accepts.
+  //
   // Called by SlotPicker when it needs the slots endpoint (which requires auth).
   async function ensureAuth(): Promise<string> {
     const existing = await getActiveToken();
@@ -61,26 +71,30 @@ function FlowInner({ listing }: { listing: Listing }) {
       setToken(existing);
       return existing;
     }
-    const t = await requireGuestAuth();
-    setToken(t);
-    return t;
+    // No session yet: send them through the identify step rather than throwing. The
+    // picker's auth-only reads simply wait until there is a session.
+    setStep('identify');
+    throw new Error('sign-in required');
+  }
+
+  /** Pull the freshly-minted Clerk token and move on. */
+  async function afterSignIn() {
+    setWorking(true);
+    try {
+      const t = await getActiveToken();
+      if (!t) { setStep('pick'); return; }
+      setToken(t);
+      setStep(selection ? 'pay' : 'pick');
+    } finally { setWorking(false); }
   }
 
   async function onSelect(sel: BookSelection) {
     setSelection(sel);
-    // identify: gate fires here unless a session already exists.
-    setWorking(true);
+    const existing = await getActiveToken();
+    if (existing) { setToken(existing); setStep('pay'); return; }
+    // No session — show the email/code step inline. No modal, no redirect out of
+    // checkout, and no password field.
     setStep('identify');
-    try {
-      const t = (await getActiveToken()) ?? (await requireGuestAuth());
-      setToken(t);
-      setStep('pay');
-    } catch {
-      // Gate cancelled → return to pick so the user can retry.
-      setStep('pick');
-    } finally {
-      setWorking(false);
-    }
   }
 
   return (
@@ -93,12 +107,18 @@ function FlowInner({ listing }: { listing: Listing }) {
 
       {step === 'identify' && (
         <Card>
-          <div className="flex items-center gap-3">
-            <Spinner size={22} />
-            <span className="font-body font-bold text-[15px] text-inkSoft">
-              {working ? 'Confirming your email…' : 'One moment…'}
-            </span>
-          </div>
+          {working ? (
+            <div className="flex items-center gap-3">
+              <Spinner size={22} />
+              <span className="font-body font-bold text-[15px] text-inkSoft">One moment…</span>
+            </div>
+          ) : (
+            <EmailCodeSignIn
+              reason="so we can send your booking"
+              onAuthed={() => void afterSignIn()}
+              onCancel={() => setStep('pick')}
+            />
+          )}
         </Card>
       )}
 

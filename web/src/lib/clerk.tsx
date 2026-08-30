@@ -13,7 +13,26 @@
  *          -> attaches/verifies the email on the guest identity
  *   So a valid authenticated session exists after step 1; email verification
  *   (steps 2–3) captures the email for notifications, per §4b's rationale.
- *   `requireGuestAuth()` resolves the guest_token (a valid `requireUser` JWT).
+ *
+ * ⚠️ [BUY-OTP-1 2026-08-29] THE LINE ABOVE WAS FALSE, AND IT BROKE EVERY GATED
+ * ACTION FOR LOGGED-OUT VISITORS.
+ *
+ * It used to end: "requireGuestAuth() resolves the guest_token (a valid requireUser
+ * JWT)". It is not a requireUser JWT. `guestCreate` (worker/src/routes/ladder.ts) mints
+ * `g1.<uid>.<exp>.<hmac>`, and that file's own header says "Guests NEVER pass
+ * requireUser". `requireUser` (worker/src/authz.ts) calls verifyClerk, which accepts
+ * ONLY a Clerk RS256 JWT — grep worker/src/auth.ts for "guest" or "g1." and there are
+ * zero hits.
+ *
+ * So steps 2–3 above (`/api/id/email/start`, `/api/id/email/verify`) 401 for every new
+ * visitor, and so does anything else the caller does with that token: booking, joining
+ * a live stream, entering a consult room, publishing an agent. Six call sites, all
+ * silently broken for anyone without an existing Clerk session.
+ *
+ * `requireGuestAuth()` now resolves a REAL Clerk session via email + 6-digit code
+ * (islands/auth/EmailCodeSignIn). Same signature, same call sites, a token the Worker
+ * actually accepts. The HMAC guest token keeps its one real job — handle reservation —
+ * and is no longer passed off as authentication.
  */
 import {
   ClerkProvider,
@@ -26,6 +45,7 @@ import { CLERK_PUBLISHABLE_KEY } from './config';
 import { request, ApiError } from './apiClient';
 import type { GuestCreated } from './types';
 import { Modal } from '../components/Modal';
+import { EmailCodeSignIn } from '../islands/auth/EmailCodeSignIn';
 import { Field } from '../components/Field';
 import { Button } from '../components/Button';
 
@@ -226,9 +246,19 @@ export interface GuestGateProps {
 type Step = 'email' | 'code';
 
 /**
- * The reusable email→OTP gate modal. Standalone-usable, and also driven by
- * {@link requireGuestAuth} via the host. Runs the real Worker flow:
- * identity/guest (handle) → id/email/start → id/email/verify.
+ * ⚠️ [BUY-OTP-1] DEPRECATED AND BROKEN — DO NOT USE IN NEW CODE.
+ *
+ * This runs identity/guest → id/email/start → id/email/verify, and the last two call
+ * `requireUser`, which rejects the HMAC guest token this obtains. It 401s for every
+ * visitor without an existing Clerk session, which is precisely the visitor it exists
+ * to serve.
+ *
+ * Still exported because components/index.ts and the README reference it, and because
+ * `guestCreate` (the handle reservation in step 1) remains a real thing. The GATE that
+ * `requireGuestAuth()` opens is now EmailCodeSignIn.
+ *
+ * Use `<EmailCodeSignIn>` or `requireGuestAuth()`. If nothing references this by the
+ * next cleanup pass, delete it.
  */
 export function GuestGate({ open, onAuthed, onCancel }: GuestGateProps) {
   const [step, setStep] = useState<Step>('email');
@@ -364,7 +394,14 @@ export function GuestGate({ open, onAuthed, onCancel }: GuestGateProps) {
   );
 }
 
-/** Mounted once by ClerkIsland; bridges requireGuestAuth() to the modal. */
+/**
+ * Mounted once by ClerkIsland; bridges requireGuestAuth() to the modal.
+ *
+ * [BUY-OTP-1] Now renders the Clerk email-code flow instead of GuestGate. It resolves
+ * with `getActiveToken()` AFTER the session is active, so the value handed back to
+ * every caller is a real Clerk JWT rather than the HMAC guest token that used to 401
+ * on the very next request.
+ */
 function GuestGateHost() {
   const [open, setOpen] = useState(false);
   const cbRef = useRef<{ resolve: (jwt: string) => void; reject: (e: unknown) => void } | null>(null);
@@ -379,20 +416,31 @@ function GuestGateHost() {
     };
   }, []);
 
+  async function settle() {
+    // The Clerk session is active by the time onAuthed fires, but getToken() can lag a
+    // tick behind setActive(), so use the polling reader rather than a bare read.
+    const jwt = await getActiveTokenWaited(4000);
+    setOpen(false);
+    if (jwt) cbRef.current?.resolve(jwt);
+    else cbRef.current?.reject(new Error('no session after sign-in'));
+    cbRef.current = null;
+  }
+
   return (
-    <GuestGate
-      open={open}
-      onAuthed={(jwt) => {
-        setOpen(false);
-        cbRef.current?.resolve(jwt);
-        cbRef.current = null;
-      }}
-      onCancel={() => {
-        setOpen(false);
-        cbRef.current?.reject(new Error('cancelled'));
-        cbRef.current = null;
-      }}
-    />
+    <Modal open={open} onClose={() => {
+      setOpen(false);
+      cbRef.current?.reject(new Error('cancelled'));
+      cbRef.current = null;
+    }}>
+      <EmailCodeSignIn
+        onAuthed={() => void settle()}
+        onCancel={() => {
+          setOpen(false);
+          cbRef.current?.reject(new Error('cancelled'));
+          cbRef.current = null;
+        }}
+      />
+    </Modal>
   );
 }
 
