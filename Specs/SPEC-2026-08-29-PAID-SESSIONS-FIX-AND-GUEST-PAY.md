@@ -30,6 +30,54 @@ Every file:line in this spec was read on 2026-08-29, not recalled.
 
 ---
 
+## BUILD LOG — 2026-08-29
+
+Nothing below is deployed. Everything is committed to `main` and typechecks clean
+(`npx tsc --noEmit` in `worker/`, `tsc -p tsconfig.json` in `web/`,
+`flutter analyze` on the one touched Dart file).
+
+| Issue | State |
+|---|---|
+| `[LIVE-CARVE-1]` | ✅ built — plus a **second wall** found at publish (`requireKyc` reads `kyc_status`, a different table) and given its own flag |
+| `[COMM-CONSULT-ENT-1]` | ✅ built — also made `entitlement()` role-aware, removing a non-determinism the fix would otherwise have introduced |
+| `[COMM-LIVE-AUTH-1]` | ✅ built — migration `2026-08-29-commercial-member-order-id.sql` |
+| `[COMM-REFUND-POL-1]` | ✅ built — 3 flags, a new `no_refund` outcome, and the admin route. `provider_outage` was also reading the *creator-cancel* percentage; fixed |
+| `[COMM-FLAG-UNIFY-1]` | ✅ built — `lib/commercial_lane.ts`, three states, `mixed` refuses loudly |
+| `[COMM-AFFIL-1]` | ⛔️ rescoped → `[GUEST-AFFIL-BOUNTY-1]` (Phase 4). `settleAffiliate` is a **no-op** |
+| `[TAX-GST-1]` | ✅ built, collection OFF — migration `2026-08-29-commercial-gst.sql` |
+| `[LIST-WEB-FORM-1]` `[LIST-WEB-MEDIA-1]` `[LIST-WEB-PUBLISH-1]` `[LIST-IDGATE-UX-1]` | ✅ built as one commit |
+| `[CARD-MODEL-1]` `[CARD-PRICE-SEM-1]` | ✅ built — **found two live production bugs**, see below |
+| `[CARD-SLOTS-1]` | ✅ built — `POST /api/listings/:id/repeat`, migration `2026-08-29-listings-series-id.sql` |
+| `[PAY-CASHFREE-1]` | 🚧 **rail only, fenced.** Escrow funding works; the entitlement handoff does not exist, so order creation returns 503 regardless of flags |
+| `[PAY-HANDOFF-1]` | ⬜️ NEW, blocks the rest of Phase 4 |
+| `[BUY-OTP-1]` | ⬜️ not started |
+| `[PAY-REFUND-1]` | 🚧 ledger primitive `refundExternal` exists; not wired into `commercial_lifecycle` |
+| `[BUY-CHECKOUT-1]` `[GUEST-AFFIL-BOUNTY-1]` | ⬜️ not started |
+| `[CARD-SCHEMA-1]` `[COMM-NOSHOW-1]` | ⬜️ not started |
+
+**Three live bugs found while building, none of them in the original audit:**
+
+1. **Every listing card on avatok.ai renders an empty placeholder.** `Card` declared
+   `poster`, `rating`, `currency`, `creator.avatar` — four fields `shapeCard()` has never
+   sent. `request<CardPage>` casts without validating, so it typechecked and read
+   `undefined`. Fixed in `[CARD-MODEL-1]`.
+2. **`ListingTile` printed `$` and divided by 100 above 1000**, so a ₹1,500 listing showed
+   as `$15`. Fixed in the same change.
+3. **A second identity wall at publish.** Relaxing liveness alone would have left every
+   publish 403ing on `kyc_status` one step later — fixed-looking and still broken. Fixed
+   in `[LIVE-CARVE-1]`.
+
+**And one correction to the audit:** `settleAffiliate` is not merely uncalled from the
+commercial lane, it is an **empty function**. Wiring it would have shipped green and paid
+nobody. See `[COMM-AFFIL-1]`.
+
+**Before any of this reaches production:** six migrations are pending and **none is
+auto-applied** — `2026-08-29-commercial-member-order-id.sql`, `-commercial-gst.sql`,
+`-listings-series-id.sql`, `-direct-purchases.sql`, plus the two pre-existing 2026-08-24 /
+08-25 commercial migrations. Every one is a deliberate, announced step.
+
+---
+
 ## 0. Plain English — what we are doing and in what order
 
 Five phases. Each one is shippable on its own and leaves the product working.
@@ -425,8 +473,23 @@ The live model is: **10% of a referred user's top-ups, for life**, paid by
   top up, which Phase 4 is designed to stop. Effectively ends the affiliate program for
   the new traffic.
 
-**Nothing is built for this issue until that is answered.** Wiring the no-op would be
-worse than leaving it alone, because it would look done.
+### ✅ DECIDED 2026-08-29 (owner) — option (b), a first-purchase bounty
+
+**Moved out of Phase 1 into Phase 4 as `[GUEST-AFFIL-BOUNTY-1]`**, because the natural
+place to pay it is the Cashfree webhook, which does not exist yet. `settleAffiliate` stays
+a no-op and `commercial_settlement.ts` is **not** touched — purchase commissions stay
+retired.
+
+Shape: when a Cashfree payment settles for a buyer carrying a pending affiliate
+attribution (the `ava_aff_dev` cookie, KV, 30 days — `affiliate.ts:40`, `:571-575`), pay
+the affiliate a percentage of that **first** purchase, once, funded from the platform's
+20%, never the creator's 80%. Idempotent on the purchase id. The existing caps
+(`affiliateDailyEarnCapCoins`, `affiliateMonthlyEarnCapCoins`,
+`affiliatePerReferredCapCoins`) apply unchanged, and the bounty percentage gets its own
+flag. `reverseAffiliate` (`affiliate.ts:1114`) already exists and must be called when that
+first purchase is refunded, or a cancelled event pays a bounty on money the buyer got back.
+
+**Do not wire the no-op.** It would look done and pay nobody.
 
 ---
 
