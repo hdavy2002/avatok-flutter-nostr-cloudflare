@@ -62,7 +62,15 @@ const ctaBlue = 'inline-flex items-center justify-center gap-2.5 select-none no-
 // both edges), so the component owns its own gutters there. Inside the
 // dashboard the shell already provides them, and adding a second set would
 // double-indent the grid — hence one wrapper class, not two hardcoded ones.
-const gutters = showHero ? 'mx-auto max-w-[1560px] px-4 sm:px-10' : '';
+// [MARKET-BAZAAR-3 2026-08-31] 1760px, not the comp's 1560.
+//
+// The comp is drawn at a fixed canvas width, so its 1560 reads as edge-to-edge
+// in the artboard. On a real 2000px+ monitor the same number leaves ~11% dead
+// paper down each side, and the bazaar — seven tiles, a rail and a four-up card
+// grid — visibly shrinks into the middle of the screen. 1760 keeps the comp's
+// proportions at the sizes people actually use without letting the card grid run
+// so wide that a section's cards drift apart from its heading.
+const gutters = showHero ? 'mx-auto max-w-[1760px] px-4 sm:px-10' : '';
 ---
 
 {showHero && (
@@ -82,8 +90,11 @@ const gutters = showHero ? 'mx-auto max-w-[1560px] px-4 sm:px-10' : '';
           class="block overflow-hidden rounded-[18px] border-[3px] border-ink bg-card no-underline shadow-zine transition-transform duration-zine ease-out hover:-translate-y-[3px] active:translate-y-0 active:shadow-zine-pressed"
         >
           <div class="border-b-zine border-ink"><TruckBorder kind={MOTIFS[i % MOTIFS.length]} /></div>
-          <div class="flex flex-col gap-1.5 px-4 pb-3.5 pt-3">
-            <span class="font-display text-[18px] font-normal uppercase tracking-[0.05em] text-ink">{v.label}</span>
+          {/* [MARKET-BAZAAR-3] Taller and roomier than before. The tiles were
+              px-4/pt-3/pb-3.5, which made a 120px strip that read as a row of
+              buttons rather than the comp's stall signs. */}
+          <div class="flex flex-col gap-2 px-5 pb-5 pt-4">
+            <span class="font-display text-[19px] font-normal uppercase leading-[1.15] tracking-[0.05em] text-ink">{v.label}</span>
             {/* The comp prints "8 LISTINGS · PAWRI ZONE" on every tile. The 8 is
                 mock, so only the zone survives here — a count would have to be
                 fetched per vertical and would be a lie the moment it is stale.
@@ -97,10 +108,49 @@ const gutters = showHero ? 'mx-auto max-w-[1560px] px-4 sm:px-10' : '';
 </section>
 
 <div class={gutters}>
-  <section class="pb-10 pt-9"><LiveNowRail client:visible /></section>
+  {/* [MARKET-BAZAAR-3] The live rail lives HERE and nowhere else.
+      It was being rendered twice — once in this file and again inside
+      ExploreGrid, whose `showLiveRail` defaults to true. Nothing was visibly
+      wrong only because no listing is live: the moment one is, the page would
+      have shown two identical "Live now" rails. ExploreGrid is told not to
+      render its own below.
 
+      The wrapper has NO vertical padding of its own. LiveNowRail returns null
+      when nothing is live (hideWhenEmpty), so a padded wrapper left a 64px band
+      of dead paper above the results on every normal day — part of what made
+      the page read as boxed in. The rail brings its own bottom margin when it
+      actually has something to show. */}
+  <div class="pt-8"><LiveNowRail client:visible /></div>
+
+  {/* [MARKET-BAZAAR-2] No heading above the results any more. Each vertical
+      section brings its own numbered eyebrow and Anton heading, so a single
+      "EXPLORE LISTINGS" on top of them was a heading about headings. */}
+  <section id="listings" class="scroll-mt-20 pb-16 pt-0">
+    {/* showSearch is the inverse of showHero on purpose: the public page puts
+        the search field in the strip above the hero (BazaarSearchStrip), so
+        rendering a second one here would give the page two search boxes that
+        do not agree with each other. The dashboard has no strip, so the grid
+        keeps its own. */}
+    <ExploreGrid
+      client:visible
+      initialQ={q}
+      initialVertical={vertical}
+      hrefBase={hrefBase}
+      showSearch={!showHero}
+      showLiveRail={false}
+    />
+  </section>
+
+  {/* [MARKET-BAZAAR-3] The marketing band moved BELOW the listings.
+      It used to sit between the category tiles and the results — two large,
+      mostly-empty bordered boxes spanning the full width, exactly where the comp
+      goes straight from the stalls into the goods. On a wide screen that band
+      was the thing that made the page read as boxed in: the bazaar itself got
+      pushed a screenful down behind an ad for the bazaar.
+      Below the listings it still does its job for anyone who scrolls the whole
+      page, without standing between a visitor and what they came for. */}
   {showSplit && (
-    <section class="pb-12">
+    <section class="pb-20">
       <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div class="flex flex-col gap-3 rounded-zine border-zine border-ink bg-paper2 p-7 shadow-zine">
           <span class="font-label text-[13px] font-extrabold uppercase tracking-[0.12em] text-blueInk">For fans</span>
@@ -117,22 +167,4 @@ const gutters = showHero ? 'mx-auto max-w-[1560px] px-4 sm:px-10' : '';
       </div>
     </section>
   )}
-
-  {/* [MARKET-BAZAAR-2] No heading above the results any more. Each vertical
-      section brings its own numbered eyebrow and Anton heading, so a single
-      "EXPLORE LISTINGS" on top of them was a heading about headings. */}
-  <section id="listings" class="scroll-mt-20 pb-20 pt-2">
-    {/* showSearch is the inverse of showHero on purpose: the public page puts
-        the search field in the strip above the hero (BazaarSearchStrip), so
-        rendering a second one here would give the page two search boxes that
-        do not agree with each other. The dashboard has no strip, so the grid
-        keeps its own. */}
-    <ExploreGrid
-      client:visible
-      initialQ={q}
-      initialVertical={vertical}
-      hrefBase={hrefBase}
-      showSearch={!showHero}
-    />
-  </section>
 </div>

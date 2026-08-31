@@ -34,7 +34,7 @@ export function LiveNowRail({ title = 'Live now', hideWhenEmpty = true }: LiveNo
   if (items && items.length === 0 && hideWhenEmpty) return null;
 
   return (
-    <section aria-label={title} className="w-full">
+    <section aria-label={title} className="w-full pb-8">
       <div className="mb-3 flex items-center gap-2.5">
         <Pill kind="no">● {title}</Pill>
         {items && <span className="font-label text-[13px] font-extrabold uppercase tracking-[0.08em] text-inkMute">{items.length}</span>}

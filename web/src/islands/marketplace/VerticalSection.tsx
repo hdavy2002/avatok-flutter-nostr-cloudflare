@@ -72,9 +72,15 @@ export function VerticalSection({
         </span>
       </div>
 
-      {/* [CARD-BAZAAR-1] auto-fill/minmax(14.5rem) rather than fixed breakpoints,
-          and gap-6 so the cards' 6×7px hard shadows stay clear of each other. */}
-      <div className="grid gap-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(14.5rem, 1fr))' }}>
+      {/* [CARD-BAZAAR-1] auto-fill/minmax rather than fixed breakpoints, and
+          gap-6 so the cards' 6×7px hard shadows stay clear of each other.
+
+          [MARKET-BAZAAR-3] The track floor is 17rem, up from 14.5rem. At the
+          wider container that was producing six ~232px columns where the comp
+          draws four ~340px cards — the posters came out cramped, and with only a
+          couple of listings in a section the extra empty tracks left a long
+          blank shelf to the right of them. */}
+      <div className="grid gap-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(17rem, 1fr))' }}>
         {listings.map((l) => (
           <ListingTile
             key={l.id}
