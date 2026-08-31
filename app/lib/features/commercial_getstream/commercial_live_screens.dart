@@ -754,7 +754,13 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
                                         PhosphorIcons.userCircle(
                                             PhosphorIconsStyle.regular),
                                         size: 64,
-                                        color: Colors.white54)),
+                                        // [DESIGN-GUARD-DEBT-1] Was
+                                        // Colors.white54. NOT AD.textTertiary
+                                        // despite what the guard's fix hint
+                                        // says — that token is ink-on-cream and
+                                        // this icon sits on the Colors.black
+                                        // tile above, where it would vanish.
+                                        color: AD.onMediaFaint)),
                           ),
                         );
                       },

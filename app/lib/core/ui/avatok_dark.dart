@@ -294,6 +294,20 @@ class AD {
   static const textOnInput = Color(0xFF16110D);
   static const placeholderOnWhite = Color(0x7316110D); // ink 45%
 
+  /// [DESIGN-GUARD-DEBT-1 2026-08-31] Faint foreground ON A BLACK MEDIA SURFACE
+  /// — a video tile with no published track, a camera-off avatar, a loading
+  /// poster. Cream at 54%.
+  ///
+  /// This exists because the whole `text*` ramp above is INK on cream, and a
+  /// video tile is the one place in the app that is genuinely black
+  /// (`Container(color: Colors.black)` behind `StreamVideoRenderer`). Reaching
+  /// for `textTertiary` there paints dark ink at 45% onto black and the glyph
+  /// disappears — which is exactly what the design guard's own FIX hint tells
+  /// you to do for a `Colors.white54` violation ("use AD.textTertiary (white
+  /// 45%)"). That hint is stale: the token was ink-on-cream by the time it was
+  /// written. Use THIS for anything sitting on black; the hint is wrong.
+  static const onMediaFaint = Color(0x8AFBF3E2); // cream 54%
+
   // -------------------------------------------------------------------- tabs
   // [RAJ-INDIGO-1] All three chips sit ON the indigo header band, so all three
   // must be WARM and light-to-mid — a cool or dark chip vanishes into the
