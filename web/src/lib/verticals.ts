@@ -121,20 +121,26 @@ export const VERTICALS: Vertical[] = [
 const BY_ID = new Map(VERTICALS.map((v) => [v.id, v]));
 
 /**
- * Sections no listing can currently be published into — nothing in the (kind,
- * category) space resolves to them, so their count is permanently 0 until the
- * product exists. Mirrors SECTIONS_WITHOUT_A_SOURCE in the worker; keep the two
- * in step, and delete an entry from BOTH when the product ships.
+ * Sections no listing can currently be published into.
  *
- * The point of naming them is that "empty because nobody has published one" and
- * "empty because it is unreachable by construction" look identical on screen,
- * and only one of them is a bug.
+ * [MARKET-SECTION-2 2026-08-31] EMPTY. Live friends, adda rooms and glow-up all
+ * have categories now (worker migration 2026-08-31-bazaar-session-categories.sql)
+ * and resolve in the worker's `sectionFor`, so nothing is unreachable and no tile
+ * is marked "SOON" any more.
+ *
+ * Kept rather than deleted because it is the honest place to record a section
+ * that exists in the design but cannot be reached: on screen that is identical
+ * to "nobody has published one yet", and only one of the two is a bug. Mirrors
+ * SECTIONS_WITHOUT_A_SOURCE in the worker — keep the two in step.
+ *
+ * NOTE this is NOT the same thing as a section being temporarily undeliverable.
+ * Adda rooms are reachable but gated: the worker refuses to publish one while
+ * `conferenceEnabled` is false, because a booked room nobody can join is a money
+ * bug. That gate lives server-side (publishBlockedReason) so it cannot be
+ * bypassed by a stale client, and it is why this set is empty even though one
+ * section still cannot go live today.
  */
-export const VERTICALS_WITHOUT_A_SOURCE: ReadonlySet<VerticalId> = new Set([
-  'live_friends',
-  'adda_rooms',
-  'glow_up',
-]);
+export const VERTICALS_WITHOUT_A_SOURCE: ReadonlySet<VerticalId> = new Set([]);
 
 /** The section the SERVER assigned to this listing. Never a client-side guess. */
 export function verticalOf(listing: Card): VerticalId | null {

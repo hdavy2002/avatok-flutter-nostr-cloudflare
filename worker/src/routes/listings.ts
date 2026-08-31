@@ -52,7 +52,7 @@ import { commercialLaneState, commercialLaneFlags, type CommercialLaneState } fr
 import { DEFAULT_VERTICAL, resolveCategoryVersion, validateAttrs } from "./categories";
 // [MARKET-SECTION-1] `section` (the bazaar group) is NOT `vertical`
 // (commerce|connect). See lib/listing_section.ts.
-import { sectionFor, isSection, DEFAULT_SECTION, SECTIONS } from "../lib/listing_section";
+import { sectionFor, isSection, publishBlockedReason, DEFAULT_SECTION, SECTIONS } from "../lib/listing_section";
 // [AVA-MKT-ENTITLEMENTS-1] §5 quota + §1.3 token charge, consumed inside the publish
 // keyed on listing_id (§3.3c). Same helper the compose publish path calls.
 import {
@@ -1009,6 +1009,23 @@ export async function publishListing(req: Request, env: Env, id: string): Promis
     if (covers.length > 5) return json({ error: "max 5 photos" }, 400);
     const cat = await db.prepare("SELECT 1 FROM listing_categories WHERE id=?1 AND active=1").bind(l.category).first();
     if (!cat) return json({ error: "unknown category" }, 400);
+
+    // [MARKET-SECTION-2 2026-08-31] A section whose DELIVERY is switched off
+    // cannot be published into. Today that is adda rooms, which need group
+    // calling while `conferenceEnabled` is false in production — publishing one
+    // would put a bookable ticket on the marketplace for a room nobody can join.
+    //
+    // Enforced HERE rather than by hiding the category, on purpose: the creator
+    // keeps their draft and gets a sentence explaining why, and the listing
+    // publishes normally the moment the flag flips. Hiding it would have made
+    // the same listing quietly impossible to finish with no explanation.
+    const pubSection = sectionFor(l.kind, l.category);
+    const blocked = publishBlockedReason(pubSection, await readConfig(env));
+    if (blocked) {
+      track(env, ctx.uid, "listing_publish_section_gated", APP, { listing_id: id, section: pubSection });
+      return json({ error: "section_unavailable", section: pubSection, message: blocked }, 409);
+    }
+
     if (!(Number(l.price) >= 0)) return json({ error: "bad price" }, 400);
 
     if (l.kind === "live_event") {
