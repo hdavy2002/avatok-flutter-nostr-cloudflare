@@ -50,6 +50,9 @@ import { commercialLaneState, commercialLaneFlags, type CommercialLaneState } fr
 // [AVA-MKT-VERT-1] Taxonomy: verticals, pinned category versions, attrs validation.
 // Spec: Specs/PLAN-2026-07-17-ai-listing-creation-DRAFT.md §2.0, §2.2, §2.3, §2.4.
 import { DEFAULT_VERTICAL, resolveCategoryVersion, validateAttrs } from "./categories";
+// [MARKET-SECTION-1] `section` (the bazaar group) is NOT `vertical`
+// (commerce|connect). See lib/listing_section.ts.
+import { sectionFor, isSection, DEFAULT_SECTION, SECTIONS } from "../lib/listing_section";
 // [AVA-MKT-ENTITLEMENTS-1] §5 quota + §1.3 token charge, consumed inside the publish
 // keyed on listing_id (§3.3c). Same helper the compose publish path calls.
 import {
@@ -276,7 +279,7 @@ const CARD_SELECT = `
          l.expires_at, l.expiry_days, l.market_type, l.social_sub, l.location,
          l.translation_enabled, l.spoken_lang,
          l.rating_avg, l.rating_count, l.created_at, l.content_version,
-         l.vertical, l.attrs, l.video_url, l.proposed_category,
+         l.vertical, l.section, l.attrs, l.video_url, l.proposed_category,
          l.cat_version, l.playbook_version, l.template_version,
          (SELECT COUNT(*) FROM reviews rv WHERE rv.listing_id = l.id) AS review_count,
          (SELECT COUNT(*) FROM listing_views lv WHERE lv.subject_kind='listing' AND lv.subject_id = l.id) AS view_count,
@@ -319,6 +322,10 @@ function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set
   return {
     id: r.id, creator_id: r.creator_id, kind: r.kind, title: r.title,
     one_liner: oneLiner, category: r.category,
+    // [MARKET-SECTION-1] The bazaar section this card belongs to. Additive, so
+    // every already-shipped client ignores it. Falls back rather than emitting
+    // null: a card with no section would silently vanish from a grouped view.
+    section: r.section ?? DEFAULT_SECTION,
     price: Number(r.price), effective_price: pct > 0 ? Math.round(Number(r.price) * (100 - pct) / 100) : Number(r.price),
     promo_pct: pct, currency_display: r.currency_display ?? "USD",
     country: r.country ?? null, adults_only: !!r.adults_only,
@@ -735,9 +742,9 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
        country, adults_only, badges, cover_media, starts_at, duration_min, capacity, status, created_at, updated_at,
        agent_instructions, agent_lang, agent_voice_persona, market_type, social_sub, location, expiry_days,
        vertical, attrs, video_url, proposed_category, cat_version, playbook_version, template_version,
-       spoken_lang, translation_enabled)
+       spoken_lang, translation_enabled, section)
      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,'draft',?16,?16,?17,?18,?19,?20,?21,?22,?23,
-             ?24,?25,?26,?27,?28,?29,?30,?31,?32)`,
+             ?24,?25,?26,?27,?28,?29,?30,?31,?32,?33)`,
   ).bind(id, ctx.uid, kind, (f.title as string) ?? "Untitled", f.description ?? null, category,
     f.price ?? 0, f.currency_display ?? "USD", f.country ?? null, f.adults_only ?? 0, f.badges ?? null,
     f.cover_media ?? null, f.starts_at ?? null, f.duration_min ?? null,
@@ -753,9 +760,14 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
     // was to create the listing and then edit it. No error, no warning — the field simply
     // did not exist afterwards. Found by picking Hindi+English in the new web form and
     // reading `spoken_lang` back as NULL from prod.
-    f.spoken_lang ?? null, f.translation_enabled ?? 0).run();
+    f.spoken_lang ?? null, f.translation_enabled ?? 0,
+    // [MARKET-SECTION-1] The bazaar section, resolved ONCE here from (kind,
+    // category) and stored, so the marketplace can filter, count and sort by it
+    // server-side. Not `vertical` — see lib/listing_section.ts for why those are
+    // two different things.
+    sectionFor(kind, category)).run();
   track(env, ctx.uid, "listing_draft_created", APP, {
-    kind, vertical, category, proposed_category: f.proposed_category ?? null,
+    kind, vertical, category, section: sectionFor(kind, category), proposed_category: f.proposed_category ?? null,
     cat_version: catV, playbook_version: pbV, template_version: tplV,
     // §2.3 signal: how often the taxonomy has no home for what someone is listing.
     filed_as_other: category === "other" && !!f.proposed_category,
@@ -775,7 +787,9 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
   // [AVA-MKT-VERT-1] `attrs` rides along as a MATERIAL column (diffed below), and
   // `cat_version` because it is the PIN every attrs check must be resolved at (§2.4).
   const row = await metaDb(env).prepare(
-    "SELECT creator_id, status, kind, content_version, title, description, price, currency_display, category, attrs, cat_version FROM listings WHERE id=?1",
+    // [MARKET-SECTION-1] `section` rides along so the update below can tell
+    // whether an edit actually moves the listing to a different bazaar section.
+    "SELECT creator_id, status, kind, content_version, title, description, price, currency_display, category, attrs, cat_version, section FROM listings WHERE id=?1",
   ).bind(id).first<any>();
   if (!row || row.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
   if (MARKET_KINDS.has(String(row.kind)) && !(await marketplacePublishOn(env))) return marketplaceOff();
@@ -868,8 +882,20 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
   // read-modify-write happens inside SQLite so concurrent edits can't lose a bump.
   const bump = material ? ", content_version=content_version+1" : "";
   const sets = keys.map((k, i) => `${k}=?${i + 2}`).join(", ");
-  await metaDb(env).prepare(`UPDATE listings SET ${sets}${bump}, updated_at=?${keys.length + 2} WHERE id=?1`)
-    .bind(id, ...keys.map((k) => f[k]), Date.now()).run();
+  // [MARKET-SECTION-1] `section` is DERIVED from (kind, category), so an edit
+  // that changes the category has to move the listing to its new section. It is
+  // a literal expression rather than a bind for the same reason `bump` is:
+  // keeping the ?N order below stable. Without this, re-filing a listing under
+  // "astrologers" left it sitting in Live streaming forever, and the only sign
+  // would have been a card in the wrong section of the marketplace.
+  const nextSection = sectionFor(
+    "kind" in f ? String(f.kind) : String(row.kind),
+    "category" in f ? String(f.category) : String(row.category),
+  );
+  const sectionSet = nextSection !== String(row.section ?? "") ? `, section='${nextSection}'` : "";
+  await metaDb(env).prepare(
+    `UPDATE listings SET ${sets}${bump}${sectionSet}, updated_at=?${keys.length + 2} WHERE id=?1`,
+  ).bind(id, ...keys.map((k) => f[k]), Date.now()).run();
   const version = Number(row.content_version ?? 0) + (material ? 1 : 0);
   if (material) {
     track(env, ctx.uid, "listing_content_version_bumped", APP, {
@@ -1143,13 +1169,18 @@ export async function duplicateListing(req: Request, env: Env, id: string): Prom
   await db.prepare(
     `INSERT INTO listings (id, creator_id, kind, title, description, category, price, currency_display,
        country, adults_only, badges, cover_media, starts_at, duration_min, capacity, translation_enabled, spoken_lang, status, created_at, updated_at,
-       vertical, attrs, video_url, cat_version, playbook_version, template_version)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,NULL,?13,?14,?15,?16,'draft',?17,?17,?18,?19,?20,?21,?22,?23)`,
+       vertical, attrs, video_url, cat_version, playbook_version, template_version, section)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,NULL,?13,?14,?15,?16,'draft',?17,?17,?18,?19,?20,?21,?22,?23,?24)`,
   ).bind(nid, ctx.uid, l.kind, l.title, l.description, l.category, l.price, l.currency_display,
     l.country, l.adults_only, l.badges, l.cover_media, l.duration_min, l.capacity,
     l.translation_enabled ?? 0, l.spoken_lang ?? null, now,
     l.vertical ?? DEFAULT_VERTICAL, l.attrs ?? null, l.video_url ?? null,
-    dupVersions?.cat ?? 1, dupVersions?.playbook ?? 1, dupVersions?.template ?? 1).run();
+    dupVersions?.cat ?? 1, dupVersions?.playbook ?? 1, dupVersions?.template ?? 1,
+    // [MARKET-SECTION-1] RE-RESOLVED, not copied from the source row. Same
+    // reasoning as the version pins just above: this is a newly born listing, so
+    // it gets today's answer to (kind, category) rather than inheriting one that
+    // may predate a change to the mapping.
+    sectionFor(l.kind, l.category)).run();
   track(env, ctx.uid, "listing_duplicated", APP, { vertical: l.vertical ?? DEFAULT_VERTICAL });
   return json({ ok: true, listing_id: nid });
 }
@@ -1212,13 +1243,16 @@ export async function repeatListing(req: Request, env: Env, id: string): Promise
       `INSERT INTO listings (id, creator_id, kind, title, description, category, price, currency_display,
          country, adults_only, badges, cover_media, starts_at, duration_min, capacity, translation_enabled,
          spoken_lang, location, status, created_at, updated_at,
-         vertical, attrs, video_url, cat_version, playbook_version, template_version, series_id)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,'draft',?19,?19,?20,?21,?22,?23,?24,?25,?26)`,
+         vertical, attrs, video_url, cat_version, playbook_version, template_version, series_id, section)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,'draft',?19,?19,?20,?21,?22,?23,?24,?25,?26,?27)`,
     ).bind(nid, ctx.uid, l.kind, l.title, l.description, l.category, l.price, l.currency_display,
       l.country, l.adults_only, l.badges, l.cover_media, startsAt, l.duration_min, l.capacity,
       l.translation_enabled ?? 0, l.spoken_lang ?? null, l.location ?? null, now,
       l.vertical ?? DEFAULT_VERTICAL, l.attrs ?? null, l.video_url ?? null,
-      versions?.cat ?? 1, versions?.playbook ?? 1, versions?.template ?? 1, seriesId).run();
+      versions?.cat ?? 1, versions?.playbook ?? 1, versions?.template ?? 1, seriesId,
+      // [MARKET-SECTION-1] Same (kind, category) for every slot in the series,
+      // so a weekly repeat cannot scatter itself across sections.
+      sectionFor(l.kind, l.category)).run();
     created.push(nid);
   }
   // Stamp the source last: if the loop threw partway, the source is untouched and the
@@ -1355,16 +1389,31 @@ export async function exploreBrowse(req: Request, env: Env): Promise<Response> {
     const v = u.get(k);
     if (v) { binds.push(v); where.push(`${col}=?${binds.length}`); }
   }
+  // [MARKET-SECTION-1] ?section= — the bazaar sidebar's category filter. Validated
+  // against the closed SECTIONS list rather than bound blind, so an unknown value
+  // is IGNORED (the visitor sees everything) instead of matching nothing and
+  // rendering an empty bazaar that looks broken.
+  const section = u.get("section");
+  if (isSection(section)) { binds.push(section); where.push(`l.section=?${binds.length}`); }
   const creator = u.get("creator");
   if (creator) { binds.push(creator); where.push(`l.creator_id=?${binds.length}`); }
   // AvaMarketplace-only view (buy/sell/social), excludes creator services.
   if (u.get("market") === "1") where.push("l.kind IN ('sell','buy','social')");
   blockFilter(uid, binds, where);
+  // [MARKET-SECTION-1] ?sort= on browse, matching exploreSearch's vocabulary so
+  // the two endpoints don't disagree about what "cheapest" means. The default is
+  // unchanged (live first, then soonest), so existing callers see today's order.
+  const sort = u.get("sort") || "";
+  const order = sort === "cheapest" ? "l.price ASC"
+    : sort === "popular" ? "l.joined_count DESC"
+    : sort === "rating" ? "COALESCE(l.rating_avg,0) DESC, l.rating_count DESC"
+    : sort === "newest" ? "l.created_at DESC"
+    : "(l.status='live') DESC, COALESCE(l.starts_at, 4102444800000) ASC";
   const limit = Math.min(50, Math.max(1, Number(u.get("limit") || 20)));
   const offset = Math.max(0, Number(u.get("cursor") || 0));
   const rs = await metaSession(env).prepare(
     `${CARD_SELECT} WHERE ${where.join(" AND ")}
-      ORDER BY (l.status='live') DESC, COALESCE(l.starts_at, 4102444800000) ASC, l.created_at DESC
+      ORDER BY ${order}, l.created_at DESC
       LIMIT ${limit + 1} OFFSET ${offset}`,
   ).bind(...binds).all();
   const rows = (rs.results ?? []) as any[];
@@ -1373,7 +1422,60 @@ export async function exploreBrowse(req: Request, env: Env): Promise<Response> {
   const cardStats = await cardStatsFor(env, page.map((r) => r.id));
   const favs = await favoritesFor(env, uid, page.map((r) => String(r.id))); // [UI-MKT-3] hydrate heart state per fetch
   trackImpressions(env, req, uid, APP, "explore", page.map((r) => String(r.id)));
-  return json({ vertical, listings: page.map((r) => shapeCard(r, promos, favs, cardStats)), cursor: rows.length > limit ? String(offset + limit) : null });
+
+  // [MARKET-SECTION-1] Per-section totals for the marketplace sidebar.
+  //
+  // These are CATALOGUE counts, not page counts, and that distinction is the
+  // reason this query exists at all: the rail used to count the listings the
+  // browser happened to have fetched, so "Consulting 0" meant "none on this
+  // page", which is a different claim from "none exist" and looked like a bug
+  // the moment pagination kicked in.
+  //
+  // Deliberately counted WITHOUT the ?section= predicate — a sidebar that zeroes
+  // out every other row the moment you pick one row is a dead end with no way
+  // back. `sectionCounts` is omitted entirely if the query fails (e.g. before
+  // the migration lands) so the client falls back rather than showing zeroes.
+  const sectionCounts = await sectionCountsFor(env, req, uid);
+
+  return json({
+    vertical,
+    section: isSection(section) ? section : null,
+    section_counts: sectionCounts,
+    listings: page.map((r) => shapeCard(r, promos, favs, cardStats)),
+    cursor: rows.length > limit ? String(offset + limit) : null,
+  });
+}
+
+/**
+ * [MARKET-SECTION-1] `{ section: count }` over every published listing in the
+ * caller's vertical. Every section in SECTIONS is present, zero included, so the
+ * client never has to distinguish "absent" from "none".
+ *
+ * Returns null on any failure. That is the point: this powers a decorative
+ * count beside a filter name, and it must never be the reason a marketplace
+ * page 500s.
+ */
+async function sectionCountsFor(env: Env, req: Request, uid: string | null): Promise<Record<string, number> | null> {
+  try {
+    const where = ["l.status IN ('published','live')"];
+    const binds: unknown[] = [];
+    binds.push(Date.now());
+    where.push(`(l.expires_at IS NULL OR l.expires_at > ?${binds.length})`);
+    verticalFilter(req, binds, where);
+    blockFilter(uid, binds, where);
+    const rs = await metaSession(env).prepare(
+      `SELECT l.section AS section, COUNT(*) AS n FROM listings l WHERE ${where.join(" AND ")} GROUP BY l.section`,
+    ).bind(...binds).all();
+    const out: Record<string, number> = {};
+    for (const s of SECTIONS) out[s] = 0;
+    for (const r of ((rs.results ?? []) as any[])) {
+      const k = String(r.section ?? "");
+      if (k in out) out[k] = Number(r.n ?? 0);
+    }
+    return out;
+  } catch {
+    return null;
+  }
 }
 
 // GET /api/explore/live-now — the red-dot rail.
@@ -1442,7 +1544,12 @@ export async function exploreSearch(req: Request, env: Env): Promise<Response> {
         "SELECT listing_id FROM listings_fts WHERE listings_fts MATCH ?1 LIMIT 200",
       ).bind(match).all();
       const idList = ((ids.results ?? []) as any[]).map((r) => String(r.listing_id));
-      if (!idList.length) return json({ vertical, listings: [], cursor: null });
+      // [MARKET-SECTION-1] section_counts on the no-hits path too — the sidebar
+      // is still on screen when a search finds nothing, and blanking its counts
+      // there is exactly when a visitor is deciding whether the site is broken.
+      if (!idList.length) {
+        return json({ vertical, section: null, section_counts: await sectionCountsFor(env, req, uid), listings: [], cursor: null });
+      }
       where.push(`l.id IN (${idList.map((_, i) => `?${binds.length + i + 1}`).join(",")})`);
       binds.push(...idList);
     }
@@ -1451,6 +1558,10 @@ export async function exploreSearch(req: Request, env: Env): Promise<Response> {
     const v = u.get(k);
     if (v) { binds.push(v); where.push(`${col}=?${binds.length}`); }
   }
+  // [MARKET-SECTION-1] Same closed-list validation as exploreBrowse: an unknown
+  // ?section= is ignored rather than matching nothing.
+  const section = u.get("section");
+  if (isSection(section)) { binds.push(section); where.push(`l.section=?${binds.length}`); }
   const minPrice = Number(u.get("minPrice") || -1), maxPrice = Number(u.get("maxPrice") || -1);
   if (minPrice >= 0) { binds.push(minPrice); where.push(`l.price >= ?${binds.length}`); }
   if (maxPrice >= 0) { binds.push(maxPrice); where.push(`l.price <= ?${binds.length}`); }
@@ -1483,9 +1594,17 @@ export async function exploreSearch(req: Request, env: Env): Promise<Response> {
   const cardStats = await cardStatsFor(env, page.map((r) => r.id));
   const favs = await favoritesFor(env, uid, page.map((r) => String(r.id))); // [UI-MKT-3]
   const g = geoOf(req);
-  track(env, uid ?? "guest", "explore_search", APP, { q: q.slice(0, 40), sort, n: page.length, guest: !uid, vertical, country: g.country, city: g.city });
+  track(env, uid ?? "guest", "explore_search", APP, { q: q.slice(0, 40), sort, n: page.length, guest: !uid, vertical, section: isSection(section) ? section : null, country: g.country, city: g.city });
   trackImpressions(env, req, uid, APP, "search", page.map((r) => String(r.id)));
-  return json({ vertical, listings: page.map((r) => shapeCard(r, promos, favs, cardStats)), cursor: rows.length > limit ? String(offset + limit) : null });
+  return json({
+    vertical,
+    section: isSection(section) ? section : null,
+    // [MARKET-SECTION-1] Search returns the same catalogue-wide counts as browse,
+    // so the sidebar does not blank out the moment someone types a query.
+    section_counts: await sectionCountsFor(env, req, uid),
+    listings: page.map((r) => shapeCard(r, promos, favs, cardStats)),
+    cursor: rows.length > limit ? String(offset + limit) : null,
+  });
 }
 
 // GET /api/listings/:id — full details + creator card + reviews page 1.
