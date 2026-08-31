@@ -18,6 +18,21 @@
 // MarketplaceBrowse was never deleted and has been live at /dashboard/marketplace the
 // whole time, so this is a straight restore, not a rebuild. The comp itself also still
 // exists in web/src/generated/ and is still served at /[username]/[slug].
+//
+// [MARKET-BAZAAR-1 2026-08-31] The BAZAAR LOOK IS BACK — the mock data is not, and
+// must not come back with it. The owner asked for the comp's design on this route
+// again, so the hero, the truck-art category tiles and the section chrome are now real
+// components (BazaarHero.astro, TruckBorder.astro, MarketplaceBrowse.astro) sitting on
+// top of the same /api/explore reads this route has used since [DEMO-MARKET-2].
+//
+// The distinction that makes this safe is the one [DEMO-MARKET-2] was about: the comp's
+// LAYOUT was never the problem, its DATA was. So the design is copied and the numbers
+// are not — no "2,400 CREATORS LIVE" eyebrow, no per-tile "8 LISTINGS", no invented
+// ratings or followings on the cards (see chipsFor in ListingTile.tsx), and every card
+// links to its own real listing. With zero published listings in production, this page
+// still lands on an empty state; it is now a bazaar-styled one (ExploreGrid) rather
+// than a plain box. If you are about to add a placeholder card "just so it looks full",
+// that is the exact change that got reverted on 2026-08-29.
 export const prerender = false;
 
 import Base from '../layouts/Base.astro';
@@ -26,6 +41,9 @@ import MarketplaceBrowse from '../components/MarketplaceBrowse.astro';
 
 const category = Astro.url.searchParams.get('category') ?? undefined;
 const kind = Astro.url.searchParams.get('kind') ?? undefined;
+// [MARKET-BAZAAR-1] ?q= is set by the bazaar search strip, which is a plain GET
+// form so a search is a real, shareable URL. ExploreGrid seeds itself from it.
+const q = Astro.url.searchParams.get('q')?.trim() || undefined;
 
 Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
 ---
@@ -35,7 +53,12 @@ Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-rev
   description="Browse live streams, 1:1 sessions, events and AI agents from creators worldwide — no app required."
 >
   <AuthRedirect slot="head" />
-  <main class="mx-auto max-w-6xl px-4 py-2">
-    <MarketplaceBrowse hrefBase="" category={category} kind={kind} showHero={true} showSplit={true} />
+  {/* [MARKET-BAZAAR-1] No max-width and no padding here: the bazaar hero is a
+      full-bleed terracotta band with a truck-art strip that has to reach both
+      edges of the viewport. MarketplaceBrowse owns the gutters for everything
+      below the band (its `gutters` const), so wrapping it in a max-w-6xl
+      container would both crop the band and double-indent the grid. */}
+  <main>
+    <MarketplaceBrowse hrefBase="" category={category} kind={kind} q={q} showHero={true} showSplit={true} />
   </main>
 </Base>

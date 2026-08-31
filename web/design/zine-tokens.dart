@@ -44,6 +44,18 @@ class Zine {
   /// Mint accent-text variant. oklch(0.55 0.13 158)
   static const mintInk = Color(0xFF15773D);
 
+  // ---- bazaar hero band ([MARKET-BAZAAR-1 2026-08-31]) ----
+  // The marketplace hero is the one full-bleed warm band in the language. These
+  // three travel together: `terracotta` is the fill, and the other two are the
+  // ONLY text colours that clear 4.5:1 on it — inkSoft and inkMute both fail
+  // there, which is why they get their own names instead of being reused.
+  /// Marketplace hero band fill — burnt terracotta.
+  static const terracotta = Color(0xFFD46E59);
+  /// Eyebrow / label text ON terracotta.
+  static const terracottaInk = Color(0xFF4A1B12);
+  /// Body copy ON terracotta.
+  static const terracottaBody = Color(0xFF2A0F0A);
+
   // ---- derived tints ----
   /// Tape strip fill: lime @62%.
   static const tape = Color(0x80FEB302);

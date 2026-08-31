@@ -16,6 +16,9 @@ module.exports = {
     "lilac": "var(--zine-lilac)",
     "mint": "var(--zine-mint)",
     "mintInk": "var(--zine-mintInk)",
+    "terracotta": "var(--zine-terracotta)",
+    "terracottaInk": "var(--zine-terracottaInk)",
+    "terracottaBody": "var(--zine-terracottaBody)",
     "tape": "var(--zine-tape)",
     "coralMark": "var(--zine-coralMark)",
     "blueMark": "var(--zine-blueMark)"
@@ -54,6 +57,15 @@ module.exports = {
       "Silkscreen",
       "ui-monospace",
       "monospace"
+    ],
+    "label": [
+      "Nunito",
+      "system-ui",
+      "sans-serif"
+    ],
+    "hand": [
+      "Kalam",
+      "cursive"
     ]
   },
   "transitionDuration": {

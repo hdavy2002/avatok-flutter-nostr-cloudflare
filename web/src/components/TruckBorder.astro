@@ -3,16 +3,17 @@
 // kit's TruckBorder.dc.html so the site can use them without the Design
 // Component runtime.
 //
-// Only the three kinds the footer needs are here (chai, auto, tassels). The kit
-// also draws jhalar, lotus and eyes; add them from TruckBorder.dc.html if a
-// page ever wants one, keeping the motif markup identical so the two stay in
-// step.
+// [MARKET-BAZAAR-1 2026-08-31] All six kit motifs are now here. The footer only
+// needed chai/auto/tassels/jhalar; the bazaar marketplace also strings lotus
+// (the filter rail) and eyes (category tiles and section rules), so both were
+// ported from TruckBorder.dc.html with the motif markup kept identical, which
+// is the whole reason the kit and the site do not drift.
 //
 // The motif is repeated `count` times and the row is centre-justified with
 // overflow hidden, exactly as the kit does it — the strip is decorative and is
 // meant to bleed off both edges at any width rather than tile to fit.
 interface Props {
-  kind: 'chai' | 'auto' | 'tassels' | 'jhalar';
+  kind: 'chai' | 'auto' | 'tassels' | 'jhalar' | 'lotus' | 'eyes';
   count?: number;
   class?: string;
 }
@@ -27,6 +28,29 @@ const tasselHeights = [10, 16, 12, 18];
     <div style="height:30px; background:#3a3a9e; box-shadow:inset 0 3px 0 #f0d018, inset 0 -3px 0 #f0d018; display:flex; justify-content:center; overflow:hidden;">
       {items.map(() => (
         <div style="flex:none; width:26px; height:16px; margin-top:3px; background:#d93825; border-radius:0 0 13px 13px; display:flex; justify-content:center; align-items:flex-start; padding-top:4px;"><span style="width:5px; height:5px; border-radius:50%; background:#f0d018; display:block;"></span></div>
+      ))}
+    </div>
+  )}
+
+  {kind === 'lotus' && (
+    <div style="height:30px; background:#15773d; box-shadow:inset 0 -3px 0 #f0d018; display:flex; justify-content:center; align-items:flex-end; gap:12px; padding-bottom:4px; overflow:hidden;">
+      {items.map(() => (
+        <div style="flex:none; width:24px; height:20px; position:relative;">
+          <span style="position:absolute; left:1px; bottom:0; width:9px; height:14px; background:#f03060; border-radius:50% 50% 3px 3px; transform:rotate(-30deg); display:block;"></span>
+          <span style="position:absolute; right:1px; bottom:0; width:9px; height:14px; background:#f03060; border-radius:50% 50% 3px 3px; transform:rotate(30deg); display:block;"></span>
+          <span style="position:absolute; left:50%; bottom:1px; transform:translateX(-50%); width:9px; height:18px; background:#f0d018; border-radius:50% 50% 3px 3px; display:block;"></span>
+        </div>
+      ))}
+    </div>
+  )}
+
+  {kind === 'eyes' && (
+    <div style="height:30px; background:#15773d; display:flex; justify-content:center; align-items:center; overflow:hidden;">
+      {items.map(() => (
+        <div style="flex:none; display:flex; align-items:center; gap:10px; padding:0 5px;">
+          <span style="width:15px; height:15px; border-radius:50%; background:#f0d018; border:3px solid #d93825; display:grid; place-items:center;"><span style="width:5px; height:5px; border-radius:50%; background:#161614; display:block;"></span></span>
+          <span style="width:7px; height:7px; background:#fdf1d3; transform:rotate(45deg); display:block;"></span>
+        </div>
       ))}
     </div>
   )}

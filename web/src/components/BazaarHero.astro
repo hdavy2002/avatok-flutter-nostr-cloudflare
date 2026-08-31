@@ -1,0 +1,120 @@
+---
+// [MARKET-BAZAAR-1 2026-08-31] The marketplace hero, ported from
+// design/marketplace/avaTOK Marketplace.dc.html.
+//
+// TWO DELIBERATE DEPARTURES FROM THE COMP — do not "restore" either:
+//
+// 1. TRACKING IS POSITIVE, AND LEADING IS 1.12 NOT 1.02. The comp sets
+//    letter-spacing:-0.015em on the Anton h1 and -0.01em on the section h2s.
+//    The standing type rule is that display and bold type NEVER take negative
+//    tracking, because Anton is already drawn tight and closing it further is
+//    what made the headings read as one word. Display gets 0.055em–0.07em here,
+//    with word-spacing to keep the words apart at that tracking.
+//
+//    The leading is the second half of the same rule. "IS OPEN." carries a hard
+//    6px text-shadow, and at the comp's 1.02 the shadow of the second line rode
+//    up into the baseline of "THE BAZAAR" — invisible at desktop sizes, obvious
+//    at 375px where the clamp bottoms out at 46px. 1.12 clears the shadow at
+//    every width in the clamp.
+//
+// 2. NO CREATOR COUNT. The comp's eyebrow reads "MARKETPLACE · 2,400 CREATORS
+//    LIVE". That number is mock copy, and production has zero published
+//    listings — printing it would be the same invented-evidence problem
+//    [DEMO-MARKET-2] reverted the whole page for. The eyebrow takes a real
+//    count from the caller, and renders WITHOUT a count when there is nothing
+//    true to say.
+interface Props {
+  /** Real live-listing count. Omit (or 0) and the eyebrow drops the number. */
+  liveCount?: number;
+  /** Where the primary CTA scrolls to. */
+  browseHref?: string;
+  /** Where the secondary CTA goes. */
+  liveHref?: string;
+}
+const { liveCount, browseHref = '#listings', liveHref = '?kind=live#listings' } = Astro.props;
+
+import TruckBorder from './TruckBorder.astro';
+
+const eyebrow =
+  liveCount && liveCount > 0
+    ? `Marketplace · ${liveCount.toLocaleString('en-IN')} live now`
+    : 'Marketplace';
+
+// Anton, positive tracking. Kept as one object so the h1 and the section
+// headings elsewhere cannot drift apart.
+const displayType = 'font-display font-normal uppercase';
+---
+
+<section class="border-b-[3px] border-ink bg-terracotta">
+  <TruckBorder kind="tassels" />
+
+  <div
+    class="mx-auto flex max-w-[1560px] flex-wrap items-center gap-5 px-4 pb-14 pt-5 sm:gap-9 sm:px-10 sm:pb-20 sm:pt-7"
+  >
+    <div class="min-w-0 flex-[1_1_380px]">
+      <p
+        class="mb-4 flex items-center gap-2.5 font-label text-[13px] font-extrabold uppercase tracking-[0.14em] text-terracottaInk"
+      >
+        <span class="block h-2.5 w-2.5 flex-none rounded-full bg-coral"></span>
+        {eyebrow}
+      </p>
+
+      <h1
+        class={`m-0 ${displayType} text-[clamp(46px,6.4vw,88px)] leading-[1.12] tracking-[0.055em] [word-spacing:0.2em] text-ink`}
+      >
+        The bazaar<br />
+        <span class="text-card [text-shadow:6px_6px_0_var(--zine-ink)]">is open.</span>
+      </h1>
+
+      <p
+        class="mt-6 max-w-[50ch] text-pretty font-body text-[19px] font-medium leading-[1.5] text-terracottaBody"
+      >
+        Streams, dost, jyotish, adda rooms, AI agents aur full glow-ups — seat book
+        karo ya seedha live ghuso. Scene sorted.
+      </p>
+
+      <div class="mt-5 flex flex-wrap items-center gap-5">
+        <span
+          class="font-label text-[21px] font-extrabold tracking-[0.04em] text-card [text-shadow:2px_2px_0_var(--zine-ink)]"
+          lang="hi"
+        >
+          सब कुछ मिलेगा — live.
+        </span>
+        {/* The comp's handwritten aside, in Kalam and rotated -3°. Pure
+            flavour — it states no fact about the marketplace, which is why it
+            survived the pass that cut the invented creator count. */}
+        <span class="inline-block -rotate-3 font-hand text-[19px] text-terracottaBody">
+          Dilli se Toronto tak, sab yahin milte hain →
+        </span>
+      </div>
+
+      <div class="mt-7 flex flex-wrap gap-3">
+        <a
+          href={browseHref}
+          class="inline-flex select-none items-center justify-center rounded-full border-zineLg border-ink bg-lime px-7 py-4 font-display text-[16px] font-normal uppercase leading-none tracking-[0.06em] text-ink no-underline shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
+        >
+          Browse the bazaar
+        </a>
+        <a
+          href={liveHref}
+          class="inline-flex select-none items-center justify-center rounded-full border-zineLg border-ink bg-card px-7 py-4 font-display text-[16px] font-normal uppercase leading-none tracking-[0.06em] text-ink no-underline shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
+        >
+          Who's live
+        </a>
+      </div>
+    </div>
+
+    <div class="mx-auto flex-none">
+      {/* Decorative only — the welcome it renders is already in the h1 above,
+          so alt="" keeps a screen reader from reading the hero twice. */}
+      <img
+        src="/suswagatam.png"
+        alt=""
+        width="998"
+        height="668"
+        loading="eager"
+        class="block w-[clamp(200px,25vw,330px)] -rotate-3 [filter:drop-shadow(6px_7px_0_rgba(22,22,20,.55))]"
+      />
+    </div>
+  </div>
+</section>

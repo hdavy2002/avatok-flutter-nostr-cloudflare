@@ -8,6 +8,10 @@ import { Filters, type FilterState } from './Filters';
 import { LiveNowRail } from './LiveNowRail';
 
 export interface ExploreGridProps {
+  /** Initial search query from the URL (?q=), set by the hero search strip. */
+  initialQ?: string;
+  /** Render the grid's own search field. False when the page has the hero strip. */
+  showSearch?: boolean;
   /** Initial category from the URL (?category=). */
   initialCategory?: string;
   /** Initial kind from the URL (?kind=). */
@@ -28,8 +32,8 @@ const PAGE = 24;
  * `cursor` field, and renders a responsive ListingTile grid. A query switches
  * the fetch to the search endpoint; clearing it returns to browse.
  */
-export function ExploreGrid({ initialCategory, initialKind, pageSize = PAGE, showLiveRail = true, hrefBase = '' }: ExploreGridProps) {
-  const [q, setQ] = useState('');
+export function ExploreGrid({ initialQ, initialCategory, initialKind, pageSize = PAGE, showLiveRail = true, showSearch = true, hrefBase = '' }: ExploreGridProps) {
+  const [q, setQ] = useState(initialQ?.trim() ?? '');
   const [filters, setFilters] = useState<FilterState>({
     category: initialCategory,
     kind: initialKind,
@@ -41,6 +45,22 @@ export function ExploreGrid({ initialCategory, initialKind, pageSize = PAGE, sho
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const reqId = useRef(0);
+
+  /**
+   * Whether a fetch has ever COMPLETED. Not the same as `!loading`, and the
+   * difference is a real bug this guards.
+   *
+   * [MARKET-BAZAAR-1 2026-08-31] This island is mounted `client:visible`, so
+   * Astro server-renders it and only hydrates once it scrolls into view. At
+   * first render `items` is empty and `loading` is false, so the old
+   * `!loading && items.length === 0` test was TRUE in the SSR output — the
+   * server shipped the empty state as static HTML. Every visitor saw "nothing
+   * here" below the fold before a request had been made, and a visitor arriving
+   * on ?q=… got "Koi nahi mila, boss." for their own search before it ran.
+   * Nothing looked broken while the box read "Nothing here yet"; in the bazaar
+   * copy it reads as a definitive answer to a question nobody had asked yet.
+   */
+  const [loaded, setLoaded] = useState(false);
 
   const usingSearch = q.trim().length > 0;
 
@@ -81,7 +101,10 @@ export function ExploreGrid({ initialCategory, initialKind, pageSize = PAGE, sho
         if (mine !== reqId.current) return;
         if ((e as Error)?.name !== 'AbortError') setError('Could not load listings. Please try again.');
       } finally {
-        if (mine === reqId.current) setLoading(false);
+        if (mine === reqId.current) {
+          setLoading(false);
+          setLoaded(true);
+        }
       }
     },
     [usingSearch, q, filters.category, filters.kind, filters.sort, pageSize],
@@ -95,15 +118,48 @@ export function ExploreGrid({ initialCategory, initialKind, pageSize = PAGE, sho
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resetKey]);
 
-  const empty = !loading && items.length === 0 && !error;
+  const empty = loaded && !loading && items.length === 0 && !error;
+
+  /** True when the visitor narrowed the results themselves — the only case
+   *  where offering to clear filters is a real fix rather than a dead button. */
+  const narrowed = Boolean(q.trim() || filters.category || filters.kind);
+
+  const clearAll = useCallback(() => {
+    setQ('');
+    setFilters({ sort: 'relevance' });
+    // The query and the category arrive in the URL (the hero search strip is a
+    // plain GET form), so clearing only the React state would leave ?q= in the
+    // address bar — and a reload or a shared link would silently re-apply the
+    // filters the visitor just cleared. replaceState rather than pushState:
+    // clearing is a correction, not a step worth putting in the Back history.
+    if (typeof window !== 'undefined' && window.location.search) {
+      window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+    }
+  }, []);
 
   return (
     <div className="flex flex-col gap-6">
       {showLiveRail && <LiveNowRail />}
 
       <div className="flex flex-col gap-4">
-        <SearchBox value={q} onChange={setQ} />
-        <Filters value={filters} onChange={setFilters} />
+        {showSearch && (
+          <div className="flex items-center gap-5">
+            <SearchBox value={q} onChange={setQ} />
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0 flex-1"><Filters value={filters} onChange={setFilters} /></div>
+          {narrowed && (
+            <button
+              type="button"
+              onClick={clearAll}
+              className="flex-none font-label text-[12px] font-extrabold uppercase tracking-[0.08em] text-coral underline"
+            >
+              Sab hatao
+            </button>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -115,12 +171,52 @@ export function ExploreGrid({ initialCategory, initialKind, pageSize = PAGE, sho
         </div>
       )}
 
+      {/* [MARKET-BAZAAR-1 2026-08-31] The comp's empty state, and it is TWO
+          states, not one.
+
+          The comp only draws the filtered case ("Koi nahi mila, boss" + a "Sab
+          dikhao" button). But production has zero published listings, so the
+          state a real visitor actually lands on is the UNFILTERED one — and
+          there, "Sab dikhao" is a button that clears nothing and reloads the
+          same emptiness, which reads as a broken page. So a narrowed search
+          gets the comp's copy and a working clear button, and a genuinely empty
+          bazaar gets its own honest copy and a route to the thing a visitor CAN
+          do. Same chrome either way, so it still looks deliberate. */}
       {empty && (
-        <div className="rounded-zine border-zine border-ink bg-paper2 p-8 text-center">
-          <p className="font-display font-semibold text-[20px] text-ink">Nothing here yet</p>
-          <p className="mt-1 font-body font-bold text-[14px] text-inkSoft">
-            Try a different category or search term.
-          </p>
+        <div className="flex flex-wrap items-center justify-center gap-6 rounded-[22px] border-zine border-dashed border-ink bg-card px-7 py-10 text-center">
+          <div className="grid h-[104px] w-[104px] flex-none -rotate-[8deg] place-items-center rounded-full border-zine border-dashed border-coral">
+            <span className="font-label text-[11px] font-extrabold uppercase leading-[1.7] tracking-[0.06em] text-coral">
+              {narrowed ? (<>Buri nazar<br />lag gayi<br />· 404 ·</>) : (<>Bazaar<br />khul raha<br />hai</>)}
+            </span>
+          </div>
+          <div className="max-w-[40ch] text-left">
+            <p className="font-display text-[24px] font-normal uppercase tracking-[0.055em] [word-spacing:0.2em] text-ink">
+              {narrowed ? 'Koi nahi mila, boss.' : 'Abhi dukaan saj rahi hai.'}
+            </p>
+            <p className="mt-2 font-body text-[15px] font-medium leading-[1.5] text-inkSoft">
+              {narrowed
+                ? 'Is filter combination mein full sannata hai. Thoda filter loosen karo.'
+                : 'No listings are published yet. Creators are still setting up their stalls — check back soon, or open your own.'}
+            </p>
+            <div className="mt-4">
+              {narrowed ? (
+                <button
+                  type="button"
+                  onClick={clearAll}
+                  className="rounded-full border-zine border-ink bg-coral px-7 py-3 font-display text-[14px] font-normal uppercase tracking-[0.06em] text-card transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px]"
+                >
+                  Sab dikhao
+                </button>
+              ) : (
+                <a
+                  href="/sign-up"
+                  className="inline-flex rounded-full border-zine border-ink bg-lime px-7 py-3 font-display text-[14px] font-normal uppercase tracking-[0.06em] text-ink no-underline shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
+                >
+                  Become a creator
+                </a>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

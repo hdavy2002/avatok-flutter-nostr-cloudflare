@@ -177,13 +177,31 @@ const themeExtend = {
   borderRadius,
   borderWidth,
   boxShadow,
-  // [WEB-THEME-1] The four voices from design/tokens/TOKENS.md. `mono` is the
+  // [WEB-THEME-1] The voices from design/tokens/TOKENS.md. `mono` is the
   // Silkscreen "stub" voice (labels, eyebrows, chips) — the name stays `mono`
   // so the ~hundreds of existing `font-mono` call sites keep working.
+  //
+  // [MARKET-BAZAAR-1 2026-08-31] `label` (Nunito) is the stub voice the standing
+  // type rules actually call for; Silkscreen and Space Mono are both retired
+  // there. It is a SECOND key rather than a redefinition of `mono` on purpose:
+  // `mono` is still live on the auth pages and the dashboard, which name
+  // Silkscreen directly and load it from the Google Fonts link in Base.astro,
+  // so repointing `mono` would silently restyle every one of those call sites
+  // in the same commit that was meant to change one page. New work uses
+  // `font-label`; converting the rest is its own deliberate sweep.
+  //
+  // Nunito reads SMALLER than the pixel face: when converting a call site, bump
+  // 8→11, 9→11, 10→12, 11→13, 12→14, 13→15px and set an explicit font-weight of
+  // 700–900. `font-label` alone carries no weight.
   fontFamily: {
     display: ['Anton', '"Arial Narrow"', 'system-ui', 'sans-serif'],
     body: ['"Instrument Sans"', 'system-ui', 'sans-serif'],
     mono: ['Silkscreen', 'ui-monospace', 'monospace'],
+    label: ['Nunito', 'system-ui', 'sans-serif'],
+    // Kalam — the handwritten marginalia voice. Already in Base.astro's Google
+    // Fonts link; this just gives it a utility so call sites stop inlining
+    // font-family. Cursive is the right fallback here and only here.
+    hand: ['Kalam', 'cursive'],
   },
   transitionDuration,
 };

@@ -1,0 +1,57 @@
+---
+// [MARKET-BAZAAR-1 2026-08-31] The bazaar search strip — the cream band between
+// the site header and the terracotta hero, exactly where the comp puts it.
+//
+// THIS IS A PLAIN GET FORM, NOT AN ISLAND, AND THAT IS THE POINT. The search
+// state lives inside the ExploreGrid island further down the page, and there is
+// no shared store between an Astro component up here and a React island down
+// there. Rather than ship a second island and a client-side bus just to move a
+// text box, the strip submits to the page's own URL with ?q=… and ExploreGrid
+// seeds itself from that param. Consequences worth keeping:
+//   - it works with JavaScript off, and before the island hydrates;
+//   - a search is a real URL, so it can be linked, shared and gone Back from.
+// The #listings fragment lands the visitor on the results instead of making
+// them scroll past the hero to find out whether anything matched.
+interface Props {
+  /** Form target — the marketplace route this strip belongs to. */
+  action: string;
+  /** Current query, so the field still holds it after submitting. */
+  value?: string;
+}
+const { action, value = '' } = Astro.props;
+---
+
+<div class="border-b-[3px] border-ink bg-card">
+  <div class="mx-auto flex max-w-[1560px] flex-wrap items-center gap-4 px-4 py-4 sm:px-10">
+    <form
+      role="search"
+      method="get"
+      action={action}
+      class="flex flex-[1_1_340px] items-center gap-2.5 rounded-full border-zine border-ink bg-paper py-1.5 pl-5 pr-1.5 shadow-zine-sm focus-within:shadow-zine-focus"
+    >
+      <label for="bazaar-q" class="sr-only">Search the marketplace</label>
+      <input
+        id="bazaar-q"
+        name="q"
+        type="search"
+        inputmode="search"
+        autocomplete="off"
+        value={value}
+        placeholder="Dhoondo: tarot, adda, rizz, shayari, antakshari…"
+        class="min-w-0 flex-1 border-none bg-transparent py-2 font-body text-[16px] font-semibold text-ink outline-none placeholder:text-placeholder"
+      />
+      <button
+        type="submit"
+        class="flex-none rounded-full border-zine border-ink bg-coral px-6 py-2.5 font-display text-[14px] font-normal uppercase tracking-[0.06em] text-card transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px]"
+      >
+        Khojo
+      </button>
+    </form>
+
+    {/* Decorative tagline. Hidden below lg — at phone width the field needs the
+        whole row, and this is flavour, not information. */}
+    <p class="hidden flex-none font-label text-[13px] font-extrabold uppercase tracking-[0.12em] text-inkMute lg:block">
+      Dhoondte reh jaoge? Nahi. Yahan sab milega.
+    </p>
+  </div>
+</div>

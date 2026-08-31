@@ -53,7 +53,7 @@ export function Filters({ value, onChange }: FiltersProps) {
     <div className="flex flex-col gap-4">
       {/* Kind switch */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.08em] text-inkSoft">Type</span>
+        <span className="font-label text-[13px] font-extrabold uppercase tracking-[0.1em] text-inkMute">Type</span>
         <Pill kind={!value.kind ? 'ok' : 'plain'} onClick={() => set({ kind: undefined })}>
           All
         </Pill>
@@ -66,7 +66,7 @@ export function Filters({ value, onChange }: FiltersProps) {
 
       {/* Categories */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.08em] text-inkSoft">Category</span>
+        <span className="font-label text-[13px] font-extrabold uppercase tracking-[0.1em] text-inkMute">Category</span>
         {!cats ? (
           <Spinner size={16} />
         ) : (
@@ -85,7 +85,7 @@ export function Filters({ value, onChange }: FiltersProps) {
 
       {/* Sort */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.08em] text-inkSoft">Sort</span>
+        <span className="font-label text-[13px] font-extrabold uppercase tracking-[0.1em] text-inkMute">Sort</span>
         {SORTS.map((s) => (
           <Pill key={s.id} kind={(value.sort ?? 'relevance') === s.id ? 'ok' : 'plain'} onClick={() => set({ sort: s.id })}>
             {s.label}
