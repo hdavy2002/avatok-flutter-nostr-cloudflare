@@ -60,7 +60,7 @@ export function LiveChat({ messages, onSend, onReact, warn, onWarnSeen, disabled
         ) : (
           messages.map((m) =>
             m.kind === 'system' ? (
-              <p key={m.id} className="font-mono text-[11px] uppercase tracking-[0.04em] text-inkMute">
+              <p key={m.id} className="font-mono text-[13px] uppercase tracking-[0.04em] text-inkMute font-bold">
                 <span className="text-blueInk">{m.from}</span> {m.text}
               </p>
             ) : (
@@ -74,7 +74,7 @@ export function LiveChat({ messages, onSend, onReact, warn, onWarnSeen, disabled
       </div>
 
       {warn && (
-        <div className="mx-3 mb-2 rounded-zineSm border-zine border-ink bg-coral px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.04em] text-white shadow-zine-xs">
+        <div className="mx-3 mb-2 rounded-zineSm border-zine border-ink bg-coral px-3 py-1.5 font-mono text-[13px] uppercase tracking-[0.04em] text-white shadow-zine-xs font-bold">
           {warn}
         </div>
       )}

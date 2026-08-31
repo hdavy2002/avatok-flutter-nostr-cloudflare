@@ -48,7 +48,7 @@ function Inner() {
           <div className="font-display font-semibold text-[20px] text-ink">{cur >= 3 ? 'Verified creator' : cur === 2 ? 'Verified' : cur === 1 ? 'Member' : 'Guest'}</div>
           <div className="font-body font-bold text-[13px] text-inkSoft">{lvl?.handle ? `@${lvl.handle}` : ''}{lvl?.email ? ` · ${lvl.email}${lvl.email_verified ? ' ✓' : ''}` : ''}</div>
         </div>
-        {cur < 3 && <button type="button" disabled={busy} onClick={startKyc} className="ml-auto rounded-full border-zine border-ink bg-lime px-5 py-2.5 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50">{busy ? 'Starting…' : 'Verify identity'}</button>}
+        {cur < 3 && <button type="button" disabled={busy} onClick={startKyc} className="ml-auto rounded-full border-zine border-ink bg-lime px-5 py-2.5 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50">{busy ? 'Starting…' : 'Verify identity'}</button>}
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

@@ -35,20 +35,20 @@ function Inner() {
     try { const r = await putConfig({ [key]: next }); setCfg(r.config); } catch (e) { setErr(e instanceof Error ? e.message : 'update failed'); } finally { setBusy(null); }
   };
 
-  if (!cfg) return <div className="flex items-center gap-3 p-6"><Spinner size={22} />{err && <span className="text-coral font-mono text-[12px]">{err}</span>}</div>;
+  if (!cfg) return <div className="flex items-center gap-3 p-6"><Spinner size={22} />{err && <span className="text-coral font-mono text-[14px] font-bold">{err}</span>}</div>;
   // Include any unknown boolean keys returned by the server too (future flags).
   const keys = Array.from(new Set([...BOOL_FLAGS, ...Object.keys(cfg).filter((k) => typeof cfg[k] === 'boolean')]));
 
   return (
     <div className="flex flex-col gap-3">
-      {err && <p className="text-coral font-mono text-[12px]">{err}</p>}
+      {err && <p className="text-coral font-mono text-[14px] font-bold">{err}</p>}
       <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
         {keys.map((k) => {
           const on = cfg[k] === true;
           return (
             <Card key={k} shadow="sm">
               <div className="flex items-center justify-between p-1">
-                <span className="font-mono text-[13px] text-ink">{k}</span>
+                <span className="font-mono text-[15px] text-ink font-bold">{k}</span>
                 <div className="flex items-center gap-2">
                   <Pill kind={on ? 'ok' : 'no'}>{on ? 'ON' : 'OFF'}</Pill>
                   <Button variant={on ? 'coral' : 'lime'} loading={busy === k} onClick={() => toggle(k, !on)}>{on ? 'Disable' : 'Enable'}</Button>
@@ -58,7 +58,7 @@ function Inner() {
           );
         })}
       </div>
-      <p className="font-mono text-[10px] text-inkMute">minAppBuild = {String(cfg.minAppBuild ?? 0)} (numeric; edit via API). Last-changed audit in the Audit tab.</p>
+      <p className="font-mono text-[12px] text-inkMute font-bold">minAppBuild = {String(cfg.minAppBuild ?? 0)} (numeric; edit via API). Last-changed audit in the Audit tab.</p>
     </div>
   );
 }

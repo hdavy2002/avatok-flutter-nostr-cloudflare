@@ -260,11 +260,11 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
           <button
             type="button"
             onClick={onBack}
-            className="font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-blueInk underline decoration-blue decoration-2 underline-offset-2"
+            className="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-blueInk underline decoration-blue decoration-2 underline-offset-2"
           >
             ← Change template
           </button>
-          <span className="font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkMute">
+          <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkMute">
             {category.name}
           </span>
         </div>
@@ -285,7 +285,7 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
             onChange={(e) => set('role', e.target.value)}
           />
           <label className="block">
-            <span className="mb-2 block font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">
+            <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">
               Coaching prompt (creator layer)
             </span>
             <textarea
@@ -303,7 +303,7 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
         {/* voice / payer / rate / length */}
         <section className="flex flex-col gap-4">
           <label className="block">
-            <span className="mb-2 block font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">
+            <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">
               Voice
             </span>
             <select
@@ -320,7 +320,7 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
           </label>
 
           <div>
-            <span className="mb-2 block font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">
+            <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">
               Who pays?
             </span>
             <div className="flex gap-2">
@@ -362,7 +362,7 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
           )}
 
           <div>
-            <span className="mb-2 block font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">
+            <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">
               Session length
             </span>
             <div className="flex gap-2">
@@ -385,7 +385,7 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
 
         {/* vision options */}
         <section className="flex flex-col gap-4 rounded-zine border-zine border-ink bg-paper2 p-4 shadow-zine-sm">
-          <p className="font-mono font-bold uppercase text-[11px] tracking-[0.1em] text-blueInk">Vision options</p>
+          <p className="font-mono font-bold uppercase text-[13px] tracking-[0.1em] text-blueInk">Vision options</p>
 
           <div className="flex flex-wrap items-center gap-2">
             <Pill kind="plain">{d.capability}</Pill>
@@ -478,7 +478,7 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
 
           {/* platforms */}
           <div>
-            <span className="mb-2 block font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">
+            <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">
               Platforms
             </span>
             <div className="flex gap-2">
@@ -515,7 +515,7 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
           {/* enforced safety */}
           {template.safetyNotes.length > 0 && (
             <div className="rounded-zineField border-zine border-ink bg-card p-3">
-              <p className="font-mono font-bold uppercase text-[10px] tracking-[0.08em] text-coral">
+              <p className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-coral">
                 Platform-enforced
               </p>
               <ul className="mt-1 space-y-0.5">
@@ -551,7 +551,7 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
       {/* ── live preview pane ───────────────────────────────────────────── */}
       <aside className="lg:sticky lg:top-20 lg:self-start">
         <div className="rounded-zine border-zine border-ink bg-card p-4 shadow-zine">
-          <p className="font-mono font-bold uppercase text-[11px] tracking-[0.1em] text-blueInk">Live preview</p>
+          <p className="font-mono font-bold uppercase text-[13px] tracking-[0.1em] text-blueInk">Live preview</p>
 
           {/* PHASE5-PREVIEW-HOOK: surfaces consumed by Phase 5's VisionEngineWeb
               (camera into <video>, overlay drawn onto <canvas>). Lazy-imported on
@@ -578,11 +578,11 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
 
             {preview !== 'live' && (
               <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-4 text-center">
-                <span className="font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkMute">
+                <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkMute">
                   Camera preview
                 </span>
                 {d.overlayEnabled && (
-                  <span className="rounded-full border-zine border-ink bg-lilac px-3 py-1 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-ink shadow-zine-xs">
+                  <span className="rounded-full border-zine border-ink bg-lilac px-3 py-1 font-mono font-bold uppercase text-[13px] tracking-[0.06em] text-ink shadow-zine-xs">
                     {d.overlayStyle} overlay
                   </span>
                 )}

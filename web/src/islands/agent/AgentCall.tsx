@@ -342,7 +342,7 @@ function AgentCallInner({ agentId, seed }: Props) {
         <h1 className="font-display font-semibold text-[28px] leading-tight text-ink">{name}</h1>
         {role && <p className="max-w-xs font-body font-bold text-[14px] text-inkSoft">{role}</p>}
         {priceText && (
-          <span className="inline-flex items-center rounded-full border-zine border-ink bg-card px-3 py-1 font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-ink shadow-zine-xs">
+          <span className="inline-flex items-center rounded-full border-zine border-ink bg-card px-3 py-1 font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-ink shadow-zine-xs">
             {priceText}
           </span>
         )}
@@ -352,7 +352,7 @@ function AgentCallInner({ agentId, seed }: Props) {
       {phase === 'idle' && (
         <div className="flex w-full flex-col items-center gap-4">
           <label className="flex w-full max-w-xs flex-col gap-1.5">
-            <span className="font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">Talk in</span>
+            <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">Talk in</span>
             <select
               className="w-full rounded-zineField border-zine border-ink bg-card px-3.5 py-2.5 font-body font-bold text-[15px] text-ink shadow-zine-xs focus:outline-none"
               value={language}
@@ -377,7 +377,7 @@ function AgentCallInner({ agentId, seed }: Props) {
       {(phase === 'authing' || phase === 'starting' || phase === 'connecting') && (
         <div className="flex flex-col items-center gap-3 py-4">
           <Spinner size={28} color="var(--zine-lilac)" />
-          <span className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-inkSoft">
+          <span className="font-mono font-bold uppercase text-[14px] tracking-[0.08em] text-inkSoft">
             {phase === 'authing' ? 'verifying…' : phase === 'starting' ? 'starting call…' : 'connecting…'}
           </span>
         </div>

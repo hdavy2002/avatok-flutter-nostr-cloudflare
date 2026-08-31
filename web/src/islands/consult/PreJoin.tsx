@@ -129,7 +129,7 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-5">
       <div>
-        <span className="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">Get ready</span>
+        <span className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">Get ready</span>
         <h1 className="mt-2 font-display font-semibold text-[26px] leading-tight text-ink">
           {title ?? 'Your 1:1 session'}
         </h1>

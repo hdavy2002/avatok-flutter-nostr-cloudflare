@@ -48,7 +48,7 @@ function fmt(n?: number | null): string {
       <Avatar src={creator.avatar} name={creator.name ?? creator.handle} size={96} />
       <div class="flex flex-col gap-2">
         <h1 class="font-display font-semibold text-[30px] leading-tight text-ink">{creator.name ?? `@${creator.handle}`}</h1>
-        <span class="font-mono text-[13px] uppercase tracking-[0.06em] text-inkSoft">@{creator.handle}{creator.country ? ` · ${creator.country}` : ''}</span>
+        <span class="font-mono text-[15px] uppercase tracking-[0.06em] text-inkSoft font-bold">@{creator.handle}{creator.country ? ` · ${creator.country}` : ''}</span>
         {creator.bio && <p class="max-w-xl font-body font-bold text-[15px] text-inkSoft">{creator.bio}</p>}
         <div class="mt-1 flex flex-wrap gap-2.5">
           <Pill kind="plain">{fmt(stats?.followers)} followers</Pill>

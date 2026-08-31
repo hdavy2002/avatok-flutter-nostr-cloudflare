@@ -198,7 +198,7 @@ function Panel({ id }: { id: string }) {
       </Card>
 
       <div>
-        <span className="mb-2 block font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">
+        <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">
           Photos
         </span>
         <div className="grid grid-cols-3 gap-3">

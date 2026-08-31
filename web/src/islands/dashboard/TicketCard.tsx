@@ -64,7 +64,7 @@ export function TicketCard({ booking, past }: TicketCardProps) {
             {booking.title ?? 'AvaTOK session'}
           </span>
           {when && (
-            <span className="font-mono text-[12px] uppercase tracking-[0.06em] text-inkSoft">{when}</span>
+            <span className="font-mono text-[14px] uppercase tracking-[0.06em] text-inkSoft font-bold">{when}</span>
           )}
           <div className="mt-1 flex flex-wrap items-center gap-2">
             {booking.status && <Pill kind={statusKind}>{booking.status}</Pill>}

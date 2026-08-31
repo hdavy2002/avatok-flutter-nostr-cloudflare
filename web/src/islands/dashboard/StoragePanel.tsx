@@ -40,7 +40,7 @@ function Inner() {
       <div className="rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm">
         <div className="flex items-end justify-between">
           <div>
-            <span className="font-mono font-bold uppercase text-[10px] tracking-[0.08em] text-inkSoft">Used</span>
+            <span className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-inkSoft">Used</span>
             <div className="font-display font-semibold text-[30px] leading-none text-ink">{fmtBytes(used)}</div>
           </div>
           <span className="font-body font-bold text-[13px] text-inkSoft">of {fmtBytes(quota)} · {pct}%</span>
@@ -59,7 +59,7 @@ function Inner() {
               const w = quota > 0 ? Math.min(100, Math.round((b.bytes / quota) * 100)) : 0;
               return (
                 <div key={b.label} className="flex items-center gap-3 rounded-zine border-zine border-ink bg-paper2 p-3 shadow-zine-sm">
-                  <span className="w-24 truncate font-mono font-bold uppercase text-[11px] text-inkSoft">{b.label}</span>
+                  <span className="w-24 truncate font-mono font-bold uppercase text-[13px] text-inkSoft">{b.label}</span>
                   <div className="h-3 flex-1 overflow-hidden rounded-full border-zine border-ink bg-paper"><div className={`h-full ${TONES[i % TONES.length]}`} style={{ width: `${Math.max(3, w)}%` }} /></div>
                   <span className="w-20 text-right font-display font-semibold text-[13px] text-ink">{fmtBytes(b.bytes)}</span>
                 </div>

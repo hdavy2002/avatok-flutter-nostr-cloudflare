@@ -433,7 +433,7 @@ function SessionRoomInner({ agentId, seed }: Props) {
   const langPicker = useMemo(
     () => (
       <label className="flex w-full max-w-xs flex-col gap-1.5">
-        <span className="font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">Coach in</span>
+        <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">Coach in</span>
         <select
           className="w-full rounded-zineField border-zine border-ink bg-card px-3.5 py-2.5 font-body font-bold text-[15px] text-ink shadow-zine-xs focus:outline-none"
           value={language}
@@ -465,7 +465,7 @@ function SessionRoomInner({ agentId, seed }: Props) {
         <h1 className="font-display font-semibold text-[26px] leading-tight text-ink">{name}</h1>
         {role && <p className="max-w-md font-body font-bold text-[14px] text-inkSoft">{role}</p>}
         {priceText && (
-          <span className="inline-flex items-center rounded-full border-zine border-ink bg-card px-3 py-1 font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-ink shadow-zine-xs">
+          <span className="inline-flex items-center rounded-full border-zine border-ink bg-card px-3 py-1 font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-ink shadow-zine-xs">
             {priceText}
           </span>
         )}
@@ -499,7 +499,7 @@ function SessionRoomInner({ agentId, seed }: Props) {
       {inFlight && (
         <div className="flex flex-col items-center gap-3 py-2">
           <Spinner size={28} color="var(--zine-lilac)" />
-          <span className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-inkSoft">
+          <span className="font-mono font-bold uppercase text-[14px] tracking-[0.08em] text-inkSoft">
             {phase === 'authing' ? 'verifying…' : phase === 'starting' ? 'starting session…' : 'connecting…'}
           </span>
         </div>
@@ -522,7 +522,7 @@ function SessionRoomInner({ agentId, seed }: Props) {
             {/* score badge (transparent, technique-only) */}
             {liveish && score != null && (
               <div className="absolute left-3 top-3">
-                <span className="inline-flex items-center gap-2 rounded-full border-zine border-ink bg-lime/90 px-3 py-1 font-mono font-bold uppercase text-[13px] tracking-[0.06em] text-ink shadow-zine-xs">
+                <span className="inline-flex items-center gap-2 rounded-full border-zine border-ink bg-lime/90 px-3 py-1 font-mono font-bold uppercase text-[15px] tracking-[0.06em] text-ink shadow-zine-xs">
                   {scoreLabel} {score}
                 </span>
               </div>

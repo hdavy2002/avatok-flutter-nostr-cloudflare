@@ -35,7 +35,7 @@ export function SnapshotSheet({
       {loading && (
         <div className="flex flex-col items-center gap-3 py-8">
           <Spinner size={28} color="var(--zine-lilac)" />
-          <span className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-inkSoft">
+          <span className="font-mono font-bold uppercase text-[14px] tracking-[0.08em] text-inkSoft">
             analyzing your form…
           </span>
         </div>
@@ -67,7 +67,7 @@ export function SnapshotSheet({
             />
           )}
           {result.score != null && (
-            <span className="inline-flex w-fit items-center gap-2 rounded-full border-zine border-ink bg-lime px-3 py-1 font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-ink shadow-zine-xs">
+            <span className="inline-flex w-fit items-center gap-2 rounded-full border-zine border-ink bg-lime px-3 py-1 font-mono font-bold uppercase text-[14px] tracking-[0.08em] text-ink shadow-zine-xs">
               {scoreLabel} {result.score}
             </span>
           )}

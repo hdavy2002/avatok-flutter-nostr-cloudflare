@@ -44,7 +44,7 @@
   /* ---------- TEXT ---------- */
   --ava-text: #161614;
   --ava-text-body: #5A3D33;           /* body prose on paper */
-  --ava-text-label: #6B4F3F;          /* Silkscreen labels, meta */
+  --ava-text-label: #6B4F3F;          /* stub-voice labels, meta */
   --ava-text-placeholder: #A08974;
   --ava-text-on-dark: #FDF1D3;
   --ava-text-on-teal: #DCEFF0;
@@ -106,7 +106,10 @@
   --ava-font-display: 'Anton', 'Arial Narrow', sans-serif;   /* all headings, buttons, nav */
   --ava-font-serif: 'Playfair Display', Georgia, serif;      /* 900 italic — accent titles, the TOK */
   --ava-font-sans: 'Instrument Sans', system-ui, sans-serif; /* all prose and inputs */
-  --ava-font-stub: 'Silkscreen', ui-monospace, monospace;    /* labels, eyebrows, chips */
+  /* [WEB-TYPE-SILKSCREEN-1 2026-08-31] Silkscreen retired; the stub voice is
+     Nunito. Sizes using this var were bumped with the same table as the
+     Tailwind sweep (8/9->11, 10->12, 11->13, 12->14, 13->15px). */
+  --ava-font-stub: 'Nunito', system-ui, sans-serif;    /* labels, eyebrows, chips */
   --ava-font-deva: 'Baloo 2', sans-serif;                    /* Devanagari display */
   --ava-font-hand: 'Kalam', cursive;                         /* asides only */
 

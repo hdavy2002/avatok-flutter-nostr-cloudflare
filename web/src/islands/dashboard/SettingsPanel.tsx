@@ -52,15 +52,15 @@ function Inner() {
     <div className="flex flex-col gap-5">
       <Card shadow="sm">
         <div className="flex flex-col gap-3">
-          <span className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-blueInk">Your account</span>
+          <span className="font-mono font-bold uppercase text-[14px] tracking-[0.08em] text-blueInk">Your account</span>
           <div className="flex items-center justify-between">
             <span className="font-body font-extrabold text-[15px] text-ink">Identity level</span>
-            <span className="rounded-zineBadge border-zine border-ink bg-lilac px-3 py-1 font-mono font-bold text-[12px] text-ink shadow-zine-xs">L{level}</span>
+            <span className="rounded-zineBadge border-zine border-ink bg-lilac px-3 py-1 font-mono font-bold text-[14px] text-ink shadow-zine-xs">L{level}</span>
           </div>
           <p className="font-body font-bold text-[14px] text-inkSoft">{LEVELS[level] ?? `Level ${level}`}</p>
-          {info?.handle && <p className="font-mono text-[13px] text-inkSoft">@{info.handle}</p>}
+          {info?.handle && <p className="font-mono text-[15px] text-inkSoft font-bold">@{info.handle}</p>}
           {info?.email && (
-            <p className="font-mono text-[13px] text-inkSoft">
+            <p className="font-mono text-[15px] text-inkSoft font-bold">
               {info.email} {info.email_verified ? '· verified' : '· unverified'}
             </p>
           )}
@@ -75,7 +75,7 @@ function Inner() {
               Publishing paid listings needs identity verification (KYC). Start a listing and we'll walk you
               through it, or finish verification in the app.
             </p>
-            <a href="/dashboard/listings/new" className="mt-1 inline-block w-fit rounded-full border-zine border-ink bg-lime px-5 py-2.5 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink no-underline shadow-zine-xs">
+            <a href="/dashboard/listings/new" className="mt-1 inline-block w-fit rounded-full border-zine border-ink bg-lime px-5 py-2.5 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs">
               Create a listing
             </a>
           </div>

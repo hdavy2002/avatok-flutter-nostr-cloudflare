@@ -19,7 +19,7 @@ function Inner() {
 
   const checkOrder = async () => { if (!order.trim()) return; try { const r = await getRecon(order.trim()); setSpot(r.spot); } catch (e) { setErr(e instanceof Error ? e.message : 'failed'); } };
 
-  if (!runs) return <div className="flex items-center gap-3 p-6"><Spinner size={22} />{err && <span className="text-coral font-mono text-[12px]">{err}</span>}</div>;
+  if (!runs) return <div className="flex items-center gap-3 p-6"><Spinner size={22} />{err && <span className="text-coral font-mono text-[14px] font-bold">{err}</span>}</div>;
   const bad = runs.filter((r) => !r.ok);
 
   return (
@@ -32,30 +32,30 @@ function Inner() {
         </Card>
       )}
       <section>
-        <h2 className="mb-2 font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">Escrow spot-check</h2>
+        <h2 className="mb-2 font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">Escrow spot-check</h2>
         <div className="flex items-end gap-2">
           <Field label="Order id" value={order} onChange={(e) => setOrder(e.target.value)} />
           <Button variant="blue" onClick={checkOrder}>Check</Button>
         </div>
-        {spot && <p className="mt-2 font-mono text-[12px] text-inkSoft">escrow:{spot.order} balance = {coins(spot.escrow_balance)}</p>}
+        {spot && <p className="mt-2 font-mono text-[14px] text-inkSoft font-bold">escrow:{spot.order} balance = {coins(spot.escrow_balance)}</p>}
       </section>
       <section>
-        <h2 className="mb-2 font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">Recent recon runs</h2>
+        <h2 className="mb-2 font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">Recent recon runs</h2>
         <div className="flex flex-col gap-2">
-          {runs.length === 0 ? <p className="font-mono text-[12px] text-inkMute">No recon runs recorded.</p> : runs.map((r) => (
+          {runs.length === 0 ? <p className="font-mono text-[14px] text-inkMute font-bold">No recon runs recorded.</p> : runs.map((r) => (
             <Card key={r.date} shadow="sm">
               <div className="flex items-center justify-between p-1">
-                <span className="font-mono text-[12px] text-ink">{r.date}</span>
+                <span className="font-mono text-[14px] text-ink font-bold">{r.date}</span>
                 <div className="flex items-center gap-2">
                   <Pill kind={r.ok ? 'ok' : 'no'}>{r.ok ? 'balanced' : 'diff'}</Pill>
-                  <span className="font-mono text-[10px] text-inkMute">{fmtTime(r.created_at)}</span>
+                  <span className="font-mono text-[12px] text-inkMute font-bold">{fmtTime(r.created_at)}</span>
                 </div>
               </div>
-              {!r.ok && r.diff_json && <pre className="mt-1 overflow-x-auto font-mono text-[10px] text-coral">{String(r.diff_json).slice(0, 600)}</pre>}
+              {!r.ok && r.diff_json && <pre className="mt-1 overflow-x-auto font-mono text-[12px] text-coral font-bold">{String(r.diff_json).slice(0, 600)}</pre>}
             </Card>
           ))}
         </div>
-        <p className="mt-2 font-mono text-[10px] text-inkMute">Manual "run recon now" → POST /api/admin/money/evaluate (existing).</p>
+        <p className="mt-2 font-mono text-[12px] text-inkMute font-bold">Manual "run recon now" → POST /api/admin/money/evaluate (existing).</p>
       </section>
     </div>
   );

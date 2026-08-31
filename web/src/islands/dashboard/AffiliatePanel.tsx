@@ -19,7 +19,7 @@ const usd = inr;
 function Stat({ label, value, tone }: { label: string; value: string; tone: string }) {
   return (
     <div className={`flex flex-col gap-1 rounded-zine border-zine border-ink ${tone} p-4 shadow-zine-sm`}>
-      <span className="font-mono font-bold uppercase text-[10px] tracking-[0.08em] text-inkSoft">{label}</span>
+      <span className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-inkSoft">{label}</span>
       <span className="font-display font-semibold text-[26px] leading-none text-ink">{value}</span>
     </div>
   );
@@ -57,7 +57,7 @@ function Inner() {
         <span className="flex h-12 w-12 items-center justify-center rounded-zine border-zine border-ink bg-coral text-[22px] text-paper shadow-zine-xs">📣</span>
         <h2 className="font-display font-semibold text-[24px] text-ink">Earn 10% for life</h2>
         <p className="max-w-xl font-body font-bold text-[15px] leading-relaxed text-inkSoft">Share any listing, and when someone you referred buys, you earn 10% of every purchase they ever make — paid from the platform's cut, never the creator's.</p>
-        <button type="button" disabled={busy || !token} onClick={registerNow} className="rounded-full border-zine border-ink bg-lime px-5 py-2.5 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50">{busy ? 'Setting up…' : 'Become an affiliate'}</button>
+        <button type="button" disabled={busy || !token} onClick={registerNow} className="rounded-full border-zine border-ink bg-lime px-5 py-2.5 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50">{busy ? 'Setting up…' : 'Become an affiliate'}</button>
       </div>
     );
   }
@@ -74,10 +74,10 @@ function Inner() {
 
       <div className="flex flex-wrap items-center gap-3 rounded-zine border-zine border-ink bg-card p-4 shadow-zine-sm">
         <div>
-          <span className="font-mono font-bold uppercase text-[10px] tracking-[0.08em] text-inkSoft">Your code</span>
+          <span className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-inkSoft">Your code</span>
           <div className="font-display font-semibold text-[22px] text-ink">{me.code ?? '—'}</div>
         </div>
-        <a href="/marketplace" className="ml-auto rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">+ Create a link</a>
+        <a href="/marketplace" className="ml-auto rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">+ Create a link</a>
       </div>
 
       <div>
@@ -88,9 +88,9 @@ function Inner() {
           <div className="overflow-hidden rounded-zine border-zine border-ink bg-card shadow-zine-sm">
             {links.map((l, i) => (
               <div key={l.id} className={`flex flex-wrap items-center gap-3 p-3 ${i ? 'border-t-zine border-ink' : ''}`}>
-                <code className="min-w-0 flex-1 truncate font-mono text-[12px] text-blueInk">{l.url ?? l.id}</code>
-                <span className="font-mono text-[12px] text-inkSoft">{l.clicks ?? 0} clicks</span>
-                <span className="font-mono text-[12px] text-inkSoft">{l.purchases ?? 0} sales</span>
+                <code className="min-w-0 flex-1 truncate font-mono text-[14px] text-blueInk font-bold">{l.url ?? l.id}</code>
+                <span className="font-mono text-[14px] text-inkSoft font-bold">{l.clicks ?? 0} clicks</span>
+                <span className="font-mono text-[14px] text-inkSoft font-bold">{l.purchases ?? 0} sales</span>
                 <span className="font-display font-semibold text-[13px] text-ink">{usd(l.earned_coins)}</span>
               </div>
             ))}

@@ -40,7 +40,7 @@ function Inner() {
       <div className="flex items-center gap-2">
         <button type="button" onClick={() => setTab('all')} className={`rounded-full border-zine border-ink px-4 py-1.5 font-mono font-bold uppercase text-[11px] tracking-[0.06em] shadow-zine-xs ${tab === 'all' ? 'bg-ink text-paper' : 'bg-card text-inkSoft'}`}>All</button>
         <button type="button" onClick={() => setTab('unread')} className={`rounded-full border-zine border-ink px-4 py-1.5 font-mono font-bold uppercase text-[11px] tracking-[0.06em] shadow-zine-xs ${tab === 'unread' ? 'bg-ink text-paper' : 'bg-card text-inkSoft'}`}>Unread{unread ? ` (${unread})` : ''}</button>
-        {unread > 0 && <button type="button" onClick={markAll} className="ml-auto rounded-full border-zine border-ink bg-lime px-4 py-1.5 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-ink shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">Mark all read</button>}
+        {unread > 0 && <button type="button" onClick={markAll} className="ml-auto rounded-full border-zine border-ink bg-lime px-4 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.06em] text-ink shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">Mark all read</button>}
       </div>
 
       {shown.length === 0 ? (
@@ -54,7 +54,7 @@ function Inner() {
                 <div className="font-display font-semibold text-[15px] text-ink">{n.title ?? n.type ?? 'Notification'}</div>
                 {n.body && <p className="font-body font-bold text-[13px] text-inkSoft">{n.body}</p>}
               </div>
-              <span className="shrink-0 font-mono text-[11px] text-inkMute">{dt(n.created_at)}</span>
+              <span className="shrink-0 font-mono text-[13px] text-inkMute font-bold">{dt(n.created_at)}</span>
             </div>
           ))}
         </div>

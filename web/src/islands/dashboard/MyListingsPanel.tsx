@@ -47,7 +47,7 @@ function Inner() {
           <p className="font-body font-bold text-[15px] text-inkSoft">
             Publish a live event, a 1:1 consult, a class or an AI agent — fans book and pay right from the web.
           </p>
-          <a href="/dashboard/listings/new" className="rounded-full border-zine border-ink bg-lime px-5 py-2.5 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">
+          <a href="/dashboard/listings/new" className="rounded-full border-zine border-ink bg-lime px-5 py-2.5 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">
             Create your first listing
           </a>
         </div>

@@ -82,7 +82,7 @@ export function AgentCta({ agentId, free = false, initialBusy = false }: AgentCt
   return (
     <div className="flex w-full flex-col items-center gap-4">
       <label className="flex w-full max-w-xs flex-col gap-1.5">
-        <span className="font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">
+        <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">
           Coach me in
         </span>
         <select

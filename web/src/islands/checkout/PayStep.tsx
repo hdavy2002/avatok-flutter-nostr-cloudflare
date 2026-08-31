@@ -145,7 +145,7 @@ export function PayStep({ selection, token, onBooked, onBack }: PayStepProps) {
       <Card>
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <span className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-inkSoft">
+            <span className="font-mono font-bold uppercase text-[14px] tracking-[0.08em] text-inkSoft">
               You’re booking
             </span>
             <Pill kind="plain">{selection.title}</Pill>
@@ -190,7 +190,7 @@ export function PayStep({ selection, token, onBooked, onBack }: PayStepProps) {
 
       <button
         type="button"
-        className="font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-blueInk underline decoration-blue decoration-2 underline-offset-2 disabled:text-inkMute"
+        className="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-blueInk underline decoration-blue decoration-2 underline-offset-2 disabled:text-inkMute"
         disabled={busy}
         onClick={onBack}
       >

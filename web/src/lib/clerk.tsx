@@ -382,7 +382,7 @@ export function GuestGate({ open, onAuthed, onCancel }: GuestGateProps) {
           <Button fullWidth loading={busy} disabled={code.trim().length < 4} label="Verify" onClick={submitCode} />
           <button
             type="button"
-            className="w-full font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-blueInk underline decoration-blue decoration-2 underline-offset-2 disabled:text-inkMute"
+            className="w-full font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-blueInk underline decoration-blue decoration-2 underline-offset-2 disabled:text-inkMute"
             disabled={busy}
             onClick={resend}
           >

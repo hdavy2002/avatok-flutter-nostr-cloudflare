@@ -181,22 +181,24 @@ const themeExtend = {
   // Silkscreen "stub" voice (labels, eyebrows, chips) — the name stays `mono`
   // so the ~hundreds of existing `font-mono` call sites keep working.
   //
-  // [MARKET-BAZAAR-1 2026-08-31] `label` (Nunito) is the stub voice the standing
-  // type rules actually call for; Silkscreen and Space Mono are both retired
-  // there. It is a SECOND key rather than a redefinition of `mono` on purpose:
-  // `mono` is still live on the auth pages and the dashboard, which name
-  // Silkscreen directly and load it from the Google Fonts link in Base.astro,
-  // so repointing `mono` would silently restyle every one of those call sites
-  // in the same commit that was meant to change one page. New work uses
-  // `font-label`; converting the rest is its own deliberate sweep.
+  // [WEB-TYPE-SILKSCREEN-1 2026-08-31, owner decision] SILKSCREEN IS RETIRED.
+  // The stub voice (labels, eyebrows, chips) is Nunito, per the standing type
+  // rules, which retire both Silkscreen and Space Mono.
   //
-  // Nunito reads SMALLER than the pixel face: when converting a call site, bump
-  // 8→11, 9→11, 10→12, 11→13, 12→14, 13→15px and set an explicit font-weight of
-  // 700–900. `font-label` alone carries no weight.
+  // `mono` and `label` are the SAME stack and that is deliberate, not an
+  // oversight. `label` is the name new work should use; `mono` is kept pointing
+  // at it so the ~271 existing `font-mono` call sites keep working instead of
+  // being renamed in a commit nobody could review. Do not "clean up" by
+  // deleting `mono` — that breaks every one of them at once.
+  //
+  // Nunito reads SMALLER than the pixel face it replaced, so the sweep that
+  // came with this bumped every `font-mono` call site's size 8/9→11, 10→12,
+  // 11→13, 12→14, 13→15px and gave each one an explicit weight (the family
+  // carries none). Apply the same table to any new call site.
   fontFamily: {
     display: ['Anton', '"Arial Narrow"', 'system-ui', 'sans-serif'],
     body: ['"Instrument Sans"', 'system-ui', 'sans-serif'],
-    mono: ['Silkscreen', 'ui-monospace', 'monospace'],
+    mono: ['Nunito', 'system-ui', 'sans-serif'],
     label: ['Nunito', 'system-ui', 'sans-serif'],
     // Kalam — the handwritten marginalia voice. Already in Base.astro's Google
     // Fonts link; this just gives it a utility so call sites stop inlining

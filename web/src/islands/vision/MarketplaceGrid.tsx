@@ -85,7 +85,7 @@ export function MarketplaceGrid({ initialQuery = '' }: MarketplaceGridProps) {
     <div className="flex flex-col gap-6">
       {/* search */}
       <label className="block">
-        <span className="mb-2 block font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">
+        <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">
           Search vision agents
         </span>
         <input

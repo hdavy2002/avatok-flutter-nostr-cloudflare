@@ -82,7 +82,7 @@ export function UpgradePrompt({ reason, onUpgraded, onDismiss, compact }: Upgrad
     <Card fillClassName="bg-lilac" shadow={compact ? 'sm' : 'lg'}>
       <div className="flex flex-col gap-3">
         <div>
-          <span className="font-mono font-bold uppercase text-[11px] tracking-[0.1em] text-ink">
+          <span className="font-mono font-bold uppercase text-[13px] tracking-[0.1em] text-ink">
             Optional
           </span>
           <h3 className="mt-1 font-display font-semibold text-[19px] leading-tight text-ink">
@@ -95,7 +95,7 @@ export function UpgradePrompt({ reason, onUpgraded, onDismiss, compact }: Upgrad
         </div>
 
         {error && (
-          <p className="font-mono font-bold uppercase text-[12px] tracking-[0.04em] text-coral">
+          <p className="font-mono font-bold uppercase text-[14px] tracking-[0.04em] text-coral">
             ⚠ {error}
           </p>
         )}
@@ -111,7 +111,7 @@ export function UpgradePrompt({ reason, onUpgraded, onDismiss, compact }: Upgrad
           {onDismiss && (
             <button
               type="button"
-              className="font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-blueInk underline decoration-blue decoration-2 underline-offset-2"
+              className="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-blueInk underline decoration-blue decoration-2 underline-offset-2"
               onClick={onDismiss}
             >
               Maybe later

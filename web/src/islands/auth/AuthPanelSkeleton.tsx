@@ -14,7 +14,7 @@ export function AuthPanelSkeleton() {
           className="inline-block h-7 w-7 animate-spin rounded-full border-[3px] border-ink border-t-transparent"
           aria-hidden="true"
         />
-        <p className="font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-inkSoft">
+        <p className="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-inkSoft">
           Loading secure sign-in…
         </p>
       </div>

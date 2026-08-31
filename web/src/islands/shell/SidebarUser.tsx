@@ -40,14 +40,14 @@ function Card({
         <div className="min-w-0">
           <div className="truncate font-display font-semibold text-[16px] text-ink">{name}</div>
           {handle && (
-            <a href={`/m/${handle}`} className="font-mono font-bold text-[11px] text-blueInk no-underline">@{handle}</a>
+            <a href={`/m/${handle}`} className="font-mono font-bold text-[13px] text-blueInk no-underline">@{handle}</a>
           )}
         </div>
       </div>
       <button
         type="button"
         onClick={onSignOut}
-        className="rounded-zineField border-zine border-ink bg-paper px-3 py-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-coral shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine"
+        className="rounded-zineField border-zine border-ink bg-paper px-3 py-2 font-mono font-bold uppercase text-[13px] tracking-[0.06em] text-coral shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine"
       >
         Sign out
       </button>

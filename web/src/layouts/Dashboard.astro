@@ -141,7 +141,7 @@ const plainType = !Astro.url.pathname.startsWith('/dashboard/marketplace');
       <nav class="flex-1 overflow-y-auto px-3 py-3 lg:overflow-visible">
         {groups.map((g) => (
           <div class="mb-3">
-            <div class="px-3 pb-1.5 pt-2 font-mono font-bold uppercase text-[10px] tracking-[0.12em] text-inkMute">{g.title}</div>
+            <div class="px-3 pb-1.5 pt-2 font-mono font-bold uppercase text-[12px] tracking-[0.12em] text-inkMute">{g.title}</div>
             {g.items.map((it) => (
               <a
                 href={it.href}
@@ -151,7 +151,7 @@ const plainType = !Astro.url.pathname.startsWith('/dashboard/marketplace');
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={it.icon} />
                 </span>
                 <span class="truncate">{it.label}</span>
-                {it.pill && <span class="ml-auto rounded-full bg-coral px-2 py-0.5 font-mono text-[10px] font-bold text-paper">{it.pill}</span>}
+                {it.pill && <span class="ml-auto rounded-full bg-coral px-2 py-0.5 font-mono text-[12px] font-bold text-paper">{it.pill}</span>}
               </a>
             ))}
           </div>
@@ -175,7 +175,7 @@ const plainType = !Astro.url.pathname.startsWith('/dashboard/marketplace');
           <h1 class="truncate font-display font-semibold text-[22px] leading-none text-ink">{heads}</h1>
           {subtitle && <p class="mt-1 truncate font-body font-bold text-[13px] text-inkSoft">{subtitle}</p>}
         </div>
-        <a href="/dashboard/listings/new" class="ml-auto inline-flex items-center gap-1.5 rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">+ New</a>
+        <a href="/dashboard/listings/new" class="ml-auto inline-flex items-center gap-1.5 rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">+ New</a>
       </header>
 
       <!-- Content -->
@@ -196,17 +196,20 @@ const plainType = !Astro.url.pathname.startsWith('/dashboard/marketplace');
   </script>
 
 <style is:global>
-  /* [WEB-FONT-3] Silkscreen is the only non-Nunito face inside the dashboard —
-     it renders the section labels and the chips (ALL STATUSES, + CREATE, SELL,
-     EDIT, CANCELLED, NO COVER PHOTO). `font-mono` is a SITE-WIDE token, so this
-     is scoped to `.dash-nunito` rather than changing the token: the auth
-     screens and the marketplace still use Silkscreen as designed.
+  /* [WEB-FONT-3] made `font-mono` render in Nunito inside the dashboard only,
+     because `font-mono` was Silkscreen sitewide and only this surface wanted
+     the swap.
 
-     Silkscreen is a pixel face that needs wide tracking to be readable; Nunito
-     does not, so the tracking is pulled back to something a normal typeface
-     wants. Weight comes from the markup and is left alone. */
+     [WEB-TYPE-SILKSCREEN-1 2026-08-31] Silkscreen is now retired everywhere and
+     the `mono` token IS Nunito, so the font-family half of this rule is dead.
+     The TRACKING half is not, and that is why the rule survives rather than
+     being deleted: Silkscreen is a pixel face that needs wide tracking to read,
+     so the dashboard's label call sites carry generous values chosen for it.
+     Nunito does not want that much air, and 0.04em pulls them back to what a
+     drawn typeface wants without touching every class string.
+
+     Delete this once the dashboard's own tracking values have been revisited. */
   .dash-nunito .font-mono {
-    font-family: 'Nunito', system-ui, sans-serif;
     letter-spacing: 0.04em;
   }
 </style>

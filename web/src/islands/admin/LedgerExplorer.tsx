@@ -38,16 +38,16 @@ function Inner() {
         <Button variant="blue" loading={loading} onClick={run}>Search</Button>
         {rows?.length ? <Button variant="ghost" onClick={exportCsv}>Export CSV</Button> : null}
       </div>
-      {err && <p className="text-coral font-mono text-[12px]">{err}</p>}
+      {err && <p className="text-coral font-mono text-[14px] font-bold">{err}</p>}
       {loading && <Spinner size={22} />}
       {rows && (
         <Card shadow="sm">
           <div className="flex flex-col gap-1 p-1">
-            <div className="grid grid-cols-[1fr_1fr_auto_auto] gap-2 border-b-zine border-inkMute pb-1 font-mono font-bold uppercase text-[10px] tracking-[0.06em] text-inkSoft">
+            <div className="grid grid-cols-[1fr_1fr_auto_auto] gap-2 border-b-zine border-inkMute pb-1 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-inkSoft">
               <span>debit</span><span>credit</span><span>amount</span><span>when</span>
             </div>
-            {rows.length === 0 ? <p className="font-mono text-[12px] text-inkMute py-2">No rows.</p> : rows.map((r) => (
-              <div key={r.id} className="grid grid-cols-[1fr_1fr_auto_auto] gap-2 font-mono text-[11px] text-inkSoft">
+            {rows.length === 0 ? <p className="font-mono text-[14px] text-inkMute py-2 font-bold">No rows.</p> : rows.map((r) => (
+              <div key={r.id} className="grid grid-cols-[1fr_1fr_auto_auto] gap-2 font-mono text-[13px] text-inkSoft font-bold">
                 <span className="truncate">{r.debit}</span><span className="truncate">{r.credit}</span><span>{coins(r.amount)}</span><span className="text-inkMute">{fmtTime(r.created_at)}</span>
               </div>
             ))}

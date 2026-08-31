@@ -26,7 +26,7 @@ function StoreLink({ href, store }: { href: string; store: 'play' | 'app' }) {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-center gap-2 rounded-zine border-zine border-ink bg-ink px-4 py-2.5 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-paper shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
+      className="inline-flex items-center gap-2 rounded-zine border-zine border-ink bg-ink px-4 py-2.5 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-paper shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
     >
       {store === 'play' ? '▶' : ''} {label}
     </a>

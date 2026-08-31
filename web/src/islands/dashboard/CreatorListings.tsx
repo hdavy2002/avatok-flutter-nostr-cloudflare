@@ -111,7 +111,7 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="text-inkMute"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" strokeLinecap="round" /></svg>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search your listings…" className="min-w-0 flex-1 bg-transparent font-body font-bold text-[14px] text-ink outline-none placeholder:text-placeholder" />
         </div>
-        <select value={status} onChange={(e) => setStatus(e.target.value)} className="rounded-full border-zine border-ink bg-paper px-3 py-2 font-mono font-bold text-[12px] uppercase tracking-[0.04em] text-ink outline-none">
+        <select value={status} onChange={(e) => setStatus(e.target.value)} className="rounded-full border-zine border-ink bg-paper px-3 py-2 font-mono font-bold text-[14px] uppercase tracking-[0.04em] text-ink outline-none">
           <option value="all">All statuses</option>
           <option value="draft">Draft</option>
           <option value="published">Published</option>
@@ -119,7 +119,7 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
           <option value="completed">Completed</option>
           <option value="cancelled">Archived</option>
         </select>
-        <a href={createHref} className="rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">+ Create</a>
+        <a href={createHref} className="rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">+ Create</a>
       </div>
 
       {/* Grid */}
@@ -128,7 +128,7 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
           <h2 className="font-display font-semibold text-[20px] text-ink">{rows.length === 0 ? emptyTitle : 'Nothing matches that filter'}</h2>
           <p className="max-w-md font-body font-bold text-[15px] text-inkSoft">{rows.length === 0 ? emptyBody : 'Try a different search or status.'}</p>
           {rows.length === 0 && (
-            <a href={createHref} className="rounded-full border-zine border-ink bg-lime px-5 py-2.5 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">Create your first one</a>
+            <a href={createHref} className="rounded-full border-zine border-ink bg-lime px-5 py-2.5 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">Create your first one</a>
           )}
         </div>
       ) : (
@@ -146,13 +146,13 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
                   {view.poster ? (
                     <img src={cfImage(view.poster, { width: 480 })} alt="" className="h-full w-full object-cover" loading="lazy" />
                   ) : (
-                    <div className="flex h-full w-full items-center justify-center font-mono text-[12px] text-inkMute">No cover photo</div>
+                    <div className="flex h-full w-full items-center justify-center font-mono text-[14px] text-inkMute font-bold">No cover photo</div>
                   )}
                   <span className={`absolute left-2 top-2 rounded-full border-zine border-ink px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.04em] shadow-zine-xs ${STATUS_TONE[st] ?? 'bg-paper2 text-inkSoft'}`}>{st}</span>
                 </div>
                 <div className="flex flex-1 flex-col gap-1 p-3">
                   <div className="flex items-center gap-2">
-                    <span className="rounded-full border-zine border-ink bg-paper px-2 py-0.5 font-mono text-[10px] font-bold uppercase text-inkSoft">{KIND_LABEL[l.kind ?? ''] ?? l.kind ?? 'Listing'}</span>
+                    <span className="rounded-full border-zine border-ink bg-paper px-2 py-0.5 font-mono text-[12px] font-bold uppercase text-inkSoft">{KIND_LABEL[l.kind ?? ''] ?? l.kind ?? 'Listing'}</span>
                     <span className="ml-auto font-display font-semibold text-[14px] text-blueInk">{coins(l.price)}</span>
                   </div>
                   <h3 className="line-clamp-2 font-display font-semibold text-[16px] leading-tight text-ink">{l.title}</h3>
@@ -161,13 +161,13 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
                         are otherwise unreachable — Edit was the only action, and editing a
                         draft that can never be published is not a way out of one. */}
                     {st === 'draft' && (
-                      <a href={`/dashboard/listings/publish?id=${encodeURIComponent(l.id)}`} className="flex-1 rounded-zineField border-zine border-ink bg-lime px-2 py-1.5 text-center font-mono font-bold uppercase text-[11px] tracking-[0.04em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">Finish</a>
+                      <a href={`/dashboard/listings/publish?id=${encodeURIComponent(l.id)}`} className="flex-1 rounded-zineField border-zine border-ink bg-lime px-2 py-1.5 text-center font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">Finish</a>
                     )}
-                    <a href={`/dashboard/listings/new?id=${encodeURIComponent(l.id)}`} className="flex-1 rounded-zineField border-zine border-ink bg-paper px-2 py-1.5 text-center font-mono font-bold uppercase text-[11px] tracking-[0.04em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">Edit</a>
+                    <a href={`/dashboard/listings/new?id=${encodeURIComponent(l.id)}`} className="flex-1 rounded-zineField border-zine border-ink bg-paper px-2 py-1.5 text-center font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">Edit</a>
                     {st !== 'cancelled' && (
-                      <button type="button" disabled={busy === l.id} onClick={() => archive(l.id)} className="flex-1 rounded-zineField border-zine border-ink bg-paper2 px-2 py-1.5 font-mono font-bold uppercase text-[11px] tracking-[0.04em] text-inkSoft shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50">Archive</button>
+                      <button type="button" disabled={busy === l.id} onClick={() => archive(l.id)} className="flex-1 rounded-zineField border-zine border-ink bg-paper2 px-2 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-inkSoft shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50">Archive</button>
                     )}
-                    <button type="button" disabled={busy === l.id} onClick={() => remove(l.id)} className="rounded-zineField border-zine border-ink bg-paper px-2.5 py-1.5 font-mono font-bold uppercase text-[11px] tracking-[0.04em] text-coral shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50" aria-label="Delete">✕</button>
+                    <button type="button" disabled={busy === l.id} onClick={() => remove(l.id)} className="rounded-zineField border-zine border-ink bg-paper px-2.5 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-coral shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50" aria-label="Delete">✕</button>
                   </div>
                 </div>
               </div>

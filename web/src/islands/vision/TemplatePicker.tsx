@@ -60,7 +60,7 @@ export function TemplatePicker({ onPick }: TemplatePickerProps) {
     <div className="flex flex-col gap-6">
       {/* Category chips */}
       <div>
-        <p className="mb-2 font-mono font-bold uppercase text-[11px] tracking-[0.1em] text-blueInk">
+        <p className="mb-2 font-mono font-bold uppercase text-[13px] tracking-[0.1em] text-blueInk">
           1 · Pick a category
         </p>
         <div className="flex flex-wrap gap-2">
@@ -86,7 +86,7 @@ export function TemplatePicker({ onPick }: TemplatePickerProps) {
 
       {/* Use-case cards */}
       <div>
-        <p className="mb-2 font-mono font-bold uppercase text-[11px] tracking-[0.1em] text-blueInk">
+        <p className="mb-2 font-mono font-bold uppercase text-[13px] tracking-[0.1em] text-blueInk">
           2 · Pick a use-case
         </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

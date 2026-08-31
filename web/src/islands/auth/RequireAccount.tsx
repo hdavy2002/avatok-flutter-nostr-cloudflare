@@ -65,7 +65,7 @@ function Gate({ label, children }: { label: string; children: ReactNode }) {
           )}
           <a
             href="/marketplace"
-            className="font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-blueInk underline decoration-blue decoration-2 underline-offset-2"
+            className="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-blueInk underline decoration-blue decoration-2 underline-offset-2"
           >
             Browse instead
           </a>

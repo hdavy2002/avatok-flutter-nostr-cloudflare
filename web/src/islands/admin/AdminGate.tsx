@@ -13,7 +13,7 @@ export function AdminGate({ children }: { children: ReactNode }) {
     return (
       <div className="flex items-center gap-3 p-8">
         <Spinner size={22} />
-        <span className="font-mono text-[12px] uppercase tracking-[0.08em] text-inkSoft">Verifying admin access…</span>
+        <span className="font-mono text-[14px] uppercase tracking-[0.08em] text-inkSoft font-bold">Verifying admin access…</span>
       </div>
     );
   }

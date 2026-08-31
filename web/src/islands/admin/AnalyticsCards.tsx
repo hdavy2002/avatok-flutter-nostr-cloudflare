@@ -79,23 +79,23 @@ function Inner() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
-        <span className="font-mono text-[11px] uppercase text-inkSoft">Range:</span>
+        <span className="font-mono text-[13px] uppercase text-inkSoft font-bold">Range:</span>
         {[1, 7, 30].map((r) => <Pill key={r} kind={range === r ? 'ok' : 'hint'} onClick={() => setRange(r)}>{r}d</Pill>)}
       </div>
       <div className="grid grid-cols-3 gap-3">
-        <Card shadow="sm"><div className="flex flex-col gap-1 p-1"><span className="font-mono text-[10px] uppercase text-inkMute">Active now (5m)</span><span className="font-display font-semibold text-[26px] text-ink">{activeNow ? num(activeNow) : '—'}</span></div></Card>
-        <Card shadow="sm"><div className="flex flex-col gap-1 p-1"><span className="font-mono text-[10px] uppercase text-inkMute">Unique users ({range}d)</span><span className="font-display font-semibold text-[26px] text-ink">{dau ? num(dau) : '—'}</span></div></Card>
-        <Card shadow="sm"><div className="flex flex-col gap-1 p-1"><span className="font-mono text-[10px] uppercase text-inkMute">API errors (24h)</span><span className="font-display font-semibold text-[26px] text-ink">{errors ? num(errors) : '—'}</span></div></Card>
+        <Card shadow="sm"><div className="flex flex-col gap-1 p-1"><span className="font-mono text-[12px] uppercase text-inkMute font-bold">Active now (5m)</span><span className="font-display font-semibold text-[26px] text-ink">{activeNow ? num(activeNow) : '—'}</span></div></Card>
+        <Card shadow="sm"><div className="flex flex-col gap-1 p-1"><span className="font-mono text-[12px] uppercase text-inkMute font-bold">Unique users ({range}d)</span><span className="font-display font-semibold text-[26px] text-ink">{dau ? num(dau) : '—'}</span></div></Card>
+        <Card shadow="sm"><div className="flex flex-col gap-1 p-1"><span className="font-mono text-[12px] uppercase text-inkMute font-bold">API errors (24h)</span><span className="font-display font-semibold text-[26px] text-ink">{errors ? num(errors) : '—'}</span></div></Card>
       </div>
       <section>
-        <h2 className="mb-2 font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">Events trend</h2>
+        <h2 className="mb-2 font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">Events trend</h2>
         <Card shadow="sm">
           <div className="p-2" style={{ height: 220 }}>
-            {trend?.results?.length ? <canvas ref={canvasRef} /> : <p className="font-mono text-[12px] text-inkMute">No trend data.</p>}
+            {trend?.results?.length ? <canvas ref={canvasRef} /> : <p className="font-mono text-[14px] text-inkMute font-bold">No trend data.</p>}
           </div>
         </Card>
       </section>
-      <p className="font-mono text-[10px] text-inkMute">All queries run through the Worker HogQL proxy (allow-listed). Session-replay deep-links open in PostHog.</p>
+      <p className="font-mono text-[12px] text-inkMute font-bold">All queries run through the Worker HogQL proxy (allow-listed). Session-replay deep-links open in PostHog.</p>
     </div>
   );
 }

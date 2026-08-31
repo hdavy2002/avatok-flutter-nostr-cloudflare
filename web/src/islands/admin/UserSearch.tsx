@@ -42,9 +42,9 @@ function Inner() {
         <div className="flex-1"><Field label="Search" placeholder="email · uid · @handle · npub" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && run()} /></div>
         <div className="self-end"><Button variant="blue" loading={loading} onClick={run}>Search</Button></div>
       </div>
-      {err && <p className="text-coral font-mono text-[12px]">{err}</p>}
+      {err && <p className="text-coral font-mono text-[14px] font-bold">{err}</p>}
       {loading && <Spinner size={22} />}
-      {res && !res.found && <p className="font-mono text-[13px] text-inkMute">No user found for “{q}”.</p>}
+      {res && !res.found && <p className="font-mono text-[15px] text-inkMute font-bold">No user found for “{q}”.</p>}
 
       {res?.found && res.user && (
         <Card shadow="lg">
@@ -52,7 +52,7 @@ function Inner() {
             <div className="flex items-center justify-between">
               <div className="flex flex-col">
                 <span className="font-display font-semibold text-[20px] text-ink">{res.user.display_name || res.user.handle || res.user.uid}</span>
-                <span className="font-mono text-[11px] text-inkMute">{res.user.uid}{res.user.handle ? ` · @${res.user.handle}` : ''}</span>
+                <span className="font-mono text-[13px] text-inkMute font-bold">{res.user.uid}{res.user.handle ? ` · @${res.user.handle}` : ''}</span>
               </div>
               <Pill kind={res.kyc === 'verified' ? 'ok' : 'hint'}>KYC: {res.kyc}</Pill>
             </div>
@@ -70,20 +70,20 @@ function Inner() {
             </div>
 
             <div className="mt-2 border-t-zine border-inkMute pt-3">
-              <span className="font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-blueInk">Adjust balance (audited)</span>
+              <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-blueInk">Adjust balance (audited)</span>
               <div className="mt-2 flex flex-wrap items-end gap-2">
                 <Field label="Amount (coins, ±)" value={adjAmt} onChange={(e) => setAdjAmt(e.target.value)} />
                 <div className="min-w-[200px] flex-1"><Field label="Reason" value={adjReason} onChange={(e) => setAdjReason(e.target.value)} /></div>
                 <Button variant="coral" onClick={doAdjust}>Apply</Button>
               </div>
-              {adjMsg && <p className="mt-1 font-mono text-[12px] text-inkSoft">{adjMsg}</p>}
+              {adjMsg && <p className="mt-1 font-mono text-[14px] text-inkSoft font-bold">{adjMsg}</p>}
             </div>
 
             <details className="mt-2">
-              <summary className="cursor-pointer font-mono text-[12px] text-blueInk">Recent ledger ({res.recent_ledger?.length ?? 0})</summary>
+              <summary className="cursor-pointer font-mono text-[14px] text-blueInk font-bold">Recent ledger ({res.recent_ledger?.length ?? 0})</summary>
               <div className="mt-2 flex flex-col gap-1">
                 {(res.recent_ledger ?? []).map((l: any) => (
-                  <div key={l.id} className="flex items-center justify-between font-mono text-[11px] text-inkSoft">
+                  <div key={l.id} className="flex items-center justify-between font-mono text-[13px] text-inkSoft font-bold">
                     <span>{l.type}</span><span>{coins(l.amount)}</span><span className="text-inkMute">{fmtTime(l.created_at)}</span>
                   </div>
                 ))}

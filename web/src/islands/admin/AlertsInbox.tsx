@@ -31,19 +31,19 @@ function AlertsSection() {
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <h2 className="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">Alerts inbox</h2>
+        <h2 className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">Alerts inbox</h2>
         <div className="flex items-center gap-2">
           {['open', 'acknowledged', 'resolved'].map((s) => <Pill key={s} kind={status === s ? 'ok' : 'hint'} onClick={() => setStatus(s)}>{s}</Pill>)}
           <Button variant="blue" loading={busy} onClick={() => act(evaluateAlerts)}>Evaluate now</Button>
         </div>
       </div>
-      {err && <p className="text-coral font-mono text-[12px]">{err}</p>}
-      {!alerts ? <Spinner size={20} /> : alerts.length === 0 ? <p className="font-mono text-[12px] text-inkMute">No {status} alerts.</p> : alerts.map((a) => (
+      {err && <p className="text-coral font-mono text-[14px] font-bold">{err}</p>}
+      {!alerts ? <Spinner size={20} /> : alerts.length === 0 ? <p className="font-mono text-[14px] text-inkMute font-bold">No {status} alerts.</p> : alerts.map((a) => (
         <Card key={a.id} shadow="sm">
           <div className="flex items-center justify-between gap-2 p-1">
             <div className="flex min-w-0 flex-col">
               <span className="font-body font-bold text-[14px] text-ink">{a.message}</span>
-              <span className="font-mono text-[10px] text-inkMute">{fmtTime(a.created_at)}</span>
+              <span className="font-mono text-[12px] text-inkMute font-bold">{fmtTime(a.created_at)}</span>
             </div>
             <div className="flex items-center gap-2">
               <Pill kind={a.severity === 'critical' ? 'no' : 'plain'}>{a.severity}</Pill>
@@ -75,24 +75,24 @@ function RulesSection() {
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">Alert rules</h2>
-      {err && <p className="text-coral font-mono text-[12px]">{err}</p>}
+      <h2 className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">Alert rules</h2>
+      {err && <p className="text-coral font-mono text-[14px] font-bold">{err}</p>}
       <Card shadow="sm">
         <div className="flex flex-wrap items-end gap-2 p-1">
-          <label className="flex flex-col gap-1"><span className="font-mono text-[10px] uppercase text-inkSoft">Metric</span>
-            <select className="border-zine border-ink rounded-md bg-card px-2 py-1 font-mono text-[12px]" value={metric} onChange={(e) => setMetric(e.target.value as any)}>{ALERT_METRICS.map((m) => <option key={m} value={m}>{m}</option>)}</select></label>
-          <label className="flex flex-col gap-1"><span className="font-mono text-[10px] uppercase text-inkSoft">Cmp</span>
-            <select className="border-zine border-ink rounded-md bg-card px-2 py-1 font-mono text-[12px]" value={comparator} onChange={(e) => setComparator(e.target.value)}>{COMPARATORS.map((c) => <option key={c} value={c}>{c}</option>)}</select></label>
+          <label className="flex flex-col gap-1"><span className="font-mono text-[12px] uppercase text-inkSoft font-bold">Metric</span>
+            <select className="border-zine border-ink rounded-md bg-card px-2 py-1 font-mono text-[14px] font-bold" value={metric} onChange={(e) => setMetric(e.target.value as any)}>{ALERT_METRICS.map((m) => <option key={m} value={m}>{m}</option>)}</select></label>
+          <label className="flex flex-col gap-1"><span className="font-mono text-[12px] uppercase text-inkSoft font-bold">Cmp</span>
+            <select className="border-zine border-ink rounded-md bg-card px-2 py-1 font-mono text-[14px] font-bold" value={comparator} onChange={(e) => setComparator(e.target.value)}>{COMPARATORS.map((c) => <option key={c} value={c}>{c}</option>)}</select></label>
           <Field label="Threshold" value={threshold} onChange={(e) => setThreshold(e.target.value)} />
-          <label className="flex items-center gap-1 font-mono text-[12px]"><input type="checkbox" checked={chEmail} onChange={(e) => setChEmail(e.target.checked)} />email</label>
-          <label className="flex items-center gap-1 font-mono text-[12px]"><input type="checkbox" checked={chSlack} onChange={(e) => setChSlack(e.target.checked)} />slack</label>
+          <label className="flex items-center gap-1 font-mono text-[14px] font-bold"><input type="checkbox" checked={chEmail} onChange={(e) => setChEmail(e.target.checked)} />email</label>
+          <label className="flex items-center gap-1 font-mono text-[14px] font-bold"><input type="checkbox" checked={chSlack} onChange={(e) => setChSlack(e.target.checked)} />slack</label>
           <Button variant="lime" onClick={create}>Add rule</Button>
         </div>
       </Card>
-      {!rules ? <Spinner size={20} /> : rules.length === 0 ? <p className="font-mono text-[12px] text-inkMute">No rules.</p> : rules.map((r) => (
+      {!rules ? <Spinner size={20} /> : rules.length === 0 ? <p className="font-mono text-[14px] text-inkMute font-bold">No rules.</p> : rules.map((r) => (
         <Card key={r.id} shadow="sm">
           <div className="flex items-center justify-between gap-2 p-1">
-            <span className="font-mono text-[12px] text-ink">{r.metric} {r.comparator} {r.threshold} · [{(r.channels || []).join(',') || 'no channels'}]</span>
+            <span className="font-mono text-[14px] text-ink font-bold">{r.metric} {r.comparator} {r.threshold} · [{(r.channels || []).join(',') || 'no channels'}]</span>
             <div className="flex items-center gap-2">
               <Pill kind={r.enabled ? 'ok' : 'hint'}>{r.enabled ? 'enabled' : 'off'}</Pill>
               <Button variant="ghost" onClick={() => toggle(r)}>{r.enabled ? 'Disable' : 'Enable'}</Button>
@@ -116,18 +116,18 @@ function RolesSection() {
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">Admin roles <span className="text-inkMute">(super only)</span></h2>
-      {err && <p className="text-coral font-mono text-[12px]">{err}</p>}
+      <h2 className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">Admin roles <span className="text-inkMute">(super only)</span></h2>
+      {err && <p className="text-coral font-mono text-[14px] font-bold">{err}</p>}
       <Card shadow="sm">
         <div className="flex flex-wrap items-end gap-2 p-1">
           <div className="min-w-[220px] flex-1"><Field label="Clerk uid" value={uid} onChange={(e) => setUid(e.target.value)} /></div>
-          <label className="flex flex-col gap-1"><span className="font-mono text-[10px] uppercase text-inkSoft">Role</span>
-            <select className="border-zine border-ink rounded-md bg-card px-2 py-1 font-mono text-[12px]" value={role} onChange={(e) => setRoleV(e.target.value)}>{ROLES.map((r) => <option key={r} value={r}>{r}</option>)}</select></label>
+          <label className="flex flex-col gap-1"><span className="font-mono text-[12px] uppercase text-inkSoft font-bold">Role</span>
+            <select className="border-zine border-ink rounded-md bg-card px-2 py-1 font-mono text-[14px] font-bold" value={role} onChange={(e) => setRoleV(e.target.value)}>{ROLES.map((r) => <option key={r} value={r}>{r}</option>)}</select></label>
           <Button variant="blue" onClick={assign}>Set role</Button>
         </div>
       </Card>
       {!roles ? <Spinner size={20} /> : roles.map((r) => (
-        <div key={r.uid} className="flex items-center justify-between font-mono text-[12px] text-inkSoft">
+        <div key={r.uid} className="flex items-center justify-between font-mono text-[14px] text-inkSoft font-bold">
           <span className="truncate">{r.uid}{r.implicit ? ' (implicit)' : ''}</span><Pill kind={r.role === 'super' ? 'ok' : 'plain'}>{r.role}</Pill>
         </div>
       ))}

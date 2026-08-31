@@ -87,12 +87,12 @@ function Inner({ service }: { service: 'vision' | 'voice' }) {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="text-inkMute"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" strokeLinecap="round" /></svg>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search your agents…" className="min-w-0 flex-1 bg-transparent font-body font-bold text-[14px] text-ink outline-none placeholder:text-placeholder" />
         </div>
-        <select value={status} onChange={(e) => setStatus(e.target.value)} className="rounded-full border-zine border-ink bg-paper px-3 py-2 font-mono font-bold text-[12px] uppercase tracking-[0.04em] text-ink outline-none">
+        <select value={status} onChange={(e) => setStatus(e.target.value)} className="rounded-full border-zine border-ink bg-paper px-3 py-2 font-mono font-bold text-[14px] uppercase tracking-[0.04em] text-ink outline-none">
           <option value="all">All</option><option value="draft">Draft</option><option value="published">Published</option>
         </select>
         {api.createHref
-          ? <a href={api.createHref} className="rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">+ Create</a>
-          : <span className="rounded-full border-zine border-ink bg-paper2 px-4 py-2 font-mono font-bold uppercase text-[11px] tracking-[0.04em] text-inkMute">Create in the app</span>}
+          ? <a href={api.createHref} className="rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">+ Create</a>
+          : <span className="rounded-full border-zine border-ink bg-paper2 px-4 py-2 font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-inkMute">Create in the app</span>}
       </div>
 
       {filtered.length === 0 ? (
@@ -103,7 +103,7 @@ function Inner({ service }: { service: 'vision' | 'voice' }) {
               ? 'Create an AI vision coach — pick a template, set the prompt and rate, then publish. Sessions run in the app.'
               : 'Create AI voice agents in the AvaTOK app, then manage and publish them here.'}
           </p>
-          {rows.length === 0 && api.createHref && <a href={api.createHref} className="rounded-full border-zine border-ink bg-lime px-5 py-2.5 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">Create your first one</a>}
+          {rows.length === 0 && api.createHref && <a href={api.createHref} className="rounded-full border-zine border-ink bg-lime px-5 py-2.5 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">Create your first one</a>}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -113,7 +113,7 @@ function Inner({ service }: { service: 'vision' | 'voice' }) {
             return (
               <div key={a.id} className="flex flex-col overflow-hidden rounded-zine border-zine border-ink bg-card shadow-zine-sm transition-transform duration-zine hover:-translate-y-[2px]">
                 <div className="relative aspect-[16/10] w-full border-b-zine border-ink bg-paper2">
-                  {img ? <img src={cfImage(img, { width: 480 })} alt="" className="h-full w-full object-cover" loading="lazy" /> : <div className="flex h-full w-full items-center justify-center font-mono text-[12px] text-inkMute">No image</div>}
+                  {img ? <img src={cfImage(img, { width: 480 })} alt="" className="h-full w-full object-cover" loading="lazy" /> : <div className="flex h-full w-full items-center justify-center font-mono text-[14px] text-inkMute font-bold">No image</div>}
                   <span className={`absolute left-2 top-2 rounded-full border-zine border-ink px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.04em] shadow-zine-xs ${published ? 'bg-mint text-ink' : 'bg-paper2 text-inkSoft'}`}>{published ? 'published' : 'draft'}</span>
                 </div>
                 <div className="flex flex-1 flex-col gap-1 p-3">
@@ -124,10 +124,10 @@ function Inner({ service }: { service: 'vision' | 'voice' }) {
                   {a.role && <p className="line-clamp-1 font-body font-bold text-[13px] text-inkSoft">{a.role}</p>}
                   <div className="mt-auto flex items-center gap-1.5 pt-2">
                     {api.editHref(a.id)
-                      ? <a href={api.editHref(a.id)} className="flex-1 rounded-zineField border-zine border-ink bg-paper px-2 py-1.5 text-center font-mono font-bold uppercase text-[11px] tracking-[0.04em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">Edit</a>
-                      : <span className="flex-1 rounded-zineField border-zine border-ink bg-paper2 px-2 py-1.5 text-center font-mono font-bold uppercase text-[11px] tracking-[0.04em] text-inkMute">App</span>}
-                    <button type="button" disabled={busy === a.id} onClick={() => toggle(a)} className="flex-1 rounded-zineField border-zine border-ink bg-paper2 px-2 py-1.5 font-mono font-bold uppercase text-[11px] tracking-[0.04em] text-inkSoft shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50">{published ? 'Unpublish' : 'Publish'}</button>
-                    <button type="button" disabled={busy === a.id} onClick={() => del(a)} className="rounded-zineField border-zine border-ink bg-paper px-2.5 py-1.5 font-mono font-bold uppercase text-[11px] tracking-[0.04em] text-coral shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50" aria-label="Delete">✕</button>
+                      ? <a href={api.editHref(a.id)} className="flex-1 rounded-zineField border-zine border-ink bg-paper px-2 py-1.5 text-center font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">Edit</a>
+                      : <span className="flex-1 rounded-zineField border-zine border-ink bg-paper2 px-2 py-1.5 text-center font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-inkMute">App</span>}
+                    <button type="button" disabled={busy === a.id} onClick={() => toggle(a)} className="flex-1 rounded-zineField border-zine border-ink bg-paper2 px-2 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-inkSoft shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50">{published ? 'Unpublish' : 'Publish'}</button>
+                    <button type="button" disabled={busy === a.id} onClick={() => del(a)} className="rounded-zineField border-zine border-ink bg-paper px-2.5 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-coral shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50" aria-label="Delete">✕</button>
                   </div>
                 </div>
               </div>

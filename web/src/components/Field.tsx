@@ -25,7 +25,7 @@ export function Field({ label, lead, error, trailing, className = '', ...input }
   return (
     <label className={['block', className].join(' ')}>
       {label && (
-        <span className="mb-2 block font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">
+        <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">
           {label}
         </span>
       )}
@@ -57,7 +57,7 @@ export function Field({ label, lead, error, trailing, className = '', ...input }
         {trailing && <span className="flex items-center border-l-zine border-ink px-3">{trailing}</span>}
       </span>
       {error && (
-        <span className="mt-2 block font-mono font-bold uppercase text-[12px] tracking-[0.04em] text-coral">
+        <span className="mt-2 block font-mono font-bold uppercase text-[14px] tracking-[0.04em] text-coral">
           ⚠ {error}
         </span>
       )}

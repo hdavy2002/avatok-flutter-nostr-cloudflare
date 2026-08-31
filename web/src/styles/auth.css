@@ -47,7 +47,8 @@
   --f-display: 'Anton', Impact, 'Arial Narrow Bold', sans-serif;
   --f-serif: 'Playfair Display', Georgia, serif;
   --f-body: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --f-label: 'Silkscreen', 'Courier New', monospace;
+  /* [WEB-TYPE-SILKSCREEN-1 2026-08-31] Was Silkscreen, now retired sitewide. */
+  --f-label: 'Nunito', system-ui, sans-serif;
   --f-deva: 'Baloo 2', system-ui, sans-serif;
   --f-hand: 'Kalam', cursive;
 

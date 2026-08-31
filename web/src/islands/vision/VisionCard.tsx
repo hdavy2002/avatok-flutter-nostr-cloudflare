@@ -100,7 +100,7 @@ export function VisionCard({ agent, busy }: VisionCardProps) {
         </div>
 
         <div className="mt-2 flex items-center justify-between gap-2">
-          <span className="font-mono text-[11px] uppercase tracking-[0.06em] text-inkSoft truncate">
+          <span className="font-mono text-[13px] uppercase tracking-[0.06em] text-inkSoft truncate font-bold">
             {agent.creatorName ? agent.creatorName : 'AvaVision'}
           </span>
           <span

@@ -389,7 +389,7 @@ function ConsultRoomInner({ booking }: { booking: string }) {
             </span>
           )}
           {wsStatus === 'reconnecting' && (
-            <span className="rounded-zine-badge border-zine border-coral bg-card px-3 py-1.5 font-mono font-bold text-[12px] text-coral">
+            <span className="rounded-zine-badge border-zine border-coral bg-card px-3 py-1.5 font-mono font-bold text-[14px] text-coral">
               Room offline…
             </span>
           )}
@@ -470,13 +470,13 @@ function ConsultRoomInner({ booking }: { booking: string }) {
     return (
       <Centered>
         <div className="flex w-full max-w-md flex-col items-center gap-5 text-center">
-          <span className="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">Not open yet</span>
+          <span className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">Not open yet</span>
           <h1 className="font-display font-semibold text-[26px] text-ink">You're early</h1>
           <p className="font-body font-bold text-[15px] text-inkSoft">
             The room opens 10 minutes before your slot. We'll let you in automatically.
           </p>
           <Countdown target={gate.opensAt} label="Opens in" onZero={() => void attemptJoin()} />
-          <a href="/dashboard" className="font-mono text-[12px] uppercase tracking-[0.06em] text-blueInk underline">
+          <a href="/dashboard" className="font-mono text-[14px] uppercase tracking-[0.06em] text-blueInk underline font-bold">
             Back to my bookings
           </a>
         </div>

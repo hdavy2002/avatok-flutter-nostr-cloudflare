@@ -21,19 +21,19 @@ function Inner() {
     try { await retrySettlement(id); await load(); } catch (e) { setErr(e instanceof Error ? e.message : 'retry failed'); } finally { setBusy(null); }
   };
 
-  if (!rows) return <div className="flex items-center gap-3 p-6"><Spinner size={22} />{err && <span className="text-coral font-mono text-[12px]">{err}</span>}</div>;
+  if (!rows) return <div className="flex items-center gap-3 p-6"><Spinner size={22} />{err && <span className="text-coral font-mono text-[14px] font-bold">{err}</span>}</div>;
 
   return (
     <div className="flex flex-col gap-3">
-      <h2 className="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">Failed settlements (DLQ) <span className="text-inkMute">({rows.length})</span></h2>
-      {err && <p className="text-coral font-mono text-[12px]">{err}</p>}
-      {rows.length === 0 ? <p className="font-mono text-[12px] text-inkMute">DLQ is empty ✓</p> : rows.map((r) => (
+      <h2 className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">Failed settlements (DLQ) <span className="text-inkMute">({rows.length})</span></h2>
+      {err && <p className="text-coral font-mono text-[14px] font-bold">{err}</p>}
+      {rows.length === 0 ? <p className="font-mono text-[14px] text-inkMute font-bold">DLQ is empty ✓</p> : rows.map((r) => (
         <Card key={r.id} shadow="sm">
           <div className="flex items-center justify-between gap-3 p-1">
             <div className="flex min-w-0 flex-col">
-              <span className="font-mono text-[12px] text-ink truncate">{r.id}</span>
-              <span className="font-mono text-[11px] text-coral truncate">{r.error || 'no error recorded'}</span>
-              <span className="font-mono text-[10px] text-inkMute">{fmtTime(r.created_at)}</span>
+              <span className="font-mono text-[14px] text-ink truncate font-bold">{r.id}</span>
+              <span className="font-mono text-[13px] text-coral truncate font-bold">{r.error || 'no error recorded'}</span>
+              <span className="font-mono text-[12px] text-inkMute font-bold">{fmtTime(r.created_at)}</span>
             </div>
             <div className="flex items-center gap-2">
               <Pill kind="no">{r.status}</Pill>
@@ -42,7 +42,7 @@ function Inner() {
           </div>
         </Card>
       ))}
-      <p className="font-mono text-[10px] text-inkMute">Tax export + affiliate leaderboard available via /api/admin/tax-export and /api/admin/affiliates (existing endpoints).</p>
+      <p className="font-mono text-[12px] text-inkMute font-bold">Tax export + affiliate leaderboard available via /api/admin/tax-export and /api/admin/affiliates (existing endpoints).</p>
     </div>
   );
 }

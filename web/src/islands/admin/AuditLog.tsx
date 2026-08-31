@@ -30,23 +30,23 @@ function Inner() {
         <Field label="Action" value={action} onChange={(e) => setAction(e.target.value)} />
         <Button variant="blue" loading={loading} onClick={() => load(true)}>Filter</Button>
       </div>
-      {err && <p className="text-coral font-mono text-[12px]">{err}</p>}
+      {err && <p className="text-coral font-mono text-[14px] font-bold">{err}</p>}
       <div className="flex flex-col gap-2">
         {rows.map((r) => (
           <Card key={r.id} shadow="sm">
             <div className="flex items-center justify-between gap-2 p-1">
               <div className="flex min-w-0 flex-col">
-                <span className="font-mono text-[12px] text-ink">{r.action} {r.target ? <span className="text-inkMute">→ {r.target}</span> : null}</span>
-                <span className="font-mono text-[10px] text-inkMute truncate">{r.meta}</span>
+                <span className="font-mono text-[14px] text-ink font-bold">{r.action} {r.target ? <span className="text-inkMute">→ {r.target}</span> : null}</span>
+                <span className="font-mono text-[12px] text-inkMute truncate font-bold">{r.meta}</span>
               </div>
               <div className="flex flex-col items-end">
                 <Pill kind="hint">{r.admin_id.slice(0, 12)}</Pill>
-                <span className="font-mono text-[10px] text-inkMute">{fmtTime(r.created_at)}</span>
+                <span className="font-mono text-[12px] text-inkMute font-bold">{fmtTime(r.created_at)}</span>
               </div>
             </div>
           </Card>
         ))}
-        {rows.length === 0 && !loading && <p className="font-mono text-[12px] text-inkMute">No audit rows.</p>}
+        {rows.length === 0 && !loading && <p className="font-mono text-[14px] text-inkMute font-bold">No audit rows.</p>}
       </div>
       {cursor && <Button variant="ghost" loading={loading} onClick={() => load(false)}>Load more</Button>}
     </div>

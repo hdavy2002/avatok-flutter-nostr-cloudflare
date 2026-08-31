@@ -111,7 +111,7 @@ export function DonateButton({ listingId, auth, requireAuth }: DonateButtonProps
             </div>
 
             <label className="block">
-              <span className="font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">Custom amount</span>
+              <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">Custom amount</span>
               <input
                 type="number"
                 min={1}

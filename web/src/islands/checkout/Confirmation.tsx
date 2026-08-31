@@ -72,7 +72,7 @@ export function Confirmation({ listing, selection, result }: ConfirmationProps) 
     <div className="flex flex-col gap-4">
       <Card fillClassName="bg-mint" shadow="lg">
         <div className="flex flex-col gap-2">
-          <span className="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-ink">Confirmed</span>
+          <span className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-ink">Confirmed</span>
           <h2 className="font-display font-semibold text-[24px] leading-tight text-ink">
             You’re booked: {selection.title}
           </h2>
@@ -98,7 +98,7 @@ export function Confirmation({ listing, selection, result }: ConfirmationProps) 
       </a>
       <a
         href="/dashboard"
-        className="text-center font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-blueInk underline decoration-blue decoration-2 underline-offset-2"
+        className="text-center font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-blueInk underline decoration-blue decoration-2 underline-offset-2"
       >
         All my bookings
       </a>

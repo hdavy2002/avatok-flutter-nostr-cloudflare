@@ -24,10 +24,10 @@ export function ViewerCount({ viewers, conn, hostLive }: ViewerCountProps) {
         style={live ? { animation: 'zine-pulse 1.4s ease-in-out infinite' } : undefined}
         aria-hidden
       />
-      <span className="font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink">
+      <span className="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink">
         {live ? 'Live' : conn === 'reconnecting' ? 'Reconnecting' : 'Offline'}
       </span>
-      <span className="font-mono text-[12px] text-inkSoft tabular-nums">
+      <span className="font-mono text-[14px] text-inkSoft tabular-nums font-bold">
         · {fmt(viewers)} watching
       </span>
       <style>{'@keyframes zine-pulse{0%,100%{opacity:1}50%{opacity:.35}}'}</style>

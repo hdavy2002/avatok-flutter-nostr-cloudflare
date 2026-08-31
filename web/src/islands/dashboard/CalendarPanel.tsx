@@ -66,7 +66,7 @@ function Inner() {
               <div key={e.booking_id ?? i} className={`flex flex-wrap items-center gap-3 p-3 ${i ? 'border-t-zine border-ink' : ''}`}>
                 <span className={`rounded-full border-zine border-ink px-2 py-0.5 font-mono text-[10px] font-bold uppercase ${e.role === 'host' ? 'bg-lime text-ink' : 'bg-blue text-ink'}`}>{e.role ?? 'event'}</span>
                 <span className="min-w-0 flex-1 truncate font-display font-semibold text-[15px] text-ink">{e.title || 'Session'}</span>
-                <span className="font-mono text-[12px] text-inkSoft">{fmt(e.start_at)}</span>
+                <span className="font-mono text-[14px] text-inkSoft font-bold">{fmt(e.start_at)}</span>
                 <span className="font-display font-semibold text-[13px] text-blueInk">{usd(e.price_coins)}</span>
               </div>
             ))}
@@ -78,8 +78,8 @@ function Inner() {
       <section>
         <div className="mb-3 flex items-center gap-3">
           <h2 className="font-display font-semibold text-[18px] text-ink">Weekly availability</h2>
-          <button type="button" onClick={addRule} className="ml-auto rounded-full border-zine border-ink bg-card px-3 py-1.5 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-ink shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">+ Add</button>
-          <button type="button" disabled={saving} onClick={saveRules} className="rounded-full border-zine border-ink bg-lime px-4 py-1.5 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-ink shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50">{saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save'}</button>
+          <button type="button" onClick={addRule} className="ml-auto rounded-full border-zine border-ink bg-card px-3 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.06em] text-ink shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">+ Add</button>
+          <button type="button" disabled={saving} onClick={saveRules} className="rounded-full border-zine border-ink bg-lime px-4 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.06em] text-ink shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50">{saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save'}</button>
         </div>
         {rules.length === 0 ? (
           <div className="rounded-zine border-zine border-ink bg-paper2 p-6 font-body font-bold text-[14px] text-inkSoft shadow-zine-sm">No availability set. Add a window (e.g. Mon 09:00–17:00) so fans can book consults.</div>
@@ -87,18 +87,18 @@ function Inner() {
           <div className="flex flex-col gap-2">
             {rules.map((r, i) => (
               <div key={r.id ?? i} className="flex flex-wrap items-center gap-2 rounded-zine border-zine border-ink bg-card p-2.5 shadow-zine-sm">
-                <select value={r.weekday} onChange={(e) => upd(i, { weekday: Number(e.target.value) })} className="rounded-zineField border-zine border-ink bg-paper px-2 py-1.5 font-mono font-bold text-[12px] text-ink outline-none">
+                <select value={r.weekday} onChange={(e) => upd(i, { weekday: Number(e.target.value) })} className="rounded-zineField border-zine border-ink bg-paper px-2 py-1.5 font-mono font-bold text-[14px] text-ink outline-none">
                   {DAYS.map((d, j) => <option key={j} value={j}>{d}</option>)}
                 </select>
-                <input type="time" value={hhmm(r.start_min)} onChange={(e) => upd(i, { start_min: toMin(e.target.value) })} className="rounded-zineField border-zine border-ink bg-paper px-2 py-1.5 font-mono font-bold text-[12px] text-ink outline-none" />
-                <span className="font-mono text-[12px] text-inkSoft">to</span>
-                <input type="time" value={hhmm(r.end_min)} onChange={(e) => upd(i, { end_min: toMin(e.target.value) })} className="rounded-zineField border-zine border-ink bg-paper px-2 py-1.5 font-mono font-bold text-[12px] text-ink outline-none" />
-                <label className="ml-1 flex items-center gap-1.5 font-mono text-[11px] uppercase text-inkSoft">slot
-                  <select value={r.slot_min ?? 60} onChange={(e) => upd(i, { slot_min: Number(e.target.value) })} className="rounded-zineField border-zine border-ink bg-paper px-2 py-1.5 font-mono font-bold text-[12px] text-ink outline-none">
+                <input type="time" value={hhmm(r.start_min)} onChange={(e) => upd(i, { start_min: toMin(e.target.value) })} className="rounded-zineField border-zine border-ink bg-paper px-2 py-1.5 font-mono font-bold text-[14px] text-ink outline-none" />
+                <span className="font-mono text-[14px] text-inkSoft font-bold">to</span>
+                <input type="time" value={hhmm(r.end_min)} onChange={(e) => upd(i, { end_min: toMin(e.target.value) })} className="rounded-zineField border-zine border-ink bg-paper px-2 py-1.5 font-mono font-bold text-[14px] text-ink outline-none" />
+                <label className="ml-1 flex items-center gap-1.5 font-mono text-[13px] uppercase text-inkSoft font-bold">slot
+                  <select value={r.slot_min ?? 60} onChange={(e) => upd(i, { slot_min: Number(e.target.value) })} className="rounded-zineField border-zine border-ink bg-paper px-2 py-1.5 font-mono font-bold text-[14px] text-ink outline-none">
                     {[15, 30, 45, 60, 90, 120].map((m) => <option key={m} value={m}>{m}m</option>)}
                   </select>
                 </label>
-                <button type="button" onClick={() => del(i)} className="ml-auto rounded-zineField border-zine border-ink bg-paper px-2.5 py-1.5 font-mono font-bold text-[12px] text-coral shadow-zine-xs" aria-label="Remove">✕</button>
+                <button type="button" onClick={() => del(i)} className="ml-auto rounded-zineField border-zine border-ink bg-paper px-2.5 py-1.5 font-mono font-bold text-[14px] text-coral shadow-zine-xs" aria-label="Remove">✕</button>
               </div>
             ))}
           </div>

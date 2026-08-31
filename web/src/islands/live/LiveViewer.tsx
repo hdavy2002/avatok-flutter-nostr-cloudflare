@@ -277,7 +277,7 @@ function Inner({ listingId, title, poster, creatorHandle }: LiveViewerProps) {
 
           {/* transport note */}
           {playerNote && (
-            <div className="absolute bottom-3 left-3 rounded-zineSm border-zine border-ink bg-card px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.04em] text-inkSoft shadow-zine-xs">
+            <div className="absolute bottom-3 left-3 rounded-zineSm border-zine border-ink bg-card px-2.5 py-1 font-mono text-[12px] uppercase tracking-[0.04em] text-inkSoft shadow-zine-xs font-bold">
               {playerNote}
             </div>
           )}
@@ -309,7 +309,7 @@ function Inner({ listingId, title, poster, creatorHandle }: LiveViewerProps) {
           <div className="min-w-0 flex-1">
             <p className="truncate font-display font-semibold text-[16px] text-ink">{title ?? state.join?.title ?? 'Live'}</p>
             {room.donationsCount > 0 && (
-              <p className="font-mono text-[11px] uppercase tracking-[0.04em] text-mintInk">
+              <p className="font-mono text-[13px] uppercase tracking-[0.04em] text-mintInk font-bold">
                 {room.donationsTotal} Tokens · {room.donationsCount} gifts
               </p>
             )}
@@ -326,7 +326,7 @@ function Inner({ listingId, title, poster, creatorHandle }: LiveViewerProps) {
 
       {/* Chat (sidebar on desktop, stacked on mobile) */}
       <aside className="flex h-[60vh] min-h-0 flex-col bg-card md:h-auto md:rounded-zine md:border-zine md:border-ink md:overflow-hidden md:shadow-zine-sm">
-        <div className="border-b-zine border-ink px-3 py-2 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-inkSoft">
+        <div className="border-b-zine border-ink px-3 py-2 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-inkSoft">
           Live chat
         </div>
         <div className="min-h-0 flex-1">
@@ -360,7 +360,7 @@ function PosterGate({
           {poster ? (
             <img src={cfImage(poster, { width: 1280, fit: 'cover' })} alt={title ?? 'Live'} className="h-full w-full object-cover opacity-90" />
           ) : (
-            <div className="flex h-full w-full items-center justify-center font-mono uppercase tracking-[0.08em] text-inkMute">Live</div>
+            <div className="flex h-full w-full items-center justify-center font-mono uppercase tracking-[0.08em] text-inkMute font-bold">Live</div>
           )}
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-ink/55 px-6 text-center">
             <h1 className="font-display font-semibold text-[26px] leading-tight text-white drop-shadow">{title ?? 'Live stream'}</h1>
@@ -400,7 +400,7 @@ function EndedCard({ title, creatorHref }: { title?: string; creatorHref: string
   return (
     <div className="mx-auto max-w-2xl px-4 py-16 text-center">
       <div className="rounded-zine border-zine border-ink bg-card p-10 shadow-zine">
-        <p className="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-coral">Stream ended</p>
+        <p className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-coral">Stream ended</p>
         <h1 className="mt-3 font-display font-semibold text-[26px] leading-tight text-ink">{title ?? 'This live has ended'}</h1>
         <p className="mt-2 font-body font-bold text-[15px] text-inkSoft">Thanks for watching. Catch the creator's next one.</p>
         <a href={creatorHref} className="mt-6 inline-flex rounded-full border-zine border-ink bg-lime px-7 py-3.5 font-display font-semibold text-[18px] text-ink no-underline shadow-zine-sm transition-transform duration-zine active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed">
@@ -434,7 +434,7 @@ function Countdown({ startsAt }: { startsAt: number | null }) {
   const parts = d > 0 ? [`${d}d`, `${h}h`, `${m}m`] : h > 0 ? [`${h}h`, `${m}m`, `${sec}s`] : [`${m}m`, `${sec}s`];
   return (
     <>
-      <p className="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-white/80">Starts in</p>
+      <p className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-white/80">Starts in</p>
       <p className="font-mono font-bold text-[34px] tabular-nums text-white">{ms <= 0 ? 'any moment…' : parts.join(' ')}</p>
       <p className="font-body font-bold text-[14px] text-white/80">Hang tight — you'll be pulled in automatically.</p>
     </>

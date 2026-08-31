@@ -54,9 +54,9 @@ module.exports = {
       "sans-serif"
     ],
     "mono": [
-      "Silkscreen",
-      "ui-monospace",
-      "monospace"
+      "Nunito",
+      "system-ui",
+      "sans-serif"
     ],
     "label": [
       "Nunito",

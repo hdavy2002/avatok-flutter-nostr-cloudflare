@@ -11,9 +11,9 @@ function Kpi({ label, value, sub }: { label: string; value: string | number; sub
   return (
     <Card shadow="sm">
       <div className="flex flex-col gap-1 p-1">
-        <span className="font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">{label}</span>
+        <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">{label}</span>
         <span className="font-display font-semibold text-[28px] leading-none text-ink">{value}</span>
-        {sub && <span className="font-mono text-[11px] text-inkMute">{sub}</span>}
+        {sub && <span className="font-mono text-[13px] text-inkMute font-bold">{sub}</span>}
       </div>
     </Card>
   );
@@ -34,7 +34,7 @@ function Inner() {
     return () => { alive = false; clearInterval(t); };
   }, []);
 
-  if (!data) return <div className="flex items-center gap-3 p-6"><Spinner size={22} />{err && <span className="text-coral font-mono text-[12px]">{err}</span>}</div>;
+  if (!data) return <div className="flex items-center gap-3 p-6"><Spinner size={22} />{err && <span className="text-coral font-mono text-[14px] font-bold">{err}</span>}</div>;
 
   const s = data.sessions; const m = data.money; const na = data.needs_attention;
   const naItems: Array<[string, number, string]> = [
@@ -49,7 +49,7 @@ function Inner() {
   return (
     <div className="flex flex-col gap-6">
       <section>
-        <h2 className="mb-3 font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">Live now</h2>
+        <h2 className="mb-3 font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">Live now</h2>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <Kpi label="Active sessions" value={s.total} sub={`${s.live_streams} live · ${s.consults} consult · ${s.voice_calls} voice · ${s.vision_calls} vision`} />
           <Kpi label="Coins in escrow" value={coins(m.escrow_coins)} />
@@ -63,7 +63,7 @@ function Inner() {
       </section>
 
       <section>
-        <h2 className="mb-3 font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">Needs attention</h2>
+        <h2 className="mb-3 font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">Needs attention</h2>
         <div className="flex flex-wrap gap-2">
           {naItems.map(([label, n, href]) => (
             <a key={label} href={href}>
@@ -74,7 +74,7 @@ function Inner() {
       </section>
 
       <section>
-        <h2 className="mb-3 font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">Surface health</h2>
+        <h2 className="mb-3 font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">Surface health</h2>
         <div className="flex flex-wrap gap-2">
           {data.surfaces.map((sf) => (
             <Pill key={sf.key} kind={sf.enabled ? 'ok' : 'no'}>{sf.label}: {sf.enabled ? 'on' : 'off'}</Pill>
@@ -82,7 +82,7 @@ function Inner() {
         </div>
       </section>
 
-      <span className="font-mono text-[10px] text-inkMute">updated {new Date(data.ts).toLocaleTimeString()} · auto-refresh 10s</span>
+      <span className="font-mono text-[12px] text-inkMute font-bold">updated {new Date(data.ts).toLocaleTimeString()} · auto-refresh 10s</span>
     </div>
   );
 }

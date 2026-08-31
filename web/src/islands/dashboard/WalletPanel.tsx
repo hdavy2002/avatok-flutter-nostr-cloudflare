@@ -93,7 +93,7 @@ function Inner() {
       <Card fillClassName="bg-mint" shadow="sm">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <span className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-ink">Balance</span>
+            <span className="font-mono font-bold uppercase text-[14px] tracking-[0.08em] text-ink">Balance</span>
             <div className="font-mono font-bold text-[26px] text-ink">
               {balance != null ? `${balance.toLocaleString()}` : '—'}{' '}
               <span className="text-[14px]">Tokens</span>
@@ -122,7 +122,7 @@ function Inner() {
                 <div key={t.id ?? i} className="flex items-center justify-between rounded-zineField border-zine border-ink bg-card px-4 py-3 shadow-zine-xs">
                   <div className="min-w-0">
                     <div className="truncate font-body font-extrabold text-[14px] text-ink">{t.reason || t.kind || t.type || 'Transaction'}</div>
-                    <div className="font-mono text-[11px] text-inkMute">{fmtWhen(t.created_at ?? t.ts)}</div>
+                    <div className="font-mono text-[13px] text-inkMute font-bold">{fmtWhen(t.created_at ?? t.ts)}</div>
                   </div>
                   <span className={`font-mono font-bold text-[15px] ${pos ? 'text-mintInk' : 'text-coral'}`}>
                     {pos ? '+' : ''}{amt.toLocaleString()}

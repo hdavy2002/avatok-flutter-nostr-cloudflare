@@ -95,7 +95,7 @@ function DashboardInner() {
             </SignInButton>
             <a
               href="/explore"
-              className="font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-blueInk underline decoration-blue decoration-2 underline-offset-2"
+              className="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-blueInk underline decoration-blue decoration-2 underline-offset-2"
             >
               Browse the marketplace
             </a>
@@ -110,7 +110,7 @@ function DashboardInner() {
       {/* Wallet */}
       <Card fillClassName="bg-mint" shadow="sm">
         <div className="flex items-center justify-between">
-          <span className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-ink">Wallet</span>
+          <span className="font-mono font-bold uppercase text-[14px] tracking-[0.08em] text-ink">Wallet</span>
           <span className="font-mono font-bold text-[18px] text-ink">
             {balance != null ? `${balance.toLocaleString()} Tokens` : '—'}
           </span>

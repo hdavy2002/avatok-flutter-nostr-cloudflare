@@ -164,7 +164,7 @@ function CalendarSlots({
           <div className="flex items-center justify-between gap-3">
             <div className="flex flex-col gap-1">
               <span className="font-display font-semibold text-[17px] text-ink">{fmtWhen(s.start_at)}</span>
-              <span className="font-mono text-[12px] uppercase tracking-[0.06em] text-inkSoft">
+              <span className="font-mono text-[14px] uppercase tracking-[0.06em] text-inkSoft font-bold">
                 {fmtDuration(s.start_at, s.end_at)} · {s.title}
               </span>
             </div>
@@ -216,7 +216,7 @@ function AgentForm({ listing, onSelect }: { listing: Listing; onSelect: (s: Book
           onChange={(e) => setMinutes(e.target.value.replace(/\D/g, '').slice(0, 3))}
         />
         <label className="block">
-          <span className="mb-2 block font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">
+          <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">
             When
           </span>
           <input
@@ -227,7 +227,7 @@ function AgentForm({ listing, onSelect }: { listing: Listing; onSelect: (s: Book
           />
         </label>
         <label className="block">
-          <span className="mb-2 block font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">
+          <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">
             Language
           </span>
           <select

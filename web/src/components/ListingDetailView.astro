@@ -52,7 +52,7 @@ const ratingVal = listing.rating ?? stats?.rating ?? null;
           {listing.poster ? (
             <img src={cfImage(listing.poster, { width: 760, fit: 'cover' })} alt={listing.title} class="h-full w-full object-cover" />
           ) : (
-            <div class="flex h-full w-full items-center justify-center font-mono uppercase text-inkMute text-[13px] tracking-[0.08em]">{kind}</div>
+            <div class="flex h-full w-full items-center justify-center font-mono uppercase text-inkMute text-[15px] tracking-[0.08em] font-bold">{kind}</div>
           )}
           {isLive && <span class="absolute left-3 top-3"><Pill kind="no">● Live</Pill></span>}
           {listing.category && <span class="absolute right-3 top-3"><Pill kind="plain">{listing.category}</Pill></span>}
@@ -63,7 +63,7 @@ const ratingVal = listing.rating ?? stats?.rating ?? null;
     <!-- Detail -->
     <div class="flex flex-col gap-5">
       <div>
-        <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">{kind}</span>
+        <span class="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">{kind}</span>
         <h1 class="mt-2 font-display font-semibold text-[32px] leading-tight text-ink">{listing.title}</h1>
       </div>
 
@@ -72,7 +72,7 @@ const ratingVal = listing.rating ?? stats?.rating ?? null;
           <Avatar src={listing.creator.avatar} name={listing.creator.name ?? listing.creator.handle} size={48} />
           <div class="flex flex-col">
             <span class="font-display font-semibold text-[17px] text-ink">{listing.creator.name ?? listing.creator.handle}</span>
-            {listing.creator.handle && <span class="font-mono text-[12px] uppercase tracking-[0.06em] text-inkSoft">@{listing.creator.handle}</span>}
+            {listing.creator.handle && <span class="font-mono text-[14px] uppercase tracking-[0.06em] text-inkSoft font-bold">@{listing.creator.handle}</span>}
           </div>
         </a>
       )}
@@ -93,7 +93,7 @@ const ratingVal = listing.rating ?? stats?.rating ?? null;
         <div class="flex flex-col gap-2 pt-1">
           <div class="flex flex-wrap items-center gap-3">
             <a href={signUpHref} class={ctaClass('lime')}>Sign up to {verb.toLowerCase()}</a>
-            <a href={`/sign-in?next=${encodeURIComponent(detailPath)}`} class="font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-blueInk no-underline">Have an account? Log in</a>
+            <a href={`/sign-in?next=${encodeURIComponent(detailPath)}`} class="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-blueInk no-underline">Have an account? Log in</a>
           </div>
           <a href={actionHref} class="font-body font-bold text-[13px] text-inkSoft underline decoration-ink/30 underline-offset-2">or continue as a guest</a>
         </div>
@@ -101,7 +101,7 @@ const ratingVal = listing.rating ?? stats?.rating ?? null;
 
       {breakdown && (
         <div class="rounded-zine border-zine border-ink bg-paper2 p-5 shadow-zine-sm">
-          <h2 class="font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">What you'd pay</h2>
+          <h2 class="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">What you'd pay</h2>
           <dl class="mt-3 flex flex-col gap-1.5">
             <div class="flex items-baseline justify-between gap-4">
               <dt class="font-body font-bold text-[15px] text-inkSoft">Ticket</dt>
@@ -145,7 +145,7 @@ const ratingVal = listing.rating ?? stats?.rating ?? null;
               <div class="flex items-center gap-2.5">
                 <Avatar src={r.author?.avatar} name={r.author?.name ?? r.author?.handle} size={32} />
                 <span class="font-display font-semibold text-[14px] text-ink">{r.author?.name ?? r.author?.handle ?? 'Guest'}</span>
-                <span class="ml-auto font-mono text-[12px] text-mintInk">★ {r.rating.toFixed(1)}</span>
+                <span class="ml-auto font-mono text-[14px] text-mintInk font-bold">★ {r.rating.toFixed(1)}</span>
               </div>
               {r.text && <p class="mt-2 font-body font-bold text-[14px] text-inkSoft">{r.text}</p>}
             </div>
