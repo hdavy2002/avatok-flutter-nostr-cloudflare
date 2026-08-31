@@ -7,14 +7,14 @@ import { SearchBox } from './SearchBox';
 import { FilterRail, PRICE_BANDS, type RailState } from './FilterRail';
 import { VerticalSection } from './VerticalSection';
 import { LiveNowRail } from './LiveNowRail';
-import { countByVertical, groupByVertical, verticalOf, type VerticalId } from '../../lib/verticals';
+import { groupByVertical, VERTICALS, type VerticalId } from '../../lib/verticals';
 
 export interface ExploreGridProps {
   /** Initial search query from the URL (?q=), set by the hero search strip. */
   initialQ?: string;
   /** Render the grid's own search field. False when the page has the hero strip. */
   showSearch?: boolean;
-  /** Initial vertical from the URL (?vertical=). */
+  /** Initial section from the URL (?vertical=). */
   initialVertical?: string;
   /** Page size for each fetch. */
   pageSize?: number;
@@ -26,28 +26,30 @@ export interface ExploreGridProps {
 
 const PAGE = 24;
 
+const EMPTY_COUNTS = Object.fromEntries(VERTICALS.map((v) => [v.id, 0])) as Record<VerticalId, number>;
+
 /**
  * The marketplace browse island: the comp's two-column body — FILTERS rail on
- * the left, numbered vertical sections on the right.
+ * the left, numbered sections on the right.
  *
- * [MARKET-BAZAAR-2 2026-08-31, owner decision] The Type / Category / Sort chip
- * rows are GONE, replaced by FilterRail. Do not reintroduce them: with the
- * category tiles under the hero, the chips made the page state the same
- * taxonomy twice on one screen.
+ * [MARKET-BAZAAR-2] The Type / Category / Sort chip rows are GONE, replaced by
+ * FilterRail. Do not reintroduce them: with the section tiles under the hero,
+ * the chips made the page state the same taxonomy twice on one screen.
  *
- * WHERE FILTERING HAPPENS, AND WHY IT IS SPLIT.
- * `q` goes to the server (/api/explore/search) because full-text search has to.
- * Vertical, price and date are applied CLIENT-SIDE to the fetched page, because
- * the API cannot filter on any of them: `vertical` is not a field it has (see
- * lib/verticals.ts — it is derived here from kind+category), and price/date
- * filtering by band is not exposed on /api/explore.
+ * [MARKET-SECTION-1 2026-08-31] FILTERING IS NOW THE SERVER'S JOB. Section,
+ * price, date, sort and query all go to /api/explore, and the response is
+ * rendered as-is.
  *
- * That split has a real consequence worth stating plainly rather than hiding:
- * these three filters only narrow WHAT HAS BEEN LOADED, so with pagination they
- * can look like they are hiding results until "Load more" is pressed. It is the
- * honest behaviour available today, and it is the first thing to delete once the
- * worker can filter server-side. Sort was dropped entirely rather than kept as a
- * control that reorders one page and claims to order the catalogue.
+ * That is a correctness change, not a tidy-up. Section/price/date used to be
+ * applied in this component to the page already fetched, so they narrowed 24
+ * loaded rows rather than the catalogue: picking "Consulting" hid everything on
+ * screen and showed nothing, while consulting listings sat unfetched on page 2.
+ * Sort was dropped entirely at the time because a sort that reorders one page
+ * while claiming to order everything is worse than no sort — it is back now
+ * that the ORDER BY is the database's.
+ *
+ * The counts beside each rail row come from `section_counts`, which the worker
+ * computes over the whole catalogue rather than the current page.
  */
 export function ExploreGrid({
   initialQ,
@@ -61,9 +63,11 @@ export function ExploreGrid({
   const [rail, setRail] = useState<RailState>({
     vertical: (initialVertical as VerticalId) || undefined,
     price: 'all',
+    sort: '',
   });
 
   const [items, setItems] = useState<Card[]>([]);
+  const [counts, setCounts] = useState<Record<VerticalId, number> | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,37 +76,70 @@ export function ExploreGrid({
   /**
    * Whether a fetch has ever COMPLETED. Not the same as `!loading`.
    *
-   * [MARKET-BAZAAR-1 2026-08-31] This island is mounted `client:visible`, so
-   * Astro server-renders it and only hydrates once it scrolls into view. At
-   * first render `items` is empty and `loading` is false, so the old
+   * [MARKET-BAZAAR-1] This island is mounted `client:visible`, so Astro
+   * server-renders it and only hydrates once it scrolls into view. At first
+   * render `items` is empty and `loading` is false, so the old
    * `!loading && items.length === 0` test was TRUE in the SSR output — the
-   * server shipped the empty state as static HTML. Every visitor saw "nothing
-   * here" below the fold before a request had been made, and a visitor arriving
-   * on ?q=… got "Koi nahi mila, boss." about their own search before it ran.
+   * server shipped the empty state as static HTML, and a visitor arriving on
+   * ?q=… was told "Koi nahi mila, boss." about their own search before it ran.
    */
   const [loaded, setLoaded] = useState(false);
 
   const usingSearch = q.trim().length > 0;
 
-  // Only the SERVER-SIDE inputs belong here. Adding vertical/price/date would
-  // refetch the whole list every time a local filter is toggled.
-  const resetKey = useMemo(() => JSON.stringify({ q: q.trim() }), [q]);
+  const band = useMemo(
+    () => PRICE_BANDS.find((b) => b.id === (rail.price || 'all')) ?? PRICE_BANDS[0],
+    [rail.price],
+  );
+
+  /** Every input the SERVER filters on. A change to any of them refetches. */
+  const resetKey = useMemo(
+    () => JSON.stringify({ q: q.trim(), s: rail.vertical, p: rail.price, d: rail.date, o: rail.sort }),
+    [q, rail.vertical, rail.price, rail.date, rail.sort],
+  );
 
   const fetchPage = useCallback(
     async (nextCursor: string | null, append: boolean) => {
       const mine = ++reqId.current;
       setLoading(true);
       setError(null);
-      try {
-        let page: CardPage;
-        if (usingSearch) {
-          page = await searchListings({ q: q.trim(), limit: pageSize, cursor: nextCursor ?? undefined });
-        } else {
-          page = await getExplore({ limit: pageSize, cursor: nextCursor ?? undefined });
+
+      // The worker takes an epoch-ms window; the rail gives a local calendar
+      // day. Converting here (rather than sending the raw yyyy-mm-dd) keeps
+      // "available on the 6th" meaning the viewer's 6th, which is what a person
+      // picking a date in their own browser means by it.
+      let from: number | undefined;
+      let to: number | undefined;
+      if (rail.date) {
+        const [y, m, d] = rail.date.split('-').map(Number);
+        if (y && m && d) {
+          from = new Date(y, m - 1, d, 0, 0, 0, 0).getTime();
+          to = new Date(y, m - 1, d, 23, 59, 59, 999).getTime();
         }
+      }
+
+      const common = {
+        section: rail.vertical,
+        minPrice: band.min > 0 ? band.min : undefined,
+        maxPrice: band.max != null ? band.max : undefined,
+        from,
+        to,
+        sort: rail.sort || undefined,
+        limit: pageSize,
+        cursor: nextCursor ?? undefined,
+      };
+
+      try {
+        const page: CardPage = usingSearch
+          ? await searchListings({ q: q.trim(), ...common })
+          : await getExplore(common);
         if (mine !== reqId.current) return; // a newer request superseded this one
         setItems((prev) => (append ? [...prev, ...(page.listings ?? [])] : page.listings ?? []));
         setCursor(page.cursor ?? null);
+        // Only overwrite counts when the server actually sent them. A worker that
+        // could not compute them sends null, and rendering that as all-zeroes
+        // would claim an empty catalogue.
+        if (page.section_counts) setCounts(page.section_counts as Record<VerticalId, number>);
       } catch (e) {
         if (mine !== reqId.current) return;
         if ((e as Error)?.name !== 'AbortError') setError('Could not load listings. Please try again.');
@@ -113,7 +150,7 @@ export function ExploreGrid({
         }
       }
     },
-    [usingSearch, q, pageSize],
+    [usingSearch, q, rail.vertical, rail.date, rail.sort, band, pageSize],
   );
 
   useEffect(() => {
@@ -123,50 +160,16 @@ export function ExploreGrid({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resetKey]);
 
-  /** Client-side narrowing. See the note on this component. */
-  const visible = useMemo(() => {
-    const band = PRICE_BANDS.find((b) => b.id === (rail.price || 'all')) ?? PRICE_BANDS[0];
-    return items.filter((l) => {
-      if (rail.vertical && verticalOf(l) !== rail.vertical) return false;
+  const sections = useMemo(() => groupByVertical(items), [items]);
 
-      // `price` is in tokens (₹1 = 1 token). A null/undefined price means the
-      // listing carries no price yet — treated as free, matching the card, which
-      // prints "FREE" for the same value.
-      const price = Number(l.effective_price ?? l.price ?? 0);
-      if (price < band.min) return false;
-      if (band.max != null && price > band.max) return false;
-
-      if (rail.date) {
-        // `starts_at` is epoch MILLISECONDS (e.g. 1788148800000), not an ISO
-        // string — `new Date('1788148800000')` would be Invalid Date and every
-        // listing would silently survive the filter.
-        //
-        // A listing with no start time is always-available (a 1:1 or an agent),
-        // so it survives a date filter rather than being hidden by it. The
-        // comparison is on the VIEWER's local calendar day, which is what the
-        // date input gives us and what "available on the 6th" means to a person.
-        const startsAt = l.starts_at;
-        if (startsAt != null) {
-          const d = new Date(Number(startsAt));
-          if (Number.isFinite(d.getTime())) {
-            const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-            if (iso !== rail.date) return false;
-          }
-        }
-      }
-      return true;
-    });
-  }, [items, rail.vertical, rail.price, rail.date]);
-
-  const counts = useMemo(() => countByVertical(items), [items]);
-  const sections = useMemo(() => groupByVertical(visible), [visible]);
-
-  const narrowed = Boolean(q.trim() || rail.vertical || rail.date || (rail.price && rail.price !== 'all'));
-  const empty = loaded && !loading && visible.length === 0 && !error;
+  const narrowed = Boolean(
+    q.trim() || rail.vertical || rail.date || rail.sort || (rail.price && rail.price !== 'all'),
+  );
+  const empty = loaded && !loading && items.length === 0 && !error;
 
   const clearAll = useCallback(() => {
     setQ('');
-    setRail({ price: 'all' });
+    setRail({ price: 'all', sort: '' });
     // The query arrives in the URL (the hero search strip is a plain GET form),
     // so clearing only React state would leave ?q= in the address bar — and a
     // reload or a shared link would silently re-apply what was just cleared.
@@ -175,6 +178,11 @@ export function ExploreGrid({
       window.history.replaceState({}, '', window.location.pathname + window.location.hash);
     }
   }, []);
+
+  const total = useMemo(
+    () => (counts ? Object.values(counts).reduce((a, b) => a + b, 0) : items.length),
+    [counts, items.length],
+  );
 
   return (
     <div className="flex flex-col gap-8">
@@ -185,8 +193,9 @@ export function ExploreGrid({
         <FilterRail
           value={rail}
           onChange={setRail}
-          counts={counts}
-          total={items.length}
+          counts={counts ?? EMPTY_COUNTS}
+          countsKnown={counts != null}
+          total={total}
           onClear={clearAll}
           narrowed={narrowed}
         />
@@ -194,7 +203,9 @@ export function ExploreGrid({
         <main className="min-w-0 flex-1">
           <div className="mb-8 flex items-center gap-3.5">
             <span className="font-label text-[13px] font-extrabold uppercase tracking-[0.12em] text-ink">
-              {loaded ? `${visible.length} ${visible.length === 1 ? 'listing' : 'listings'} · Pura bazaar` : 'Loading the bazaar…'}
+              {loaded
+                ? `${items.length} ${items.length === 1 ? 'listing' : 'listings'} · Pura bazaar`
+                : 'Loading the bazaar…'}
             </span>
             <span className="h-0.5 min-w-[60px] flex-1 bg-ink/20" />
           </div>
@@ -212,9 +223,7 @@ export function ExploreGrid({
               filtered case ("Koi nahi mila, boss" + "Sab dikhao"). But with
               nothing published, the state a real visitor lands on is the
               UNFILTERED one — where "Sab dikhao" clears nothing and reloads the
-              same emptiness, which reads as a broken page. So a narrowed search
-              gets the comp's copy and a working clear button, and a genuinely
-              empty bazaar gets honest copy and the one thing a visitor can do. */}
+              same emptiness, which reads as a broken page. */}
           {empty && (
             <div className="flex flex-wrap items-center justify-center gap-6 rounded-[22px] border-zine border-dashed border-ink bg-card px-7 py-10 text-center">
               <div className="grid h-[104px] w-[104px] flex-none -rotate-[8deg] place-items-center rounded-full border-zine border-dashed border-coral">

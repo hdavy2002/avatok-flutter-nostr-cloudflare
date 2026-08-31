@@ -1,30 +1,31 @@
 /**
- * [MARKET-BAZAAR-2 2026-08-31] The seven bazaar VERTICALS — the taxonomy the
- * marketplace comp is built around (design/marketplace/avaTOK Marketplace.dc.html).
+ * [MARKET-BAZAAR-2 / MARKET-SECTION-1] The seven bazaar SECTIONS — the groups
+ * the marketplace design organises listings into.
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * READ THIS BEFORE USING IT: THIS IS A STOPGAP, AND IT IS DELIBERATELY VISIBLE.
+ * A SECTION IS NOT A `vertical`. `listing.vertical` is 'commerce' | 'connect' —
+ * the top-level marketplace/Connect split. It scopes categories and picks the
+ * listing fee key server-side. A section sits BELOW a vertical and ABOVE a
+ * category. The file is still named verticals.ts for import stability; the
+ * concept it exports is `section`.
  *
- * A vertical is NOT a field the API has. `/api/explore` returns a `kind`
- * (`live_event`, `consult_1to1`, …) and a `category` from a 25-entry CLASSIFIEDS
- * taxonomy (teachers, cars, property_rent, mobiles, jobs_hiring …). The comp's
- * verticals are a LIVE-CREATOR taxonomy (adda rooms, glow-up studio, astro &
- * tarot). The two were designed for different products and they barely overlap:
- * the classifieds list has no word for an adda room, and the vertical list has
- * no word for a second-hand scooter.
+ * WHAT CHANGED, AND WHY THIS FILE SHRANK
  *
- * So this table derives a vertical from (kind, category) on the client. That is
- * the wrong place for it — two clients would drift, and the server cannot filter
- * or count by something only the browser knows. It belongs in the worker as a
- * real `vertical` column on `listings`, set at publish time. Until then:
+ * This used to derive a section in the browser from (kind, category), because
+ * the API had no such field. That meant the marketplace could not filter, count
+ * or sort by it server-side, so the sidebar only ever narrowed the page already
+ * fetched — with pagination it looked like it was hiding results, and the counts
+ * described "this page" while reading like "the catalogue".
  *
- *   - the counts here are computed from the page's own fetched listings, so they
- *     are honest but only ever describe the CURRENT page, not the catalogue;
- *   - `VERTICALS_WITHOUT_A_SOURCE` names the three that no listing can currently
- *     land in, so nobody mistakes an empty section for a bug.
+ * `listings.section` is now a real, indexed column (worker migration
+ * 2026-08-31-listings-section.sql), resolved once at publish time by
+ * worker/src/lib/listing_section.ts and returned on every card. So the
+ * derivation is GONE and this file is presentation only: labels, section copy,
+ * display order.
  *
- * When the API grows the field, delete `verticalOf` and read `listing.vertical`.
- * Everything else here (labels, eyebrows, section copy) survives that change.
+ * The server is the authority on which section a listing is in. Do not
+ * reintroduce a client-side guess — two answers that disagree is worse than one
+ * that is occasionally stale.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import type { Card } from './types';
@@ -117,16 +118,17 @@ export const VERTICALS: Vertical[] = [
   },
 ];
 
+const BY_ID = new Map(VERTICALS.map((v) => [v.id, v]));
+
 /**
- * The three verticals NO listing can currently be assigned to, because nothing
- * in the API's (kind, category) space means "adda room", "live friend" or
- * "glow-up". Their sections and tiles will always be empty until either the
- * worker gains a `vertical` field or these products start publishing under a
- * kind of their own.
+ * Sections no listing can currently be published into — nothing in the (kind,
+ * category) space resolves to them, so their count is permanently 0 until the
+ * product exists. Mirrors SECTIONS_WITHOUT_A_SOURCE in the worker; keep the two
+ * in step, and delete an entry from BOTH when the product ships.
  *
- * Exported so a future reader can tell "empty because nobody has published one"
- * from "empty because it is unreachable by construction" — those look identical
- * on screen and only one of them is a bug.
+ * The point of naming them is that "empty because nobody has published one" and
+ * "empty because it is unreachable by construction" look identical on screen,
+ * and only one of them is a bug.
  */
 export const VERTICALS_WITHOUT_A_SOURCE: ReadonlySet<VerticalId> = new Set([
   'live_friends',
@@ -134,40 +136,18 @@ export const VERTICALS_WITHOUT_A_SOURCE: ReadonlySet<VerticalId> = new Set([
   'glow_up',
 ]);
 
-/** Categories that read as a reading/divination practice rather than a subject. */
-const ASTRO_CATEGORIES = new Set(['astrologers']);
+/** The section the SERVER assigned to this listing. Never a client-side guess. */
+export function verticalOf(listing: Card): VerticalId | null {
+  const s = listing.section;
+  return s && BY_ID.has(s as VerticalId) ? (s as VerticalId) : null;
+}
 
 /**
- * Best-effort vertical for one listing. Returns null when nothing fits — the
- * caller drops it into no section rather than guessing, because a listing shown
- * under the wrong heading is worse than one not shown twice.
+ * Group listings into the display order above, skipping empty sections.
+ *
+ * Order comes from VERTICALS, not from the API's row order, so the page reads
+ * the same way every time regardless of how the server happened to sort.
  */
-export function verticalOf(listing: Card): VerticalId | null {
-  const kind = String(listing.kind ?? '').toLowerCase();
-  const category = String(listing.category ?? '').toLowerCase();
-
-  // Astro outranks kind: a tarot reading sold as a 1:1 is still astro, and the
-  // comp gives it its own section.
-  if (ASTRO_CATEGORIES.has(category)) return 'astro_tarot';
-
-  if (kind.startsWith('agent') || kind === 'ai_agent') return 'ai_voice_agents';
-  if (kind.startsWith('consult')) return 'consulting';
-  if (kind === 'live_event' || kind === 'live' || kind === 'event') return 'live_streaming';
-
-  return null;
-}
-
-/** Count listings per vertical. Describes the listings passed in, nothing more. */
-export function countByVertical(listings: Card[]): Record<VerticalId, number> {
-  const out = Object.fromEntries(VERTICALS.map((v) => [v.id, 0])) as Record<VerticalId, number>;
-  for (const l of listings) {
-    const v = verticalOf(l);
-    if (v) out[v] += 1;
-  }
-  return out;
-}
-
-/** Group listings into the display order above, skipping empty verticals. */
 export function groupByVertical(listings: Card[]): { vertical: Vertical; listings: Card[] }[] {
   const buckets = new Map<VerticalId, Card[]>();
   for (const l of listings) {

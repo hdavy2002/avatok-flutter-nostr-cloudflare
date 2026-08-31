@@ -10,12 +10,20 @@ export interface SearchParams {
   q?: string;
   minPrice?: number;
   maxPrice?: number;
-  from?: string;
-  to?: string;
+  /**
+   * [MARKET-SECTION-1] Epoch MILLISECONDS, matching `listings.starts_at` and the
+   * worker's `Number(u.get("from"))`. These were typed `string` and no caller
+   * ever passed one; a yyyy-mm-dd here would have parsed to NaN and been
+   * silently dropped by the worker's `> 0` guard.
+   */
+  from?: number;
+  to?: number;
   minRating?: number;
   sort?: string;
   category?: string;
   kind?: string;
+  /** The bazaar section. See ExploreParams.section. */
+  section?: string;
   limit?: number;
   cursor?: string;
 }

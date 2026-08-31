@@ -13,14 +13,39 @@ export interface RailState {
   price: string;
   /** ISO date (yyyy-mm-dd) or undefined for "any day". */
   date?: string;
+  /** Server sort key; '' is the default order. See SORTS below. */
+  sort?: string;
 }
+
+/**
+ * [MARKET-SECTION-1] Sort is BACK. It was removed in [MARKET-BAZAAR-2] because
+ * filtering happened in the browser, so a sort could only reorder the ~24 rows
+ * already fetched while looking like it had ordered the catalogue. The ORDER BY
+ * is the database's now, so the control tells the truth.
+ *
+ * These ids are the worker's vocabulary (exploreBrowse / exploreSearch) — rename
+ * one here and it silently falls back to the default order.
+ */
+export const SORTS: { id: string; label: string }[] = [
+  { id: '', label: 'Top' },
+  { id: 'newest', label: 'Newest' },
+  { id: 'cheapest', label: 'Cheapest' },
+  { id: 'popular', label: 'Popular' },
+  { id: 'rating', label: 'Rated' },
+];
 
 export interface FilterRailProps {
   value: RailState;
   onChange: (next: RailState) => void;
-  /** Per-vertical counts from the listings currently loaded. */
+  /** Catalogue-wide count per section, from the worker's `section_counts`. */
   counts: Record<VerticalId, number>;
-  /** Total loaded, for the "Everything" row. */
+  /**
+   * False when the worker sent no counts. The rail then shows NO number rather
+   * than a zero — "0" and "we could not count" are different claims, and only
+   * one of them is safe to print next to a filter someone is about to click.
+   */
+  countsKnown: boolean;
+  /** Catalogue total, for the "Everything" row. */
   total: number;
   onClear: () => void;
   /** True when anything is actually narrowed — drives SAB HATAO. */
@@ -36,19 +61,24 @@ export interface FilterRailProps {
  * category tiles under the hero and 25 category chips again above the grid, on
  * one screen.
  *
- * Two honesty rules the comp does not have, because the comp has no data:
+ * Three honesty rules the comp does not have, because the comp has no data:
  *
- *  1. THE COUNTS ARE REAL, and they describe the listings currently loaded —
- *     not the catalogue. The comp prints a flat "8" beside every row. Printing
- *     a fixed number next to a filter that returns nothing is how a visitor
- *     concludes the site is broken.
- *  2. A VERTICAL NOTHING CAN REACH IS MARKED, not silently empty. Three of the
- *     seven have no source in the API at all (see VERTICALS_WITHOUT_A_SOURCE),
- *     so they can never have a count. They stay listed — they are real products
- *     and the owner wants them visible — but they are not clickable filters that
- *     lead to a dead end.
+ *  1. THE COUNTS ARE THE CATALOGUE'S, not this page's. They come from the
+ *     worker's `section_counts`, computed over every published listing.
+ *     [MARKET-SECTION-1] fixed this: they used to count the rows the browser
+ *     happened to have fetched, so "Consulting 0" meant "none on this page" —
+ *     a different claim from "none exist", and one that starts lying the moment
+ *     pagination kicks in. The comp prints a flat "8" beside every row.
+ *  2. WHEN THE COUNT IS UNKNOWN, NOTHING IS PRINTED. `countsKnown` is false if
+ *     the worker could not compute them; the rail then shows a blank rather
+ *     than a zero, because "0" is a claim and "we do not know" is not.
+ *  3. A SECTION NOTHING CAN REACH IS MARKED, not silently empty. Three of the
+ *     seven have no (kind, category) that resolves to them (see
+ *     VERTICALS_WITHOUT_A_SOURCE and its worker twin), so they can never have a
+ *     count. They stay listed — they are real products the owner wants visible —
+ *     but they are not clickable filters leading to a dead end.
  */
-export function FilterRail({ value, onChange, counts, total, onClear, narrowed }: FilterRailProps) {
+export function FilterRail({ value, onChange, counts, countsKnown, total, onClear, narrowed }: FilterRailProps) {
   const set = (patch: Partial<RailState>) => onChange({ ...value, ...patch });
 
   const label = 'font-label text-[12px] font-extrabold uppercase tracking-[0.14em] text-inkMute';
@@ -88,7 +118,7 @@ export function FilterRail({ value, onChange, counts, total, onClear, narrowed }
           <ul className="m-0 flex list-none flex-col p-0">
             <RailRadio
               label="Everything"
-              count={total}
+              count={countsKnown ? total : null}
               selected={!value.vertical}
               onSelect={() => set({ vertical: undefined })}
             />
@@ -98,7 +128,7 @@ export function FilterRail({ value, onChange, counts, total, onClear, narrowed }
                 <RailRadio
                   key={v.id}
                   label={v.label}
-                  count={unreachable ? null : counts[v.id]}
+                  count={unreachable || !countsKnown ? null : counts[v.id]}
                   // "Soon", not "Coming soon": the rail is 248px and the right
                   // column shares the row with the label. The longer string
                   // pushed "Live friends", "Adda rooms" and "Glow-up studio"
@@ -155,6 +185,28 @@ export function FilterRail({ value, onChange, counts, total, onClear, narrowed }
                   }`}
                 >
                   {p.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="border-t-2 border-dashed border-ink/35 px-5 pb-5 pt-4">
+          <p className={`${label} mb-3`}>Sort</p>
+          <div className="flex flex-wrap gap-2">
+            {SORTS.map((o) => {
+              const on = (value.sort ?? '') === o.id;
+              return (
+                <button
+                  key={o.id || 'default'}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => set({ sort: o.id })}
+                  className={`rounded-full border-2 border-ink px-3.5 py-2 font-label text-[12px] font-extrabold uppercase tracking-[0.05em] ${
+                    on ? 'bg-lime text-ink' : 'bg-card text-ink'
+                  }`}
+                >
+                  {o.label}
                 </button>
               );
             })}

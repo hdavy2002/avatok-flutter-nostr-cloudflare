@@ -19,6 +19,13 @@
 export interface Card {
   id: string;
   kind?: ListingKind;
+  /**
+   * [MARKET-SECTION-1] The bazaar section the SERVER assigned this listing
+   * (`listings.section`, resolved at publish time). Not `vertical`, which is the
+   * separate commerce|connect split. Optional because a client built before the
+   * 2026-08-31 worker deploy will not see it.
+   */
+  section?: string | null;
   title: string;
   /** First line of the description, sent by the worker as `one_liner`. */
   one_liner?: string | null;
@@ -188,6 +195,15 @@ export interface Category {
 export interface CardPage {
   listings: Card[];
   cursor: string | null;
+  /** [MARKET-SECTION-1] The section filter the server applied, if any. */
+  section?: string | null;
+  /**
+   * [MARKET-SECTION-1] Catalogue-wide count per section — every section present,
+   * zeroes included. Absent (or null) when the worker could not compute them, in
+   * which case the client must fall back rather than render zeroes: "0" and "we
+   * do not know" are different claims and only one of them is safe to print.
+   */
+  section_counts?: Record<string, number> | null;
 }
 
 /** A booking row from /api/booking/list. */

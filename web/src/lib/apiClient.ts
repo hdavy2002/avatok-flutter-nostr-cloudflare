@@ -100,6 +100,20 @@ export interface ExploreParams {
   creator?: string;
   limit?: number;
   cursor?: string;
+  /**
+   * [MARKET-SECTION-1] The bazaar section (`listings.section`). NOT `vertical`,
+   * which is the separate commerce|connect split. An unrecognised value is
+   * ignored by the worker rather than matching nothing.
+   */
+  section?: string;
+  /** Price band in tokens (₹1 = 1 token), inclusive both ends. */
+  minPrice?: number;
+  maxPrice?: number;
+  /** Availability window as epoch ms against `starts_at`. */
+  from?: number;
+  to?: number;
+  /** '' | newest | cheapest | popular | rating — the worker's vocabulary. */
+  sort?: string;
 }
 
 /** GET /api/explore — public marketplace browse (no auth). */
