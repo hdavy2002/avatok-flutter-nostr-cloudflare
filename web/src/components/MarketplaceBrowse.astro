@@ -17,25 +17,27 @@ import ExploreGrid from '../islands/marketplace/ExploreGrid.tsx';
 import BazaarHero from './BazaarHero.astro';
 import BazaarSearchStrip from './BazaarSearchStrip.astro';
 import TruckBorder from './TruckBorder.astro';
-import { getCategories } from '../islands/marketplace/api';
-import type { MarketCategory } from '../islands/marketplace/api';
+import { VERTICALS, VERTICALS_WITHOUT_A_SOURCE } from '../lib/verticals';
 
 interface Props {
   hrefBase?: string;
-  category?: string;
-  kind?: string;
   /** Search query from the URL (?q=), set by the hero search strip. */
   q?: string;
+  /** Vertical from the URL (?vertical=), set by the category tiles. */
+  vertical?: string;
   /** Show the marketing "for fans / for creators" block (public only). */
   showSplit?: boolean;
   /** Show the big bazaar hero (public only; the dashboard has its own header). */
   showHero?: boolean;
 }
-const { hrefBase = '', category, kind, q, showSplit = false, showHero = false } = Astro.props;
+const { hrefBase = '', vertical, q, showSplit = false, showHero = false } = Astro.props;
 const mpBase = `${hrefBase}/marketplace`;
 
-let categories: MarketCategory[] = [];
-try { categories = await getCategories(); } catch { categories = []; }
+// [MARKET-BAZAAR-2 2026-08-31] The tiles are the seven VERTICALS, not the 25
+// classifieds categories the API returns. That is the comp's taxonomy and the
+// owner's decision. The three with no data source (see verticals.ts) still get
+// a tile — they are real products — but they are marked, not silently dead.
+const tiles = VERTICALS;
 
 // The comp gives each tile a different truck-art strip. Cycling by INDEX (not
 // at random) keeps a tile's strip stable across renders — a tile that changes
@@ -51,8 +53,6 @@ const MOTIFS = ['jhalar', 'lotus', 'eyes', 'chai', 'auto'] as const;
 
 // Display type: Anton, POSITIVE tracking. See the note in BazaarHero.astro —
 // the comp's negative values are the one thing deliberately not copied.
-const h2 = 'm-0 font-display font-normal uppercase text-[clamp(30px,3.4vw,44px)] leading-[1.02] tracking-[0.055em] [word-spacing:0.2em] text-ink';
-const eyebrow = 'font-label text-[13px] font-extrabold uppercase tracking-[0.16em] text-coral';
 const stub = 'font-label text-[12px] font-bold uppercase tracking-[0.1em] text-inkMute';
 
 const ctaLime = 'inline-flex items-center justify-center gap-2.5 select-none no-underline rounded-full border-zine border-ink shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed px-7 py-4 font-display font-normal uppercase text-[16px] leading-none tracking-[0.06em] bg-lime text-ink';
@@ -68,36 +68,33 @@ const gutters = showHero ? 'mx-auto max-w-[1560px] px-4 sm:px-10' : '';
 {showHero && (
   <>
     <BazaarSearchStrip action={mpBase || '/marketplace'} value={q} />
-    <BazaarHero browseHref="#listings" liveHref={`${mpBase}?kind=live#listings`} />
+    <BazaarHero browseHref="#listings" liveHref={`${mpBase}?vertical=live_streaming#listings`} />
   </>
 )}
 
-{categories.length > 0 && (
-  <section class={showHero ? 'relative -mt-10' : 'pt-2'}>
-    <div class={`grid gap-3.5 ${gutters}`} style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));">
-      {categories.map((c, i) => (
+<section class={showHero ? 'relative -mt-10' : 'pt-2'}>
+  <div class={`grid gap-3.5 ${gutters}`} style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));">
+    {tiles.map((v, i) => {
+      const soon = VERTICALS_WITHOUT_A_SOURCE.has(v.id);
+      return (
         <a
-          href={`${mpBase}?category=${encodeURIComponent(c.id)}#listings`}
+          href={soon ? '/sign-up' : `${mpBase}?vertical=${encodeURIComponent(v.id)}#listings`}
           class="block overflow-hidden rounded-[18px] border-[3px] border-ink bg-card no-underline shadow-zine transition-transform duration-zine ease-out hover:-translate-y-[3px] active:translate-y-0 active:shadow-zine-pressed"
         >
           <div class="border-b-zine border-ink"><TruckBorder kind={MOTIFS[i % MOTIFS.length]} /></div>
           <div class="flex flex-col gap-1.5 px-4 pb-3.5 pt-3">
-            <div class="flex items-center justify-between gap-2">
-              <span class="font-display text-[18px] font-normal uppercase tracking-[0.05em] text-ink">{c.label}</span>
-              {c.emoji && <span class="text-[16px] leading-none">{c.emoji}</span>}
-            </div>
-            {/* Real count or nothing. The comp prints "8 LISTINGS · PAWRI ZONE"
-                on every tile; that count is mock and the zone name is flavour
-                the API does not carry. */}
-            {typeof c.count === 'number' && (
-              <span class={stub}>{c.count.toLocaleString('en-IN')} {c.count === 1 ? 'listing' : 'listings'}</span>
-            )}
+            <span class="font-display text-[18px] font-normal uppercase tracking-[0.05em] text-ink">{v.label}</span>
+            {/* The comp prints "8 LISTINGS · PAWRI ZONE" on every tile. The 8 is
+                mock, so only the zone survives here — a count would have to be
+                fetched per vertical and would be a lie the moment it is stale.
+                A vertical nothing can be published into says so instead. */}
+            <span class={stub}>{soon ? `Coming soon · ${v.zone}` : v.zone}</span>
           </div>
         </a>
-      ))}
-    </div>
-  </section>
-)}
+      );
+    })}
+  </div>
+</section>
 
 <div class={gutters}>
   <section class="pb-10 pt-9"><LiveNowRail client:visible /></section>
@@ -121,19 +118,10 @@ const gutters = showHero ? 'mx-auto max-w-[1560px] px-4 sm:px-10' : '';
     </section>
   )}
 
-  <section id="listings" class="scroll-mt-20 pb-20">
-    <div class="flex flex-wrap items-end gap-5">
-      <div class="min-w-0 flex-[1_1_300px]">
-        <p class={`${eyebrow} mb-2.5`}>Sab kuch, ek jagah</p>
-        <h2 class={h2}>Explore <span class="text-coral">listings</span></h2>
-      </div>
-      <p class="max-w-[30ch] pb-1 font-body text-[17px] font-medium italic leading-[1.3] text-inkSoft">
-        Jo dhoondoge, wahi milega.
-      </p>
-    </div>
-
-    <div class="my-4 overflow-hidden rounded-[10px] border-zine border-ink"><TruckBorder kind="eyes" /></div>
-
+  {/* [MARKET-BAZAAR-2] No heading above the results any more. Each vertical
+      section brings its own numbered eyebrow and Anton heading, so a single
+      "EXPLORE LISTINGS" on top of them was a heading about headings. */}
+  <section id="listings" class="scroll-mt-20 pb-20 pt-2">
     {/* showSearch is the inverse of showHero on purpose: the public page puts
         the search field in the strip above the hero (BazaarSearchStrip), so
         rendering a second one here would give the page two search boxes that
@@ -142,8 +130,7 @@ const gutters = showHero ? 'mx-auto max-w-[1560px] px-4 sm:px-10' : '';
     <ExploreGrid
       client:visible
       initialQ={q}
-      initialCategory={category}
-      initialKind={kind}
+      initialVertical={vertical}
       hrefBase={hrefBase}
       showSearch={!showHero}
     />

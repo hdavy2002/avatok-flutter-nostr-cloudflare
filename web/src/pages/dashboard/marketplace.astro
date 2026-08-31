@@ -5,9 +5,11 @@ export const prerender = false;
 import Dashboard from '../../layouts/Dashboard.astro';
 import MarketplaceBrowse from '../../components/MarketplaceBrowse.astro';
 
-const category = Astro.url.searchParams.get('category') ?? undefined;
-const kind = Astro.url.searchParams.get('kind') ?? undefined;
+// [MARKET-BAZAAR-2] ?vertical= replaces ?category=/?kind= here too, so the
+// dashboard and the public marketplace speak the same taxonomy.
+const vertical = Astro.url.searchParams.get('vertical') ?? undefined;
+const q = Astro.url.searchParams.get('q')?.trim() || undefined;
 ---
 <Dashboard title="Marketplace · avatok.ai" heading="Marketplace" subtitle="Browse live, book a 1:1, grab a ticket or talk to an AI." active="marketplace">
-  <MarketplaceBrowse hrefBase="/dashboard" category={category} kind={kind} />
+  <MarketplaceBrowse hrefBase="/dashboard" vertical={vertical} q={q} />
 </Dashboard>
