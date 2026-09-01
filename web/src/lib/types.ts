@@ -79,6 +79,22 @@ export interface Card {
    * starts returning a real, stable slug, this becomes the authority.
    */
   slug?: string | null;
+  /** [LIST-DETAIL-1] YouTube intro video link (§2.2). Null on every listing that has
+   *  none — never autoplay when rendering it. */
+  video_url?: string | null;
+  /** [LIST-DETAIL-1] Live translation offered alongside `spoken_lang`. */
+  translation_enabled?: boolean;
+  /**
+   * [LIST-DETAIL-1] Category-specific answers (§2.2), keyed per the category's own
+   * `field_schema`. Also carries the buyer-facing commercial booking policy the
+   * creator filled in — `commercial_refund_window_hours` (live/event),
+   * `commercial_cancellation_window_hours` / `commercial_reschedule_allowed` /
+   * `commercial_booking_notice_hours` / `commercial_preparation_instructions`
+   * (consult) — validated server-side in `commercialPolicyError`
+   * (worker/src/routes/listings.ts). Shape is per-category and per-kind; read
+   * defensively rather than assuming every key is present.
+   */
+  attrs?: Record<string, unknown> | null;
 }
 
 export type ListingKind = 'live' | 'consult' | 'event' | 'agent' | 'content' | string;
@@ -155,6 +171,19 @@ export interface Listing extends Card {
     booked?: boolean;
     is_owner?: boolean;
   };
+  /**
+   * [LIST-DETAIL-1] Category-driven rendering hints, resolved server-side in
+   * `getListing` (worker/src/routes/listings.ts ~line 1684) — present on the detail
+   * response ONLY, never on a browse/search Card. `intent` names the seller's verb
+   * (SELL | RENT | BOOK | LEAD | PROFILE); `price_semantics` names how the price
+   * should read (asking | per_minute | per_hour | per_month | from | range | none);
+   * `detail_template` is the pinned (§2.4) template id. All three default server-side
+   * (SELL / "sell" / "asking") when the category lookup can't resolve, so treat an
+   * absent value as "use the legacy kind-based fallback", not as an error.
+   */
+  intent?: string | null;
+  price_semantics?: string | null;
+  detail_template?: string | null;
 }
 
 export interface CreatorStats {
@@ -177,11 +206,27 @@ export interface Creator {
   reviews?: Review[];
 }
 
+/**
+ * [LIST-DETAIL-1] A review row from /api/listings/:id and /api/creators/:id.
+ *
+ * This interface previously declared a nested `author: CreatorRef` and a `text`
+ * field. The worker (getListing / getCreator, worker/src/routes/listings.ts) has
+ * never sent either — it selects `rv.author_id, rv.rating, rv.body, rv.reply,
+ * rv.reply_at, rv.created_at, u.display_name AS author_name, u.avatar_url AS
+ * author_avatar` — flat columns, not a nested object, and the review text is
+ * `body`. Same [CARD-MODEL-1]-shaped bug as `Card`: it typechecked, so every
+ * review rendered with a blank name/avatar and no text.
+ */
 export interface Review {
   id: string;
-  author?: CreatorRef | null;
+  author_id?: string | null;
+  author_name?: string | null;
+  author_avatar?: string | null;
   rating: number;
-  text?: string | null;
+  body?: string | null;
+  /** The creator's reply, if they left one. */
+  reply?: string | null;
+  reply_at?: number | null;
   created_at?: number;
 }
 

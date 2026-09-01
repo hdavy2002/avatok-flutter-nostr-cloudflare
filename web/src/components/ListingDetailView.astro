@@ -5,12 +5,20 @@
 // signing up the user lands back on the SAME listing inside the dashboard. Guest
 // email checkout is still available as a secondary path.
 import { Avatar, Pill } from '../components';
+import { normalizeListing } from './listing/normalizeListing';
 import { cfImage } from '../lib/config';
+import { durationLabel, languageLabel, priceLabel } from '../lib/card';
 import { inrOrFree, priceBreakdown } from '../lib/money';
-import type { Listing } from '../lib/types';
+import type { CoverMedia, Listing } from '../lib/types';
 
 interface Props { listing: Listing; mode?: 'public' | 'dashboard'; }
-const { listing, mode = 'public' } = Astro.props;
+const { listing: rawListing, mode = 'public' } = Astro.props;
+// [LIST-DETAIL-1] Defensive unwrap — see normalizeListing.ts. `pages/l/[id].astro`
+// already normalizes before this component ever sees the listing, but
+// `pages/dashboard/l/[id].astro` (not in this task's editable file list) still passes
+// the raw `{listing, creator_stats, reviews, viewer}` envelope straight through, so
+// this component does it again rather than assume its caller did.
+const listing = normalizeListing(rawListing);
 
 const id = listing.id;
 const kind = (listing.kind ?? 'content') as string;
@@ -20,11 +28,30 @@ const bookHref = `/book/${encodeURIComponent(id)}`;
 const watchHref = `/watch/${encodeURIComponent(id)}`;
 const agentHref = `/agent/${encodeURIComponent(id)}`;
 
-// Real action + verb for this listing.
+// Real action + verb for this listing (legacy kind-based fallback).
 let actionHref = bookHref; let verb = 'Book';
 if (kind === 'agent') { actionHref = agentHref; verb = 'Talk now'; }
 else if (isLive) { actionHref = watchHref; verb = 'Watch live'; }
 else if (kind === 'live' || kind === 'event') { actionHref = bookHref; verb = 'Get a ticket'; }
+
+// [LIST-DETAIL-1] `intent` is computed server-side PER CATEGORY specifically so the
+// buyer verb can be right without a client-side kind switch (worker/src/routes/
+// listings.ts getListing, ~line 1684). Prefer it — except for an agent-kind listing,
+// where "Talk now" is simply a better verb than the generic SELL→"Buy" the worker
+// defaults every unresolved category to; overriding it there would read as a mistake,
+// not an improvement. Absent `intent` (pre-migration category) keeps the kind switch.
+const INTENT_VERB: Record<string, string> = { SELL: 'Buy', RENT: 'Rent', BOOK: 'Book', LEAD: 'Enquire', PROFILE: 'Connect' };
+if (kind !== 'agent' && listing.intent && INTENT_VERB[listing.intent]) {
+  verb = INTENT_VERB[listing.intent];
+}
+
+// [LIST-DETAIL-1] Whether this listing's own CTA is a checkout path the commercial
+// lane actually charges through. `/book/*` (ticket/consult purchase) and `/watch/*`
+// (paid live entry) both go through the checkout that shipped to production today;
+// `/agent/*` ("Talk now") does not — AI-in-chat/agent surfaces are going dark per the
+// PRODUCT PIVOT (CLAUDE.md), so an agent-kind listing genuinely has no live payment
+// path right now, stale-copy or not.
+const hasCheckoutPath = actionHref === bookHref || actionHref === watchHref;
 
 const FILL = { lime: 'bg-lime text-ink', blue: 'bg-blue text-ink' } as const;
 const ctaClass = (v: 'lime' | 'blue') => ['inline-flex items-center justify-center gap-2.5 select-none no-underline', 'rounded-full border-zine border-ink shadow-zine-sm', 'transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed', 'px-7 py-4 font-display font-semibold text-[19px] leading-none tracking-[-0.2px]', FILL[v]].join(' ');
@@ -34,13 +61,107 @@ const signUpHref = `/sign-up?next=${encodeURIComponent(detailPath)}`;
 // [CARD-MODEL-1] This carried the same bug ListingTile did: it printed `$` and divided
 // by 100 above 1000, so a ₹1,500 listing read as "$15". One token is ₹1 — no division,
 // no dollar sign ([TOKENS-INR-1]).
-const price = inrOrFree(listing.price);
-// [TAX-GST-DISPLAY-1] Quoted, not charged. Checkout is closed (no payment gateway yet),
-// so this tells a buyer what a ticket would cost without anyone being able to buy one.
+//
+// [LIST-DETAIL-1] `price_semantics` (asking | per_minute | per_hour | per_month | from
+// | range | none) is resolved server-side per category and decides how the number
+// should read — a consult billed per minute and an event with one ticket price are
+// different claims about the same integer. `range` has no min/max on the wire today
+// (the response carries one `price`), so it renders the single number plain rather
+// than inventing a range. `none` means this listing isn't sold by a number at all
+// (e.g. a LEAD/PROFILE intent) and hides the price pill entirely.
+function priceTag(price: number | null, semantics?: string | null): string | null {
+  if (semantics === 'none') return null;
+  if (price == null) return null;
+  if (semantics === 'asking') return price === 0 ? 'Free' : `Asking ${priceLabel(price, null)}`;
+  return priceLabel(price, semantics ?? null);
+}
+const price = priceTag(listing.price ?? null, listing.price_semantics);
+// [TAX-GST-DISPLAY-1] Quoted, not charged yet by every gateway on every listing.
 const breakdown = priceBreakdown(listing.price);
-const stats = listing.creator_stats;
+
+// [LIST-DETAIL-1] This listing's OWN rating/review count — not the creator's
+// channel-wide `creator_stats`, which is what the page showed before (every listing
+// on a channel read the same number). `review_count` is a live COUNT(*) over the
+// `reviews` table for this listing (shapeCard, worker/src/routes/listings.ts); the
+// `reviews` array below is only the latest 20, so the count can exceed what renders.
 const reviews = listing.reviews ?? [];
-const ratingVal = listing.rating ?? stats?.rating ?? null;
+const ratingVal = listing.rating_avg ?? null;
+const reviewCount = listing.review_count ?? null;
+
+// ---- newly-rendered fields (starts_at, duration, seats, watching, language,
+// location/country/adults, cover gallery, intro video, commercial policy) ----
+
+function formatStartsAt(ms?: number | null): string | null {
+  if (ms == null) return null;
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return null;
+  const weekday = d.toLocaleDateString('en-IN', { weekday: 'short' });
+  const rest = d.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+  return `${weekday}, ${rest}`;
+}
+const startsAtLabel = formatStartsAt(listing.starts_at);
+const durationTag = durationLabel(listing.duration_min ?? null);
+
+function seatsTag(capacity: number | null | undefined, seatsLeft: number | null | undefined): { text: string; kind: 'ok' | 'no' | 'hint' } | null {
+  if (capacity == null) return null;
+  if (seatsLeft === 0) return { text: 'Housefull', kind: 'no' };
+  // null (not 0) means "we could not count" ([CARD-SCHEMA-1]) — show capacity alone
+  // rather than claim an availability we don't know.
+  if (seatsLeft != null) return { text: `${seatsLeft} of ${capacity} free`, kind: 'ok' };
+  return { text: `${capacity} spots`, kind: 'hint' };
+}
+const seats = seatsTag(listing.capacity, listing.seats_left);
+const showWatching = isLive && listing.watching != null;
+
+const langTag = languageLabel(listing.spoken_lang ?? null);
+const hasTranslation = !!listing.translation_enabled;
+
+const covers = (listing.cover_media ?? []).filter((m): m is CoverMedia => !!m && typeof m === 'object' && !!(m.url || m.r2_key));
+const galleryRest = covers.slice(1).map((m) => m.url ?? m.r2_key ?? '').filter(Boolean);
+const posterUrl = covers[0]?.url ?? covers[0]?.r2_key ?? null;
+
+// YouTube only, and only if we can extract a real video id — never hand an arbitrary
+// URL to an <iframe src>. No autoplay param, per spec.
+function youtubeEmbedUrl(url?: string | null): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, '').replace(/^m\./, '');
+    let vid: string | null = null;
+    if (host === 'youtu.be') vid = u.pathname.slice(1);
+    else if (host === 'youtube.com') {
+      if (u.pathname === '/watch') vid = u.searchParams.get('v');
+      else if (u.pathname.startsWith('/embed/')) vid = u.pathname.slice('/embed/'.length);
+      else if (u.pathname.startsWith('/shorts/')) vid = u.pathname.slice('/shorts/'.length);
+    }
+    vid = vid ? vid.split(/[?&]/)[0] : null;
+    return vid && /^[\w-]{6,20}$/.test(vid) ? `https://www.youtube-nocookie.com/embed/${vid}` : null;
+  } catch { return null; }
+}
+const videoEmbed = youtubeEmbedUrl(listing.video_url);
+const hasVideoLink = !videoEmbed && !!listing.video_url;
+
+// [LIST-DETAIL-1] "Before you book" — the buyer-facing commercial policy the creator
+// already filled in, translated out of raw hour-count keys into plain English. Kept
+// data-driven (render whatever keys are present) rather than branched on `kind`, so a
+// listing whose category the server couldn't resolve still shows whatever it has.
+const attrs = (listing.attrs ?? {}) as Record<string, unknown>;
+function cancellationLine(hours: unknown, subject: string): string | null {
+  const n = Number(hours);
+  if (!Number.isFinite(n)) return null;
+  return n === 0 ? `Free cancellation any time before ${subject}` : `Free cancellation up to ${n} hour${n === 1 ? '' : 's'} before ${subject}`;
+}
+const cancelLine = cancellationLine(attrs.commercial_refund_window_hours, 'it starts')
+  ?? cancellationLine(attrs.commercial_cancellation_window_hours, 'your session');
+const noticeHours = Number(attrs.commercial_booking_notice_hours);
+const noticeLine = Number.isFinite(noticeHours) ? `Book at least ${noticeHours} hour${noticeHours === 1 ? '' : 's'} in advance` : null;
+const rescheduleAllowed = attrs.commercial_reschedule_allowed;
+const rescheduleLine = typeof rescheduleAllowed === 'boolean'
+  ? (rescheduleAllowed ? 'Free rescheduling, any time before it starts' : 'No rescheduling — cancel instead if your plans change')
+  : null;
+const prepInstructions = attrs.commercial_preparation_instructions;
+const prepText = typeof prepInstructions === 'string' && prepInstructions.trim() ? prepInstructions.trim() : null;
+const bookingTerms = [cancelLine, noticeLine, rescheduleLine].filter((s): s is string => !!s);
 ---
 
 <main class="mx-auto max-w-5xl px-4 py-8">
@@ -49,8 +170,8 @@ const ratingVal = listing.rating ?? stats?.rating ?? null;
     <div class="md:sticky md:top-20 self-start">
       <div class="overflow-hidden rounded-zine border-zine border-ink bg-paper2 shadow-zine">
         <div class="relative aspect-[4/5] w-full">
-          {listing.poster ? (
-            <img src={cfImage(listing.poster, { width: 760, fit: 'cover' })} alt={listing.title} class="h-full w-full object-cover" />
+          {posterUrl ? (
+            <img src={cfImage(posterUrl, { width: 760, fit: 'cover' })} alt={listing.title} class="h-full w-full object-cover" />
           ) : (
             <div class="flex h-full w-full items-center justify-center font-mono uppercase text-inkMute text-[15px] tracking-[0.08em] font-bold">{kind}</div>
           )}
@@ -58,6 +179,22 @@ const ratingVal = listing.rating ?? stats?.rating ?? null;
           {listing.category && <span class="absolute right-3 top-3"><Pill kind="plain">{listing.category}</Pill></span>}
         </div>
       </div>
+
+      {/* [LIST-DETAIL-1] cover_media beyond the first entry used to be dropped on the
+          floor — every extra photo the creator uploaded simply never rendered. */}
+      {galleryRest.length > 0 && (
+        <div class="mt-3 flex gap-2 overflow-x-auto pb-1">
+          {galleryRest.map((url) => (
+            <a href={cfImage(url, { width: 1200, fit: 'cover' })} target="_blank" rel="noopener" class="shrink-0">
+              <img
+                src={cfImage(url, { width: 160, fit: 'cover' })}
+                alt=""
+                class="h-16 w-16 rounded-zine border-zine border-ink object-cover shadow-zine-xs"
+              />
+            </a>
+          ))}
+        </div>
+      )}
     </div>
 
     <!-- Detail -->
@@ -77,11 +214,31 @@ const ratingVal = listing.rating ?? stats?.rating ?? null;
         </a>
       )}
 
+      {/* [LIST-DETAIL-1] The single most obviously missing thing: a scheduled listing
+          showed no date or time at all. */}
+      {startsAtLabel && (
+        <div class="flex items-baseline gap-2">
+          <span class="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-inkSoft">When</span>
+          <span class="font-display font-semibold text-[16px] text-ink">{startsAtLabel}</span>
+        </div>
+      )}
+
       <div class="flex flex-wrap items-center gap-2.5">
         {price && <Pill kind="plain">{price}</Pill>}
         {ratingVal != null && <Pill kind="ok">★ {Number(ratingVal).toFixed(1)}</Pill>}
-        {stats?.reviews != null && <Pill kind="hint">{stats.reviews} reviews</Pill>}
+        {reviewCount != null && reviewCount > 0 && <Pill kind="hint">{reviewCount} review{reviewCount === 1 ? '' : 's'}</Pill>}
+        {durationTag && <Pill kind="plain">{durationTag}</Pill>}
+        {seats && <Pill kind={seats.kind}>{seats.text}</Pill>}
+        {showWatching && <Pill kind="no">● {listing.watching} watching</Pill>}
+        {langTag && <Pill kind="hint">{langTag}</Pill>}
+        {listing.location && <Pill kind="hint">{listing.location}</Pill>}
+        {listing.country && <Pill kind="hint">{listing.country}</Pill>}
+        {listing.adults_only && <Pill kind="no">18+</Pill>}
       </div>
+
+      {hasTranslation && (
+        <p class="-mt-2 font-body font-bold text-[13px] text-inkSoft">Live translation available during the session.</p>
+      )}
 
       <!-- CTA -->
       {mode === 'dashboard' ? (
@@ -122,12 +279,48 @@ const ratingVal = listing.rating ?? stats?.rating ?? null;
               <dd class="font-display font-semibold text-[19px] text-ink">{inrOrFree(breakdown.total)}</dd>
             </div>
           </dl>
-          {/* Honest about the state of things: the price is real, the checkout is not
-              built yet. Saying "coming soon" beats a Pay button that cannot take money. */}
-          <p class="mt-3 font-body font-bold text-[13px] text-inkSoft">
-            Online payment is coming soon — we're setting up our payment provider.
-            Prices are indicative while we're in testing.
-          </p>
+          {/* [LIST-DETAIL-1] Commercial checkout shipped to production today, so this
+              copy is stale for anything checkout actually covers. SIGNAL USED: we
+              cannot call GET /api/pay/methods here — it's requireUser-gated and this
+              is a guest-facing SSR page with no auth token to send — so instead of
+              "does the buyer have a configured payment method" we ask "does this
+              listing's own CTA lead to a checkout path at all" (hasCheckoutPath,
+              computed above). That's the closest available proxy for "unbookable":
+              an agent-kind listing has no live payment path regardless of gateway
+              config, because AI-in-chat/agent surfaces are dark per the product
+              pivot, while a /book or /watch listing is exactly what went live today. */}
+          {!hasCheckoutPath && (
+            <p class="mt-3 font-body font-bold text-[13px] text-inkSoft">
+              Online payment isn't available for this listing yet.
+              Prices are indicative while we're in testing.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* [LIST-DETAIL-1] "Before you book" — the creator's own booking policy,
+          translated out of raw hour-count keys into plain English. Omitted entirely
+          (not a placeholder) when the listing carries none of these — a category
+          that doesn't collect them yet is not the same claim as "no refunds". */}
+      {(bookingTerms.length > 0 || prepText) && (
+        <div class="rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm">
+          <h2 class="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">Before you book</h2>
+          {bookingTerms.length > 0 && (
+            <ul class="mt-3 flex flex-col gap-1.5">
+              {bookingTerms.map((line) => (
+                <li class="flex items-start gap-2 font-body font-bold text-[14px] leading-relaxed text-inkSoft">
+                  <span aria-hidden="true" class="mt-[3px] text-ink">✓</span>
+                  <span>{line}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {prepText && (
+            <div class="mt-3 border-t-zine border-ink pt-3">
+              <span class="font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-inkSoft">What to prepare</span>
+              <p class="mt-1 whitespace-pre-line font-body font-bold text-[14px] leading-relaxed text-inkSoft">{prepText}</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -137,17 +330,48 @@ const ratingVal = listing.rating ?? stats?.rating ?? null;
         </div>
       )}
 
+      {/* [LIST-DETAIL-1] `video_url` was collected and never shown. Never autoplayed —
+          youtube-nocookie with no autoplay param, and a plain link when the URL isn't
+          a YouTube link we can safely embed. */}
+      {(videoEmbed || hasVideoLink) && (
+        <div class="rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm">
+          <h2 class="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">Intro video</h2>
+          {videoEmbed ? (
+            <div class="mt-3 aspect-video w-full overflow-hidden rounded-zine border-zine border-ink">
+              <iframe
+                src={videoEmbed}
+                title={`${listing.title} — intro video`}
+                class="h-full w-full"
+                loading="lazy"
+                allow="encrypted-media; picture-in-picture"
+                allowfullscreen
+              />
+            </div>
+          ) : (
+            <a href={listing.video_url ?? '#'} target="_blank" rel="noopener" class="mt-2 inline-block font-body font-bold text-[14px] text-blueInk underline decoration-ink/30 underline-offset-2">
+              Watch the intro ↗
+            </a>
+          )}
+        </div>
+      )}
+
       {reviews.length > 0 && (
         <section class="flex flex-col gap-3">
           <h2 class="font-display font-semibold text-[20px] text-ink">Reviews</h2>
           {reviews.slice(0, 8).map((r) => (
             <div class="rounded-zine border-zine border-ink bg-card p-4 shadow-zine-xs">
               <div class="flex items-center gap-2.5">
-                <Avatar src={r.author?.avatar} name={r.author?.name ?? r.author?.handle} size={32} />
-                <span class="font-display font-semibold text-[14px] text-ink">{r.author?.name ?? r.author?.handle ?? 'Guest'}</span>
+                <Avatar src={r.author_avatar} name={r.author_name} size={32} />
+                <span class="font-display font-semibold text-[14px] text-ink">{r.author_name ?? 'Guest'}</span>
                 <span class="ml-auto font-mono text-[14px] text-mintInk font-bold">★ {r.rating.toFixed(1)}</span>
               </div>
-              {r.text && <p class="mt-2 font-body font-bold text-[14px] text-inkSoft">{r.text}</p>}
+              {r.body && <p class="mt-2 font-body font-bold text-[14px] text-inkSoft">{r.body}</p>}
+              {r.reply && (
+                <div class="mt-2 rounded-zine border-zine border-inkMute bg-paper2 p-3">
+                  <span class="font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft">Creator reply</span>
+                  <p class="mt-1 font-body font-bold text-[13px] text-inkSoft">{r.reply}</p>
+                </div>
+              )}
             </div>
           ))}
         </section>

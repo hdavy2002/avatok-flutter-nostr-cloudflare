@@ -7,6 +7,7 @@ export const prerender = false;
 import Base from '../../layouts/Base.astro';
 import AuthRedirect from '../../components/AuthRedirect.astro';
 import ListingDetailView from '../../components/ListingDetailView.astro';
+import { normalizeListing } from '../../components/listing/normalizeListing';
 import { getListing, ApiError } from '../../lib/apiClient';
 import { listingOg } from '../../lib/og';
 import type { Listing } from '../../lib/types';
@@ -16,7 +17,11 @@ const { id } = Astro.params;
 let listing: Listing | null = null;
 let notFound = false;
 try {
-  listing = await getListing(id!);
+  // [LIST-DETAIL-1] getListing() returns the raw `{listing, creator_stats, reviews,
+  // viewer}` envelope, not a flat Listing — see normalizeListing.ts for why. Unwrap
+  // here so `listingOg()` below (which reads listing.title/description/poster/price)
+  // gets real values instead of undefined.
+  listing = normalizeListing(await getListing(id!));
 } catch (e) {
   if (e instanceof ApiError && (e.status === 404 || e.status === 410)) notFound = true;
   else throw e;
