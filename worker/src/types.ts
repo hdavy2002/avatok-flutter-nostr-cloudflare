@@ -351,6 +351,20 @@ export interface Env {
   CASHFREE_ENV?: string;           // "sandbox" | "production"
   CASHFREE_RETURN_URL?: string;    // where the browser lands after paying
 
+  // [PAY-RAIL-1] The generic multi-gateway layer (lib/payments/*, routes/pay.ts).
+  // Absent ⇒ that adapter's `configured(env)` is false and it simply does not appear in
+  // `/api/pay/methods` — same "half-configured is off, not degraded" discipline as
+  // Cashfree above. STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET already exist above (used
+  // by the wallet top-up rail) and are REUSED for the international, non-INR adapter —
+  // no new Stripe secret names, per spec §2.7.
+  RAZORPAY_KEY_ID?: string;
+  RAZORPAY_KEY_SECRET?: string;
+  RAZORPAY_WEBHOOK_SECRET?: string;
+  PAYTM_MID?: string;
+  PAYTM_MERCHANT_KEY?: string;
+  PAYTM_WEBSITE?: string;
+  PAYTM_ENV?: string;              // "staging" | "production" — mirrors CASHFREE_ENV
+
   // AvaPayout (Phase 4). Production transfers flag-gated OFF pending legal (§10.3).
   PAYOUT_ENABLED?: string;         // "1" enables Wise transfers (ONLY after legal)
   WISE_API_KEY?: string;

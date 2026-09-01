@@ -53,6 +53,7 @@ import { walletStatement, walletStatementExport, walletSummary, walletTopupQuote
 import { adminLedger, adminRefund, adminAdjust, adminAccount, adminRecon, adminEscrowHold, adminEscrowRelease, adminTaxExport, adminFailedSettlements, adminRetrySettlement, requireAdmin } from "./routes/admin_money";
 import { adminCommercialClaims, adminResolveCommercialClaim } from "./routes/commercial_admin_claims";
 import { cashfreeCreateOrder, cashfreeWebhook, cashfreeStatus } from "./routes/cashfree";
+import { payMethods, payCreateOrder, payWebhook, payStatus } from "./routes/pay"; // [PAY-RAIL-1]
 import { dynwAcceptance } from "./routes/dynw_test"; // [DYNW-CORE-1] Phase 0 acceptance battery (admin-only, dark behind dynamicWorkersEnabled)
 import { receptRules } from "./routes/recept_rules"; // [DYNW-RECEPT-RULES-1] owner receptionist rule scripts
 import { welcomeBackfill } from "./routes/welcome_bonus"; // [WELCOME-100-1]
@@ -1150,6 +1151,22 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/pay/cashfree/order" && req.method === "POST") return await cashfreeCreateOrder(req, env);
       if (p === "/api/pay/cashfree/webhook" && req.method === "POST") return await cashfreeWebhook(req, env);
       if (p === "/api/pay/cashfree/status" && req.method === "GET") return await cashfreeStatus(req, env);
+      // [PAY-RAIL-1] Generic multi-gateway routes — Razorpay, Paytm, Stripe (intl), and
+      // Cashfree wired for completeness (lib/payments/registry.ts). Placed AFTER the
+      // literal /api/pay/cashfree/* checks above, so those keep taking priority for that
+      // exact path and this generic form never shadows the dedicated Cashfree lane.
+      // The webhook is deliberately NOT under requireUser, same reasoning as Cashfree's:
+      // each gateway authenticates with its own signature over the raw body, verified by
+      // the adapter's verifyWebhook() before anything parses it.
+      if (p === "/api/pay/methods" && req.method === "GET") return await payMethods(req, env);
+      {
+        const pm = p.match(/^\/api\/pay\/([a-z]+)\/order$/);
+        if (pm && req.method === "POST") return await payCreateOrder(req, env, pm[1]);
+        const pw = p.match(/^\/api\/pay\/([a-z]+)\/webhook$/);
+        if (pw && req.method === "POST") return await payWebhook(req, env, pw[1]);
+        const ps = p.match(/^\/api\/pay\/([a-z]+)\/status$/);
+        if (ps && req.method === "GET") return await payStatus(req, env, ps[1]);
+      }
       if ((p === "/webhooks/stripe" || p === "/api/wallet/stripe-webhook") && req.method === "POST") return await stripeWebhook(req, env);
       if (p === "/api/wallet/spend" && req.method === "POST") return await walletSpend(req, env);
       // --- AvaReferral (invite → coins; inviter-only, server-priced reward) ---

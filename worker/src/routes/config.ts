@@ -79,6 +79,22 @@ export interface PlatformConfig {
    */
   cashfreeEnabled: boolean;
   guestCheckoutEnabled: boolean;
+  /**
+   * [PAY-RAIL-1] The generic multi-gateway layer (lib/payments/*, routes/pay.ts).
+   * Razorpay/Paytm/Stripe are offered side by side with NO default — the buyer picks
+   * every time (owner decision, spec §1). Each gateway also needs its own real secrets
+   * configured (§2.7) before it can appear in `GET /api/pay/methods`; the flag alone is
+   * not enough, same discipline as `cashfreeEnabled` above.
+   *
+   * `payGatewayPickerEnabled` gates the picker AS A WHOLE — even with individual gateway
+   * flags on, the picker (and therefore order creation) stays off until this is also true.
+   *
+   * ⚠️ UNVERIFIED AGAINST A LIVE GATEWAY for razorpay/paytm/stripe. All four default false.
+   */
+  razorpayEnabled: boolean;
+  paytmEnabled: boolean;
+  stripeIntlEnabled: boolean;
+  payGatewayPickerEnabled: boolean;
   commercialConsultJoinEarlyMin: number;
   commercialConsultJoinLateMin: number;
   commercialConsultExtensionEnabled: boolean;
@@ -1759,6 +1775,12 @@ const DEFAULTS: PlatformConfig = {
   // exercised end to end and real credentials are configured.
   cashfreeEnabled: false,
   guestCheckoutEnabled: false,
+  // [PAY-RAIL-1] See the interface comment. All four OFF until the sandbox has been
+  // exercised end to end and real credentials are configured for each gateway.
+  razorpayEnabled: false,
+  paytmEnabled: false,
+  stripeIntlEnabled: false,
+  payGatewayPickerEnabled: false,
   commercialConsultJoinEarlyMin: 10,
   commercialConsultJoinLateMin: 2,
   // Paid consultation extensions stay dark until an owner-configured duration
