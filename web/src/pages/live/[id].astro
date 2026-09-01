@@ -1,0 +1,66 @@
+---
+// /live/<id> — GetStream-transported paid livestream viewer. [WEB-GS-LIVE-1]
+//
+// This is a NEW transport for the SAME product idea as /watch/<id> (which stays
+// on the Cloudflare Stream Live lane, untouched — see CLAUDE.md PRODUCT PIVOT /
+// SPEC-2026-09-01 §4.3). This page serves the commercial paid-live-event lane:
+// credentials are minted server-side by commercial_stream_sessions.ts and
+// consumed here via lib/getstream.ts. The page shell is SSR (fast first paint,
+// correct link preview); the join, GetStream connection and chat are entirely
+// client-side, handled by the LiveGsViewer island.
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import LiveGsViewer from '../../islands/live-gs/LiveGsViewer.tsx';
+import { getListing, ApiError } from '../../lib/apiClient';
+import { listingOg } from '../../lib/og';
+import type { Listing } from '../../lib/types';
+
+const { id } = Astro.params;
+
+// Public read for the loading/poster state. The page must still open even if
+// this fails — the island re-authorizes the join itself — so we degrade
+// gracefully rather than 404.
+let listing: Listing | null = null;
+try {
+  listing = await getListing(id!);
+} catch (e) {
+  if (!(e instanceof ApiError)) throw e;
+}
+
+const title = listing?.title ?? 'Live session';
+const poster = listing?.poster ?? null;
+const creatorName = listing?.creator?.name ?? listing?.creator?.handle ?? null;
+const creatorHandle = listing?.creator?.handle ?? null;
+const creatorAvatar = listing?.creator?.avatar ?? null;
+const price = listing?.effective_price ?? listing?.price ?? null;
+
+const og = listing
+  ? listingOg(listing)
+  : { title: `${title} · avatok.ai`, description: 'Watch live on avatok.ai.', image: undefined, extra: [] as Array<{ property?: string; name?: string; content: string }> };
+
+// The shell is cacheable; the island fetches join state per-viewer.
+Astro.response.headers.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
+---
+
+<Base title={og.title} description={og.description} image={og.image} chrome={false}>
+  {og.extra.map((m) => (m.property ? <meta property={m.property} content={m.content} slot="head" /> : <meta name={m.name} content={m.content} slot="head" />))}
+
+  <main class="min-h-screen bg-paper">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+      <a href="/explore" class="font-display font-semibold text-[18px] text-ink no-underline">avatok.ai</a>
+      <a href="/explore" class="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-blueInk no-underline">← Explore</a>
+    </div>
+
+    <LiveGsViewer
+      client:load
+      listingId={id!}
+      title={title}
+      poster={poster}
+      price={price}
+      creatorName={creatorName}
+      creatorHandle={creatorHandle}
+      creatorAvatar={creatorAvatar}
+    />
+  </main>
+</Base>
