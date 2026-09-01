@@ -18,8 +18,17 @@ import { commercialLaneState, commercialLaneFlags, type CommercialLaneState } fr
 import { taxFor, type TaxBreakdown } from "../lib/commercial_tax";
 import { claimBlock, releaseBlocks } from "../cal/engine";
 import { notifyCommercialUsers } from "../lib/commercial_notifications";
+import type { GatewayId } from "../lib/payments/types";
 
 type CheckoutKind = "live_event" | "consult_1to1";
+
+// [PAY-RAIL-2] The site currency is the rupee (CLAUDE.md, spec §1) and `currency_display`
+// is a genuinely multi-currency field a LISTING can set — this constant is only the
+// FALLBACK for a listing that never set one. It was hardcoded "USD" in three places below;
+// changing the fallback here changes all three at once and keeps them from drifting apart
+// again. Existing rows that already stored "USD" from before this change are untouched —
+// this only affects what a NEW listing with no currency_display gets from now on.
+const DEFAULT_CURRENCY = "INR";
 
 type Listing = {
   id: string;
@@ -468,9 +477,14 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
 }
 
 /** [PAY-HANDOFF-1] How a purchase is funded. The only thing that differs between the
- *  wallet lane and the gateway lane. */
+ *  wallet lane and the gateway lane.
+ *  [PAY-RAIL-2] `rail` is widened from the original `"wallet" | "cashfree"` to every
+ *  known gateway id, so a Razorpay/Paytm/Stripe purchase is ledgered and receipted under
+ *  its OWN name instead of being mislabeled "cashfree". See provisionFromGatewayPurchase
+ *  below and lib/commercial_refund_rail.ts, which reads this label back to pick the
+ *  refund adapter. */
 export type PurchaseFunding = {
-  rail: "wallet" | "cashfree";
+  rail: "wallet" | GatewayId;
   /** Move `amount` into escrow:<orderId>. `duplicate` means it was already there. */
   fund(amount: number): Promise<{ ok: boolean; status: number; duplicate: boolean }>;
   /** Take `amount` back out of escrow when provisioning fails after funding. */
@@ -596,7 +610,7 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
           conversion_snapshot_json,policy_version,created_at,gst_rate_pct,gst_amount,taxable_base)
          VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)`,
       ).bind(policySnapshotId, orderId, listing.id, bookingId, auth.uid, listing.creator_id, route.kind, price,
-        listing.currency_display ?? "USD", creatorFeePct, settlementHoldHours, platformFeeAmount, creatorAmount,
+        listing.currency_display ?? DEFAULT_CURRENCY, creatorFeePct, settlementHoldHours, platformFeeAmount, creatorAmount,
         policyJson, JSON.stringify({ request_sha256: requestHash, price_source: "listing.price" }),
         CHECKOUT_POLICY_VERSION, now, tax.gstRatePct, tax.gstAmount, tax.taxableBase),
     ]);
@@ -626,7 +640,7 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
       || policyRow.listing_id !== listing.id || (policyRow.booking_id ?? null) !== bookingId
       || policyRow.buyer_id !== auth.uid || policyRow.creator_id !== listing.creator_id
       || policyRow.kind !== route.kind || Number(policyRow.gross_amount) !== price
-      || policyRow.currency !== (listing.currency_display ?? "USD")
+      || policyRow.currency !== (listing.currency_display ?? DEFAULT_CURRENCY)
       || Number(policyRow.creator_fee_pct) !== creatorFeePct
       || Number(policyRow.settlement_hold_hours) !== settlementHoldHours
       || Number(policyRow.platform_fee_amount) !== platformFeeAmount
@@ -798,7 +812,7 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
       gst_rate_pct: tax.gstRatePct,
       gst_amount: tax.gstAmount,
       charged_amount: tax.buyerTotal,
-      currency: listing.currency_display ?? "USD",
+      currency: listing.currency_display ?? DEFAULT_CURRENCY,
       starts_at: route.kind === "live_event" ? startsAt : slotStart,
       ends_at: route.kind === "live_event" ? endsAt : slotEnd,
       access: "account_bound",
@@ -899,7 +913,7 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
 /**
  * [PAY-HANDOFF-1] The gateway lane's entry into the shared provisioning path.
  *
- * Called from the Cashfree webhook AFTER the payment is verified against the gateway.
+ * Called from a gateway webhook AFTER the payment is verified against the gateway.
  * Re-derives everything from the LISTING — policy, schedule, tax — rather than trusting
  * anything carried on the purchase row, so a listing that changed between order creation
  * and payment cannot provision a ticket on stale terms. The one thing it does trust is
@@ -909,7 +923,21 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
  * `funding.fund` is holdExternal — money already taken at the gateway, credited into the
  * same escrow bucket the wallet lane uses, so release/split/settlement/refund all run
  * unchanged. `funding.reverse` is refundExternal, which records the money going back OUT
- * to the gateway; the actual reversal to the payer's UPI handle is the caller's job.
+ * to the gateway; the actual reversal to the payer's source (UPI/card/wallet) is the
+ * caller's job.
+ *
+ * [PAY-RAIL-2] `args.gateway` names WHICH gateway actually settled the payment.
+ * It defaults to `"cashfree"` — the ORIGINAL, hardcoded behaviour — so this function is
+ * BYTE-IDENTICAL for every caller that omits it (today: routes/cashfree.ts, and any other
+ * caller written before this change). Only routes/pay.ts's generic webhook passes it
+ * explicitly, one per adapter. Before this fix, EVERY caller was forced into the literal
+ * strings `cashfree-order:…` / rail `"cashfree"` / ledger source `"cashfree"` regardless
+ * of which gateway actually took the money — so a Razorpay- or Paytm-funded purchase was
+ * ledgered, receipted, and (see lib/commercial_refund_rail.ts) refunded as if it were a
+ * Cashfree charge. Generalising the prefix/rail/source to the real gateway id is the whole
+ * fix; nothing else about the shape changes, and no already-settled Cashfree row is
+ * touched or reinterpreted — they keep the exact `cashfree-order:` prefix and `"cashfree"`
+ * rail they were written with, because `gateway` defaults to `"cashfree"` for them too.
  */
 export async function provisionFromGatewayPurchase(env: Env, args: {
   uid: string;
@@ -920,7 +948,9 @@ export async function provisionFromGatewayPurchase(env: Env, args: {
   purchaseId: string;
   gatewayRef: string;
   slot?: { start_at: number; end_at: number } | null;
+  gateway?: GatewayId;
 }): Promise<Response> {
+  const gateway: GatewayId = args.gateway ?? "cashfree";
   const config = await readConfig(env);
   const listing = await metaDb(env).prepare(
     `SELECT id,creator_id,kind,title,status,price,currency_display,starts_at,duration_min,capacity,attrs
@@ -958,10 +988,14 @@ export async function provisionFromGatewayPurchase(env: Env, args: {
   }
 
   // Derived from the purchase, so a webhook redelivery lands on the same ids and the
-  // whole path is idempotent exactly as the wallet lane's is.
-  const orderId = `cashfree-order:${args.purchaseId}`;
-  const operationId = `commercial-checkout:cashfree:${args.purchaseId}`;
-  const requestHash = await sha256Hex(`cashfree:${args.purchaseId}:${args.gatewayRef}`);
+  // whole path is idempotent exactly as the wallet lane's is. Prefixed with the ACTUAL
+  // gateway (defaults to "cashfree", see this function's header) so the commercial order,
+  // the checkout operation and the ledger source all carry the true rail — this is what
+  // lets commercial_refund_rail.ts find a Razorpay/Paytm/Stripe purchase and reverse it on
+  // the right adapter instead of falling through to a wallet credit.
+  const orderId = `${gateway}-order:${args.purchaseId}`;
+  const operationId = `commercial-checkout:${gateway}:${args.purchaseId}`;
+  const requestHash = await sha256Hex(`${gateway}:${args.purchaseId}:${args.gatewayRef}`);
   if (!await assertCheckoutSchema(env)) return json({ error: "commercial checkout unavailable" }, 503);
   // finishOperation() UPDATEs this row; without it the outcome would be recorded nowhere.
   await metaDb(env).prepare(
@@ -979,12 +1013,12 @@ export async function provisionFromGatewayPurchase(env: Env, args: {
     bookingId: args.bookingId,
     requestHash,
     funding: {
-      rail: "cashfree",
+      rail: gateway,
       async fund(amount) {
         const r = await holdExternal(env, orderId, amount, {
-          opId: `cashfree:hold:${args.gatewayRef}`,
+          opId: `${gateway}:hold:${args.gatewayRef}`,
           uid: args.uid,
-          source: "cashfree",
+          source: gateway,
           ref: args.gatewayRef,
           title: listing.title,
         });
@@ -995,9 +1029,9 @@ export async function provisionFromGatewayPurchase(env: Env, args: {
       },
       async reverse(amount) {
         await refundExternal(env, orderId, amount, {
-          opId: `cashfree:reverse:${args.gatewayRef}`,
+          opId: `${gateway}:reverse:${args.gatewayRef}`,
           uid: args.uid,
-          source: "cashfree",
+          source: gateway,
           reason: "commercial provisioning failed",
           ref: args.gatewayRef,
         });

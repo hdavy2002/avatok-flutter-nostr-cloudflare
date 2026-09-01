@@ -11,26 +11,49 @@
 // cancelled events before they could withdraw their own money. That lane is built for
 // creator EARNINGS, not for giving a customer their money back.
 //
-// ASYNCHRONY IS THE TRAP. Cashfree refunds are async: a 200 from their API means
-// "accepted", not "the money is back". So a gateway reversal lands the receipt in
-// `refund_pending`, never `refunded`, until their refund webhook confirms it. Marking it
-// complete on the API response is how a buyer gets told they were refunded when they
+// ASYNCHRONY IS THE TRAP. Cashfree refunds (and every other gateway's, per the shared
+// GatewayAdapter.refund() contract in lib/payments/types.ts) are async: a 200 from their
+// API means "accepted", not "the money is back". So a gateway reversal lands the receipt
+// in `refund_pending`, never `refunded`, until their refund webhook confirms it. Marking
+// it complete on the API response is how a buyer gets told they were refunded when they
 // were not.
+//
+// [PAY-RAIL-2] GATEWAY-AWARE RAIL LOOKUP. This used to look ONLY in `direct_purchases`,
+// which only routes/cashfree.ts ever writes a row into. A Razorpay/Paytm/Stripe purchase
+// is funded through routes/pay.ts's `gateway_orders` table instead, so it was invisible
+// here and fell through to "wallet" — a buyer who paid by card got a wallet credit they
+// could not withdraw, instead of a reversal to their card. `refundRailFor` now also
+// checks `gateway_orders` for every non-cashfree gateway id, recovering the gateway and
+// its own order id from the commercial order-id PREFIX that
+// commercial_checkout.ts's `provisionFromGatewayPurchase` mints (`${gateway}-order:${purchaseId}`,
+// see [PAY-RAIL-2] there). The original `direct_purchases` lookup is untouched and tried
+// FIRST, so every already-settled Cashfree order resolves exactly as it did before this
+// change — this is additive, not a rewrite of the Cashfree path.
 import type { Env } from "../types";
 import { metaDb } from "../db/shard";
 import { refund, refundExternal } from "../ledger";
 import { refundCashfreeOrder } from "./cashfree";
+import { isGatewayId, resolveGateway } from "./payments/registry";
+import type { GatewayId } from "./payments/types";
 
 export type RefundRail =
   | { rail: "wallet" }
-  | { rail: "cashfree"; purchaseId: string; gatewayOrderId: string };
+  | { rail: "cashfree"; purchaseId: string; gatewayOrderId: string }
+  | { rail: Exclude<GatewayId, "cashfree">; purchaseId: string; gatewayOrderId: string };
+
+// Matches the order-id shape `provisionFromGatewayPurchase` mints: `${gateway}-order:${purchaseId}`.
+// `purchaseId` can itself contain "-order:" (routes/pay.ts's default id is `pay-order:<uuid>`),
+// so the gateway-id group is greedy only over `[a-z]+` (no hyphens) — it naturally stops at
+// the first hyphen and leaves the rest of the string, "-order:" included, as the purchase id.
+const GATEWAY_ORDER_ID_RE = /^([a-z]+)-order:(.+)$/;
 
 /**
- * How was this order funded? `direct_purchases` only has a row when a gateway paid, so
- * its absence IS the answer for every wallet-funded order.
+ * How was this order funded? `direct_purchases` only has a row when Cashfree paid, so its
+ * absence IS the answer for every wallet-funded order — UNLESS another gateway's adapter
+ * funded it through `gateway_orders` (checked second, see file header).
  *
- * Fails to "wallet" when the table is missing (the migration is not auto-applied), which
- * is correct: before that migration exists, no order can have been gateway-funded.
+ * Fails to "wallet" when a table is missing (a migration not yet applied), which is
+ * correct: before that migration exists, no order can have been funded on that rail.
  */
 export async function refundRailFor(env: Env, orderId: string): Promise<RefundRail> {
   try {
@@ -38,16 +61,38 @@ export async function refundRailFor(env: Env, orderId: string): Promise<RefundRa
       `SELECT purchase_id, gateway_order_id FROM direct_purchases
         WHERE order_id=?1 AND status IN ('credited','paid') LIMIT 1`,
     ).bind(orderId).first<{ purchase_id: string; gateway_order_id: string }>();
-    if (!row) return { rail: "wallet" };
-    return { rail: "cashfree", purchaseId: row.purchase_id, gatewayOrderId: row.gateway_order_id };
+    if (row) return { rail: "cashfree", purchaseId: row.purchase_id, gatewayOrderId: row.gateway_order_id };
   } catch {
     return { rail: "wallet" };
   }
+
+  const match = GATEWAY_ORDER_ID_RE.exec(orderId);
+  if (match) {
+    const [, maybeGateway, purchaseId] = match;
+    if (isGatewayId(maybeGateway) && maybeGateway !== "cashfree") {
+      try {
+        const row = await metaDb(env).prepare(
+          `SELECT order_id, gateway_order_id FROM gateway_orders
+             WHERE order_id=?1 AND gateway=?2 AND status IN ('credited','paid') LIMIT 1`,
+        ).bind(purchaseId, maybeGateway).first<{ order_id: string; gateway_order_id: string }>();
+        if (row) {
+          return {
+            rail: maybeGateway as Exclude<GatewayId, "cashfree">,
+            purchaseId: row.order_id,
+            gatewayOrderId: row.gateway_order_id,
+          };
+        }
+      } catch {
+        return { rail: "wallet" };
+      }
+    }
+  }
+  return { rail: "wallet" };
 }
 
 export type RefundOutcome =
   | { ok: true; state: "refunded"; rail: "wallet" }
-  | { ok: true; state: "refund_pending"; rail: "cashfree" }
+  | { ok: true; state: "refund_pending"; rail: GatewayId }
   | { ok: false; error: string };
 
 /**
@@ -78,32 +123,60 @@ export async function executeCommercialRefund(env: Env, args: {
   // Ledger FIRST: it is the record that the money left escrow, and it refuses when
   // escrow is short rather than reversing money that is not there. Asking the gateway
   // first and failing here would leave the gateway reversing money the books still show
-  // as held.
+  // as held. `opId`/`source` are keyed on `rail.rail` (was hardcoded "cashfree") — for a
+  // Cashfree order rail.rail is still literally "cashfree", so this branch produces the
+  // exact same ledger row it always did for every existing Cashfree refund.
   const ledger = await refundExternal(env, args.orderId, args.amount, {
-    opId: `cashfree:reverse:${rail.gatewayOrderId}`,
+    opId: `${rail.rail}:reverse:${rail.gatewayOrderId}`,
     uid: args.buyerId,
-    source: "cashfree",
+    source: rail.rail,
     reason: args.reason,
     ref: rail.gatewayOrderId,
   });
   if (!ledger.ok) return { ok: false, error: "refund_ledger_failed" };
 
-  const reversed = await refundCashfreeOrder(env, {
-    orderId: rail.gatewayOrderId,
-    // Stable, derived from the order — the gateway's own idempotency key, so a retry
-    // cannot issue a second reversal.
-    refundId: `avatok_rf_${rail.purchaseId.replace(/-/g, "").slice(0, 24)}`,
+  if (rail.rail === "cashfree") {
+    // UNCHANGED from before [PAY-RAIL-2] — same call, same idempotency key, same table.
+    const reversed = await refundCashfreeOrder(env, {
+      orderId: rail.gatewayOrderId,
+      // Stable, derived from the order — the gateway's own idempotency key, so a retry
+      // cannot issue a second reversal.
+      refundId: `avatok_rf_${rail.purchaseId.replace(/-/g, "").slice(0, 24)}`,
+      amountPaise: args.amount * 100,
+      note: args.reason,
+    });
+    if (!reversed.ok) return { ok: false, error: `gateway_refund_failed:${reversed.error}` };
+
+    await metaDb(env).prepare(
+      "UPDATE direct_purchases SET status='refunded',updated_at=?2 WHERE purchase_id=?1",
+    ).bind(rail.purchaseId, Date.now()).run();
+
+    // NOT "refunded". Cashfree has accepted, not completed.
+    return { ok: true, state: "refund_pending", rail: "cashfree" };
+  }
+
+  // [PAY-RAIL-2] Any other gateway — go through the SAME GatewayAdapter.refund() contract
+  // routes/pay.ts's webhook already trusts (spec §2.3), instead of falling through to a
+  // wallet credit the buyer never asked for and cannot easily use (see file header).
+  const adapter = resolveGateway(rail.rail);
+  if (!adapter) return { ok: false, error: "gateway_unresolved" };
+  const reversed = await adapter.refund(env, {
+    gatewayOrderId: rail.gatewayOrderId,
     amountPaise: args.amount * 100,
-    note: args.reason,
+    reason: args.reason,
+    // Same convention as the Cashfree refundId above — stable and derived from the order,
+    // so a retry cannot issue a second reversal at the gateway.
+    opId: `avatok_rf_${rail.purchaseId.replace(/-/g, "").slice(0, 24)}`,
   });
-  if (!reversed.ok) return { ok: false, error: `gateway_refund_failed:${reversed.error}` };
+  if (!reversed.accepted) return { ok: false, error: `gateway_refund_failed:${reversed.error ?? "unknown"}` };
 
   await metaDb(env).prepare(
-    "UPDATE direct_purchases SET status='refunded',updated_at=?2 WHERE purchase_id=?1",
-  ).bind(rail.purchaseId, Date.now()).run();
+    "UPDATE gateway_orders SET status='refunded',updated_at=?2 WHERE order_id=?1 AND gateway=?3",
+  ).bind(rail.purchaseId, Date.now(), rail.rail).run();
 
-  // NOT "refunded". Cashfree has accepted, not completed.
-  return { ok: true, state: "refund_pending", rail: "cashfree" };
+  // NOT "refunded" — same asynchrony caveat as Cashfree (file header): a 200 from the
+  // gateway means accepted, not completed, until its refund webhook confirms it.
+  return { ok: true, state: "refund_pending", rail: rail.rail };
 }
 
 /**
