@@ -10,15 +10,16 @@
  *     public key id) and `order_id`, so this file renames on the way in. The previous
  *     version spread `payload` directly into the options object, which would have handed
  *     Checkout.js a stray `key_id` field it does not recognise and no `key` at all.
- *   - paytm.ts createOrder(): { mid, order_id, txn_token, amount }. No `host` field is
- *     ever sent — PAYTM_ENV (staging/production) is a server-side-only setting, so the
- *     CheckoutJS script origin cannot be derived from the payload. This file defaults to
- *     the STAGING host (`securegw-stage.paytm.in`), matching pay.ts/paytm.ts's own
- *     `PAYTM_ENV` default when the var is unset — a real gap, flagged rather than guessed
- *     around: if PAYTM_ENV=production server-side while this default stays staging, the
- *     checkout script simply fails to load (a loud, visible failure) rather than silently
- *     misbehaving. Fixing it for real needs the worker to echo its env in client_payload,
- *     which is out of scope here (worker/ is read-only for this workstream).
+ *   - paytm.ts createOrder(): { flow, payment_url, mid, order_id, txn_token, amount }.
+ *     [PAY-PAYTM-TEST-1] The host gap flagged in the previous pass is CLOSED, by
+ *     changing flows rather than by guessing better. Paytm's CheckoutJS needs a script
+ *     tag at a per-merchant URL on a host only the server knows, so the client had
+ *     hardcoded `securegw-stage.paytm.in` — which is now doubly wrong, since Paytm moved
+ *     to paytmpayments.com. Show Payment Page needs no script: the server mints the full
+ *     `payment_url` (staging or production, its choice) and the client POSTs three hidden
+ *     fields to it. This NAVIGATES AWAY, so `onSettled`/`onDismiss` never fire for Paytm;
+ *     `onRedirecting` does instead, and the buyer comes back through the worker's
+ *     callback to /pay/return.
  *   - cashfree_adapter.ts createOrder(): { payment_session_id, order_id }. Unchanged from
  *     the previous pass — matches lib/cashfree.ts, which this adapter wraps verbatim.
  *   - stripe_intl.ts createOrder(): { client_secret, publishable_key, payment_intent_id }.
@@ -82,6 +83,14 @@ export interface GatewaySheetHandlers {
   onDismiss: () => void;
   /** Called when the sheet itself can't be opened (script load failure, etc). */
   onError: (message: string) => void;
+  /**
+   * Called immediately before a gateway that navigates AWAY from this page takes
+   * over — Paytm's Show Payment Page. There is no settle or dismiss callback
+   * after this: the buyer returns via the gateway's callback to the worker,
+   * which redirects to /pay/return. Persist anything the return trip needs
+   * (order id, listing id) here, while the page still exists.
+   */
+  onRedirecting?: (order: GatewayOrderResponse) => void;
 }
 
 /**
@@ -113,28 +122,46 @@ export async function openGatewaySheet(
         return;
       }
       case 'paytm': {
+        // [PAY-PAYTM-TEST-1] Show Payment Page, not CheckoutJS.
+        //
+        // The first pass at this used Paytm's CheckoutJS, which needs a script
+        // tag at a per-merchant URL on a host the server never told us about —
+        // so it hardcoded a guess, and a wrong guess is a checkout that silently
+        // never loads. Show Payment Page needs no script at all: POST three
+        // fields to the URL the server minted and Paytm renders the cashier.
+        // The server picks the host, which is the only place that knows whether
+        // this merchant is staging or production.
+        const url = String(payload.payment_url ?? '');
         const mid = String(payload.mid ?? '');
-        if (!mid) throw new Error('Paytm order is missing a merchant id');
-        // No env hint travels in client_payload — see file header. Defaults to staging,
-        // matching pay.ts/paytm.ts's own PAYTM_ENV default.
-        const host = 'https://securegw-stage.paytm.in';
-        await loadScript(`${host}/merchantpgpui/checkoutjs/merchants/${encodeURIComponent(mid)}.js`);
-        if (!window.Paytm?.CheckoutJS) throw new Error('Paytm did not load');
-        await window.Paytm.CheckoutJS.init({
-          root: '',
-          flow: 'DEFAULT',
-          data: {
-            orderId: payload.order_id ?? order.gateway_order_id,
-            token: payload.txn_token,
-            tokenType: 'TXN_TOKEN',
-            amount: String(payload.amount ?? (order.amount_paise / 100).toFixed(2)),
-          },
-          merchant: { mid, redirect: false },
-          handler: {
-            notifyMerchant: () => handlers.onSettled(),
-          },
-        });
-        window.Paytm.CheckoutJS.invoke();
+        const token = String(payload.txn_token ?? '');
+        if (!url || !mid || !token) {
+          throw new Error('Paytm order is missing the details needed to open the cashier');
+        }
+
+        // This NAVIGATES AWAY — there is no in-page settle callback to wait for.
+        // The buyer comes back through Paytm's callback to /api/pay/paytm/webhook,
+        // which redirects them to /pay/return, where the status poll picks up.
+        // Tell the caller now, so it can persist whatever it needs before the
+        // page unloads rather than after.
+        handlers.onRedirecting?.(order);
+
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = url;
+        form.style.display = 'none';
+        for (const [name, value] of Object.entries({
+          mid,
+          orderId: String(payload.order_id ?? order.gateway_order_id),
+          txnToken: token,
+        })) {
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = name;
+          input.value = value;
+          form.appendChild(input);
+        }
+        document.body.appendChild(form);
+        form.submit();
         return;
       }
       case 'cashfree': {

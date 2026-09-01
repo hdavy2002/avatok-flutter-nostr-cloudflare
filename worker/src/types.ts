@@ -364,6 +364,18 @@ export interface Env {
   PAYTM_MERCHANT_KEY?: string;
   PAYTM_WEBSITE?: string;
   PAYTM_ENV?: string;              // "staging" | "production" — mirrors CASHFREE_ENV
+  /** Overrides the host entirely. Set it when Paytm moves a domain again — they
+   *  went paytm.in → paytmpayments.com mid-2026 and the docs' Production tab is
+   *  the only authority on where production lives now. */
+  PAYTM_HOST?: string;
+  /** Where to send a buyer whose gateway returned them here by browser redirect.
+   *  Defaults to the production site; set it to a preview origin when testing. */
+  WEB_BASE_URL?: string;
+  /** Where Paytm posts the transaction result. Defaults to this Worker's own
+   *  /api/pay/paytm/webhook. Without a callbackUrl Paytm falls back to the
+   *  static URL registered against websiteName, which for a staging merchant is
+   *  Paytm's demo page — the payment succeeds and we never hear about it. */
+  PAYTM_CALLBACK_URL?: string;
 
   // AvaPayout (Phase 4). Production transfers flag-gated OFF pending legal (§10.3).
   PAYOUT_ENABLED?: string;         // "1" enables Wise transfers (ONLY after legal)

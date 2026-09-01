@@ -247,7 +247,53 @@ export async function payCreateOrder(req: Request, env: Env, gatewayId: string):
  * Returns 200 on anything it has already handled — a webhook endpoint that 500s on a
  * duplicate gets retried forever.
  */
+/**
+ * [PAY-PAYTM-TEST-1] Some gateways deliver their result by REDIRECTING THE
+ * BUYER'S BROWSER at this endpoint with a form POST, rather than calling it
+ * server-to-server. Paytm's Show Payment Page flow does exactly that: the
+ * cashier posts `application/x-www-form-urlencoded` fields to `callbackUrl`,
+ * with the buyer sitting in front of it. Answering that with a JSON body leaves
+ * a person staring at `{"ok":true}` and no way back to their booking.
+ *
+ * So: run the real handler, then, if this was a browser rather than a server,
+ * send the buyer on to the web app's return page, which polls for the
+ * provisioned booking. The JSON answer is still what a server-to-server caller
+ * gets, and the handler itself is unchanged and unaware of the difference.
+ */
 export async function payWebhook(req: Request, env: Env, gatewayId: string): Promise<Response> {
+  const contentType = (req.headers.get("content-type") ?? "").toLowerCase();
+  const browserCallback = contentType.includes("application/x-www-form-urlencoded");
+  if (!browserCallback) return payWebhookInner(req, env, gatewayId);
+
+  // The body can only be read once, and the handler needs it intact. Clone
+  // first, and read the clone purely to recover the order id for the redirect —
+  // this copy is never trusted for anything, since it has not been verified.
+  const forRedirect = req.clone();
+  const response = await payWebhookInner(req, env, gatewayId);
+
+  let orderId = "";
+  try {
+    orderId = new URLSearchParams(await forRedirect.text()).get("ORDERID") ?? "";
+  } catch {
+    // Unreadable body — the return page copes with a missing order id by
+    // pointing the buyer at their bookings list.
+  }
+
+  const webBase = String(env.WEB_BASE_URL ?? "https://avatok.ai").replace(/\/+$/, "");
+  const target = new URL(`${webBase}/pay/return`);
+  target.searchParams.set("gateway", gatewayId);
+  if (orderId) target.searchParams.set("order_id", orderId);
+  // `ok` is a hint for the first paint only. The return page still confirms
+  // against /api/pay/:gateway/status before it tells the buyer anything —
+  // a query parameter is not evidence that money moved.
+  target.searchParams.set("ok", response.status < 400 ? "1" : "0");
+
+  // 303: turn the gateway's POST into a GET, so a refresh on the return page
+  // does not re-post the callback.
+  return new Response(null, { status: 303, headers: { location: target.toString() } });
+}
+
+async function payWebhookInner(req: Request, env: Env, gatewayId: string): Promise<Response> {
   const adapter = resolveGateway(gatewayId);
   if (!adapter) return json({ error: "unknown gateway" }, 404);
   if (!adapter.configured(env)) return json({ error: "unconfigured" }, 503);
