@@ -1,10 +1,22 @@
 /* Phase B — SlotPicker (the "pick" step).
  *
- * Two shapes depending on the listing kind:
- *   • agent  → a tiny "schedule a session" form (minutes + time + language),
- *              which books via POST /api/avavoice/bookings.
- *   • else   → real bookable slots from GET /api/calendar/slots?host=<creator>,
- *              booked via POST /api/calendar/book { slot_id }.
+ * [WEB-COMM-PAY-1] Branches on listing.kind per
+ * Specs/SPEC-2026-09-01-PAID-SESSION-PIPELINE-BUILD.md §3.1 — this is the fix
+ * for the pipeline audit's break #1: every non-agent listing used to fall
+ * through to the legacy creator-scoped /api/calendar/book lane, which knows
+ * nothing about the listing's price or capacity and never creates the
+ * commercial_entitlements row the session join gate later requires. A buyer
+ * paid and then could not get in.
+ *
+ *   • kind === 'agent'      → AgentForm (unchanged) — POST /api/avavoice/bookings.
+ *   • kind === 'live_event' → LiveTicket — no slot picking, the event has one
+ *                             time; hands a `commercial` selection straight to
+ *                             CommercialPayStep (POST /api/commercial/live/…).
+ *   • kind === 'consult'    → ConsultSlots — real bookable slots, but the pick
+ *                             becomes a `commercial` selection carrying
+ *                             { start_at, end_at } as `slot` for
+ *                             POST /api/commercial/consult/….
+ *   • everything else       → CalendarSlots (unchanged legacy behaviour).
  *
  * The slots endpoint requires a session (requireUser). To keep PAGE LOAD
  * ungated (MASTER-PROMPT §4b) we do NOT auto-open the gate: when there is no
@@ -19,6 +31,7 @@ import { Card } from '../../components/Card';
 import { Pill } from '../../components/Pill';
 import { Field } from '../../components/Field';
 import { Spinner } from '../../components/Spinner';
+import { inrOrFree } from '../../lib/money';
 import type { BookSelection, CalendarSlot } from './types';
 
 function fmtWhen(ms: number): string {
@@ -52,18 +65,110 @@ export interface SlotPickerProps {
 }
 
 export function SlotPicker({ listing, token, onNeedAuth, onSelect }: SlotPickerProps) {
-  const isAgent = (listing.kind ?? '') === 'agent';
-  if (isAgent) return <AgentForm listing={listing} onSelect={onSelect} />;
+  const kind = listing.kind ?? '';
+  if (kind === 'agent') return <AgentForm listing={listing} onSelect={onSelect} />;
+  if (kind === 'live_event') return <LiveTicket listing={listing} onSelect={onSelect} />;
+  if (kind === 'consult') return <ConsultSlots listing={listing} token={token} onNeedAuth={onNeedAuth} onSelect={onSelect} />;
   return <CalendarSlots listing={listing} token={token} onNeedAuth={onNeedAuth} onSelect={onSelect} />;
 }
 
-// ───────────────────────────── calendar slots ────────────────────────────────
-function CalendarSlots({
+// ──────────────────────── [WEB-COMM-PAY-1] live ticket ───────────────────────
+/** No slot picking — the event has one time. The buyer is choosing to attend,
+ *  not to schedule (SPEC §3.1). Hands off a `commercial` selection so PayStep
+ *  routes to CommercialPayStep → POST /api/commercial/live/:id/checkout. */
+function LiveTicket({ listing, onSelect }: { listing: Listing; onSelect: (s: BookSelection) => void }) {
+  const price = Math.trunc(Number(listing.price ?? listing.effective_price ?? 0));
+  return (
+    <Card>
+      <div className="flex flex-col gap-4">
+        <p className="font-body font-bold text-[15px] text-inkSoft">
+          Get your ticket for <span className="text-ink">{listing.title}</span>
+          {listing.starts_at ? <> · {fmtWhen(listing.starts_at)}</> : null}.
+        </p>
+        <div className="flex items-center justify-between border-t-zine border-inkMute pt-3">
+          <span className="font-display font-semibold text-[16px] text-ink">Ticket price</span>
+          <Pill kind={price > 0 ? 'plain' : 'ok'}>{inrOrFree(price)}</Pill>
+        </div>
+        <Button
+          variant="lime"
+          fullWidth
+          label="Continue"
+          icon="→"
+          onClick={() =>
+            onSelect({
+              type: 'commercial',
+              kind: 'live_event',
+              listingId: listing.id,
+              title: listing.title,
+              slot: null,
+              requiredCoins: price,
+            })
+          }
+        />
+      </div>
+    </Card>
+  );
+}
+
+// ──────────────────── [WEB-COMM-PAY-1] consult (commercial) slots ───────────
+/** Same bookable-slot list as the legacy CalendarSlots, but the pick becomes a
+ *  `commercial` selection carrying the slot for the paid-session checkout
+ *  lane, per SPEC §3.1/§3.2. */
+function ConsultSlots({ listing, token, onNeedAuth, onSelect }: SlotPickerProps) {
+  return (
+    <CreatorSlotList
+      listing={listing}
+      token={token}
+      onNeedAuth={onNeedAuth}
+      onPick={(s) =>
+        onSelect({
+          type: 'commercial',
+          kind: 'consult_1to1',
+          listingId: listing.id,
+          title: s.title || listing.title,
+          slot: { start_at: s.start_at, end_at: s.end_at },
+          requiredCoins: Math.trunc(Number(listing.price ?? listing.effective_price ?? s.price_coins ?? 0)),
+        })
+      }
+    />
+  );
+}
+
+// ───────────────────────────── calendar slots (legacy) ───────────────────────
+function CalendarSlots({ listing, token, onNeedAuth, onSelect }: SlotPickerProps) {
+  return (
+    <CreatorSlotList
+      listing={listing}
+      token={token}
+      onNeedAuth={onNeedAuth}
+      onPick={(s) =>
+        onSelect({
+          type: 'calendar',
+          slotId: s.id,
+          title: s.title,
+          startAt: s.start_at,
+          endAt: s.end_at,
+          requiredCoins: Math.trunc(Number(s.price_coins || 0)),
+        })
+      }
+    />
+  );
+}
+
+// ───────────────────── shared: GET /api/calendar/slots?host=… ────────────────
+/** The slot-loading + gate + list rendering shared by the legacy calendar lane
+ *  and the new commercial consult lane. Only what happens on pick differs. */
+function CreatorSlotList({
   listing,
   token,
   onNeedAuth,
-  onSelect,
-}: Omit<SlotPickerProps, never>) {
+  onPick,
+}: {
+  listing: Listing;
+  token: string | null;
+  onNeedAuth: () => Promise<string>;
+  onPick: (slot: CalendarSlot) => void;
+}) {
   const creatorId = listing.creator?.id ?? '';
   const [slots, setSlots] = useState<CalendarSlot[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -151,16 +256,7 @@ function CalendarSlots({
   return (
     <div className="flex flex-col gap-3">
       {bookable.map((s) => (
-        <Card key={s.id} onClick={() =>
-          onSelect({
-            type: 'calendar',
-            slotId: s.id,
-            title: s.title,
-            startAt: s.start_at,
-            endAt: s.end_at,
-            requiredCoins: Math.trunc(Number(s.price_coins || 0)),
-          })
-        }>
+        <Card key={s.id} onClick={() => onPick(s)}>
           <div className="flex items-center justify-between gap-3">
             <div className="flex flex-col gap-1">
               <span className="font-display font-semibold text-[17px] text-ink">{fmtWhen(s.start_at)}</span>

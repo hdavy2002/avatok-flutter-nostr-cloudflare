@@ -51,7 +51,9 @@ export function Confirmation({ listing, selection, result }: ConfirmationProps) 
   } else if (kind === 'consult') {
     viewerHref = `/consult/${encodeURIComponent(bookingId)}`;
     viewerLabel = 'Go to your consult room';
-  } else if (kind === 'live') {
+  } else if (kind === 'live' || kind === 'live_event') {
+    // [WEB-COMM-PAY-1] Listings of this kind are stored as `live_event`
+    // (see worker's checkoutKind()); `live` is kept as a legacy alias.
     viewerHref = `/watch/${encodeURIComponent(listing.id)}`;
     viewerLabel = 'Watch live';
   } else {
@@ -60,7 +62,11 @@ export function Confirmation({ listing, selection, result }: ConfirmationProps) 
   }
 
   const when =
-    selection.type === 'calendar' ? fmtWhen(selection.startAt) : fmtWhen(selection.scheduledAt);
+    selection.type === 'calendar'
+      ? fmtWhen(selection.startAt)
+      : selection.type === 'commercial'
+        ? fmtWhen(selection.slot?.start_at ?? result.start_at)
+        : fmtWhen(selection.scheduledAt);
 
   const ctaClass =
     'inline-flex items-center justify-center gap-2.5 select-none no-underline w-full ' +

@@ -44,7 +44,9 @@ const MESSAGES: Record<string, string> = {
   conflict: 'You already have something booked at that time. Pick a different slot.',
   'already published': 'This listing is already published.',
   renewal_required: 'This listing has expired. Renew it before publishing again.',
-  insufficient_funds: 'Your token balance is too low to publish this listing.',
+  // Shared by the publish gate (listings.ts) and commercial checkout's wallet
+  // hold (commercial_checkout.ts) — same code, same underlying fact.
+  insufficient_funds: 'Your Token balance is too low for this. Add Tokens, or pay by card/UPI instead.',
   billing_unavailable: 'Publishing is temporarily unavailable. Please try again shortly.',
 
   // --- edit refusals ---
@@ -55,6 +57,47 @@ const MESSAGES: Record<string, string> = {
   marketplace_publish_disabled: 'Publishing is paused right now. Please try again later.',
   commercial_checkout_required: 'This listing is sold through the new checkout — this route is closed.',
   lane_misconfigured: 'Purchases are temporarily unavailable. We’ve been alerted.',
+
+  // --- [WEB-COMM-PAY-1] commercial checkout (worker/src/routes/commercial_checkout.ts) —
+  // SPEC-2026-09-01-PAID-SESSION-PIPELINE-BUILD.md §3.4. Keys are the worker's exact
+  // `error` string; see CommercialPayStep.tsx and GatewayPicker.tsx for where these surface.
+  'ticket already owned': 'You already have a ticket for this event — check My Bookings.',
+  'consultation already booked': 'You’ve already booked this consultation — check My Bookings.',
+  'booking notice policy': 'That time is too soon to book. Pick a slot further out.',
+  'price changed since payment': 'The price changed while you were paying. You haven’t been charged again — please try booking once more.',
+  'commercial checkout disabled': 'Bookings for this listing aren’t open yet. Please check back soon.',
+  'commercial checkout unavailable': 'Purchases are temporarily unavailable. We’ve been alerted.',
+  'valid Idempotency-Key required': 'That didn’t go through. Please try again.',
+  'policy confirmation required': 'Please tick the box confirming you’ve read the cancellation terms.',
+  'listing unavailable': 'This listing isn’t available right now.',
+  'cannot buy your own service': 'You can’t book your own listing.',
+  'consultation must have exactly one buyer': 'This consultation can’t be booked right now.',
+  'commercial policy unavailable': 'This listing’s booking terms aren’t set up yet. Please check back soon.',
+  'invalid commercial price': 'This listing’s price looks wrong. We’ve been alerted.',
+  'event schedule unavailable': 'This event’s schedule isn’t set. Please check back soon.',
+  'slot {start_at,end_at} required': 'Pick a time before continuing.',
+  'future consultation slot required': 'Pick a time that hasn’t already passed.',
+  'commercial tax configuration invalid': 'Checkout is temporarily unavailable. We’ve been alerted.',
+  'calendar conflict': 'That time was just taken. Pick another slot.',
+  'consultation slot already booked': 'That time was just taken. Pick another slot.',
+  'checkout authority mismatch': 'That didn’t go through. Please try again.',
+  'idempotency key reused for different checkout': 'That didn’t go through. Please refresh and try again.',
+  'commercial checkout retryable': 'That didn’t go through. Please try again in a moment.',
+  payment_failed: 'That payment didn’t go through. No charge was made — please try again.',
+
+  // --- [WEB-COMM-PAY-2] worker/src/routes/pay.ts (POST /api/pay/:gateway/order,
+  // GET /api/pay/methods, GET /api/pay/:gateway/status) — the gateway funding rail,
+  // independent of the wallet checkout above. See GatewayPicker.tsx / CommercialPayStep.tsx.
+  'checkout unavailable': 'Card and UPI payment isn’t open yet. Try again shortly, or pay from your wallet balance.',
+  'unknown gateway': 'That payment method isn’t available. Pick another one.',
+  'listingId required': 'Something went wrong loading this booking. Please go back and try again.',
+  'listing not available': 'This listing isn’t available right now.',
+  'invalid price': 'This listing’s price looks wrong. We’ve been alerted.',
+  'stripe is for international buyers only': 'That card gateway is for international payments. Pick a different method to pay in rupees.',
+  'order_id already used': 'That didn’t go through. Please try again.',
+  'could not start payment': 'Could not start that payment. Try again, or pick a different method.',
+  'order_id required': 'That didn’t go through. Please try again.',
+  'not found': 'We couldn’t find that payment. Please try again.',
 };
 
 /** True when the refusal is the liveness gate, which the client can resolve in place. */

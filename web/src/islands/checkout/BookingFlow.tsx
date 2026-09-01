@@ -124,6 +124,7 @@ function FlowInner({ listing }: { listing: Listing }) {
 
       {step === 'pay' && selection && token && (
         <PayStep
+          listing={listing}
           selection={selection}
           token={token}
           onBack={() => setStep('pick')}

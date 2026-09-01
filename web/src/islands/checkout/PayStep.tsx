@@ -17,21 +17,43 @@ import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { Pill } from '../../components/Pill';
 import { Spinner } from '../../components/Spinner';
+import type { Listing } from '../../lib/types';
 import type { BookSelection, BookingResult, TopupResult, WalletBalance } from './types';
 import { inr } from '../../lib/money';
+import { CommercialPayStep } from './CommercialPayStep';
 
 // [TOKENS-INR-RAIL-1] Was `$${(coins/100).toFixed(2)}` — a token priced at one
 // US cent. A token is ₹1, so 500 tokens are ₹500, not $5.00.
 const usd = inr;
 
 export interface PayStepProps {
+  listing: Listing;
   selection: BookSelection;
   token: string;
   onBooked: (result: BookingResult) => void;
   onBack: () => void;
 }
 
-export function PayStep({ selection, token, onBooked, onBack }: PayStepProps) {
+export function PayStep({ listing, selection, token, onBooked, onBack }: PayStepProps) {
+  // [WEB-COMM-PAY-1] `live_event` / `consult` selections go through the real
+  // commercial checkout + gateway lane instead of the legacy wallet-only flow
+  // below, which never created a commercial_entitlements row (see SlotPicker.tsx).
+  if (selection.type === 'commercial') {
+    return (
+      <CommercialPayStep listing={listing} selection={selection} token={token} onBooked={onBooked} onBack={onBack} />
+    );
+  }
+  return <LegacyPayStep selection={selection} token={token} onBooked={onBooked} onBack={onBack} />;
+}
+
+interface LegacyPayStepProps {
+  selection: Exclude<BookSelection, { type: 'commercial' }>;
+  token: string;
+  onBooked: (result: BookingResult) => void;
+  onBack: () => void;
+}
+
+function LegacyPayStep({ selection, token, onBooked, onBack }: LegacyPayStepProps) {
   const [balance, setBalance] = useState<number | null>(null);
   const [loadingBal, setLoadingBal] = useState(true);
   const [busy, setBusy] = useState(false);

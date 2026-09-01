@@ -1,0 +1,216 @@
+/* [WEB-COMM-PAY-1 / WEB-COMM-PAY-2] gatewaySheet — opens the picked gateway's OWN
+ * payment UI for an order already created server-side via `POST /api/pay/:gateway/order`.
+ *
+ * [WEB-COMM-PAY-2] FIELD NAMES CORRECTED against the adapters that actually ship them
+ * (worker/src/lib/payments/*.ts), which is what the previous pass had flagged as an
+ * unverified guess. Each adapter's `client_payload` (per gateway):
+ *
+ *   - razorpay.ts createOrder(): { key_id, razorpay_order_id, amount, currency }.
+ *     NOT `order_id` / `key` — Razorpay's Checkout.js options object wants `key` (the
+ *     public key id) and `order_id`, so this file renames on the way in. The previous
+ *     version spread `payload` directly into the options object, which would have handed
+ *     Checkout.js a stray `key_id` field it does not recognise and no `key` at all.
+ *   - paytm.ts createOrder(): { mid, order_id, txn_token, amount }. No `host` field is
+ *     ever sent — PAYTM_ENV (staging/production) is a server-side-only setting, so the
+ *     CheckoutJS script origin cannot be derived from the payload. This file defaults to
+ *     the STAGING host (`securegw-stage.paytm.in`), matching pay.ts/paytm.ts's own
+ *     `PAYTM_ENV` default when the var is unset — a real gap, flagged rather than guessed
+ *     around: if PAYTM_ENV=production server-side while this default stays staging, the
+ *     checkout script simply fails to load (a loud, visible failure) rather than silently
+ *     misbehaving. Fixing it for real needs the worker to echo its env in client_payload,
+ *     which is out of scope here (worker/ is read-only for this workstream).
+ *   - cashfree_adapter.ts createOrder(): { payment_session_id, order_id }. Unchanged from
+ *     the previous pass — matches lib/cashfree.ts, which this adapter wraps verbatim.
+ *   - stripe_intl.ts createOrder(): { client_secret, publishable_key, payment_intent_id }.
+ *     NOT `checkout_url` — this Stripe lane is a PaymentIntent + Elements flow (the
+ *     adapter's own header explains why: Stripe India needs a registered company, so this
+ *     rail is scoped to non-INR buyers via a PaymentIntent, not a hosted Checkout Session).
+ *     The previous version assumed the OTHER Stripe integration in this codebase — the
+ *     wallet top-up's hosted Checkout Session redirect — and would have crashed on
+ *     `payload.checkout_url` being undefined. Stripe.js is loaded from its CDN (same
+ *     pattern as the other three gateways) and mounted as an inline Payment Element;
+ *     see `createStripeElements` / `confirmStripePayment` below and GatewayPicker.tsx's
+ *     'stripe-form' phase, which owns the mount point and the confirm button — Stripe has
+ *     no analogue of "open a native sheet and get one dismiss/settle callback" the way
+ *     Razorpay/Paytm/Cashfree do.
+ */
+import type { GatewayId, GatewayOrderResponse } from './types';
+
+declare global {
+  interface Window {
+    Razorpay?: new (opts: Record<string, unknown>) => { open: () => void };
+    Paytm?: {
+      CheckoutJS?: {
+        init: (config: Record<string, unknown>) => Promise<void>;
+        invoke: () => void;
+      };
+    };
+    Cashfree?: new (opts: Record<string, unknown>) => {
+      checkout: (opts: Record<string, unknown>) => void;
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    Stripe?: (publishableKey: string) => any;
+  }
+}
+
+const scriptCache = new Map<string, Promise<void>>();
+
+function loadScript(src: string): Promise<void> {
+  let p = scriptCache.get(src);
+  if (p) return p;
+  p = new Promise<void>((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) {
+      resolve();
+      return;
+    }
+    const el = document.createElement('script');
+    el.src = src;
+    el.async = true;
+    el.onload = () => resolve();
+    el.onerror = () => reject(new Error(`could not load ${src}`));
+    document.head.appendChild(el);
+  });
+  scriptCache.set(src, p);
+  return p;
+}
+
+export interface GatewaySheetHandlers {
+  /** Called once the buyer completed the sheet — start/continue status polling. */
+  onSettled: () => void;
+  /** Called when the buyer closes the sheet without paying. */
+  onDismiss: () => void;
+  /** Called when the sheet itself can't be opened (script load failure, etc). */
+  onError: (message: string) => void;
+}
+
+/**
+ * Opens the gateway's own payment UI for an order already created server-side.
+ * Handles razorpay / paytm / cashfree — the three gateways with a native "sheet" the
+ * buyer completes in place. Stripe is NOT handled here: it has no such sheet in this
+ * PaymentIntent+Elements integration — see `createStripeElements` below.
+ */
+export async function openGatewaySheet(
+  gateway: Exclude<GatewayId, 'stripe'>,
+  order: GatewayOrderResponse,
+  handlers: GatewaySheetHandlers,
+): Promise<void> {
+  const payload = order.client_payload ?? {};
+  try {
+    switch (gateway) {
+      case 'razorpay': {
+        await loadScript('https://checkout.razorpay.com/v1/checkout.js');
+        if (!window.Razorpay) throw new Error('Razorpay did not load');
+        const rz = new window.Razorpay({
+          key: String(payload.key_id ?? ''),
+          order_id: String(payload.razorpay_order_id ?? order.gateway_order_id),
+          amount: payload.amount ?? order.amount_paise,
+          currency: payload.currency ?? order.currency,
+          handler: () => handlers.onSettled(),
+          modal: { ondismiss: () => handlers.onDismiss() },
+        });
+        rz.open();
+        return;
+      }
+      case 'paytm': {
+        const mid = String(payload.mid ?? '');
+        if (!mid) throw new Error('Paytm order is missing a merchant id');
+        // No env hint travels in client_payload — see file header. Defaults to staging,
+        // matching pay.ts/paytm.ts's own PAYTM_ENV default.
+        const host = 'https://securegw-stage.paytm.in';
+        await loadScript(`${host}/merchantpgpui/checkoutjs/merchants/${encodeURIComponent(mid)}.js`);
+        if (!window.Paytm?.CheckoutJS) throw new Error('Paytm did not load');
+        await window.Paytm.CheckoutJS.init({
+          root: '',
+          flow: 'DEFAULT',
+          data: {
+            orderId: payload.order_id ?? order.gateway_order_id,
+            token: payload.txn_token,
+            tokenType: 'TXN_TOKEN',
+            amount: String(payload.amount ?? (order.amount_paise / 100).toFixed(2)),
+          },
+          merchant: { mid, redirect: false },
+          handler: {
+            notifyMerchant: () => handlers.onSettled(),
+          },
+        });
+        window.Paytm.CheckoutJS.invoke();
+        return;
+      }
+      case 'cashfree': {
+        await loadScript('https://sdk.cashfree.com/js/v3/cashfree.js');
+        if (!window.Cashfree) throw new Error('Cashfree did not load');
+        const mode = payload.mode === 'production' ? 'production' : 'sandbox';
+        const cf = new window.Cashfree({ mode });
+        cf.checkout({
+          paymentSessionId: payload.payment_session_id,
+          redirectTarget: '_modal',
+        });
+        // Cashfree's modal has no in-page settle callback in this integration
+        // mode — the caller starts polling immediately after open() returns.
+        handlers.onSettled();
+        return;
+      }
+      default:
+        throw new Error(`unsupported gateway: ${gateway satisfies never as string}`);
+    }
+  } catch (e) {
+    handlers.onError(e instanceof Error ? e.message : 'Could not open the payment window.');
+  }
+}
+
+// ─────────────────────────── Stripe: PaymentIntent + Elements ───────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface StripeElementsHandle {
+  stripe: any;
+  elements: any;
+}
+
+/**
+ * Loads Stripe.js and creates an Elements instance bound to the order's PaymentIntent
+ * client secret. The caller (GatewayPicker's 'stripe-form' phase) mounts a Payment
+ * Element from `elements` into a container it owns, then calls `confirmStripePayment`.
+ */
+export async function createStripeElements(
+  order: GatewayOrderResponse,
+): Promise<StripeElementsHandle | { error: string }> {
+  const payload = order.client_payload ?? {};
+  const clientSecret = String(payload.client_secret ?? '');
+  const publishableKey = String(payload.publishable_key ?? '');
+  if (!clientSecret) return { error: 'This payment could not be started — missing details from the server.' };
+  if (!publishableKey) return { error: 'Card payment is not fully configured yet.' };
+  try {
+    await loadScript('https://js.stripe.com/v3/');
+  } catch {
+    return { error: 'Could not load the card payment form. Check your connection and try again.' };
+  }
+  if (!window.Stripe) return { error: 'Could not load the card payment form.' };
+  const stripe = window.Stripe(publishableKey);
+  const elements = stripe.elements({ clientSecret });
+  return { stripe, elements };
+}
+
+/**
+ * Confirms the PaymentIntent after the buyer filled in the mounted Payment Element.
+ * `redirect: 'if_required'` keeps the buyer on this page for cards that settle without
+ * a redirect; only flows that genuinely need one (3DS, some redirect-based methods) leave
+ * and come back via `returnUrl` — the webhook is still what actually provisions the
+ * booking either way, so the poll after this resolves is what matters, not this call.
+ */
+export async function confirmStripePayment(
+  handle: StripeElementsHandle,
+  returnUrl: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const { error } = await handle.stripe.confirmPayment({
+      elements: handle.elements,
+      confirmParams: { return_url: returnUrl },
+      redirect: 'if_required',
+    });
+    if (error) return { ok: false, error: String(error.message || 'That card payment did not go through.') };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'That card payment did not go through.' };
+  }
+}
