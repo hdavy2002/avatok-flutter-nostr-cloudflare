@@ -1,0 +1,30 @@
+---
+// Paid 1:1 consult room on the GetStream commercial lane (SPEC-2026-09-01
+// §4.4, [WEB-GS-CONSULT-1]). Sibling to /consult/[booking] (legacy native
+// WebRTC lane), which is left completely alone. Pure client island — no SSR
+// of media, no public data fetched here (the room is gated and entirely
+// real-time). Ships the shell immediately (client:load) so the green room's
+// getUserMedia preflight can start without waiting on anything else.
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import ConsultRoomGS from '../../islands/consult-gs/ConsultRoomGS.tsx';
+
+const { booking } = Astro.params;
+
+if (!booking) {
+  return new Response('Booking required', { status: 400 });
+}
+
+// Never cache or index a private room.
+Astro.response.headers.set('Cache-Control', 'no-store');
+---
+
+<Base headerAuth="static"
+  title="Your 1:1 session · avatok.ai"
+  description="Join your booked 1:1 consultation."
+  navStatic={true}
+>
+  <meta name="robots" content="noindex, nofollow" slot="head" />
+  <ConsultRoomGS client:load booking={booking} />
+</Base>
