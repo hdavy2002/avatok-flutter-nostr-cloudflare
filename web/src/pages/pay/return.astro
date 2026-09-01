@@ -1,0 +1,40 @@
+---
+// [WEB-PAY-RETURN-1] The return landing page for a gateway that redirects the buyer
+// away to pay (Paytm's Show Payment Page today). The worker's payWebhook browser-
+// callback wrapper (worker/src/routes/pay.ts:263-294) 303-redirects here after it has
+// run the real webhook handler, with:
+//
+//     ?gateway=<id>&order_id=<ORDERID>&ok=1|0
+//
+// This page does no server-side polling of its own — it is a thin, cacheable shell
+// that hands the query params to the PayReturn island, which is the only thing that
+// ever asserts payment success (via GET /api/pay/:gateway/status). `ok` is read here
+// only to note it exists; it is NEVER treated as proof — see PayReturn.tsx's header.
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import PayReturn from '../../islands/checkout/PayReturn.tsx';
+import type { GatewayId } from '../../islands/checkout/types';
+
+const KNOWN_GATEWAYS: GatewayId[] = ['razorpay', 'paytm', 'stripe', 'cashfree'];
+
+const url = Astro.url;
+const gatewayParam = (url.searchParams.get('gateway') ?? '').trim();
+const orderIdParam = (url.searchParams.get('order_id') ?? '').trim();
+const gateway = (KNOWN_GATEWAYS as string[]).includes(gatewayParam) ? (gatewayParam as GatewayId) : null;
+
+// This page can only ever be reached via a fresh gateway redirect (or a refresh of
+// one) — never cache it, so a stale "Confirmed" never gets served for a different
+// order.
+Astro.response.headers.set('Cache-Control', 'no-store');
+---
+
+<Base headerAuth="static" title="Payment status · avatok.ai" description="Confirming your avatok.ai payment." navStatic={true}>
+  <main class="mx-auto max-w-lg px-4 py-10">
+    <header class="mb-6">
+      <span class="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">Payment</span>
+      <h1 class="mt-2 font-display font-semibold text-[28px] leading-tight text-ink">Confirming your payment</h1>
+    </header>
+    <PayReturn client:load gateway={gateway} orderId={orderIdParam} />
+  </main>
+</Base>

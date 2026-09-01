@@ -27,6 +27,7 @@ import { Spinner } from '../../components/Spinner';
 import { inr } from '../../lib/money';
 import { listingErrorMessage } from '../../lib/listingErrors';
 import { openGatewaySheet, createStripeElements, confirmStripePayment } from './gatewaySheet';
+import { stashPayReturn } from './PayReturn';
 import type { StripeElementsHandle } from './gatewaySheet';
 import type { GatewayId, GatewayOrderResponse, PayMethod, PayMethodsResponse, PayStatusResponse } from './types';
 
@@ -176,6 +177,14 @@ export function GatewayPicker({
           setBusy(false);
           setPhase('pick');
           setError(message);
+        },
+        // Paytm (today; any future redirect-based gateway) navigates away before
+        // any of the callbacks above can fire. Persist what /pay/return needs
+        // while this page still exists — the query string it comes back with is
+        // still the source of truth for gateway/order_id, this is only the
+        // "back to the listing on failure" nicety (see PayReturn.tsx header).
+        onRedirecting: () => {
+          stashPayReturn({ gateway: selected, orderId: created.order_id, listingId });
         },
       });
     } catch (e) {
