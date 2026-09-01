@@ -51,6 +51,30 @@ class DeepLinks {
       Analytics.capture('affiliate_referral_link_opened', {'scheme': uri.scheme});
       return;
     }
+    // [APP-JOIN-ROUTE-1] Booking join link — https://avatok.ai/j/<token> or
+    // avatok://j/<token>. Every confirmation email, reminder email and .ics
+    // `URL:` field points here; before this handler existed the tap opened
+    // the app to whatever screen was already showing and silently dropped
+    // the token. Resolution (public join-info, then role/kind via the
+    // authenticated booking list, then the sign-in gate if needed) happens
+    // in JoinLinkResolverScreen — pushed here so the async work has a widget
+    // lifecycle instead of a bare postFrameCallback.
+    final joinToken = _joinToken(uri);
+    if (joinToken.isNotEmpty) {
+      Analytics.capture('deep_link_opened', {
+        'path_shape': '/j/<token>',
+        'scheme': uri.scheme,
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final st = _navKey?.currentState;
+        if (st == null) return;
+        st.push(MaterialPageRoute(
+          builder: (_) =>
+              JoinLinkResolverScreen(token: joinToken, scheme: uri.scheme),
+        ));
+      });
+      return;
+    }
     final session = _commercialSession(uri);
     if (session != null) {
       Analytics.capture('commercial_session_link_opened', {
@@ -174,6 +198,24 @@ class DeepLinks {
     final listing = clean(uri.queryParameters['listing_id'] ?? uri.queryParameters['listing']);
     final booking = clean(uri.queryParameters['booking_id'] ?? uri.queryParameters['booking']);
     return listing == null && booking == null ? null : (listing, booking);
+  }
+
+  /// Token of a booking join link — `https://avatok.ai/j/<token>` or
+  /// `avatok://j/<token>` — or '' if this isn't one. Every confirmation
+  /// email, reminder email and calendar `.ics` URL uses this exact shape
+  /// (worker/src/cal/ics.ts `joinUrlFor`).
+  static String _joinToken(Uri uri) {
+    final segs = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+    if (uri.scheme == 'avatok' && uri.host == 'j' && segs.isNotEmpty) {
+      return segs.first;
+    }
+    if ((uri.scheme == 'https' || uri.scheme == 'http') &&
+        uri.host.endsWith('avatok.ai') &&
+        segs.length >= 2 &&
+        segs.first == 'j') {
+      return segs[1];
+    }
+    return '';
   }
 
   /// Digits of the `?n=` number on an AvaTOK add link, or '' if none.

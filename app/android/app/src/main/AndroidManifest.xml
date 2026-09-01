@@ -211,6 +211,19 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="https" android:host="avatok.ai" android:pathPrefix="/j/"/>
             </intent-filter>
+            <!-- [APP-JOIN-ROUTE-1] App Link — https://avatok.ai/session?listing_id=
+                 &booking_id= is the stable customer session link handled at
+                 deep_links.dart:161-177. It previously had no App Link filter, so
+                 it was only reachable via the custom avatok:// scheme, which
+                 nothing in the codebase generates — an https tap fell through to
+                 the browser instead of the app. Same host as /j/, so the existing
+                 /.well-known/assetlinks.json verifies it too. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="avatok.ai" android:pathPrefix="/session"/>
+            </intent-filter>
             <!-- App Link — https://avatok.ai/add?t=<token> opens the app to the
                  "add contact" card (AvaTOK Number QR share). Same host as /j/, so
                  the existing /.well-known/assetlinks.json verifies it too. -->

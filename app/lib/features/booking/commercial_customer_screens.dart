@@ -4,9 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/account_gate.dart';
+import '../../core/analytics.dart';
+import '../../core/api_auth.dart';
 import '../../core/commercial_calendar_api.dart';
 import '../../core/commercial_checkout_api.dart';
 import '../../core/commercial_sessions_api.dart';
+import '../../core/config.dart';
 import '../../core/listings_api.dart';
 import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
@@ -454,7 +458,31 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       _joinNotice(session, false);
       return;
     }
+    // [APP-JOIN-ROUTE-1] A session listed here is normally a bought
+    // entitlement (viewer/buyer), but a creator who booked into their own
+    // listing (self-test, or a creator following their own calendar entry)
+    // holds one too — and MUST land backstage, not in their own audience.
+    // `ListingDetail.isOwner` is the server's own creator/viewer verdict for
+    // this account (worker/src/routes/listings.ts), the same signal
+    // ListingDetailScreen already uses — never inferred client-side.
+    final isCreator = await _isCreatorOf(session.listingId);
+    if (!mounted) return;
+    Analytics.capture('commercial_session_join_tapped', {
+      'kind': session.kind,
+      'role': isCreator ? 'creator' : 'buyer',
+    });
     if (session.isLiveEvent) {
+      if (isCreator) {
+        await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => LiveReadinessScreen(
+                listingId: session.listingId,
+                title: session.title,
+              ),
+            ));
+        return;
+      }
       final entitlement = session.entitlementId;
       if (entitlement.isEmpty) {
         _notice('The server has not returned a valid ticket entitlement.');
@@ -476,9 +504,27 @@ class _MySessionsScreenState extends State<MySessionsScreen>
               listingId: session.listingId,
               bookingId: session.bookingId!,
               title: session.title,
+              isCreator: isCreator,
               gateway: AuthenticatedCommercialConsultGateway(),
             ),
           ));
+    }
+  }
+
+  /// Best-effort creator check for [listingId]. A failure here must never
+  /// silently pretend the viewer is the creator — it falls back to `false`
+  /// (viewer screens), which is exactly today's behaviour, and reports the
+  /// failure instead of swallowing it.
+  Future<bool> _isCreatorOf(String listingId) async {
+    try {
+      final detail = await ListingsApi.detail(listingId);
+      return detail?.isOwner ?? false;
+    } catch (e, st) {
+      Analytics.captureException(e, st,
+          screen: 'my_sessions_join',
+          handled: true,
+          extra: {'listing_id': listingId});
+      return false;
     }
   }
 
@@ -544,6 +590,255 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     final a = DateTime.fromMillisecondsSinceEpoch(start).toLocal();
     final b = DateTime.fromMillisecondsSinceEpoch(end).toLocal();
     return '${a.day}/${a.month}/${a.year} · ${a.hour.toString().padLeft(2, '0')}:${a.minute.toString().padLeft(2, '0')}–${b.hour.toString().padLeft(2, '0')}:${b.minute.toString().padLeft(2, '0')}';
+  }
+}
+
+/// [APP-JOIN-ROUTE-1] Resolves a booking join link — `https://avatok.ai/j/<token>`
+/// or `avatok://j/<token>` — into the correct screen. Every confirmation
+/// email, reminder email and calendar `.ics` `URL:` field points at this
+/// path shape (worker/src/cal/ics.ts `joinUrlFor`); before this screen
+/// existed the link opened the app to whatever was already showing and
+/// silently dropped the token.
+///
+/// The token itself only carries a signed, expiring booking id
+/// (`GET /api/join-info/:token`, worker/src/routes/booking.ts `joinInfo`,
+/// PUBLIC — no auth, display data only). Resolving the booking's `kind`,
+/// `listing_id` and the caller's role (creator vs buyer) needs the
+/// authenticated `GET /api/booking/list`, so a signed-out tap is sent
+/// through the sign-in gate first and this same method simply continues
+/// once it returns — nothing about the original link is dropped or
+/// re-parsed.
+class JoinLinkResolverScreen extends StatefulWidget {
+  const JoinLinkResolverScreen({
+    super.key,
+    required this.token,
+    required this.scheme,
+  });
+
+  final String token;
+  final String scheme;
+
+  @override
+  State<JoinLinkResolverScreen> createState() =>
+      _JoinLinkResolverScreenState();
+}
+
+class _JoinLinkResolverScreenState extends State<JoinLinkResolverScreen> {
+  String? _error;
+  bool _offerMySessions = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolve();
+  }
+
+  Future<void> _resolve() async {
+    try {
+      final infoResp = await ApiAuth.getSigned(
+        '$kApiBase/join-info/${Uri.encodeComponent(widget.token)}',
+      );
+      if (infoResp.statusCode == 404) {
+        _fail('This link has expired or is no longer valid.',
+            reason: 'invalid_or_expired');
+        return;
+      }
+      if (infoResp.statusCode != 200) {
+        _fail('Could not open this session link. Please try again.',
+            reason: 'http_${infoResp.statusCode}');
+        return;
+      }
+      final decoded = jsonDecode(infoResp.body);
+      if (decoded is! Map) {
+        _fail('Could not open this session link. Please try again.',
+            reason: 'bad_response');
+        return;
+      }
+      final data = decoded.cast<String, dynamic>();
+      final status = (data['status'] ?? '').toString();
+      final startsAt = (data['starts_at'] as num?)?.toInt() ?? 0;
+      final endsAt = (data['ends_at'] as num?)?.toInt() ?? 0;
+      final title = (data['title'] ?? 'AvaTOK session').toString();
+      final deeplink = (data['deeplink'] ?? '').toString();
+      final segments = deeplink.split('/');
+      final bookingId = segments.isNotEmpty ? segments.last.trim() : '';
+      if (bookingId.isEmpty) {
+        _fail('Could not open this session link. Please try again.',
+            reason: 'no_booking_id');
+        return;
+      }
+      if (status == 'cancelled' || status == 'canceled') {
+        _fail('This booking was cancelled.',
+            reason: 'cancelled', offerMySessions: true);
+        return;
+      }
+      if (endsAt > 0 && DateTime.now().millisecondsSinceEpoch >= endsAt) {
+        _fail('This session has ended.',
+            reason: 'ended', offerMySessions: true);
+        return;
+      }
+
+      if (!AccountGate.isMember) {
+        if (!mounted) return;
+        final signedIn =
+            await AccountGate.ensureMember(context, reason: 'join this session');
+        if (!mounted) return;
+        if (!signedIn) {
+          Analytics.capture('join_link_signin_declined', {
+            'path_shape': '/j/<token>',
+          });
+          Navigator.of(context).maybePop();
+          return;
+        }
+      }
+
+      final uid = ApiAuth.identity?.uid ?? '';
+      var row = await _findBooking(bookingId, when: 'upcoming');
+      row ??= await _findBooking(bookingId, when: 'past');
+
+      final kind = (row?['kind'] ?? '').toString();
+      final listingId = (row?['listing_id'] ?? '').toString();
+      final creatorId = (row?['creator_id'] ?? '').toString();
+      final isCreator =
+          uid.isNotEmpty && creatorId.isNotEmpty && uid == creatorId;
+
+      if (!mounted) return;
+      Analytics.capture('join_link_resolved', {
+        'path_shape': '/j/<token>',
+        'scheme': widget.scheme,
+        'kind': kind.isEmpty ? 'unknown' : kind,
+        'role': row == null ? 'unknown' : (isCreator ? 'creator' : 'buyer'),
+        'starts_at': startsAt,
+      });
+
+      if (row == null || listingId.isEmpty) {
+        // Couldn't confirm role/kind/listing from the booking list (network
+        // hiccup, or the booking sits outside the 100-row window). Not a
+        // silent no-op: land on My Sessions with the booking focused — the
+        // same screen the buyer already reaches from a notification, and it
+        // resolves this exact booking id server-side on its own.
+        _goto(MySessionsScreen(focusBookingId: bookingId));
+        return;
+      }
+
+      if (isCreator && kind == 'live_event') {
+        _goto(LiveReadinessScreen(listingId: listingId, title: title));
+      } else if (isCreator && kind == 'consult_1to1') {
+        _goto(CommercialConsultationPrejoinScreen(
+          listingId: listingId,
+          bookingId: bookingId,
+          title: title,
+          isCreator: true,
+        ));
+      } else if (kind == 'live_event') {
+        _goto(LiveViewerScreen(listingId: listingId, title: title));
+      } else if (kind == 'consult_1to1') {
+        _goto(CommercialConsultationPrejoinScreen(
+          listingId: listingId,
+          bookingId: bookingId,
+          title: title,
+        ));
+      } else {
+        // consult_group or any other legacy kind — not part of this
+        // workstream's routing; My Sessions is the honest landing spot.
+        _goto(MySessionsScreen(focusBookingId: bookingId, focusListingId: listingId));
+      }
+    } catch (e, st) {
+      Analytics.captureException(e, st,
+          screen: 'join_link_resolver',
+          handled: true,
+          extra: {'path_shape': '/j/<token>'});
+      _fail(
+          'Could not open this session link. Check your connection and try again.',
+          reason: 'exception');
+    }
+  }
+
+  Future<Map<String, dynamic>?> _findBooking(String bookingId,
+      {required String when}) async {
+    try {
+      final resp =
+          await ApiAuth.getSigned('$kBookingBase/list?role=all&when=$when');
+      if (resp.statusCode != 200) return null;
+      final decoded = jsonDecode(resp.body);
+      if (decoded is! Map) return null;
+      final list = (decoded['bookings'] as List?) ?? const [];
+      for (final row in list) {
+        if (row is Map && row['id']?.toString() == bookingId) {
+          return row.cast<String, dynamic>();
+        }
+      }
+      return null;
+    } catch (e, st) {
+      Analytics.captureException(e, st,
+          screen: 'join_link_resolver',
+          handled: true,
+          extra: {'stage': 'booking_list', 'when': when});
+      return null;
+    }
+  }
+
+  void _goto(Widget target) {
+    if (!mounted) return;
+    Navigator.of(context)
+        .pushReplacement(MaterialPageRoute(builder: (_) => target));
+  }
+
+  void _fail(String message, {required String reason, bool offerMySessions = false}) {
+    Analytics.capture('join_link_resolve_failed', {
+      'path_shape': '/j/<token>',
+      'scheme': widget.scheme,
+      'reason': reason,
+    });
+    if (!mounted) return;
+    setState(() {
+      _error = message;
+      _offerMySessions = offerMySessions;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AD.bg,
+      body: SafeArea(
+        child: Center(
+          child: _error == null
+              ? const CircularProgressIndicator(color: AD.primaryBadge)
+              : Padding(
+                  padding: const EdgeInsets.all(Msg.s5),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        PhosphorIcons.warningCircle(PhosphorIconsStyle.bold),
+                        size: 48,
+                        color: AD.danger,
+                      ),
+                      const SizedBox(height: Msg.s3),
+                      Text(_error!,
+                          textAlign: TextAlign.center, style: ADText.appTitle()),
+                      const SizedBox(height: Msg.s4),
+                      if (_offerMySessions)
+                        FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                              minimumSize: const Size(0, 48)),
+                          onPressed: () => _goto(const MySessionsScreen()),
+                          icon: Icon(
+                              PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold)),
+                          label: const Text('View My Sessions'),
+                        )
+                      else
+                        OutlinedButton(
+                          onPressed: () => Navigator.of(context).maybePop(),
+                          child: const Text('Close'),
+                        ),
+                    ],
+                  ),
+                ),
+        ),
+      ),
+    );
   }
 }
 
