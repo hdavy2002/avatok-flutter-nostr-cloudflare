@@ -47,7 +47,11 @@ function scrubProps(props: Properties | undefined | null): Properties | undefine
   const out: Properties = {};
   for (const [k, v] of Object.entries(props)) {
     if (!POSTHOG_OWN_KEYS.has(k) && SENSITIVE_KEY_RE.test(k)) continue; // drop entirely
-    out[k] = scrubValue(v);
+    // PostHog's own `$…` props, the git SHA and ids are not phone numbers —
+    // redacting digit runs there broke `release` filtering on day one.
+    out[k] = k.startsWith('$') || k === 'release' || k === 'token' || k.endsWith('_id') || k === 'distinct_id'
+      ? v
+      : scrubValue(v);
   }
   return out;
 }
