@@ -529,8 +529,20 @@ it. It is not a price anyone is quoted.
 `walletRealMoney=false`. No real money moves, which is why this was safe to change
 live. **Before real money-in: a LIVE Stripe account that can actually charge INR.**
 Stripe India requires a registered business — which avaTOK is not (see the no-company
-section) — so the real rail is expected to be **Cashfree**, not Stripe. Wiring that is
-a separate project; this change makes the currency honest on the rail that exists.
+section).
+
+🚨 **THE PROVIDER IS AN OPEN QUESTION — DO NOT ASSUME ONE (owner decision 2026-09-02).**
+This paragraph used to say "the real rail is expected to be **Cashfree**, not Stripe".
+**Cashfree is ruled out — they never replied to the application.** Nothing has replaced
+it. So: do not write Cashfree (or any other provider) into a spec, a route, a config key
+or this file, and do not tell the owner what the rail "will be" — ASK HIM. Wiring
+whichever provider is chosen is a separate project; the INR change above only makes the
+currency honest on the rail that exists.
+
+Two leftovers still name the dead provider: the reviewer-onboarding allowlist
+`reviewerEmails` is the single address `cashfree@avatok.ai` (moot for now — the gate was
+switched off in prod KV on 2026-09-02, `reviewerModeEnabled=false`), and the
+company-registration note below. Point both at the real provider once there is one.
 
 Marketplace listings keep their own genuinely multi-currency unit (`ListingTile.tsx`,
 `intent_theme.dart`) and are NOT part of this.
@@ -586,8 +598,18 @@ correct phrasing for an unregistered business under the IT Rules 2021. Do not re
 
 **When the company is actually registered**, update `LegalStatus.astro`,
 `BetaBanner.astro` and `SiteFooter.astro`, publish CIN/GSTIN, and tell the payment
-provider — see the Cashfree note: an unregistered merchant must update its business
-information with the provider once it incorporates.
+provider (whichever it turns out to be — Cashfree is OUT, see the payments section):
+an unregistered merchant must update its business information with the provider once
+it incorporates.
+
+⚠️ **Note that `BetaBanner.astro` and the `.bf-entity` block in `SiteFooter.astro` are
+no longer RENDERED** — `[WEB-BANNER-OFF-1 2026-09-02]` unmounted the banner from
+`SiteHeader.astro` and deleted the footer's status + Dehradun-address block at the
+owner's request. Both are kept on disk so they can be restored in one edit. The
+disclosure now lives only on `/terms#status`, so **if a payment provider's review asks
+for a visible operating address and business status, restoring these is the fix** —
+do not write a fresh entity sentence into a page, which is how the site drifted out of
+truth the first time.
 
 ---
 
