@@ -223,8 +223,13 @@ function policyFor(kind: CheckoutKind, attrs: Record<string, unknown>, config: P
   const pct = refundPercents(config);
   if (!pct) return null;
   if (kind === "live_event") {
-    if (!hasAttr(attrs, "commercial_refund_window_hours")) return null;
-    const refundWindow = boundedInt(attrs.commercial_refund_window_hours, 0, REFUND_WINDOWS);
+    // [LIST-FORM-2] Listings created by the old thin web form (before the
+    // 8-step wizard) never carried a refund window, so every one of them was
+    // unbookable: "commercial policy unavailable". Missing → the platform
+    // default of 24h. An explicit value is still validated as before.
+    const refundWindow = hasAttr(attrs, "commercial_refund_window_hours")
+      ? boundedInt(attrs.commercial_refund_window_hours, 0, REFUND_WINDOWS)
+      : 24;
     if (refundWindow === null) return null;
     return {
       refund_window_hours: refundWindow,
