@@ -14,6 +14,7 @@ import {
 import { commercialEvent } from "../lib/commercial_telemetry";
 import { hold, refund } from "../ledger";
 import { notifyLiveAudience } from "../lib/commercial_notifications";
+import { refreshCreatorStats } from "../lib/creator_stats"; // [LIST-STATS-1]
 
 const USER_TOKEN_TTL_SECONDS = 15 * 60;
 
@@ -1586,6 +1587,17 @@ export async function recordCommercialStreamEvent(
          WHERE commercial_session_id=?1`,
       ).bind(session.commercial_session_id, Date.now()).run();
     }
+    // [LIST-STATS-1] The session just landed in a terminal 'ended' state above
+    // — refresh this creator's cached trust-ladder row (creator_stats) off
+    // the hot path. Fire-and-forget on purpose: a stale stats row for a few
+    // minutes is cosmetic, and this webhook must never fail (or slow down)
+    // because of it. session here only carries commercial_session_id/state,
+    // so the creator_id is looked up fresh.
+    void metaDb(env).prepare(
+      "SELECT creator_id FROM commercial_sessions WHERE commercial_session_id=?1",
+    ).bind(session.commercial_session_id).first<{ creator_id: string }>()
+      .then((row) => { if (row?.creator_id) return refreshCreatorStats(env, row.creator_id); })
+      .catch((e) => console.warn("creator_stats refresh hook skipped:", String(e)));
   }
   await metaDb(env).prepare(
     "UPDATE commercial_provider_events SET processing_state='applied',processed_at=?2 WHERE provider_event_id=?1",
