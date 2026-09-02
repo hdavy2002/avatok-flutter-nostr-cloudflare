@@ -291,7 +291,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
               <button type="button" id="fav-btn" class="icon-btn" aria-label="Favorite">♡</button>
             </span>
           </div>
-          {!posterUrl && <span class="player-card__center-label">LIVE STAGE · HOST CAMERA<br />16:9 STREAM DROPS HERE</span>}
+          {!heroCoverUrl && <span class="player-card__center-label">LIVE STAGE · HOST CAMERA<br />16:9 STREAM DROPS HERE</span>}
           {isLive ? (
             <button type="button" class="btn btn--cta js-join-btn player-card__cta" style={`background:${ctaColor}`}>▸ Join now</button>
           ) : (
