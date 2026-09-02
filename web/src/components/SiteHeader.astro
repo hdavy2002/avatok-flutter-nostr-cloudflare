@@ -27,10 +27,10 @@
 // now rather than deleted, in case another surface still wants a React-side
 // signal, but nothing renders it.
 import TruckBorder from './TruckBorder.astro';
-// [LEGAL-UNREG-1 2026-08-28] Site-wide product-status disclosure. Lives here
-// rather than in a layout because the home page emits its own document and
-// never touches Base.astro — the header is the one thing every page shares.
-import BetaBanner from './BetaBanner.astro';
+// [WEB-BANNER-OFF-1 2026-09-02] Owner asked for the site-wide product-status
+// strip to come out of the header. BetaBanner.astro is kept on disk (unused) so
+// it can be re-mounted here in one line if the payment-gateway review wants it
+// back. The same disclosure still lives on /terms#status.
 
 export interface HeaderLink { href: string; label: string }
 
@@ -85,8 +85,6 @@ const { links = DEFAULT_LINKS, sticky = true } = Astro.props;
 {/* [WEB-HEADER-5 2026-08-26] Owner: the bazaar band belongs above the site
     header. Inside <header> on purpose — a sticky header that left the band
     outside would scroll the band away and pin the bar on its own. */}
-<BetaBanner />
-
 {/* [WEB-AUTH-STATE-1] Runs BEFORE paint (is:inline, no bundle, no await), so the
     correct buttons are the first ones drawn — no flash of "Log in" for a
     signed-in user. Duplicated from lib/authState.ts on purpose: an inline

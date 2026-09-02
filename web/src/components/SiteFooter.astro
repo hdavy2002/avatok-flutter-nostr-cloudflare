@@ -108,22 +108,12 @@ const columns = [
     </div>
   </div>
 
-  {/* [LEGAL-UNREG-1 2026-08-28] Operating entity, address and product status,
-      visible on every page. A payment-gateway reviewer looks for exactly this,
-      and it is also the honest answer to "who am I paying?". */}
-  <div class="bf-entity">
-    <p class="bf-entity-line">
-      <strong>avaTOK</strong> is an early-stage startup, currently an <strong>unregistered
-      business in India</strong>. Company registration in Mumbai is in process. The service is in
-      testing and access is invite-only; our payment gateway application is under review.
-      <a href="/terms#status">Read the full status</a>
-    </p>
-    <p class="bf-entity-line">
-      Ekta Vihar, Sahastradhara Road, Dehradun, Uttarakhand, India ·
-      <a href="mailto:support@avatok.ai">support@avatok.ai</a> ·
-      <a href="/grievance">Grievance Officer</a>
-    </p>
-  </div>
+  {/* [WEB-BANNER-OFF-1 2026-09-02] The status + address block was removed at the
+      owner's request. The same disclosure still lives on /terms#status, and the
+      Grievance Redressal link remains in the "Safety & Support" column above.
+      NOTE: a payment-gateway reviewer looks for exactly this block — if the
+      Cashfree/gateway application asks for a visible operating address, restore
+      it here (the .bf-entity styles below are kept for that). */}
 
   <div class="bf-legal">
     <div class="bf-legal-inner">
