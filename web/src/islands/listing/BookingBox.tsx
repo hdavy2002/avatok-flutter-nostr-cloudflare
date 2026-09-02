@@ -219,7 +219,7 @@ function MonthCalendar({
               disabled={!c.inMonth}
               onClick={() => onSelect(c.date)}
               style={{
-                height: 28, display: 'grid', placeItems: 'center', borderRadius: 8, position: 'relative',
+                height: 32, display: 'grid', placeItems: 'center', borderRadius: 8, position: 'relative',
                 border: 'none', background: filled ? '#d93825' : 'transparent',
                 cursor: c.inMonth ? 'pointer' : 'default', padding: 0,
                 opacity: c.inMonth ? 1 : 0.3,

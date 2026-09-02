@@ -188,7 +188,8 @@
 
 /* The comp keeps the booking box in the RIGHT rail on desktop (owner's pics 8–11). */
 .ld-aside { flex: 1 1 20rem; max-width: 23.5rem; min-width: min(100%, 18.125rem); order: 2; }
-@media (min-width: 901px) { .ld-aside { position: sticky; top: 16px; } }
+/* Desktop gives the rail a bit more room so the month calendar breathes. */
+@media (min-width: 901px) { .ld-aside { position: sticky; top: 16px; flex-basis: 23rem; max-width: 27rem; } }
 @media (max-width: 900px) { .ld-aside { order: 1; max-width: none; } .ld-main { order: 2; } }
 @media (min-width: 901px) { .ld-main { order: 1; } }
 
