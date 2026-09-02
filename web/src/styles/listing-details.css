@@ -92,7 +92,7 @@
 .ld-nazar-strip span { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .1em; color: #fdf1d3; text-align: center; }
 .ld-nazar-strip img { height: 34px; flex: none; }
 
-.ld-stage-card { border: 3px solid #161614; border-radius: 26px; overflow: hidden; background: #fdf1d3; box-shadow: 7px 8px 0 #161614; }
+.ld-stage-card { position: relative; border: 3px solid #161614; border-radius: 26px; overflow: hidden; background: #fdf1d3; box-shadow: 7px 8px 0 #161614; }
 .ld-stage-media { height: clamp(300px, 40vw, 540px); width: 100%; position: relative; background: #1e5f66; overflow: hidden; }
 .ld-stage-media img, .ld-stage-media iframe { width: 100%; height: 100%; object-fit: cover; border: 0; display: block; }
 .ld-stage-placeholder {
@@ -110,8 +110,8 @@
   width: 34px; height: 34px; flex: none; border-radius: 50%; background: #fdf1d3; border: 1.5px solid #161614;
   display: grid; place-items: center; font-size: 0.9375rem; cursor: pointer; padding: 0;
 }
-.ld-scallop { position: absolute; left: 0; right: 0; bottom: -1px; height: 18px; background: radial-gradient(circle at 11px 15px, #fdf1d3 11px, transparent 12px) 0 0/22px 18px repeat-x; }
-.ld-stage-footer { padding: 13px 18px 15px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ld-scallop { position: absolute; left: 0; right: 0; bottom: -1px; height: 18px; pointer-events: none; background: radial-gradient(circle at 11px 15px, #fdf1d3 11px, transparent 12px) 0 0/22px 18px repeat-x; }
+.ld-stage-footer { position: relative; z-index: 1; background: #fdf1d3; padding: 13px 18px 15px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ld-host-line { display: inline-flex; align-items: center; gap: 10px; color: inherit; }
 .ld-host-line-avatar { width: 30px; height: 30px; flex: none; border-radius: 50%; border: 1.5px solid #161614; display: grid; place-items: center; font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.75rem; overflow: hidden; }
 .ld-host-line-name { font-size: 0.875rem; font-weight: 600; }
@@ -318,3 +318,4 @@
 .ld-browse-pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 30px; }
 .ld-pager-dot { width: 34px; height: 34px; border-radius: 50%; border: 2px solid #161614; background: #fdf1d3; font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.75rem; display: grid; place-items: center; box-shadow: 3px 3px 0 #161614; cursor: pointer; }
 .ld-pager-dot--active { background: #d93825; color: #fdf1d3; }
+.ld-stage-viewport { position: relative; }

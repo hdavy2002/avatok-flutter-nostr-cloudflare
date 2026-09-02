@@ -238,6 +238,7 @@ const listingViewProps = {
   <div class="ld-wrap ld-hero">
     <div class="ld-hero-player">
       <div class="ld-stage-card">
+        <div class="ld-stage-viewport">
         {isLive && videoEmbed ? (
           <div class="ld-stage-media" data-video-block>
             <iframe src={videoEmbed} title={`${listing.title} — live`} allow="encrypted-media; picture-in-picture" allowfullscreen />
@@ -264,6 +265,7 @@ const listingViewProps = {
           </span>
         </div>
         <div class="ld-scallop"></div>
+        </div>
         <div class="ld-stage-footer">
           {creator && (
             <a href={creatorSlug ? `/c/${encodeURIComponent(creatorSlug)}` : '#'} class="ld-host-line">
