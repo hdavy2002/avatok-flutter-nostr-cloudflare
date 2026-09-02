@@ -692,6 +692,17 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
   const initKey = SHOW_DAYS.find((k) => k >= dayKeyTZ(Date.now())) || SHOW_DAYS[0] || dayKeyTZ(Date.now());
   const [initY, initM, initD] = initKey.split('-').map(Number);
 
+  // Astro scopes this component's <style> with a data-astro-cid-* attribute on
+  // every element it renders. Nodes we create with innerHTML at runtime don't
+  // get it, so calendar cells, slot cards, review cards and browse cards were
+  // rendering unstyled in production. Stamp the scope attribute on everything
+  // we inject; a no-op if the style ever becomes global.
+  const ROOT_EL = document.getElementById('ld-root');
+  const SCOPE_ATTR = ROOT_EL ? ROOT_EL.getAttributeNames().find((n) => n.startsWith('data-astro-cid-')) : null;
+  function scopeAll(container) {
+    if (!SCOPE_ATTR || !container) return;
+    container.querySelectorAll('*').forEach((el) => { if (!el.hasAttribute(SCOPE_ATTR)) el.setAttribute(SCOPE_ATTR, ''); });
+  }
   const state = { calY: initY, calM: initM - 1, selD: SHOW_DAYS.length ? initD : null, slot: 0, qty: 1, booked: false, fav: false, revPg: 0, evPg: 0, joined: 0, embedOpen: false };
 
   function availDays(y, m) {
@@ -729,7 +740,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
       const cls = ['cal-cell', sel ? 'cal-cell--selected' : on ? 'cal-cell--available' : 'cal-cell--disabled'].join(' ');
       html += `<button type="button" class="${cls}" data-day="${d}" ${on ? '' : 'disabled'}>${d}${on && !sel ? '<span class="cal-cell__dot"></span>' : ''}</button>`;
     }
-    grid.innerHTML = html;
+    grid.innerHTML = html; scopeAll(grid);
     grid.querySelectorAll('.cal-cell--available, .cal-cell--selected').forEach((btn) => {
       btn.addEventListener('click', () => {
         state.selD = Number(btn.dataset.day);
@@ -758,7 +769,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
         </span>
         <span class="slot__seats ${full ? 'slot__seats--full' : sel ? 'slot__seats--selected' : ''}">${full ? 'HOUSEFULL' : sl.unlimited ? 'OPEN SEATS' : sl.left + ' OF ' + sl.total + ' FREE'}</span>
       </button>`;
-    }).join('');
+    }).join(''); scopeAll(list);
     list.querySelectorAll('.slot:not([disabled])').forEach((btn) => {
       btn.addEventListener('click', () => { state.slot = Number(btn.dataset.idx); state.booked = false; renderSlots(); renderBooking(); });
     });
@@ -788,7 +799,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
         <div class="price-row"><span>Ticket ₹${CONFIG.price} × ${state.qty}</span><span>₹${base}</span></div>
         ${fee > 0 ? `<div class="price-row"><span>Platform fee (flat)</span><span>₹${fee}</span></div>` : ''}
         <div class="price-row"><span>GST ${CONFIG.gstRatePct}%</span><span>₹${gst}</span></div>
-        <div class="price-row price-row--total"><span>Total</span><span>₹${total}</span></div>`;
+        <div class="price-row price-row--total"><span>Total</span><span>₹${total}</span></div>`; scopeAll(document.getElementById('price-rows'));
     }
 
     document.getElementById('book-cta-area').style.display = state.booked ? 'none' : '';
@@ -908,7 +919,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
         </div>
         <p class="review-card__text">${r.text}</p>
       </div>`;
-    }).join('');
+    }).join(''); scopeAll(document.getElementById('reviews-list'));
     document.getElementById('reviews-page-label').textContent = 'PAGE ' + (pg + 1) + ' / ' + pages;
     document.getElementById('reviews-prev').disabled = pg === 0;
     document.getElementById('reviews-next').disabled = pg === pages - 1;
@@ -941,9 +952,9 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
             <span class="browse-card__dur">${c.dur}</span>
           </div>
         </div>
-      </a>`).join('');
+      </a>`).join(''); scopeAll(document.getElementById('browse-grid'));
     document.getElementById('browse-meta').textContent = 'SHOWING ' + (pg * PER + 1) + '–' + Math.min((pg + 1) * PER, EVENTS.length) + ' OF ' + EVENTS.length + ' EVENTS';
-    document.getElementById('browse-dots').innerHTML = Array.from({ length: pages }, (_, i) => `<button type="button" class="page-dot ${i === pg ? 'page-dot--active' : ''}" data-pg="${i}">${i + 1}</button>`).join('');
+    document.getElementById('browse-dots').innerHTML = Array.from({ length: pages }, (_, i) => `<button type="button" class="page-dot ${i === pg ? 'page-dot--active' : ''}" data-pg="${i}">${i + 1}</button>`).join(''); scopeAll(document.getElementById('browse-dots'));
     document.getElementById('browse-dots').querySelectorAll('button').forEach((btn) => { btn.onclick = () => { state.evPg = Number(btn.dataset.pg); renderBrowse(); }; });
     document.getElementById('browse-prev').disabled = pg === 0;
     document.getElementById('browse-next').disabled = pg === pages - 1;
