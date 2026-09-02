@@ -44,7 +44,9 @@ Astro.response.headers.set('Cache-Control', 'public, max-age=30, stale-while-rev
 ---
 
 <Base title={og.title} description={og.description} image={og.image} chrome={false}>
-  {og.extra.map((m) => (m.property ? <meta property={m.property} content={m.content} slot="head" /> : <meta name={m.name} content={m.content} slot="head" />))}
+  <Fragment slot="head">
+    {og.extra.map((m) => (m.property ? <meta property={m.property} content={m.content} /> : <meta name={m.name} content={m.content} />))}
+  </Fragment>
 
   <main class="min-h-screen bg-paper">
     <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">

@@ -7,7 +7,7 @@
 // Do NOT add a helper for an endpoint that isn't in §4.
 
 import { API_BASE } from './config';
-import type { Card, CardPage, Creator, Listing } from './types';
+import type { Card, CardPage, Creator, CreatorStats, Listing, Review } from './types';
 
 /** Typed error thrown on any non-2xx response. */
 export class ApiError extends Error {
@@ -126,9 +126,34 @@ export function getLiveNow(signal?: AbortSignal): Promise<{ listings: Card[] }> 
   return request<{ listings: Card[] }>('/api/explore/live-now', { signal });
 }
 
-/** GET /api/listings/:id — full listing detail (public read). */
-export function getListing(id: string, auth?: string | null, signal?: AbortSignal): Promise<Listing> {
-  return request<Listing>(`/api/listings/${encodeURIComponent(id)}`, { auth, signal });
+/**
+ * GET /api/listings/:id — full listing detail (public read).
+ *
+ * [LIST-DETAIL-2] The worker's actual response body (worker/src/routes/listings.ts,
+ * function getListing) is the envelope `{ listing: {...}, creator_stats, reviews,
+ * viewer }` — every Card-level field (id, title, price, cover_media, starts_at, ...)
+ * lives UNDER `.listing`, not at the top level this function used to promise. That
+ * mismatch typechecked (TS never complained) but left `listing.title`, `.price`,
+ * `.poster` etc. silently `undefined` for every caller. Unwrapping HERE, at the one
+ * fetch call, means every caller — `pages/l/[id].astro`, `pages/e/[event].astro`,
+ * `pages/dashboard/l/[id].astro`, `pages/watch/[id].astro`, `pages/book/[id].astro`,
+ * `pages/live/[id].astro` — gets a real flat `Listing` with no per-page unwrap.
+ * Idempotent: a response that is already flat (a hand-built mock, or a future worker
+ * change) passes through unchanged, since `inner` is only used when present.
+ */
+export async function getListing(id: string, auth?: string | null, signal?: AbortSignal): Promise<Listing> {
+  const raw = await request<Record<string, unknown> & { listing?: Record<string, unknown> }>(
+    `/api/listings/${encodeURIComponent(id)}`,
+    { auth, signal },
+  );
+  const inner = raw?.listing && typeof raw.listing === 'object' ? raw.listing : null;
+  if (!inner) return raw as unknown as Listing;
+  return {
+    ...(inner as unknown as Listing),
+    creator_stats: (raw.creator_stats as CreatorStats | null | undefined) ?? (inner.creator_stats as CreatorStats | null | undefined) ?? null,
+    reviews: (raw.reviews as Review[] | undefined) ?? (inner.reviews as Review[] | undefined) ?? [],
+    viewer: (raw.viewer as Listing['viewer'] | undefined) ?? (inner.viewer as Listing['viewer'] | undefined),
+  };
 }
 
 /** GET /api/creators/:id — creator channel (public read). */

@@ -7,7 +7,6 @@ export const prerender = false;
 import Base from '../../layouts/Base.astro';
 import AuthRedirect from '../../components/AuthRedirect.astro';
 import ListingDetailView from '../../components/ListingDetailView.astro';
-import { normalizeListing } from '../../components/listing/normalizeListing';
 import { getListing, ApiError } from '../../lib/apiClient';
 import { listingOg } from '../../lib/og';
 import type { Listing } from '../../lib/types';
@@ -17,11 +16,10 @@ const { id } = Astro.params;
 let listing: Listing | null = null;
 let notFound = false;
 try {
-  // [LIST-DETAIL-1] getListing() returns the raw `{listing, creator_stats, reviews,
-  // viewer}` envelope, not a flat Listing — see normalizeListing.ts for why. Unwrap
-  // here so `listingOg()` below (which reads listing.title/description/poster/price)
-  // gets real values instead of undefined.
-  listing = normalizeListing(await getListing(id!));
+  // [LIST-DETAIL-2] getListing() now unwraps the worker's envelope itself (see
+  // apiClient.ts), so this is already a flat Listing — listingOg() below reads
+  // real title/description/poster/price values.
+  listing = await getListing(id!);
 } catch (e) {
   if (e instanceof ApiError && (e.status === 404 || e.status === 410)) notFound = true;
   else throw e;
@@ -33,7 +31,9 @@ const og = listingOg(listing);
 ---
 
 <Base title={og.title} description={og.description} image={og.image}>
-  <AuthRedirect slot="head" />
-  {og.extra.map((m) => (m.property ? <meta property={m.property} content={m.content} slot="head" /> : <meta name={m.name} content={m.content} slot="head" />))}
+  <Fragment slot="head">
+    <AuthRedirect />
+    {og.extra.map((m) => (m.property ? <meta property={m.property} content={m.content} /> : <meta name={m.name} content={m.content} />))}
+  </Fragment>
   <ListingDetailView listing={listing} mode="public" />
 </Base>

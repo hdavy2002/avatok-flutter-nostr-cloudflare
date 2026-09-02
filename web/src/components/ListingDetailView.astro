@@ -5,20 +5,17 @@
 // signing up the user lands back on the SAME listing inside the dashboard. Guest
 // email checkout is still available as a secondary path.
 import { Avatar, Pill } from '../components';
-import { normalizeListing } from './listing/normalizeListing';
 import { cfImage } from '../lib/config';
 import { durationLabel, languageLabel, priceLabel } from '../lib/card';
 import { inrOrFree, priceBreakdown } from '../lib/money';
 import type { CoverMedia, Listing } from '../lib/types';
 
 interface Props { listing: Listing; mode?: 'public' | 'dashboard'; }
-const { listing: rawListing, mode = 'public' } = Astro.props;
-// [LIST-DETAIL-1] Defensive unwrap — see normalizeListing.ts. `pages/l/[id].astro`
-// already normalizes before this component ever sees the listing, but
-// `pages/dashboard/l/[id].astro` (not in this task's editable file list) still passes
-// the raw `{listing, creator_stats, reviews, viewer}` envelope straight through, so
-// this component does it again rather than assume its caller did.
-const listing = normalizeListing(rawListing);
+// [LIST-DETAIL-2] No more defensive unwrap here — `apiClient.getListing()` unwraps
+// the worker's `{listing, creator_stats, reviews, viewer}` envelope at the source
+// now, so every caller (public and dashboard alike) already hands this component a
+// flat `Listing`.
+const { listing, mode = 'public' } = Astro.props;
 
 const id = listing.id;
 const kind = (listing.kind ?? 'content') as string;
@@ -27,6 +24,20 @@ const detailPath = `/l/${encodeURIComponent(id)}`;
 const bookHref = `/book/${encodeURIComponent(id)}`;
 const watchHref = `/watch/${encodeURIComponent(id)}`;
 const agentHref = `/agent/${encodeURIComponent(id)}`;
+
+// [LIST-DETAIL-2] The worker sends the creator's `uid`, never `id` — `CreatorRef.id`
+// is a legacy alias nothing on the wire has ever populated for a listing detail
+// response (worker/src/routes/listings.ts:1743). When a creator ALSO has no handle
+// (a real, un-onboarded row), `handle ?? id` resolved to `undefined ?? undefined`,
+// and `encodeURIComponent(undefined)` returns the literal string "undefined" — every
+// such listing linked to the dead page `/c/undefined`. Fall back through `uid` before
+// `id`, and treat "no slug at all" as "no link" rather than emit a broken href.
+const creatorSlug = listing.creator?.handle || listing.creator?.uid || listing.creator?.id || null;
+// [LIST-DETAIL-2] Same alias problem as the slug above — the worker sends
+// `avatar_url`, never `avatar`, for the creator embedded on a listing (shapeCard,
+// worker/src/routes/listings.ts:381), so `.avatar` was always undefined here and the
+// avatar image never rendered (silently; Avatar falls back to initials on `null`).
+const creatorAvatarUrl = listing.creator?.avatar ?? listing.creator?.avatar_url ?? null;
 
 // Real action + verb for this listing (legacy kind-based fallback).
 let actionHref = bookHref; let verb = 'Book';
@@ -204,14 +215,23 @@ const bookingTerms = [cancelLine, noticeLine, rescheduleLine].filter((s): s is s
         <h1 class="mt-2 font-display font-semibold text-[32px] leading-tight text-ink">{listing.title}</h1>
       </div>
 
-      {listing.creator && (
-        <a href={`/c/${encodeURIComponent(listing.creator.handle ?? listing.creator.id)}`} class="flex items-center gap-3 no-underline">
-          <Avatar src={listing.creator.avatar} name={listing.creator.name ?? listing.creator.handle} size={48} />
+      {listing.creator && creatorSlug && (
+        <a href={`/c/${encodeURIComponent(creatorSlug)}`} class="flex items-center gap-3 no-underline">
+          <Avatar src={creatorAvatarUrl} name={listing.creator.name ?? listing.creator.handle} size={48} />
           <div class="flex flex-col">
             <span class="font-display font-semibold text-[17px] text-ink">{listing.creator.name ?? listing.creator.handle}</span>
             {listing.creator.handle && <span class="font-mono text-[14px] uppercase tracking-[0.06em] text-inkSoft font-bold">@{listing.creator.handle}</span>}
           </div>
         </a>
+      )}
+      {listing.creator && !creatorSlug && (
+        <div class="flex items-center gap-3">
+          <Avatar src={creatorAvatarUrl} name={listing.creator.name ?? listing.creator.handle} size={48} />
+          <div class="flex flex-col">
+            <span class="font-display font-semibold text-[17px] text-ink">{listing.creator.name ?? listing.creator.handle}</span>
+            {listing.creator.handle && <span class="font-mono text-[14px] uppercase tracking-[0.06em] text-inkSoft font-bold">@{listing.creator.handle}</span>}
+          </div>
+        </div>
       )}
 
       {/* [LIST-DETAIL-1] The single most obviously missing thing: a scheduled listing

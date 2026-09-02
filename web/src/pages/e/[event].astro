@@ -43,6 +43,14 @@ const isLive = listing.live === true || (listing as { status?: string }).status 
 const bookHref = `/book/${encodeURIComponent(listing.id)}`;
 const watchHref = `/watch/${encodeURIComponent(listing.id)}`;
 
+// [LIST-DETAIL-2] The worker sends `uid`/`avatar_url`, never `id`/`avatar`, for the
+// creator embedded on a listing (shapeCard, worker/src/routes/listings.ts:379-384).
+// `handle ?? id` used to resolve to `undefined ?? undefined`, and
+// `encodeURIComponent(undefined)` returns the literal string "undefined" — every such
+// listing linked to the dead page `/c/undefined`.
+const creatorSlug = listing.creator?.handle || listing.creator?.uid || listing.creator?.id || null;
+const creatorAvatarUrl = listing.creator?.avatar ?? listing.creator?.avatar_url ?? null;
+
 const startDate = startMs ? new Date(startMs) : null;
 const dateLabel = startDate
   ? startDate.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
@@ -71,7 +79,9 @@ const calClass =
 ---
 
 <Base title={og.title} description={og.description} image={og.image}>
-  {og.extra.map((m) => (m.property ? <meta property={m.property} content={m.content} slot="head" /> : <meta name={m.name} content={m.content} slot="head" />))}
+  <Fragment slot="head">
+    {og.extra.map((m) => (m.property ? <meta property={m.property} content={m.content} /> : <meta name={m.name} content={m.content} />))}
+  </Fragment>
 
   <main class="mx-auto max-w-4xl px-4 py-10">
     <div class="overflow-hidden rounded-zine border-zine border-ink bg-card shadow-zine">
@@ -88,11 +98,17 @@ const calClass =
           <h1 class="mt-2 font-display font-semibold text-[32px] leading-tight text-ink">{listing.title}</h1>
         </div>
 
-        {listing.creator && (
-          <a href={`/c/${encodeURIComponent(listing.creator.handle ?? listing.creator.id)}`} class="flex items-center gap-3 no-underline">
-            <Avatar src={listing.creator.avatar} name={listing.creator.name ?? listing.creator.handle} size={44} />
+        {listing.creator && creatorSlug && (
+          <a href={`/c/${encodeURIComponent(creatorSlug)}`} class="flex items-center gap-3 no-underline">
+            <Avatar src={creatorAvatarUrl} name={listing.creator.name ?? listing.creator.handle} size={44} />
             <span class="font-display font-semibold text-[16px] text-ink">{listing.creator.name ?? `@${listing.creator.handle}`}</span>
           </a>
+        )}
+        {listing.creator && !creatorSlug && (
+          <div class="flex items-center gap-3">
+            <Avatar src={creatorAvatarUrl} name={listing.creator.name ?? listing.creator.handle} size={44} />
+            <span class="font-display font-semibold text-[16px] text-ink">{listing.creator.name ?? `@${listing.creator.handle}`}</span>
+          </div>
         )}
 
         <!-- Date + countdown -->

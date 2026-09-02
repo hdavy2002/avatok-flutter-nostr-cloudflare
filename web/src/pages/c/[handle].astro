@@ -40,7 +40,9 @@ function fmt(n?: number | null): string {
 ---
 
 <Base title={og.title} description={og.description} image={og.image}>
-  {og.extra.map((m) => (m.property ? <meta property={m.property} content={m.content} slot="head" /> : <meta name={m.name} content={m.content} slot="head" />))}
+  <Fragment slot="head">
+    {og.extra.map((m) => (m.property ? <meta property={m.property} content={m.content} /> : <meta name={m.name} content={m.content} />))}
+  </Fragment>
 
   <main class="mx-auto max-w-6xl px-4 py-8">
     <!-- Channel header -->
