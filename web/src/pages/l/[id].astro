@@ -1,11 +1,14 @@
 ---
-// Public listing detail — SSR, edge-cached, link-preview friendly. Logged-in
-// users are routed to /dashboard/l/<id> by <AuthRedirect/>. Booking leads to
-// sign-up first (?next=this listing) so they return here inside the dashboard.
+// Public listing detail — SSR, edge-cached, link-preview friendly.
+// [SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING A1.3] Every listing details
+// page is public and chrome-free for everyone, logged in or not — this page
+// used to bounce a signed-in visitor to /dashboard/l/<id> via <AuthRedirect/>;
+// that redirect is REMOVED. An unregistered buyer signs in inline (email +
+// code) in the booking box and never leaves this page. /dashboard/l/<id>
+// itself now just 301s here.
 export const prerender = false;
 
 import Base from '../../layouts/Base.astro';
-import AuthRedirect from '../../components/AuthRedirect.astro';
 import ListingDetailView from '../../components/ListingDetailView.astro';
 import { getListing, ApiError } from '../../lib/apiClient';
 import { listingOg } from '../../lib/og';
@@ -26,13 +29,20 @@ try {
 }
 if (notFound || !listing) return new Response('Listing not found', { status: 404 });
 
+// [LIST-PAGE-2] SPEC-2026-09-01 §G — /l/<id> 301s to the pretty /<handle>/<slug>
+// URL once both exist, so every already-shared /l/<id> link keeps working
+// forever while new shares/crawls converge on the canonical pretty URL.
+const creatorHandle = listing.creator?.handle?.trim();
+if (creatorHandle && listing.slug?.trim()) {
+  return Astro.redirect(`/${encodeURIComponent(creatorHandle)}/${encodeURIComponent(listing.slug.trim())}`, 301);
+}
+
 Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
 const og = listingOg(listing);
 ---
 
 <Base title={og.title} description={og.description} image={og.image}>
   <Fragment slot="head">
-    <AuthRedirect />
     {og.extra.map((m) => (m.property ? <meta property={m.property} content={m.content} /> : <meta name={m.name} content={m.content} />))}
   </Fragment>
 

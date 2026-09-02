@@ -1,0 +1,129 @@
+---
+// [LIST-PAGE-2] "PUBLIC KI RAI" — SPEC-2026-09-02-LISTING-TRUST-AND-VIBE.md §1
+// row 5 / §3.1.9. Reads from the paginated /api/listings/:id/reviews envelope
+// (histogram, verified_count, show_rating) rather than the plain `reviews[]`
+// array on the detail response, per the task brief — the detail response's
+// array is only the latest 20 with no histogram.
+import { Avatar } from '../../components';
+import { reviewsCopy } from '../../lib/copy';
+import type { ReviewList } from '../../lib/types';
+
+interface Props { listingId: string; reviewList: ReviewList | null }
+const { listingId, reviewList } = Astro.props;
+const items = reviewList?.items ?? [];
+const hist = reviewList?.histogram;
+const total = reviewList?.total ?? items.length;
+const showRating = reviewList?.show_rating ?? false;
+const avg = total > 0 && hist
+  ? (Object.entries(hist).reduce((s, [k, v]) => s + Number(k) * v, 0) / Math.max(1, total))
+  : null;
+---
+
+{(items.length > 0 || total === 0) && (
+  <section class="reviews" data-section="reviews">
+    <h2 class="eyebrow">{reviewsCopy.title}</h2>
+
+    {total === 0 ? (
+      <p class="empty">{reviewsCopy.empty}</p>
+    ) : (
+      <>
+        {showRating && avg != null && (
+          <div class="rating-head">
+            <span class="big-rating">★ {avg.toFixed(1)}</span>
+            <span class="rating-count">{total} review{total === 1 ? '' : 's'}</span>
+          </div>
+        )}
+        {hist && (
+          <div class="histogram">
+            {(['5', '4', '3', '2', '1'] as const).map((star) => {
+              const n = hist[star] ?? 0;
+              const pct = total > 0 ? Math.round((n / total) * 100) : 0;
+              return (
+                <div class="hist-row">
+                  <span class="hist-star">{star}★</span>
+                  <div class="hist-bar"><div class="hist-fill" style={`width:${pct}%`}></div></div>
+                  <span class="hist-n">{n}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div class="review-list">
+          {items.map((r) => (
+            <div class="review-card">
+              <div class="review-head">
+                <Avatar src={r.author_avatar} name={r.author_name} size={32} />
+                <span class="review-author">{r.author_name ?? 'Guest'}</span>
+                {(r.verified_attendee === 1) && <span class="verified-tag">{reviewsCopy.verifiedTag}</span>}
+                <span class="review-rating">★ {r.rating.toFixed(1)}</span>
+              </div>
+              {r.body && <p class="review-body">{r.body}</p>}
+              {(r.creator_reply || r.reply) && (
+                <div class="host-reply">
+                  <span class="host-reply-tag">{reviewsCopy.hostReply}</span>
+                  <p>{r.creator_reply ?? r.reply}</p>
+                </div>
+              )}
+              <button type="button" class="helpful-btn" data-review-helpful={r.id} data-helpful-count={r.helpful_count ?? 0}>
+                {reviewsCopy.helpful(r.helpful_count ?? 0)}
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {reviewList?.next_cursor && (
+          <a class="load-more" href={`?reviews_cursor=${encodeURIComponent(reviewList.next_cursor)}#reviews`} data-cta="reviews_load_more">
+            {reviewsCopy.loadMore}
+          </a>
+        )}
+      </>
+    )}
+  </section>
+)}
+
+<script define:vars={{ listingId }}>
+  import('../../lib/analytics').then(({ capture }) => {
+    document.querySelectorAll('[data-review-helpful]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const reviewId = btn.getAttribute('data-review-helpful');
+        try {
+          const { markReviewHelpful } = await import('../../lib/apiClient');
+          const r = await markReviewHelpful(reviewId);
+          btn.textContent = r.marked_helpful ? `Helpful (${r.helpful_count})` : `Helpful (${r.helpful_count})`;
+        } catch (e) {
+          // Guest with no session, or a network error — leave the count as-is,
+          // this is a nice-to-have vote, not a critical path.
+        }
+        capture('listing_review_helpful', { listing_id: listingId, review_id: reviewId });
+      });
+    });
+  });
+</script>
+
+<style>
+  .reviews { display: flex; flex-direction: column; gap: 14px; padding: 22px; border-radius: 20px; background: #fff; border: 2px solid #161614; }
+  .eyebrow { margin: 0; font-family: 'Nunito', system-ui, sans-serif; font-weight: 900; font-size: 0.75rem; letter-spacing: .1em; color: #161614; }
+  .empty { margin: 0; font-family: 'Nunito', system-ui, sans-serif; font-weight: 700; color: #8a8a80; }
+  .rating-head { display: flex; align-items: baseline; gap: 10px; }
+  .big-rating { font-family: 'Anton', Impact, sans-serif; font-weight: 400; font-size: 2rem; color: #161614; }
+  .rating-count { font-family: 'Nunito', system-ui, sans-serif; font-weight: 700; color: #5a5a54; }
+  .histogram { display: flex; flex-direction: column; gap: 4px; }
+  .hist-row { display: flex; align-items: center; gap: 8px; font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.75rem; }
+  .hist-star { width: 26px; }
+  .hist-bar { flex: 1; height: 8px; border-radius: 100px; background: #f1ead6; overflow: hidden; }
+  .hist-fill { height: 100%; background: #d93825; }
+  .hist-n { width: 26px; text-align: right; color: #8a8a80; }
+  .review-list { display: flex; flex-direction: column; gap: 10px; }
+  .review-card { padding: 14px; border-radius: 14px; background: #fbf7ea; border: 1.5px solid rgba(22,22,20,.15); }
+  .review-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .review-author { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.8125rem; color: #161614; }
+  .verified-tag { font-family: 'Nunito', system-ui, sans-serif; font-weight: 900; font-size: 0.5625rem; letter-spacing: .05em; background: #1e8f5f; color: #fff; border-radius: 100px; padding: 3px 7px; }
+  .review-rating { margin-left: auto; font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; color: #d93825; }
+  .review-body { margin: 8px 0 0; font-family: 'Nunito', system-ui, sans-serif; font-weight: 600; font-size: 0.8125rem; color: #3a3a34; }
+  .host-reply { margin-top: 8px; padding: 10px; border-radius: 10px; background: #fff; }
+  .host-reply-tag { font-family: 'Nunito', system-ui, sans-serif; font-weight: 900; font-size: 0.625rem; letter-spacing: .06em; color: #8a8a80; }
+  .host-reply p { margin: 4px 0 0; font-family: 'Nunito', system-ui, sans-serif; font-weight: 600; font-size: 0.8125rem; color: #3a3a34; }
+  .helpful-btn { margin-top: 8px; align-self: flex-start; font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .04em; padding: 6px 12px; border-radius: 100px; border: 1.5px solid #161614; background: #fff; color: #161614; cursor: pointer; }
+  .load-more { align-self: center; font-family: 'Nunito', system-ui, sans-serif; font-weight: 900; font-size: 0.75rem; letter-spacing: .06em; color: #2d7180; text-decoration: none; }
+</style>

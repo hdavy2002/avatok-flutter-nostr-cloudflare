@@ -1,0 +1,91 @@
+---
+// [LIST-PAGE-2] "MEET THE HOST" — SPEC-2026-09-02 §3.1.7 / §3.2.6 / §3.3.6. Shared
+// across all three layouts; what differs per layout is which stat chips are
+// meaningful (a consult expert's "on-time %" reads differently from a live
+// host's "shows hosted"), so the caller passes the chip list already built.
+import { Avatar } from '../../components';
+import { sectionTitles } from '../../lib/copy';
+import type { CreatorRef, CreatorTrustStats } from '../../lib/types';
+
+interface Props {
+  creator: CreatorRef;
+  creatorSlug: string | null;
+  avatarUrl: string | null;
+  city?: string | null;
+  bio?: string | null;
+  chips: string[];
+  isAgent?: boolean;
+  hostSinceLabel?: string | null;
+  trust?: CreatorTrustStats | null;
+}
+const { creator, creatorSlug, avatarUrl, city, bio, chips, isAgent = false, hostSinceLabel, trust } = Astro.props;
+const name = creator.name ?? (creator.handle ? `@${creator.handle}` : 'avaTOK creator');
+const verified = !isAgent && Boolean(creator.kyc_verified);
+const profileHref = creatorSlug ? `/c/${encodeURIComponent(creatorSlug)}` : null;
+---
+
+<section class="host-card" data-section="host">
+  <h2 class="eyebrow">{sectionTitles.meetHost}</h2>
+  <div class="host-row">
+    <Avatar src={avatarUrl} name={name} size={64} />
+    <div class="host-info">
+      <div class="host-name-line">
+        <span class="host-name">{name}</span>
+        {verified && <span class="kyc-tick" title="ID verified">✓</span>}
+        {isAgent && <span class="ai-badge">AI</span>}
+      </div>
+      <div class="host-meta">
+        {hostSinceLabel && <span>HOST SINCE {hostSinceLabel}</span>}
+        {city && <span>{city}</span>}
+      </div>
+    </div>
+    {profileHref && !isAgent && (
+      <a href={profileHref} class="msg-btn" data-cta="message_host">MESSAGE</a>
+    )}
+  </div>
+
+  {chips.length > 0 && (
+    <div class="chip-row">
+      {chips.map((c) => <span class="host-chip">{c}</span>)}
+    </div>
+  )}
+
+  {bio && <p class="host-bio">{bio}</p>}
+
+  <p class="msg-note">{sectionTitles.messageNote}</p>
+
+  {trust && trust.shows_hosted > 0 && (
+    <div class="stat-grid">
+      <div><b>{trust.shows_hosted}</b><span>SHOWS</span></div>
+      {trust.comeback_pct != null && <div><b>{Math.round(trust.comeback_pct)}%</b><span>COME BACK</span></div>}
+      {trust.on_time_pct != null && <div><b>{Math.round(trust.on_time_pct)}%</b><span>ON TIME</span></div>}
+      {trust.sold_out_count > 0 && <div><b>{trust.sold_out_count}</b><span>SOLD OUT</span></div>}
+    </div>
+  )}
+
+  {profileHref && (
+    <a href={profileHref} class="also-listed" data-cta="also_listed_by">{sectionTitles.alsoListedBy(name)} →</a>
+  )}
+</section>
+
+<style>
+  .host-card { display: flex; flex-direction: column; gap: 14px; padding: 22px; border-radius: 20px; background: #fff; border: 2px solid #161614; }
+  .eyebrow { margin: 0; font-family: 'Nunito', system-ui, sans-serif; font-weight: 900; font-size: 0.75rem; letter-spacing: .1em; color: #161614; }
+  .host-row { display: flex; align-items: center; gap: 14px; }
+  .host-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .host-name-line { display: flex; align-items: center; gap: 6px; }
+  .host-name { font-family: 'Anton', Impact, sans-serif; font-weight: 400; font-size: 1.125rem; letter-spacing: .02em; text-transform: uppercase; color: #161614; }
+  .kyc-tick { color: #1e8f5f; font-weight: 900; }
+  .ai-badge { font-family: 'Nunito', system-ui, sans-serif; font-weight: 900; font-size: 0.625rem; letter-spacing: .06em; background: #2d7180; color: #fdf1d3; border-radius: 100px; padding: 3px 8px; }
+  .host-meta { display: flex; gap: 10px; font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .06em; color: #5a5a54; }
+  .msg-btn { margin-left: auto; flex: none; text-decoration: none; font-family: 'Nunito', system-ui, sans-serif; font-weight: 900; font-size: 0.75rem; letter-spacing: .06em; padding: 10px 16px; border-radius: 100px; border: 2px solid #161614; background: #fdf1d3; color: #161614; }
+  .chip-row { display: flex; flex-wrap: wrap; gap: 7px; }
+  .host-chip { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .04em; border: 1.5px solid #161614; border-radius: 100px; padding: 6px 10px; color: #161614; }
+  .host-bio { margin: 0; font-family: 'Nunito', system-ui, sans-serif; font-weight: 600; font-size: 0.875rem; line-height: 1.5; color: #3a3a34; }
+  .msg-note { margin: 0; font-family: 'Nunito', system-ui, sans-serif; font-weight: 700; font-size: 0.75rem; color: #8a8a80; }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 10px; padding-top: 10px; border-top: 1.5px solid rgba(22,22,20,.15); }
+  .stat-grid div { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .stat-grid b { font-family: 'Anton', Impact, sans-serif; font-weight: 400; font-size: 1.25rem; color: #161614; }
+  .stat-grid span { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.625rem; letter-spacing: .06em; color: #8a8a80; }
+  .also-listed { font-family: 'Nunito', system-ui, sans-serif; font-weight: 900; font-size: 0.75rem; letter-spacing: .05em; color: #2d7180; text-decoration: none; }
+</style>

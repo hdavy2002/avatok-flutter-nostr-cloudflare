@@ -26,11 +26,13 @@
     "astro": "5.18.2",
     "hls.js": "1.6.16",
     "posthog-js": "^1.424.1",
+    "qrcode": "^1.5.4",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "tailwindcss": "3.4.19"
   },
   "devDependencies": {
+    "@types/qrcode": "^1.5.6",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "typescript": "5.9.3"

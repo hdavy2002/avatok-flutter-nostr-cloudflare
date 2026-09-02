@@ -2091,6 +2091,25 @@ export async function getListing(req: Request, env: Env, id: string): Promise<Re
   });
 }
 
+// GET /api/listings/by-slug/:handle/:slug — pretty-URL resolution for the public
+// /<handle>/<slug> details page (Specs/SPEC-2026-09-01-LISTING-CONTENT-AND-
+// BOOKING.md §G). Resolves the creator's handle to a uid, then the (creator_id,
+// slug) pair to a listing id, and hands off to getListing so the response shape
+// (and every fail-soft path inside it) is identical to fetching by id — there is
+// exactly one way this page's data gets built. 404s (never 500s) when the
+// handle or slug do not resolve, same posture as getListing's own 404.
+export async function getListingBySlug(req: Request, env: Env, handle: string, slug: string): Promise<Response> {
+  const user = await metaSession(env).prepare(
+    "SELECT uid FROM users WHERE handle=?1 OR uid=?1",
+  ).bind(handle).first<any>();
+  if (!user) return json({ error: "not found" }, 404);
+  const row = await metaSession(env).prepare(
+    "SELECT id FROM listings WHERE creator_id=?1 AND slug=?2",
+  ).bind(user.uid, slug).first<any>();
+  if (!row) return json({ error: "not found" }, 404);
+  return getListing(req, env, String(row.id));
+}
+
 // GET /api/creators/:id — channel: profile, public fields, listings, reviews.
 export async function getCreator(req: Request, env: Env, id: string): Promise<Response> {
   const uid = await maybeUid(req, env);

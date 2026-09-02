@@ -201,7 +201,7 @@ import { askQuestion, answerQuestion, listMyQuestions, listCreatorQuestions, pro
 import {
   createListing, updateListing, publishListing, setListingStatus, duplicateListing, repeatListing, cancelListing,
   myListings, listingPromotions, deletePromotion, exploreBrowse, exploreLiveNow, exploreSearch,
-  exploreCategories, getListing, getCreator, updateMyChannel, followCreator, unfollowCreator,
+  exploreCategories, getListing, getListingBySlug, getCreator, updateMyChannel, followCreator, unfollowCreator,
   blockCreator, report, bookListing,
   listingFeeQuote,
 } from "./routes/listings";
@@ -1732,6 +1732,11 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
         const sid = p.match(/^\/api\/slots\/([A-Za-z0-9-]{1,64})$/);
         if (sid && req.method === "PATCH") return await patchListingSlot(req, env, sid[1]);
         if (sid && req.method === "DELETE") return await deleteListingSlot(req, env, sid[1]);
+        // [LIST-PAGE-2] Pretty-URL resolution for /<handle>/<slug> — see
+        // routes/listings.ts getListingBySlug header. Must be matched before `lm`
+        // below, which only matches a single path segment after /api/listings/.
+        const lbs = p.match(/^\/api\/listings\/by-slug\/([A-Za-z0-9._-]{1,64})\/([A-Za-z0-9._-]{1,80})$/);
+        if (lbs && req.method === "GET") return await getListingBySlug(req, env, lbs[1], lbs[2]);
         const lm = p.match(/^\/api\/listings\/([A-Za-z0-9-]{1,64})$/);
         if (lm && req.method === "GET") return await getListing(req, env, lm[1]);
         if (lm && req.method === "PUT") return await updateListing(req, env, lm[1]);

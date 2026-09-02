@@ -218,6 +218,9 @@ export interface CardView {
   status: string | null;
   live: boolean;
   favorited: boolean;
+  /** [LIST-TRUST-1] Epoch ms the listing was created, null when unknown. Backs
+   *  the `NEW` chip (<48h, §2/§4). */
+  createdAt: number | null;
   creator: {
     id: string;
     handle: string | null;

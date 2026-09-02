@@ -1,19 +1,18 @@
 ---
-// [DEMO-LISTING-1 2026-08-26] Pretty listing URL: /<username>/<slug>
+// [LIST-PAGE-2] Public listing details at the pretty URL: /<username>/<slug>.
 //
-// Owner decision 2026-08-26: listings get a shareable /creator/listing URL, and
-// FOR NOW the page they render is the bazaar mockup from design/live-streaming/
-// ("avaTOK Listing Details.dc.html") — look and feel only, hardcoded mock data,
-// backend wiring comes later. The real data-driven page still exists at
-// /l/<id> (ListingDetailView.astro); nothing here replaces it yet, and every
-// link already shared points there, so it has to keep working.
+// Owner decision 2026-08-26 said this route would serve the bazaar mockup
+// "for now" (look-and-feel only, hardcoded mock data). That "for now" is over:
+// SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING.md §G retires the mock and wires
+// this route to real data through the SAME `ListingDetailView` component /l/<id>
+// renders — one component, three URLs (this one, /l/<id>, /e/<id>).
 export const prerender = false;
 
-import { renderMockupPage } from '../../lib/mockupPage';
-// Inlined at build time from web/src/generated/, which prebuild stages out of
-// design/live-streaming/. It is NOT served from public/ — read the header of
-// scripts/copy-design-demo.mjs before changing that.
-import mockupHtml from '../../generated/listing-details.dc.html?raw';
+import Base from '../../layouts/Base.astro';
+import ListingDetailView from '../../components/ListingDetailView.astro';
+import { getListingBySlug, ApiError } from '../../lib/apiClient';
+import { listingOg } from '../../lib/og';
+import type { Listing } from '../../lib/types';
 
 const { username, slug } = Astro.params;
 
@@ -24,12 +23,24 @@ const looksLikeHandle = /^[a-z0-9][a-z0-9._-]{1,30}$/i.test(username ?? '');
 const looksLikeSlug = /^[a-z0-9][a-z0-9._-]{1,80}$/i.test(slug ?? '');
 if (!looksLikeHandle || !looksLikeSlug) return new Response('Not found', { status: 404 });
 
-return renderMockupPage({
-  siteUrl: Astro.url,
-  html: mockupHtml,
-  title: `${slug} · @${username} · avaTOK`,
-  // The host's name, avatar and photo open this listing's creator. Absolute for
-  // the same <base> reason as the marketplace's card links.
-  profileHref: new URL(`/${encodeURIComponent(username!)}`, Astro.url).href,
-});
+let listing: Listing | null = null;
+let notFound = false;
+try {
+  listing = await getListingBySlug(username!, slug!);
+} catch (e) {
+  if (e instanceof ApiError && (e.status === 404 || e.status === 410)) notFound = true;
+  else throw e;
+}
+if (notFound || !listing) return new Response('Listing not found', { status: 404 });
+
+Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+const og = listingOg(listing);
 ---
+
+<Base title={og.title} description={og.description} image={og.image}>
+  <Fragment slot="head">
+    {og.extra.map((m) => (m.property ? <meta property={m.property} content={m.content} /> : <meta name={m.name} content={m.content} />))}
+  </Fragment>
+
+  <ListingDetailView listing={listing} mode="public" />
+</Base>

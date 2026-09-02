@@ -1,0 +1,28 @@
+---
+// [LIST-PAGE-2] "BROWSE MORE EVENTS" — reuses the real ListingTile card (the
+// same one the marketplace renders) via /api/explore, per the task brief.
+import { ListingTile } from '../../components';
+import { sectionTitles } from '../../lib/copy';
+import type { Card } from '../../lib/types';
+
+interface Props { cards: Card[]; excludeId: string }
+const { cards, excludeId } = Astro.props;
+const items = cards.filter((c) => c.id !== excludeId).slice(0, 8);
+---
+
+{items.length > 0 && (
+  <section class="browse-more" data-section="browse_more">
+    <h2 class="eyebrow">{sectionTitles.browseMore}</h2>
+    <div class="grid">
+      {items.map((c, i) => (
+        <ListingTile listing={c} position={i} section="listing_detail_browse_more" />
+      ))}
+    </div>
+  </section>
+)}
+
+<style>
+  .browse-more { display: flex; flex-direction: column; gap: 16px; }
+  .eyebrow { margin: 0; font-family: 'Nunito', system-ui, sans-serif; font-weight: 900; font-size: 0.9375rem; letter-spacing: .08em; color: #161614; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+</style>

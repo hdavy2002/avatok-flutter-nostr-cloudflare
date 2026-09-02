@@ -7,7 +7,7 @@
 // Do NOT add a helper for an endpoint that isn't in §4.
 
 import { API_BASE } from './config';
-import type { Card, CardPage, Creator, CreatorStats, Listing, Review } from './types';
+import type { Card, CardPage, Creator, CreatorStats, CreatorTrustStats, Listing, ListingSlot, Review, ReviewList } from './types';
 import { apiError, captureException } from './analytics';
 
 // [WEB-POSTHOG-1] Strip ids out of a path so `/api/listings/9f2c...` and
@@ -193,12 +193,95 @@ export async function getListing(id: string, auth?: string | null, signal?: Abor
   return {
     ...(inner as unknown as Listing),
     creator_stats: (raw.creator_stats as CreatorStats | null | undefined) ?? (inner.creator_stats as CreatorStats | null | undefined) ?? null,
+    // [LIST-PAGE-2] Same unwrap as creator_stats/reviews/viewer above — the
+    // worker's getListing (worker/src/routes/listings.ts) sends these as
+    // top-level envelope keys, not nested under `.listing`.
+    creator_trust_stats: (raw.creator_trust_stats as CreatorTrustStats | null | undefined)
+      ?? (inner.creator_trust_stats as CreatorTrustStats | null | undefined) ?? null,
+    booked_24h: (raw.booked_24h as number | null | undefined) ?? (inner.booked_24h as number | null | undefined) ?? undefined,
     reviews: (raw.reviews as Review[] | undefined) ?? (inner.reviews as Review[] | undefined) ?? [],
     viewer: (raw.viewer as Listing['viewer'] | undefined) ?? (inner.viewer as Listing['viewer'] | undefined),
+  };
+}
+
+/**
+ * GET /api/listings/by-slug/:handle/:slug — pretty-URL resolution
+ * (Specs/SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING.md §G). Same envelope as
+ * getListing (the worker delegates to it internally), so this reuses the exact
+ * same unwrap rather than duplicating it.
+ */
+export async function getListingBySlug(handle: string, slug: string, auth?: string | null, signal?: AbortSignal): Promise<Listing> {
+  const raw = await request<Record<string, unknown> & { listing?: Record<string, unknown> }>(
+    `/api/listings/by-slug/${encodeURIComponent(handle)}/${encodeURIComponent(slug)}`,
+    { auth, signal },
+  );
+  const inner = raw?.listing && typeof raw.listing === 'object' ? raw.listing : null;
+  if (!inner) return raw as unknown as Listing;
+  return {
+    ...(inner as unknown as Listing),
+    creator_stats: (raw.creator_stats as CreatorStats | null | undefined) ?? null,
+    creator_trust_stats: (raw.creator_trust_stats as CreatorTrustStats | null | undefined) ?? null,
+    booked_24h: (raw.booked_24h as number | null | undefined) ?? undefined,
+    reviews: (raw.reviews as Review[] | undefined) ?? [],
+    viewer: raw.viewer as Listing['viewer'] | undefined,
   };
 }
 
 /** GET /api/creators/:id — creator channel (public read). */
 export function getCreator(id: string, auth?: string | null, signal?: AbortSignal): Promise<Creator> {
   return request<Creator>(`/api/creators/${encodeURIComponent(id)}`, { auth, signal });
+}
+
+/**
+ * [LIST-TRUST-1 §H.5] POST /api/marketplace/favorites — heart a listing.
+ * Requires a session (`requireUser` in worker/src/routes/listings.ts) — a
+ * guest with no token should route through `requireGuestAuth()` before
+ * calling this, not call it and eat the 401.
+ */
+export function addFavorite(listingId: string, auth: string): Promise<{ ok: boolean; favorited: boolean }> {
+  return request('/api/marketplace/favorites', { method: 'POST', auth, body: { listing_id: listingId } });
+}
+
+/** DELETE /api/marketplace/favorites?listing_id=… — un-heart. */
+export function removeFavorite(listingId: string, auth: string): Promise<{ ok: boolean; favorited: boolean }> {
+  return request('/api/marketplace/favorites', { method: 'DELETE', auth, query: { listing_id: listingId } });
+}
+
+/**
+ * GET /api/listings/:id/reviews — paginated review list with histogram
+ * (worker/src/routes/reviews.ts listReviews). Public read.
+ */
+export function getListingReviews(
+  id: string,
+  params: { cursor?: string; verified_only?: boolean } = {},
+  signal?: AbortSignal,
+): Promise<ReviewList> {
+  return request<ReviewList>(`/api/listings/${encodeURIComponent(id)}/reviews`, { query: params as Record<string, string>, signal });
+}
+
+/**
+ * GET /api/listings/:id/slots — calendar-1:1 slots
+ * (worker/src/routes/listing_slots.ts). Gated dark behind `listingSlotsEnabled`
+ * — the worker answers 503 `listing_slots_disabled` while the flag is off.
+ * Callers MUST treat that 503 as "no slot picker", not an error: hide the slot
+ * UI and fall back to the listing's own `starts_at` as a single slot.
+ */
+export async function getListingSlots(id: string, signal?: AbortSignal): Promise<ListingSlot[] | null> {
+  try {
+    const r = await request<{ slots: ListingSlot[] } | ListingSlot[]>(`/api/listings/${encodeURIComponent(id)}/slots`, { signal });
+    return Array.isArray(r) ? r : (r.slots ?? []);
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 503) return null;
+    throw e;
+  }
+}
+
+/** POST /api/listings/:id/questions — "Ask the host" (worker/src/routes/listing_questions.ts). */
+export function askListingQuestion(id: string, question: string, auth?: string | null): Promise<{ id: string }> {
+  return request<{ id: string }>(`/api/listings/${encodeURIComponent(id)}/questions`, { method: 'POST', body: { question }, auth });
+}
+
+/** POST /api/reviews/:id/helpful — toggle "helpful" for the caller (worker/src/routes/reviews.ts). */
+export function markReviewHelpful(reviewId: string, auth?: string | null): Promise<{ ok: boolean; marked_helpful: boolean; helpful_count: number }> {
+  return request(`/api/reviews/${encodeURIComponent(reviewId)}/helpful`, { method: 'POST', auth });
 }

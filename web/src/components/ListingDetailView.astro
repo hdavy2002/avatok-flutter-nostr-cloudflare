@@ -1,155 +1,112 @@
 ---
-// Shared listing detail — rendered on the public /l/<id> (Base chrome) and the
-// in-dashboard /dashboard/l/<id> (Dashboard shell). In public mode the booking
-// CTA leads to sign-up first (remembering this listing via ?next), so after
-// signing up the user lands back on the SAME listing inside the dashboard. Guest
-// email checkout is still available as a secondary path.
-import { Avatar, Pill } from '../components';
+// [LIST-PAGE-2] THE real, public, chrome-free listing details page — every
+// listing type (live event, consult, AI agent, free) renders through this ONE
+// component, replacing the hardcoded-mock comp that used to serve
+// `/<handle>/<slug>`. Comp: design/live-streaming/avaTOK Listing Details.dc.html.
+// Specs: Specs/SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING.md (§A1.3, §B, §D, §G),
+// Specs/SPEC-2026-09-02-LISTING-TRUST-AND-VIBE.md (§1, §3, §5).
+//
+// Rendered on /l/<id>, /<handle>/<slug> and /e/<id> — all three pass the same
+// flat `Listing` (apiClient.getListing / getListingBySlug already unwrap the
+// worker's envelope). `mode="dashboard"` is unused today (the pivot moved
+// editing to a slim "you own this" bar instead of a separate dashboard twin —
+// see `viewer.is_owner` below) but kept for API compatibility with existing
+// callers.
+//
+// LAYOUT SWITCH — chosen from `listing.kind` + `free_entry`, never guessed from
+// content shape:
+//   kind === 'agent'                       -> AI_AGENT  (TRUST §3.3)
+//   kind === 'consult'                     -> CONSULT   (TRUST §3.2)
+//   free_entry truthy (any other kind)     -> LIVE layout + free-lane overrides (§3.4)
+//   everything else (live_event/event/…)   -> LIVE_EVENT (the comp, §3.1)
+import { Avatar } from '../components';
 import { cfImage } from '../lib/config';
-import { durationLabel, languageLabel, priceLabel } from '../lib/card';
-import { inrOrFree, priceBreakdown } from '../lib/money';
-import { cta, freeBox } from '../lib/copy';
-import type { CoverMedia, Listing } from '../lib/types';
+import { durationLabel, languageLabel } from '../lib/card';
+import { inrOrFree } from '../lib/money';
+import { getListingReviews, getListingSlots, getExplore } from '../lib/apiClient';
+import { freeBox, houseRules, sectionTitles, shareCopy } from '../lib/copy';
+import type { CoverMedia, Listing, ReviewList, ListingSlot, Card as CardModel } from '../lib/types';
+import HostCard from './listing/HostCard.astro';
+import ReviewsSection from './listing/ReviewsSection.astro';
+import PromisesBand from './listing/PromisesBand.astro';
+import BrowseMore from './listing/BrowseMore.astro';
+import BookingBoxIsland from '../islands/listing/BookingBox';
+import ShareBoxIsland from '../islands/listing/ShareBox';
+import QrCodeIsland from '../islands/listing/QrCode';
+import AskHostIsland from '../islands/listing/AskHost';
 
-interface Props { listing: Listing; mode?: 'public' | 'dashboard'; }
-// [LIST-DETAIL-2] No more defensive unwrap here — `apiClient.getListing()` unwraps
-// the worker's `{listing, creator_stats, reviews, viewer}` envelope at the source
-// now, so every caller (public and dashboard alike) already hands this component a
-// flat `Listing`.
-const { listing, mode = 'public' } = Astro.props;
+interface Props { listing: Listing; mode?: 'public' | 'dashboard' }
+const { listing } = Astro.props;
 
 const id = listing.id;
 const kind = (listing.kind ?? 'content') as string;
 const isLive = listing.live === true || (listing as { status?: string }).status === 'live';
-const detailPath = `/l/${encodeURIComponent(id)}`;
-const bookHref = `/book/${encodeURIComponent(id)}`;
-const watchHref = `/watch/${encodeURIComponent(id)}`;
-const agentHref = `/agent/${encodeURIComponent(id)}`;
-
-// [LIST-DETAIL-2] The worker sends the creator's `uid`, never `id` — `CreatorRef.id`
-// is a legacy alias nothing on the wire has ever populated for a listing detail
-// response (worker/src/routes/listings.ts:1743). When a creator ALSO has no handle
-// (a real, un-onboarded row), `handle ?? id` resolved to `undefined ?? undefined`,
-// and `encodeURIComponent(undefined)` returns the literal string "undefined" — every
-// such listing linked to the dead page `/c/undefined`. Fall back through `uid` before
-// `id`, and treat "no slug at all" as "no link" rather than emit a broken href.
-const creatorSlug = listing.creator?.handle || listing.creator?.uid || listing.creator?.id || null;
-// [LIST-DETAIL-2] Same alias problem as the slug above — the worker sends
-// `avatar_url`, never `avatar`, for the creator embedded on a listing (shapeCard,
-// worker/src/routes/listings.ts:381), so `.avatar` was always undefined here and the
-// avatar image never rendered (silently; Avatar falls back to initials on `null`).
-const creatorAvatarUrl = listing.creator?.avatar ?? listing.creator?.avatar_url ?? null;
-
-// Real action + verb for this listing (legacy kind-based fallback).
-let actionHref = bookHref; let verb = 'Book';
-if (kind === 'agent') { actionHref = agentHref; verb = 'Talk now'; }
-else if (isLive) { actionHref = watchHref; verb = 'Watch live'; }
-else if (kind === 'live' || kind === 'event') { actionHref = bookHref; verb = 'Get a ticket'; }
-
-// [LIST-DETAIL-1] `intent` is computed server-side PER CATEGORY specifically so the
-// buyer verb can be right without a client-side kind switch (worker/src/routes/
-// listings.ts getListing, ~line 1684). Prefer it — except for an agent-kind listing,
-// where "Talk now" is simply a better verb than the generic SELL→"Buy" the worker
-// defaults every unresolved category to; overriding it there would read as a mistake,
-// not an improvement. Absent `intent` (pre-migration category) keeps the kind switch.
-const INTENT_VERB: Record<string, string> = { SELL: 'Buy', RENT: 'Rent', BOOK: 'Book', LEAD: 'Enquire', PROFILE: 'Connect' };
-if (kind !== 'agent' && listing.intent && INTENT_VERB[listing.intent]) {
-  verb = INTENT_VERB[listing.intent];
-}
-
-// [LIST-DETAIL-1] Whether this listing's own CTA is a checkout path the commercial
-// lane actually charges through. `/book/*` (ticket/consult purchase) and `/watch/*`
-// (paid live entry) both go through the checkout that shipped to production today;
-// `/agent/*` ("Talk now") does not — AI-in-chat/agent surfaces are going dark per the
-// PRODUCT PIVOT (CLAUDE.md), so an agent-kind listing genuinely has no live payment
-// path right now, stale-copy or not.
-const hasCheckoutPath = actionHref === bookHref || actionHref === watchHref;
-
-const FILL = { lime: 'bg-lime text-ink', blue: 'bg-blue text-ink' } as const;
-const ctaClass = (v: 'lime' | 'blue') => ['inline-flex items-center justify-center gap-2.5 select-none no-underline', 'rounded-full border-zine border-ink shadow-zine-sm', 'transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed', 'px-7 py-4 font-display font-semibold text-[19px] leading-none tracking-[-0.2px]', FILL[v]].join(' ');
-
-const signUpHref = `/sign-up?next=${encodeURIComponent(detailPath)}`;
-
-// [CARD-MODEL-1] This carried the same bug ListingTile did: it printed `$` and divided
-// by 100 above 1000, so a ₹1,500 listing read as "$15". One token is ₹1 — no division,
-// no dollar sign ([TOKENS-INR-1]).
-//
-// [LIST-DETAIL-1] `price_semantics` (asking | per_minute | per_hour | per_month | from
-// | range | none) is resolved server-side per category and decides how the number
-// should read — a consult billed per minute and an event with one ticket price are
-// different claims about the same integer. `range` has no min/max on the wire today
-// (the response carries one `price`), so it renders the single number plain rather
-// than inventing a range. `none` means this listing isn't sold by a number at all
-// (e.g. a LEAD/PROFILE intent) and hides the price pill entirely.
-function priceTag(price: number | null, semantics?: string | null): string | null {
-  if (semantics === 'none') return null;
-  if (price == null) return null;
-  if (semantics === 'asking') return price === 0 ? 'Free' : `Asking ${priceLabel(price, null)}`;
-  return priceLabel(price, semantics ?? null);
-}
-const price = priceTag(listing.price ?? null, listing.price_semantics);
-// [TAX-GST-DISPLAY-1] Quoted, not charged yet by every gateway on every listing.
-const breakdown = priceBreakdown(listing.price);
-
-/*
- * [LIST-FREE-1] SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING.md §D "Free join" /
- * SPEC-2026-09-02-LISTING-TRUST-AND-VIBE.md §2.4, §3.4. Moved in from the
- * caller pages (public /l/<id> had grown its own duplicate box above this
- * component because it couldn't reach in here) — this is now the ONE place
- * a free listing's booking box renders, on both /l/<id> and /dashboard/l/<id>.
- * Every non-free listing still renders the `breakdown &&` box exactly as
- * before; this block only ever substitutes for it when free_entry is truthy.
- */
 const isFreeEntry = Boolean(listing.free_entry);
-const freeCapacity = listing.capacity ?? null;
-const freeSeatsTaken = listing.seats_taken ?? null;
-const freeSpotsLeft =
-  freeCapacity != null && freeSeatsTaken != null ? Math.max(0, freeCapacity - freeSeatsTaken) : (listing.seats_left ?? null);
-const freeFull = freeSpotsLeft === 0;
+const isAgent = kind === 'agent';
+const isConsult = kind === 'consult';
+const layout: 'agent' | 'consult' | 'live' = isAgent ? 'agent' : isConsult ? 'consult' : 'live';
 
-// [LIST-DETAIL-1] This listing's OWN rating/review count — not the creator's
-// channel-wide `creator_stats`, which is what the page showed before (every listing
-// on a channel read the same number). `review_count` is a live COUNT(*) over the
-// `reviews` table for this listing (shapeCard, worker/src/routes/listings.ts); the
-// `reviews` array below is only the latest 20, so the count can exceed what renders.
-const reviews = listing.reviews ?? [];
-const ratingVal = listing.rating_avg ?? null;
-const reviewCount = listing.review_count ?? null;
+const isOwner = Boolean(listing.viewer?.is_owner);
 
-// ---- newly-rendered fields (starts_at, duration, seats, watching, language,
-// location/country/adults, cover gallery, intro video, commercial policy) ----
+// ── Data this component fetches beyond the base `Listing` the caller already
+// has — reviews (paginated, with histogram) and slots (gated behind
+// listingSlotsEnabled). Both fail soft: a 404/503/network error hides the
+// section rather than crashing the page — this is a public page and must
+// render for a real listing even when a companion table isn't migrated yet.
+let reviewList: ReviewList | null = null;
+try { reviewList = await getListingReviews(id, {}); } catch { reviewList = null; }
 
-function formatStartsAt(ms?: number | null): string | null {
-  if (ms == null) return null;
-  const d = new Date(ms);
+let slots: ListingSlot[] | null = null;
+try { slots = await getListingSlots(id); } catch { slots = null; }
+
+let browseMore: CardModel[] = [];
+try {
+  const page = await getExplore({ section: listing.section ?? undefined, category: listing.category ?? undefined, limit: 9 });
+  browseMore = page.listings ?? [];
+} catch { browseMore = []; }
+if (browseMore.length === 0 && listing.category) {
+  try {
+    const page = await getExplore({ category: listing.category, limit: 9 });
+    browseMore = page.listings ?? [];
+  } catch { browseMore = []; }
+}
+
+// ── Creator ─────────────────────────────────────────────────────────────────
+const creator = listing.creator ?? null;
+const creatorSlug = creator?.handle || creator?.uid || creator?.id || null;
+const creatorAvatarUrl = creator?.avatar ?? creator?.avatar_url ?? null;
+const creatorName = creator?.name ?? (creator?.handle ? `@${creator.handle}` : 'avaTOK creator');
+const hostFirstName = creatorName.split(' ')[0] || creatorName;
+
+// [LIST-PAGE-2 gap 2] Two-tone Anton title (comp: "ANTAKSHARI FRIDAY" / red
+// "WITH SUNNY."). Only splits when there's enough to split — a 1-2 word title
+// has no natural "lede vs accent" break, so it renders plain.
+const titleWords = listing.title.trim().split(/\s+/).filter(Boolean);
+const titleLead = titleWords.length >= 3 ? titleWords.slice(0, -2).join(' ') : null;
+const titleAccent = titleWords.length >= 3 ? `${titleWords.slice(-2).join(' ')}.` : null;
+
+const trust = listing.creator_trust_stats ?? null;
+const respMin = listing.response_time_min ?? trust?.avg_response_min ?? null;
+
+function hostSinceLabel(ms?: number | null): string | null {
+  if (!trust?.first_session_at && !ms) return null;
+  const t = trust?.first_session_at ?? ms;
+  const d = new Date(Number(t));
   if (Number.isNaN(d.getTime())) return null;
-  const weekday = d.toLocaleDateString('en-IN', { weekday: 'short' });
-  const rest = d.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
-  return `${weekday}, ${rest}`;
+  return d.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }).toUpperCase();
 }
-const startsAtLabel = formatStartsAt(listing.starts_at);
-const durationTag = durationLabel(listing.duration_min ?? null);
+const hostSince = hostSinceLabel(listing.created_at ?? null);
 
-function seatsTag(capacity: number | null | undefined, seatsLeft: number | null | undefined): { text: string; kind: 'ok' | 'no' | 'hint' } | null {
-  if (capacity == null) return null;
-  if (seatsLeft === 0) return { text: 'Housefull', kind: 'no' };
-  // null (not 0) means "we could not count" ([CARD-SCHEMA-1]) — show capacity alone
-  // rather than claim an availability we don't know.
-  if (seatsLeft != null) return { text: `${seatsLeft} of ${capacity} free`, kind: 'ok' };
-  return { text: `${capacity} spots`, kind: 'hint' };
-}
-const seats = seatsTag(listing.capacity, listing.seats_left);
-const showWatching = isLive && listing.watching != null;
+const hostChips: string[] = [];
+if (listing.rating_avg != null) hostChips.push(`★ ${Number(listing.rating_avg).toFixed(1)} HOST RATING`);
+if (trust?.shows_hosted) hostChips.push(`${trust.shows_hosted} SHOWS`);
+if (respMin != null) hostChips.push(`~${respMin} MIN REPLY`);
 
-const langTag = languageLabel(listing.spoken_lang ?? null);
-const hasTranslation = !!listing.translation_enabled;
-
+// ── Media ───────────────────────────────────────────────────────────────────
 const covers = (listing.cover_media ?? []).filter((m): m is CoverMedia => !!m && typeof m === 'object' && !!(m.url || m.r2_key));
-const galleryRest = covers.slice(1).map((m) => m.url ?? m.r2_key ?? '').filter(Boolean);
 const posterUrl = covers[0]?.url ?? covers[0]?.r2_key ?? null;
+const thumbUrls = covers.slice(1, 4).map((m) => m.url ?? m.r2_key ?? '').filter(Boolean);
 
-// YouTube only, and only if we can extract a real video id — never hand an arbitrary
-// URL to an <iframe src>. No autoplay param, per spec.
 function youtubeEmbedUrl(url?: string | null): string | null {
   if (!url) return null;
   try {
@@ -167,325 +124,337 @@ function youtubeEmbedUrl(url?: string | null): string | null {
   } catch { return null; }
 }
 const videoEmbed = youtubeEmbedUrl(listing.video_url);
-const hasVideoLink = !videoEmbed && !!listing.video_url;
 
-// [LIST-DETAIL-1] "Before you book" — the buyer-facing commercial policy the creator
-// already filled in, translated out of raw hour-count keys into plain English. Kept
-// data-driven (render whatever keys are present) rather than branched on `kind`, so a
-// listing whose category the server couldn't resolve still shows whatever it has.
-const attrs = (listing.attrs ?? {}) as Record<string, unknown>;
-function cancellationLine(hours: unknown, subject: string): string | null {
-  const n = Number(hours);
-  if (!Number.isFinite(n)) return null;
-  return n === 0 ? `Free cancellation any time before ${subject}` : `Free cancellation up to ${n} hour${n === 1 ? '' : 's'} before ${subject}`;
+// ── Live band / countdown ───────────────────────────────────────────────────
+function toMs(t?: number | null): number | null { if (t == null) return null; return t < 1e12 ? t * 1000 : t; }
+const startMs = toMs(listing.starts_at);
+const endMs = toMs(listing.ends_at);
+function formatStartsAt(ms: number | null): string | null {
+  if (ms == null) return null;
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return null;
+  return `${d.toLocaleDateString('en-IN', { weekday: 'short' })}, ${d.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}`;
 }
-const cancelLine = cancellationLine(attrs.commercial_refund_window_hours, 'it starts')
-  ?? cancellationLine(attrs.commercial_cancellation_window_hours, 'your session');
-const noticeHours = Number(attrs.commercial_booking_notice_hours);
-const noticeLine = Number.isFinite(noticeHours) ? `Book at least ${noticeHours} hour${noticeHours === 1 ? '' : 's'} in advance` : null;
-const rescheduleAllowed = attrs.commercial_reschedule_allowed;
-const rescheduleLine = typeof rescheduleAllowed === 'boolean'
-  ? (rescheduleAllowed ? 'Free rescheduling, any time before it starts' : 'No rescheduling — cancel instead if your plans change')
-  : null;
-const prepInstructions = attrs.commercial_preparation_instructions;
-const prepText = typeof prepInstructions === 'string' && prepInstructions.trim() ? prepInstructions.trim() : null;
-const bookingTerms = [cancelLine, noticeLine, rescheduleLine].filter((s): s is string => !!s);
+const startsAtLabel = formatStartsAt(startMs);
 
-// [WEB-POSTHOG-1] §2.4 listing_view. Contract:
-// Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md §2.4. `section_count` counts the
-// data-bearing sections actually rendered below (host, before-you-book,
-// description, video, reviews) — a real measure of how much of the page this
-// listing filled in, not a fixed constant.
-const hasVideo = !!(videoEmbed || hasVideoLink);
+// ── Chips / facts ────────────────────────────────────────────────────────────
+const langTag = languageLabel(listing.spoken_lang ?? null);
+const durationTag = durationLabel(listing.duration_min ?? null);
+const attrs = (listing.attrs ?? {}) as Record<string, unknown>;
+const howItWorks = Array.isArray(attrs.content_how_it_works) ? (attrs.content_how_it_works as { label: string; body: string }[]) : [];
+const houseRulesList = Array.isArray(attrs.content_house_rules) ? (attrs.content_house_rules as { heading: string; body: string }[]) : [];
+const houseRulesIntro = typeof attrs.content_house_rules_intro === 'string' ? attrs.content_house_rules_intro : null;
+const whatYouGet = Array.isArray(attrs.content_what_you_get) ? (attrs.content_what_you_get as string[]) : [];
+const whoFor = Array.isArray(attrs.content_who_for) ? (attrs.content_who_for as string[]) : [];
+const notFor = Array.isArray(attrs.content_not_for) ? (attrs.content_not_for as string[]) : [];
+const faq = Array.isArray(attrs.content_faq) ? (attrs.content_faq as { q: string; a: string }[]) : [];
+const sampleQa = Array.isArray(attrs.content_sample_qa) ? (attrs.content_sample_qa as { q: string; a: string }[]) : [];
+const sampleChat = Array.isArray(attrs.content_sample_chat) ? (attrs.content_sample_chat as { who: string; line: string }[]) : [];
+const canDo = Array.isArray(attrs.content_can_do) ? (attrs.content_can_do as string[]) : [];
+const cantDo = Array.isArray(attrs.content_cant_do) ? (attrs.content_cant_do as string[]) : [];
+const credential = typeof listing.credential === 'string' ? listing.credential : null;
+const joinLeadMinutes = Number.isFinite(Number(attrs.content_join_lead_minutes)) ? Number(attrs.content_join_lead_minutes) : null;
+
+function cancellationHours(): number | null {
+  const a = Number(attrs.commercial_refund_window_hours);
+  if (Number.isFinite(a)) return a;
+  const b = Number(attrs.commercial_cancellation_window_hours);
+  return Number.isFinite(b) ? b : null;
+}
+const refundHours = cancellationHours();
+const isRefund = attrs.commercial_refund_window_hours != null;
+const prepText = typeof attrs.commercial_preparation_instructions === 'string' ? attrs.commercial_preparation_instructions.trim() || null : null;
+
+const price = listing.price ?? null;
+const priceStr = isFreeEntry ? 'FREE' : inrOrFree(price ?? 0);
+const billingSuffix: Record<string, string> = { minute: '/ MIN', '10min': '/ 10 MIN', chat: '/ CHAT', night: '/ NIGHT', game: '/ GAME', session: '' };
+const priceLine = isFreeEntry ? null : `${priceStr} ${listing.billing_unit && billingSuffix[listing.billing_unit] ? billingSuffix[listing.billing_unit] : (durationTag ? `/ ${(listing.billing_unit ?? 'SEAT').toUpperCase()}` : '')}`.trim();
+
+const seatsLeft = listing.seats_left ?? null;
+const freeSpotsLeft = listing.capacity != null && listing.seats_taken != null
+  ? Math.max(0, listing.capacity - listing.seats_taken)
+  : (listing.seats_left ?? null);
+
+const detailUrl = new URL(Astro.request.url);
+detailUrl.search = '';
+const shareUrl = detailUrl.href;
+
+// ── Eyebrow line: "01 · GROUP SHOWS · TICKETED · WEEKLY" style tag row ─────
+const eyebrowParts = [listing.category, isFreeEntry ? 'FREE' : 'TICKETED', listing.schedule_mode === 'recurring' ? 'WEEKLY' : null]
+  .filter((s): s is string => !!s)
+  .map((s) => s.toUpperCase());
+
+const hasVideo = !!videoEmbed;
 const sectionCount = [
-  !!(listing.creator && (creatorSlug || true)),
-  bookingTerms.length > 0 || !!prepText,
-  !!listing.description,
-  hasVideo,
-  reviews.length > 0,
+  !!creator, howItWorks.length > 0, houseRulesList.length > 0, !!listing.description, hasVideo, (reviewList?.total ?? 0) > 0,
 ].filter(Boolean).length;
 const listingViewProps = {
-  listing_id: id,
-  kind,
-  free_entry: isFreeEntry,
+  listing_id: id, kind, free_entry: isFreeEntry,
   status: (listing as { status?: string | null }).status ?? null,
-  seats_left: listing.seats_left ?? null,
-  has_video: hasVideo,
-  section_count: sectionCount,
+  seats_left: seatsLeft, has_video: hasVideo, section_count: sectionCount,
 };
-const bookCtaName = kind === 'agent' ? 'talk' : isFreeEntry ? 'reserve_free' : 'book';
 ---
 
-<main class="mx-auto max-w-5xl px-4 py-8">
-  <div class="grid grid-cols-1 gap-8 md:grid-cols-[minmax(0,380px)_1fr]">
-    <!-- Poster -->
-    <div class="md:sticky md:top-20 self-start">
-      <div class="overflow-hidden rounded-zine border-zine border-ink bg-paper2 shadow-zine">
-        <div class="relative aspect-[4/5] w-full">
-          {posterUrl ? (
-            <img src={cfImage(posterUrl, { width: 760, fit: 'cover' })} alt={listing.title} class="h-full w-full object-cover" />
-          ) : (
-            <div class="flex h-full w-full items-center justify-center font-mono uppercase text-inkMute text-[15px] tracking-[0.08em] font-bold">{kind}</div>
-          )}
-          {isLive && <span class="absolute left-3 top-3"><Pill kind="no">● Live</Pill></span>}
-          {listing.category && <span class="absolute right-3 top-3"><Pill kind="plain">{listing.category}</Pill></span>}
+<div class="listing-page" data-listing-id={id}>
+  {isOwner && (
+    <div class="owner-bar">
+      <span>You own this listing</span>
+      <a href={`/dashboard/listings/new?id=${encodeURIComponent(id)}`} data-cta="edit_listing">Edit listing →</a>
+    </div>
+  )}
+
+  <div class="breadcrumb">
+    <span>BAZAAR {listing.section ? `› ${String(listing.section).toUpperCase()}` : ''} › {listing.title.toUpperCase()}</span>
+    <span class="listing-num">LISTING #{id.slice(0, 8).toUpperCase()}</span>
+  </div>
+
+  {isLive && (
+    <div class="live-band" data-section="live_band">
+      <span class="live-dot"></span>
+      <span>LIVE NOW</span>
+      {listing.watching != null && <span>· {listing.watching} WATCHING</span>}
+      {endMs && <span>· ENDS {new Date(endMs).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}</span>}
+      <a href={`/watch/${encodeURIComponent(id)}`} class="join-now" data-cta="join_now">JOIN NOW</a>
+    </div>
+  )}
+
+  <div class="layout-grid">
+    <!-- LEFT COLUMN -->
+    <div class="left-col">
+      <div class="plate-strip">{kind.toUpperCase()} · {id.slice(0, 6).toUpperCase()}</div>
+
+      <div class="stage-card">
+        {isLive && videoEmbed ? (
+          <div class="stage-media" data-video-block>
+            <iframe src={videoEmbed} title={`${listing.title} — live`} allow="encrypted-media; picture-in-picture" allowfullscreen />
+          </div>
+        ) : posterUrl ? (
+          <div class="stage-media">
+            <img src={cfImage(posterUrl, { width: 900, fit: 'cover' })} alt={listing.title} data-gallery-open />
+          </div>
+        ) : (
+          <div class="stage-media stage-placeholder" aria-hidden="true"></div>
+        )}
+        <div class="stage-pills">
+          {isLive && <span class="pill pill-live">LIVE NOW</span>}
+          {isLive && listing.watching != null && <span class="pill">{listing.watching} WATCHING</span>}
+          {(listing.joined_count ?? 0) > 0 && <span class="pill">{listing.joined_count} BOOKED</span>}
+        </div>
+        <div class="stage-actions">
+          <button type="button" class="icon-btn" id="share-toggle" aria-label="Share">⤴</button>
+          <button type="button" class="icon-btn" id="fav-toggle" aria-label="Favourite">♡</button>
         </div>
       </div>
 
-      {/* [LIST-DETAIL-1] cover_media beyond the first entry used to be dropped on the
-          floor — every extra photo the creator uploaded simply never rendered. */}
-      {galleryRest.length > 0 && (
-        <div class="mt-3 flex gap-2 overflow-x-auto pb-1">
-          {galleryRest.map((url) => (
-            <a href={cfImage(url, { width: 1200, fit: 'cover' })} target="_blank" rel="noopener" class="shrink-0" data-gallery-open>
-              <img
-                src={cfImage(url, { width: 160, fit: 'cover' })}
-                alt=""
-                class="h-16 w-16 rounded-zine border-zine border-ink object-cover shadow-zine-xs"
-              />
-            </a>
-          ))}
+      {creator && (
+        <div class="host-line">
+          <Avatar src={creatorAvatarUrl} name={creatorName} size={32} />
+          <span class="host-line-name">{creatorName}</span>
+          {!isAgent && creator.kyc_verified && <span class="kyc-tick">✓</span>}
+          {hostSince && <span class="host-line-dot">· HOST SINCE {hostSince}</span>}
+          {respMin != null && <span class="host-line-dot">· REPLIES IN ~{respMin} MIN</span>}
         </div>
       )}
+
+      {thumbUrls.length > 0 && (
+        <div class="thumb-row">
+          {thumbUrls.map((u) => (
+            <img src={cfImage(u, { width: 200, fit: 'cover' })} alt="" class="thumb" data-gallery-open />
+          ))}
+          {videoEmbed && !isLive && <div class="thumb thumb-video">▶</div>}
+        </div>
+      )}
+
+      <div class="share-box" data-section="share">
+        <h2 class="eyebrow">{shareCopy.title}</h2>
+        <div class="share-box-row">
+          <ShareBoxIsland client:load listingId={id} url={shareUrl} title={listing.title} />
+          <QrCodeIsland client:visible url={shareUrl} />
+        </div>
+      </div>
     </div>
 
-    <!-- Detail -->
-    <div class="flex flex-col gap-5">
-      <div>
-        <span class="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">{kind}</span>
-        <h1 class="mt-2 font-display font-semibold text-[32px] leading-tight text-ink">{listing.title}</h1>
+    <!-- RIGHT COLUMN -->
+    <div class="right-col">
+      {eyebrowParts.length > 0 && <div class="eyebrow-tag">{eyebrowParts.join(' · ')}</div>}
+      <h1 class="listing-title">
+        {titleAccent ? (
+          <>{titleLead} <span class="title-accent">{titleAccent}</span></>
+        ) : (
+          listing.title
+        )}
+      </h1>
+
+      <div class="chip-row">
+        {listing.rating_avg != null && (
+          <span class="chip">★ {Number(listing.rating_avg).toFixed(1)}{listing.review_count ? ` · ${listing.review_count}` : ''}</span>
+        )}
+        {(listing.creator?.follower_count ?? 0) > 0 && <span class="chip">♡ {listing.creator!.follower_count} REGULARS</span>}
+        {durationTag && langTag && <span class="chip">{durationTag} · {langTag}</span>}
+        {!durationTag && langTag && <span class="chip">{langTag}</span>}
+        <span class="chip chip-strong">{listing.adults_only ? '18+' : '✓ 100% REAL HUMAN · NO AI'}</span>
+        {isAgent && <span class="chip chip-ai">AI VOICE AGENT</span>}
       </div>
 
-      {listing.creator && creatorSlug && (
-        <a href={`/c/${encodeURIComponent(creatorSlug)}`} class="flex items-center gap-3 no-underline" data-section="host">
-          <Avatar src={creatorAvatarUrl} name={listing.creator.name ?? listing.creator.handle} size={48} />
-          <div class="flex flex-col">
-            <span class="font-display font-semibold text-[17px] text-ink">{listing.creator.name ?? listing.creator.handle}</span>
-            {listing.creator.handle && <span class="font-mono text-[14px] uppercase tracking-[0.06em] text-inkSoft font-bold">@{listing.creator.handle}</span>}
-          </div>
-        </a>
-      )}
-      {listing.creator && !creatorSlug && (
-        <div class="flex items-center gap-3" data-section="host">
-          <Avatar src={creatorAvatarUrl} name={listing.creator.name ?? listing.creator.handle} size={48} />
-          <div class="flex flex-col">
-            <span class="font-display font-semibold text-[17px] text-ink">{listing.creator.name ?? listing.creator.handle}</span>
-            {listing.creator.handle && <span class="font-mono text-[14px] uppercase tracking-[0.06em] text-inkSoft font-bold">@{listing.creator.handle}</span>}
-          </div>
+      {(listing.blurb || listing.description) && <p class="blurb">{listing.blurb || listing.description}</p>}
+
+      {(listing.joined_count || seatsLeft != null || trust?.shows_hosted || trust?.comeback_pct != null) && (
+        <div class="stats-board" data-section="stats">
+          {listing.joined_count != null && <div><b>{listing.joined_count}</b><span>BOOKED</span></div>}
+          {isLive && listing.watching != null && <div><b>{listing.watching}</b><span>WATCHING</span></div>}
+          {trust?.shows_hosted != null && trust.shows_hosted > 0 && <div><b>{trust.shows_hosted}</b><span>SHOWS HOSTED</span></div>}
+          {trust?.comeback_pct != null && <div><b>{Math.round(trust.comeback_pct)}%</b><span>COME BACK</span></div>}
         </div>
       )}
 
-      {/* [LIST-DETAIL-1] The single most obviously missing thing: a scheduled listing
-          showed no date or time at all. */}
-      {startsAtLabel && (
-        <div class="flex items-baseline gap-2">
-          <span class="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-inkSoft">When</span>
-          <span class="font-display font-semibold text-[16px] text-ink">{startsAtLabel}</span>
+      {priceLine && (
+        <p class="price-line">{priceLine} · <span class="price-note">FEES &amp; GST SHOWN BEFORE YOU BOOK</span></p>
+      )}
+      {isFreeEntry && <p class="price-line">FREE · {freeBox.hostPays}</p>}
+
+      {whatYouGet.length > 0 && (
+        <div class="what-you-get" data-section="what_you_get">
+          <h2 class="eyebrow">WHAT YOU GET</h2>
+          <ul>{whatYouGet.map((s) => <li>{s}</li>)}</ul>
+        </div>
+      )}
+      {(whoFor.length > 0 || notFor.length > 0) && (
+        <div class="who-for-grid">
+          {whoFor.length > 0 && <div><h3>THIS IS FOR</h3><ul>{whoFor.map((s) => <li>{s}</li>)}</ul></div>}
+          {notFor.length > 0 && <div><h3>NOT FOR</h3><ul>{notFor.map((s) => <li>{s}</li>)}</ul></div>}
         </div>
       )}
 
-      <div class="flex flex-wrap items-center gap-2.5">
-        {price && <Pill kind="plain">{price}</Pill>}
-        {ratingVal != null && <Pill kind="ok">★ {Number(ratingVal).toFixed(1)}</Pill>}
-        {reviewCount != null && reviewCount > 0 && <Pill kind="hint">{reviewCount} review{reviewCount === 1 ? '' : 's'}</Pill>}
-        {durationTag && <Pill kind="plain">{durationTag}</Pill>}
-        {seats && <Pill kind={seats.kind}>{seats.text}</Pill>}
-        {showWatching && <Pill kind="no">● {listing.watching} watching</Pill>}
-        {langTag && <Pill kind="hint">{langTag}</Pill>}
-        {listing.location && <Pill kind="hint">{listing.location}</Pill>}
-        {listing.country && <Pill kind="hint">{listing.country}</Pill>}
-        {listing.adults_only && <Pill kind="no">18+</Pill>}
-      </div>
-
-      {hasTranslation && (
-        <p class="-mt-2 font-body font-bold text-[13px] text-inkSoft">Live translation available during the session.</p>
-      )}
-
-      <!-- CTA -->
-      {mode === 'dashboard' ? (
-        <div class="flex flex-wrap items-center gap-3 pt-1">
-          <a href={actionHref} class={ctaClass('lime')} data-cta={bookCtaName}>{verb}</a>
-          {kind === 'agent' && <a href={bookHref} class={ctaClass('blue')} data-cta="book">Book a session</a>}
-        </div>
-      ) : (
-        <div class="flex flex-col gap-2 pt-1">
-          <div class="flex flex-wrap items-center gap-3">
-            <a href={signUpHref} class={ctaClass('lime')} data-cta={bookCtaName}>Sign up to {verb.toLowerCase()}</a>
-            <a href={`/sign-in?next=${encodeURIComponent(detailPath)}`} class="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-blueInk no-underline" data-cta="log_in">Have an account? Log in</a>
-          </div>
-          <a href={actionHref} class="font-body font-bold text-[13px] text-inkSoft underline decoration-ink/30 underline-offset-2" data-cta={bookCtaName}>or continue as a guest</a>
+      {layout === 'agent' && (canDo.length > 0 || cantDo.length > 0) && (
+        <div class="who-for-grid" data-section="agent_honesty">
+          {canDo.length > 0 && <div><h3>SHE CAN</h3><ul>{canDo.map((s) => <li>{s}</li>)}</ul></div>}
+          {cantDo.length > 0 && <div><h3>SHE CAN'T</h3><ul>{cantDo.map((s) => <li>{s}</li>)}</ul></div>}
         </div>
       )}
 
-      {isFreeEntry ? (
-        <div class="rounded-zine border-zine border-ink bg-mint p-5 shadow-zine-sm">
-          <div class="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p class="font-mono font-bold uppercase text-[13px] tracking-[0.1em] text-ink">Free</p>
-              <p class="mt-1 font-display font-semibold text-[28px] leading-none text-ink">FREE</p>
-              <p class="mt-2 font-body font-bold text-[14px] text-ink/80">
-                {freeFull ? freeBox.full : freeBox.hostPays}
-              </p>
-              {!freeFull && freeSpotsLeft != null && (
-                <p class="mt-1 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink/70">
-                  {freeBox.spotsLeft(freeSpotsLeft)}
-                </p>
-              )}
-            </div>
-            {freeFull ? (
-              <span
-                aria-disabled="true"
-                class="inline-flex items-center justify-center select-none rounded-full border-zine border-ink bg-card px-7 py-4 font-display font-semibold text-[17px] leading-none text-inkMute opacity-70"
-              >
-                {freeBox.full}
-              </span>
-            ) : (
-              <a
-                href={bookHref}
-                class="inline-flex items-center justify-center select-none no-underline rounded-full border-zine border-ink shadow-zine-sm bg-lime text-ink transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed px-7 py-4 font-display font-semibold text-[17px] leading-none"
-                data-cta="reserve_free"
-              >
-                {cta.RESERVE_FREE}
-              </a>
-            )}
-          </div>
-        </div>
-      ) : breakdown && (
-        <div class="rounded-zine border-zine border-ink bg-paper2 p-5 shadow-zine-sm">
-          <h2 class="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">What you'd pay</h2>
-          <dl class="mt-3 flex flex-col gap-1.5">
-            <div class="flex items-baseline justify-between gap-4">
-              <dt class="font-body font-bold text-[15px] text-inkSoft">Ticket</dt>
-              <dd class="font-body font-bold text-[15px] text-ink">{inrOrFree(breakdown.base)}</dd>
-            </div>
-            {breakdown.fee > 0 && (
-              <div class="flex items-baseline justify-between gap-4">
-                <dt class="font-body font-bold text-[15px] text-inkSoft">Service fee</dt>
-                <dd class="font-body font-bold text-[15px] text-ink">{inrOrFree(breakdown.fee)}</dd>
-              </div>
-            )}
-            <div class="flex items-baseline justify-between gap-4">
-              <dt class="font-body font-bold text-[15px] text-inkSoft">GST ({breakdown.gstRatePct}%)</dt>
-              <dd class="font-body font-bold text-[15px] text-ink">{inrOrFree(breakdown.gst)}</dd>
-            </div>
-            <div class="mt-2 flex items-baseline justify-between gap-4 border-t-zine border-ink pt-2">
-              <dt class="font-display font-semibold text-[17px] text-ink">Total</dt>
-              <dd class="font-display font-semibold text-[19px] text-ink">{inrOrFree(breakdown.total)}</dd>
-            </div>
-          </dl>
-          {/* [LIST-DETAIL-1] Commercial checkout shipped to production today, so this
-              copy is stale for anything checkout actually covers. SIGNAL USED: we
-              cannot call GET /api/pay/methods here — it's requireUser-gated and this
-              is a guest-facing SSR page with no auth token to send — so instead of
-              "does the buyer have a configured payment method" we ask "does this
-              listing's own CTA lead to a checkout path at all" (hasCheckoutPath,
-              computed above). That's the closest available proxy for "unbookable":
-              an agent-kind listing has no live payment path regardless of gateway
-              config, because AI-in-chat/agent surfaces are dark per the product
-              pivot, while a /book or /watch listing is exactly what went live today. */}
-          {!hasCheckoutPath && (
-            <p class="mt-3 font-body font-bold text-[13px] text-inkSoft">
-              Online payment isn't available for this listing yet.
-              Prices are indicative while we're in testing.
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* [LIST-DETAIL-1] "Before you book" — the creator's own booking policy,
-          translated out of raw hour-count keys into plain English. Omitted entirely
-          (not a placeholder) when the listing carries none of these — a category
-          that doesn't collect them yet is not the same claim as "no refunds". */}
-      {(bookingTerms.length > 0 || prepText) && (
-        <div class="rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm" data-section="house_rules">
-          <h2 class="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">Before you book</h2>
-          {bookingTerms.length > 0 && (
-            <ul class="mt-3 flex flex-col gap-1.5">
-              {bookingTerms.map((line) => (
-                <li class="flex items-start gap-2 font-body font-bold text-[14px] leading-relaxed text-inkSoft">
-                  <span aria-hidden="true" class="mt-[3px] text-ink">✓</span>
-                  <span>{line}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          {prepText && (
-            <div class="mt-3 border-t-zine border-ink pt-3">
-              <span class="font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-inkSoft">What to prepare</span>
-              <p class="mt-1 whitespace-pre-line font-body font-bold text-[14px] leading-relaxed text-inkSoft">{prepText}</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {listing.description && (
-        <div class="rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm">
-          <p class="whitespace-pre-line font-body font-bold text-[15px] leading-relaxed text-inkSoft">{listing.description}</p>
-        </div>
-      )}
-
-      {/* [LIST-DETAIL-1] `video_url` was collected and never shown. Never autoplayed —
-          youtube-nocookie with no autoplay param, and a plain link when the URL isn't
-          a YouTube link we can safely embed. */}
-      {(videoEmbed || hasVideoLink) && (
-        <div class="rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm">
-          <h2 class="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">Intro video</h2>
-          {videoEmbed ? (
-            <div class="mt-3 aspect-video w-full overflow-hidden rounded-zine border-zine border-ink" data-video-block>
-              <iframe
-                src={videoEmbed}
-                title={`${listing.title} — intro video`}
-                class="h-full w-full"
-                loading="lazy"
-                allow="encrypted-media; picture-in-picture"
-                allowfullscreen
-              />
-            </div>
-          ) : (
-            <a href={listing.video_url ?? '#'} target="_blank" rel="noopener" class="mt-2 inline-block font-body font-bold text-[14px] text-blueInk underline decoration-ink/30 underline-offset-2" data-video-link>
-              Watch the intro ↗
-            </a>
-          )}
-        </div>
-      )}
-
-      {reviews.length > 0 && (
-        <section class="flex flex-col gap-3" data-section="reviews">
-          <h2 class="font-display font-semibold text-[20px] text-ink">Reviews</h2>
-          {reviews.slice(0, 8).map((r) => (
-            <div class="rounded-zine border-zine border-ink bg-card p-4 shadow-zine-xs">
-              <div class="flex items-center gap-2.5">
-                <Avatar src={r.author_avatar} name={r.author_name} size={32} />
-                <span class="font-display font-semibold text-[14px] text-ink">{r.author_name ?? 'Guest'}</span>
-                <span class="ml-auto font-mono text-[14px] text-mintInk font-bold">★ {r.rating.toFixed(1)}</span>
-              </div>
-              {r.body && <p class="mt-2 font-body font-bold text-[14px] text-inkSoft">{r.body}</p>}
-              {r.reply && (
-                <div class="mt-2 rounded-zine border-zine border-inkMute bg-paper2 p-3">
-                  <span class="font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft">Creator reply</span>
-                  <p class="mt-1 font-body font-bold text-[13px] text-inkSoft">{r.reply}</p>
-                </div>
-              )}
-            </div>
+      {layout === 'agent' && sampleChat.length > 0 && (
+        <div class="sample-chat" data-section="sample_chat">
+          <h2 class="eyebrow">SAMPLE CHAT</h2>
+          {sampleChat.slice(0, 6).map((m) => (
+            <div class={`chat-line ${m.who === 'agent' ? 'chat-agent' : 'chat-user'}`}>{m.line}</div>
           ))}
-        </section>
+        </div>
+      )}
+
+      {layout === 'consult' && credential && creator?.kyc_verified && (
+        <p class="credential-line">{credential}</p>
+      )}
+      {layout === 'consult' && prepText && (
+        <div class="prep-box" data-section="prep">
+          <h2 class="eyebrow">WHAT WE'LL COVER</h2>
+          <p>{prepText}</p>
+        </div>
+      )}
+      {layout === 'consult' && sampleQa.length > 0 && (
+        <div class="sample-qa" data-section="sample_qa">
+          <h2 class="eyebrow">SAMPLE Q&amp;A</h2>
+          {sampleQa.slice(0, 3).map((qa) => (
+            <div class="qa-pair"><p class="qa-q">Q. {qa.q}</p><p class="qa-a">A. {qa.a}</p></div>
+          ))}
+        </div>
       )}
     </div>
   </div>
-</main>
+
+  {howItWorks.length > 0 && (
+    <section class="how-it-works" data-section="how_it_works">
+      <h2 class="section-title">{sectionTitles.howItWorks}</h2>
+      <div class="step-grid">
+        {howItWorks.map((s, i) => (
+          <div class="step-card">
+            <span class="step-num">{i + 1}</span>
+            <h3>{s.label}</h3>
+            <p>{s.body}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  )}
+
+  {creator && (
+    <HostCard
+      creator={creator}
+      creatorSlug={creatorSlug}
+      avatarUrl={creatorAvatarUrl}
+      city={listing.location}
+      bio={null}
+      chips={hostChips}
+      isAgent={isAgent}
+      hostSinceLabel={hostSince}
+      trust={trust}
+    />
+  )}
+
+  {creator && !isOwner && !isAgent && (
+    <AskHostIsland client:visible listingId={id} hostName={hostFirstName} />
+  )}
+
+  {(houseRulesList.length > 0 || houseRulesIntro) && (
+    <section class="house-rules" data-section="house_rules">
+      <h2 class="section-title">{houseRules.title}</h2>
+      {houseRulesIntro && <p class="rules-intro">"{houseRulesIntro}"</p>}
+      <div class="rules-grid">
+        {houseRulesList.map((r, i) => (
+          <div class="rule-card"><span class="rule-num">{i + 1}</span><h3>{r.heading}</h3><p>{r.body}</p></div>
+        ))}
+      </div>
+      <p class="rules-baseline">{houseRules.platformBaseline}</p>
+    </section>
+  )}
+
+  {faq.length > 0 && (
+    <section class="faq" data-section="faq">
+      <h2 class="section-title">FAQ</h2>
+      <div class="faq-list">
+        {faq.map((f) => (
+          <details class="faq-item"><summary>{f.q}</summary><p>{f.a}</p></details>
+        ))}
+      </div>
+    </section>
+  )}
+
+  <ReviewsSection listingId={id} reviewList={reviewList} />
+
+  <PromisesBand refundHours={isRefund ? refundHours : null} cancelHours={!isRefund ? refundHours : null} />
+
+  <BrowseMore cards={browseMore} excludeId={id} />
+
+  <!-- Sticky booking box (rendered inline in flow on mobile; sticky on desktop via CSS) -->
+  <aside class="booking-sticky" data-section="booking_box">
+    <BookingBoxIsland
+      client:load
+      listingId={id}
+      kind={kind}
+      isLive={isLive}
+      isFreeEntry={isFreeEntry}
+      price={price}
+      maxPerBooking={listing.max_per_booking ?? 4}
+      watching={listing.watching ?? null}
+      seatsLeft={seatsLeft}
+      freeSpotsLeft={freeSpotsLeft}
+      startsAtLabel={startsAtLabel}
+      startsAtMs={startMs}
+      timezone={listing.timezone ?? null}
+      slots={slots}
+      joinLeadMinutes={joinLeadMinutes}
+      recurrenceDays={listing.recurrence_days ?? null}
+      scheduleMode={listing.schedule_mode ?? null}
+    />
+  </aside>
+</div>
 
 <script define:vars={{ listingViewProps }}>
   // [WEB-POSTHOG-1] §2.4 listing_view / listing_section_view / listing_cta_click /
-  // listing_gallery_open / listing_video_play.
-  // Contract: Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md §2.4.
-  //
-  // Only the sections that actually EXIST on this page are wired:
-  // `reviews` (real Reviews block), `house_rules` (the "Before you book" policy
-  // box — the closest match this layout has), and `host` (the creator strip).
-  // `how_it_works`, `faq` and `promises` have no corresponding content here —
-  // wiring them would mean inventing sections, not instrumenting real ones.
+  // listing_gallery_open / listing_video_play. Contract:
+  // Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md §2.4.
   import('../lib/analytics').then(({ capture }) => {
     capture('listing_view', listingViewProps);
+    if (listingViewProps.kind) capture('creator_view', { listing_id: listingViewProps.listing_id });
 
     const seenSections = new Set();
     const sectionObserver = new IntersectionObserver(
@@ -510,15 +479,9 @@ const bookCtaName = kind === 'agent' ? 'talk' : isFreeEntry ? 'reserve_free' : '
     });
 
     document.querySelectorAll('[data-gallery-open]').forEach((el) => {
-      el.addEventListener('click', () => {
-        capture('listing_gallery_open', { listing_id: listingViewProps.listing_id });
-      });
+      el.addEventListener('click', () => capture('listing_gallery_open', { listing_id: listingViewProps.listing_id }));
     });
 
-    // A YouTube iframe's actual play state is cross-origin and unreachable
-    // without the YT Player API, which this page doesn't load. Best-effort
-    // proxy: fire once the embed scrolls into view (someone is looking at it)
-    // and again if they click through to an external video link.
     let videoFired = false;
     const fireVideoPlay = () => {
       if (videoFired) return;
@@ -527,19 +490,95 @@ const bookCtaName = kind === 'agent' ? 'talk' : isFreeEntry ? 'reserve_free' : '
     };
     const videoBlock = document.querySelector('[data-video-block]');
     if (videoBlock) {
-      const videoObserver = new IntersectionObserver(
-        (entries) => {
-          for (const entry of entries) {
-            if (entry.isIntersecting) {
-              fireVideoPlay();
-              videoObserver.disconnect();
-            }
-          }
-        },
-        { threshold: 0.6 },
-      );
-      videoObserver.observe(videoBlock);
+      const vo = new IntersectionObserver((entries) => {
+        for (const entry of entries) if (entry.isIntersecting) { fireVideoPlay(); vo.disconnect(); }
+      }, { threshold: 0.6 });
+      vo.observe(videoBlock);
     }
-    document.querySelector('[data-video-link]')?.addEventListener('click', fireVideoPlay);
   });
 </script>
+
+<style>
+  .listing-page {
+    max-width: 1200px; margin: 0 auto; padding: 20px 16px 80px;
+    display: flex; flex-direction: column; gap: 28px;
+    font-family: 'Nunito', system-ui, sans-serif; color: #161614; background: #fdf7e8;
+  }
+  .owner-bar { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-radius: 12px; background: #ffe9a8; border: 1.5px solid #161614; font-weight: 800; font-size: 0.8125rem; }
+  .owner-bar a { color: #161614; }
+  .breadcrumb { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-weight: 800; font-size: 0.6875rem; letter-spacing: .08em; color: #8a8a80; }
+  .listing-num { color: #161614; }
+  .live-band { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 18px; border-radius: 100px; background: #d93825; color: #fdf1d3; font-weight: 900; font-size: 0.8125rem; letter-spacing: .05em; }
+  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: #ffd0c4; }
+  .join-now { margin-left: auto; text-decoration: none; background: #161614; color: #fdf1d3; padding: 8px 16px; border-radius: 100px; }
+
+  .layout-grid { display: grid; grid-template-columns: minmax(0, 420px) 1fr; gap: 32px; }
+  @media (max-width: 860px) { .layout-grid { grid-template-columns: 1fr; } }
+
+  .left-col { display: flex; flex-direction: column; gap: 14px; }
+  .plate-strip { display: inline-block; background: #161614; color: #fdf1d3; font-weight: 900; font-size: 0.6875rem; letter-spacing: .1em; padding: 6px 14px; border-radius: 6px; align-self: flex-start; }
+  .stage-card { position: relative; border-radius: 20px; overflow: hidden; border: 2px solid #161614; background: #e8e2d0; }
+  .stage-media { position: relative; aspect-ratio: 4/5; width: 100%; }
+  .stage-media img, .stage-media iframe { width: 100%; height: 100%; object-fit: cover; border: 0; }
+  .stage-placeholder { background: repeating-linear-gradient(135deg, rgba(22,22,20,.08) 0 12px, transparent 12px 26px); }
+  .stage-pills { position: absolute; top: 12px; left: 12px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .pill { font-weight: 900; font-size: 0.625rem; letter-spacing: .06em; padding: 5px 10px; border-radius: 100px; background: rgba(22,22,20,.75); color: #fdf1d3; }
+  .pill-live { background: #d93825; }
+  .stage-actions { position: absolute; top: 12px; right: 12px; display: flex; gap: 8px; }
+  .icon-btn { width: 34px; height: 34px; border-radius: 50%; border: none; background: rgba(253,241,211,.9); font-size: 1rem; cursor: pointer; }
+  .host-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 800; font-size: 0.75rem; color: #5a5a54; }
+  .host-line-name { color: #161614; font-weight: 900; }
+  .kyc-tick { color: #1e8f5f; font-weight: 900; }
+  .thumb-row { display: flex; gap: 8px; }
+  .thumb { width: 68px; height: 68px; object-fit: cover; border-radius: 12px; border: 1.5px solid #161614; }
+  .thumb-video { display: grid; place-items: center; background: #161614; color: #fdf1d3; font-size: 1.25rem; }
+  .share-box { padding: 16px; border-radius: 16px; background: #fff; border: 1.5px solid rgba(22,22,20,.15); display: flex; flex-direction: column; gap: 10px; }
+  .share-box-row { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+
+  .right-col { display: flex; flex-direction: column; gap: 14px; }
+  .eyebrow-tag { font-weight: 900; font-size: 0.75rem; letter-spacing: .1em; color: #d93825; }
+  .listing-title { margin: 0; font-family: 'Anton', Impact, sans-serif; font-weight: 400; text-transform: uppercase; font-size: clamp(2rem, 4.5vw, 3.25rem); line-height: 1.03; letter-spacing: .03em; word-spacing: .1em; color: #161614; }
+  .title-accent { color: #d93825; }
+  .eyebrow { margin: 0; font-weight: 900; font-size: 0.75rem; letter-spacing: .1em; color: #161614; }
+  .section-title { margin: 0; font-family: 'Anton', Impact, sans-serif; font-weight: 400; text-transform: uppercase; font-size: 1.75rem; letter-spacing: .03em; word-spacing: .12em; color: #161614; }
+  .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { font-weight: 800; font-size: 0.75rem; letter-spacing: .04em; border: 1.5px solid #161614; border-radius: 100px; padding: 6px 12px; }
+  .chip-strong { background: #161614; color: #fdf1d3; border-color: #161614; }
+  .chip-ai { background: #2d7180; color: #fdf1d3; border-color: #2d7180; }
+  .blurb { margin: 0; font-weight: 600; font-size: 1rem; line-height: 1.55; color: #3a3a34; }
+  .stats-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 10px; padding: 14px; border-radius: 14px; background: #fff; border: 1.5px solid rgba(22,22,20,.15); }
+  .stats-board div { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .stats-board b { font-family: 'Anton', Impact, sans-serif; font-weight: 400; font-size: 1.375rem; }
+  .stats-board span { font-weight: 800; font-size: 0.625rem; letter-spacing: .06em; color: #8a8a80; }
+  .price-line { margin: 0; font-weight: 900; font-size: 1.125rem; }
+  .price-note { font-weight: 700; font-size: 0.6875rem; color: #8a8a80; letter-spacing: .04em; }
+  .what-you-get ul, .who-for-grid ul { margin: 6px 0 0; padding-left: 18px; font-weight: 600; font-size: 0.875rem; line-height: 1.6; color: #3a3a34; }
+  .who-for-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .who-for-grid h3 { margin: 0; font-weight: 900; font-size: 0.75rem; letter-spacing: .06em; }
+  .sample-chat { display: flex; flex-direction: column; gap: 8px; }
+  .chat-line { max-width: 80%; padding: 8px 12px; border-radius: 14px; font-weight: 600; font-size: 0.8125rem; }
+  .chat-agent { background: #2d7180; color: #fff; align-self: flex-start; }
+  .chat-user { background: #fff; border: 1.5px solid rgba(22,22,20,.2); align-self: flex-end; }
+  .credential-line { margin: 0; font-weight: 800; font-size: 0.8125rem; color: #5a5a54; }
+  .prep-box, .sample-qa { display: flex; flex-direction: column; gap: 8px; }
+  .qa-pair { padding: 10px 0; border-top: 1px solid rgba(22,22,20,.1); }
+  .qa-q { margin: 0; font-weight: 800; font-size: 0.875rem; }
+  .qa-a { margin: 4px 0 0; font-weight: 600; font-size: 0.875rem; color: #3a3a34; }
+
+  .how-it-works, .house-rules, .faq { display: flex; flex-direction: column; gap: 16px; }
+  .step-grid, .rules-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+  .step-card, .rule-card { padding: 18px; border-radius: 16px; background: #fff; border: 1.5px solid rgba(22,22,20,.15); position: relative; }
+  .step-num, .rule-num { display: inline-block; width: 26px; height: 26px; border-radius: 50%; background: #161614; color: #fdf1d3; font-weight: 900; font-size: 0.8125rem; text-align: center; line-height: 26px; margin-bottom: 8px; }
+  .step-card h3, .rule-card h3 { margin: 0 0 4px; font-weight: 900; font-size: 0.9375rem; }
+  .step-card p, .rule-card p { margin: 0; font-weight: 600; font-size: 0.8125rem; color: #3a3a34; }
+  .rules-intro { font-style: italic; font-weight: 600; color: #5a5a54; }
+  .rules-baseline { font-weight: 700; font-size: 0.8125rem; color: #8a8a80; }
+  .faq-item { padding: 12px 0; border-top: 1px solid rgba(22,22,20,.1); }
+  .faq-item summary { font-weight: 800; cursor: pointer; }
+  .faq-item p { margin: 8px 0 0; font-weight: 600; color: #3a3a34; }
+
+  .booking-sticky { border-radius: 20px; background: #fff; border: 2px solid #161614; padding: 20px; max-width: 420px; }
+  @media (min-width: 861px) {
+    .booking-sticky { position: sticky; top: 20px; margin-left: auto; }
+  }
+</style>
