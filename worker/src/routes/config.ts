@@ -1741,6 +1741,21 @@ export interface PlatformConfig {
   // initiator can approve the paid generate step (owner decision 2026-08-16).
   // Kill switch — boolean → NOT in numericKeys.
   groupSharedMediaSessionEnabled: boolean;
+
+  // [LISTING-SLOTS-1 2026-09-02] Free-session + listing-content-v2 + slots kill
+  // switches — Specs/SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING.md §E. Ship DARK.
+  // Boolean → NOT in numericKeys.
+  freeSessionsEnabled: boolean;
+  // Token rate charged per attendee per minute for a "free" session (0 = truly
+  // free). NUMERIC → MUST also appear in `numericKeys` below or `flags.sh set
+  // freeSessionTokensPerAttendeeMinute=1` 400s `bad type`.
+  freeSessionTokensPerAttendeeMinute: number;
+  // Gates the new listing card/page rendering on web + app (§E). Boolean → NOT
+  // in numericKeys.
+  listingContentV2Enabled: boolean;
+  // Gates the /api/listings/:id/slots and /api/slots/:slotId routes below
+  // (§C.3). Boolean → NOT in numericKeys.
+  listingSlotsEnabled: boolean;
 }
 
 // FREE LAUNCH (2026-06-28, owner-locked Specs/FREE-LAUNCH-DIRECTION.md): ship an
@@ -2354,6 +2369,12 @@ const DEFAULTS: PlatformConfig = {
   // which writes its own words from the prompt. Set to "" in KV to send quick
   // songs to the default music model instead.
   veniceQuickSongModel: "elevenlabs-music",
+  // [LISTING-SLOTS-1 2026-09-02] ship dark — flip in KV per
+  // Specs/SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING.md §E.
+  freeSessionsEnabled: false,
+  freeSessionTokensPerAttendeeMinute: 0,
+  listingContentV2Enabled: false,
+  listingSlotsEnabled: false,
 };
 
 /**
@@ -2578,6 +2599,11 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "virtualNumberFreeMaxPerAccount", "virtualNumberDidMonthlyTokens",
     // [PIVOT-PAID-NUMBER-1] paid vanity AvaTOK number price, in tokens.
     "avatokVanityNumberTokens",
+    // [LISTING-SLOTS-1 2026-09-02] free-session per-attendee-minute rate — numeric,
+    // must be here or `flags.sh set freeSessionTokensPerAttendeeMinute=1` 400s
+    // `bad type`. (`freeSessionsEnabled`/`listingContentV2Enabled`/
+    // `listingSlotsEnabled` are BOOLEANS — not listed.)
+    "freeSessionTokensPerAttendeeMinute",
   ]);
   const stringKeys = new Set(["virtualNumberPrimaryProvider"]);
   for (const [k, v] of Object.entries(body)) {
