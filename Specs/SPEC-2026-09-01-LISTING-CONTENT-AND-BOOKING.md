@@ -10,7 +10,11 @@ the card and either books a 1:1 slot, buys into a running event, pre-books a
 future one, or joins a free one where the creator pays.
 
 This file is the contract. Where it and an agent's judgement disagree, this
-file wins and the agent stops and says so. Prior art that governs and is not
+file wins and the agent stops and says so. **Companion:**
+`Specs/SPEC-2026-09-02-LISTING-TRUST-AND-VIBE.md` — the buyer's trust ladder,
+per-type card and page anatomy (live / 1:1 / AI / free / adda), review trust
+columns, `creator_stats`, and the copy/vibe dictionary. Its §6 adds steps
+4b, 5b, 5c to the sequence in I. Prior art that governs and is not
 re-litigated: `Specs/PIVOT-2026-08-27-MARKETPLACE-FIRST-PAID-SESSIONS.md`,
 `Specs/SPEC-2026-09-01-PAID-SESSION-PIPELINE-BUILD.md`, `CLAUDE.md`.
 
