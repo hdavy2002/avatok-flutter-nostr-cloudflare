@@ -20,6 +20,20 @@ re-litigated: `Specs/PIVOT-2026-08-27-MARKETPLACE-FIRST-PAID-SESSIONS.md`,
 
 ---
 
+## A0. Owner constraints added 2026-09-02
+
+- **KYC pipeline is off-limits.** A new one is coming. Read the existing
+  `kyc_verified` flag for the ✓; build nothing in verification.
+- **First internal test is the free lane:** owner creates free streaming shows,
+  a fake token amount is put in the creator wallet (staging, or prod with a
+  deliberate `ALLOW_PROD=1` ledger credit the owner confirms), people join, the
+  wallet drains per the metering rule. Feedback drives the next round. So step
+  7 (free lane) moves up to run right after step 3 (slots) — it is the thing
+  being tested.
+- **Execution model:** 4–8 Sonnet-class agents do the coding per phase; the
+  lead reviews every diff, runs the compile checks, and sends work back until
+  it passes. Agents never commit, push, deploy, or run migrations.
+
 ## A. Where we are (plain English)
 
 **Done and live:**
