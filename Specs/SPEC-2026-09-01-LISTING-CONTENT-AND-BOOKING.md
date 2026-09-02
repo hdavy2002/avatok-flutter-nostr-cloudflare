@@ -1,321 +1,295 @@
-# SPEC 2026-09-01 — Listings that feel complete, and the three ways to book one
+# FINAL PLAN — Listings that feel complete, and the four ways to join one
 
-Owner decision, 2026-09-01. Goal in one sentence: **a creator fills in one form,
-and the marketplace card and the details page both come out looking like the
-design comps instead of half-empty.** Then a buyer books one of three ways, and
-a fourth, free lane exists where the creator pays instead of the buyer.
+Owner decision 2026-09-01, finalised 2026-09-02. Replaces the 2026-09-01 draft.
+Environment: **production feature** — every prod write is confirmed with the
+owner first.
 
-This spec is the contract. Where it and an agent's judgement disagree, this file
-wins and the agent stops and says so.
+**Goal in one sentence:** a creator fills in ONE form; the marketplace card and
+the details page both come out looking like the design comps; a buyer clicks
+the card and either books a 1:1 slot, buys into a running event, pre-books a
+future one, or joins a free one where the creator pays.
 
-Prior art that governs and is not re-litigated:
-`Specs/PIVOT-2026-08-27-MARKETPLACE-FIRST-PAID-SESSIONS.md`,
-`Specs/SPEC-2026-09-01-PAID-SESSION-PIPELINE-BUILD.md`, and `CLAUDE.md` in full.
-
----
-
-## 0. What we learned first — read this before designing anything
-
-Two content inventories were taken against the design comps
-(`design/live-streaming/avaTOK Listing Details.dc.html` and
-`… Marketplace.dc.html`, both byte-identical to the copies staged into
-`web/src/generated/`). Three findings shape everything below.
-
-**1. Most of the "missing" content was never missing.** Start time, duration,
-capacity, seats left, watching count, language, the photo gallery, the video,
-location, and the refund and cancellation terms the creator already fills in
-were all stored, all returned by `GET /api/listings/:id`, and simply not
-rendered. `[LIST-DETAIL-1]` fixed that. Do not add a form field for anything in
-that list.
-
-**2. About half the comp is derived, not typed.** Ratings, review histograms,
-seats-left, watching-now, shows-hosted, come-back rate, past sessions, the QR
-code, the embed snippet, the price breakdown, the countdown. These need wiring,
-never a form field. Adding a "rating" input would be a bug, not a feature.
-
-**3. The comp is a group ticketed show throughout.** Calendar, weekly slots,
-seat quantity, per-seat price. **There is no 1:1 consultation layout in it, and
-no free listing anywhere** — the cheapest mock card is ₹9. Both are undesigned
-and this spec has to invent them rather than copy them.
-
-A fourth finding, from the card audit: the mock crams all social proof into two
-free-text chips (`♡ 300 REGULARS`, `★ 4.9 · 620`). The real `chipsFor()` already
-reverse-engineers which field to show. Keep that; do not add chip text fields.
+This file is the contract. Where it and an agent's judgement disagree, this
+file wins and the agent stops and says so. Prior art that governs and is not
+re-litigated: `Specs/PIVOT-2026-08-27-MARKETPLACE-FIRST-PAID-SESSIONS.md`,
+`Specs/SPEC-2026-09-01-PAID-SESSION-PIPELINE-BUILD.md`, `CLAUDE.md`.
 
 ---
 
-## 1. The bugs found on the way, and their state
+## A. Where we are (plain English)
 
-| Bug | State |
-|---|---|
-| Every public share link 500-ed on real data — `og.extra.map(m => <meta slot="head"/>)` crashes Astro's slot bucketing (`slots[name] is not a function`). Hit `/l/`, `/e/`, `/watch/`, `/live/`, `/c/`, and only when the listing resolved, which is why fake-id tests looked clean | **FIXED** `[LIST-DETAIL-2]`, live |
-| `apiClient.getListing()` typed `Promise<Listing>` but the worker returns `{listing, creator_stats, reviews, viewer}` — every caller read `undefined` | **FIXED** at source `[LIST-DETAIL-2]` |
-| `creator.id` / `creator.avatar` read where the worker sends `uid` / `avatar_url` — produced a literal `/c/undefined` link and killed every creator avatar | **FIXED** `[LIST-DETAIL-2]` |
-| Details page ignored `starts_at`, `duration_min`, `capacity`, `seats_left`, `spoken_lang`, gallery, video, location, commercial terms | **FIXED** `[LIST-DETAIL-1]`, live |
-| Review count showed the creator's channel-wide total on every one of their listings | **FIXED** `[LIST-DETAIL-1]` |
-| `price_semantics` is on the detail response but **not in `CARD_SELECT`/`shapeCard`**, so `from` / `/min` / `/hr` qualifiers silently vanish on every browse card | **OPEN** — §5 |
-| `favorited` is stored and typed but `ListingTile.tsx` renders no heart | **OPEN** — §5 |
-| `GET /api/creators/:id` 404s for a real creator uid | **OPEN, separate** — not this spec |
-| Language is written to `badges` by the app and to `spoken_lang` by the web form — two forms, two places, one concept | **OPEN** — §3 |
+**Done and live:**
+
+- Share links (`/l/<id>`, `/e/`, `/watch/`, `/live/`, `/c/`) were dead on
+  every real listing. Two causes, both fixed: `og.extra.map(… slot="head")`
+  crashed Astro, and `getListing()` never unwrapped `{listing, …}`.
+  `[LIST-DETAIL-1]`, `[LIST-DETAIL-2]`.
+- The details page now shows what was already stored but never rendered: start
+  time, duration, capacity, seats left, language, photo gallery, video,
+  location, refund and cancellation terms.
+- Marketplace page and cards are rebuilt in the bazaar design on real data
+  (`[MARKET-BAZAAR-1..3]`, `[CARD-BAZAAR-1]`).
+- Buying into a running event and pre-booking a future event already work on
+  the paid lane (`commercial_checkout.ts` allows purchase while `live`).
+
+**Still broken / missing (this plan):**
+
+| # | Problem | Where |
+|---|---|---|
+| 1 | Card price qualifiers (`from`, `/min`) vanish — `price_semantics` lives on `listing_categories`, never joined into `CARD_SELECT` | `worker/src/routes/listings.ts:275` |
+| 2 | Favourite heart stored, typed, never drawn | `web/src/components/ListingTile.tsx` |
+| 3 | No `NEW`, no `SOLD OUT` pill; `created_at` and `seats_left` are on the wire | same |
+| 4 | Card cannot say `ALWAYS ON` / `DAILY 6 PM` / `FRI 9 PM` — schema has one instant, no mode, no recurrence | schema |
+| 5 | Card one-liner is `description` cut mid-sentence | `card.ts:one_liner` |
+| 6 | Details page has no how-it-works, house rules, join-lead promise, max-seats — the "set by the host" sections that make it look real | schema + page |
+| 7 | The comp details page still serves mock data at `/<handle>/<slug>` — and there is **no `slug` column** | `web/src/pages/[username]/[slug].astro` |
+| 8 | Two creator forms disagree. Web form has **no cover upload, no `spoken_lang`, no early-bird, no promo, no commercial policy**. App writes language into `badges`, web into `spoken_lang` | `CreateListing.tsx`, `create_listing_flow.dart` |
+| 9 | No slot table — a listing has exactly one `starts_at`. Calendar 1:1 is unwired | schema |
+| 10 | No 1:1 consult layout in the comp; no free listing anywhere in the comp | design |
+| 11 | Free lane (creator pays) does not exist | new |
+| 12 | Language field `spoken_lang` is stored but the "regulars"/follower count is not on the card wire | `CARD_SELECT` |
+| 13 | No timezone on a listing | schema |
+| 14 | `GET /api/creators/:id` 404s for a real uid | **separate issue, not this plan** |
 
 ---
 
-## 2. The data model
+## B. What the end user should see (the acceptance test)
 
-### 2.1 Where each new field lives, and why
+**Buyer, on the marketplace card:**
 
-Scalars that are **filtered, sorted or shown on a card** become real columns.
-Lists of objects that are **only ever displayed on the details page** go into the
-existing `attrs` JSON, which is already length-capped (8192 bytes), already
-validated per category, and already returned to clients. Two new mechanisms
-would be one too many.
+- Cover photo, category stub, language stub, status pill that is honest
+  (`FRI 9 PM` · `LIVE` · `DAILY 6 PM` · `ALWAYS ON` · `AVAILABLE NOW` ·
+  `SOLD OUT`), `NEW` for < 48 h.
+- Title + price with the right qualifier (`₹49`, `from ₹300`, `₹19 / 10 min`,
+  `FREE` in a distinct chip).
+- A one-sentence blurb the creator wrote, not a truncated paragraph.
+- Two proof chips (regulars, rating · count, seats left, response time, a vibe
+  tag) — all derived except the vibe tag and response time.
+- Host name + avatar + ✓ only if KYC-verified. Favourite heart that works.
+- Duration or billing cadence (`90 MIN` / `PER CHAT`).
 
-### 2.2 New columns on `listings`
+**Buyer, on the details page (comp order):**
+
+1. Hero: gallery + video, status pill, countdown to start.
+2. Title, blurb, host line, rating, language, duration, capacity/seats left,
+   watching-now when live.
+3. Sticky booking box — **one of four shapes** (see D).
+4. How it works (2–5 steps, creator-written, pre-filled by category).
+5. Meet the host (derived stats: shows hosted, come-back rate, past sessions).
+6. House rules (intro line + 3–8 rules).
+7. Reviews (real, per-listing).
+8. Platform promises (refund window, cancel window, join-link lead time —
+   from fields the creator already fills in).
+9. Browse more.
+
+Any section with no data **hides entirely**. No empty shells.
+
+**Creator, in the form:** 8 steps, defaults pre-filled, a live card preview
+beside the blurb, and a final preview that renders the REAL card and REAL page.
+
+---
+
+## C. Data model — what gets added
+
+Rule: scalars that are filtered, sorted or shown on a card become **columns**.
+Lists of objects that only the details page shows go into the existing
+validated `attrs` JSON (8192-byte cap). No third mechanism.
+
+### C.1 New columns on `listings`
 
 ```sql
--- migration: worker/migrations/2026-09-02-listings-content.sql
-ALTER TABLE listings ADD COLUMN blurb TEXT;            -- the card one-liner
-ALTER TABLE listings ADD COLUMN schedule_mode TEXT NOT NULL DEFAULT 'fixed_date';
-ALTER TABLE listings ADD COLUMN billing_unit TEXT;     -- 'session'|'minute'|'chat'|'night'
+-- worker/migrations/2026-09-02-listings-content.sql
+ALTER TABLE listings ADD COLUMN blurb TEXT;                                   -- card one-liner, 55–110 chars
+ALTER TABLE listings ADD COLUMN slug TEXT;                                    -- pretty URL; unique per creator
+ALTER TABLE listings ADD COLUMN schedule_mode TEXT NOT NULL DEFAULT 'fixed_date'; -- fixed_date|recurring|on_request|always_on
+ALTER TABLE listings ADD COLUMN recurrence_days TEXT;                         -- JSON [0..6], recurring only
+ALTER TABLE listings ADD COLUMN recurrence_time TEXT;                         -- 'HH:MM' local, recurring only
+ALTER TABLE listings ADD COLUMN timezone TEXT NOT NULL DEFAULT 'Asia/Kolkata'; -- IANA
+ALTER TABLE listings ADD COLUMN billing_unit TEXT;                            -- session|minute|10min|chat|night|game
 ALTER TABLE listings ADD COLUMN free_entry INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE listings ADD COLUMN max_per_booking INTEGER;
+ALTER TABLE listings ADD COLUMN max_per_booking INTEGER NOT NULL DEFAULT 4;
+ALTER TABLE listings ADD COLUMN response_time_min INTEGER;                    -- consult/AI: "10 MIN RESPONSE"
+ALTER TABLE listings ADD COLUMN vibe_tags TEXT;                               -- JSON, ≤2 from a curated set
+CREATE UNIQUE INDEX IF NOT EXISTS idx_listings_creator_slug ON listings(creator_id, slug);
 ```
 
-- **`blurb`** — today the card's one-liner is derived by truncating
-  `description`, which cuts mid-sentence. The comp's blurbs are deliberate,
-  55–110 characters, one sentence. Give the creator the field. Falls back to the
-  derived `one_liner` when empty, so nothing breaks for existing rows.
-- **`schedule_mode`** — `fixed_date` | `recurring` | `on_request` | `always_on`.
-  This is the field that makes the other three booking flows expressible. The
-  comp's AI cards say `ALWAYS ON` and its consult cards say `AVAILABLE NOW`;
-  today `statusLabel()` can produce neither, because nothing in the schema says
-  a listing has no fixed time.
-- **`billing_unit`** — the comp overloads the duration slot on AI cards to mean
-  price cadence (`PER 10 MIN`, `PER CHAT`, `PER NIGHT`). That is a second
-  concept wearing the first one's clothes. Separate them.
-- **`free_entry`** — see §6. A price of 0 is not sufficient, because free
-  listings invert who pays.
-- **`max_per_booking`** — the comp's booking box hardcodes a cap of 4 seats per
-  order in its own JS. Make it a field, default 4.
+- `schedule_mode` is what lets the card say `ALWAYS ON` / `ON REQUEST`;
+  `recurrence_days` + `recurrence_time` derive `DAILY 6 PM` / `FRI 9 PM`.
+- `vibe_tags` is a **curated picklist** (`safe_space`, `cam_optional`,
+  `listener_first`, `savage`, `beginner_ok`, `queer_friendly`, `18_plus`),
+  never free text — the mock's `100% MASALA` chips are copy, not data.
+- `price_semantics` is **not** a new column: join `listing_categories` into
+  `CARD_SELECT` and emit it from `shapeCard`. `billing_unit` is the
+  per-listing override when the category default is wrong.
+- `slug` is generated from the title on create, editable once, unique per
+  creator. Without it, item 7 in table A cannot ship.
 
-### 2.3 New `attrs` keys
+### C.2 New `attrs` keys (details page only)
 
-Validated by a new `contentAttrsError()` beside the existing
-`commercialPolicyError()` in `worker/src/routes/listings.ts`. Same shape, same
-place, same 422 on violation.
+Validated by a new `contentAttrsError()` beside `commercialPolicyError()` in
+`worker/src/routes/listings.ts`; 422 on violation.
 
 | key | type | limits |
 |---|---|---|
-| `content_how_it_works` | list of `{label, body}` | 2–5 items; label ≤ 24 chars, body ≤ 240 |
-| `content_house_rules` | list of `{heading, body}` | 3–8 items; heading ≤ 32, body ≤ 200 |
+| `content_how_it_works` | `[{label, body}]` | 2–5 items; label ≤ 24, body ≤ 240 |
+| `content_house_rules` | `[{heading, body}]` | 3–8 items; heading ≤ 32, body ≤ 200 |
 | `content_house_rules_intro` | string | ≤ 280 |
-| `content_join_lead_minutes` | integer | 0–60, default 15 |
+| `content_join_lead_minutes` | int | 0–60, default 15 |
+| `content_free_cap_tokens` | int | required when `free_entry=1` |
 
-`content_how_it_works` and `content_house_rules` are the two sections the comp
-labels "set by the host, shown before every booking". They are the difference
-between a page that looks trustworthy and one that looks like a stub.
-
-### 2.4 `listing_slots` — the real slots table
-
-Owner decision: build it properly rather than fake it with a second time field.
+### C.3 `listing_slots` — the real slots table
 
 ```sql
--- migration: worker/migrations/2026-09-02-listing-slots.sql
+-- worker/migrations/2026-09-02-listing-slots.sql
 CREATE TABLE IF NOT EXISTS listing_slots (
-  id           TEXT PRIMARY KEY,
-  listing_id   TEXT NOT NULL,
-  starts_at    INTEGER NOT NULL,      -- epoch ms, UTC
-  ends_at      INTEGER NOT NULL,
-  label        TEXT,                  -- 'Main show', 'Newbie warm-up'
-  capacity     INTEGER NOT NULL,      -- 1 for a 1:1 slot
+  id TEXT PRIMARY KEY, listing_id TEXT NOT NULL,
+  starts_at INTEGER NOT NULL, ends_at INTEGER NOT NULL,   -- epoch ms UTC
+  label TEXT, capacity INTEGER NOT NULL,                  -- capacity 1 = a 1:1 slot
   booked_count INTEGER NOT NULL DEFAULT 0,
-  status       TEXT NOT NULL DEFAULT 'open',  -- open|full|cancelled|done
-  created_at   INTEGER NOT NULL,
-  updated_at   INTEGER NOT NULL
+  status TEXT NOT NULL DEFAULT 'open',                    -- open|full|cancelled|done
+  created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_listing_slots_listing ON listing_slots(listing_id, starts_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_listing_slots_unique ON listing_slots(listing_id, starts_at, label);
 ```
 
-Rules that are not negotiable:
+Non-negotiable:
 
-- **`listings.starts_at` stays** and mirrors the earliest open slot. Every
-  shipped client, every card, every email and every sort order reads it. Do not
-  remove it and do not stop maintaining it.
-- **Seat counting is atomic.** Claiming a seat is a conditional UPDATE
-  (`UPDATE … SET booked_count = booked_count + ?N WHERE id = ?1 AND booked_count + ?N <= capacity`)
-  and a zero-row result IS the "slot full" signal. This is the same pattern
-  `worker/src/cal/engine.ts:claimBlock` already proves works under D1.
-- **A slot is the booking grain for `consult`**, and an optional refinement for
-  `live_event`. A live event with no slots keeps behaving exactly as it does
-  today off `starts_at` + `duration_min`.
-- **`commercial_checkout.ts` takes a `slot_id`** where it currently takes
-  `{start_at, end_at}`. The existing shape keeps working for one release; the
-  server resolves it to a slot when one matches.
-- The existing `calendar_slots` table is **not** this table. It belongs to the
-  older, unwired AvaCalendar feature. Do not merge them in this pass; note the
-  duplication and leave it.
+- `listings.starts_at` **stays** and mirrors the earliest open slot. Every
+  shipped client, card, email and sort reads it.
+- Seat claim is atomic: `UPDATE … SET booked_count = booked_count + ?N WHERE id
+  = ?1 AND booked_count + ?N <= capacity`; zero rows = full. Same pattern as
+  `worker/src/cal/engine.ts:claimBlock`.
+- Slot is the booking grain for `consult`; optional refinement for
+  `live_event`. A live event with no slots behaves exactly as today.
+- `commercial_checkout.ts` accepts `slot_id`; the old `{start_at, end_at}` keeps
+  working one release and is resolved to a slot server-side.
+- `calendar_slots` (old AvaCalendar) is **not** this table. Leave it.
 
-### 2.5 Timezone — no longer optional
+### C.4 Derived-only — NEVER a form field
 
-A listing has one wall-clock time and nothing saying which clock. Add
-`timezone TEXT` (IANA, e.g. `Asia/Kolkata`), captured from the creator's device,
-defaulted to `Asia/Kolkata`. Render every public time in the viewer's zone with
-the creator's zone shown beside it. Cheap now; expensive after the first
-mis-timed event.
+Status pill text, LIVE, SOLD OUT, NEW, seats taken/left, watching-now, booked
+count, rating + review count, regulars (`creator_profiles.follower_count` —
+add to `CARD_SELECT`), come-back %, shows hosted, past sessions, countdown,
+QR, embed code, price breakdown, initials, palette, favourited.
 
 ---
 
-## 3. The creator form
+## D. The four join flows
 
-All new content fields are **required for `live_event`, optional for `consult`**
-— owner decision. A show page with no house rules is the exact problem this
-spec exists to fix; a consult is a conversation, not a room with rules.
-
-One form, two surfaces, and they must not disagree — today the app writes
-language into `badges` while the web writes it into `spoken_lang`. **Consolidate
-on `spoken_lang`** and have the app stop writing a language badge.
-
-Step order (both `app/lib/features/listings/create_listing_flow.dart` and
-`web/src/islands/dashboard/CreateListing.tsx`):
-
-1. **Type** — kind, and for `consult`/AI, `schedule_mode`.
-2. **The pitch** — title, `blurb` (with a live character count and the card
-   preview beside it), description, category.
-3. **Money** — price, `billing_unit`, `free_entry`, early-bird and promo.
-4. **Time** — `timezone`, then either a fixed date, a recurrence, or a slot
-   editor (add/remove named slots with time, duration, capacity), or nothing at
-   all for `on_request` / `always_on`.
-5. **How it works** — 2–5 steps. Pre-filled with sensible defaults for the
-   category so the creator edits rather than faces a blank box.
-6. **House rules** — intro line plus 3–8 rules, same pre-fill approach.
-7. **Photos** — unchanged, 1–5.
-8. **Preview** — show the real card and the real details page, not an
-   approximation. This is the step that makes creators fill the rest in.
-
-Pre-filled defaults are the single highest-leverage decision here. A required
-field with a blank box gets abandoned; a required field with a good default gets
-edited.
-
----
-
-## 4. The details page
-
-The mock becomes the real page. `web/src/pages/[username]/[slug].astro`
-currently serves `listing-details.dc.html` verbatim with hardcoded mock data —
-its own header says "backend wiring comes later". This is later.
-
-- The pretty URL `/<handle>/<slug>` becomes the canonical public listing URL,
-  rendering real data through the same component as `/l/<id>`.
-- `/l/<id>` keeps working forever and 301s to the pretty URL when the creator
-  has a handle. Every link already shared points at it.
-- Sections, in comp order: hero and player, title and meta, sticky booking box,
-  how it works, meet the host, house rules, reviews, platform promises, browse
-  more. Everything derived stays derived.
-- Anything with no data **hides its whole section**. No empty shells — that is
-  the failure mode we are fixing.
-- The 1:1 consult layout is **not in the comp** and must be designed: no seat
-  quantity, no calendar of recurring dots, a slot picker instead, and the
-  prep-instructions and booking-notice fields shown prominently.
-
----
-
-## 5. The marketplace card
-
-From the card audit, in priority order:
-
-1. **Add `price_semantics` to `CARD_SELECT` and `shapeCard`.** It exists, the
-   card code already asks for it, and it arrives `undefined` — so `from` and
-   `/min` qualifiers vanish on every browse card today. One-line server fix.
-2. **Render `blurb`** in place of the truncated `one_liner`.
-3. **Status pill** learns `ALWAYS ON` and `ON REQUEST` from `schedule_mode`.
-4. **Free treatment** — `priceLabel()` already returns `Free` for price 0 and
-   has never been exercised. Give it a visibly distinct chip.
-5. **Render the favourite heart.** `favorited` is stored, typed, and drawn
-   nowhere.
-6. **A `NEW` chip** for listings under 48 hours old — `created_at` is already
-   selected specifically to allow this, per the comment in `listings.ts`.
-
-The mock's `PORTRAIT` watermark, serif/Anton title rotation and unconditional ✓
-are mock artefacts. The real card is right to gate the tick on actual KYC —
-keep that.
-
----
-
-## 6. The free lane — creator pays
-
-New product case, undesigned in the comp, and the only one that inverts the
-money flow. Get this wrong and it drains a creator's wallet silently.
-
-**The rule: a free listing costs the creator, and it is paid from escrow like
-everything else.** Buyers pay ₹0 and get a normal entitlement.
-
-1. Creator sets `free_entry = 1`, `price = 0`, and a **spend cap** for the
-   session (`content_free_cap_tokens` in `attrs`, required).
-2. **At go-live**, before the provider session is created, the server takes a
-   `hold()` from the creator's wallet for the cap. Insufficient balance is a
-   hard refusal to start — not a warning, and never a negative balance. Reuse
-   `worker/src/ledger.ts:hold` exactly as the paid lane does.
-3. **Attendance is metered** off the participant intervals the settlement engine
-   already records (`commercial_participant_intervals`).
-4. **At session end**, `releaseSnapshot()`-style settlement debits actual usage
-   to `platform:fees` and **returns the unspent remainder to the creator**.
-5. The cap is also the attendee ceiling: when metered spend would exceed it, new
-   joins are refused with a clear "this free session is full" — not a crash and
-   not an overdraft.
-
-Rate for metered usage is a new flag, `freeSessionTokensPerAttendeeMinute`,
-declared in **both** `PlatformConfig` and `DEFAULTS` in
-`worker/src/routes/config.ts` — a key missing from `DEFAULTS` can never be
-flipped and is a fake flag. Default it to `0` so the lane is free to the
-platform until someone deliberately prices it.
-
-Abuse notes worth writing down now: a free listing is the cheapest way to farm
-followers, so free sessions do not count toward creator ranking until a paid
-session exists; and the cap must be per session, not per day, or one runaway
-room empties a wallet.
-
----
-
-## 7. The three booking flows
-
-| Flow | Trigger | State today | Work needed |
+| Flow | Listing shape | Booking box shows | State |
 |---|---|---|---|
-| **Calendar 1:1** | Buyer picks a slot on a consult listing | Buyer picks a `{start,end}` against an unwired calendar | Slot picker reads `listing_slots`; checkout takes `slot_id`; atomic claim |
-| **Buy into a running event** | Listing `status = 'live'` | **Already works** — `commercial_checkout.ts:350` explicitly allows buying while live, and the browser viewer sends a ticketless viewer into checkout | Verify end to end; no new code expected |
-| **Pre-book a future event** | Listing `status = 'published'`, future `starts_at` | **Already works** | Show the countdown and the join-lead-time promise |
-| **Free join** | `free_entry = 1` | Does not exist | §6 |
+| **Calendar 1:1** | `kind=consult`, slots with `capacity=1` | Slot picker (day → time), prep instructions, booking notice, `Book ₹X` | Needs C.3 |
+| **Buy into a running event** | `status=live` | `LIVE · N watching`, seat qty ≤ `max_per_booking`, `Join now ₹X` | **Works** — verify only |
+| **Pre-book a future event** | `status=published`, future `starts_at` | Countdown, seats left, qty, `Book ₹X`, "join link arrives 15 min before" | **Works** — add countdown + lead-time line |
+| **Free join** | `free_entry=1`, `price=0` | `FREE · N spots left`, `Reserve my spot` | New — see E |
+
+The consult booking box is **not in the comp** and is designed in this plan:
+no seat quantity, no recurring-dot calendar; a slot picker, and prep
+instructions shown prominently.
 
 ---
 
-## 8. Sequence
+## E. The free lane — creator pays
 
-Each step is testable on its own and none of them blocks a user-visible bug fix.
+A free listing costs the **creator**, from escrow, like everything else. Buyer
+pays ₹0 and gets a normal entitlement.
 
-1. **Server fields** — the two migrations, `contentAttrsError()`, `blurb`,
-   `schedule_mode`, `billing_unit`, `free_entry`, `max_per_booking`, `timezone`,
-   plus `price_semantics` into `CARD_SELECT`. Ships dark; nothing reads them yet.
-2. **Slots** — table, CRUD on the listing, atomic claim, `slot_id` in checkout.
-3. **Creator form** — both surfaces, with pre-filled defaults and a real preview.
-4. **Details page** — mock becomes real, pretty URL canonical, consult layout
-   designed.
-5. **Cards** — the six items in §5.
-6. **Free lane** — §6, behind `free_entry` and its own flag, off by default.
-7. **A seeded dummy listing** — a script that creates one fully-populated
-   listing of each kind so the page and the card can be judged with real data
-   instead of by reading code. This is step 7 only because it needs step 1;
-   everything after it gets easier once it exists.
+1. Creator sets `free_entry=1`, `price=0`, and `content_free_cap_tokens`.
+2. **At go-live**, before the provider session exists, the server `hold()`s the
+   cap from the creator's wallet (`worker/src/ledger.ts:hold`). Insufficient
+   balance = hard refusal to start. Never a negative balance.
+3. Attendance is metered off `commercial_participant_intervals`, the same
+   records the paid settlement uses.
+4. At session end, settlement debits actual usage to `platform:fees` and
+   **returns the remainder to the creator**.
+5. The cap is the attendee ceiling: when the next join would exceed it, refuse
+   with "this free session is full".
 
-## 9. Rules every agent follows
+Rate flag: `freeSessionTokensPerAttendeeMinute`, declared in **both**
+`PlatformConfig` and `DEFAULTS` (`worker/src/routes/config.ts`), default `0`.
+Prove it is not a fake flag: `ALLOW_PROD=1 scripts/flags.sh set …` must not 400.
 
-Unchanged from `Specs/SPEC-2026-09-01-PAID-SESSION-PIPELINE-BUILD.md` §6, and
-they are not optional: compile before you claim (`npx tsc --noEmit` in `worker/`
-and `web/`, `flutter analyze` in `app/`); commit through
-`scripts/git_safe_commit.py` with explicit paths; never push or deploy without
-being asked; never touch another workstream's files; new behaviour ships dark;
-and write down the success value before you finish.
+Abuse rules: free sessions do not count toward ranking until one paid session
+exists; cap is per session, never per day.
 
-One addition, learned the hard way today: **a page that renders for a fake id is
-not proof it renders for a real one.** The share-link outage survived every
-smoke test because the failure only occurred when the API returned data. Test
-with a real, published row.
+---
+
+## F. The creator form — one form, two surfaces, same fields
+
+**Web form gets full parity with the app form first** (payments are web; it
+is the thinner one today). Then both add the new fields. Language consolidates
+on `spoken_lang`; the app stops writing a language badge.
+
+Required for `live_event`, optional for `consult`/AI: blurb, how-it-works,
+house rules.
+
+| Step | Fields |
+|---|---|
+| 1 Type | kind, `schedule_mode`, category |
+| 2 Pitch | title, `blurb` (char count + live card preview), description, `vibe_tags` (≤2), `spoken_lang` |
+| 3 Money | price, `billing_unit`, `free_entry` + cap, early-bird, promo |
+| 4 Time | `timezone`; then fixed date+duration, OR recurrence (days + time), OR slot editor (named slots: time, duration, capacity), OR nothing for `on_request`/`always_on`; `response_time_min` for consult/AI |
+| 5 How it works | 2–5 steps, **pre-filled per category** |
+| 6 House rules | intro + 3–8 rules, **pre-filled per category** |
+| 7 Photos & policy | cover 1–5 (**add to web**), video, location, refund/cancel/reschedule/notice/prep |
+| 8 Preview | the REAL card + REAL details page |
+
+Pre-filled defaults are the highest-leverage decision: a blank required box
+gets abandoned; a good default gets edited.
+
+---
+
+## G. The details page
+
+`web/src/pages/[username]/[slug].astro` stops serving the mock and renders real
+data through the **same component** as `/l/<id>`. `/l/<id>` keeps working
+forever and 301s to `/<handle>/<slug>` once both exist. Dashboard twin
+`/dashboard/l/<id>` uses the same component with an "edit" bar.
+
+---
+
+## H. The card — six items, in order
+
+1. Join `price_semantics` + `follower_count` into `CARD_SELECT`/`shapeCard`.
+2. Render `blurb`, fall back to `one_liner`.
+3. Status pill learns `ALWAYS ON`, `ON REQUEST`, recurring labels, `SOLD OUT`.
+4. `FREE` chip, visibly distinct.
+5. Favourite heart wired to `favorited`.
+6. `NEW` chip < 48 h; `response_time_min` and `vibe_tags` chips.
+
+Mock artefacts to ignore: `PORTRAIT` watermark, serif rotation, unconditional ✓.
+
+---
+
+## I. Sequence (each step testable alone, nothing blocks a bug fix)
+
+| Step | Issue id | What ships | Success value |
+|---|---|---|---|
+| 1 | `[LIST-CONTENT-2]` | Migrations C.1 + C.2 validator + `price_semantics`/`follower_count` in CARD_SELECT. **Dark.** | `GET /api/listings?…` card JSON carries `price_semantics`; `/api/config` unchanged |
+| 2 | `[LIST-SEED-1]` | `scripts/seed_listings.ts`: one fully-populated listing per shape (live event, recurring, consult with slots, AI always-on, free) under a test creator, on **staging first**, then prod on owner's word | Five rows exist; every card and page field non-empty |
+| 3 | `[LIST-SLOTS-1]` | C.3 table, slot CRUD on listing, atomic claim, `slot_id` in checkout | Two concurrent claims on a capacity-1 slot: exactly one succeeds |
+| 4 | `[LIST-CARD-2]` | H.1–6 | Seeded cards render every element in B on `/marketplace` |
+| 5 | `[LIST-PAGE-2]` | G + consult layout + free layout; hide-when-empty | Seeded pages render every section in B; a bare listing renders no empty section |
+| 6 | `[LIST-FORM-2]` | F, web first, then app | Create via form → card and page match preview byte-for-byte |
+| 7 | `[LIST-FREE-1]` | E, behind `free_entry` + flag | Go-live with insufficient balance refuses; end-of-session ledger shows hold, usage, refund |
+| 8 | `[LIST-VERIFY-1]` | Two real people: one books a slot, one buys into a live seed event, one joins a free one | PostHog: `commercial_checkout_result=ok` on ≥2 distinct persons on the newest build |
+
+Step 2 is deliberately early: judging the page against a real full row beats
+reading code, and every later step gets a fixture for free.
+
+---
+
+## J. Rules every agent follows
+
+- Compile before you claim: `npx tsc --noEmit` in `worker/` and `web/`,
+  `flutter analyze` in `app/`.
+- Commit through `scripts/git_safe_commit.py` with explicit paths; one issue
+  per commit; never push without asking; never trigger a build.
+- Production: every migration and deploy is confirmed with the owner first;
+  `ALLOW_PROD=1` is typed deliberately and said out loud.
+- **A page that renders for a fake id is not proof it renders for a real one.**
+  Test with a real published row — the share-link outage survived every
+  fake-id smoke test.
+- New behaviour ships dark. Write the success value down before you finish.
+- Rename nothing in the `*_coins` wire contract; the unit is the token, ₹.
