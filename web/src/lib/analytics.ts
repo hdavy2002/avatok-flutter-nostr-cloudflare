@@ -24,7 +24,14 @@ let currentUid: string | null = null;
 // ── §1.5 scrubbing — never sent: passwords, tokens, secrets, otp, real phone
 // numbers / long numeric ids. Mirrors analytics.dart's `_scrub` / worker's
 // `scrubServer`. ──────────────────────────────────────────────────────────
-const SENSITIVE_KEY_RE = /token|password|secret|authorization|otp/i;
+// ⚠️ posthog-js puts the PROJECT key on every event as `properties.token` and
+// drops the event if a before_send hook removes it ("This property is required
+// for ingestion"). The first deploy of this file matched /token/ and silently
+// dropped 100% of web events for an hour (2026-09-02). So: never touch the
+// bare key `token`; scrub the things that actually leak — auth/access/refresh
+// tokens, passwords, secrets, OTPs.
+const SENSITIVE_KEY_RE = /(^|_)(access|auth|refresh|id|session|api|bearer|jwt)_?token|password|passwd|secret|authorization|(^|_)otp($|_)/i;
+const POSTHOG_OWN_KEYS = new Set(['token']);
 // 7+ consecutive digits inside a string value (phone numbers, OTPs, long ids
 // that slipped into a free-text prop) get redacted rather than dropped, so
 // the surrounding message stays readable.
@@ -39,7 +46,7 @@ function scrubProps(props: Properties | undefined | null): Properties | undefine
   if (!props || typeof props !== 'object') return props;
   const out: Properties = {};
   for (const [k, v] of Object.entries(props)) {
-    if (SENSITIVE_KEY_RE.test(k)) continue; // drop entirely
+    if (!POSTHOG_OWN_KEYS.has(k) && SENSITIVE_KEY_RE.test(k)) continue; // drop entirely
     out[k] = scrubValue(v);
   }
   return out;
