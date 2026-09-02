@@ -62,6 +62,10 @@ export function cfImage(
   // Absolute URL → splice the transform segment after the origin.
   try {
     const u = new URL(path);
+    // [LIST-PAGE-2] The /cdn-cgi/image transform only exists on OUR zones. An
+    // off-zone image (a creator pasted a picsum/Instagram URL) spliced through
+    // it 404s and shows a broken-image icon; pass those through untouched.
+    if (!/\.avatok\.ai$/i.test(u.hostname)) return path;
     return `${u.origin}/cdn-cgi/image/${params}${u.pathname}${u.search}`;
   } catch {
     // Relative path → resolve against the API origin.
