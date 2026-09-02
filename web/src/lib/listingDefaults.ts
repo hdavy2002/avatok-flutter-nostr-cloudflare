@@ -328,4 +328,23 @@ export function defaultsFor(category: string, kind: string): ListingContentDefau
   return DEFAULTS[flavorFor(category, kind)];
 }
 
+/* [LIST-WIZ-CAT-1] `/api/explore/categories` (worker/src/routes/listings.ts
+ * exploreCategories) returns EVERY row in `listing_categories` — the
+ * marketplace-goods ids (cars, bikes, properties, mobiles, furniture,
+ * fashion, jobs, …) right alongside the service/creator ones. The endpoint
+ * carries no per-row "kind" to filter on, so a live_event/consult listing in
+ * this wizard would otherwise show a goods category in its dropdown.
+ *
+ * This is the one allowlist: every id a live_event/consult/ai_agent listing
+ * may pick. Kept here (not in steps.tsx) so it sits next to flavorFor(), the
+ * other place category ids are enumerated by hand, and so a real DB id added
+ * to worker/migrations/*.sql without a matching entry here is easy to spot
+ * in review rather than silently hidden from every creator's dropdown.
+ */
+export const SERVICE_CATEGORY_IDS = new Set([
+  'teachers', 'astrologers', 'professors', 'fitness', 'music', 'cooking',
+  'business', 'language', 'art', 'wellness', 'live_friends', 'adda_rooms',
+  'glow_up', 'services', 'other',
+]);
+
 export default DEFAULTS;

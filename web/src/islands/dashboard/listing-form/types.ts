@@ -8,6 +8,8 @@
  * Spec: Specs/SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING.md §A1 item 4, §C.1, §C.2, §F.
  */
 
+import { normalizeTimezone } from './wizardLogic';
+
 export type Kind = 'live_event' | 'consult' | 'ai_agent';
 export type ScheduleMode = 'fixed_date' | 'recurring' | 'on_request' | 'always_on';
 
@@ -124,7 +126,7 @@ export function emptyDraft(initial?: Partial<ListingDraft>): ListingDraft {
     billing_unit: 'session',
     early_bird_pct: '',
     promo_code: '',
-    timezone: typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'Asia/Kolkata',
+    timezone: normalizeTimezone(typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'Asia/Kolkata'),
     starts_at: '',
     duration_min: 60,
     recurrence_days: [],

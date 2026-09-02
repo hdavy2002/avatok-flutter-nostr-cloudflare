@@ -10,13 +10,28 @@ import { Button } from '../../../components/Button';
 import { PreviewCard } from './PreviewCard';
 import { TwoFieldListEditor, StringListEditor, ChatLineEditor, labelCls, inputCls, textareaCls, SectionHeader, charCount } from './Editors';
 import { VIBE_TAGS, BILLING_UNITS, REFUND_WINDOWS, BOOKING_NOTICE_HOURS } from './wizardLogic';
-import { defaultsFor } from '../../../lib/listingDefaults';
+import { defaultsFor, SERVICE_CATEGORY_IDS } from '../../../lib/listingDefaults';
 import type { ListingDraft, DraftSlot, Kind } from './types';
 
 type Patch = (p: Partial<ListingDraft>) => void;
+type CreatorInfo = { name?: string | null; handle?: string | null; avatar?: string | null };
 const LANGS = ['Hindi', 'English', 'Bengali', 'Tamil', 'Telugu', 'Marathi', 'Gujarati', 'Punjabi', 'Urdu', 'Kannada', 'Malayalam'];
 const RECUR_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const COMMON_TZS = ['Asia/Kolkata', 'Asia/Dubai', 'Asia/Singapore', 'Europe/London', 'America/New_York', 'America/Los_Angeles'];
+
+/* [LIST-WIZ-TZ-1] Common timezones a creator picks from, IST first and
+ * pre-selected (the vast majority of creators today) — never the raw IANA
+ * id in a free-text box. "Other…" reveals the text input for anything else,
+ * still validated by wizardLogic.isValidTimezone. */
+const TZ_OPTIONS: { value: string; label: string }[] = [
+  { value: 'Asia/Kolkata', label: 'India (IST, Asia/Kolkata)' },
+  { value: 'Asia/Dubai', label: 'Dubai (GST, Asia/Dubai)' },
+  { value: 'Asia/Singapore', label: 'Singapore (SGT, Asia/Singapore)' },
+  { value: 'Europe/London', label: 'London (GMT/BST, Europe/London)' },
+  { value: 'America/New_York', label: 'New York (ET, America/New_York)' },
+  { value: 'America/Toronto', label: 'Toronto (ET, America/Toronto)' },
+  { value: 'Australia/Sydney', label: 'Sydney (AET, Australia/Sydney)' },
+];
+const TZ_OTHER = '__other__';
 
 export interface FieldErr { field: string | null; message: string | null }
 
@@ -94,9 +109,16 @@ export function Step1Type({ draft, patch, err }: { draft: ListingDraft; patch: P
 }
 
 // ── Step 2 — Pitch ─────────────────────────────────────────────────────────
-export function Step2Pitch({ draft, patch, err, categories }: {
+export function Step2Pitch({ draft, patch, err, categories, creator }: {
   draft: ListingDraft; patch: Patch; err: FieldErr; categories: { id: string; label: string; emoji?: string | null }[];
+  creator?: CreatorInfo;
 }) {
+  // [LIST-WIZ-CAT-1] The wizard only ever creates live_event/consult/ai_agent
+  // listings — /api/explore/categories has no per-row kind to filter server-side,
+  // so a marketplace-goods category (Cars, Properties, Mobiles…) would otherwise
+  // show up right next to Teachers and Astrologers. Filter to the fixed
+  // service/creator id set before rendering the options.
+  const serviceCategories = categories.filter((c) => SERVICE_CATEGORY_IDS.has(c.id));
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
       <div className="flex flex-col gap-5">
@@ -120,7 +142,7 @@ export function Step2Pitch({ draft, patch, err, categories }: {
           <span className={labelCls}>Category</span>
           <select className={inputCls} value={draft.category} onChange={(e) => patch({ category: e.target.value })}>
             <option value="">Choose one…</option>
-            {categories.map((c) => <option key={c.id} value={c.id}>{c.emoji ? `${c.emoji} ` : ''}{c.label}</option>)}
+            {serviceCategories.map((c) => <option key={c.id} value={c.id}>{c.emoji ? `${c.emoji} ` : ''}{c.label}</option>)}
           </select>
           <ErrLine err={err} field="category" />
         </label>
@@ -158,7 +180,7 @@ export function Step2Pitch({ draft, patch, err, categories }: {
       </div>
       <div className="lg:sticky lg:top-4 lg:self-start">
         <p className="mb-2 text-center font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">Live preview</p>
-        <PreviewCard draft={draft} />
+        <PreviewCard draft={draft} creator={creator} />
       </div>
     </div>
   );
@@ -214,12 +236,27 @@ export function Step4Time({ draft, patch, err, slotsSupported, onAddSlot, onRemo
 }) {
   const [slotDraft, setSlotDraft] = useState({ starts_at: '', duration_min: 60, label: '', capacity: draft.kind === 'consult' ? 1 : 10 });
   const showTimeFields = draft.schedule_mode === 'fixed_date' || draft.schedule_mode === 'recurring';
+  // [LIST-WIZ-TZ-1] Show the free-text box only when the current timezone isn't
+  // one of the friendly options — i.e. it was picked "Other…", loaded from an
+  // existing listing with an uncommon tz, or (pre-normalization) a legacy id.
+  const [tzOther, setTzOther] = useState(!TZ_OPTIONS.some((o) => o.value === draft.timezone));
   return (
     <div className="flex flex-col gap-5">
       <label className="block">
         <span className={labelCls}>Timezone</span>
-        <input list="tz-list" className={inputCls} value={draft.timezone} onChange={(e) => patch({ timezone: e.target.value })} />
-        <datalist id="tz-list">{COMMON_TZS.map((tz) => <option key={tz} value={tz} />)}</datalist>
+        <select className={inputCls} value={tzOther ? TZ_OTHER : draft.timezone}
+          onChange={(e) => {
+            if (e.target.value === TZ_OTHER) { setTzOther(true); return; }
+            setTzOther(false);
+            patch({ timezone: e.target.value });
+          }}>
+          {TZ_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          <option value={TZ_OTHER}>Other…</option>
+        </select>
+        {tzOther && (
+          <input type="text" className={`${inputCls} mt-2`} placeholder="e.g. Asia/Tokyo"
+            value={draft.timezone} onChange={(e) => patch({ timezone: e.target.value })} />
+        )}
         <ErrLine err={err} field="timezone" />
       </label>
 
@@ -296,10 +333,22 @@ export function Step4Time({ draft, patch, err, slotsSupported, onAddSlot, onRemo
                 </div>
               ))}
               <div className="grid grid-cols-2 gap-2 rounded-zine border-zine border-dashed border-ink p-2.5">
-                <input type="datetime-local" className={inputCls} value={slotDraft.starts_at} onChange={(e) => setSlotDraft((s) => ({ ...s, starts_at: e.target.value }))} />
-                <input type="text" placeholder="Label (optional)" className={inputCls} value={slotDraft.label} onChange={(e) => setSlotDraft((s) => ({ ...s, label: e.target.value }))} />
-                <input type="number" placeholder="Minutes" className={inputCls} value={slotDraft.duration_min} onChange={(e) => setSlotDraft((s) => ({ ...s, duration_min: Number(e.target.value) }))} />
-                <input type="number" placeholder="Capacity" className={inputCls} value={slotDraft.capacity} onChange={(e) => setSlotDraft((s) => ({ ...s, capacity: Number(e.target.value) }))} />
+                <label className="block">
+                  <span className={labelCls}>Slot start</span>
+                  <input type="datetime-local" className={inputCls} value={slotDraft.starts_at} onChange={(e) => setSlotDraft((s) => ({ ...s, starts_at: e.target.value }))} />
+                </label>
+                <label className="block">
+                  <span className={labelCls}>Label (optional)</span>
+                  <input type="text" placeholder="e.g. Morning batch" className={inputCls} value={slotDraft.label} onChange={(e) => setSlotDraft((s) => ({ ...s, label: e.target.value }))} />
+                </label>
+                <label className="block">
+                  <span className={labelCls}>Duration (min)</span>
+                  <input type="number" placeholder="60" className={inputCls} value={slotDraft.duration_min} onChange={(e) => setSlotDraft((s) => ({ ...s, duration_min: Number(e.target.value) }))} />
+                </label>
+                <label className="block">
+                  <span className={labelCls}>Seats</span>
+                  <input type="number" placeholder="10" className={inputCls} value={slotDraft.capacity} onChange={(e) => setSlotDraft((s) => ({ ...s, capacity: Number(e.target.value) }))} />
+                </label>
                 <Button variant="blue" label="Add slot" loading={slotBusy} className="col-span-2"
                   onClick={() => {
                     const ms = new Date(slotDraft.starts_at).getTime();
@@ -324,6 +373,7 @@ export function Step4Time({ draft, patch, err, slotsSupported, onAddSlot, onRemo
         <span className={labelCls}>Max bookings per person</span>
         <input type="number" min={1} max={20} className={inputCls} value={draft.max_per_booking}
           onChange={(e) => patch({ max_per_booking: Number(e.target.value) })} />
+        <p className="mt-1 font-body font-bold text-[12px] text-inkSoft">Seats one person can book in one go.</p>
         <ErrLine err={err} field="max_per_booking" />
       </label>
     </div>
@@ -555,12 +605,12 @@ export function Step7Photos({ draft, patch, err, onUpload, onRemoveCover, upload
 
 // ── Step 8 — Preview & publish ─────────────────────────────────────────────
 export function Step8Preview({ draft, checks, ready, onPublish, publishing, published, publicHref, error,
-  repeatOpen, setRepeatOpen, repeatWeeks, setRepeatWeeks, onRepeat, repeating, isLive,
+  repeatOpen, setRepeatOpen, repeatWeeks, setRepeatWeeks, onRepeat, repeating, isLive, creator,
 }: {
   draft: ListingDraft; checks: { ok: boolean; label: string }[]; ready: boolean;
   onPublish: () => void; publishing: boolean; published: boolean; publicHref: string | null; error: string | null;
   repeatOpen: boolean; setRepeatOpen: (v: boolean) => void; repeatWeeks: number; setRepeatWeeks: (n: number) => void;
-  onRepeat: () => void; repeating: boolean; isLive: boolean;
+  onRepeat: () => void; repeating: boolean; isLive: boolean; creator?: CreatorInfo;
 }) {
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
@@ -612,7 +662,7 @@ export function Step8Preview({ draft, checks, ready, onPublish, publishing, publ
       </div>
       <div className="lg:sticky lg:top-4 lg:self-start">
         <p className="mb-2 text-center font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">Live preview</p>
-        <PreviewCard draft={draft} />
+        <PreviewCard draft={draft} creator={creator} />
       </div>
     </div>
   );

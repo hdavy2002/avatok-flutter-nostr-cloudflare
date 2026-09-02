@@ -33,6 +33,19 @@ export function isValidTimezone(tz: string): boolean {
   try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return true; } catch { return false; }
 }
 
+/* A browser's `Intl.DateTimeFormat().resolvedOptions().timeZone` can still
+ * return the old IANA link name 'Asia/Calcutta' (some older Android/WebView
+ * builds do). It's a valid alias — `isValidTimezone` accepts it — but it is
+ * not one of the wizard's TZ_OPTIONS, so a creator with that browser setting
+ * would silently land in the free-text "Other…" box instead of the "India"
+ * option every IST creator should get by default. Normalise on the way in:
+ * emptyDraft() (fresh listing) and draftFromListing() (editing one saved
+ * before this existed). */
+const TZ_ALIASES: Record<string, string> = { 'Asia/Calcutta': 'Asia/Kolkata' };
+export function normalizeTimezone(tz: string): string {
+  return TZ_ALIASES[tz] ?? tz;
+}
+
 /** Build the ONE `attrs` JSON object from the draft. This is sent WHOLESALE on
  *  every save that touches any content_ / commercial_ / join_requirements field —
  *  the server column is a single JSON blob, not a per-key merge, so a partial

@@ -23,7 +23,7 @@ import { IslandBoundary } from '../../../components/IslandBoundary';
 import { capture, withTrace } from '../../../lib/analytics';
 import { emptyDraft, STEP_LABELS } from './types';
 import type { ListingDraft, StepIndex, DraftSlot } from './types';
-import { bodyForSave, validateStep, publishReadiness, epochToLocal } from './wizardLogic';
+import { bodyForSave, validateStep, publishReadiness, epochToLocal, normalizeTimezone } from './wizardLogic';
 import { defaultsFor } from '../../../lib/listingDefaults';
 import {
   Step1Type, Step2Pitch, Step3Money, Step4Time, Step5HowItWorks, Step6HouseRules, Step7Photos, Step8Preview,
@@ -59,7 +59,7 @@ function draftFromListing(l: any): Partial<ListingDraft> {
     spoken_lang: typeof l.spoken_lang === 'string' && l.spoken_lang ? l.spoken_lang.split(',').filter(Boolean) : [],
     price: l.price != null ? String(l.price) : '',
     billing_unit: l.billing_unit || 'session',
-    timezone: l.timezone || 'Asia/Kolkata',
+    timezone: normalizeTimezone(l.timezone || 'Asia/Kolkata'),
     starts_at: epochToLocal(l.starts_at),
     duration_min: l.duration_min || 60,
     recurrence_days: Array.isArray(l.recurrence_days) ? l.recurrence_days : [],
@@ -92,11 +92,13 @@ function draftFromListing(l: any): Partial<ListingDraft> {
   };
 }
 
+interface CreatorInfo { name?: string | null; handle?: string | null; avatar?: string | null }
+
 export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boolean }) {
   const [draft, setDraft] = useState<ListingDraft>(() => emptyDraft());
   const [step, setStep] = useState<StepIndex>(startAtPublish ? 7 : 0);
   const [loading, setLoading] = useState(startAtPublish);
-  const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErr, setFieldErr] = useState<FieldErr>({ field: null, message: null });
@@ -108,9 +110,51 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
   const [repeatOpen, setRepeatOpen] = useState(false);
   const [repeatWeeks, setRepeatWeeks] = useState(4);
   const [repeating, setRepeating] = useState(false);
+  const [creatorInfo, setCreatorInfo] = useState<CreatorInfo | undefined>(undefined);
   const stepStartRef = useRef<number>(Date.now());
+  // Guards against a double-click on "Save and continue" firing two overlapping
+  // background saves (which could double-POST the draft before its id comes
+  // back) — a ref because it must be read synchronously, not after a re-render.
+  const savingRef = useRef(false);
 
   function patch(p: Partial<ListingDraft>) { setDraft((d) => ({ ...d, ...p })); setFieldErr({ field: null, message: null }); }
+
+  // [LIST-WIZ-HOST-1] The live-preview card's host chip (steps.tsx PreviewCard)
+  // needs the signed-in creator's name/avatar. This island is NOT inside a
+  // <ClerkProvider> — see CreateListing.tsx's header on why a second one here
+  // would break the page — so it can't call useUser(). Clerk's underlying JS
+  // SDK still exposes a page-global `window.Clerk` regardless of which island
+  // mounted the provider (SidebarUser), so read that instead; it loads
+  // asynchronously, hence the short poll. Falls back to the guest handle
+  // (same localStorage key SidebarUser reads) for a guest creator, and to
+  // nothing at all (ListingTile shows "?" initials) if neither resolves.
+  useEffect(() => {
+    let cancelled = false;
+    let unsub: (() => void) | undefined;
+    function fromClerk(): boolean {
+      const c = (window as unknown as { Clerk?: { user?: { fullName?: string | null; firstName?: string | null; username?: string | null; imageUrl?: string | null } } }).Clerk;
+      const u = c?.user;
+      if (!u) return false;
+      setCreatorInfo({ name: u.fullName || u.firstName || null, handle: u.username || null, avatar: u.imageUrl || null });
+      return true;
+    }
+    if (!fromClerk()) {
+      try {
+        const handle = localStorage.getItem('avatok_guest_handle');
+        if (handle) setCreatorInfo({ name: null, handle, avatar: null });
+      } catch { /* ignore */ }
+    }
+    const poll = window.setInterval(() => {
+      if (cancelled) return;
+      const c = (window as unknown as { Clerk?: { addListener?: (cb: () => void) => () => void } }).Clerk;
+      if (c) {
+        if (!unsub && c.addListener) unsub = c.addListener(() => { fromClerk(); });
+        fromClerk();
+        window.clearInterval(poll);
+      }
+    }, 300);
+    return () => { cancelled = true; window.clearInterval(poll); try { unsub?.(); } catch { /* ignore */ } };
+  }, []);
 
   // categories — same source publishListing validates against, so nothing
   // picked here can be rejected at publish for not existing.
@@ -178,11 +222,25 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, draft.category, draft.kind]);
 
+  /* [LIST-WIZ-PERF-1] Every "Save and continue" was measured at 6-8s in the
+   * field. This function makes only ONE network round trip (a single POST or
+   * PUT) — the multi-second cost was never a sequential-await chain inside it;
+   * it was `next()` making the whole UI (including the click itself) wait on
+   * that one round trip PLUS, on step 2, a further two sequential /promotions
+   * POSTs (saveEarlyBirdAndPromo) before the stepper was allowed to move.
+   * `next()` below now advances the step optimistically and runs this in the
+   * background, so the round-trip time (whatever it is server-side) no longer
+   * blocks the creator's forward progress through the form — only Publish
+   * still waits on the network. `ms`/`fields` are captured on every attempt
+   * (success or failure) so a slow save shows up in `listing_save` without
+   * needing a repro. */
   async function saveDraft(currentStep: StepIndex): Promise<boolean> {
-    setBusy(true); setError(null);
+    setError(null);
+    const startedAt = Date.now();
     const includeAttrs = draft.id !== null || currentStep >= 1;
     const includePolicy = currentStep >= 6;
     const body = bodyForSave(draft, { includeAttrs, includePolicy });
+    const fields = Object.keys(body).length;
     try {
       const token = await getActiveToken();
       let id = draft.id;
@@ -194,12 +252,14 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
           await request(`/api/listings/${encodeURIComponent(id)}`, { method: 'PUT', auth: token, body });
         }
       });
-      if (!id) { setError('Could not save the draft. Try again.'); return false; }
+      const ms = Date.now() - startedAt;
+      if (!id) { setError('Could not save the draft. Try again.'); capture('listing_save', { outcome: 'error', status: 0, reason: 'no_id', step: STEP_LABELS[currentStep], ms, fields }); return false; }
       if (id !== draft.id) setDraft((d) => ({ ...d, id }));
-      capture('listing_save', { outcome: 'ok', status: 200, step: STEP_LABELS[currentStep] });
+      capture('listing_save', { outcome: 'ok', status: 200, step: STEP_LABELS[currentStep], ms, fields });
       capture('listing_step_complete', { step: STEP_LABELS[currentStep], ms: Date.now() - stepStartRef.current });
       return true;
     } catch (e) {
+      const ms = Date.now() - startedAt;
       const msg = e instanceof ApiError ? listingErrorMessage(e.error, (e.body as { detail?: unknown } | null)?.detail) : 'Could not save. Try again.';
       const field = e instanceof ApiError && e.body && typeof e.body === 'object' && 'field' in (e.body as any) ? String((e.body as any).field) : null;
       setError(msg);
@@ -207,10 +267,10 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
       capture('listing_field_error', { field: field ?? 'unknown', reason: e instanceof ApiError ? e.error : 'network' });
       capture('listing_save', {
         outcome: 'error', status: e instanceof ApiError ? e.status : 0,
-        reason: e instanceof ApiError ? e.error : (e instanceof Error ? e.message : 'unknown'), step: STEP_LABELS[currentStep],
+        reason: e instanceof ApiError ? e.error : (e instanceof Error ? e.message : 'unknown'), step: STEP_LABELS[currentStep], ms, fields,
       });
       return false;
-    } finally { setBusy(false); }
+    }
   }
 
   async function saveEarlyBirdAndPromo() {
@@ -229,7 +289,7 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
   }
 
   async function next() {
-    if (busy) return;
+    if (savingRef.current) return;
     const problem = validateStep(draft, step);
     if (problem) {
       setFieldErr({ field: problem.field, message: problem.message });
@@ -240,10 +300,24 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
     // Steps 0 (Type) and 1 (Pitch) collect locally; the draft is created the
     // moment Pitch completes (spec: "create draft after step 2").
     if (step === 0) { setStep(1); return; }
-    const ok = await saveDraft(step);
-    if (!ok) return;
-    if (step === 2) await saveEarlyBirdAndPromo();
-    if (step < 7) setStep((s) => (s + 1) as StepIndex);
+    const currentStep = step;
+    // [LIST-WIZ-PERF-1] Optimistic step transition: advance immediately and
+    // save (plus, on step 2, the early-bird/promo follow-up) in the
+    // background behind the "Saving…" pill next to the stepper — only
+    // onPublish still blocks on the network. If the save turns out to have
+    // failed, snap back to the step that failed so the error banner lands
+    // where the creator can act on it, instead of surfacing on a later step.
+    if (currentStep < 7) setStep((s) => (s + 1) as StepIndex);
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      const ok = await saveDraft(currentStep);
+      if (ok && currentStep === 2) await saveEarlyBirdAndPromo();
+      if (!ok) setStep(currentStep);
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
   }
   function back() { if (step > 0) setStep((s) => (s - 1) as StepIndex); }
 
@@ -370,7 +444,7 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
   return (
     <div className="flex flex-col gap-6 pb-24">
       {/* Stepper */}
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         {STEP_LABELS.map((label, i) => (
           <button key={label} type="button" disabled={i > step && !draft.id}
             onClick={() => { if (i <= step || draft.id) setStep(i as StepIndex); }}
@@ -379,11 +453,18 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
             {i + 1}. {label}
           </button>
         ))}
+        {/* [LIST-WIZ-PERF-1] The step already advanced — this pill is the only
+            sign a background save is still in flight. */}
+        {saving && (
+          <span className="ml-1 rounded-full border-zine border-ink bg-paper2 px-2.5 py-1 font-mono font-bold uppercase text-[10px] tracking-[0.06em] text-inkSoft">
+            Saving…
+          </span>
+        )}
       </div>
 
       <div className="max-w-2xl">
         {step === 0 && <Step1Type draft={draft} patch={patch} err={fieldErr} />}
-        {step === 1 && <Step2Pitch draft={draft} patch={patch} err={fieldErr} categories={categories} />}
+        {step === 1 && <Step2Pitch draft={draft} patch={patch} err={fieldErr} categories={categories} creator={creatorInfo} />}
         {step === 2 && <Step3Money draft={draft} patch={patch} err={fieldErr} />}
         {step === 3 && <Step4Time draft={draft} patch={patch} err={fieldErr} slotsSupported={slotsSupported} onAddSlot={onAddSlot} onRemoveSlot={onRemoveSlot} slotBusy={slotBusy} />}
         {step === 4 && <Step5HowItWorks draft={draft} patch={patch} />}
@@ -394,7 +475,7 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
             draft={draft} checks={checks} ready={ready} onPublish={onPublish} publishing={publishing}
             published={published} publicHref={publicHref} error={error}
             repeatOpen={repeatOpen} setRepeatOpen={setRepeatOpen} repeatWeeks={repeatWeeks} setRepeatWeeks={setRepeatWeeks}
-            onRepeat={onRepeat} repeating={repeating} isLive={isLive}
+            onRepeat={onRepeat} repeating={repeating} isLive={isLive} creator={creatorInfo}
           />
         )}
       </div>
@@ -416,7 +497,10 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
           <div className="mx-auto flex max-w-2xl items-center gap-3">
             {step > 0 && <Button variant="ghost" label="Back" onClick={back} />}
             <div className="flex-1" />
-            <Button variant="lime" label={step === 0 ? 'Next' : 'Save and continue'} loading={busy} onClick={next} />
+            {/* [LIST-WIZ-PERF-1] No `loading` spinner here on purpose — next()
+                advances the step immediately; the "Saving…" pill by the
+                stepper is the only in-flight indicator now. */}
+            <Button variant="lime" label={step === 0 ? 'Next' : 'Save and continue'} onClick={next} />
           </div>
         </div>
       )}
