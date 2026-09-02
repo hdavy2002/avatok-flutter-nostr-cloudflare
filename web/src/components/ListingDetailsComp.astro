@@ -146,7 +146,7 @@ function viewModel(l: Listing, revs: ReviewList | null, others: Card[], browseCa
   const watching = isLive ? `${watchStat} WATCHING` : `${watchStat} FOLLOW THIS SHOW`;
 
   return {
-    category, isLive, liveState, soldOut, newHost, SHOW_URL, EMBED_CODE, hostName,
+    category, isLive, liveState, soldOut, newHost, SHOW_URL, EMBED_CODE, hostName, hostPoss,
     rules, rulesIntro, hostSessions, hostListings, bars, reviewCards, browseEvents,
     listingCount, hostChip1, hostChip2, watchStat, watchStatLabel, watching,
   };
@@ -154,7 +154,7 @@ function viewModel(l: Listing, revs: ReviewList | null, others: Card[], browseCa
 
 const vm = viewModel(listing, reviews, creatorListings, browse);
 const {
-  category, isLive, soldOut, newHost, SHOW_URL, EMBED_CODE, hostName,
+  category, isLive, soldOut, newHost, SHOW_URL, EMBED_CODE, hostName, hostPoss,
   rules, rulesIntro, hostSessions, hostListings, bars, reviewCards, browseEvents,
   listingCount, hostChip1, hostChip2, watchStat, watchStatLabel, watching,
 } = vm;
