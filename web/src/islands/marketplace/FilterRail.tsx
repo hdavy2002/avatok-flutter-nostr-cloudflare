@@ -132,7 +132,10 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
       aria-label="Filters"
     >
       <aside
-        className="h-full w-full max-w-[330px] overflow-y-auto overscroll-contain bg-paper p-4 shadow-zine"
+        // pt-24: the site header is FIXED, and it paints over the top of this
+        // panel. Without the offset the drawer's own "FILTERS" heading and its
+        // close button sit underneath the nav bar and cannot be clicked.
+        className="h-full w-full max-w-[330px] overflow-y-auto overscroll-contain bg-paper p-4 pt-24 shadow-zine"
         onClick={(e) => e.stopPropagation()}
       >
       <div className="overflow-hidden rounded-zine border-zine border-ink bg-card shadow-zine">
