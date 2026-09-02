@@ -33,6 +33,40 @@ type Listing = {
 
 const MAX_COVERS = 5;          // worker: `max 5 photos`
 const MAX_BYTES = 8 * 1024 * 1024;
+const UPLOAD_TIMEOUT_MS = 90_000;
+
+// Some Android pickers hand over a File with an empty `type` (notably for HEIC/HEIF).
+// Infer the MIME from the extension rather than rejecting the photo outright.
+const IMAGE_EXT_MIME: Record<string, string> = {
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+  '.webp': 'image/webp', '.heic': 'image/heic', '.heif': 'image/heif',
+};
+
+function inferImageMime(file: File): string | null {
+  if (file.type) return file.type.startsWith('image/') ? file.type : null;
+  const m = /\.[^.]+$/.exec(file.name.toLowerCase());
+  return m ? IMAGE_EXT_MIME[m[0]] ?? null : null;
+}
+
+/** Telemetry must never throw or block the upload flow. No PostHog client is wired
+ * into web/ yet (see LoginIsland.tsx), so this reports through the loader-injected
+ * global if present and is a silent no-op otherwise. */
+function reportUploadFailure(fields: {
+  listingId: string; fileName?: string; fileSize?: number; fileType?: string;
+  stage: 'upload' | 'save'; status: string;
+}) {
+  try {
+    (window as unknown as { posthog?: { capture: (e: string, p: Record<string, unknown>) => void } })
+      .posthog?.capture('listing_cover_upload_failed', {
+        listing_id: fields.listingId,
+        file_name: fields.fileName,
+        file_size: fields.fileSize,
+        file_type: fields.fileType,
+        stage: fields.stage,
+        status: fields.status,
+      });
+  } catch { /* telemetry must never throw */ }
+}
 
 function parseCovers(raw: unknown): Cover[] {
   const arr = typeof raw === 'string' ? (() => { try { return JSON.parse(raw); } catch { return []; } })() : raw;
@@ -55,6 +89,7 @@ function Panel({ id }: { id: string }) {
   const [gate, setGate] = useState<'liveness' | 'kyc' | null>(null);
   const [repeatWeeks, setRepeatWeeks] = useState(4);
   const [repeating, setRepeating] = useState(false);
+  const [repeatOpen, setRepeatOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async () => {
@@ -88,30 +123,89 @@ function Panel({ id }: { id: string }) {
     if (room <= 0) { setError(`You can have up to ${MAX_COVERS} photos.`); return; }
     setUploading(true);
     try {
+      // Resolved ONCE, up front — a null token here means an expired/missing session,
+      // not a per-file network blip, and every subsequent request would just send
+      // `Bearer null` and fail with a confusing 401.
       const token = await getActiveToken();
-      const added: Cover[] = [];
-      for (const file of Array.from(files).slice(0, room)) {
-        if (!file.type.startsWith('image/')) { setError('Photos only, please.'); continue; }
-        if (file.size > MAX_BYTES) { setError(`${file.name} is too large (max 8 MB).`); continue; }
-        // Raw bytes with x-content-type — exactly what the app does. This is NOT a
-        // multipart form; /upload/public reads req.arrayBuffer() directly.
-        const res = await fetch(`${API_BASE}/upload/public`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'x-content-type': file.type,
-            'x-file-name': file.name,
-            'x-app': 'avatok',
-          },
-          body: file,
-        });
-        if (!res.ok) { setError('That photo could not be uploaded. Try another.'); continue; }
-        const body = await res.json() as { url?: string };
-        if (body.url) added.push({ type: 'image', url: body.url });
+      if (!token) {
+        setError('Please sign in again to upload photos.');
+        return;
       }
-      if (added.length) await saveCovers([...covers, ...added]);
-    } catch {
-      setError('Upload failed. Check your connection and try again.');
+
+      const added: Cover[] = [];
+      const failures: string[] = [];
+
+      for (const file of Array.from(files).slice(0, room)) {
+        const mime = inferImageMime(file);
+        if (!mime) { failures.push(`${file.name}: photos only, please.`); continue; }
+        if (file.size > MAX_BYTES) { failures.push(`${file.name} is too large (max 8 MB).`); continue; }
+
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+        try {
+          // Raw bytes with x-content-type — exactly what the app does. This is NOT a
+          // multipart form; /upload/public reads req.arrayBuffer() directly.
+          const res = await fetch(`${API_BASE}/upload/public`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'x-content-type': mime,
+              'x-file-name': file.name,
+              'x-app': 'avatok',
+            },
+            body: file,
+            signal: controller.signal,
+          });
+          if (!res.ok) {
+            let serverError: string | null = null;
+            try {
+              const body = await res.json() as { error?: string };
+              serverError = typeof body?.error === 'string' ? body.error : null;
+            } catch { /* non-JSON error body */ }
+            failures.push(serverError
+              ? `Upload rejected (${res.status}): ${serverError}`
+              : `Couldn't upload ${file.name} (${res.status}).`);
+            reportUploadFailure({
+              listingId: id, fileName: file.name, fileSize: file.size, fileType: mime,
+              stage: 'upload', status: String(res.status),
+            });
+            continue;
+          }
+          const body = await res.json() as { url?: string };
+          if (body.url) added.push({ type: 'image', url: body.url });
+        } catch (e) {
+          const aborted = e instanceof DOMException && e.name === 'AbortError';
+          const reason = aborted
+            ? 'timed out'
+            : e instanceof TypeError
+              ? 'network/connection error'
+              : e instanceof Error ? e.message : 'unknown error';
+          failures.push(`Couldn't upload ${file.name}: ${reason}`);
+          reportUploadFailure({
+            listingId: id, fileName: file.name, fileSize: file.size, fileType: mime,
+            stage: 'upload', status: aborted ? 'timeout' : (e instanceof Error ? e.name : 'unknown'),
+          });
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+
+      if (added.length) {
+        try {
+          await saveCovers([...covers, ...added]);
+        } catch (e) {
+          const reason = e instanceof ApiError
+            ? `Upload rejected (${e.status}): ${e.error}`
+            : e instanceof TypeError ? 'network/connection error' : 'Try again.';
+          failures.push(`Photos uploaded but could not be saved: ${reason}`);
+          reportUploadFailure({
+            listingId: id, stage: 'save',
+            status: e instanceof ApiError ? String(e.status) : (e instanceof Error ? e.name : 'unknown'),
+          });
+        }
+      }
+
+      if (failures.length) setError(failures.join(' '));
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = '';
@@ -263,29 +357,43 @@ function Panel({ id }: { id: string }) {
         </Card>
       )}
 
+      {published
+        ? <p className="font-body font-bold text-[14px] text-ink">This listing is already published.</p>
+        : <Button variant="lime" label="Publish" loading={busy} disabled={!ready} onClick={publish} fullWidth />}
+
       {/* [CARD-SLOTS-1] One listing is one event (owner decision 2026-08-29), so a weekly
           show is N listings sharing a series_id — not one listing with N sessions. Each
           copy is a DRAFT: publishing claims a calendar block and can clash, and doing N
-          claims at once would fail halfway with no obvious repair. */}
+          claims at once would fail halfway with no obvious repair.
+          Collapsed behind a secondary link and closed by default (owner request) — this
+          is a once-in-a-while convenience, not a step in the main publish path, and it
+          used to visually compete with the Publish button below it. */}
       {isLive && !published && (
-        <Card fillClassName="bg-paper2">
-          <p className="font-body font-bold text-[13px] text-inkSoft">
-            Runs every week? Make copies now — each one gets its own date and its own seats,
-            and you publish them one at a time.
-          </p>
-          <div className="mt-2 flex items-center gap-2">
-            <select value={repeatWeeks} onChange={(e) => setRepeatWeeks(Number(e.target.value))}
-              className="rounded-zineField border-zine border-ink bg-card px-3 py-2 font-body font-bold text-[14px] text-ink">
-              {[1, 2, 3, 4, 6, 8, 12].map((w) => <option key={w} value={w}>{w} more week{w === 1 ? '' : 's'}</option>)}
-            </select>
-            <Button variant="blue" label="Make copies" loading={repeating} onClick={repeat} />
-          </div>
-        </Card>
+        <div>
+          <button type="button" onClick={() => setRepeatOpen((v) => !v)}
+            className="font-body font-bold text-[13px] text-blueInk underline">
+            Runs every week? Make copies (optional)
+          </button>
+          {repeatOpen && (
+            <Card fillClassName="bg-paper2" className="mt-2">
+              <span className="mb-1 block font-mono font-bold uppercase text-[11px] tracking-[0.1em] text-inkSoft">
+                Optional
+              </span>
+              <p className="font-body font-bold text-[13px] text-inkSoft">
+                Make copies now — each one gets its own date and its own seats, and you
+                publish them one at a time.
+              </p>
+              <div className="mt-2 flex items-center gap-2">
+                <select value={repeatWeeks} onChange={(e) => setRepeatWeeks(Number(e.target.value))}
+                  className="rounded-zineField border-zine border-ink bg-card px-3 py-2 font-body font-bold text-[14px] text-ink">
+                  {[1, 2, 3, 4, 6, 8, 12].map((w) => <option key={w} value={w}>{w} more week{w === 1 ? '' : 's'}</option>)}
+                </select>
+                <Button variant="blue" label="Make copies" loading={repeating} onClick={repeat} />
+              </div>
+            </Card>
+          )}
+        </div>
       )}
-
-      {published
-        ? <p className="font-body font-bold text-[14px] text-ink">This listing is already published.</p>
-        : <Button variant="lime" label="Publish" loading={busy} disabled={!ready} onClick={publish} />}
     </div>
   );
 }
