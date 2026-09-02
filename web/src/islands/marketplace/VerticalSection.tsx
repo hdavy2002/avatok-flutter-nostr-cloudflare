@@ -37,7 +37,7 @@ export function VerticalSection({
     <section className="flex flex-col">
       <div className="flex flex-wrap items-end gap-5">
         <div className="min-w-0 flex-[1_1_300px]">
-          <p className="mb-2.5 font-label text-[13px] font-extrabold uppercase tracking-[0.16em] text-coral">
+          <p className="mb-2.5 font-label text-[0.8125rem] font-extrabold uppercase tracking-[0.16em] text-coral">
             {String(index + 1).padStart(2, '0')} · {vertical.eyebrow}
           </p>
           <h2 className="m-0 font-display text-[clamp(30px,3.4vw,44px)] font-normal uppercase leading-[1.08] tracking-[0.055em] [word-spacing:0.2em] text-ink">
@@ -45,7 +45,7 @@ export function VerticalSection({
           </h2>
         </div>
         {vertical.punch && (
-          <p className="max-w-[30ch] -rotate-2 pb-1 font-hand text-[20px] leading-[1.3] text-coral">
+          <p className="max-w-[30ch] -rotate-2 pb-1 font-hand text-[1.25rem] leading-[1.3] text-coral">
             “{vertical.punch}”
           </p>
         )}
@@ -64,10 +64,10 @@ export function VerticalSection({
       </div>
 
       <div className="mb-5 flex justify-between gap-3">
-        <span className="font-label text-[12px] font-bold uppercase tracking-[0.1em] text-inkMute">
+        <span className="font-label text-[0.75rem] font-bold uppercase tracking-[0.1em] text-inkMute">
           Showing {n} of {n} · Sab haazir
         </span>
-        <span className="font-label text-[12px] font-bold uppercase tracking-[0.1em] text-inkMute">
+        <span className="font-label text-[0.75rem] font-bold uppercase tracking-[0.1em] text-inkMute">
           {vertical.zone}
         </span>
       </div>

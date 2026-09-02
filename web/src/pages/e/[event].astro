@@ -54,7 +54,7 @@ const isOwner = Boolean(listing.viewer?.is_owner);
   </Fragment>
 
   {isOwner && (
-    <div style="max-width:120rem; margin:0 auto; padding:10px clamp(14px,4vw,40px) 0; display:flex; align-items:center; gap:12px; font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.08em;">
+    <div style="max-width:100rem; margin:0 auto; padding:10px clamp(14px,4vw,40px) 0; display:flex; align-items:center; gap:12px; font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.08em;">
       <span>YOU OWN THIS LISTING</span>
       <a href={`/dashboard/listings/new?id=${encodeURIComponent(listing.id)}`} style="text-decoration:underline;">EDIT LISTING →</a>
     </div>

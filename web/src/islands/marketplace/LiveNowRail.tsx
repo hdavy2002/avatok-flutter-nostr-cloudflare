@@ -43,12 +43,12 @@ export function LiveNowRail({ title = 'Live now', hideWhenEmpty = true }: LiveNo
     <section aria-label={title} className="w-full pb-8">
       <div className="mb-3 flex items-center gap-2.5">
         <Pill kind="no">● {title}</Pill>
-        {items && <span className="font-label text-[13px] font-extrabold uppercase tracking-[0.08em] text-inkMute">{items.length}</span>}
+        {items && <span className="font-label text-[0.8125rem] font-extrabold uppercase tracking-[0.08em] text-inkMute">{items.length}</span>}
       </div>
 
       {!items ? (
         <div className="flex items-center gap-2 py-6 text-inkSoft">
-          <Spinner size={18} /> <span className="font-body font-bold text-[14px]">Loading live…</span>
+          <Spinner size={18} /> <span className="font-body font-bold text-[0.875rem]">Loading live…</span>
         </div>
       ) : (
         <div className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

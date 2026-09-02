@@ -238,7 +238,7 @@ function ExploreGridInner({
 
         <main className="min-w-0 flex-1">
           <div className="mb-8 flex items-center gap-3.5">
-            <span className="font-label text-[13px] font-extrabold uppercase tracking-[0.12em] text-ink">
+            <span className="font-label text-[0.8125rem] font-extrabold uppercase tracking-[0.12em] text-ink">
               {loaded
                 ? `${items.length} ${items.length === 1 ? 'listing' : 'listings'} · Pura bazaar`
                 : 'Loading the bazaar…'}
@@ -247,7 +247,7 @@ function ExploreGridInner({
           </div>
 
           {error && (
-            <div className="rounded-zine border-zine border-coral bg-card p-4 font-body text-[15px] font-bold text-ink shadow-zine-error">
+            <div className="rounded-zine border-zine border-coral bg-card p-4 font-body text-[0.9375rem] font-bold text-ink shadow-zine-error">
               {error}{' '}
               <button type="button" className="text-blueInk underline" onClick={() => void fetchPage(null, false)}>
                 Retry
@@ -263,15 +263,15 @@ function ExploreGridInner({
           {empty && (
             <div className="flex flex-wrap items-center justify-center gap-6 rounded-[22px] border-zine border-dashed border-ink bg-card px-7 py-10 text-center">
               <div className="grid h-[104px] w-[104px] flex-none -rotate-[8deg] place-items-center rounded-full border-zine border-dashed border-coral">
-                <span className="font-label text-[11px] font-extrabold uppercase leading-[1.7] tracking-[0.06em] text-coral">
+                <span className="font-label text-[0.6875rem] font-extrabold uppercase leading-[1.7] tracking-[0.06em] text-coral">
                   {narrowed ? (<>Buri nazar<br />lag gayi<br />· 404 ·</>) : (<>Bazaar<br />khul raha<br />hai</>)}
                 </span>
               </div>
               <div className="max-w-[40ch] text-left">
-                <p className="font-display text-[24px] font-normal uppercase tracking-[0.055em] [word-spacing:0.2em] text-ink">
+                <p className="font-display text-[1.5rem] font-normal uppercase tracking-[0.055em] [word-spacing:0.2em] text-ink">
                   {narrowed ? 'Koi nahi mila, boss.' : 'Abhi dukaan saj rahi hai.'}
                 </p>
-                <p className="mt-2 font-body text-[15px] font-medium leading-[1.5] text-inkSoft">
+                <p className="mt-2 font-body text-[0.9375rem] font-medium leading-[1.5] text-inkSoft">
                   {narrowed
                     ? 'Is filter combination mein full sannata hai. Thoda filter loosen karo.'
                     : 'No listings are published yet. Creators are still setting up their stalls — check back soon, or open your own.'}
@@ -281,14 +281,14 @@ function ExploreGridInner({
                     <button
                       type="button"
                       onClick={clearAll}
-                      className="rounded-full border-zine border-ink bg-coral px-7 py-3 font-display text-[14px] font-normal uppercase tracking-[0.06em] text-card transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px]"
+                      className="rounded-full border-zine border-ink bg-coral px-7 py-3 font-display text-[0.875rem] font-normal uppercase tracking-[0.06em] text-card transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px]"
                     >
                       Sab dikhao
                     </button>
                   ) : (
                     <a
                       href="/sign-up"
-                      className="inline-flex rounded-full border-zine border-ink bg-lime px-7 py-3 font-display text-[14px] font-normal uppercase tracking-[0.06em] text-ink no-underline shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
+                      className="inline-flex rounded-full border-zine border-ink bg-lime px-7 py-3 font-display text-[0.875rem] font-normal uppercase tracking-[0.06em] text-ink no-underline shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
                     >
                       Become a creator
                     </a>
@@ -312,7 +312,7 @@ function ExploreGridInner({
 
           {loading && (
             <div className="flex items-center justify-center gap-2 py-6 text-inkSoft">
-              <Spinner size={20} /> <span className="font-body text-[14px] font-bold">Loading…</span>
+              <Spinner size={20} /> <span className="font-body text-[0.875rem] font-bold">Loading…</span>
             </div>
           )}
 

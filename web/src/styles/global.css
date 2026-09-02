@@ -1,3 +1,9 @@
+/* [LIST-PAGE-3] The comps (Marketplace, Listing Details, Creator Profile) and the
+   landing page all scale their rem type with the viewport via this root rule; the
+   Base.astro pages never had it, so on a wide monitor everything sat at 16px while
+   the front page ran at ~21px. Site-wide now — components must size type in rem. */
+html { font-size: clamp(16px, calc(16px + (100vw - 1600px) * 0.0075), 22px); }
+
 /* Base layer for the avatok.ai web client.
  * tokens.css (generated) provides --zine-* vars; this file self-hosts the three
  * bundled fonts and sets the paper/ink defaults. No colors are hardcoded here

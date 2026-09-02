@@ -81,7 +81,7 @@ export interface FilterRailProps {
 export function FilterRail({ value, onChange, counts, countsKnown, total, onClear, narrowed }: FilterRailProps) {
   const set = (patch: Partial<RailState>) => onChange({ ...value, ...patch });
 
-  const label = 'font-label text-[12px] font-extrabold uppercase tracking-[0.14em] text-inkMute';
+  const label = 'font-label text-[0.75rem] font-extrabold uppercase tracking-[0.14em] text-inkMute';
 
   return (
     <aside className="w-full lg:sticky lg:top-4 lg:w-[248px] lg:flex-none">
@@ -101,12 +101,12 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
         </div>
 
         <div className="flex items-baseline justify-between gap-2.5 px-5 pb-1.5 pt-4">
-          <h2 className="font-display text-[24px] font-normal uppercase tracking-[0.05em] text-ink">Filters</h2>
+          <h2 className="font-display text-[1.5rem] font-normal uppercase tracking-[0.05em] text-ink">Filters</h2>
           {narrowed && (
             <button
               type="button"
               onClick={onClear}
-              className="font-label text-[12px] font-extrabold uppercase tracking-[0.08em] text-coral underline"
+              className="font-label text-[0.75rem] font-extrabold uppercase tracking-[0.08em] text-coral underline"
             >
               Sab hatao
             </button>
@@ -156,13 +156,13 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
             type="date"
             value={value.date ?? ''}
             onChange={(e) => set({ date: e.currentTarget.value || undefined })}
-            className="w-full rounded-zineBadge border-2 border-ink bg-paper px-3.5 py-2.5 font-label text-[13px] font-bold uppercase tracking-[0.04em] text-ink shadow-zine-sm outline-none focus:shadow-zine-focus"
+            className="w-full rounded-zineBadge border-2 border-ink bg-paper px-3.5 py-2.5 font-label text-[0.8125rem] font-bold uppercase tracking-[0.04em] text-ink shadow-zine-sm outline-none focus:shadow-zine-focus"
           />
           {value.date && (
             <button
               type="button"
               onClick={() => set({ date: undefined })}
-              className="mt-2 font-label text-[12px] font-extrabold uppercase tracking-[0.08em] text-coral underline"
+              className="mt-2 font-label text-[0.75rem] font-extrabold uppercase tracking-[0.08em] text-coral underline"
             >
               Koi bhi din
             </button>
@@ -180,7 +180,7 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
                   type="button"
                   aria-pressed={on}
                   onClick={() => set({ price: p.id })}
-                  className={`rounded-full border-2 border-ink px-3.5 py-2 font-label text-[12px] font-extrabold uppercase tracking-[0.05em] ${
+                  className={`rounded-full border-2 border-ink px-3.5 py-2 font-label text-[0.75rem] font-extrabold uppercase tracking-[0.05em] ${
                     on ? 'bg-coral text-card' : 'bg-card text-ink'
                   }`}
                 >
@@ -202,7 +202,7 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
                   type="button"
                   aria-pressed={on}
                   onClick={() => set({ sort: o.id })}
-                  className={`rounded-full border-2 border-ink px-3.5 py-2 font-label text-[12px] font-extrabold uppercase tracking-[0.05em] ${
+                  className={`rounded-full border-2 border-ink px-3.5 py-2 font-label text-[0.75rem] font-extrabold uppercase tracking-[0.05em] ${
                     on ? 'bg-lime text-ink' : 'bg-card text-ink'
                   }`}
                 >
@@ -214,7 +214,7 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
         </div>
       </div>
 
-      <p className="mx-2.5 mt-4 -rotate-2 font-hand text-[18px] leading-[1.35] text-coral">
+      <p className="mx-2.5 mt-4 -rotate-2 font-hand text-[1.125rem] leading-[1.35] text-coral">
         Jo dhoondoge, wahi milega.
         <br />— Bazaar rule #1
       </p>
@@ -250,11 +250,11 @@ function RailRadio({
           {selected && <span className="block h-[7px] w-[7px] rounded-full bg-coral" />}
         </span>
         <span
-          className={`min-w-0 flex-1 truncate font-body text-[14px] text-ink ${selected ? 'font-bold' : 'font-medium'}`}
+          className={`min-w-0 flex-1 truncate font-body text-[0.875rem] text-ink ${selected ? 'font-bold' : 'font-medium'}`}
         >
           {label}
         </span>
-        <span className="flex-none whitespace-nowrap font-label text-[12px] font-bold uppercase tracking-[0.06em] text-inkMute">
+        <span className="flex-none whitespace-nowrap font-label text-[0.75rem] font-bold uppercase tracking-[0.06em] text-inkMute">
           {note ?? count ?? ''}
         </span>
       </button>
