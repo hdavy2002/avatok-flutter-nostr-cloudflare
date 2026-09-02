@@ -9,10 +9,10 @@
 export const prerender = false;
 
 import Base from '../../layouts/Base.astro';
-import ListingDetailView from '../../components/ListingDetailView.astro';
-import { getListing, ApiError } from '../../lib/apiClient';
+import ListingDetailsComp from '../../components/ListingDetailsComp.astro';
+import { getListing, getListingReviews, getListingSlots, getExplore, getCreator, ApiError } from '../../lib/apiClient';
 import { listingOg } from '../../lib/og';
-import type { Listing } from '../../lib/types';
+import type { Listing, ReviewList, ListingSlot, Card, Creator } from '../../lib/types';
 
 const { id } = Astro.params;
 
@@ -39,6 +39,28 @@ if (creatorHandle && listing.slug?.trim()) {
 
 Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
 const og = listingOg(listing);
+
+// [LISTING-DETAILS-COMP-1] Same fail-soft companion fetches ListingDetailView
+// already used — a 404/503/network error on any of these hides its section
+// rather than breaking a public page for a real listing.
+let reviewList: ReviewList | null = null;
+try { reviewList = await getListingReviews(listing.id, {}); } catch { reviewList = null; }
+
+let slots: ListingSlot[] | null = null;
+try { slots = await getListingSlots(listing.id); } catch { slots = null; }
+
+let browseMore: Card[] = [];
+try {
+  const page = await getExplore({ section: listing.section ?? undefined, category: listing.category ?? undefined, limit: 9 });
+  browseMore = page.listings ?? [];
+} catch { browseMore = []; }
+
+let creatorProfile: Creator | null = null;
+if (listing.creator?.uid) {
+  try { creatorProfile = await getCreator(listing.creator.uid); } catch { creatorProfile = null; }
+}
+const creatorListings: Card[] = creatorProfile?.listings ?? [];
+const isOwner = Boolean(listing.viewer?.is_owner);
 ---
 
 <Base title={og.title} description={og.description} image={og.image}>
@@ -46,5 +68,12 @@ const og = listingOg(listing);
     {og.extra.map((m) => (m.property ? <meta property={m.property} content={m.content} /> : <meta name={m.name} content={m.content} />))}
   </Fragment>
 
-  <ListingDetailView listing={listing} mode="public" />
+  {isOwner && (
+    <div style="max-width:1560px; margin:0 auto; padding:10px clamp(14px,4vw,40px) 0; display:flex; align-items:center; gap:12px; font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.08em;">
+      <span>YOU OWN THIS LISTING</span>
+      <a href={`/dashboard/listings/new?id=${encodeURIComponent(listing.id)}`} style="text-decoration:underline;">EDIT LISTING →</a>
+    </div>
+  )}
+
+  <ListingDetailsComp listing={listing} reviews={reviewList} slots={slots} browse={browseMore} creatorListings={creatorListings} creatorProfile={creatorProfile} />
 </Base>

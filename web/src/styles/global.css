@@ -158,6 +158,14 @@ a {
   50% { opacity: 0.45; transform: scale(0.72); }
 }
 
+/* [LISTING-DETAILS-COMP-1] Ported from the details-page Astro export's
+ * Layout.astro — the live badge / ticker dot pulse used throughout
+ * ListingDetailsComp.astro. */
+@keyframes tokPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.5); opacity: .55; }
+}
+
 /* Respect reduced-motion: the zine press/transition language is snappy but
  * should fully disable when the user asks. */
 @media (prefers-reduced-motion: reduce) {

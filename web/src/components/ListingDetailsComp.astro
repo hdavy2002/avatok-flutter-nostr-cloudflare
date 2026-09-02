@@ -1,0 +1,1356 @@
+---
+// [LISTING-DETAILS-COMP-1] Faithful port of
+// design/details-page/astro-export/src/pages/listing-details.astro (the
+// approved comp) — markup, classnames and every <style> rule are UNCHANGED.
+// This file only replaces the export's inline demo data with real data from
+// the Listing API. Do not re-author markup/CSS here; add a token/prop instead.
+//
+// Rendered on /l/<id>, /<handle>/<slug> and /e/<id> (see those pages for the
+// data-fetch — reviews/slots/browse/creatorListings, same fail-soft pattern
+// ListingDetailView.astro already used). Header/footer are rendered by
+// Base.astro on the mounting page, so this component renders the page BODY
+// only — the export's <Layout>/<SiteHeader/>/<SiteFooter/> are not repeated
+// here (see CLAUDE.md task note on this file for why that's intentional).
+import TruckBorder from './TruckBorder.astro';
+import AskHostIsland from '../islands/listing/AskHost';
+import { inrOrFree } from '../lib/money';
+import { durationLabel, languageLabel, recurrenceLabel, timePillLabel } from '../lib/card';
+import type { Listing, ReviewList, ListingSlot, Card, Creator } from '../lib/types';
+
+interface Props {
+  listing: Listing;
+  reviews: ReviewList | null;
+  slots: ListingSlot[] | null;
+  browse: Card[];
+  creatorListings: Card[];
+  /** Full creator profile (bio + full listings) when the caller has it. */
+  creatorProfile?: Creator | null;
+  ctaColor?: string;
+}
+
+const {
+  listing,
+  reviews,
+  slots,
+  browse,
+  creatorListings,
+  creatorProfile = null,
+  ctaColor = '#d93825',
+} = Astro.props;
+
+const CATS = {
+  stream: { label: 'LIVE STREAMING & SHOWS', eyebrow: '01 · GROUP SHOWS · TICKETED · WEEKLY', kind: 'jhalar' as const, photo: '#1e5f66' },
+  friends: { label: 'LIVE FRIENDS', eyebrow: '02 · PRIVATE 1:1 · DIL SE', kind: 'chai' as const, photo: '#8a5a3a' },
+  adda: { label: 'ADDA ROOMS', eyebrow: '03 · STRANGERS WELCOME · GROUP', kind: 'lotus' as const, photo: '#7a6244' },
+  astro: { label: 'ASTRO & TAROT', eyebrow: 'KISMAT DESK · READINGS', kind: 'eyes' as const, photo: '#a4352a' },
+  ai: { label: 'AI VOICE AGENTS', eyebrow: '04 · 24/7 · CLEARLY LABELLED AI', kind: 'auto' as const, photo: '#2d4f66' },
+  consult: { label: 'CONSULTING DESK', eyebrow: '05 · EXPERTISE ON DEMAND', kind: 'eyes' as const, photo: '#5a5a38' },
+  glow: { label: 'GLOW-UP STUDIO', eyebrow: 'FULL MAKEOVER SCENE', kind: 'lotus' as const, photo: '#8a3a5a' },
+};
+type CatKey = keyof typeof CATS;
+
+/**
+ * [LISTING-DETAILS-COMP-1] Everything the export's frontmatter used to fake
+ * (category, liveState, soldOut, newHost, rules, hostSessions, hostListings,
+ * bars, reviews, browseEvents, listingCount, the host chips, the watch stats),
+ * now derived from the real Listing + its companion fetches. Returns exactly
+ * the variables the markup below reads — nothing else changed shape.
+ */
+function viewModel(l: Listing, revs: ReviewList | null, others: Card[], browseCards: Card[]) {
+  const kind = (l.kind ?? 'content') as string;
+  const section = (l.section ?? '').toLowerCase();
+  const category: CatKey =
+    (Object.keys(CATS) as CatKey[]).find((k) => k === section) ??
+    (kind === 'agent' ? 'ai' : kind === 'consult' ? 'consult' : kind === 'content' ? 'adda' : 'stream');
+
+  const isLive = l.live === true || l.status === 'live';
+  const liveState: 'countdown' | 'live' = isLive ? 'live' : 'countdown';
+  const soldOut = l.capacity != null && l.seats_left != null && l.seats_left <= 0;
+  const trust = l.creator_trust_stats ?? null;
+  const newHost = !trust || trust.sessions_done === 0;
+
+  const handle = l.creator?.handle?.trim();
+  const slug = l.slug?.trim();
+  const showPath = handle && slug ? `/${handle}/${slug}` : `/l/${l.id}`;
+  const SHOW_URL = new URL(showPath, 'https://avatok.ai').toString();
+  const hostName = l.creator?.name ?? l.creator?.handle ?? 'the host';
+  const EMBED_CODE = `<iframe src="${SHOW_URL}" width="640" height="400" style="border:3px solid #161614; border-radius:18px;" title="${l.title} — avaTOK" allow="autoplay" loading="lazy"></iframe>`;
+
+  const rules = (l.attrs?.content_house_rules ?? []).map((r, i) => ({ n: String(i + 1), head: r.heading, text: r.body }));
+  const rulesIntro = l.attrs?.content_house_rules_intro ?? null;
+
+  // [LISTING-DETAILS-COMP-1] No "past sessions" list endpoint exists yet — the
+  // export's hardcoded 5-row history is not backed by a real API today, so this
+  // stays empty and the markup hides the block (never fabricate rows).
+  const hostSessions: { date: string; title: string; crowd: string; rating: string }[] = [];
+
+  const otherListings = (others ?? []).filter((c) => c.id !== l.id);
+  const hostListings = otherListings.map((c) => ({
+    id: c.id,
+    tag: [c.category?.toUpperCase(), durationLabel(c.duration_min ?? null)].filter(Boolean).join(' · ') || 'LISTING',
+    title: `${c.title} · ${inrOrFree(c.price ?? null)}`,
+    meta: [languageLabel(c.spoken_lang ?? null), durationLabel(c.duration_min ?? null)].filter(Boolean).join(' · '),
+    dark: false,
+  }));
+
+  const histogram = revs?.histogram ?? null;
+  const total = revs?.total ?? 0;
+  const bars = (['5', '4', '3', '2', '1'] as const).map((star) => {
+    const n = histogram?.[star] ?? 0;
+    const w = total > 0 ? `${Math.round((n / total) * 1000) / 10}%` : '0%';
+    return { star, w, n: String(n) };
+  });
+
+  const MON = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  const reviewCards = (revs?.items ?? []).map((r) => {
+    const d = r.created_at ? new Date(r.created_at) : null;
+    return { s: r.rating, who: r.author_name ?? 'A guest', when: d ? `${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}` : '', text: r.body ?? '' };
+  });
+
+  function shortWhen(ms: number | null | undefined): string {
+    if (!ms) return 'UPCOMING';
+    return timePillLabel(ms);
+  }
+  const PAL_KEYS = ['teal', 'butter', 'oat', 'brick'] as const;
+  const browseEvents = (browseCards ?? [])
+    .filter((c) => c.id !== l.id)
+    .map((c, i) => {
+      const name = c.creator?.name ?? c.creator?.handle ?? '';
+      const cLive = c.live === true || c.status === 'live';
+      return {
+        id: c.id,
+        pk: PAL_KEYS[i % PAL_KEYS.length],
+        serif: i % 5 === 0,
+        title: `${c.title} · ${inrOrFree(c.price ?? null)}`,
+        blurb: c.one_liner ?? c.blurb ?? '',
+        s1: (c.category ?? '').toUpperCase(),
+        s2: languageLabel(c.spoken_lang ?? null) ?? '',
+        status: cLive ? 'LIVE' : shortWhen(c.starts_at),
+        live: cLive,
+        name,
+        dur: durationLabel(c.duration_min ?? null) ?? '',
+        ini: name.split(' ').map((w) => w[0]).filter(Boolean).join('').slice(0, 2).toUpperCase() || '—',
+      };
+    });
+
+  const listingCount = newHost
+    ? '1 ACTIVE LISTING — THIS ONE'
+    : `${otherListings.length + 1} ACTIVE LISTING${otherListings.length === 0 ? '' : 'S'}`;
+  const hostChip1 = newHost ? 'NAYA HOST' : `★ ${l.rating_avg != null ? l.rating_avg.toFixed(1) : '—'} HOST RATING`;
+  const hostChip2 = newHost ? 'FIRST SHOW: SCHEDULING' : `${trust?.shows_hosted ?? 0} SHOWS`;
+  const followers = l.creator?.follower_count ?? l.joined_count ?? 0;
+  const watchStat = isLive ? String(l.watching ?? 0) : followers >= 1000 ? `${(followers / 1000).toFixed(1)}K` : String(followers);
+  const watchStatLabel = isLive ? '◉ WATCHING RIGHT NOW' : '◉ FOLLOW THIS SHOW';
+  const watching = isLive ? `${watchStat} WATCHING` : `${watchStat} FOLLOW THIS SHOW`;
+
+  return {
+    category, isLive, liveState, soldOut, newHost, SHOW_URL, EMBED_CODE, hostName,
+    rules, rulesIntro, hostSessions, hostListings, bars, reviewCards, browseEvents,
+    listingCount, hostChip1, hostChip2, watchStat, watchStatLabel, watching,
+  };
+}
+
+const vm = viewModel(listing, reviews, creatorListings, browse);
+const {
+  category, isLive, soldOut, newHost, SHOW_URL, EMBED_CODE, hostName,
+  rules, rulesIntro, hostSessions, hostListings, bars, reviewCards, browseEvents,
+  listingCount, hostChip1, hostChip2, watchStat, watchStatLabel, watching,
+} = vm;
+const cat = CATS[category];
+const masala = true;
+
+// ── The hero fields the export hardcoded inline in the markup ──────────
+const titleWords = (listing.title ?? '').trim().split(/\s+/).filter(Boolean);
+const titleMain = titleWords.length > 1 ? titleWords.slice(0, -1).join(' ') : listing.title ?? '';
+const titleAccent = titleWords.length > 1 ? `${titleWords[titleWords.length - 1]}.` : '';
+
+const ratingBadge = listing.rating_avg != null ? `★ ${listing.rating_avg.toFixed(1)} · ${listing.rating_count ?? 0} RATINGS` : null;
+const regularsCount = listing.creator?.follower_count ?? listing.joined_count ?? null;
+const regularsBadge = regularsCount != null ? `♡ ${regularsCount} REGULARS` : null;
+const durLangBadge = [durationLabel(listing.duration_min ?? null), languageLabel(listing.spoken_lang ?? null)].filter(Boolean).join(' · ') || null;
+const humanBadge = listing.kind === 'agent' ? '⚙ AI VOICE AGENT · CLEARLY LABELLED' : '✓ 100% REAL HUMAN · NO AI';
+
+const scheduleLabel = isLive
+  ? 'LIVE NOW'
+  : recurrenceLabel(listing.recurrence_days ?? null, listing.recurrence_time ?? null) ??
+    (listing.starts_at ? timePillLabel(listing.starts_at) : 'ON REQUEST');
+
+const lede = listing.description ?? listing.blurb ?? listing.one_liner ?? '';
+
+const bookedCount = listing.joined_count ?? 0;
+const showsHosted = listing.creator_trust_stats?.shows_hosted ?? 0;
+const comebackPct = listing.creator_trust_stats?.comeback_pct != null ? `${Math.round(listing.creator_trust_stats.comeback_pct)}%` : '—';
+
+const priceTokens = listing.price ?? 0;
+const isFree = Boolean(listing.free_entry) || priceTokens === 0;
+const priceUnitLabel = listing.billing_unit === 'minute' ? '/ MIN' : listing.billing_unit === 'night' ? '/ NIGHT' : listing.billing_unit === 'game' ? '/ GAME' : '/ SEAT';
+const priceLine = isFree ? 'FREE' : `${inrOrFree(priceTokens)} `;
+
+const hostInitials = (listing.creator?.name ?? listing.creator?.handle ?? '?').split(' ').map((w) => w[0]).filter(Boolean).join('').slice(0, 2).toUpperCase();
+const hostSinceYear = listing.creator_trust_stats?.first_session_at
+  ? new Date(listing.creator_trust_stats.first_session_at).getUTCFullYear()
+  : null;
+const repliesIn = listing.creator_trust_stats?.avg_response_min != null ? `${Math.round(listing.creator_trust_stats.avg_response_min)} MIN` : '~10 MIN';
+const idVerified = Boolean(listing.creator?.kyc_verified);
+const aboutBio = creatorProfile?.bio ?? null;
+
+const howItWorks = listing.attrs?.content_how_it_works ?? [];
+
+const stillUrls = [listing.cover_media?.[1]?.url, listing.cover_media?.[2]?.url, listing.cover_media?.[3]?.url];
+const highlightUrl = listing.video_url ?? null;
+const heroCoverUrl = listing.cover_media?.[0]?.url ?? null;
+
+const breadcrumbId = `LISTING #${listing.id}`;
+
+const timezone = listing.timezone ?? 'Asia/Kolkata';
+const clientConfig = {
+  ctaColor,
+  isLive,
+  soldOut,
+  free: isFree,
+  showUrl: SHOW_URL,
+  embedCode: EMBED_CODE,
+  reviews: reviewCards,
+  events: browseEvents,
+  price: priceTokens,
+  fee: 0,
+  gstRatePct: 18,
+  timezone,
+  startsAt: listing.starts_at ?? null,
+  bookHref: `/book/${listing.id}`,
+  slots: (slots ?? []).length > 0
+    ? (slots ?? []).map((s) => ({ id: s.id, startsAt: s.starts_at, endsAt: s.ends_at, label: s.label ?? '', capacity: s.capacity, taken: s.booked_count, status: s.status }))
+    : listing.starts_at
+      ? [{
+          id: 'default',
+          startsAt: listing.starts_at,
+          endsAt: listing.starts_at + (listing.duration_min ?? 60) * 60000,
+          label: 'MAIN SHOW',
+          capacity: listing.capacity ?? 0,
+          taken: Math.max(0, (listing.capacity ?? 0) - (listing.seats_left ?? listing.capacity ?? 0)),
+          status: soldOut ? 'full' : 'open',
+        }]
+      : [],
+};
+const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null };
+---
+<div class="page" id="ld-root" data-listing={JSON.stringify(listingMeta)}>
+
+  <nav class="breadcrumb">
+    <div class="breadcrumb__inner">
+      <a href="/marketplace">BAZAAR</a>
+      <span class="breadcrumb__sep">›</span>
+      <a href="/marketplace">{cat.label}</a>
+      <span class="breadcrumb__sep">›</span>
+      <span class="breadcrumb__current">{(listing.title ?? '').toUpperCase()}</span>
+      <span class="breadcrumb__id">{breadcrumbId}</span>
+    </div>
+  </nav>
+
+  {isLive ? (
+    <div class="ticker ticker--live">
+      <div class="ticker__inner">
+        <span class="ticker__lead"><span class="ticker__dot ticker__dot--pulse"></span>LIVE NOW — {(listing.title ?? '').toUpperCase()}</span>
+        <span class="ticker__sub">{watching}</span>
+        <button type="button" class="btn btn--pill js-join-btn ticker__join">Join now ▸</button>
+      </div>
+    </div>
+  ) : (
+    <div class="ticker ticker--countdown">
+      <div class="ticker__inner">
+        <span class="ticker__lead"><span class="ticker__dot"></span>NEXT SHOW: <span id="next-show-label"></span></span>
+        <span class="ticker__sub" id="countdown-sub"></span>
+      </div>
+    </div>
+  )}
+
+  <div class="hero">
+    <div class="hero__player">
+      <div class="nazar">
+        <img src="/assets/lol-sticker.png" alt="LOL sticker" class="nazar__img" />
+        <span class="nazar__text">BURI NAZAR WALE, TERA MUH KALA · USE DIPPER AT NIGHT</span>
+        <img src="/assets/luv-it-sticker.png" alt="I luv it sticker" class="nazar__img" />
+      </div>
+
+      <div class="player-card">
+        <div class="player-card__screen" style={heroCoverUrl ? `background-image:url(${heroCoverUrl}); background-size:cover; background-position:center;` : `background:${cat.photo}`}>
+          <div class="player-card__stripe"></div>
+          <div class="player-card__badges">
+            <span class="player-badge player-badge--live">
+              <span class="player-badge__dot" class:list={[isLive && 'player-badge__dot--pulse']}></span>
+              {scheduleLabel}
+            </span>
+            <span class="player-badge player-badge--dark">◉ {watching}</span>
+            <span class="player-badge player-badge--dark" id="hero-booked-badge">✓ BOOKED</span>
+            <span class="player-card__actions">
+              <button type="button" id="share-icon-btn" class="icon-btn" aria-label="Share">⇗</button>
+              <button type="button" id="fav-btn" class="icon-btn" aria-label="Favorite">♡</button>
+            </span>
+          </div>
+          <span class="player-card__center-label">LIVE STAGE · HOST CAMERA<br />16:9 STREAM DROPS HERE</span>
+          {isLive ? (
+            <button type="button" class="btn btn--cta js-join-btn player-card__cta" style={`background:${ctaColor}`}>▸ Join now</button>
+          ) : (
+            <div class="countdown">
+              <span class="countdown__unit"><span id="cd-d">00</span><em>DAYS</em></span>
+              <span class="countdown__unit"><span id="cd-h">00</span><em>HRS</em></span>
+              <span class="countdown__unit"><span id="cd-m">00</span><em>MIN</em></span>
+              <span class="countdown__unit"><span id="cd-s">00</span><em>SEC</em></span>
+            </div>
+          )}
+          <div class="player-card__scallop"></div>
+        </div>
+        <div class="player-card__hostbar">
+          <span class="avatar-circle">{hostInitials}</span>
+          <span class="player-card__hostname">{hostName} {idVerified && '✓'}</span>
+          <span class="player-card__hostmeta">{hostSinceYear ? `HOST SINCE ${hostSinceYear} · ` : ''}REPLIES IN ~{repliesIn}</span>
+          <span class="player-card__joinnote" id="join-note"></span>
+        </div>
+      </div>
+
+      <div class="thumb-grid">
+        <div class="thumb-tile thumb-tile--butter" style={stillUrls[0] ? `background-image:url(${stillUrls[0]});background-size:cover;` : ''}>{!stillUrls[0] && <span>SHOW STILL</span>}</div>
+        <div class="thumb-tile thumb-tile--brick" style={stillUrls[1] ? `background-image:url(${stillUrls[1]});background-size:cover;` : ''}>{!stillUrls[1] && <span>SHOW STILL</span>}</div>
+        <div class="thumb-tile thumb-tile--oat" style={stillUrls[2] ? `background-image:url(${stillUrls[2]});background-size:cover;` : ''}>{!stillUrls[2] && <span>SHOW STILL</span>}</div>
+        {highlightUrl ? (
+          <a href={highlightUrl} target="_blank" rel="noopener" class="thumb-tile thumb-tile--teal"><span>HIGHLIGHT REEL</span></a>
+        ) : (
+          <div class="thumb-tile thumb-tile--teal"><span>HIGHLIGHT REEL</span></div>
+        )}
+      </div>
+
+      <div class="share-card">
+        <div class="share-card__row">
+          <div class="share-card__main">
+            <div class="share-card__head">
+              <span class="share-card__label">SHARE THE SHOW</span>
+              <button type="button" id="copy-link-btn" class="link-btn">COPY LINK</button>
+            </div>
+            <div class="share-card__buttons">
+              <button type="button" id="share-wa" class="chip-btn chip-btn--wa"><span class="chip-btn__dot"></span>WHATSAPP</button>
+              <button type="button" id="share-fb" class="chip-btn chip-btn--fb"><span class="chip-btn__dot"></span>FACEBOOK</button>
+              <button type="button" id="share-yt" class="chip-btn chip-btn--yt"><span class="chip-btn__dot"></span>YOUTUBE</button>
+              <button type="button" id="embed-toggle-btn" class="chip-btn chip-btn--embed">&lt;/&gt; EMBED ▼</button>
+            </div>
+          </div>
+          <div class="share-card__qr">
+            <div class="share-card__qr-box">
+              <img src={`https://api.qrserver.com/v1/create-qr-code/?size=176x176&margin=0&color=161614&bgcolor=ffffff&data=${encodeURIComponent(SHOW_URL)}`} alt="QR code — open this show" />
+            </div>
+            <span class="share-card__qr-label">SCAN TO OPEN THIS SHOW ON YOUR PHONE</span>
+          </div>
+        </div>
+        <div id="embed-panel" class="embed-panel">
+          <div class="embed-panel__head">
+            <span>PASTE THIS ON YOUR SITE OR BLOG</span>
+            <button type="button" id="copy-embed-btn" class="embed-panel__copy">COPY CODE</button>
+          </div>
+          <code id="embed-code" class="embed-panel__code"></code>
+        </div>
+      </div>
+    </div>
+
+    <div class="hero__meta">
+      <div class="eyebrow">{cat.eyebrow}</div>
+      <h1 class="title">{titleMain} <span class="title__accent">{titleAccent}</span></h1>
+      <div class="badge-row">
+        {ratingBadge && <span class="badge">{ratingBadge}</span>}
+        {regularsBadge && <span class="badge">{regularsBadge}</span>}
+        {durLangBadge && <span class="badge">{durLangBadge}</span>}
+        <span class="badge badge--teal">{humanBadge}</span>
+      </div>
+      {lede && <p class="lede">{lede}</p>}
+      <div class="stat-card">
+        <span><strong id="stat-booked-value">{bookedCount}</strong><em>✓ BOOKED THIS SHOW</em></span>
+        <span><strong>{watchStat}</strong><em>{watchStatLabel}</em></span>
+        <span><strong>{showsHosted}</strong><em>SHOWS HOSTED</em></span>
+        <span><strong>{comebackPct}</strong><em>♡ COME BACK AGAIN</em></span>
+      </div>
+      <div class="price-line">
+        <span class="price-line__amount">{priceLine}{!isFree && <small>{priceUnitLabel}</small>}</span>
+        <span class="price-line__note">FEES &amp; GST SHOWN BEFORE YOU BOOK</span>
+      </div>
+      {masala && (
+        <>
+          <div class="masala-quote">
+            <img src="/assets/desi-swag.png" alt="Desi swag" />
+            <div class="masala-quote__text">"Jo jeeta wahi asli scene." — a regular</div>
+          </div>
+          <div class="masala-stickers">
+            <img src="/assets/vadapav-uncle.png" alt="Baccha hai tu mera, ye le vada pav kha" class="masala-stickers__a" />
+            <img src="/assets/dekho-pyar-se.png" alt="Dekho magar pyar se" class="masala-stickers__b" />
+          </div>
+        </>
+      )}
+    </div>
+  </div>
+
+  <div class="layout">
+    <aside class="aside">
+      <div class="booking-card">
+        <div class="booking-card__ribbon"><TruckBorder kind="tassels" /></div>
+        {isLive && (
+          <div class="booking-card__live-strip">
+            <span class="ticker__dot ticker__dot--pulse" style="background:#fdf1d3;"></span>
+            <span>LIVE NOW · <span id="live-strip-watching">{watchStat}</span> WATCHING</span>
+            <span class="booking-card__live-note">BOOK &amp; JOIN INSTANTLY</span>
+          </div>
+        )}
+        <div class="booking-card__body">
+          <div class="booking-card__head">
+            <span class="section-title section-title--sm">Book a seat</span>
+            <span class="booking-card__unit-price">{priceLine}{!isFree && priceUnitLabel}</span>
+          </div>
+
+          <div class="calendar">
+            <div class="calendar__nav">
+              <button type="button" id="cal-prev" class="round-btn">‹</button>
+              <span id="cal-month-label" class="calendar__month"></span>
+              <button type="button" id="cal-next" class="round-btn">›</button>
+            </div>
+            <div class="calendar__dow">
+              <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+            </div>
+            <div id="cal-grid" class="calendar__grid"></div>
+            <div class="calendar__legend">● = SHOW DAY</div>
+          </div>
+
+          <div class="slots">
+            <div id="slot-head" class="slots__head"></div>
+            <div id="slots-list" class="slots__list"></div>
+          </div>
+
+          <div id="qty-section" class="qty-row">
+            <span class="qty-row__label">HOW MANY SEATS?</span>
+            <div class="qty-row__controls">
+              <button type="button" id="qty-minus" class="round-btn">−</button>
+              <span id="qty-value" class="qty-row__value">1</span>
+              <button type="button" id="qty-plus" class="round-btn">+</button>
+            </div>
+          </div>
+
+          <div id="price-summary" class="price-box">
+            <div id="price-rows"></div>
+            <span class="price-box__footnote">THAT'S IT. NO SURPRISES AT CHECKOUT.</span>
+          </div>
+
+          <div id="book-cta-area">
+            <button type="button" id="book-btn" class="btn btn--cta btn--block"></button>
+            <div class="book-cta-area__footnote">FREE CANCEL UP TO 24 HRS BEFORE THE SHOW<br />NO AUTO-RENEW · NO HIDDEN FEES</div>
+          </div>
+
+          <div id="booked-panel" class="booked-panel">
+            <div class="booked-panel__title">Seat locked! ✓</div>
+            <p id="booked-line" class="booked-panel__line"></p>
+            {isLive && (
+              <button type="button" class="btn btn--cta js-join-btn booked-panel__join">▸ Join the show now</button>
+            )}
+            <p id="booked-note" class="booked-panel__note"></p>
+            <button type="button" id="unbook-btn" class="link-btn link-btn--light">CHANGE / CANCEL BOOKING</button>
+          </div>
+        </div>
+      </div>
+      {masala && (
+        <div class="handwritten handwritten--aside">Seat gayi toh scene bhi gaya.<br />— Bazaar rule #7</div>
+      )}
+    </aside>
+
+    <main class="main-col">
+      {howItWorks.length > 0 && (
+        <section>
+          <h2 class="section-title">How the show <span class="section-title__accent">works.</span></h2>
+          <div class="divider"><TruckBorder kind={cat.kind} /></div>
+          <div class="step-grid">
+            {howItWorks.map((step, i) => (
+              <div class="step-card">
+                <div class="step-card__label">STEP {i + 1} · {step.label}</div>
+                <p>{step.body}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section>
+        <div class="section-head">
+          <h2 class="section-title">Meet the <span class="section-title__accent">host.</span></h2>
+          <span class="section-head__note">{idVerified ? 'ID VERIFIED · ' : ''}PAST SESSIONS SHOWN UNEDITED</span>
+        </div>
+        <div class="divider"><TruckBorder kind="tassels" /></div>
+        <div class="host-card">
+          <div class="host-card__profile">
+            <div class="host-card__photo" style={`background:${cat.photo}`}>
+              <span class="host-card__photo-label">HOST PHOTO</span>
+              {idVerified && <span class="host-card__verified">✓ ID VERIFIED</span>}
+            </div>
+            <div>
+              <div class="host-card__name">{hostName}</div>
+              {hostSinceYear && <div class="host-card__meta">HOST SINCE {hostSinceYear}</div>}
+            </div>
+            <div class="host-card__chips">
+              <span class="chip">{hostChip1}</span>
+              <span class="chip">{hostChip2}</span>
+              <span class="chip">~{repliesIn} REPLY</span>
+            </div>
+            <button type="button" id="msg-host-btn" class="btn btn--cta" style={`background:${ctaColor}`}>✉ Message {hostName.split(' ')[0]}</button>
+            <span class="host-card__privacy">MESSAGES STAY ON AVATOK · NO PHONE NUMBERS SHARED</span>
+            <div id="ask-host-panel" style="display:none;">
+              <AskHostIsland client:visible listingId={listing.id} hostName={hostName} />
+            </div>
+          </div>
+          <div class="host-card__details">
+            {aboutBio && (
+              <div>
+                <div class="label-heading">ABOUT {hostName.split(' ')[0].toUpperCase()}</div>
+                <p class="body-text">{aboutBio}</p>
+              </div>
+            )}
+            {newHost ? (
+              <div class="newhost-box">
+                <div class="newhost-box__head">
+                  <span class="newhost-box__tag">NAYA HOST</span>
+                  <span class="newhost-box__title">No shows hosted yet — you'd be among the first.</span>
+                </div>
+                <p class="body-text">We show real history only, so this space stays empty until the first show happens. Here's what avaTOK has checked instead:</p>
+                <div class="newhost-box__grid">
+                  <div class="newhost-box__item"><span>{idVerified ? '✓' : '○'} ID VERIFIED</span><p>Government ID matched to the payout account.</p></div>
+                  <div class="newhost-box__item"><span>✓ INTRO CALL DONE</span><p>A live onboarding call with the avaTOK team.</p></div>
+                  <div class="newhost-box__item"><span>✓ RULES TRAINING</span><p>Completed conduct and safety training.</p></div>
+                </div>
+                <div class="newhost-box__promise">
+                  <span>FIRST-SHOW PROMISE</span>
+                  <span>If a first show is cancelled or falls flat, your refund is automatic — no questions, no forms.</span>
+                </div>
+              </div>
+            ) : hostSessions.length > 0 ? (
+              <div>
+                <div class="label-heading">PAST SESSIONS</div>
+                <div class="session-list">
+                  {hostSessions.map((hs) => (
+                    <div class="session-row">
+                      <span class="session-row__date">{hs.date}</span>
+                      <span class="session-row__title">{hs.title}</span>
+                      <span class="session-row__crowd">{hs.crowd}</span>
+                      <span class="session-row__rating">{hs.rating}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {hostListings.length > 0 && (
+              <div>
+                <div class="section-head section-head--tight">
+                  <span class="label-heading">ALSO LISTED BY {hostName.toUpperCase()}</span>
+                  <span class="label-heading label-heading--muted">{listingCount}</span>
+                </div>
+                <div class="listing-grid">
+                  {hostListings.map((hl) => (
+                    <a href={`/l/${hl.id}`} class:list={['listing-card', hl.dark && 'listing-card--dark']}>
+                      <span class="listing-card__tag">{hl.tag}</span>
+                      <span class="listing-card__title">{hl.title}</span>
+                      <span class="listing-card__meta">{hl.meta}</span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {rules.length > 0 && (
+        <section>
+          <div class="section-head">
+            <h2 class="section-title">{hostName.split(' ')[0]}'s house <span class="section-title__accent">rules.</span></h2>
+            <img src="/assets/jatt-sticker.png" alt="Caution: on board — proceed with respect" class="rules-sticker" />
+            <span class="section-head__note">SET BY THE HOST · SHOWN BEFORE EVERY BOOKING</span>
+          </div>
+          <div class="divider"><TruckBorder kind="eyes" /></div>
+          <div class="rules-card">
+            {rulesIntro && (
+              <div class="rules-card__quote">
+                <span class="avatar-circle">{hostInitials}</span>
+                <p>{rulesIntro}</p>
+              </div>
+            )}
+            <div class="rules-card__grid">
+              {rules.map((ru) => (
+                <div class="rule-item">
+                  <span class="rule-item__n">{ru.n}</span>
+                  <span>
+                    <span class="rule-item__head">{ru.head}</span>
+                    <span class="rule-item__text">{ru.text}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div class="rules-card__footer">
+              <span>AVATOK BASELINE RULES ALWAYS APPLY ON TOP — HARASSMENT, HATE OR RECORDING WITHOUT CONSENT = INSTANT BAN.</span>
+              <a href="/community-guidelines" class="rules-card__footer-link">READ PLATFORM RULES</a>
+            </div>
+          </div>
+        </section>
+      )}
+
+      <section>
+        <div class="section-head">
+          <h2 class="section-title">Public ki <span class="section-title__accent">Rai.</span></h2>
+          <span class="section-head__note">ALL FROM VERIFIED BOOKINGS · WE DELETE NOTHING</span>
+        </div>
+        <div class="divider"><TruckBorder kind="chai" /></div>
+        <div class="reviews-layout">
+          <div class="reviews-summary">
+            <div class="reviews-summary__card">
+              <div class="reviews-summary__score">{listing.rating_avg != null ? listing.rating_avg.toFixed(1) : '—'}</div>
+              <div class="reviews-summary__meta">{reviews?.total ?? listing.rating_count ?? 0} RATINGS · {showsHosted} SHOWS</div>
+              <div class="reviews-summary__bars">
+                {bars.map((b) => (
+                  <div class="rating-bar">
+                    <span>{b.star}</span>
+                    <div class="rating-bar__track"><div class="rating-bar__fill" style={`width:${b.w}`}></div></div>
+                    <span>{b.n}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {masala && <img src="/assets/baccha-uncle.png" alt="Baccha hai tu mera, tension kyu leta hai" class="reviews-summary__sticker" />}
+          </div>
+          <div class="reviews-list-wrap">
+            <div id="reviews-list" class="reviews-list"></div>
+            <div class="pager">
+              <button type="button" id="reviews-prev" class="pager__btn">‹ PREV</button>
+              <span id="reviews-page-label" class="pager__label"></span>
+              <button type="button" id="reviews-next" class="pager__btn">NEXT ›</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="trust-block">
+          <div class="trust-block__ribbon"><TruckBorder kind="lotus" /></div>
+          <div class="trust-block__body">
+            <div class="trust-block__head">
+              <h2 class="section-title section-title--onteal">Seedhi baat, no chakkar.</h2>
+              <span>THESE PROMISES APPLY TO EVERY LISTING</span>
+            </div>
+            <div class="trust-grid">
+              <div class="trust-item"><div>FULL PRICE UPFRONT</div><p>Ticket + fees + GST — all visible before you book. No new numbers at checkout, ever.</p></div>
+              <div class="trust-item"><div>CANCEL = FULL REFUND</div><p>Free cancellation up to 24 hours before the show. If the host cancels, your refund is automatic.</p></div>
+              <div class="trust-item"><div>REAL SEATS, REAL COUNTS</div><p>Seat and viewer counters come from live inventory. No fake "only 2 left!" drama here.</p></div>
+              <div class="trust-item"><div>HUMAN OR AI — CLEARLY LABELLED</div><p>This show is 100% live human. AI agents live in their own section with their own label. Never mixed.</p></div>
+              <div class="trust-item"><div>RECORDING OFF BY DEFAULT</div><p>The recap reel only includes people who said yes during the show. Everyone else is out, permanently.</p></div>
+              <div class="trust-item"><div>MODERATED ROOM</div><p>Report button on every screen. Bad behaviour means instant exit — and your refund stays yours.</p></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="browse">
+    <div class="section-head">
+      <h2 class="section-title">Browse more <span class="section-title__accent">events.</span></h2>
+      {masala && (
+        <div class="browse__quote">
+          <div class="handwritten">Ek show se kya hoga?<br />Scroll karte raho…</div>
+          <img src="/assets/chill-uncle.png" alt="Chill uncle with coconut" />
+        </div>
+      )}
+      <span id="browse-meta" class="section-head__note"></span>
+    </div>
+    <div class="divider"><TruckBorder kind="jhalar" /></div>
+    <div id="browse-grid" class="browse-grid"></div>
+    <div class="pager">
+      <button type="button" id="browse-prev" class="pager__btn">‹ PREV</button>
+      <div id="browse-dots" class="pager__dots"></div>
+      <button type="button" id="browse-next" class="pager__btn">NEXT ›</button>
+    </div>
+  </div>
+</div>
+
+<script define:vars={{ CONFIG: clientConfig }}>
+  const MN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const TZ_LABEL = CONFIG.timezone === 'Asia/Kolkata' || CONFIG.timezone === 'Asia/Calcutta' ? 'IST' : CONFIG.timezone;
+
+  function dayKeyTZ(ms) {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: CONFIG.timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
+  }
+  const SLOTS_BY_DAY = {};
+  (CONFIG.slots || []).forEach((s) => {
+    const key = dayKeyTZ(s.startsAt);
+    (SLOTS_BY_DAY[key] = SLOTS_BY_DAY[key] || []).push(s);
+  });
+  const SHOW_DAYS = Object.keys(SLOTS_BY_DAY).sort();
+
+  const now0 = new Date();
+  const initKey = SHOW_DAYS.find((k) => k >= dayKeyTZ(Date.now())) || SHOW_DAYS[0] || dayKeyTZ(Date.now());
+  const [initY, initM, initD] = initKey.split('-').map(Number);
+
+  const state = { calY: initY, calM: initM - 1, selD: SHOW_DAYS.length ? initD : null, slot: 0, qty: 1, booked: false, fav: false, revPg: 0, evPg: 0, joined: 0, embedOpen: false };
+
+  function availDays(y, m) {
+    const prefix = y + '-' + pad2(m + 1) + '-';
+    return SHOW_DAYS.filter((k) => k.startsWith(prefix)).map((k) => Number(k.slice(8, 10)));
+  }
+  function slotDefs(d) {
+    if (d == null) return [];
+    const key = state.calY + '-' + pad2(state.calM + 1) + '-' + pad2(d);
+    const list = SLOTS_BY_DAY[key] || [];
+    return list.map((s) => {
+      const total = s.capacity || 0;
+      const taken = s.taken || 0;
+      const left = s.status === 'full' || CONFIG.soldOut ? 0 : Math.max(0, total - taken);
+      const time = new Date(s.startsAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: CONFIG.timezone }).toUpperCase() + ' ' + TZ_LABEL;
+      return { id: s.id, time, label: s.label || '', total, taken, left };
+    });
+  }
+  function nextShowDate(now) {
+    const upcoming = (CONFIG.slots || []).map((s) => s.startsAt).filter((t) => t > now).sort((a, b) => a - b);
+    return new Date(upcoming[0] || CONFIG.startsAt || now);
+  }
+
+  function renderCalendar() {
+    const grid = document.getElementById('cal-grid');
+    document.getElementById('cal-month-label').textContent = MN[state.calM] + ' ' + state.calY;
+    const avail = availDays(state.calY, state.calM);
+    const firstDow = new Date(state.calY, state.calM, 1).getDay();
+    const dim = new Date(state.calY, state.calM + 1, 0).getDate();
+    let html = '';
+    for (let i = 0; i < firstDow; i++) html += '<span class="cal-cell cal-cell--empty"></span>';
+    for (let d = 1; d <= dim; d++) {
+      const sel = state.selD === d, on = avail.includes(d);
+      const cls = ['cal-cell', sel ? 'cal-cell--selected' : on ? 'cal-cell--available' : 'cal-cell--disabled'].join(' ');
+      html += `<button type="button" class="${cls}" data-day="${d}" ${on ? '' : 'disabled'}>${d}${on && !sel ? '<span class="cal-cell__dot"></span>' : ''}</button>`;
+    }
+    grid.innerHTML = html;
+    grid.querySelectorAll('.cal-cell--available, .cal-cell--selected').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.selD = Number(btn.dataset.day);
+        state.slot = 0; state.booked = false;
+        renderCalendar(); renderSlots(); renderBooking();
+      });
+    });
+  }
+
+  function renderSlots() {
+    const head = document.getElementById('slot-head');
+    const list = document.getElementById('slots-list');
+    if (state.selD == null) { head.textContent = 'PICK A DATE ON THE CALENDAR FIRST'; list.innerHTML = ''; return; }
+    const dateLabel = MN[state.calM].slice(0, 3).toUpperCase() + ' ' + state.selD + ' ' + state.calY;
+    head.textContent = 'PICK A SLOT · ' + dateLabel;
+    const defs = slotDefs(state.selD);
+    list.innerHTML = defs.map((sl, i) => {
+      const sel = state.slot === i, full = sl.left === 0;
+      const pct = sl.total ? Math.round((sl.taken / sl.total) * 100) : 0;
+      return `<button type="button" class="slot ${sel && !full ? 'slot--selected' : ''}" data-idx="${i}" ${full ? 'disabled' : ''}>
+        <span class="slot__radio"><span class="slot__radio-dot" style="opacity:${sel && !full ? 1 : 0}"></span></span>
+        <span class="slot__body">
+          <span class="slot__time">${sl.time}</span>
+          <span class="slot__label">${sl.label}</span>
+          <span class="slot__bar"><span class="slot__bar-fill" style="width:${pct}%; background:${pct >= 85 ? '#b82a19' : '#2d7180'}"></span></span>
+        </span>
+        <span class="slot__seats ${full ? 'slot__seats--full' : sel ? 'slot__seats--selected' : ''}">${full ? 'HOUSEFULL' : sl.left + ' OF ' + sl.total + ' FREE'}</span>
+      </button>`;
+    }).join('');
+    list.querySelectorAll('.slot:not([disabled])').forEach((btn) => {
+      btn.addEventListener('click', () => { state.slot = Number(btn.dataset.idx); state.booked = false; renderSlots(); renderBooking(); });
+    });
+  }
+
+  function renderBooking() {
+    const defs = state.selD != null ? slotDefs(state.selD) : [];
+    const cur = defs[state.slot];
+    const canBook = state.selD != null && !!cur && cur.left > 0;
+    state.qty = Math.min(state.qty, cur ? Math.max(cur.left, 1) : 4);
+    const base = CONFIG.free ? 0 : CONFIG.price * state.qty;
+    const fee = CONFIG.free ? 0 : CONFIG.fee;
+    const gst = CONFIG.free ? 0 : Math.round((base + fee) * (CONFIG.gstRatePct / 100));
+    const total = base + fee + gst;
+    const dateLabel = state.selD != null ? MN[state.calM].slice(0, 3).toUpperCase() + ' ' + state.selD + ' ' + state.calY : '';
+    const bookedCount = cur ? cur.taken : 0;
+
+    document.getElementById('hero-booked-badge').textContent = '✓ ' + bookedCount + ' BOOKED';
+    document.getElementById('stat-booked-value').textContent = String(bookedCount);
+
+    document.getElementById('qty-section').style.display = canBook && !CONFIG.free ? '' : 'none';
+    document.getElementById('price-summary').style.display = canBook && !CONFIG.free ? '' : 'none';
+    document.getElementById('qty-value').textContent = String(state.qty);
+
+    if (canBook && !CONFIG.free) {
+      document.getElementById('price-rows').innerHTML = `
+        <div class="price-row"><span>Ticket ₹${CONFIG.price} × ${state.qty}</span><span>₹${base}</span></div>
+        ${fee > 0 ? `<div class="price-row"><span>Platform fee (flat)</span><span>₹${fee}</span></div>` : ''}
+        <div class="price-row"><span>GST ${CONFIG.gstRatePct}%</span><span>₹${gst}</span></div>
+        <div class="price-row price-row--total"><span>Total</span><span>₹${total}</span></div>`;
+    }
+
+    document.getElementById('book-cta-area').style.display = state.booked ? 'none' : '';
+    document.getElementById('booked-panel').style.display = state.booked ? '' : 'none';
+
+    const bookBtn = document.getElementById('book-btn');
+    bookBtn.disabled = !canBook;
+    bookBtn.textContent = !canBook
+      ? (state.selD == null ? 'Pick a date first' : 'Housefull — waitlist soon')
+      : CONFIG.free
+        ? 'Reserve · Free'
+        : (CONFIG.isLive ? 'Book & join now · ₹' + total : 'Book ' + state.qty + (state.qty > 1 ? ' seats' : ' seat') + ' · ₹' + total);
+    bookBtn.style.background = canBook ? CONFIG.ctaColor : '#b39c82';
+    bookBtn.style.cursor = canBook ? 'pointer' : 'not-allowed';
+    bookBtn.onclick = canBook ? () => {
+      document.dispatchEvent(new CustomEvent('ld:cta', { detail: { cta: CONFIG.free ? 'reserve' : 'book' } }));
+      const slotId = cur ? cur.id : '';
+      window.location.href = CONFIG.bookHref + '?slot=' + encodeURIComponent(slotId) + '&qty=' + state.qty;
+    } : null;
+
+    if (state.booked) {
+      document.getElementById('booked-line').textContent = state.qty + (state.qty > 1 ? ' seats' : ' seat') + ' · ' + dateLabel + ' · ' + (cur ? cur.time : '') + ' · ₹' + total + ' paid.';
+      document.getElementById('booked-note').textContent = CONFIG.isLive ? 'YOUR SEAT IS HELD — JUMP IN ANY TIME BEFORE THE SHOW ENDS.' : 'JOIN LINK ARRIVES 15 MIN BEFORE SHOWTIME. CANCEL UP TO 24 HRS BEFORE FOR A FULL REFUND.';
+    }
+  }
+
+  function renderJoinNote() {
+    const el = document.getElementById('join-note');
+    if (!el) return;
+    el.textContent = state.joined === 2 ? 'CONNECTING YOU TO THE SHOW…' : state.joined === 1 ? 'TICKET HOLDERS ONLY — BOOK A SEAT FIRST →' : '';
+    el.style.color = state.joined === 2 ? '#2d7180' : '#b82a19';
+  }
+
+  document.getElementById('cal-prev').onclick = () => {
+    state.calM === 0 ? (state.calM = 11, state.calY--) : state.calM--;
+    state.selD = null; state.booked = false;
+    renderCalendar(); renderSlots(); renderBooking();
+  };
+  document.getElementById('cal-next').onclick = () => {
+    state.calM === 11 ? (state.calM = 0, state.calY++) : state.calM++;
+    state.selD = null; state.booked = false;
+    renderCalendar(); renderSlots(); renderBooking();
+  };
+  document.getElementById('qty-minus').onclick = () => { state.qty = Math.max(1, state.qty - 1); state.booked = false; renderBooking(); };
+  document.getElementById('qty-plus').onclick = () => {
+    const defs = state.selD != null ? slotDefs(state.selD) : [];
+    const cur = defs[state.slot];
+    state.qty = Math.min(cur ? cur.left : 4, Math.min(4, state.qty + 1));
+    state.booked = false; renderBooking();
+  };
+  document.getElementById('unbook-btn').onclick = () => { state.booked = false; state.joined = 0; renderBooking(); renderJoinNote(); };
+
+  document.querySelectorAll('.js-join-btn').forEach((btn) => {
+    btn.addEventListener('click', () => { state.joined = state.booked ? 2 : 1; renderJoinNote(); });
+  });
+
+  const favBtn = document.getElementById('fav-btn');
+  favBtn.onclick = () => {
+    document.dispatchEvent(new CustomEvent('ld:cta', { detail: { cta: 'fav' } }));
+    state.fav = !state.fav;
+    favBtn.classList.toggle('is-active', state.fav);
+    favBtn.textContent = state.fav ? '♥' : '♡';
+  };
+
+  document.getElementById('copy-link-btn').onclick = async (e) => {
+    document.dispatchEvent(new CustomEvent('ld:cta', { detail: { cta: 'copy' } }));
+    try { await navigator.clipboard.writeText(CONFIG.showUrl); } catch (err) {}
+    const b = e.currentTarget; b.textContent = 'COPIED ✓'; b.style.color = '#2d7180';
+    setTimeout(() => { b.textContent = 'COPY LINK'; b.style.color = '#d93825'; }, 1600);
+  };
+  document.getElementById('share-wa').onclick = () => {
+    document.dispatchEvent(new CustomEvent('ld:cta', { detail: { cta: 'whatsapp' } }));
+    window.open('https://wa.me/?text=' + encodeURIComponent('Check this out on avaTOK — ' + CONFIG.showUrl), '_blank');
+  };
+  document.getElementById('share-fb').onclick = () => window.open('https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(CONFIG.showUrl), '_blank');
+  document.getElementById('share-yt').onclick = () => window.open('https://www.youtube.com/@avatok', '_blank');
+
+  const embedPanel = document.getElementById('embed-panel');
+  const embedToggleBtn = document.getElementById('embed-toggle-btn');
+  function setEmbedOpen(v) {
+    state.embedOpen = v;
+    embedPanel.style.display = v ? '' : 'none';
+    embedToggleBtn.textContent = '</> EMBED ' + (v ? '▲' : '▼');
+    embedToggleBtn.classList.toggle('is-active', v);
+  }
+  embedToggleBtn.onclick = () => { document.dispatchEvent(new CustomEvent('ld:cta', { detail: { cta: 'embed' } })); setEmbedOpen(!state.embedOpen); };
+  document.getElementById('share-icon-btn').onclick = () => { document.dispatchEvent(new CustomEvent('ld:cta', { detail: { cta: 'share' } })); setEmbedOpen(!state.embedOpen); };
+  document.getElementById('embed-code').textContent = CONFIG.embedCode;
+  document.getElementById('copy-embed-btn').onclick = async (e) => {
+    try { await navigator.clipboard.writeText(CONFIG.embedCode); } catch (err) {}
+    const b = e.currentTarget; b.textContent = 'COPIED ✓';
+    setTimeout(() => { b.textContent = 'COPY CODE'; }, 1600);
+  };
+  setEmbedOpen(false);
+
+  const msgBtn = document.getElementById('msg-host-btn');
+  const askPanel = document.getElementById('ask-host-panel');
+  msgBtn.onclick = () => {
+    if (askPanel) askPanel.style.display = askPanel.style.display === 'none' ? '' : 'none';
+  };
+
+  const REVIEWS = CONFIG.reviews, PER_REV = 3;
+  function renderReviews() {
+    if (!REVIEWS.length) { document.getElementById('reviews-list').innerHTML = ''; document.getElementById('reviews-page-label').textContent = ''; document.getElementById('reviews-prev').disabled = true; document.getElementById('reviews-next').disabled = true; return; }
+    const pages = Math.ceil(REVIEWS.length / PER_REV);
+    state.revPg = Math.min(state.revPg, pages - 1);
+    const pg = state.revPg;
+    const slice = REVIEWS.slice(pg * PER_REV, pg * PER_REV + PER_REV);
+    document.getElementById('reviews-list').innerHTML = slice.map((r, i) => {
+      const teal = (pg * PER_REV + i) % 4 === 2;
+      const stars = '★'.repeat(r.s) + '☆'.repeat(5 - r.s);
+      return `<div class="review-card ${teal ? 'review-card--teal' : ''}">
+        <div class="review-card__head">
+          <span class="review-card__stars">${stars}</span>
+          <span class="review-card__who">${r.who}</span>
+          <span class="review-card__meta">${r.when} · VERIFIED</span>
+        </div>
+        <p class="review-card__text">${r.text}</p>
+      </div>`;
+    }).join('');
+    document.getElementById('reviews-page-label').textContent = 'PAGE ' + (pg + 1) + ' / ' + pages;
+    document.getElementById('reviews-prev').disabled = pg === 0;
+    document.getElementById('reviews-next').disabled = pg === pages - 1;
+  }
+  document.getElementById('reviews-prev').onclick = () => { if (state.revPg > 0) { state.revPg--; renderReviews(); } };
+  document.getElementById('reviews-next').onclick = () => { const pages = Math.ceil(REVIEWS.length / PER_REV); if (state.revPg < pages - 1) { state.revPg++; renderReviews(); } };
+
+  const EVENTS = CONFIG.events;
+  const perPage = () => (window.innerWidth < 760 ? 4 : 10);
+  function renderBrowse() {
+    if (!EVENTS.length) { document.getElementById('browse-grid').innerHTML = ''; document.getElementById('browse-meta').textContent = 'NO OTHER EVENTS YET'; document.getElementById('browse-dots').innerHTML = ''; document.getElementById('browse-prev').disabled = true; document.getElementById('browse-next').disabled = true; return; }
+    const PER = perPage();
+    const pages = Math.ceil(EVENTS.length / PER);
+    state.evPg = Math.min(state.evPg, pages - 1);
+    const pg = state.evPg;
+    const slice = EVENTS.slice(pg * PER, pg * PER + PER);
+    document.getElementById('browse-grid').innerHTML = slice.map((c) => `
+      <a href="/l/${c.id}" class="browse-card browse-card--${c.pk} ${c.serif ? 'browse-card--serif' : ''}">
+        <div class="browse-card__photo">
+          <span class="browse-pill ${c.live ? 'browse-pill--live' : 'browse-pill--upcoming'}"><span class="browse-pill__dot"></span>${c.status}</span>
+          <span class="browse-card__phlabel">PORTRAIT</span>
+        </div>
+        <div class="browse-card__body">
+          <div class="browse-card__stub-row"><span>${c.s1}</span><span>${c.s2}</span></div>
+          <h4 class="browse-card__title">${c.title}</h4>
+          <p class="browse-card__blurb">${c.blurb}</p>
+          <div class="browse-card__foot">
+            <span class="browse-card__ini">${c.ini}</span>
+            <span class="browse-card__name">${c.name} ✓</span>
+            <span class="browse-card__dur">${c.dur}</span>
+          </div>
+        </div>
+      </a>`).join('');
+    document.getElementById('browse-meta').textContent = 'SHOWING ' + (pg * PER + 1) + '–' + Math.min((pg + 1) * PER, EVENTS.length) + ' OF ' + EVENTS.length + ' EVENTS';
+    document.getElementById('browse-dots').innerHTML = Array.from({ length: pages }, (_, i) => `<button type="button" class="page-dot ${i === pg ? 'page-dot--active' : ''}" data-pg="${i}">${i + 1}</button>`).join('');
+    document.getElementById('browse-dots').querySelectorAll('button').forEach((btn) => { btn.onclick = () => { state.evPg = Number(btn.dataset.pg); renderBrowse(); }; });
+    document.getElementById('browse-prev').disabled = pg === 0;
+    document.getElementById('browse-next').disabled = pg === pages - 1;
+  }
+  document.getElementById('browse-prev').onclick = () => { if (state.evPg > 0) { state.evPg--; renderBrowse(); } };
+  document.getElementById('browse-next').onclick = () => { const pages = Math.ceil(EVENTS.length / perPage()); if (state.evPg < pages - 1) { state.evPg++; renderBrowse(); } };
+  let resizeT;
+  window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(renderBrowse, 150); });
+
+  if (!CONFIG.isLive) {
+    const tick = () => {
+      const target = nextShowDate(Date.now());
+      let diff = Math.max(0, target.getTime() - Date.now());
+      const dd = Math.floor(diff / 86400000); diff -= dd * 86400000;
+      const hh = Math.floor(diff / 3600000); diff -= hh * 3600000;
+      const mm = Math.floor(diff / 60000); diff -= mm * 60000;
+      const ss = Math.floor(diff / 1000);
+      document.getElementById('next-show-label').textContent = target.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: CONFIG.timezone }).toUpperCase() + ' · ' + target.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: CONFIG.timezone }).toUpperCase() + ' ' + TZ_LABEL;
+      const defs = state.selD != null ? slotDefs(state.selD) : [];
+      const cur = defs[state.slot];
+      document.getElementById('countdown-sub').textContent = 'LIVE IN ' + dd + 'D ' + pad2(hh) + ':' + pad2(mm) + ':' + pad2(ss) + (cur ? ' · ' + cur.taken + ' SEATS ALREADY BOOKED' : '');
+      const cdD = document.getElementById('cd-d');
+      if (cdD) { cdD.textContent = pad2(dd); document.getElementById('cd-h').textContent = pad2(hh); document.getElementById('cd-m').textContent = pad2(mm); document.getElementById('cd-s').textContent = pad2(ss); }
+    };
+    tick(); setInterval(tick, 1000);
+  }
+
+  renderCalendar(); renderSlots(); renderBooking(); renderJoinNote(); renderReviews(); renderBrowse();
+</script>
+
+<script>
+  // [LISTING-DETAILS-COMP-1] Telemetry — split into its own module script
+  // because the demo script above uses define:vars (inline, non-module) and
+  // can't carry an `import`. Reads the listing id/creator off the root
+  // element's data attribute and listens for the `ld:cta` events the demo
+  // script dispatches at each of its 6 CTA sites (book/reserve, share,
+  // whatsapp, copy, embed, fav).
+  import { capture } from '../lib/analytics';
+
+  const root = document.getElementById('ld-root');
+  let meta = {};
+  try { meta = JSON.parse(root?.getAttribute('data-listing') || '{}'); } catch {}
+
+  capture('listing_view', { listing_id: meta.id, creator_uid: meta.creatorUid });
+
+  document.addEventListener('ld:cta', (e) => {
+    capture('listing_cta_click', { listing_id: meta.id, cta: e.detail?.cta });
+  });
+</script>
+
+<style>
+  .page { background: #f6e4cd; min-height: 100vh; }
+
+  /* breadcrumb */
+  .breadcrumb { background: #fdf1d3; border-bottom: 3px solid #161614; }
+  .breadcrumb__inner {
+    max-width: 1560px; margin: 0 auto; padding: 13px clamp(14px, 4vw, 40px);
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 12px; letter-spacing: .1em;
+  }
+  .breadcrumb__inner a { color: #161614; }
+  .breadcrumb__sep { color: #8c6a52; }
+  .breadcrumb__current { color: #d93825; }
+  .breadcrumb__id { margin-left: auto; color: #8c6a52; }
+
+  /* ticker */
+  .ticker { border-bottom: 3px solid #161614; }
+  .ticker--live { background: #d93825; }
+  .ticker--countdown { background: #161614; }
+  .ticker__inner { max-width: 1560px; margin: 0 auto; padding: 11px clamp(14px, 4vw, 40px); display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .ticker__lead { display: flex; align-items: center; gap: 8px; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 12px; letter-spacing: .1em; color: #fdf1d3; }
+  .ticker__sub { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 12px; letter-spacing: .1em; color: #b39c82; }
+  .ticker--live .ticker__sub { color: #ffd0c4; }
+  .ticker__dot { width: 8px; height: 8px; border-radius: 50%; background: #d93825; }
+  .ticker--live .ticker__dot { background: #fdf1d3; }
+  .ticker__dot--pulse { animation: tokPulse 1.2s ease-in-out infinite; }
+  .ticker__join { margin-left: auto; background: #fdf1d3; color: #161614; }
+
+  /* buttons / chips shared */
+  .btn { font-family: 'Anton', sans-serif; letter-spacing: .06em; text-transform: uppercase; border: 2.5px solid #161614; border-radius: 100px; word-spacing: .22em; }
+  .btn--pill { font-size: 13px; padding: 8px 20px; }
+  .btn--cta { font-size: 17px; padding: 16px; color: #fdf1d3; box-shadow: 4px 5px 0 #161614; }
+  .btn--block { width: 100%; }
+  .btn:disabled { cursor: not-allowed; }
+  .round-btn {
+    width: 26px; height: 26px; border-radius: 50%; border: 2px solid #161614; background: #fdf1d3;
+    font-weight: 700; font-size: 13px; display: grid; place-items: center; padding: 0;
+  }
+  .icon-btn {
+    width: 34px; height: 34px; border-radius: 50%; background: #fdf1d3; border: 1.5px solid #161614;
+    display: grid; place-items: center; font-size: 13px; padding: 0;
+  }
+  .icon-btn.is-active { background: #d93825; color: #fdf1d3; }
+  .link-btn { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .06em; color: #d93825; background: none; border: none; text-decoration: underline; padding: 0; }
+  .link-btn--light { color: #fdf1d3; margin-top: 12px; }
+  .avatar-circle { width: 30px; height: 30px; flex: none; border-radius: 50%; border: 1.5px solid #161614; display: grid; place-items: center; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 12px; }
+  .divider { border: 2.5px solid #161614; border-radius: 10px; overflow: hidden; margin: 14px 0 20px; }
+  .section-title { font-family: 'Anton', sans-serif; letter-spacing: .06em; font-size: clamp(28px, 2.6vw, 38px); text-transform: uppercase; margin: 0; word-spacing: .22em; }
+  .section-title--sm { font-size: 24px; }
+  .section-title__accent { color: #d93825; }
+  .section-title--onteal { color: #fdf1d3; text-shadow: 3px 3px 0 #0f3f45; font-size: clamp(26px, 2.4vw, 36px); }
+  .section-head { display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap; }
+  .section-head--tight { align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+  .section-head__note { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .08em; color: #8c6a52; padding-bottom: 6px; }
+  .label-heading { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 12px; letter-spacing: .12em; color: #6b4f3f; }
+  .label-heading--muted { font-size: 10px; color: #8c6a52; }
+  .body-text { margin: 0; font-size: 14px; font-weight: 500; line-height: 1.6; color: #4a3a20; text-wrap: pretty; }
+  .chip { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .05em; border: 1.5px solid #161614; border-radius: 100px; padding: 6px 10px; }
+  .handwritten { font-family: 'Kalam', cursive; font-size: 18px; line-height: 1.35; color: #8c3a2c; transform: rotate(-2deg); }
+
+  /* hero */
+  .hero { max-width: 1560px; margin: 0 auto; padding: clamp(20px, 3vw, 44px) clamp(14px, 4vw, 40px) 10px; display: flex; gap: clamp(20px, 3vw, 40px); flex-wrap: wrap; align-items: flex-start; }
+  .hero__player { flex: 1.7 1 400px; min-width: min(100%, 300px); }
+  .hero__meta { flex: 1 1 320px; min-width: min(100%, 280px); }
+
+  .nazar { display: flex; align-items: center; justify-content: center; gap: 12px; border: 2.5px solid #161614; border-radius: 100px; background: #161614; padding: 10px 16px; margin-bottom: 14px; }
+  .nazar__img { height: 34px; flex: none; }
+  .nazar__text { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 12px; letter-spacing: .1em; color: #fdf1d3; text-align: center; min-width: 0; }
+  @media (max-width: 560px) { .nazar__img { height: 22px; } .nazar__text { font-size: 9px; } }
+
+  .player-card { border: 3px solid #161614; border-radius: 26px; overflow: hidden; background: #fdf1d3; box-shadow: 7px 8px 0 #161614; }
+  .player-card__screen { height: clamp(300px, 40vw, 540px); position: relative; }
+  .player-card__stripe { position: absolute; inset: 0; background-image: repeating-linear-gradient(135deg, rgba(253, 241, 211, .13) 0 9px, transparent 9px 20px); }
+  .player-card__badges { position: absolute; top: 14px; left: 14px; right: 14px; display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
+  .player-badge { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 12px; letter-spacing: .08em; border-radius: 100px; padding: 7px 13px; display: flex; align-items: center; gap: 7px; }
+  .player-badge--live { background: #d93825; border: 1.5px solid #161614; color: #fdf1d3; }
+  .player-badge--dark { background: rgba(22, 22, 20, .72); color: #fdf1d3; }
+  .player-badge__dot { width: 7px; height: 7px; border-radius: 50%; background: #fdf1d3; }
+  .player-badge__dot--pulse { animation: tokPulse 1.2s ease-in-out infinite; }
+  .player-card__actions { margin-left: auto; display: flex; gap: 8px; }
+  .player-card__center-label { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 12px; letter-spacing: .12em; color: rgba(253, 241, 211, .65); text-align: center; line-height: 2; }
+  .player-card__cta { position: absolute; left: 50%; bottom: 60px; transform: translateX(-50%); font-size: 20px; padding: 16px 40px; border: 2.5px solid #161614; box-shadow: 5px 6px 0 #161614; }
+  .countdown { position: absolute; left: 50%; bottom: 56px; transform: translateX(-50%); display: flex; gap: 8px; align-items: flex-end; }
+  .countdown__unit { border: 2px solid #fdf1d3; border-radius: 12px; background: rgba(22, 22, 20, .72); color: #fdf1d3; padding: 9px 12px; text-align: center; min-width: 58px; display: block; }
+  .countdown__unit span { display: block; font-family: 'Anton', sans-serif; letter-spacing: .06em; font-size: 22px; line-height: 1; word-spacing: .22em; }
+  .countdown__unit em { display: block; font-style: normal; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 9px; letter-spacing: .1em; margin-top: 4px; }
+  .player-card__scallop { position: absolute; left: 0; right: 0; bottom: -1px; height: 18px; background: radial-gradient(circle at 11px 15px, #fdf1d3 11px, transparent 12px) 0 0/22px 18px repeat-x; }
+  .player-card__hostbar { padding: 13px 18px 15px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .player-card__hostname { font-size: 14px; font-weight: 600; }
+  .player-card__hostmeta { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .08em; color: #8c6a52; }
+  .player-card__joinnote { margin-left: auto; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .08em; }
+
+  .thumb-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-top: 14px; }
+  .thumb-tile { height: 76px; border: 2.5px solid #161614; border-radius: 14px; position: relative; overflow: hidden; }
+  .thumb-tile::before { content: ''; position: absolute; inset: 0; }
+  .thumb-tile span { position: absolute; inset: 0; display: grid; place-items: center; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 10px; }
+  .thumb-tile--butter { background: #c9a86a; } .thumb-tile--butter::before { background-image: repeating-linear-gradient(135deg, rgba(22, 22, 20, .12) 0 9px, transparent 9px 20px); } .thumb-tile--butter span { color: #4a3a20; }
+  .thumb-tile--brick { background: #a4352a; } .thumb-tile--brick::before { background-image: repeating-linear-gradient(135deg, rgba(253, 241, 211, .14) 0 9px, transparent 9px 20px); } .thumb-tile--brick span { color: #fbe4df; }
+  .thumb-tile--oat { background: #b09a76; } .thumb-tile--oat::before { background-image: repeating-linear-gradient(135deg, rgba(22, 22, 20, .12) 0 9px, transparent 9px 20px); } .thumb-tile--oat span { color: #4a3a20; }
+  .thumb-tile--teal { background: #1e5f66; } .thumb-tile--teal::before { background-image: repeating-linear-gradient(135deg, rgba(253, 241, 211, .14) 0 9px, transparent 9px 20px); } .thumb-tile--teal span { color: #d6ecee; }
+
+  .share-card { margin-top: 14px; border: 2.5px solid #161614; border-radius: 18px; background: #fdf1d3; box-shadow: 4px 5px 0 #161614; padding: 16px 18px; }
+  .share-card__row { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+  .share-card__main { flex: 1 1 260px; min-width: 0; }
+  .share-card__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .share-card__label { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 12px; letter-spacing: .14em; color: #6b4f3f; }
+  .share-card__buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip-btn { display: flex; align-items: center; gap: 7px; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .06em; border: 2px solid #161614; border-radius: 100px; padding: 9px 14px; box-shadow: 3px 3px 0 #161614; }
+  .chip-btn__dot { width: 7px; height: 7px; border-radius: 50%; }
+  .chip-btn--wa { background: #2d7180; color: #fdf1d3; } .chip-btn--wa .chip-btn__dot { background: #8fd0c0; }
+  .chip-btn--fb { background: #b8382a; color: #fdf1d3; } .chip-btn--fb .chip-btn__dot { background: #ffd0c4; }
+  .chip-btn--yt { background: #161614; color: #fdf1d3; } .chip-btn--yt .chip-btn__dot { background: #d93825; }
+  .chip-btn--embed { background: #fdf1d3; color: #161614; }
+  .chip-btn--embed.is-active { background: #161614; color: #fdf1d3; }
+  .share-card__qr { flex: none; display: flex; align-items: center; gap: 12px; }
+  .share-card__qr-box { border: 2.5px solid #161614; border-radius: 12px; background: #fff; padding: 6px; box-shadow: 3px 3px 0 #161614; }
+  .share-card__qr-box img { width: 88px; height: 88px; display: block; }
+  .share-card__qr-label { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 10px; letter-spacing: .08em; color: #8c6a52; line-height: 1.9; max-width: 90px; }
+  .embed-panel { display: none; margin-top: 14px; border: 2px solid #161614; border-radius: 14px; background: #161614; padding: 14px 16px; }
+  .embed-panel__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .1em; color: #b39c82; }
+  .embed-panel__copy { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .06em; border: 2px solid #fdf1d3; border-radius: 100px; padding: 7px 14px; background: transparent; color: #fdf1d3; }
+  .embed-panel__code { display: block; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; line-height: 2; color: #8fd0c0; word-break: break-all; white-space: pre-wrap; }
+
+  .eyebrow { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 13px; letter-spacing: .16em; color: #b82a19; margin-bottom: 12px; }
+  .title { font-family: 'Anton', sans-serif; font-size: clamp(36px, 4.4vw, 60px); line-height: 1.03; letter-spacing: .06em; text-transform: uppercase; margin: 0; word-spacing: .22em; }
+  .title__accent { color: #d93825; }
+  .badge-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+  .badge { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .06em; border: 1.5px solid #161614; border-radius: 100px; padding: 7px 12px; background: #fdf1d3; }
+  .badge--teal { border-color: #2d7180; color: #2d7180; }
+  .lede { margin: 18px 0 0; font-size: 17px; font-weight: 500; line-height: 1.55; color: #4a3a20; max-width: 52ch; text-wrap: pretty; }
+  .stat-card { margin-top: 18px; border: 2.5px solid #161614; border-radius: 18px; background: #fdf1d3; box-shadow: 4px 5px 0 #161614; padding: 14px 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
+  .stat-card strong { display: block; font-family: 'Anton', sans-serif; letter-spacing: .06em; font-size: 22px; word-spacing: .22em; font-weight: 400; }
+  .stat-card em { font-style: normal; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 10px; letter-spacing: .08em; color: #8c6a52; }
+  .price-line { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-top: 20px; }
+  .price-line__amount { font-family: 'Anton', sans-serif; letter-spacing: .06em; font-size: 34px; word-spacing: .22em; }
+  .price-line__amount small { font-size: 16px; letter-spacing: .04em; }
+  .price-line__note { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .08em; color: #8c6a52; }
+  .masala-quote { margin-top: 16px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .masala-quote img { width: 112px; flex: none; transform: rotate(-4deg); }
+  .masala-quote__text { font-family: 'Kalam', cursive; font-size: 20px; color: #8c3a2c; transform: rotate(-2deg); }
+  .masala-stickers { margin-top: 22px; display: flex; align-items: center; justify-content: center; gap: 22px; flex-wrap: wrap; }
+  .masala-stickers__a { width: clamp(170px, 16vw, 230px); transform: rotate(-2deg); }
+  .masala-stickers__b { width: clamp(150px, 14vw, 200px); border: 3px solid #161614; border-radius: 14px; transform: rotate(2deg); box-shadow: 5px 6px 0 #161614; }
+
+  /* layout */
+  .layout { max-width: 1560px; margin: 0 auto; padding: clamp(20px, 3vw, 40px) clamp(14px, 4vw, 40px) 90px; display: flex; flex-wrap: wrap; gap: 34px; align-items: flex-start; }
+  .aside { flex: 1 1 320px; min-width: min(100%, 290px); order: 1; position: static; max-width: 100%; }
+  .main-col { flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 52px; order: 2; }
+  @media (min-width: 1020px) {
+    .aside { order: 3; position: sticky; top: 16px; max-width: 400px; }
+    .main-col { order: 2; }
+  }
+
+  .booking-card { border: 3px solid #161614; border-radius: 24px; background: #fdf1d3; box-shadow: 6px 7px 0 #161614; overflow: hidden; }
+  .booking-card__ribbon { border-bottom: 2.5px solid #161614; }
+  .booking-card__live-strip { background: #d93825; border-bottom: 2.5px solid #161614; padding: 12px 22px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 12px; letter-spacing: .1em; color: #fdf1d3; }
+  .booking-card__live-note { margin-left: auto; font-size: 11px; color: #ffd0c4; }
+  .booking-card__body { padding: 20px 22px 24px; }
+  .booking-card__head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 16px; }
+  .booking-card__unit-price { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 12px; color: #8c6a52; }
+
+  .calendar { border: 2px solid #161614; border-radius: 16px; background: #f6e4cd; padding: 14px; }
+  .calendar__nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+  .calendar__month { font-family: 'Anton', sans-serif; font-size: 15px; text-transform: uppercase; letter-spacing: .03em; word-spacing: .22em; }
+  .calendar__dow { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin-bottom: 4px; }
+  .calendar__dow span { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 10px; color: #8c6a52; text-align: center; }
+  .calendar__grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+  .cal-cell { height: 28px; display: grid; place-items: center; border-radius: 8px; position: relative; border: none; background: transparent; font-size: 12px; font-weight: 600; color: #b39c82; }
+  .cal-cell--available { cursor: pointer; color: #161614; }
+  .cal-cell--selected { cursor: pointer; background: #d93825; color: #fdf1d3; }
+  .cal-cell--disabled { cursor: default; }
+  .cal-cell__dot { position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%); width: 4px; height: 4px; border-radius: 50%; background: #d93825; }
+  .calendar__legend { margin-top: 8px; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 10px; letter-spacing: .08em; color: #8c6a52; }
+
+  .slots { margin-top: 16px; }
+  .slots__head { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 12px; letter-spacing: .12em; color: #6b4f3f; margin-bottom: 10px; }
+  .slots__list { display: flex; flex-direction: column; gap: 10px; }
+  .slot { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border: 2px solid #161614; border-radius: 14px; background: #fdf1d3; padding: 12px 14px; cursor: pointer; }
+  .slot--selected { background: #f6e4cd; box-shadow: 3px 3px 0 #161614; }
+  .slot:disabled { opacity: .55; cursor: not-allowed; }
+  .slot__radio { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 2px solid #161614; background: #fdf1d3; display: grid; place-items: center; }
+  .slot__radio-dot { width: 7px; height: 7px; border-radius: 50%; background: #d93825; }
+  .slot__body { min-width: 0; flex: 1; }
+  .slot__time { display: block; font-family: 'Anton', sans-serif; font-size: 16px; letter-spacing: .06em; word-spacing: .22em; }
+  .slot__label { display: block; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 10px; letter-spacing: .06em; color: #8c6a52; margin: 4px 0 6px; }
+  .slot__bar { display: block; height: 7px; border: 1.5px solid #161614; border-radius: 100px; background: #f6e4cd; overflow: hidden; }
+  .slot__bar-fill { display: block; height: 100%; }
+  .slot__seats { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .05em; text-align: right; white-space: nowrap; color: #8c6a52; }
+  .slot__seats--full { color: #b82a19; }
+  .slot__seats--selected { color: #2d7180; }
+
+  .qty-row { margin-top: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .qty-row__label { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 12px; letter-spacing: .12em; color: #6b4f3f; }
+  .qty-row__controls { display: flex; align-items: center; gap: 12px; }
+  .qty-row__value { font-family: 'Anton', sans-serif; letter-spacing: .06em; font-size: 20px; min-width: 20px; text-align: center; word-spacing: .22em; }
+
+  .price-box { margin-top: 14px; border-top: 2px dashed rgba(22, 22, 20, .35); padding-top: 12px; display: flex; flex-direction: column; gap: 7px; }
+  .price-row { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; font-weight: 500; color: #5a3d33; }
+  .price-row span:last-child { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 12px; color: #161614; }
+  .price-row--total { border-top: 2px solid #161614; padding-top: 9px; margin-top: 3px; }
+  .price-row--total span { font-family: 'Anton', sans-serif; letter-spacing: .06em; font-size: 17px; text-transform: uppercase; word-spacing: .22em; color: #161614 !important; }
+  .price-box__footnote { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 10px; letter-spacing: .06em; color: #8c6a52; }
+
+  #book-cta-area { margin-top: 16px; }
+  .book-cta-area__footnote { margin-top: 12px; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 10px; letter-spacing: .06em; color: #8c6a52; text-align: center; line-height: 1.8; }
+  .booked-panel { display: none; margin-top: 16px; border: 2.5px solid #161614; border-radius: 18px; background: #2d7180; padding: 18px 20px; box-shadow: 4px 5px 0 #161614; }
+  .booked-panel__title { font-family: 'Anton', sans-serif; letter-spacing: .06em; font-size: 22px; text-transform: uppercase; color: #fdf1d3; text-shadow: 2px 2px 0 #0f3f45; word-spacing: .22em; }
+  .booked-panel__line { margin: 8px 0 0; font-size: 13px; font-weight: 500; line-height: 1.55; color: #d6ecee; }
+  .booked-panel__join { width: 100%; margin-top: 12px; font-size: 16px; padding: 13px; background: #d93825; box-shadow: 3px 4px 0 #0f3f45; }
+  .booked-panel__note { margin: 10px 0 0; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 10px; letter-spacing: .06em; color: #c4e3e0; line-height: 1.8; }
+  .handwritten--aside { margin: 18px 10px 0; }
+
+  /* main column shared */
+  .step-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  .step-card { border: 2.5px solid #161614; border-radius: 18px; background: #fdf1d3; padding: 18px 20px; box-shadow: 4px 5px 0 #161614; }
+  .step-card__label { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 12px; letter-spacing: .1em; color: #d93825; margin-bottom: 8px; }
+  .step-card p { margin: 0; font-size: 14px; font-weight: 500; line-height: 1.5; color: #4a3a20; }
+
+  .host-card { border: 3px solid #161614; border-radius: 24px; background: #fdf1d3; box-shadow: 6px 7px 0 #161614; overflow: hidden; display: flex; flex-wrap: wrap; }
+  .host-card__profile { flex: 1 1 250px; max-width: 340px; min-width: min(100%, 250px); border-right: 2.5px solid #161614; border-bottom: 2.5px solid #161614; padding: 22px; display: flex; flex-direction: column; gap: 14px; background: #f6e4cd; }
+  .host-card__photo { height: 210px; border: 2.5px solid #161614; border-radius: 18px; position: relative; overflow: hidden; }
+  .host-card__photo::before { content: ''; position: absolute; inset: 0; background-image: repeating-linear-gradient(135deg, rgba(253, 241, 211, .14) 0 9px, transparent 9px 20px); }
+  .host-card__photo-label { position: absolute; left: 50%; top: 60%; transform: translate(-50%, -50%); font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .1em; color: rgba(253, 241, 211, .7); white-space: nowrap; }
+  .host-card__verified { position: absolute; top: 10px; left: 10px; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 10px; letter-spacing: .08em; background: #d93825; color: #fdf1d3; border-radius: 100px; padding: 5px 10px; }
+  .host-card__name { font-family: 'Anton', sans-serif; letter-spacing: .06em; font-size: 26px; text-transform: uppercase; line-height: 1.05; word-spacing: .22em; }
+  .host-card__meta { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .08em; color: #8c6a52; margin-top: 6px; }
+  .host-card__chips { display: flex; flex-wrap: wrap; gap: 7px; }
+  .host-card__privacy { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 10px; letter-spacing: .06em; color: #8c6a52; text-align: center; }
+  .host-card__details { flex: 2.2 1 320px; min-width: min(100%, 300px); padding: 22px 24px; display: flex; flex-direction: column; gap: 22px; }
+
+  .newhost-box { border: 2.5px dashed #161614; border-radius: 18px; background: #f6e4cd; padding: 20px 22px; }
+  .newhost-box__head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .newhost-box__tag { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .08em; background: #d93825; color: #fdf1d3; border-radius: 100px; padding: 6px 12px; }
+  .newhost-box__title { font-family: 'Anton', sans-serif; letter-spacing: .06em; font-size: 19px; text-transform: uppercase; word-spacing: .22em; }
+  .newhost-box__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 14px; }
+  .newhost-box__item { border: 2px solid #161614; border-radius: 12px; background: #fdf1d3; padding: 11px 13px; }
+  .newhost-box__item span { display: block; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .06em; color: #2d7180; margin-bottom: 4px; }
+  .newhost-box__item p { margin: 0; font-size: 12px; font-weight: 500; color: #4a3a20; line-height: 1.45; }
+  .newhost-box__promise { margin-top: 14px; border-top: 2px dashed rgba(22, 22, 20, .3); padding-top: 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .newhost-box__promise span:first-child { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .08em; color: #d93825; }
+  .newhost-box__promise span:last-child { font-size: 13px; font-weight: 500; color: #4a3a20; }
+
+  .session-list { display: flex; flex-direction: column; }
+  .session-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1.5px dashed rgba(22, 22, 20, .25); flex-wrap: wrap; }
+  .session-row__date { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .06em; color: #8c6a52; flex: none; width: 74px; }
+  .session-row__title { font-size: 14px; font-weight: 600; min-width: 0; flex: 1 1 160px; }
+  .session-row__crowd { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .05em; color: #2d7180; }
+  .session-row__rating { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .05em; color: #d93825; }
+
+  .listing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+  .listing-card { cursor: pointer; border: 2.5px solid #161614; border-radius: 16px; background: #fdf1d3; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; box-shadow: 3px 4px 0 #161614; transition: transform .12s ease; }
+  .listing-card:hover { transform: translateY(-2px); }
+  .listing-card__tag { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 10px; letter-spacing: .08em; color: #8c6a52; }
+  .listing-card__title { font-family: 'Anton', sans-serif; letter-spacing: .06em; font-size: 17px; line-height: 1.1; text-transform: uppercase; color: #161614; word-spacing: .22em; }
+  .listing-card__meta { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .05em; color: #8c6a52; }
+  .listing-card--dark { background: #2d7180; }
+  .listing-card--dark .listing-card__tag { color: #c4e3e0; }
+  .listing-card--dark .listing-card__title { color: #fdf1d3; }
+  .listing-card--dark .listing-card__meta { color: #d6ecee; }
+
+  .rules-sticker { width: clamp(120px, 12vw, 170px); flex: none; transform: rotate(-5deg); align-self: center; }
+  .rules-card { border: 3px solid #161614; border-radius: 22px; background: #fdf1d3; box-shadow: 5px 6px 0 #161614; overflow: hidden; }
+  .rules-card__quote { padding: 20px 24px 8px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .rules-card__quote p { margin: 0; flex: 1 1 260px; font-size: 14px; font-weight: 500; line-height: 1.5; color: #4a3a20; }
+  .rules-card__grid { padding: 14px 24px 22px; display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; }
+  .rule-item { display: flex; gap: 12px; align-items: flex-start; border: 2px solid #161614; border-radius: 14px; padding: 13px 15px; background: #fdf1d3; }
+  .rule-item:nth-child(even) { background: #f6e4cd; }
+  .rule-item__n { flex: none; width: 26px; height: 26px; border-radius: 50%; border: 2px solid #161614; background: #fdf1d3; display: grid; place-items: center; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 12px; color: #d93825; }
+  .rule-item__head { display: block; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .08em; color: #6b4f3f; margin-bottom: 4px; }
+  .rule-item__text { display: block; font-size: 13px; font-weight: 500; line-height: 1.5; color: #4a3a20; }
+  .rules-card__footer { border-top: 2px dashed rgba(22, 22, 20, .35); padding: 14px 24px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: #f6e4cd; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .08em; color: #8c6a52; }
+  .rules-card__footer-link { margin-left: auto; text-decoration: underline; color: #161614; }
+
+  .reviews-layout { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+  .reviews-summary { flex: 1 1 220px; max-width: 300px; min-width: 0; }
+  .reviews-summary__card { border: 2.5px solid #161614; border-radius: 18px; background: #fdf1d3; padding: 20px; box-shadow: 4px 5px 0 #161614; }
+  .reviews-summary__score { font-family: 'Anton', sans-serif; letter-spacing: .06em; font-size: 52px; line-height: 1; word-spacing: .22em; }
+  .reviews-summary__meta { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .08em; color: #8c6a52; margin: 6px 0 14px; }
+  .reviews-summary__bars { display: flex; flex-direction: column; gap: 6px; }
+  .rating-bar { display: flex; align-items: center; gap: 8px; }
+  .rating-bar span:first-child { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; width: 14px; }
+  .rating-bar span:last-child { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 10px; color: #8c6a52; width: 30px; text-align: right; }
+  .rating-bar__track { flex: 1; height: 9px; border: 1.5px solid #161614; border-radius: 100px; background: #f6e4cd; overflow: hidden; }
+  .rating-bar__fill { height: 100%; background: #d93825; }
+  .reviews-summary__sticker { width: 100%; max-width: 250px; margin: 16px auto 0; display: block; transform: rotate(-2deg); }
+  .reviews-list-wrap { flex: 2 1 300px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .reviews-list { display: flex; flex-direction: column; gap: 14px; }
+  .review-card { border: 2.5px solid #161614; border-radius: 18px; background: #fdf1d3; padding: 16px 20px; box-shadow: 4px 5px 0 #161614; }
+  .review-card--teal { background: #2d7180; }
+  .review-card__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+  .review-card__stars { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 12px; letter-spacing: .06em; color: #d93825; }
+  .review-card--teal .review-card__stars { color: #fdf1d3; }
+  .review-card__who { font-size: 13px; font-weight: 600; color: #161614; }
+  .review-card--teal .review-card__who { color: #fdf1d3; }
+  .review-card__meta { margin-left: auto; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 10px; letter-spacing: .08em; color: #8c6a52; }
+  .review-card--teal .review-card__meta { color: #c4e3e0; }
+  .review-card__text { margin: 0; font-size: 14px; font-weight: 500; line-height: 1.5; color: #4a3a20; }
+  .review-card--teal .review-card__text { color: #d6ecee; }
+
+  .pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 4px; }
+  .pager__btn { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 12px; letter-spacing: .08em; border: 2px solid #161614; border-radius: 100px; padding: 9px 16px; background: #fdf1d3; color: #161614; box-shadow: 3px 3px 0 #161614; }
+  .pager__btn:disabled { color: #b39c82; cursor: not-allowed; }
+  .pager__label { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 12px; letter-spacing: .1em; color: #6b4f3f; }
+  .pager__dots { display: flex; gap: 10px; }
+  .page-dot { width: 34px; height: 34px; border-radius: 50%; border: 2px solid #161614; background: #fdf1d3; color: #161614; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 12px; display: grid; place-items: center; padding: 0; box-shadow: 3px 3px 0 #161614; }
+  .page-dot--active { background: #d93825; color: #fdf1d3; }
+
+  .trust-block { border: 3px solid #161614; border-radius: 26px; overflow: hidden; background: #2d7180; box-shadow: 6px 7px 0 #161614; }
+  .trust-block__ribbon { border-bottom: 2.5px solid #161614; }
+  .trust-block__body { padding: clamp(22px, 3vw, 32px); }
+  .trust-block__head { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+  .trust-block__head span { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .1em; color: #c4e3e0; }
+  .trust-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+  .trust-item { border: 2px solid #fdf1d3; border-radius: 16px; padding: 14px 16px; }
+  .trust-item div { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 12px; letter-spacing: .08em; color: #fdf1d3; margin-bottom: 6px; }
+  .trust-item p { margin: 0; font-size: 13px; font-weight: 500; line-height: 1.5; color: #d6ecee; }
+
+  /* browse */
+  .browse { max-width: 1560px; margin: 0 auto; padding: 0 clamp(14px, 4vw, 40px) 90px; }
+  .browse__quote { display: flex; align-items: flex-end; gap: 12px; flex: none; }
+  .browse__quote img { width: 130px; flex: none; transform: rotate(3deg); filter: drop-shadow(4px 5px 0 rgba(22, 22, 20, .4)); }
+  .browse-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 20px; }
+  .browse-card {
+    display: block; cursor: pointer; border: 3px solid #161614; border-radius: 26px; overflow: hidden;
+    box-shadow: 6px 7px 0 #161614; transition: transform .12s ease;
+  }
+  .browse-card:hover { transform: translateY(-3px); }
+  .browse-card--teal { background: #2d7180; }
+  .browse-card--butter { background: #f4d8a0; }
+  .browse-card--oat { background: #d9c3a0; }
+  .browse-card--brick { background: #b8382a; }
+  .browse-card__photo { height: 160px; position: relative; }
+  .browse-card--teal .browse-card__photo { background: #1e5f66; }
+  .browse-card--butter .browse-card__photo { background: #c9a86a; }
+  .browse-card--oat .browse-card__photo { background: #b09a76; }
+  .browse-card--brick .browse-card__photo { background: #a4352a; }
+  .browse-card--teal .browse-card__photo, .browse-card--brick .browse-card__photo { background-image: repeating-linear-gradient(135deg, rgba(253, 241, 211, .14) 0 9px, transparent 9px 20px); }
+  .browse-card--butter .browse-card__photo, .browse-card--oat .browse-card__photo { background-image: repeating-linear-gradient(135deg, rgba(22, 22, 20, .12) 0 9px, transparent 9px 20px); }
+  .browse-pill { position: absolute; top: 12px; left: 12px; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .08em; color: #fdf1d3; border-radius: 100px; padding: 6px 11px; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .browse-pill--upcoming { background: #1e5f66; }
+  .browse-pill--live { background: #d93825; }
+  .browse-pill__dot { width: 6px; height: 6px; border-radius: 50%; background: #8fd0c0; }
+  .browse-pill--live .browse-pill__dot { background: #fdf1d3; animation: tokPulse 1.2s ease-in-out infinite; }
+  .browse-card__phlabel { position: absolute; left: 50%; bottom: 46%; transform: translateX(-50%); font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .1em; color: #4a3a20; }
+  .browse-card--teal .browse-card__phlabel, .browse-card--brick .browse-card__phlabel { color: rgba(253, 241, 211, .7); }
+  .browse-card__body { padding: 14px 17px 17px; display: flex; flex-direction: column; gap: 10px; }
+  .browse-card__stub-row { display: flex; justify-content: space-between; gap: 8px; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .1em; color: #5a3d33; }
+  .browse-card--teal .browse-card__stub-row, .browse-card--brick .browse-card__stub-row { color: #d6ecee; }
+  .browse-card--brick .browse-card__stub-row { color: #fbe4df; }
+  .browse-card__title { font-family: 'Anton', sans-serif; font-size: 22px; line-height: 1.07; text-transform: uppercase; color: #161614; margin: 0; }
+  .browse-card--teal .browse-card__title, .browse-card--brick .browse-card__title { color: #fdf1d3; text-shadow: 3px 3px 0 #0f3f45; }
+  .browse-card--brick .browse-card__title { text-shadow: 3px 3px 0 #7d271e; }
+  .browse-card--serif .browse-card__title { font-family: 'Playfair Display', serif; font-style: italic; font-weight: 900; text-transform: none; color: #c02f1d; text-shadow: none; }
+  .browse-card__blurb { margin: 0; font-size: 14px; font-weight: 500; line-height: 1.45; color: #4a3a20; }
+  .browse-card--teal .browse-card__blurb, .browse-card--brick .browse-card__blurb { color: #fdf1d3; }
+  .browse-card__foot { display: flex; align-items: center; gap: 9px; margin-top: auto; padding-top: 10px; border-top: 1.5px solid rgba(22, 22, 20, .2); }
+  .browse-card--teal .browse-card__foot, .browse-card--brick .browse-card__foot { border-top-color: rgba(253, 241, 211, .28); }
+  .browse-card__ini { width: 26px; height: 26px; flex: none; border-radius: 50%; border: 1.5px solid #161614; display: grid; place-items: center; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; }
+  .browse-card--teal .browse-card__ini, .browse-card--brick .browse-card__ini { border-color: #fdf1d3; color: #fdf1d3; }
+  .browse-card__name { font-size: 13px; font-weight: 600; color: #161614; }
+  .browse-card--teal .browse-card__name, .browse-card--brick .browse-card__name { color: #fdf1d3; }
+  .browse-card__dur { margin-left: auto; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .08em; color: #5a3d33; }
+  .browse-card--teal .browse-card__dur, .browse-card--brick .browse-card__dur { color: #d6ecee; }
+  .browse-card--brick .browse-card__dur { color: #fbe4df; }
+</style>
