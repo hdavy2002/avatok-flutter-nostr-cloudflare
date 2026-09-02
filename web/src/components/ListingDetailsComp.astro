@@ -132,6 +132,7 @@ function viewModel(l: Listing, revs: ReviewList | null, others: Card[], browseCa
         name,
         dur: durationLabel(c.duration_min ?? null) ?? '',
         ini: name.split(' ').map((w) => w[0]).filter(Boolean).join('').slice(0, 2).toUpperCase() || '—',
+        photo: c.cover_media?.[0]?.url ?? (c as { poster?: string }).poster ?? null,
       };
     });
 
@@ -938,9 +939,9 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
     const slice = EVENTS.slice(pg * PER, pg * PER + PER);
     document.getElementById('browse-grid').innerHTML = slice.map((c) => `
       <a href="/l/${c.id}" class="browse-card browse-card--${c.pk} ${c.serif ? 'browse-card--serif' : ''}">
-        <div class="browse-card__photo">
+        <div class="browse-card__photo" ${c.photo ? `style="background-image:url('${c.photo}');background-size:cover;background-position:center"` : ''}>
           <span class="browse-pill ${c.live ? 'browse-pill--live' : 'browse-pill--upcoming'}"><span class="browse-pill__dot"></span>${c.status}</span>
-          <span class="browse-card__phlabel">PORTRAIT</span>
+          ${c.photo ? '' : '<span class="browse-card__phlabel">PORTRAIT</span>'}
         </div>
         <div class="browse-card__body">
           <div class="browse-card__stub-row"><span>${c.s1}</span><span>${c.s2}</span></div>
