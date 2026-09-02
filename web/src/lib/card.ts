@@ -23,6 +23,7 @@
  * (the mockup pages do) keeps working.
  */
 import type { Card, CardView, CoverMedia, CreatorRef } from './types';
+import { chips as chipCopy, cta, statusPill, laneBadge, spotsLeft, seatsBaakiUrgent, earlyBird, regularsHeart, chatsCount, AI_INSTANT, responseTime, billingUnitLabel, liveWatching, pillExtra } from './copy';
 
 function firstCoverUrl(media: unknown): string | null {
   if (!Array.isArray(media)) return null;
@@ -103,6 +104,7 @@ export function toCardView(card: Card): CardView {
     status: (card.status ?? null) as string | null,
     live: Boolean(card.live || card.joinable || card.status === 'live'),
     favorited: Boolean(card.favorited),
+    createdAt: num(card.created_at),
 
     creator: creator
       ? {
@@ -141,15 +143,255 @@ export function languageLabel(spokenLang: string | null, max = 2): string | null
  * and an event with one ticket price are different numbers with the same type, and the
  * card comps show both (`₹8/min`, `₹50/hr`, `₹1,499`).
  */
-export function priceLabel(price: number | null, semantics?: string | null): string {
+export function priceLabel(price: number | null, semantics?: string | null, billingUnit?: string | null): string {
   if (price == null) return '';
   if (price === 0) return 'Free';
   const amount = `₹${price.toLocaleString('en-IN')}`;
+  // [LIST-TRUST-1] "from" outranks the per-unit suffix — "From ₹300/10min" reads
+  // like two conflicting claims about the same number, and §2's card comps only
+  // ever show one or the other.
+  if (semantics === 'from') return `From ${amount}`;
+  switch (billingUnit) {
+    case 'minute': return `${amount}/min`;
+    case '10min': return `${amount}/10min`;
+    case 'chat': return `${amount}/chat`;
+    case 'night': return `${amount}/night`;
+    case 'game': return `${amount}/game`;
+    default: break;
+  }
   switch (semantics) {
     case 'per_minute': return `${amount}/min`;
     case 'per_hour': return `${amount}/hr`;
     case 'per_month': return `${amount}/mo`;
-    case 'from': return `From ${amount}`;
     default: return amount;
+  }
+}
+
+/* ── §2 per-type card slot rules (Specs/SPEC-2026-09-02-LISTING-TRUST-AND-
+ * VIBE.md §2.1–2.5) ─────────────────────────────────────────────────────────
+ * The type DECIDES the slot contents; a creator never picks chips (§2 intro).
+ * Every ladder below stops at the first rung backed by real data on the card
+ * wire and falls back to an honest "we don't know yet" badge (PEHLA SHOW /
+ * NAYA AGENT / NEW EXPERT / JUST ADDED) rather than inventing evidence — rule
+ * zero, §1: "every badge is earned from data. Nothing is faked to look full."
+ *
+ * Rungs that need data NOT on the Card wire today (shows_hosted, sessions_done,
+ * comeback_pct, cancel_rate — all live on `creator_stats`, not `/api/explore`)
+ * are skipped rather than guessed at; when the worker starts embedding
+ * `creator_trust_stats` on list cards, wire those rungs in here.
+ */
+
+/** A card's rendering lane. `free_entry` outranks `kind` (§2.4 is its own
+ *  slot set layered over whatever kind the session actually is). */
+export type ListingLane = 'live' | 'consult' | 'agent' | 'free' | 'adda';
+
+export function laneFor(card: Card, c: CardView): ListingLane {
+  if (card.free_entry) return 'free';
+  const kind = (c.kind ?? '').toLowerCase();
+  if (kind === 'agent') return 'agent';
+  if (kind === 'consult') return 'consult';
+  if (card.schedule_mode === 'recurring') return 'adda';
+  return 'live';
+}
+
+/** `NEW` chip rule (§4.6 / task item 4): true for the first 48h after `created_at`. */
+export function isNew(createdAt: number | null, withinHours = 48): boolean {
+  if (!createdAt) return false;
+  return Date.now() - createdAt < withinHours * 3_600_000;
+}
+
+/** `★ 4.9 · 620`, or null when the rating doesn't clear §4.6's floor (a raw
+ *  review count under 3 must show NEW/PEHLA SHOW instead of a real-looking star). */
+function ratingOrNull(c: CardView): string | null {
+  if (c.ratingAvg == null || c.ratingCount < 3) return null;
+  return chipCopy.rating(c.ratingAvg, c.ratingCount);
+}
+
+/** `♡ 300 REGULARS` from the creator's follower count, or null. */
+function regularsOrNull(card: Card): string | null {
+  const n = card.creator?.follower_count;
+  return n && n > 0 ? regularsHeart(n) : null;
+}
+
+/** Parse a field the worker may send as a real array or a JSON-encoded string
+ *  (types.ts documents both shapes for `recurrence_days` and `vibe_tags`). */
+function parseArrayMaybe<T>(v: unknown): T[] | null {
+  if (Array.isArray(v)) return v as T[];
+  if (typeof v === 'string' && v.trim()) {
+    try {
+      const parsed = JSON.parse(v);
+      return Array.isArray(parsed) ? (parsed as T[]) : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+const DAY_ABBR = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+
+function formatHHmm(hhmm: string): string {
+  const [hStr, mStr] = hhmm.split(':');
+  const h = Number(hStr);
+  const m = Number(mStr);
+  if (!Number.isFinite(h)) return hhmm;
+  const period = h < 12 ? 'AM' : 'PM';
+  let h12 = h % 12;
+  if (h12 === 0) h12 = 12;
+  return m ? `${h12}:${String(m).padStart(2, '0')} ${period}` : `${h12} ${period}`;
+}
+
+/** `DAILY 6 PM` / `MON·WED·FRI 6 PM` from `recurrence_days` + `recurrence_time`
+ *  (§2.5). Null when there's no recurrence time to anchor a label to. */
+export function recurrenceLabel(
+  days: number[] | null | undefined,
+  time: string | null | undefined,
+): string | null {
+  if (!time) return null;
+  const t = formatHHmm(time);
+  const list = (days ?? []).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+  if (!list.length || list.length >= 7) return `DAILY ${t}`;
+  const sorted = [...new Set(list)].sort((a, b) => a - b);
+  return `${sorted.map((d) => DAY_ABBR[d]).join('·')} ${t}`;
+}
+
+/** `FRI 9 PM` / `TONIGHT 9 PM` / `6 SEPT` — the comp's status-pill date copy.
+ *  `prefixNext` renders the weekday branch as `NEXT FRI 9 PM` (§2.2's consult
+ *  pill reads "NEXT MON 11 AM", not just "MON 11 AM"). */
+export function timePillLabel(startsAt: number | null, opts: { prefixNext?: boolean } = {}): string {
+  if (!startsAt) return pillExtra.AVAILABLE_NOW;
+  const d = new Date(startsAt);
+  if (!Number.isFinite(d.getTime())) return pillExtra.AVAILABLE_NOW;
+  const time = d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }).toUpperCase();
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return `TONIGHT ${time}`;
+  const days = Math.round((d.getTime() - now.getTime()) / 86_400_000);
+  if (days > 0 && days < 7) {
+    const wk = d.toLocaleDateString('en-IN', { weekday: 'short' }).toUpperCase();
+    return opts.prefixNext ? `NEXT ${wk} ${time}` : `${wk} ${time}`;
+  }
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }).toUpperCase();
+}
+
+/**
+ * The status pill per §2's per-type ladder:
+ *   live/free — LIVE · N DEKH RAHE → SOLD OUT (seats_left=0) → the time pill →
+ *               NEW (<48h, no date at all)
+ *   consult   — ON REQUEST (schedule_mode) → AVAILABLE NOW (no starts_at) →
+ *               NEXT <day> <time> from starts_at
+ *   agent     — ALWAYS ON, always (never a time — §2.3)
+ *   adda      — the recurrence label, else the time pill / LIVE
+ */
+export function pillLabel(lane: ListingLane, card: Card, c: CardView): string {
+  switch (lane) {
+    case 'agent':
+      return statusPill.ALWAYS_ON;
+    case 'consult':
+      if (card.schedule_mode === 'on_request') return pillExtra.ON_REQUEST;
+      if (!c.startsAt) return pillExtra.AVAILABLE_NOW;
+      return timePillLabel(c.startsAt, { prefixNext: true });
+    case 'adda': {
+      const rec = recurrenceLabel(
+        parseArrayMaybe<number>(card.recurrence_days) ?? undefined,
+        card.recurrence_time,
+      );
+      if (rec) return rec;
+      return c.live ? 'LIVE' : timePillLabel(c.startsAt);
+    }
+    case 'free':
+    case 'live':
+    default: {
+      if (c.live) return c.watching ? liveWatching(c.watching) : statusPill.LIVE;
+      if (c.seatsLeft === 0) return statusPill.SOLD_OUT;
+      if (!c.startsAt) return isNew(c.createdAt) ? statusPill.NEW : pillExtra.AVAILABLE_NOW;
+      return timePillLabel(c.startsAt);
+    }
+  }
+}
+
+/** The two proof chips per §2's per-type ladder. Always both filled (the
+ *  layout needs it) — see the ⚠️ note on the old `chipsFor` this replaces. */
+export function chipsForLane(lane: ListingLane, card: Card, c: CardView): [string, string] {
+  const rating = ratingOrNull(c);
+  switch (lane) {
+    case 'free': {
+      const one =
+        c.seatsLeft === 0 ? laneBadge.FULL
+          : c.seatsLeft != null ? spotsLeft(c.seatsLeft)
+            : c.capacity != null ? spotsLeft(c.capacity)
+              : laneBadge.NEW_LISTING;
+      const two = regularsOrNull(card) ?? rating ?? laneBadge.PEHLA_SHOW;
+      return [one, two];
+    }
+    case 'consult': {
+      const one = card.response_time_min != null ? responseTime(card.response_time_min) : laneBadge.NEW_EXPERT;
+      const two = rating ?? laneBadge.NEW_LISTING;
+      return [one, two];
+    }
+    case 'agent': {
+      const one = AI_INSTANT;
+      const two = c.joinedCount > 0 ? chatsCount(c.joinedCount) : rating ?? laneBadge.NAYA_AGENT;
+      return [one, two];
+    }
+    case 'adda': {
+      const tags = parseArrayMaybe<string>(card.vibe_tags);
+      const one = tags && tags[0] ? tags[0].toUpperCase() : laneBadge.NEW_LISTING;
+      const two = rating ?? laneBadge.JUST_ADDED;
+      return [one, two];
+    }
+    case 'live':
+    default: {
+      const one = regularsOrNull(card) ?? laneBadge.PEHLA_SHOW;
+      const pct = card.capacity && c.seatsLeft != null && card.capacity > 0 ? c.seatsLeft / card.capacity : null;
+      const two =
+        rating
+        ?? (c.seatsLeft != null && c.seatsLeft > 0 && pct != null && pct <= 0.2 ? seatsBaakiUrgent(c.seatsLeft) : null)
+        ?? (card.promo_pct ? earlyBird(card.promo_pct) : null)
+        ?? laneBadge.JUST_ADDED;
+      return [one, two];
+    }
+  }
+}
+
+/** The bottom-right cadence label per §2's per-type rule. */
+export function bottomRightForLane(lane: ListingLane, card: Card, c: CardView): string | null {
+  switch (lane) {
+    case 'agent':
+      return billingUnitLabel(card.billing_unit) ?? 'PER 10 MIN';
+    case 'consult':
+      if (card.billing_unit === '10min' && c.price != null) {
+        return `₹${c.price.toLocaleString('en-IN')} / 10 MIN`;
+      }
+      return billingUnitLabel(card.billing_unit) ?? durationLabel(c.durationMin);
+    case 'adda':
+      return billingUnitLabel(card.billing_unit) ?? durationLabel(c.durationMin);
+    case 'free':
+    case 'live':
+    default:
+      return durationLabel(c.durationMin);
+  }
+}
+
+/** Primary/secondary CTA per §2's per-type rule + the `cta` tag §2.3 (task
+ *  item 7) reports on `market_card_click`. */
+export interface LaneButtons {
+  primaryLabel: string;
+  primaryCta: 'book' | 'talk' | 'reserve';
+  secondaryLabel: string;
+  secondaryCta: 'details' | 'calendar';
+}
+
+export function buttonsForLane(lane: ListingLane): LaneButtons {
+  switch (lane) {
+    case 'consult':
+      return { primaryLabel: cta.BOOK_SLOT, primaryCta: 'book', secondaryLabel: 'CALENDAR', secondaryCta: 'calendar' };
+    case 'agent':
+      return { primaryLabel: cta.TALK_NOW, primaryCta: 'talk', secondaryLabel: 'DETAILS', secondaryCta: 'details' };
+    case 'free':
+      return { primaryLabel: cta.RESERVE_FREE, primaryCta: 'reserve', secondaryLabel: 'DETAILS', secondaryCta: 'details' };
+    case 'adda':
+    case 'live':
+    default:
+      return { primaryLabel: cta.BOOK_NOW, primaryCta: 'book', secondaryLabel: 'DETAILS', secondaryCta: 'details' };
   }
 }

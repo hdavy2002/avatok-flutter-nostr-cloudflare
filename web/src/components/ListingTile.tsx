@@ -1,10 +1,16 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
+import type { MouseEvent } from 'react';
 import { cfImage } from '../lib/config';
-import { toCardView, durationLabel, languageLabel, priceLabel } from '../lib/card';
-import { chips as chipCopy, statusPill } from '../lib/copy';
+import {
+  toCardView, languageLabel, priceLabel,
+  laneFor, pillLabel, chipsForLane, bottomRightForLane, buttonsForLane,
+} from '../lib/card';
+import { statusPill, ctaExtra } from '../lib/copy';
 import type { Card as CardModel, CardView } from '../lib/types';
 // [WEB-POSTHOG-1] Contract: Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md §2.3.
 import { capture } from '../lib/analytics';
+import { getActiveToken, requireGuestAuth } from '../lib/clerk';
+import { addFavorite, removeFavorite } from '../lib/apiClient';
 
 export interface ListingTileProps {
   listing: CardModel;
@@ -17,6 +23,14 @@ export interface ListingTileProps {
   position?: number;
   /** The bazaar section (vertical id) or rail this card renders in, e.g. 'live_now'. */
   section?: string;
+  /**
+   * [LIST-TRUST-1 §2.3] A ≤30s sample-voice clip for an AI agent listing
+   * (`listing_highlights` where `kind='voice'`, duration_s ≤ 30 — §4.4). Not on
+   * the Card wire today, so this is a prop hook only: no caller passes it yet,
+   * so `▶ SUNO` stays hidden on every agent card until one does. Do NOT wire a
+   * click-to-play here without an actual audio element behind it.
+   */
+  voiceHighlightUrl?: string | null;
 }
 
 // ── §2.3 market_card_impression — ONE event per batch, up to 50 entries, flushed
@@ -139,62 +153,6 @@ function paletteFor(id: string): Pal {
   return PAL[PAL_ORDER[h % PAL_ORDER.length]];
 }
 
-/** "TONIGHT 2 AM", "FRI 9 PM", "6 SEPT" — the comp's status pill copy. */
-function statusLabel(c: CardView): string {
-  if (c.live) return 'LIVE';
-  if (!c.startsAt) return 'AVAILABLE NOW';
-  const d = new Date(c.startsAt);
-  if (!Number.isFinite(d.getTime())) return 'AVAILABLE NOW';
-  const time = d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }).toUpperCase();
-  const now = new Date();
-  if (d.toDateString() === now.toDateString()) return `TONIGHT ${time}`;
-  const days = Math.round((d.getTime() - now.getTime()) / 86_400_000);
-  if (days > 0 && days < 7) return `${d.toLocaleDateString('en-IN', { weekday: 'short' }).toUpperCase()} ${time}`;
-  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }).toUpperCase();
-}
-
-/**
- * The comp's two social-proof chips, ALWAYS both filled so the row never
- * collapses and every card has the same shape.
- *
- * ⚠️ THEY ARE FILLED FROM REAL DATA, NOT FROM THE COMP'S STRINGS. The comp reads
- * "♡ 300 REGULARS" and "★ 4.9 · 620" on every card; those are mock copy. Printing
- * them on a live listing would show a buyer a rating and a following that do not
- * exist, next to a real Book button — invented evidence at the exact moment
- * someone decides to spend money. So the SLOTS are always filled (the owner asked
- * for that, and the layout needs it), but with facts the listing actually has:
- * bookings, seats, rating, language, category, or an honest "NEW LISTING".
- */
-/**
- * [LIST-FREE-1] Free-entry chip 1 is always "spots baaki" (§2.4: cap-derived
- * seats remaining, `→ FULL` at zero) — it outranks the regulars/seats/duration
- * ladder the paid chip uses, because on a free card "how many spots are left"
- * is the single fact a buyer needs before the other proof chip.
- */
-function freeChip1(c: CardView): string {
-  if (c.seatsLeft === 0) return 'FULL';
-  if (c.seatsLeft != null) return chipCopy.seatsLeft(c.seatsLeft).replace('SEATS', 'SPOTS');
-  if (c.capacity != null) return chipCopy.seatsLeft(c.capacity).replace('SEATS', 'SPOTS');
-  return 'NEW LISTING';
-}
-
-function chipsFor(c: CardView, freeEntry: boolean): [string, string] {
-  const one = freeEntry
-    ? freeChip1(c)
-    : c.joinedCount > 0 ? `✓ ${c.joinedCount.toLocaleString('en-IN')} BOOKED`
-      : c.capacity ? `${c.capacity} SEATS`
-        : c.durationMin ? `${durationLabel(c.durationMin)?.toUpperCase()}`
-          : 'NEW LISTING';
-  const two =
-    c.ratingAvg != null
-      ? `★ ${c.ratingAvg.toFixed(1)}${c.ratingCount > 0 ? ` · ${c.ratingCount}` : ''}`
-      : c.seatsLeft != null && c.seatsLeft > 0 && c.seatsLeft <= 5 ? `◷ ${c.seatsLeft} LEFT`
-        : c.location ? c.location.toUpperCase()
-          : c.live && c.watching ? `👁 ${c.watching} WATCHING`
-            : 'JUST ADDED';
-  return [one, two];
-}
-
 /**
  * The bazaar marketplace card, rendered from REAL listing data.
  *
@@ -206,29 +164,46 @@ function chipsFor(c: CardView, freeEntry: boolean): [string, string] {
  *
  * Every measurement here is the comp's. What differs is the SOURCE: the comp is
  * hardcoded mock data and this reads the API, so anything the comp faked either
- * comes from a real column or is replaced by something true (see chipsFor).
+ * comes from a real column or is replaced by something true.
+ *
+ * [LIST-TRUST-1 §2] The pill / chips / bottom-right / buttons are no longer one
+ * generic ladder — `laneFor()` reads `free_entry` / `kind` / `schedule_mode` off
+ * the raw listing and the four `*ForLane()` helpers in lib/card.ts pick the
+ * §2.1–2.5 slot contents for that lane. This component only assembles markup;
+ * it never decides what a lane shows.
  */
-export function ListingTile({ listing, href, width = 520, className = '', position = 0, section = 'unknown' }: ListingTileProps) {
+export function ListingTile({
+  listing, href, width = 520, className = '', position = 0, section = 'unknown', voiceHighlightUrl = null,
+}: ListingTileProps) {
   const c = toCardView(listing);
   const target = href ?? listingHref(listing);
   const p = paletteFor(c.id);
   const impressionRef = useCardImpression({ listing_id: c.id, position, section });
-  const onCardClick = useCallback(() => {
-    // [WEB-POSTHOG-1] §2.3 market_card_click. The whole card is one <a> — there
-    // is no separate BOOK NOW / DETAILS control today (both are decorative
-    // spans, see below), so every click leads to the details route.
-    capture('market_card_click', { listing_id: c.id, kind: c.kind ?? listing.kind ?? null, position, section, cta: 'details' });
+
+  const lane = laneFor(listing, c);
+  const pill = pillLabel(lane, listing, c);
+  const [chip1, chip2] = chipsForLane(lane, listing, c);
+  const bottomRight = bottomRightForLane(lane, listing, c);
+  const buttons = buttonsForLane(lane);
+  // §2.3 the sample-voice preview only ever appears next to TALK NOW, and only
+  // once a real clip exists — hidden by default (no caller passes the prop yet).
+  const showSuno = lane === 'agent' && Boolean(voiceHighlightUrl);
+
+  const onCardClick = useCallback((e: MouseEvent<HTMLAnchorElement>) => {
+    // [WEB-POSTHOG-1] §2.3 market_card_click. The whole card is one <a> so a
+    // click on either CTA span bubbles here; `data-cta` on the span that was
+    // actually clicked tells us which of book|details|calendar|talk|reserve it
+    // was, defaulting to "details" for a click anywhere else on the card.
+    const ctaTarget = (e.target as HTMLElement).closest<HTMLElement>('[data-cta]');
+    const cta = ctaTarget?.dataset.cta ?? 'details';
+    capture('market_card_click', { listing_id: c.id, kind: c.kind ?? listing.kind ?? null, position, section, cta });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [c.id, c.kind, listing.kind, position, section]);
-  // [LIST-FREE-1] Gated on `free_entry` alone (§2.4) — a listing that merely
-  // prices at ₹0 without the flag is not this lane, and free_entry rows never
-  // reach this component without it (server truth, not a promo).
-  const isFreeEntry = Boolean(listing.free_entry);
+
   // Free cards never show a price in the title (§2.4) — not even "Free".
-  const price = isFreeEntry ? '' : priceLabel(c.price, listing.price_semantics);
-  const [chip1, chip2] = chipsFor(c, isFreeEntry);
+  const price = lane === 'free' ? '' : priceLabel(c.price, listing.price_semantics, listing.billing_unit);
   const language = languageLabel(c.spokenLang);
-  const duration = durationLabel(c.durationMin);
+  const duration = bottomRight;
   const initials = (c.creator?.name || c.creator?.handle || '?')
     .split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 
@@ -239,6 +214,40 @@ export function ListingTile({ listing, href, width = 520, className = '', positi
   const stripe = p.dark
     ? 'repeating-linear-gradient(135deg, rgba(253,241,211,.14) 0 9px, transparent 9px 20px)'
     : 'repeating-linear-gradient(135deg, rgba(22,22,20,.12) 0 9px, transparent 9px 20px)';
+
+  // [LIST-TRUST-1 §H.5] Favourite heart — optimistic toggle against
+  // /api/marketplace/favorites. A guest (no session token) never reaches the
+  // API: requireGuestAuth() opens the sign-in gate instead, and the optimistic
+  // flip is reverted if they cancel it.
+  const [favorited, setFavorited] = useState(c.favorited);
+  const [favBusy, setFavBusy] = useState(false);
+  const onFavoriteClick = useCallback((e: MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (favBusy) return;
+    const next = !favorited;
+    setFavorited(next);
+    setFavBusy(true);
+    void (async () => {
+      try {
+        let token = await getActiveToken();
+        if (!token) {
+          token = await requireGuestAuth(); // opens the sign-in gate for a guest
+        }
+        if (next) await addFavorite(c.id, token);
+        else await removeFavorite(c.id, token);
+        capture('market_favorite_toggle', { listing_id: c.id, on: next });
+      } catch {
+        setFavorited(!next); // revert — cancelled sign-in, or the write failed
+      } finally {
+        setFavBusy(false);
+      }
+    })();
+  }, [c.id, favBusy, favorited]);
+
+  // [LIST-TRUST-1 §2.2] The credential line under the host — only after KYC,
+  // and only for a consult listing that actually filled one in.
+  const credential = lane === 'consult' && c.creator?.verified ? listing.credential : null;
 
   return (
     <a
@@ -272,7 +281,7 @@ export function ListingTile({ listing, href, width = 520, className = '', positi
             corner, reusing the existing --ava-marigold token (styles/ava-tokens.css)
             rather than a new hex literal. The parent <a> is `overflow-hidden`, which
             is what clips the rotated banner's corners to the card's rounded frame. */}
-        {isFreeEntry && (
+        {lane === 'free' && (
           <div style={{
             position: 'absolute', top: 16, right: -38, width: 136,
             transform: 'rotate(45deg)', textAlign: 'center', zIndex: 1,
@@ -294,18 +303,38 @@ export function ListingTile({ listing, href, width = 520, className = '', positi
             borderRadius: 100, padding: '6px 11px', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0,
           }}>
             <span style={{
-              width: 6, height: 6, borderRadius: '50%',
-              background: c.live ? '#ffd0c4' : '#8fd0c0', flex: 'none',
+              width: 6, height: 6, borderRadius: '50%', flex: 'none',
+              background: c.live ? '#ffd0c4' : '#8fd0c0',
+              // [LIST-TRUST-1 §2.3] "ALWAYS ON" gets a pulsing dot, never a time.
+              animation: lane === 'agent' ? 'avatok-pill-pulse 1.6s ease-in-out infinite' : undefined,
             }} />
-            {statusLabel(c)}
+            {pill}
           </span>
-          {c.adultsOnly && (
-            <span style={{
-              fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800, fontSize: '0.6875rem',
-              background: CREAM, color: INK, border: `1.5px solid ${INK}`,
-              borderRadius: 100, padding: '5px 9px', flex: 'none',
-            }}>18+</span>
-          )}
+
+          {/* [LIST-TRUST-1 §H.5] The favourite heart — top-right, per the comp. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }}>
+            {c.adultsOnly && (
+              <span style={{
+                fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800, fontSize: '0.6875rem',
+                background: CREAM, color: INK, border: `1.5px solid ${INK}`,
+                borderRadius: 100, padding: '5px 9px', flex: 'none',
+              }}>18+</span>
+            )}
+            <button
+              type="button"
+              aria-label={favorited ? 'Remove from favourites' : 'Add to favourites'}
+              aria-pressed={favorited}
+              onClick={onFavoriteClick}
+              style={{
+                width: 30, height: 30, flex: 'none', borderRadius: '50%', border: `1.5px solid ${INK}`,
+                background: favorited ? '#d93825' : CREAM, color: favorited ? CREAM : INK,
+                display: 'grid', placeItems: 'center', fontSize: '0.9375rem', lineHeight: 1,
+                cursor: favBusy ? 'wait' : 'pointer',
+              }}
+            >
+              {favorited ? '♥' : '♡'}
+            </button>
+          </div>
         </div>
 
         {/* The ticket-stub scallop that joins the photo to the card body. */}
@@ -336,15 +365,15 @@ export function ListingTile({ listing, href, width = 520, className = '', positi
           {c.title}{price ? ` · ${price}` : ''}
         </h4>
 
-        {c.oneLiner && (
+        {(listing.blurb || c.oneLiner) && (
           <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 500, lineHeight: 1.45, color: bodyCol }}>
-            {c.oneLiner}
+            {listing.blurb || c.oneLiner}
           </p>
         )}
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
-          {[chip1, chip2].map((chip) => (
-            <span key={chip} style={{
+          {[chip1, chip2].map((chip, i) => (
+            <span key={`${chip}-${i}`} style={{
               fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800, fontSize: '0.6875rem',
               letterSpacing: '.05em', border: `1.5px solid ${chipCol}`, borderRadius: 100,
               padding: '6px 10px', color: chipCol,
@@ -353,20 +382,27 @@ export function ListingTile({ listing, href, width = 520, className = '', positi
         </div>
 
         <div style={{ display: 'flex', gap: 9, marginTop: 'auto' }}>
-          <span style={{
+          {showSuno && (
+            <span data-cta="suno" style={{
+              flex: 'none', textAlign: 'center', fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800,
+              fontSize: '0.75rem', letterSpacing: '.08em', padding: '13px 12px', borderRadius: 100,
+              border: `2px solid ${INK}`, background: CREAM, color: INK,
+            }}>{ctaExtra.SUNO}</span>
+          )}
+          <span data-cta={buttons.primaryCta} style={{
             flex: 1, textAlign: 'center', fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800,
             fontSize: '0.75rem', letterSpacing: '.08em', padding: '13px 8px', borderRadius: 100,
             border: `2px solid ${INK}`, background: '#d93825', color: CREAM,
-          }}>BOOK NOW</span>
-          <span style={{
+          }}>{buttons.primaryLabel}</span>
+          <span data-cta={buttons.secondaryCta} style={{
             flex: 1, textAlign: 'center', fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800,
             fontSize: '0.75rem', letterSpacing: '.08em', padding: '13px 8px', borderRadius: 100,
             border: `2px solid ${INK}`, background: CREAM, color: INK,
-          }}>DETAILS</span>
+          }}>{buttons.secondaryLabel}</span>
         </div>
 
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 9,
+          display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap',
           paddingTop: 11, borderTop: `1.5px solid ${hairCol}`,
         }}>
           <span style={{
@@ -380,14 +416,22 @@ export function ListingTile({ listing, href, width = 520, className = '', positi
           </span>
           <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: textCol }} className="truncate">
             {c.creator?.name ?? (c.creator?.handle ? `@${c.creator.handle}` : 'avaTOK')}
-            {/* The tick is EARNED — the comp draws it on every card unconditionally. */}
-            {c.creator?.verified ? ' ✓' : ''}
+            {/* [LIST-TRUST-1 §2.3] The AI badge replaces the ✓ on an agent card —
+                the tick belongs to the human behind it, shown on the detail page,
+                never here. Every other lane's tick is EARNED, never unconditional. */}
+            {lane === 'agent' ? ' · AI' : c.creator?.verified ? ' ✓' : ''}
           </span>
           {duration && (
             <span style={{
               marginLeft: 'auto', fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800,
               fontSize: '0.6875rem', letterSpacing: '.08em', color: p.stub, whiteSpace: 'nowrap',
             }}>{duration.toUpperCase()}</span>
+          )}
+          {credential && (
+            <span style={{
+              flexBasis: '100%', fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 700,
+              fontSize: '0.6875rem', letterSpacing: '.04em', color: p.stub,
+            }}>{credential}</span>
           )}
         </div>
       </div>
