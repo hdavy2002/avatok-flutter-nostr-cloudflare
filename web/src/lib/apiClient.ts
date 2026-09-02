@@ -8,6 +8,25 @@
 
 import { API_BASE } from './config';
 import type { Card, CardPage, Creator, CreatorStats, Listing, Review } from './types';
+import { apiError, captureException } from './analytics';
+
+// [WEB-POSTHOG-1] Strip ids out of a path so `/api/listings/9f2c...` and
+// `/api/listings/8ab1...` both roll up to `/api/listings/:id` in PostHog
+// instead of fragmenting into one row per id. Ids in this API are
+// `crypto.randomUUID()` (worker/src/money_engine.ts etc.) or Clerk uids
+// (`user_...`); route keywords are always plain lowercase English words, so
+// requiring a UUID shape or a digit in the segment keeps `notifications`,
+// `identity`, `affiliate` etc. untouched while still collapsing real ids.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ID_LIKE_RE = /^[A-Za-z][A-Za-z0-9_-]*\d[A-Za-z0-9_-]{5,}$/; // has a digit, 7+ chars
+function normalizeEndpoint(path: string): string {
+  return path
+    .replace(/^https?:\/\/[^/]+/, '')
+    .split('?')[0]
+    .split('/')
+    .map((seg) => (UUID_RE.test(seg) || ID_LIKE_RE.test(seg) ? ':id' : seg))
+    .join('/');
+}
 
 /** Typed error thrown on any non-2xx response. */
 export class ApiError extends Error {
@@ -46,7 +65,16 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
   return u.toString();
 }
 
-/** Core typed request. Throws {@link ApiError} on non-2xx. */
+/**
+ * Core typed request. Throws {@link ApiError} on non-2xx.
+ *
+ * [WEB-POSTHOG-1] The ONE place every API call on the site passes through, so
+ * it is the ONE place that needs an `api_error` hook (catalog §2.11) — a
+ * non-2xx response, or the fetch throwing outright (network down, CORS,
+ * DNS), both get reported with the same {endpoint, method, status, reason,
+ * ms} shape. `endpoint` has ids normalized to `:id` so requests to different
+ * listings/bookings roll up into one queryable row instead of one per id.
+ */
 export async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, auth, query, headers = {}, signal } = opts;
   const init: RequestInit = { method, headers: { ...headers }, signal };
@@ -56,7 +84,20 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
     init.body = JSON.stringify(body);
   }
 
-  const res = await fetch(buildUrl(path, query), init);
+  const endpoint = normalizeEndpoint(path);
+  const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  const elapsedMs = () => Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt);
+
+  let res: Response;
+  try {
+    res = await fetch(buildUrl(path, query), init);
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
+    apiError({ endpoint, method, status: 0, reason, ms: elapsedMs() });
+    captureException(e, { endpoint, method });
+    throw e;
+  }
+
   const text = await res.text();
   let parsed: unknown = undefined;
   if (text) {
@@ -72,6 +113,7 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
       parsed && typeof parsed === 'object' && parsed !== null && 'error' in parsed
         ? String((parsed as { error: unknown }).error)
         : res.statusText || 'request failed';
+    apiError({ endpoint, method, status: res.status, reason: errMsg, ms: elapsedMs() });
     throw new ApiError(res.status, errMsg, parsed);
   }
   return parsed as T;

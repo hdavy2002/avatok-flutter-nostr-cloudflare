@@ -37,12 +37,14 @@
 import {
   ClerkProvider,
   useAuth,
+  useUser,
   SignInButton as ClerkSignInButton,
 } from '@clerk/clerk-react';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { CLERK_PUBLISHABLE_KEY } from './config';
 import { request, ApiError } from './apiClient';
+import { capture, identify, reset as resetAnalytics } from './analytics';
 import type { GuestCreated } from './types';
 import { Modal } from '../components/Modal';
 import { EmailCodeSignIn } from '../islands/auth/EmailCodeSignIn';
@@ -93,6 +95,7 @@ export async function getActiveToken(): Promise<string | null> {
     try {
       const t = await _clerkGetToken();
       if (t) return t;
+      capture('auth_token_null', { where: 'getActiveToken' });
     } catch {
       /* fall through to guest */
     }
@@ -153,6 +156,7 @@ async function createGuest(email: string): Promise<string> {
         body: { handle, device_id: deviceId() },
       });
       lsSet(GUEST_JWT_KEY, res.guest_token);
+      capture('auth_guest_token_issued');
       return res.guest_token;
     } catch (e) {
       lastErr = e;
@@ -189,6 +193,7 @@ export function ClerkIsland({ children }: { children: ReactNode }) {
 /** Keeps the module-level Clerk bridges in sync with the live session. */
 function ClerkBridge() {
   const { isSignedIn, getToken } = useAuth();
+  const { user } = useUser();
   useEffect(() => {
     _clerkSignedIn = !!isSignedIn;
     _clerkGetToken = () => getToken();
@@ -197,6 +202,20 @@ function ClerkBridge() {
       _clerkSignedIn = false;
     };
   }, [isSignedIn, getToken]);
+
+  // §1.3 person identity — identify once we know who is signed in; reset on
+  // sign-out so the next visitor doesn't inherit the previous person's id.
+  useEffect(() => {
+    if (isSignedIn && user) {
+      identify(user.id, {
+        email: user.primaryEmailAddress?.emailAddress ?? null,
+        handle: user.username ?? null,
+      });
+    } else if (isSignedIn === false) {
+      resetAnalytics();
+    }
+  }, [isSignedIn, user]);
+
   return null;
 }
 

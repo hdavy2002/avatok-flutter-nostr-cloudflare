@@ -49,6 +49,12 @@ const closeHtml = '\n</main>\n</body>\n</html>';
 ---
 
 <Fragment set:html={headHtml} />
+{/* [WEB-POSTHOG-1] This page emits its own document and never touches
+    Base.astro, so it loads the PostHog core separately. */}
+<script>
+  import { initAnalytics } from '../lib/analytics';
+  initAnalytics();
+</script>
 <SiteHeader sticky={false} />
 <Fragment set:html={pageHtml} />
 <SiteFooter />

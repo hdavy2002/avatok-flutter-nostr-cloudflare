@@ -86,6 +86,10 @@ jobs:
         env:
           PUBLIC_CLERK_PUBLISHABLE_KEY: pk_live_Y2xlcmsuYXZhdG9rLmFpJA
           PUBLIC_API_BASE: https://api.avatok.ai
+          # [WEB-POSTHOG-1] `release` super property on every web event, so an
+          # issue/error can be filtered by exactly which deploy produced it —
+          # same idea as the app's git-SHA `release` prop (analytics.dart).
+          PUBLIC_RELEASE_SHA: ${{ github.sha }}
         run: npm run build      # runs prebuild (zine tokens) + astro build
 
       - name: Deploy to Cloudflare Pages (avatok-app)

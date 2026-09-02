@@ -168,3 +168,62 @@ const gutters = showHero ? 'mx-auto max-w-[1760px] px-4 sm:px-10' : '';
     </section>
   )}
 </div>
+
+<script>
+  // [WEB-POSTHOG-1] island_visible_never — both ExploreGrid and LiveNowRail
+  // hydrate with client:visible, so they only ever mount once their
+  // astro-island element scrolls into view. If that never actually happens
+  // (the observer never fires, the component chunk 404s, a hydration error
+  // throws before Astro clears the `ssr` marker) the section stays a dead
+  // server-rendered husk forever with nothing telling us so. This watches
+  // both islands and reports the ones that stayed unhydrated 10s after they
+  // were first seen.
+  //
+  // Astro marks an island `ssr` (still server-rendered, not yet hydrated)
+  // and removes that attribute once client-side hydration completes — so its
+  // continued presence 10s after intersection is the signal something is
+  // stuck.
+  (function () {
+    if (typeof IntersectionObserver === 'undefined') return;
+
+    const islands = Array.from(
+      document.querySelectorAll<HTMLElement>('astro-island'),
+    ).filter((el) => {
+      const url = el.getAttribute('component-url') || '';
+      return url.includes('ExploreGrid') || url.includes('LiveNowRail');
+    });
+    if (islands.length === 0) return;
+
+    const nameFor = (el: HTMLElement): string => {
+      const url = el.getAttribute('component-url') || '';
+      if (url.includes('ExploreGrid')) return 'marketplace-explore-grid';
+      if (url.includes('LiveNowRail')) return 'marketplace-live-now-rail';
+      return 'unknown';
+    };
+
+    const seen = new WeakSet<HTMLElement>();
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const el = entry.target as HTMLElement;
+          if (!entry.isIntersecting || seen.has(el)) continue;
+          seen.add(el);
+          observer.unobserve(el);
+
+          setTimeout(() => {
+            if (!el.hasAttribute('ssr')) return; // hydrated fine
+            import('../lib/analytics').then(({ capture }) => {
+              capture('island_visible_never', {
+                island: nameFor(el),
+                url: window.location.href,
+              });
+            });
+          }, 10000);
+        }
+      },
+      { threshold: 0.1 },
+    );
+
+    for (const el of islands) observer.observe(el);
+  })();
+</script>

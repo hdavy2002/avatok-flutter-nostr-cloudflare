@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "avatok.ai public web client \u2014 consume-side (browse, book, pay, watch, consult, talk to AI). Astro + React islands + Tailwind on Cloudflare Pages, rendered in the app's zine visual language.",
+  "description": "avatok.ai public web client — consume-side (browse, book, pay, watch, consult, talk to AI). Astro + React islands + Tailwind on Cloudflare Pages, rendered in the app's zine visual language.",
   "engines": {
     "node": ">=20"
   },
@@ -25,6 +25,7 @@
     "@stream-io/video-react-sdk": "1.42.0",
     "astro": "5.18.2",
     "hls.js": "1.6.16",
+    "posthog-js": "^1.424.1",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "tailwindcss": "3.4.19"
