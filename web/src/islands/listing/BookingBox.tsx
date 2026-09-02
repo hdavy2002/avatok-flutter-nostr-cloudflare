@@ -46,6 +46,10 @@ export interface BookingBoxProps {
  *  day-bucketing (sameDay/startOfDay/the calendar grid) work in LISTING time
  *  instead of the browser's local zone, by building a "proxy" Date from these
  *  parts and comparing with the existing y/m/d-based helpers below. */
+// The Workers/V8 ICU build prints 'GMT+5:30' for Asia/Kolkata instead of
+// 'IST'; map the common Indian/desi-diaspora zones to the names people use.
+const TZ_ABBR: Record<string, string> = { 'Asia/Kolkata': 'IST', 'Asia/Calcutta': 'IST', 'Asia/Dubai': 'GST', 'Asia/Singapore': 'SGT' };
+function tzAbbr(raw: string, timeZone: string): string { return TZ_ABBR[timeZone] ?? raw; }
 function tzDateParts(ms: number, timeZone: string): { y: number; m: number; d: number } {
   try {
     const parts = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(ms));
@@ -78,7 +82,7 @@ function fmtSlotTime(ms: number, timeZone: string): string {
     let abbr = '';
     try {
       const p = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'short' }).formatToParts(d);
-      abbr = p.find((x) => x.type === 'timeZoneName')?.value ?? '';
+      abbr = tzAbbr(p.find((x) => x.type === 'timeZoneName')?.value ?? '', timeZone);
     } catch { /* no abbreviation available for this zone */ }
     return `${datePart} · ${timePart}${abbr ? ` ${abbr}` : ''}`;
   } catch {

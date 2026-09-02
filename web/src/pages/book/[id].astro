@@ -41,6 +41,11 @@ const verb =
 // sends `cover_media`, an array of {type,url}. Reading `.poster` straight off
 // the wire listing left this whole card blank: no image (bare placeholder
 // box), and the raw `kind` string ("LIVE_EVENT") standing in for a real label.
+// The Workers/V8 ICU build prints 'GMT+5:30' for Asia/Kolkata instead of
+// 'IST'; map the common Indian/desi-diaspora zones to the names people use.
+const TZ_ABBR: Record<string, string> = { 'Asia/Kolkata': 'IST', 'Asia/Calcutta': 'IST', 'Asia/Dubai': 'GST', 'Asia/Singapore': 'SGT' };
+function tzAbbr(raw: string, timeZone: string): string { return TZ_ABBR[timeZone] ?? raw; }
+
 function firstCoverUrl(media: CoverMedia[] | null | undefined): string | null {
   for (const m of media ?? []) {
     const url = m?.url ?? (m as unknown as { r2_key?: string } | null)?.r2_key;
@@ -70,7 +75,7 @@ function toMs(t?: number | null): number | null { if (t == null) return null; re
 function tzAbbr(ms: number, timeZone: string): string {
   try {
     const parts = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'short' }).formatToParts(new Date(ms));
-    return parts.find((p) => p.type === 'timeZoneName')?.value ?? '';
+    return tzAbbr(parts.find((p) => p.type === 'timeZoneName')?.value ?? '', timeZone);
   } catch { return ''; }
 }
 function formatListingTime(ms: number, timeZone: string): string {
