@@ -669,6 +669,22 @@ reading code and guessing. When building ANY new feature, wire these in from the
   `Analytics.uiInteraction()` + `Analytics.cacheEvent()` helpers. Dashboard
   "AvaTOK — App Health" (id 836684).
 
+**🚨 EVERY SURFACE GETS POSTHOG — NO EXCEPTIONS (owner decision 2026-09-02).**
+The website (`web/`) shipped for months with **zero** PostHog: no pageviews, no
+errors, no replay. A creator's photo upload failed on 2026-09-02 and there was
+nothing to pull — the page swallowed the error and no event existed anywhere.
+That is the last time. **PostHog telemetry is a default part of coding and
+planning on every surface**: the Astro website, the Flutter Android app, the
+iOS app, the macOS/Windows/Linux desktop apps, the Cloudflare Worker, the
+consumers — and any surface added later. A plan, spec, or PR for a new surface
+or feature that has no telemetry section is incomplete; the reviewer sends it
+back. The catalog of what each surface must emit is
+`Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md` — new events are added THERE first,
+then coded. Same project (139917, EU), same super-property contract on every
+surface: `platform`, `service_name`, `release`, `app`, `email`, `clerk_uid`,
+`trace_id`. Web wiring lives in `web/src/lib/analytics.ts` (`[WEB-POSTHOG-1]`);
+call it, never `window.posthog` directly.
+
 **Bake-in rules for NEW code (do these by default, like per-account scoping):**
 - New async/network path -> failures go through `Analytics.captureException` (client)
   or `hooks.trackException` (worker). No silent `catch {}`.
