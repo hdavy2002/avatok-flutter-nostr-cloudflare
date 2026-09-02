@@ -317,6 +317,23 @@ not compile. On 2026-08-01 a `track()` call went to prod with 3 args instead of
 have fired malformed — which, for an alert, is the same as not firing. Nothing
 failed. Nothing warned. The deploy was green.
 
+**5. NEVER run `flags.sh set` twice in a row. KV is eventually consistent, so
+the second call reads a STALE blob and silently drops the first write.** On
+2026-09-02 three back-to-back sets on staging left only the last key standing —
+twice. `flags.sh set` takes many `k=v` in ONE call (one read, one write): use
+that form, then wait ~60s and confirm with `flags.sh get` before believing it.
+Same trap for `unset`.
+
+**6. `scripts/d1_apply_alters.py` applies ONLY the `ALTER … ADD COLUMN` lines
+of a file.** A `CREATE TABLE` sitting in the same migration is skipped silently
+(`review_helpful`, 2026-09-02). Keep CREATEs in their own file and apply those
+with `scripts/cf.sh worker d1 execute DB_META --remote --file=migrations/<f>.sql`
+(path is relative to `worker/`), or run the CREATE as `--command`.
+
+**7. Staging D1 was 23 `listings` columns behind prod until 2026-09-02** — the
+July taxonomy migrations had never been applied there. Before testing a
+listings feature on staging, diff `PRAGMA table_info` against the migrations.
+
 **4. COMMIT worker source BEFORE `cf.sh worker deploy`.** The tree is shared by
 several agents. On 2026-07-15 an agent deployed an uncommitted `config.ts` edit;
 another agent's deploy landed **49 seconds later** from a tree without that change
