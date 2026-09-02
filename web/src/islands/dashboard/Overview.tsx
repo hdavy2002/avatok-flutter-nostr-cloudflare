@@ -162,8 +162,11 @@ function Inner() {
               <div className="grid grid-cols-[1fr_auto_auto_auto] gap-3 border-b-zine border-ink bg-paper2 px-4 py-2.5 font-mono text-[12px] font-bold uppercase tracking-[0.06em] text-inkSoft">
                 <span>Listing</span><span className="text-right">Joins</span><span className="text-right">Rating</span><span className="text-right">Gross</span>
               </div>
+              {/* [SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING A1.3] /dashboard/l/:id
+                  301s to /l/:id now — link straight to the real (public,
+                  chrome-free) page instead of round-tripping a redirect. */}
               {rows.slice(0, 8).map((l) => (
-                <a key={l.id} href={`/dashboard/l/${encodeURIComponent(l.id)}`} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-3 border-t-zine border-ink px-4 py-2.5 no-underline first:border-t-0 hover:bg-paper2">
+                <a key={l.id} href={`/l/${encodeURIComponent(l.id)}`} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-3 border-t-zine border-ink px-4 py-2.5 no-underline first:border-t-0 hover:bg-paper2">
                   <span className="min-w-0 truncate font-body font-extrabold text-[14px] text-ink">{l.title || 'Untitled'} <span className="ml-1 font-mono text-[12px] uppercase text-inkMute font-bold">{l.status ?? 'draft'}</span></span>
                   <span className="text-right font-display font-semibold text-[14px] text-ink">{l.joined_count ?? 0}</span>
                   <span className="text-right font-mono text-[14px] text-inkSoft font-bold">{l.rating ? `★${Number(l.rating).toFixed(1)}` : '—'}</span>

@@ -1,6 +1,10 @@
 ---
-// Public marketplace (logged-out). Logged-in users are routed to the
-// dashboard-wrapped /dashboard/marketplace by <AuthRedirect/>.
+// Public marketplace — for everyone, logged in or not (owner decision,
+// SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING.md A1.1). It used to bounce a
+// signed-in visitor into the dashboard-wrapped /dashboard/marketplace via
+// <AuthRedirect/>; that redirect is now REMOVED on purpose. A logged-in user
+// returns to their dashboard via the header's DASHBOARD button, not by being
+// forced off this page. /dashboard/marketplace itself now just 301s here.
 //
 // [DEMO-MARKET-2 2026-08-29] RESTORED TO REAL DATA (owner decision).
 //
@@ -36,7 +40,6 @@
 export const prerender = false;
 
 import Base from '../layouts/Base.astro';
-import AuthRedirect from '../components/AuthRedirect.astro';
 import MarketplaceBrowse from '../components/MarketplaceBrowse.astro';
 
 // [MARKET-BAZAAR-2] ?vertical= replaces ?category= and ?kind=. The page's
@@ -54,7 +57,6 @@ Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-rev
   title="Marketplace · avatok.ai"
   description="Browse live streams, 1:1 sessions, events and AI agents from creators worldwide — no app required."
 >
-  <AuthRedirect slot="head" />
   {/* [MARKET-BAZAAR-1] No max-width and no padding here: the bazaar hero is a
       full-bleed terracotta band with a truck-art strip that has to reach both
       edges of the viewport. MarketplaceBrowse owns the gutters for everything

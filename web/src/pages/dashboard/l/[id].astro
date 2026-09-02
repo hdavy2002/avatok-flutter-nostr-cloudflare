@@ -1,27 +1,10 @@
 ---
-// In-dashboard listing detail (logged-in). Same listing, wrapped in the
-// dashboard shell, with the real booking CTAs. This is where users land after
-// signing up from the public detail (?next=/l/<id> → authed → routed here).
+// [SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING A1.3] /dashboard/l/:id is
+// REMOVED — every listing details page is public and chrome-free, never
+// inside the dashboard. This route now only 301s to the real page. The
+// creator's edit affordance lives as a small bar on the public page when the
+// viewer owns the listing, so nothing is lost by dropping the dashboard twin.
 export const prerender = false;
-
-import Dashboard from '../../../layouts/Dashboard.astro';
-import ListingDetailView from '../../../components/ListingDetailView.astro';
-import { getListing, ApiError } from '../../../lib/apiClient';
-import type { Listing } from '../../../lib/types';
-
 const { id } = Astro.params;
-
-let listing: Listing | null = null;
-let notFound = false;
-try {
-  listing = await getListing(id!);
-} catch (e) {
-  if (e instanceof ApiError && (e.status === 404 || e.status === 410)) notFound = true;
-  else throw e;
-}
-if (notFound || !listing) return new Response('Listing not found', { status: 404 });
+return Astro.redirect(`/l/${encodeURIComponent(id!)}${Astro.url.search}`, 301);
 ---
-
-<Dashboard title={`${listing.title} · avatok.ai`} heading={listing.title} subtitle="Listing details" active="marketplace">
-  <ListingDetailView listing={listing} mode="dashboard" />
-</Dashboard>

@@ -1,15 +1,9 @@
 ---
-// In-dashboard marketplace (logged-in). Same browse surface as the public
-// /marketplace, wrapped in the dashboard shell. Cards link to /dashboard/l/<id>.
+// [SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING A1.1] /dashboard/marketplace is
+// REMOVED — marketplace is a public, full-width page for everyone, logged in
+// or not, never inside the dashboard shell. This route now only 301s to the
+// real page, preserving any query string (?vertical=, ?q=) so old links and
+// bookmarks keep working.
 export const prerender = false;
-import Dashboard from '../../layouts/Dashboard.astro';
-import MarketplaceBrowse from '../../components/MarketplaceBrowse.astro';
-
-// [MARKET-BAZAAR-2] ?vertical= replaces ?category=/?kind= here too, so the
-// dashboard and the public marketplace speak the same taxonomy.
-const vertical = Astro.url.searchParams.get('vertical') ?? undefined;
-const q = Astro.url.searchParams.get('q')?.trim() || undefined;
+return Astro.redirect(`/marketplace${Astro.url.search}`, 301);
 ---
-<Dashboard title="Marketplace · avatok.ai" heading="Marketplace" subtitle="Browse live, book a 1:1, grab a ticket or talk to an AI." active="marketplace">
-  <MarketplaceBrowse hrefBase="/dashboard" vertical={vertical} q={q} />
-</Dashboard>

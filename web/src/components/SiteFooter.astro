@@ -1,83 +1,80 @@
 ---
-// [WEB-FOOTER-2 2026-08-26] Site footer, rebuilt to the bazaar design.
+// [WEB-FOOTER-2 2026-08-26 / WEB-FOOTER-3 2026-09-02] Site footer, matching
+// the design comp (`design/live-streaming/SiteFooter.dc.html`) exactly:
+// blue "chai" truck-art strip on top, dark panel with three columns — BAZAAR /
+// CREATORS / COMPANY — the Horn OK Please art, the legal bar, then the green
+// "auto" + "tassels" strips below.
 //
-// Owner: use the footer from the design comp (truck-art strips, Horn OK Please
-// art, the Kalam sign-off, dark panel). This is that design.
+// [WEB-FOOTER-3] REVERSES the [WEB-FOOTER-2] decision to spread ~26 links
+// across six columns to avoid a "compliance regression dressed as a design
+// change". The owner has now explicitly asked for the comp's three-column
+// look (SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING.md A1.2). COMPANY keeps
+// Terms of Service and Privacy Policy from the old Legal column.
 //
-// ─── EVERY EXISTING LINK IS STILL HERE, ON PURPOSE ──────────────────────────
-// The comp draws three short columns (~12 links). This footer carried 26,
-// several of which are not editorial choices:
-//   * Grievance Redressal — named grievance officer contact is required of an
-//     intermediary under India's IT Rules 2021;
-//   * Child Safety Standards — required by the Play Store listing, which links
-//     to it directly;
-//   * Privacy Policy, Terms, Refunds, DMCA, Biometric Data Schedule — linked
-//     from the app listing and from consent flows.
-// Dropping them to match the comp's link count would have been a compliance
-// regression dressed as a design change, so the comp's LOOK is adopted and the
-// link set is kept whole, spread over five columns instead of three. If the
-// owner wants fewer links, that is a decision to take on the legal ones
-// deliberately, not a side effect of restyling.
+// [WEB-FOOTER-4 2026-09-02] RESTORES the standalone legal/policy pages that
+// WEB-FOOTER-3 unlinked (Grievance Redressal, Child Safety Standards, Cookie
+// Policy, DMCA, Biometric Data Schedule, Marketplace/Consultation Terms,
+// Acceptable Use, Recording & Consent, Refunds, Pricing & Fees, Tokens &
+// Wallet, Community Guidelines, Contact & Report) — they must stay reachable
+// from every page (Grievance Redressal is required to be discoverable for an
+// intermediary under India's IT Rules 2021; Child Safety Standards is a Play
+// listing requirement). Rather than re-adding columns (which the owner
+// explicitly rejected), these live in one slim, visually quiet link row
+// (`.bf-legal-links`) between the three-column comp block and the bottom
+// legal bar, inside `.bazaar-footer` so the existing nav_click delegation
+// covers it. Terms/Privacy stay duplicated in the COMPANY column too — fine.
 import TruckBorder from './TruckBorder.astro';
 
 const year = new Date().getFullYear();
+
+// [WEB-FOOTER-4] Slim compliance link row — see note above. Keep in this
+// order; it's the order the owner specified.
+const legalLinks = [
+  { href: '/terms', label: 'Terms' },
+  { href: '/privacy', label: 'Privacy' },
+  { href: '/cookies', label: 'Cookies' },
+  { href: '/refunds', label: 'Refunds' },
+  { href: '/marketplace-terms', label: 'Marketplace Terms' },
+  { href: '/consultation-terms', label: 'Consultation Terms' },
+  { href: '/acceptable-use', label: 'Acceptable Use' },
+  { href: '/recording', label: 'Recording & Consent' },
+  { href: '/biometric-retention', label: 'Biometric Data' },
+  { href: '/dmca', label: 'DMCA' },
+  { href: '/community-guidelines', label: 'Community Guidelines' },
+  { href: '/child-safety', label: 'Child Safety' },
+  { href: '/grievance', label: 'Grievance Redressal' },
+  { href: '/contact', label: 'Contact & Report' },
+  { href: '/pricing-fees', label: 'Pricing & Fees' },
+  { href: '/tokens', label: 'Tokens & Wallet' },
+];
 
 const columns = [
   {
     title: 'Bazaar',
     links: [
-      { href: '/#live-friends', label: 'Live Friends' },
-      { href: '/#live-streaming', label: 'Live Streaming' },
-      { href: '/#consultations', label: '1:1 Consultations' },
-      { href: '/#voice-agents', label: 'AI Voice Agents' },
-      { href: '/marketplace', label: 'Explore Marketplace' },
+      { href: '/#live-streaming', label: 'Live streaming' },
+      { href: '/#live-friends', label: 'Adda rooms' },
+      { href: '/#voice-agents', label: 'AI voice agents' },
+      { href: '/marketplace', label: 'Explore marketplace' },
     ],
   },
   {
-    title: 'For creators',
+    title: 'Creators',
     links: [
-      { href: '/sign-up', label: 'Create free' },
+      { href: '/sign-up', label: 'Start selling' },
       { href: '/dashboard', label: 'Creator dashboard' },
-      { href: '/blog', label: 'Blog' },
+      { href: '/payouts', label: 'Payouts' },
+      { href: '/community-guidelines', label: 'Safety' },
     ],
   },
   {
-    title: 'Money',
+    title: 'Company',
     links: [
-      { href: '/pricing-fees', label: 'Pricing & Fees' },
-      { href: '/tokens', label: 'Tokens & Wallet' },
-      { href: '/payouts', label: 'Payouts & Withdrawals' },
-      { href: '/refunds', label: 'Refunds & Cancellations' },
-    ],
-  },
-  {
-    title: 'Marketplace',
-    links: [
-      { href: '/marketplace-terms', label: 'Marketplace Terms' },
-      { href: '/consultation-terms', label: 'Consultation Terms' },
-      { href: '/acceptable-use', label: 'Acceptable Use' },
-      { href: '/recording', label: 'Recording & Consent' },
-    ],
-  },
-  {
-    title: 'Legal',
-    links: [
+      { href: '/about', label: 'About' },
+      { href: '/careers', label: 'Careers' },
+      { href: '/contact', label: 'Contact' },
       { href: '/terms', label: 'Terms of Service' },
       { href: '/privacy', label: 'Privacy Policy' },
-      { href: '/cookies', label: 'Cookie Policy' },
-      { href: '/dmca', label: 'DMCA / Copyright' },
-      { href: '/biometric-retention', label: 'Biometric Data Schedule' },
-    ],
-  },
-  {
-    title: 'Safety & Support',
-    links: [
-      { href: '/community-guidelines', label: 'Community Guidelines' },
-      { href: '/child-safety', label: 'Child Safety Standards' },
-      { href: '/grievance', label: 'Grievance Redressal' },
-      { href: '/contact', label: 'Contact & Report' },
-      { href: '/about', label: 'About us' },
-      { href: '/careers', label: 'Careers' },
     ],
   },
 ];
@@ -109,11 +106,21 @@ const columns = [
   </div>
 
   {/* [WEB-BANNER-OFF-1 2026-09-02] The status + address block was removed at the
-      owner's request. The same disclosure still lives on /terms#status, and the
-      Grievance Redressal link remains in the "Safety & Support" column above.
+      owner's request. The same disclosure still lives on /terms#status; the
+      Grievance Redressal page (/grievance) still exists but is no longer
+      linked from this footer — see the WEB-FOOTER-3 note above the columns.
       NOTE: a payment-gateway reviewer looks for exactly this block — if the
       Cashfree/gateway application asks for a visible operating address, restore
       it here (the .bf-entity styles below are kept for that). */}
+
+  <nav class="bf-legal-links" aria-label="Legal and safety">
+    {legalLinks.map((l, i) => (
+      <>
+        <a href={l.href}>{l.label}</a>
+        {i < legalLinks.length - 1 && <span class="bf-legal-links-sep" aria-hidden="true"> · </span>}
+      </>
+    ))}
+  </nav>
 
   <div class="bf-legal">
     <div class="bf-legal-inner">
@@ -126,6 +133,19 @@ const columns = [
   <TruckBorder kind="auto" count={40} />
   <TruckBorder kind="tassels" count={44} />
 </footer>
+
+<script>
+  // [WEB-POSTHOG-1] Footer link clicks -> nav_click{item, location:'footer'}.
+  // Same delegated pattern as SiteHeader (see its nav_click wiring) so this
+  // keeps working across every column and the logo, with no per-link rewiring
+  // when the link set changes.
+  document.querySelectorAll<HTMLAnchorElement>('.bazaar-footer a').forEach((el) => {
+    el.addEventListener('click', () => {
+      const item = (el.textContent || el.getAttribute('href') || 'unknown').trim();
+      import('../lib/analytics').then(({ capture }) => capture('nav_click', { item, location: 'footer' }));
+    });
+  });
+</script>
 
 <style>
   .bf-entity {
@@ -249,6 +269,35 @@ const columns = [
     font-weight: 700;
     font-size: 1.125rem;
     color: #f0d018;
+  }
+
+  .bf-legal-links {
+    max-width: 100rem;
+    margin: 0 auto;
+    padding: 0 clamp(16px, 4vw, 40px) 22px;
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 0.3rem;
+    row-gap: 0.35rem;
+    font-family: 'Nunito', system-ui, sans-serif;
+    font-weight: 700;
+    font-size: 11px;
+    line-height: 1.6;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .bf-legal-links a {
+    color: #a89880;
+    text-decoration: none;
+  }
+  .bf-legal-links a:hover { color: #f0d018; }
+  .bf-legal-links a:focus-visible { outline: 2px solid #f0d018; outline-offset: 2px; }
+
+  .bf-legal-links-sep { color: #6f6350; }
+
+  @media (min-width: 480px) {
+    .bf-legal-links { font-size: 12px; }
   }
 
   .bf-legal { border-top: 1.5px solid rgba(253, 241, 211, 0.22); }
