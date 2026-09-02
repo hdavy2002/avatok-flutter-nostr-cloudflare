@@ -1,0 +1,318 @@
+/* [LIST-DESIGN-1] Listing details page — extracted from the comp
+   design/live-streaming/avaTOK Listing Details.dc.html (which is almost
+   entirely inline-styled, not class-based). Every rule below is scoped under
+   `.ld` so nothing leaks into SiteHeader/SiteFooter or any other page.
+   Fonts (Anton/Nunito/Kalam/Instrument Sans) are already loaded globally by
+   web/src/layouts/Base.astro — this file does not re-@import them.
+
+   [MARKET-BAZAAR-2] Truck-art strips: now rendered via the real
+   <TruckBorder> component (ported from the comp's <dc-import
+   name="TruckBorder">, see components/TruckBorder.astro) instead of the
+   CSS-gradient approximation this file used to carry. `.ld-strip-frame`
+   below is just the bordered/rounded wrapper the comp puts around each
+   section strip; the strip pattern itself lives entirely in TruckBorder. */
+
+.ld {
+  font-family: 'Instrument Sans', system-ui, sans-serif;
+  color: #161614;
+  background: #f6e4cd;
+  -webkit-font-smoothing: antialiased;
+}
+.ld, .ld *, .ld *::before, .ld *::after { box-sizing: border-box; font-synthesis: none; }
+.ld h1, .ld h2, .ld h3, .ld h4, .ld h5, .ld h6 { font-weight: 400; margin: 0; }
+.ld a { color: #d93825; text-decoration: none; }
+.ld a:hover { color: #2d7180; }
+.ld button { font-family: inherit; }
+
+@keyframes ldTokPulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: .55; } }
+
+/* ── shared primitives ──────────────────────────────────────────────────── */
+.ld-wrap { max-width: 100rem; margin: 0 auto; padding-left: clamp(14px, 4vw, 40px); padding-right: clamp(14px, 4vw, 40px); }
+
+.ld-eyebrow-label {
+  font-family: 'Nunito', system-ui, sans-serif; font-weight: 900; font-size: 0.75rem;
+  letter-spacing: .1em; color: #161614;
+}
+.ld-section-head { display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap; }
+.ld-section-title {
+  font-family: 'Anton', Impact, sans-serif; font-weight: 400; text-transform: uppercase;
+  font-size: clamp(1.75rem, 2.6vw, 2.375rem); letter-spacing: .06em; word-spacing: .22em;
+  margin: 0; flex: 1 1 15rem; line-height: 1.05;
+}
+.ld-section-title .ld-accent { color: #d93825; }
+.ld-section-note { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .08em; color: #8c6a52; padding-bottom: 6px; }
+
+.ld-strip-frame { border: 2.5px solid #161614; border-radius: 10px; overflow: hidden; margin: 14px 0 20px; }
+.ld-strip-frame--top { border: 0; border-bottom: 2.5px solid #161614; border-radius: 0; margin: 0; }
+
+.ld-card {
+  border: 2.5px solid #161614; border-radius: 18px; background: #fdf1d3;
+  box-shadow: 4px 5px 0 #161614;
+}
+
+.ld-pill {
+  font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.625rem;
+  letter-spacing: .06em; padding: 5px 10px; border-radius: 100px; background: rgba(22,22,20,.75); color: #fdf1d3;
+}
+.ld-pill--live { background: #d93825; }
+
+/* ── owner bar / breadcrumb / live band ─────────────────────────────────── */
+.ld-owner-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; background: #ffe9a8; border-bottom: 1.5px solid #161614; font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.8125rem; }
+.ld-owner-bar a { color: #161614; text-decoration: underline; }
+
+.ld-breadcrumb-bar { background: #fdf1d3; border-bottom: 3px solid #161614; }
+.ld-breadcrumb {
+  padding: 13px 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.75rem; letter-spacing: .1em;
+}
+.ld-breadcrumb-sep { color: #8c6a52; }
+.ld-breadcrumb-current { color: #d93825; }
+.ld-breadcrumb-num { margin-left: auto; color: #8c6a52; }
+
+.ld-live-band { background: #d93825; border-bottom: 3px solid #161614; }
+.ld-live-band-row { padding: 11px 0; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.ld-live-lead { display: flex; align-items: center; gap: 8px; font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.75rem; letter-spacing: .1em; color: #fdf1d3; }
+.ld-live-dot { width: 8px; height: 8px; border-radius: 50%; background: #fdf1d3; animation: ldTokPulse 1.2s ease-in-out infinite; }
+.ld-live-sub { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.75rem; letter-spacing: .1em; color: #ffd0c4; }
+.ld-join-now {
+  margin-left: auto; font-family: 'Anton', Impact, sans-serif; font-size: 0.8125rem; letter-spacing: .06em;
+  text-transform: uppercase; padding: 8px 20px; border-radius: 100px; border: 2px solid #161614;
+  background: #fdf1d3; color: #161614; word-spacing: .22em;
+}
+
+/* ── hero row: player + title/meta ──────────────────────────────────────── */
+.ld-hero { padding: clamp(20px, 3vw, 44px) 0 10px; display: flex; gap: clamp(20px, 3vw, 40px); flex-wrap: wrap; align-items: flex-start; }
+.ld-hero-player { flex: 1.7 1 25rem; min-width: min(100%, 18.75rem); }
+.ld-hero-meta { flex: 1 1 20rem; min-width: min(100%, 17.5rem); }
+
+.ld-nazar-strip {
+  display: flex; align-items: center; justify-content: center; gap: 12px; border: 2.5px solid #161614;
+  border-radius: 100px; background: #161614; padding: 10px 16px; margin-bottom: 14px;
+}
+.ld-nazar-strip span { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .1em; color: #fdf1d3; text-align: center; }
+.ld-nazar-strip img { height: 34px; flex: none; }
+
+.ld-stage-card { border: 3px solid #161614; border-radius: 26px; overflow: hidden; background: #fdf1d3; box-shadow: 7px 8px 0 #161614; }
+.ld-stage-media { height: clamp(300px, 40vw, 540px); width: 100%; position: relative; background: #1e5f66; overflow: hidden; }
+.ld-stage-media img, .ld-stage-media iframe { width: 100%; height: 100%; object-fit: cover; border: 0; display: block; }
+.ld-stage-placeholder {
+  background-color: #1e5f66;
+  background-image: repeating-linear-gradient(135deg, rgba(253,241,211,.13) 0 9px, transparent 9px 20px);
+}
+.ld-stage-placeholder::after {
+  content: 'AVATOK'; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.75rem; letter-spacing: .2em;
+  color: rgba(253,241,211,.55);
+}
+.ld-stage-pills { position: absolute; top: 14px; left: 14px; right: 14px; display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
+.ld-stage-actions { margin-left: auto; display: flex; gap: 8px; }
+.ld-icon-btn {
+  width: 34px; height: 34px; flex: none; border-radius: 50%; background: #fdf1d3; border: 1.5px solid #161614;
+  display: grid; place-items: center; font-size: 0.9375rem; cursor: pointer; padding: 0;
+}
+.ld-scallop { position: absolute; left: 0; right: 0; bottom: -1px; height: 18px; background: radial-gradient(circle at 11px 15px, #fdf1d3 11px, transparent 12px) 0 0/22px 18px repeat-x; }
+.ld-stage-footer { padding: 13px 18px 15px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ld-host-line { display: inline-flex; align-items: center; gap: 10px; color: inherit; }
+.ld-host-line-avatar { width: 30px; height: 30px; flex: none; border-radius: 50%; border: 1.5px solid #161614; display: grid; place-items: center; font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.75rem; overflow: hidden; }
+.ld-host-line-name { font-size: 0.875rem; font-weight: 600; }
+.ld-host-line-meta { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .08em; color: #8c6a52; }
+.ld-host-line-note { margin-left: auto; font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .08em; }
+
+.ld-thumb-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(6.875rem, 1fr)); gap: 10px; margin-top: 14px; }
+.ld-thumb { height: 76px; border: 2.5px solid #161614; border-radius: 14px; object-fit: cover; width: 100%; background: #c9a86a; }
+.ld-thumb-video { display: grid; place-items: center; background: #161614; color: #fdf1d3; font-size: 1.25rem; height: 76px; border: 2.5px solid #161614; border-radius: 14px; }
+
+.ld-share-box { margin-top: 14px; border: 2.5px solid #161614; border-radius: 18px; background: #fdf1d3; box-shadow: 4px 5px 0 #161614; padding: 16px 18px; }
+.ld-share-box-row { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+.ld-share-title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.ld-share-title { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.75rem; letter-spacing: .14em; color: #6b4f3f; }
+.ld-share-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.ld-qr-wrap { flex: none; display: flex; align-items: center; gap: 12px; }
+.ld-qr-box { border: 2.5px solid #161614; border-radius: 12px; background: #fff; padding: 6px; box-shadow: 3px 3px 0 #161614; }
+.ld-qr-box img { width: 88px; height: 88px; display: block; }
+.ld-qr-caption { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.625rem; letter-spacing: .08em; color: #8c6a52; line-height: 1.9; max-width: 90px; }
+
+/* ── title / meta column ─────────────────────────────────────────────────── */
+.ld-eyebrow-tag { font-family: 'Nunito', system-ui, sans-serif; font-weight: 700; font-size: 0.8125rem; letter-spacing: .16em; color: #b82a19; margin-bottom: 12px; }
+.ld-title {
+  font-family: 'Anton', Impact, sans-serif; font-weight: 400; font-size: clamp(2.25rem, 4.4vw, 3.75rem);
+  line-height: 1.03; letter-spacing: 0; text-transform: uppercase; word-spacing: .22em;
+}
+.ld-title-accent { color: #d93825; }
+
+.ld-chip-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+.ld-chip {
+  font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .06em;
+  border: 1.5px solid #161614; border-radius: 100px; padding: 7px 12px; background: #fdf1d3;
+}
+.ld-chip--strong { border-color: #2d7180; color: #2d7180; }
+.ld-chip--ai { background: #2d7180; color: #fdf1d3; border-color: #2d7180; }
+
+.ld-blurb { margin: 18px 0 0; font-size: 1.0625rem; font-weight: 500; line-height: 1.55; color: #4a3a20; max-width: 52ch; }
+
+.ld-stats-board {
+  margin-top: 18px; border: 2.5px solid #161614; border-radius: 18px; background: #fdf1d3; box-shadow: 4px 5px 0 #161614;
+  padding: 14px 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr)); gap: 12px;
+}
+.ld-stats-board div { display: flex; flex-direction: column; gap: 2px; }
+.ld-stats-board b { font-family: 'Anton', Impact, sans-serif; font-weight: 400; font-size: 1.375rem; letter-spacing: .06em; word-spacing: .22em; }
+.ld-stats-board span { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.625rem; letter-spacing: .08em; color: #8c6a52; }
+
+.ld-price-row { margin-top: 20px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.ld-price-big { font-family: 'Anton', Impact, sans-serif; font-weight: 400; font-size: 2.125rem; letter-spacing: .06em; word-spacing: .22em; }
+.ld-price-unit { font-size: 1rem; letter-spacing: .04em; }
+.ld-price-note { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .08em; color: #8c6a52; }
+
+.ld-masala-quote-row { margin-top: 16px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.ld-masala-quote { font-family: 'Kalam', cursive; font-size: 1.25rem; color: #8c3a2c; transform: rotate(-2deg); }
+.ld-masala-sticker { width: 112px; flex: none; transform: rotate(-4deg); }
+.ld-masala-uncles { margin-top: 22px; display: flex; align-items: center; justify-content: center; gap: 22px; flex-wrap: wrap; }
+.ld-masala-uncle { width: clamp(170px, 16vw, 230px); transform: rotate(-2deg); }
+.ld-masala-uncle--framed { width: clamp(150px, 14vw, 200px); border: 3px solid #161614; border-radius: 14px; transform: rotate(2deg); box-shadow: 5px 6px 0 #161614; }
+
+.ld-what-you-get ul, .ld-who-for-grid ul { margin: 6px 0 0; padding-left: 18px; font-family: 'Nunito', system-ui, sans-serif; font-weight: 600; font-size: 0.875rem; line-height: 1.6; color: #4a3a20; }
+.ld-who-for-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px; }
+.ld-who-for-grid h3 { font-family: 'Nunito', system-ui, sans-serif; font-weight: 900; font-size: 0.75rem; letter-spacing: .06em; }
+.ld-sample-chat { display: flex; flex-direction: column; gap: 8px; margin-top: 18px; }
+.ld-chat-line { max-width: 80%; padding: 8px 12px; border-radius: 14px; font-family: 'Nunito', system-ui, sans-serif; font-weight: 600; font-size: 0.8125rem; }
+.ld-chat-line--agent { background: #2d7180; color: #fff; align-self: flex-start; }
+.ld-chat-line--user { background: #fff; border: 1.5px solid rgba(22,22,20,.2); align-self: flex-end; }
+.ld-credential-line { margin-top: 18px; font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.8125rem; color: #6b4f3f; }
+.ld-prep-box, .ld-sample-qa { margin-top: 18px; display: flex; flex-direction: column; gap: 8px; }
+.ld-qa-pair { padding: 10px 0; border-top: 1px solid rgba(22,22,20,.15); }
+.ld-qa-q { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.875rem; margin: 0; }
+.ld-qa-a { margin: 4px 0 0; font-size: 0.875rem; color: #4a3a20; }
+
+/* ── content row: sticky aside + main ───────────────────────────────────── */
+.ld-content-row { padding: clamp(20px, 3vw, 40px) 0 90px; display: flex; flex-wrap: wrap; gap: 34px; align-items: flex-start; }
+
+.ld-aside { flex: 1 1 20rem; max-width: 23.5rem; min-width: min(100%, 18.125rem); order: 0; }
+@media (min-width: 901px) { .ld-aside { position: sticky; top: 16px; } }
+@media (max-width: 900px) { .ld-aside { order: 1; max-width: none; } .ld-main { order: 2; } }
+
+.ld-booking-card { border: 3px solid #161614; border-radius: 24px; background: #fdf1d3; box-shadow: 6px 7px 0 #161614; overflow: hidden; }
+.ld-booking-live-header {
+  background: #d93825; border-bottom: 2.5px solid #161614; padding: 12px 22px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.ld-booking-live-header .ld-live-dot { background: #fdf1d3; }
+.ld-booking-live-lead { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.75rem; letter-spacing: .1em; color: #fdf1d3; }
+.ld-booking-live-sub { margin-left: auto; font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .06em; color: #ffd0c4; }
+.ld-booking-next-header {
+  background: #161614; border-bottom: 2.5px solid #161614; padding: 12px 22px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.ld-booking-next-header span { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.75rem; letter-spacing: .1em; color: #fdf1d3; }
+.ld-booking-body { padding: 20px 22px 24px; }
+.ld-booking-title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 16px; }
+.ld-booking-title { font-family: 'Anton', Impact, sans-serif; font-size: 1.5rem; text-transform: uppercase; letter-spacing: .06em; word-spacing: .22em; }
+.ld-booking-price { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.75rem; color: #8c6a52; }
+.ld-handwriting { margin: 18px 10px 0; font-family: 'Kalam', cursive; font-size: 1.125rem; line-height: 1.35; color: #8c3a2c; transform: rotate(-2deg); }
+
+/* slot cards w/ progress bars (drawn by BookingBox.tsx inline styles to
+   match live seat counts — these classes size the surrounding chrome only) */
+.ld-slot-card { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border: 2px solid #161614; border-radius: 14px; padding: 12px 14px; }
+.ld-slot-progress-track { display: block; height: 7px; border: 1.5px solid #161614; border-radius: 100px; background: #f6e4cd; overflow: hidden; }
+.ld-slot-progress-fill { display: block; height: 100%; }
+
+.ld-main { flex: 999 1 32.5rem; min-width: 0; display: flex; flex-direction: column; gap: 52px; }
+
+/* ── how it works ────────────────────────────────────────────────────────── */
+.ld-step-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(13.75rem, 1fr)); gap: 16px; }
+.ld-step-card { padding: 18px 20px; }
+.ld-step-tag { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.75rem; letter-spacing: .1em; color: #d93825; margin-bottom: 8px; }
+.ld-step-card p { margin: 0; font-size: 0.875rem; font-weight: 500; line-height: 1.5; color: #4a3a20; }
+
+/* ── meet the host ───────────────────────────────────────────────────────── */
+.ld-host-card { border: 3px solid #161614; border-radius: 24px; background: #fdf1d3; box-shadow: 6px 7px 0 #161614; overflow: hidden; }
+.ld-host-card-inner { display: flex; flex-wrap: wrap; }
+.ld-host-col { flex: 1 1 15.625rem; min-width: min(100%, 15.625rem); max-width: 21.25rem; border-right: 2.5px solid #161614; border-bottom: 2.5px solid #161614; padding: 22px; display: flex; flex-direction: column; gap: 14px; background: #f6e4cd; }
+@media (max-width: 900px) { .ld-host-col { max-width: none; border-right: 0; } }
+.ld-host-photo { display: grid; place-items: center; height: 210px; border: 2.5px solid #161614; border-radius: 18px; background: #1e5f66; position: relative; overflow: hidden; }
+.ld-host-photo img { object-fit: cover; }
+.ld-host-photo-badge { position: absolute; top: 10px; left: 10px; font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.625rem; letter-spacing: .08em; background: #d93825; color: #fdf1d3; border-radius: 100px; padding: 5px 10px; }
+.ld-host-name-big { font-family: 'Anton', Impact, sans-serif; font-size: 1.625rem; text-transform: uppercase; line-height: 1.05; letter-spacing: .06em; word-spacing: .22em; }
+.ld-host-meta-line { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .08em; color: #8c6a52; margin-top: 6px; }
+.ld-host-chip-row { display: flex; flex-wrap: wrap; gap: 7px; }
+.ld-host-chip { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .05em; border: 1.5px solid #161614; border-radius: 100px; padding: 6px 10px; }
+.ld-msg-btn { font-family: 'Anton', Impact, sans-serif; font-size: 0.9375rem; letter-spacing: .05em; text-transform: uppercase; padding: 14px; border-radius: 100px; border: 2.5px solid #161614; background: #fdf1d3; box-shadow: 3px 4px 0 #161614; word-spacing: .22em; text-align: center; }
+.ld-msg-note { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.625rem; letter-spacing: .06em; color: #8c6a52; text-align: center; }
+
+.ld-host-bio-col { flex: 2.2 1 20rem; min-width: min(100%, 18.75rem); padding: 22px 24px; display: flex; flex-direction: column; gap: 22px; }
+.ld-about-label, .ld-sessions-label, .ld-also-listed-label { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.75rem; letter-spacing: .12em; color: #6b4f3f; margin-bottom: 8px; }
+.ld-about-text { margin: 0; font-size: 0.875rem; font-weight: 500; line-height: 1.6; color: #4a3a20; }
+.ld-session-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1.5px dashed rgba(22,22,20,.25); flex-wrap: wrap; }
+.ld-session-date { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .06em; color: #8c6a52; flex: none; width: 74px; }
+.ld-session-title { font-size: 0.875rem; font-weight: 600; min-width: 0; flex: 1 1 10rem; }
+.ld-also-listed-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.ld-also-listed-count { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.625rem; letter-spacing: .06em; color: #8c6a52; }
+.ld-also-listed-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12.5rem, 1fr)); gap: 12px; margin-top: 10px; }
+.ld-also-listed-card { cursor: pointer; border: 2.5px solid #161614; border-radius: 16px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; box-shadow: 3px 4px 0 #161614; background: #fdf1d3; }
+.ld-also-listed-tag { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.625rem; letter-spacing: .08em; color: #8c6a52; }
+.ld-also-listed-title { font-family: 'Anton', Impact, sans-serif; font-size: 1.0625rem; line-height: 1.1; text-transform: uppercase; letter-spacing: .06em; word-spacing: .22em; }
+.ld-also-listed-meta { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .05em; color: #8c6a52; }
+
+/* ── house rules ─────────────────────────────────────────────────────────── */
+.ld-caution-sticker { width: clamp(120px, 12vw, 170px); flex: none; transform: rotate(-5deg); align-self: center; }
+.ld-rules-card { border: 3px solid #161614; border-radius: 22px; background: #fdf1d3; box-shadow: 5px 6px 0 #161614; overflow: hidden; }
+.ld-rules-intro-row { padding: 20px 24px 8px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ld-rules-avatar { width: 34px; height: 34px; flex: none; border-radius: 50%; border: 2px solid #161614; display: grid; place-items: center; font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.8125rem; }
+.ld-rules-quote { margin: 0; flex: 1 1 16.25rem; font-size: 0.875rem; font-weight: 500; line-height: 1.5; color: #4a3a20; font-style: italic; }
+.ld-rules-grid { padding: 14px 24px 22px; display: grid; grid-template-columns: repeat(auto-fit, minmax(15.625rem, 1fr)); gap: 12px; }
+.ld-rule-card { display: flex; gap: 12px; align-items: flex-start; border: 2px solid #161614; border-radius: 14px; padding: 13px 15px; background: #fff; }
+.ld-rule-num { flex: none; width: 26px; height: 26px; border-radius: 50%; border: 2px solid #161614; background: #fdf1d3; display: grid; place-items: center; font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.75rem; color: #d93825; }
+.ld-rule-head { display: block; font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .08em; color: #6b4f3f; margin-bottom: 4px; }
+.ld-rule-text { display: block; font-size: 0.8125rem; font-weight: 500; line-height: 1.5; color: #4a3a20; }
+.ld-rules-baseline-row { border-top: 2px dashed rgba(22,22,20,.35); padding: 14px 24px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: #f6e4cd; }
+.ld-rules-baseline-text { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .08em; color: #8c6a52; }
+.ld-rules-baseline-link { margin-left: auto; font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .08em; text-decoration: underline; }
+
+/* ── FAQ ──────────────────────────────────────────────────────────────────── */
+.ld-faq-list { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+.ld-faq-item { padding: 14px 16px; border-radius: 14px; background: #fdf1d3; border: 1.5px solid #161614; }
+.ld-faq-item summary { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; cursor: pointer; }
+.ld-faq-item p { margin: 8px 0 0; color: #4a3a20; }
+
+/* ── reviews (Public ki Rai) ─────────────────────────────────────────────── */
+.ld-reviews-row { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+.ld-rating-col { flex: 1 1 13.75rem; max-width: 300px; min-width: 0; }
+.ld-rating-card { padding: 20px; }
+.ld-big-rating { font-family: 'Anton', Impact, sans-serif; font-size: 3.25rem; line-height: 1.02; letter-spacing: .06em; word-spacing: .22em; }
+.ld-rating-sub { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .08em; color: #8c6a52; margin: 6px 0 14px; }
+.ld-hist-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.ld-hist-star { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; width: 22px; }
+.ld-hist-bar { flex: 1; height: 9px; border: 1.5px solid #161614; border-radius: 100px; background: #f6e4cd; overflow: hidden; }
+.ld-hist-fill { height: 100%; background: #d93825; }
+.ld-hist-n { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.625rem; color: #8c6a52; width: 30px; text-align: right; }
+.ld-review-list-col { flex: 2 1 18.75rem; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.ld-review-card { padding: 16px 20px; }
+.ld-review-card--teal { background: #2d7180; box-shadow: 4px 5px 0 #0f3f45; }
+.ld-review-card--teal .ld-review-body, .ld-review-card--teal .ld-review-author, .ld-review-card--teal .ld-review-meta, .ld-review-card--teal .ld-review-stars { color: #fdf1d3; }
+.ld-review-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.ld-review-stars { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.75rem; letter-spacing: .06em; color: #d93825; }
+.ld-review-author { font-size: 0.8125rem; font-weight: 600; }
+.ld-verified-tag { font-family: 'Nunito', system-ui, sans-serif; font-weight: 900; font-size: 0.5625rem; letter-spacing: .06em; background: #1e8f5f; color: #fff; border-radius: 100px; padding: 3px 8px; }
+.ld-review-meta { margin-left: auto; font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.625rem; letter-spacing: .08em; color: #8c6a52; }
+.ld-review-body { margin: 0; font-size: 0.875rem; font-weight: 500; line-height: 1.5; color: #4a3a20; }
+.ld-pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 4px; }
+.ld-pager-btn { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.75rem; letter-spacing: .08em; border: 2px solid #161614; border-radius: 100px; padding: 9px 16px; background: #fdf1d3; box-shadow: 3px 3px 0 #161614; cursor: pointer; }
+.ld-pager-page { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.75rem; letter-spacing: .1em; color: #6b4f3f; }
+
+/* ── promises band (teal — SEEDHI BAAT) ─────────────────────────────────── */
+.ld-promises { border: 3px solid #161614; border-radius: 26px; overflow: hidden; background: #2d7180; box-shadow: 6px 7px 0 #161614; }
+.ld-promises-body { padding: clamp(22px, 3vw, 32px); }
+.ld-promises-head { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+.ld-promises-title { font-family: 'Anton', Impact, sans-serif; font-size: clamp(1.625rem, 2.4vw, 2.25rem); text-transform: uppercase; color: #fdf1d3; text-shadow: 3px 3px 0 #0f3f45; letter-spacing: .06em; word-spacing: .22em; }
+.ld-promises-note { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .1em; color: #c4e3e0; }
+.ld-promises-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14.375rem, 1fr)); gap: 14px; }
+.ld-promise-card { border: 2px solid #fdf1d3; border-radius: 16px; padding: 14px 16px; }
+.ld-promise-title { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.75rem; letter-spacing: .08em; color: #fdf1d3; margin-bottom: 6px; display: block; }
+.ld-promise-body { margin: 0; font-size: 0.8125rem; font-weight: 500; line-height: 1.5; color: #d6ecee; }
+
+/* ── browse more events ──────────────────────────────────────────────────── */
+.ld-browse-section { padding-bottom: 90px; }
+.ld-browse-doodle { display: flex; align-items: flex-end; gap: 12px; flex: none; }
+.ld-browse-doodle-text { font-family: 'Kalam', cursive; font-size: 1.1875rem; line-height: 1.3; color: #8c3a2c; transform: rotate(-2deg); padding-bottom: 10px; }
+.ld-browse-doodle img { width: 130px; flex: none; transform: rotate(3deg); filter: drop-shadow(4px 5px 0 rgba(22,22,20,.4)); }
+.ld-browse-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(14.5rem, 1fr)); gap: 20px; }
+.ld-browse-pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 30px; }
+.ld-pager-dot { width: 34px; height: 34px; border-radius: 50%; border: 2px solid #161614; background: #fdf1d3; font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.75rem; display: grid; place-items: center; box-shadow: 3px 3px 0 #161614; cursor: pointer; }
+.ld-pager-dot--active { background: #d93825; color: #fdf1d3; }

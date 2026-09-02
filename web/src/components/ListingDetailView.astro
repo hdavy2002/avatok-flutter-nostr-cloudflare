@@ -1,10 +1,17 @@
 ---
-// [LIST-PAGE-2] THE real, public, chrome-free listing details page — every
+// [LIST-PAGE-2 / LIST-DESIGN-1] THE real, public, chrome-free listing details page — every
 // listing type (live event, consult, AI agent, free) renders through this ONE
 // component, replacing the hardcoded-mock comp that used to serve
 // `/<handle>/<slug>`. Comp: design/live-streaming/avaTOK Listing Details.dc.html.
 // Specs: Specs/SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING.md (§A1.3, §B, §D, §G),
 // Specs/SPEC-2026-09-02-LISTING-TRUST-AND-VIBE.md (§1, §3, §5).
+//
+// [LIST-DESIGN-1 2026-09-02] Markup/styling pass to match the comp pixel-for-
+// pixel where feasible: full-width (100rem) boxed container, two-row layout
+// (hero player+meta, then sticky booking aside + main content), truck-art
+// strips (CSS approximation — see web/src/styles/listing-details.css), the
+// LIVE band, stats board, red-second-word section titles, etc. All data
+// bindings below are unchanged from LIST-PAGE-2 — only markup/classes moved.
 //
 // Rendered on /l/<id>, /<handle>/<slug> and /e/<id> — all three pass the same
 // flat `Listing` (apiClient.getListing / getListingBySlug already unwrap the
@@ -19,6 +26,7 @@
 //   kind === 'consult'                     -> CONSULT   (TRUST §3.2)
 //   free_entry truthy (any other kind)     -> LIVE layout + free-lane overrides (§3.4)
 //   everything else (live_event/event/…)   -> LIVE_EVENT (the comp, §3.1)
+import '../styles/listing-details.css';
 import { Avatar } from '../components';
 import { cfImage } from '../lib/config';
 import { durationLabel, languageLabel } from '../lib/card';
@@ -30,6 +38,7 @@ import HostCard from './listing/HostCard.astro';
 import ReviewsSection from './listing/ReviewsSection.astro';
 import PromisesBand from './listing/PromisesBand.astro';
 import BrowseMore from './listing/BrowseMore.astro';
+import TruckBorder from './TruckBorder.astro';
 import BookingBoxIsland from '../islands/listing/BookingBox';
 import ShareBoxIsland from '../islands/listing/ShareBox';
 import QrCodeIsland from '../islands/listing/QrCode';
@@ -77,6 +86,7 @@ const creatorSlug = creator?.handle || creator?.uid || creator?.id || null;
 const creatorAvatarUrl = creator?.avatar ?? creator?.avatar_url ?? null;
 const creatorName = creator?.name ?? (creator?.handle ? `@${creator.handle}` : 'avaTOK creator');
 const hostFirstName = creatorName.split(' ')[0] || creatorName;
+const hostInitials = creatorName.split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
 
 // [LIST-PAGE-2 gap 2] Two-tone Anton title (comp: "ANTAKSHARI FRIDAY" / red
 // "WITH SUNNY."). Only splits when there's enough to split — a 1-2 word title
@@ -168,7 +178,7 @@ const prepText = typeof attrs.commercial_preparation_instructions === 'string' ?
 const price = listing.price ?? null;
 const priceStr = isFreeEntry ? 'FREE' : inrOrFree(price ?? 0);
 const billingSuffix: Record<string, string> = { minute: '/ MIN', '10min': '/ 10 MIN', chat: '/ CHAT', night: '/ NIGHT', game: '/ GAME', session: '' };
-const priceLine = isFreeEntry ? null : `${priceStr} ${listing.billing_unit && billingSuffix[listing.billing_unit] ? billingSuffix[listing.billing_unit] : (durationTag ? `/ ${(listing.billing_unit ?? 'SEAT').toUpperCase()}` : '')}`.trim();
+const priceUnit = isFreeEntry ? null : (listing.billing_unit && billingSuffix[listing.billing_unit] ? billingSuffix[listing.billing_unit] : (durationTag ? `/ ${(listing.billing_unit ?? 'SEAT').toUpperCase()}` : ''));
 
 const seatsLeft = listing.seats_left ?? null;
 const freeSpotsLeft = listing.capacity != null && listing.seats_taken != null
@@ -195,257 +205,341 @@ const listingViewProps = {
 };
 ---
 
-<div class="listing-page" data-listing-id={id}>
+<div class="ld" data-listing-id={id}>
   {isOwner && (
-    <div class="owner-bar">
+    <div class="ld-owner-bar">
       <span>You own this listing</span>
       <a href={`/dashboard/listings/new?id=${encodeURIComponent(id)}`} data-cta="edit_listing">Edit listing →</a>
     </div>
   )}
 
-  <div class="breadcrumb">
-    <span>BAZAAR {listing.section ? `› ${String(listing.section).toUpperCase()}` : ''} › {listing.title.toUpperCase()}</span>
-    <span class="listing-num">LISTING #{id.slice(0, 8).toUpperCase()}</span>
+  <div class="ld-breadcrumb-bar">
+    <div class="ld-wrap ld-breadcrumb">
+      <span>BAZAAR</span>
+      {listing.section && <><span class="ld-breadcrumb-sep">›</span><span>{String(listing.section).toUpperCase()}</span></>}
+      <span class="ld-breadcrumb-sep">›</span>
+      <span class="ld-breadcrumb-current">{listing.title.toUpperCase()}</span>
+      <span class="ld-breadcrumb-num">LISTING #{id.slice(0, 8).toUpperCase()}</span>
+    </div>
   </div>
 
   {isLive && (
-    <div class="live-band" data-section="live_band">
-      <span class="live-dot"></span>
-      <span>LIVE NOW</span>
-      {listing.watching != null && <span>· {listing.watching} WATCHING</span>}
-      {endMs && <span>· ENDS {new Date(endMs).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}</span>}
-      <a href={`/watch/${encodeURIComponent(id)}`} class="join-now" data-cta="join_now">JOIN NOW</a>
+    <div class="ld-live-band" data-section="live_band">
+      <div class="ld-wrap ld-live-band-row">
+        <span class="ld-live-lead"><span class="ld-live-dot"></span>LIVE NOW</span>
+        {listing.watching != null && <span class="ld-live-sub">{listing.watching} WATCHING</span>}
+        {endMs && <span class="ld-live-sub">ENDS {new Date(endMs).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}</span>}
+        <a href={`/watch/${encodeURIComponent(id)}`} class="ld-join-now" data-cta="join_now">▸ JOIN NOW</a>
+      </div>
     </div>
   )}
 
-  <div class="layout-grid">
-    <!-- LEFT COLUMN -->
-    <div class="left-col">
-      <div class="plate-strip">{kind.toUpperCase()} · {id.slice(0, 6).toUpperCase()}</div>
-
-      <div class="stage-card">
+  <!-- hero row: player + title/meta -->
+  <div class="ld-wrap ld-hero">
+    <div class="ld-hero-player">
+      <div class="ld-stage-card">
         {isLive && videoEmbed ? (
-          <div class="stage-media" data-video-block>
+          <div class="ld-stage-media" data-video-block>
             <iframe src={videoEmbed} title={`${listing.title} — live`} allow="encrypted-media; picture-in-picture" allowfullscreen />
           </div>
         ) : posterUrl ? (
-          <div class="stage-media">
-            <img src={cfImage(posterUrl, { width: 900, fit: 'cover' })} alt={listing.title} data-gallery-open />
+          <div class="ld-stage-media">
+            <img
+              src={cfImage(posterUrl, { width: 900, fit: 'cover' })}
+              alt={listing.title}
+              data-gallery-open
+              onerror="this.onerror=null;this.closest('.ld-stage-media').classList.add('ld-stage-placeholder');this.remove();"
+            />
           </div>
         ) : (
-          <div class="stage-media stage-placeholder" aria-hidden="true"></div>
+          <div class="ld-stage-media ld-stage-placeholder" aria-hidden="true"></div>
         )}
-        <div class="stage-pills">
-          {isLive && <span class="pill pill-live">LIVE NOW</span>}
-          {isLive && listing.watching != null && <span class="pill">{listing.watching} WATCHING</span>}
-          {(listing.joined_count ?? 0) > 0 && <span class="pill">{listing.joined_count} BOOKED</span>}
+        <div class="ld-stage-pills">
+          {isLive && <span class="ld-pill ld-pill--live">LIVE NOW</span>}
+          {isLive && listing.watching != null && <span class="ld-pill">◉ {listing.watching}</span>}
+          {(listing.joined_count ?? 0) > 0 && <span class="ld-pill">✓ {listing.joined_count} BOOKED</span>}
+          <span class="ld-stage-actions">
+            <button type="button" class="ld-icon-btn" id="share-toggle" aria-label="Share">⤴</button>
+            <button type="button" class="ld-icon-btn" id="fav-toggle" aria-label="Favourite">♡</button>
+          </span>
         </div>
-        <div class="stage-actions">
-          <button type="button" class="icon-btn" id="share-toggle" aria-label="Share">⤴</button>
-          <button type="button" class="icon-btn" id="fav-toggle" aria-label="Favourite">♡</button>
+        <div class="ld-scallop"></div>
+        <div class="ld-stage-footer">
+          {creator && (
+            <a href={creatorSlug ? `/c/${encodeURIComponent(creatorSlug)}` : '#'} class="ld-host-line">
+              <span class="ld-host-line-avatar"><Avatar src={creatorAvatarUrl} name={creatorName} size={30} /></span>
+              <span class="ld-host-line-name">{creatorName}{!isAgent && creator.kyc_verified ? ' ✓' : ''}</span>
+            </a>
+          )}
+          <span class="ld-host-line-meta">
+            {hostSince && <>HOST SINCE {hostSince}</>}
+            {hostSince && respMin != null && ' · '}
+            {respMin != null && <>REPLIES IN ~{respMin} MIN</>}
+          </span>
         </div>
       </div>
 
-      {creator && (
-        <div class="host-line">
-          <Avatar src={creatorAvatarUrl} name={creatorName} size={32} />
-          <span class="host-line-name">{creatorName}</span>
-          {!isAgent && creator.kyc_verified && <span class="kyc-tick">✓</span>}
-          {hostSince && <span class="host-line-dot">· HOST SINCE {hostSince}</span>}
-          {respMin != null && <span class="host-line-dot">· REPLIES IN ~{respMin} MIN</span>}
-        </div>
-      )}
-
       {thumbUrls.length > 0 && (
-        <div class="thumb-row">
+        <div class="ld-thumb-row">
           {thumbUrls.map((u) => (
-            <img src={cfImage(u, { width: 200, fit: 'cover' })} alt="" class="thumb" data-gallery-open />
+            <img src={cfImage(u, { width: 200, fit: 'cover' })} alt="" class="ld-thumb" data-gallery-open />
           ))}
-          {videoEmbed && !isLive && <div class="thumb thumb-video">▶</div>}
+          {videoEmbed && !isLive && <div class="ld-thumb-video">▶</div>}
         </div>
       )}
 
-      <div class="share-box" data-section="share">
-        <h2 class="eyebrow">{shareCopy.title}</h2>
-        <div class="share-box-row">
+      <div class="ld-share-box" data-section="share">
+        <div class="ld-share-title-row">
+          <span class="ld-share-title">{shareCopy.title}</span>
+        </div>
+        <div class="ld-share-box-row">
           <ShareBoxIsland client:load listingId={id} url={shareUrl} title={listing.title} />
-          <QrCodeIsland client:visible url={shareUrl} />
+          <div class="ld-qr-wrap">
+            <QrCodeIsland client:visible url={shareUrl} />
+            <span class="ld-qr-caption">SCAN TO OPEN THIS SHOW ON YOUR PHONE</span>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- RIGHT COLUMN -->
-    <div class="right-col">
-      {eyebrowParts.length > 0 && <div class="eyebrow-tag">{eyebrowParts.join(' · ')}</div>}
-      <h1 class="listing-title">
+    <div class="ld-hero-meta">
+      {eyebrowParts.length > 0 && <div class="ld-eyebrow-tag">{eyebrowParts.join(' · ')}</div>}
+      <h1 class="ld-title">
         {titleAccent ? (
-          <>{titleLead} <span class="title-accent">{titleAccent}</span></>
+          <>{titleLead} <span class="ld-title-accent">{titleAccent}</span></>
         ) : (
           listing.title
         )}
       </h1>
 
-      <div class="chip-row">
+      <div class="ld-chip-row">
         {listing.rating_avg != null && (
-          <span class="chip">★ {Number(listing.rating_avg).toFixed(1)}{listing.review_count ? ` · ${listing.review_count}` : ''}</span>
+          <span class="ld-chip">★ {Number(listing.rating_avg).toFixed(1)}{listing.review_count ? ` · ${listing.review_count}` : ''}</span>
         )}
-        {(listing.creator?.follower_count ?? 0) > 0 && <span class="chip">♡ {listing.creator!.follower_count} REGULARS</span>}
-        {durationTag && langTag && <span class="chip">{durationTag} · {langTag}</span>}
-        {!durationTag && langTag && <span class="chip">{langTag}</span>}
-        <span class="chip chip-strong">{listing.adults_only ? '18+' : '✓ 100% REAL HUMAN · NO AI'}</span>
-        {isAgent && <span class="chip chip-ai">AI VOICE AGENT</span>}
+        {(listing.creator?.follower_count ?? 0) > 0 && <span class="ld-chip">♡ {listing.creator!.follower_count} REGULARS</span>}
+        {durationTag && langTag && <span class="ld-chip">{durationTag} · {langTag}</span>}
+        {!durationTag && langTag && <span class="ld-chip">{langTag}</span>}
+        <span class={`ld-chip ${listing.adults_only ? '' : 'ld-chip--strong'}`}>{listing.adults_only ? '18+' : '✓ 100% REAL HUMAN · NO AI'}</span>
+        {isAgent && <span class="ld-chip ld-chip--ai">AI VOICE AGENT</span>}
       </div>
 
-      {(listing.blurb || listing.description) && <p class="blurb">{listing.blurb || listing.description}</p>}
+      {(listing.blurb || listing.description) && <p class="ld-blurb">{listing.blurb || listing.description}</p>}
 
       {(listing.joined_count || seatsLeft != null || trust?.shows_hosted || trust?.comeback_pct != null) && (
-        <div class="stats-board" data-section="stats">
-          {listing.joined_count != null && <div><b>{listing.joined_count}</b><span>BOOKED</span></div>}
+        <div class="ld-stats-board" data-section="stats">
+          {listing.joined_count != null && <div><b>{listing.joined_count}</b><span>✓ BOOKED THIS SHOW</span></div>}
           {isLive && listing.watching != null && <div><b>{listing.watching}</b><span>WATCHING</span></div>}
           {trust?.shows_hosted != null && trust.shows_hosted > 0 && <div><b>{trust.shows_hosted}</b><span>SHOWS HOSTED</span></div>}
-          {trust?.comeback_pct != null && <div><b>{Math.round(trust.comeback_pct)}%</b><span>COME BACK</span></div>}
+          {trust?.comeback_pct != null && <div><b>{Math.round(trust.comeback_pct)}%</b><span>♡ COME BACK AGAIN</span></div>}
         </div>
       )}
 
-      {priceLine && (
-        <p class="price-line">{priceLine} · <span class="price-note">FEES &amp; GST SHOWN BEFORE YOU BOOK</span></p>
+      {priceUnit != null && (
+        <div class="ld-price-row">
+          <span class="ld-price-big">{priceStr} <span class="ld-price-unit">{priceUnit}</span></span>
+          <span class="ld-price-note">FEES &amp; GST SHOWN BEFORE YOU BOOK</span>
+        </div>
       )}
-      {isFreeEntry && <p class="price-line">FREE · {freeBox.hostPays}</p>}
+      {isFreeEntry && (
+        <div class="ld-price-row">
+          <span class="ld-price-big">FREE</span>
+          <span class="ld-price-note">{freeBox.hostPays}</span>
+        </div>
+      )}
 
       {whatYouGet.length > 0 && (
-        <div class="what-you-get" data-section="what_you_get">
-          <h2 class="eyebrow">WHAT YOU GET</h2>
+        <div class="ld-what-you-get" data-section="what_you_get">
+          <h2 class="ld-eyebrow-label">WHAT YOU GET</h2>
           <ul>{whatYouGet.map((s) => <li>{s}</li>)}</ul>
         </div>
       )}
       {(whoFor.length > 0 || notFor.length > 0) && (
-        <div class="who-for-grid">
+        <div class="ld-who-for-grid">
           {whoFor.length > 0 && <div><h3>THIS IS FOR</h3><ul>{whoFor.map((s) => <li>{s}</li>)}</ul></div>}
           {notFor.length > 0 && <div><h3>NOT FOR</h3><ul>{notFor.map((s) => <li>{s}</li>)}</ul></div>}
         </div>
       )}
 
       {layout === 'agent' && (canDo.length > 0 || cantDo.length > 0) && (
-        <div class="who-for-grid" data-section="agent_honesty">
+        <div class="ld-who-for-grid" data-section="agent_honesty">
           {canDo.length > 0 && <div><h3>SHE CAN</h3><ul>{canDo.map((s) => <li>{s}</li>)}</ul></div>}
           {cantDo.length > 0 && <div><h3>SHE CAN'T</h3><ul>{cantDo.map((s) => <li>{s}</li>)}</ul></div>}
         </div>
       )}
 
       {layout === 'agent' && sampleChat.length > 0 && (
-        <div class="sample-chat" data-section="sample_chat">
-          <h2 class="eyebrow">SAMPLE CHAT</h2>
+        <div class="ld-sample-chat" data-section="sample_chat">
+          <h2 class="ld-eyebrow-label">SAMPLE CHAT</h2>
           {sampleChat.slice(0, 6).map((m) => (
-            <div class={`chat-line ${m.who === 'agent' ? 'chat-agent' : 'chat-user'}`}>{m.line}</div>
+            <div class={`ld-chat-line ${m.who === 'agent' ? 'ld-chat-line--agent' : 'ld-chat-line--user'}`}>{m.line}</div>
           ))}
         </div>
       )}
 
       {layout === 'consult' && credential && creator?.kyc_verified && (
-        <p class="credential-line">{credential}</p>
+        <p class="ld-credential-line">{credential}</p>
       )}
       {layout === 'consult' && prepText && (
-        <div class="prep-box" data-section="prep">
-          <h2 class="eyebrow">WHAT WE'LL COVER</h2>
+        <div class="ld-prep-box" data-section="prep">
+          <h2 class="ld-eyebrow-label">WHAT WE'LL COVER</h2>
           <p>{prepText}</p>
         </div>
       )}
       {layout === 'consult' && sampleQa.length > 0 && (
-        <div class="sample-qa" data-section="sample_qa">
-          <h2 class="eyebrow">SAMPLE Q&amp;A</h2>
+        <div class="ld-sample-qa" data-section="sample_qa">
+          <h2 class="ld-eyebrow-label">SAMPLE Q&amp;A</h2>
           {sampleQa.slice(0, 3).map((qa) => (
-            <div class="qa-pair"><p class="qa-q">Q. {qa.q}</p><p class="qa-a">A. {qa.a}</p></div>
+            <div class="ld-qa-pair"><p class="ld-qa-q">Q. {qa.q}</p><p class="ld-qa-a">A. {qa.a}</p></div>
           ))}
+        </div>
+      )}
+
+      {!isFreeEntry && (
+        <div class="ld-masala-quote-row">
+          <img src="/ld/desi-swag.png" alt="" class="ld-masala-sticker" loading="lazy" />
+          <div class="ld-masala-quote">"Booked seat, booked mood." — a regular</div>
         </div>
       )}
     </div>
   </div>
 
-  {howItWorks.length > 0 && (
-    <section class="how-it-works" data-section="how_it_works">
-      <h2 class="section-title">{sectionTitles.howItWorks}</h2>
-      <div class="step-grid">
-        {howItWorks.map((s, i) => (
-          <div class="step-card">
-            <span class="step-num">{i + 1}</span>
-            <h3>{s.label}</h3>
-            <p>{s.body}</p>
+  <!-- content row: sticky booking aside + main sections -->
+  <div class="ld-wrap ld-content-row">
+    <aside class="ld-aside" data-section="booking_box">
+      <div class="ld-booking-card">
+        <div class="ld-strip-frame ld-strip-frame--top"><TruckBorder kind="tassels" count={40} /></div>
+        {isLive ? (
+          <div class="ld-booking-live-header">
+            <span class="ld-live-dot"></span>
+            <span class="ld-booking-live-lead">LIVE NOW{listing.watching != null ? ` · ${listing.watching}` : ''}</span>
+            <span class="ld-booking-live-sub">BOOK &amp; JOIN INSTANTLY</span>
           </div>
-        ))}
+        ) : startsAtLabel ? (
+          <div class="ld-booking-next-header"><span>NEXT SHOW · {startsAtLabel}</span></div>
+        ) : null}
+        <div class="ld-booking-body">
+          <div class="ld-booking-title-row">
+            <span class="ld-booking-title">{isFreeEntry ? 'RESERVE A SPOT' : (kind === 'consult' ? 'BOOK A SLOT' : 'BOOK A SEAT')}</span>
+            {priceUnit != null && <span class="ld-booking-price">{priceStr} {priceUnit}</span>}
+          </div>
+          <BookingBoxIsland
+            client:load
+            listingId={id}
+            kind={kind}
+            isLive={isLive}
+            isFreeEntry={isFreeEntry}
+            price={price}
+            maxPerBooking={listing.max_per_booking ?? 4}
+            watching={listing.watching ?? null}
+            seatsLeft={seatsLeft}
+            freeSpotsLeft={freeSpotsLeft}
+            startsAtLabel={startsAtLabel}
+            startsAtMs={startMs}
+            timezone={listing.timezone ?? null}
+            slots={slots}
+            joinLeadMinutes={joinLeadMinutes}
+            recurrenceDays={listing.recurrence_days ?? null}
+            scheduleMode={listing.schedule_mode ?? null}
+          />
+        </div>
       </div>
-    </section>
-  )}
+      <div class="ld-handwriting">Seat gayi toh gaana bhi gaya.<br />— Bazaar rule #7</div>
+    </aside>
 
-  {creator && (
-    <HostCard
-      creator={creator}
-      creatorSlug={creatorSlug}
-      avatarUrl={creatorAvatarUrl}
-      city={listing.location}
-      bio={null}
-      chips={hostChips}
-      isAgent={isAgent}
-      hostSinceLabel={hostSince}
-      trust={trust}
-    />
-  )}
+    <main class="ld-main">
+      {howItWorks.length > 0 && (
+        <section data-section="how_it_works">
+          <h2 class="ld-section-title">How the show <span class="ld-accent">works.</span></h2>
+          <div class="ld-strip-frame"><TruckBorder kind="jhalar" count={40} /></div>
+          <div class="ld-step-grid">
+            {howItWorks.map((s, i) => (
+              <div class="ld-card ld-step-card">
+                <div class="ld-step-tag">STEP {i + 1} · {s.label.toUpperCase()}</div>
+                <p>{s.body}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
-  {creator && !isOwner && !isAgent && (
-    <AskHostIsland client:visible listingId={id} hostName={hostFirstName} />
-  )}
+      {creator && (
+        <section data-section="host">
+          <div class="ld-section-head">
+            <h2 class="ld-section-title">Meet the <span class="ld-accent">host.</span></h2>
+            <span class="ld-section-note">ID VERIFIED · PAST SESSIONS SHOWN UNEDITED</span>
+          </div>
+          <div class="ld-strip-frame"><TruckBorder kind="tassels" count={40} /></div>
+          <HostCard
+            creator={creator}
+            creatorSlug={creatorSlug}
+            avatarUrl={creatorAvatarUrl}
+            city={listing.location}
+            bio={listing.description ?? null}
+            chips={hostChips}
+            isAgent={isAgent}
+            hostSinceLabel={hostSince}
+            trust={trust}
+            hostInitials={hostInitials}
+          />
+        </section>
+      )}
 
-  {(houseRulesList.length > 0 || houseRulesIntro) && (
-    <section class="house-rules" data-section="house_rules">
-      <h2 class="section-title">{houseRules.title}</h2>
-      {houseRulesIntro && <p class="rules-intro">"{houseRulesIntro}"</p>}
-      <div class="rules-grid">
-        {houseRulesList.map((r, i) => (
-          <div class="rule-card"><span class="rule-num">{i + 1}</span><h3>{r.heading}</h3><p>{r.body}</p></div>
-        ))}
-      </div>
-      <p class="rules-baseline">{houseRules.platformBaseline}</p>
-    </section>
-  )}
+      {creator && !isOwner && !isAgent && (
+        <AskHostIsland client:visible listingId={id} hostName={hostFirstName} />
+      )}
 
-  {faq.length > 0 && (
-    <section class="faq" data-section="faq">
-      <h2 class="section-title">FAQ</h2>
-      <div class="faq-list">
-        {faq.map((f) => (
-          <details class="faq-item"><summary>{f.q}</summary><p>{f.a}</p></details>
-        ))}
-      </div>
-    </section>
-  )}
+      {(houseRulesList.length > 0 || houseRulesIntro) && (
+        <section class="ld-house-rules" data-section="house_rules">
+          <div class="ld-section-head">
+            <h2 class="ld-section-title">{houseRules.title}</h2>
+            <img src="/ld/jatt-sticker.png" alt="" class="ld-caution-sticker" loading="lazy" />
+            <span class="ld-section-note">SET BY THE HOST · SHOWN BEFORE EVERY BOOKING</span>
+          </div>
+          <div class="ld-strip-frame"><TruckBorder kind="eyes" count={40} /></div>
+          <div class="ld-rules-card">
+            {houseRulesIntro && (
+              <div class="ld-rules-intro-row">
+                <span class="ld-rules-avatar">{hostInitials}</span>
+                <p class="ld-rules-quote">"{houseRulesIntro}"</p>
+              </div>
+            )}
+            <div class="ld-rules-grid">
+              {houseRulesList.map((r, i) => (
+                <div class="ld-rule-card">
+                  <span class="ld-rule-num">{i + 1}</span>
+                  <span>
+                    <span class="ld-rule-head">{r.heading.toUpperCase()}</span>
+                    <span class="ld-rule-text">{r.body}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div class="ld-rules-baseline-row">
+              <span class="ld-rules-baseline-text">{houseRules.platformBaseline}</span>
+              <a href="/terms" class="ld-rules-baseline-link">READ PLATFORM RULES</a>
+            </div>
+          </div>
+        </section>
+      )}
 
-  <ReviewsSection listingId={id} reviewList={reviewList} />
+      {faq.length > 0 && (
+        <section data-section="faq">
+          <h2 class="ld-section-title">FAQ</h2>
+          <div class="ld-faq-list">
+            {faq.map((f) => (
+              <details class="ld-faq-item"><summary>{f.q}</summary><p>{f.a}</p></details>
+            ))}
+          </div>
+        </section>
+      )}
 
-  <PromisesBand refundHours={isRefund ? refundHours : null} cancelHours={!isRefund ? refundHours : null} />
+      <ReviewsSection listingId={id} reviewList={reviewList} />
+
+      <PromisesBand refundHours={isRefund ? refundHours : null} cancelHours={!isRefund ? refundHours : null} />
+    </main>
+  </div>
 
   <BrowseMore cards={browseMore} excludeId={id} />
-
-  <!-- Sticky booking box (rendered inline in flow on mobile; sticky on desktop via CSS) -->
-  <aside class="booking-sticky" data-section="booking_box">
-    <BookingBoxIsland
-      client:load
-      listingId={id}
-      kind={kind}
-      isLive={isLive}
-      isFreeEntry={isFreeEntry}
-      price={price}
-      maxPerBooking={listing.max_per_booking ?? 4}
-      watching={listing.watching ?? null}
-      seatsLeft={seatsLeft}
-      freeSpotsLeft={freeSpotsLeft}
-      startsAtLabel={startsAtLabel}
-      startsAtMs={startMs}
-      timezone={listing.timezone ?? null}
-      slots={slots}
-      joinLeadMinutes={joinLeadMinutes}
-      recurrenceDays={listing.recurrence_days ?? null}
-      scheduleMode={listing.schedule_mode ?? null}
-    />
-  </aside>
 </div>
 
 <script define:vars={{ listingViewProps }}>
@@ -497,88 +591,3 @@ const listingViewProps = {
     }
   });
 </script>
-
-<style>
-  .listing-page {
-    max-width: 1200px; margin: 0 auto; padding: 20px 16px 80px;
-    display: flex; flex-direction: column; gap: 28px;
-    font-family: 'Nunito', system-ui, sans-serif; color: #161614; background: #fdf7e8;
-  }
-  .owner-bar { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-radius: 12px; background: #ffe9a8; border: 1.5px solid #161614; font-weight: 800; font-size: 0.8125rem; }
-  .owner-bar a { color: #161614; }
-  .breadcrumb { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-weight: 800; font-size: 0.6875rem; letter-spacing: .08em; color: #8a8a80; }
-  .listing-num { color: #161614; }
-  .live-band { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 18px; border-radius: 100px; background: #d93825; color: #fdf1d3; font-weight: 900; font-size: 0.8125rem; letter-spacing: .05em; }
-  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: #ffd0c4; }
-  .join-now { margin-left: auto; text-decoration: none; background: #161614; color: #fdf1d3; padding: 8px 16px; border-radius: 100px; }
-
-  .layout-grid { display: grid; grid-template-columns: minmax(0, 420px) 1fr; gap: 32px; }
-  @media (max-width: 860px) { .layout-grid { grid-template-columns: 1fr; } }
-
-  .left-col { display: flex; flex-direction: column; gap: 14px; }
-  .plate-strip { display: inline-block; background: #161614; color: #fdf1d3; font-weight: 900; font-size: 0.6875rem; letter-spacing: .1em; padding: 6px 14px; border-radius: 6px; align-self: flex-start; }
-  .stage-card { position: relative; border-radius: 20px; overflow: hidden; border: 2px solid #161614; background: #e8e2d0; }
-  .stage-media { position: relative; aspect-ratio: 4/5; width: 100%; }
-  .stage-media img, .stage-media iframe { width: 100%; height: 100%; object-fit: cover; border: 0; }
-  .stage-placeholder { background: repeating-linear-gradient(135deg, rgba(22,22,20,.08) 0 12px, transparent 12px 26px); }
-  .stage-pills { position: absolute; top: 12px; left: 12px; display: flex; gap: 6px; flex-wrap: wrap; }
-  .pill { font-weight: 900; font-size: 0.625rem; letter-spacing: .06em; padding: 5px 10px; border-radius: 100px; background: rgba(22,22,20,.75); color: #fdf1d3; }
-  .pill-live { background: #d93825; }
-  .stage-actions { position: absolute; top: 12px; right: 12px; display: flex; gap: 8px; }
-  .icon-btn { width: 34px; height: 34px; border-radius: 50%; border: none; background: rgba(253,241,211,.9); font-size: 1rem; cursor: pointer; }
-  .host-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 800; font-size: 0.75rem; color: #5a5a54; }
-  .host-line-name { color: #161614; font-weight: 900; }
-  .kyc-tick { color: #1e8f5f; font-weight: 900; }
-  .thumb-row { display: flex; gap: 8px; }
-  .thumb { width: 68px; height: 68px; object-fit: cover; border-radius: 12px; border: 1.5px solid #161614; }
-  .thumb-video { display: grid; place-items: center; background: #161614; color: #fdf1d3; font-size: 1.25rem; }
-  .share-box { padding: 16px; border-radius: 16px; background: #fff; border: 1.5px solid rgba(22,22,20,.15); display: flex; flex-direction: column; gap: 10px; }
-  .share-box-row { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
-
-  .right-col { display: flex; flex-direction: column; gap: 14px; }
-  .eyebrow-tag { font-weight: 900; font-size: 0.75rem; letter-spacing: .1em; color: #d93825; }
-  .listing-title { margin: 0; font-family: 'Anton', Impact, sans-serif; font-weight: 400; text-transform: uppercase; font-size: clamp(2rem, 4.5vw, 3.25rem); line-height: 1.03; letter-spacing: .03em; word-spacing: .1em; color: #161614; }
-  .title-accent { color: #d93825; }
-  .eyebrow { margin: 0; font-weight: 900; font-size: 0.75rem; letter-spacing: .1em; color: #161614; }
-  .section-title { margin: 0; font-family: 'Anton', Impact, sans-serif; font-weight: 400; text-transform: uppercase; font-size: 1.75rem; letter-spacing: .03em; word-spacing: .12em; color: #161614; }
-  .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
-  .chip { font-weight: 800; font-size: 0.75rem; letter-spacing: .04em; border: 1.5px solid #161614; border-radius: 100px; padding: 6px 12px; }
-  .chip-strong { background: #161614; color: #fdf1d3; border-color: #161614; }
-  .chip-ai { background: #2d7180; color: #fdf1d3; border-color: #2d7180; }
-  .blurb { margin: 0; font-weight: 600; font-size: 1rem; line-height: 1.55; color: #3a3a34; }
-  .stats-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 10px; padding: 14px; border-radius: 14px; background: #fff; border: 1.5px solid rgba(22,22,20,.15); }
-  .stats-board div { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-  .stats-board b { font-family: 'Anton', Impact, sans-serif; font-weight: 400; font-size: 1.375rem; }
-  .stats-board span { font-weight: 800; font-size: 0.625rem; letter-spacing: .06em; color: #8a8a80; }
-  .price-line { margin: 0; font-weight: 900; font-size: 1.125rem; }
-  .price-note { font-weight: 700; font-size: 0.6875rem; color: #8a8a80; letter-spacing: .04em; }
-  .what-you-get ul, .who-for-grid ul { margin: 6px 0 0; padding-left: 18px; font-weight: 600; font-size: 0.875rem; line-height: 1.6; color: #3a3a34; }
-  .who-for-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .who-for-grid h3 { margin: 0; font-weight: 900; font-size: 0.75rem; letter-spacing: .06em; }
-  .sample-chat { display: flex; flex-direction: column; gap: 8px; }
-  .chat-line { max-width: 80%; padding: 8px 12px; border-radius: 14px; font-weight: 600; font-size: 0.8125rem; }
-  .chat-agent { background: #2d7180; color: #fff; align-self: flex-start; }
-  .chat-user { background: #fff; border: 1.5px solid rgba(22,22,20,.2); align-self: flex-end; }
-  .credential-line { margin: 0; font-weight: 800; font-size: 0.8125rem; color: #5a5a54; }
-  .prep-box, .sample-qa { display: flex; flex-direction: column; gap: 8px; }
-  .qa-pair { padding: 10px 0; border-top: 1px solid rgba(22,22,20,.1); }
-  .qa-q { margin: 0; font-weight: 800; font-size: 0.875rem; }
-  .qa-a { margin: 4px 0 0; font-weight: 600; font-size: 0.875rem; color: #3a3a34; }
-
-  .how-it-works, .house-rules, .faq { display: flex; flex-direction: column; gap: 16px; }
-  .step-grid, .rules-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
-  .step-card, .rule-card { padding: 18px; border-radius: 16px; background: #fff; border: 1.5px solid rgba(22,22,20,.15); position: relative; }
-  .step-num, .rule-num { display: inline-block; width: 26px; height: 26px; border-radius: 50%; background: #161614; color: #fdf1d3; font-weight: 900; font-size: 0.8125rem; text-align: center; line-height: 26px; margin-bottom: 8px; }
-  .step-card h3, .rule-card h3 { margin: 0 0 4px; font-weight: 900; font-size: 0.9375rem; }
-  .step-card p, .rule-card p { margin: 0; font-weight: 600; font-size: 0.8125rem; color: #3a3a34; }
-  .rules-intro { font-style: italic; font-weight: 600; color: #5a5a54; }
-  .rules-baseline { font-weight: 700; font-size: 0.8125rem; color: #8a8a80; }
-  .faq-item { padding: 12px 0; border-top: 1px solid rgba(22,22,20,.1); }
-  .faq-item summary { font-weight: 800; cursor: pointer; }
-  .faq-item p { margin: 8px 0 0; font-weight: 600; color: #3a3a34; }
-
-  .booking-sticky { border-radius: 20px; background: #fff; border: 2px solid #161614; padding: 20px; max-width: 420px; }
-  @media (min-width: 861px) {
-    .booking-sticky { position: sticky; top: 20px; margin-left: auto; }
-  }
-</style>

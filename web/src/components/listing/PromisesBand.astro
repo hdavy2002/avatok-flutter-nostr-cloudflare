@@ -1,8 +1,12 @@
 ---
-// [LIST-PAGE-2] "SEEDHI BAAT NO CHAKKAR" promises band — six trucker-plate
-// guarantee cards. Refund/cancel windows come from the listing's own
-// commercial policy attrs (never hardcoded), per SPEC-2026-09-02 §1 row 9.
+// [LIST-PAGE-2 / LIST-DESIGN-1] "SEEDHI BAAT NO CHAKKAR" promises band — six
+// guarantee cards on the comp's teal plate (not the dark plate this used to
+// render — #2d7180 with a "lotus" truck strip and text-shadowed heading,
+// per design/live-streaming/avaTOK Listing Details.dc.html:511-547). Refund/
+// cancel windows come from the listing's own commercial policy attrs (never
+// hardcoded), per SPEC-2026-09-02 §1 row 9.
 import { promiseBand } from '../../lib/copy';
+import TruckBorder from '../TruckBorder.astro';
 
 interface Props { refundHours?: number | null; cancelHours?: number | null }
 const { refundHours, cancelHours } = Astro.props;
@@ -21,23 +25,20 @@ if (refundHours != null && Number.isFinite(refundHours)) {
 }
 ---
 
-<section class="promises" data-section="promises">
-  <h2 class="plate-title">{promiseBand.title}</h2>
-  <div class="promise-grid">
-    {cards.map((c) => (
-      <div class="promise-card">
-        <span class="promise-card-title">{c.title}</span>
-        <p class="promise-card-body">{c.body}</p>
-      </div>
-    ))}
+<section class="ld-promises" data-section="promises">
+  <div class="ld-strip-frame ld-strip-frame--top"><TruckBorder kind="lotus" count={40} /></div>
+  <div class="ld-promises-body">
+    <div class="ld-promises-head">
+      <h2 class="ld-promises-title">{promiseBand.title}</h2>
+      <span class="ld-promises-note">THESE PROMISES APPLY TO EVERY LISTING</span>
+    </div>
+    <div class="ld-promises-grid">
+      {cards.map((c) => (
+        <div class="ld-promise-card">
+          <span class="ld-promise-title">{c.title}</span>
+          <p class="ld-promise-body">{c.body}</p>
+        </div>
+      ))}
+    </div>
   </div>
 </section>
-
-<style>
-  .promises { display: flex; flex-direction: column; gap: 16px; padding: 26px 22px; border-radius: 20px; background: #161614; }
-  .plate-title { margin: 0; text-align: center; font-family: 'Anton', Impact, sans-serif; font-weight: 400; font-size: 1.5rem; letter-spacing: .04em; word-spacing: .2em; color: #fdf1d3; }
-  .promise-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
-  .promise-card { padding: 14px; border-radius: 14px; border: 1.5px solid rgba(253,241,211,.35); background: rgba(253,241,211,.06); }
-  .promise-card-title { display: block; font-family: 'Nunito', system-ui, sans-serif; font-weight: 900; font-size: 0.75rem; letter-spacing: .08em; color: #ffd23f; margin-bottom: 6px; }
-  .promise-card-body { margin: 0; font-family: 'Nunito', system-ui, sans-serif; font-weight: 600; font-size: 0.8125rem; line-height: 1.4; color: #fdf1d3; }
-</style>

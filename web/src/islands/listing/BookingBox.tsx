@@ -288,21 +288,32 @@ export default function BookingBox({
               {visibleSlots.map((s) => {
                 const full = s.booked_count >= s.capacity;
                 const active = slotId === s.id;
+                const fillPct = s.capacity > 0 ? Math.min(100, Math.round((s.booked_count / s.capacity) * 100)) : 0;
+                const seatsLeftForSlot = Math.max(0, s.capacity - s.booked_count);
                 return (
                   <button
                     key={s.id}
                     type="button"
                     disabled={full}
                     onClick={() => setSlotId(s.id)}
+                    className="ld-slot-card"
                     style={{
-                      textAlign: 'left', padding: '10px 12px', borderRadius: 12,
-                      border: `2px solid ${active ? '#d93825' : '#161614'}`,
+                      textAlign: 'left', flexDirection: 'column', alignItems: 'stretch', gap: 6,
+                      borderColor: active ? '#d93825' : '#161614',
                       background: active ? '#fbe4df' : '#fff', color: '#161614',
                       fontWeight: 700, fontSize: '0.8125rem', cursor: full ? 'not-allowed' : 'pointer',
                       opacity: full ? 0.5 : 1,
                     }}
                   >
-                    {s.label ?? fmtSlotTime(s.starts_at)}{full ? ' · FULL' : ''}
+                    <span style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                      <span>{s.label ?? fmtSlotTime(s.starts_at)}</span>
+                      <span style={{ fontWeight: 800, fontSize: '0.6875rem', color: full ? '#d93825' : '#8c6a52' }}>
+                        {full ? 'FULL' : `${seatsLeftForSlot} LEFT`}
+                      </span>
+                    </span>
+                    <span className="ld-slot-progress-track">
+                      <span className="ld-slot-progress-fill" style={{ width: `${fillPct}%`, background: full ? '#d93825' : '#2d7180' }} />
+                    </span>
                   </button>
                 );
               })}

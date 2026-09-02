@@ -1,8 +1,11 @@
 ---
-// [LIST-PAGE-2] "BROWSE MORE EVENTS" — reuses the real ListingTile card (the
-// same one the marketplace renders) via /api/explore, per the task brief.
+// [LIST-PAGE-2 / LIST-DESIGN-1] "BROWSE MORE EVENTS" — reuses the real ListingTile
+// card (the same one the marketplace renders) via /api/explore, per the task
+// brief. Section chrome (truck strip, count meta) restyled to the comp; the
+// grid itself stays ListingTile's own component — that card is shared with
+// the marketplace and out of scope here.
 import { ListingTile } from '../../components';
-import { sectionTitles } from '../../lib/copy';
+import TruckBorder from '../TruckBorder.astro';
 import type { Card } from '../../lib/types';
 
 interface Props { cards: Card[]; excludeId: string }
@@ -11,18 +14,16 @@ const items = cards.filter((c) => c.id !== excludeId).slice(0, 8);
 ---
 
 {items.length > 0 && (
-  <section class="browse-more" data-section="browse_more">
-    <h2 class="eyebrow">{sectionTitles.browseMore}</h2>
-    <div class="grid">
+  <div class="ld-wrap ld-browse-section">
+    <div class="ld-section-head">
+      <h2 class="ld-section-title">Browse more <span class="ld-accent">events.</span></h2>
+      <span class="ld-section-note">{items.length} MORE LIKE THIS</span>
+    </div>
+    <div class="ld-strip-frame"><TruckBorder kind="jhalar" count={40} /></div>
+    <div class="ld-browse-grid" data-section="browse_more">
       {items.map((c, i) => (
         <ListingTile listing={c} position={i} section="listing_detail_browse_more" />
       ))}
     </div>
-  </section>
+  </div>
 )}
-
-<style>
-  .browse-more { display: flex; flex-direction: column; gap: 16px; }
-  .eyebrow { margin: 0; font-family: 'Nunito', system-ui, sans-serif; font-weight: 900; font-size: 0.9375rem; letter-spacing: .08em; color: #161614; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
-</style>
