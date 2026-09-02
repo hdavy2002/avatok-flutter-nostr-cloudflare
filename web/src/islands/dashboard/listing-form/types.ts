@@ -67,6 +67,7 @@ export interface ListingDraft {
   slots: DraftSlot[];
   response_time_min: string;
   max_per_booking: number;
+  capacity: number; // live events: total seats, 0 = unlimited
 
   // Step 5 — How it works
   content_how_it_works: HowItWorksStep[];
@@ -134,6 +135,7 @@ export function emptyDraft(initial?: Partial<ListingDraft>): ListingDraft {
     slots: [],
     response_time_min: '',
     max_per_booking: 4,
+    capacity: 0,
     content_how_it_works: [],
     content_house_rules_intro: '',
     content_house_rules: [],

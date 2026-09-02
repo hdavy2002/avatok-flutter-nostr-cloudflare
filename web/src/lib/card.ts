@@ -258,19 +258,24 @@ export function recurrenceLabel(
 /** `FRI 9 PM` / `TONIGHT 9 PM` / `6 SEPT` — the comp's status-pill date copy.
  *  `prefixNext` renders the weekday branch as `NEXT FRI 9 PM` (§2.2's consult
  *  pill reads "NEXT MON 11 AM", not just "MON 11 AM"). */
-export function timePillLabel(startsAt: number | null, opts: { prefixNext?: boolean } = {}): string {
+export function timePillLabel(startsAt: number | null, opts: { prefixNext?: boolean; timeZone?: string } = {}): string {
   if (!startsAt) return pillExtra.AVAILABLE_NOW;
   const d = new Date(startsAt);
   if (!Number.isFinite(d.getTime())) return pillExtra.AVAILABLE_NOW;
-  const time = d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }).toUpperCase();
+  // [LIST-PAGE-3] This runs server-side on a UTC Worker: without an explicit zone
+  // every card and hero pill on the site said "3:30 PM" for a 9 PM IST show.
+  // India is the only market, so IST is the default; a listing's own timezone wins.
+  const timeZone = opts.timeZone || 'Asia/Kolkata';
+  const time = d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone }).toUpperCase();
+  const dayKey = (x: Date) => x.toLocaleDateString('en-CA', { timeZone });
   const now = new Date();
-  if (d.toDateString() === now.toDateString()) return `TONIGHT ${time}`;
+  if (dayKey(d) === dayKey(now)) return `TONIGHT ${time}`;
   const days = Math.round((d.getTime() - now.getTime()) / 86_400_000);
   if (days > 0 && days < 7) {
-    const wk = d.toLocaleDateString('en-IN', { weekday: 'short' }).toUpperCase();
+    const wk = d.toLocaleDateString('en-IN', { weekday: 'short', timeZone }).toUpperCase();
     return opts.prefixNext ? `NEXT ${wk} ${time}` : `${wk} ${time}`;
   }
-  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }).toUpperCase();
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone }).toUpperCase();
 }
 
 /**

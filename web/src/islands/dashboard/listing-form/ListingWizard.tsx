@@ -66,6 +66,7 @@ function draftFromListing(l: any): Partial<ListingDraft> {
     recurrence_time: l.recurrence_time || '18:00',
     response_time_min: l.response_time_min != null ? String(l.response_time_min) : '',
     max_per_booking: l.max_per_booking ?? 4,
+    capacity: l.capacity ?? 0,
     content_how_it_works: attrs.content_how_it_works ?? [],
     content_house_rules_intro: attrs.content_house_rules_intro ?? '',
     content_house_rules: attrs.content_house_rules ?? [],

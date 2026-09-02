@@ -140,7 +140,9 @@ export function bodyForSave(d: ListingDraft, opts: { includeAttrs: boolean; incl
     body.recurrence_time = d.recurrence_time;
     body.duration_min = d.duration_min;
   }
+  // Live events: the seat cap the booking box counts down. 0/blank = unlimited.
   if (d.kind === 'consult') body.capacity = 1;
+  else if (d.capacity && d.capacity > 0) body.capacity = d.capacity;
   if (opts.includeAttrs) {
     body.attrs = withCommercialPolicy(buildAttrs(d), d, opts.includePolicy);
   }

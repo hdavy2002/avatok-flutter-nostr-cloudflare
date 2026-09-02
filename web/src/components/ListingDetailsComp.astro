@@ -73,7 +73,9 @@ function viewModel(l: Listing, revs: ReviewList | null, others: Card[], browseCa
   const slug = l.slug?.trim();
   const showPath = handle && slug ? `/${handle}/${slug}` : `/l/${l.id}`;
   const SHOW_URL = new URL(showPath, 'https://avatok.ai').toString();
-  const hostName = l.creator?.name ?? l.creator?.handle ?? 'the host';
+  const hostName = (l.creator?.name || l.creator?.handle || 'avaTOK creator').trim();
+  // Possessive for section titles: "Sunny's house rules" / "Host's house rules" when nameless.
+  const hostPoss = (l.creator?.name || l.creator?.handle) ? `${hostName.split(' ')[0]}'s` : 'Host\u2019s';
   const EMBED_CODE = `<iframe src="${SHOW_URL}" width="640" height="400" style="border:3px solid #161614; border-radius:18px;" title="${l.title} — avaTOK" allow="autoplay" loading="lazy"></iframe>`;
 
   const rules = (l.attrs?.content_house_rules ?? []).map((r, i) => ({ n: String(i + 1), head: r.heading, text: r.body }));
@@ -173,7 +175,7 @@ const humanBadge = listing.kind === 'agent' ? '⚙ AI VOICE AGENT · CLEARLY LAB
 const scheduleLabel = isLive
   ? 'LIVE NOW'
   : recurrenceLabel(listing.recurrence_days ?? null, listing.recurrence_time ?? null) ??
-    (listing.starts_at ? timePillLabel(listing.starts_at) : 'ON REQUEST');
+    (listing.starts_at ? timePillLabel(listing.starts_at, { timeZone: listing.timezone || 'Asia/Kolkata' }) : 'ON REQUEST');
 
 const lede = listing.description ?? listing.blurb ?? listing.one_liner ?? '';
 
@@ -226,8 +228,10 @@ const clientConfig = {
           startsAt: listing.starts_at,
           endsAt: listing.starts_at + (listing.duration_min ?? 60) * 60000,
           label: 'MAIN SHOW',
+          // capacity null = the creator set no cap: unlimited, never HOUSEFULL.
           capacity: listing.capacity ?? 0,
-          taken: Math.max(0, (listing.capacity ?? 0) - (listing.seats_left ?? listing.capacity ?? 0)),
+          unlimited: listing.capacity == null,
+          taken: listing.capacity == null ? (listing.joined_count ?? 0) : Math.max(0, listing.capacity - (listing.seats_left ?? listing.capacity)),
           status: soldOut ? 'full' : 'open',
         }]
       : [],
@@ -287,7 +291,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
               <button type="button" id="fav-btn" class="icon-btn" aria-label="Favorite">♡</button>
             </span>
           </div>
-          <span class="player-card__center-label">LIVE STAGE · HOST CAMERA<br />16:9 STREAM DROPS HERE</span>
+          {!posterUrl && <span class="player-card__center-label">LIVE STAGE · HOST CAMERA<br />16:9 STREAM DROPS HERE</span>}
           {isLive ? (
             <button type="button" class="btn btn--cta js-join-btn player-card__cta" style={`background:${ctaColor}`}>▸ Join now</button>
           ) : (
@@ -561,7 +565,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
       {rules.length > 0 && (
         <section>
           <div class="section-head">
-            <h2 class="section-title">{hostName.split(' ')[0]}'s house <span class="section-title__accent">rules.</span></h2>
+            <h2 class="section-title">{hostPoss} house <span class="section-title__accent">rules.</span></h2>
             <img src="/assets/jatt-sticker.png" alt="Caution: on board — proceed with respect" class="rules-sticker" />
             <span class="section-head__note">SET BY THE HOST · SHOWN BEFORE EVERY BOOKING</span>
           </div>
@@ -701,9 +705,10 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
     return list.map((s) => {
       const total = s.capacity || 0;
       const taken = s.taken || 0;
-      const left = s.status === 'full' || CONFIG.soldOut ? 0 : Math.max(0, total - taken);
+      const unlimited = !!s.unlimited;
+      const left = s.status === 'full' || CONFIG.soldOut ? 0 : unlimited ? Infinity : Math.max(0, total - taken);
       const time = new Date(s.startsAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: CONFIG.timezone }).toUpperCase() + ' ' + TZ_LABEL;
-      return { id: s.id, time, label: s.label || '', total, taken, left };
+      return { id: s.id, time, label: s.label || '', total, taken, left, unlimited };
     });
   }
   function nextShowDate(now) {
@@ -751,7 +756,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
           <span class="slot__label">${sl.label}</span>
           <span class="slot__bar"><span class="slot__bar-fill" style="width:${pct}%; background:${pct >= 85 ? '#b82a19' : '#2d7180'}"></span></span>
         </span>
-        <span class="slot__seats ${full ? 'slot__seats--full' : sel ? 'slot__seats--selected' : ''}">${full ? 'HOUSEFULL' : sl.left + ' OF ' + sl.total + ' FREE'}</span>
+        <span class="slot__seats ${full ? 'slot__seats--full' : sel ? 'slot__seats--selected' : ''}">${full ? 'HOUSEFULL' : sl.unlimited ? 'OPEN SEATS' : sl.left + ' OF ' + sl.total + ' FREE'}</span>
       </button>`;
     }).join('');
     list.querySelectorAll('.slot:not([disabled])').forEach((btn) => {

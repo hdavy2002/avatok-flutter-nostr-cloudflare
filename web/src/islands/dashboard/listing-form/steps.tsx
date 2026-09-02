@@ -369,6 +369,15 @@ export function Step4Time({ draft, patch, err, slotsSupported, onAddSlot, onRemo
           <ErrLine err={err} field="response_time_min" />
         </div>
       )}
+      {draft.kind !== 'consult' && (
+        <label className="block">
+          <span className={labelCls}>Seats (capacity)</span>
+          <input type="number" min={0} max={5000} className={inputCls} value={draft.capacity || ''} placeholder="e.g. 60 — blank = unlimited"
+            onChange={(e) => patch({ capacity: Number(e.target.value) || 0 })} />
+          <p className="mt-1 font-body font-bold text-[12px] text-inkSoft">Total seats for this show. The page shows “32 of 60 free”; leave blank for no cap.</p>
+          <ErrLine err={err} field="capacity" />
+        </label>
+      )}
       <label className="block">
         <span className={labelCls}>Max bookings per person</span>
         <input type="number" min={1} max={20} className={inputCls} value={draft.max_per_booking}
