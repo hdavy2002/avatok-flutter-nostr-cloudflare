@@ -81,11 +81,13 @@ export function VerticalSection({
           couple of listings in a section the extra empty tracks left a long
           blank shelf to the right of them. */}
       <div className="grid gap-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(17rem, 1fr))' }}>
-        {listings.map((l) => (
+        {listings.map((l, i) => (
           <ListingTile
             key={l.id}
             listing={l}
             href={hrefBase ? `${hrefBase}/l/${encodeURIComponent(l.id)}` : undefined}
+            position={i}
+            section={vertical.id}
           />
         ))}
       </div>

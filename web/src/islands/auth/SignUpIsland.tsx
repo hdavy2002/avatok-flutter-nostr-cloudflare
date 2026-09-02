@@ -28,10 +28,11 @@
  * money or permissions, promote it to publicMetadata from the Worker, because a
  * determined client can set unsafeMetadata to anything.
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useSignUp } from '@clerk/clerk-react';
 import { ClerkIsland } from '../../lib/clerk';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/config';
+import { capture, withTrace } from '../../lib/analytics';
 import {
   Field, Button, CheckRow, Divider, SocialPair, SOCIAL_ENABLED, RolePicker, CodeStep,
   validateEmail, validatePassword, validateRequired, clerkError,
@@ -61,6 +62,8 @@ function Inner() {
   const [submitting, setSubmitting] = useState(false);
   const [resent, setResent] = useState(false);
   const stalled = useClerkStalled(isLoaded);
+  // §2.2 auth_signup_result — startRef anchors the `ms` on the eventual result.
+  const signupStartRef = useRef<number>(0);
 
   function set<T>(setter: (v: T) => void, key: string) {
     return (v: T) => {
@@ -86,18 +89,24 @@ function Inner() {
 
     setSubmitting(true);
     setFormError(null);
+    signupStartRef.current = Date.now();
     try {
-      await signUp.create({
-        emailAddress: email.trim(),
-        password,
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        unsafeMetadata: { role, signedUpVia: 'web' },
+      await withTrace(async () => {
+        await signUp.create({
+          emailAddress: email.trim(),
+          password,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          unsafeMetadata: { role, signedUpVia: 'web' },
+        });
+        await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
       });
-      await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
       setStage('verify');
     } catch (err) {
       setFormError(clerkError(err));
+      capture('auth_signup_result', {
+        outcome: 'error', reason: clerkError(err), ms: Date.now() - signupStartRef.current,
+      });
     } finally {
       setSubmitting(false);
     }
@@ -113,15 +122,24 @@ function Inner() {
     setSubmitting(true);
     setFormError(null);
     try {
-      const res = await signUp.attemptEmailAddressVerification({ code: code.trim() });
+      const res = await withTrace(() => signUp.attemptEmailAddressVerification({ code: code.trim() }));
       if (res.status === 'complete') {
         await setActive({ session: res.createdSessionId });
+        capture('auth_signup_result', {
+          outcome: 'ok', ms: Date.now() - signupStartRef.current,
+        });
         location.href = landingFor(role);
         return;
       }
       setFormError('That didn’t complete sign-up. Please check the code and try again.');
+      capture('auth_signup_result', {
+        outcome: 'error', reason: 'code_incomplete', ms: Date.now() - signupStartRef.current,
+      });
     } catch (err) {
       setFormError(clerkError(err));
+      capture('auth_signup_result', {
+        outcome: 'error', reason: clerkError(err), ms: Date.now() - signupStartRef.current,
+      });
     } finally {
       setSubmitting(false);
     }

@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { request, ApiError } from '../../lib/apiClient';
 import { getActiveToken } from '../../lib/clerk';
 import { inr } from '../../lib/money';
+import { capture, withTrace } from '../../lib/analytics';
 
 // ───────────────────────── response shapes ─────────────────────────
 export interface Overview {
@@ -58,6 +59,25 @@ async function adminReq<T>(path: string, opts: { method?: 'GET' | 'POST' | 'PUT'
   return request<T>(path, { method: opts.method ?? 'GET', body: opts.body, query: opts.query, auth });
 }
 
+/** §2.10 `admin_action` {action, target, outcome} — wraps EVERY write below so
+ * no admin write ships without a PostHog audit trail. The admin's email is
+ * already on the super props (identify() at sign-in), so this alone answers
+ * "who did what". Reads (getOverview, getAudit, …) are deliberately NOT
+ * wrapped — only mutations. */
+async function adminAction<T>(action: string, target: string, fn: () => Promise<T>): Promise<T> {
+  try {
+    const result = await withTrace(fn);
+    capture('admin_action', { action, target, outcome: 'ok' });
+    return result;
+  } catch (e) {
+    capture('admin_action', {
+      action, target, outcome: 'error',
+      reason: e instanceof ApiError ? e.error : (e instanceof Error ? e.message : 'unknown'),
+    });
+    throw e;
+  }
+}
+
 // ───────────────────────── named helpers ─────────────────────────
 export const getOverview = () => adminReq<Overview>('/api/admin/overview');
 export const getLive = () => adminReq<LiveSnapshot>('/api/admin/live');
@@ -71,29 +91,41 @@ export const searchUser = (q: string) => adminReq<UserSummary>('/api/admin/users
 export const getLedger = (q: { user?: string; ref?: string; limit?: number }) => adminReq<{ entries: any[] }>('/api/admin/ledger', { query: q });
 export const getRecon = (order?: string) => adminReq<{ runs: any[]; spot: any }>('/api/admin/recon', { query: order ? { order } : {} });
 export const getSettlements = (status = 'failed') => adminReq<{ settlements: any[] }>('/api/admin/settlements', { query: { status } });
-export const retrySettlement = (id: string) => adminReq<{ ok: boolean }>(`/api/admin/settlements/${encodeURIComponent(id)}/retry`, { method: 'POST' });
+export const retrySettlement = (id: string) => adminAction('settlement_retry', id, () =>
+  adminReq<{ ok: boolean }>(`/api/admin/settlements/${encodeURIComponent(id)}/retry`, { method: 'POST' }));
 export const getAffiliates = () => adminReq<{ affiliates: any[] }>('/api/admin/affiliates');
-export const refund = (body: { orderId: string; amount: number; reason: string; userId?: string }) => adminReq<any>('/api/admin/refund', { method: 'POST', body });
-export const adjust = (body: { account: string; amount: number; reason: string }) => adminReq<any>('/api/admin/adjust', { method: 'POST', body });
+export const refund = (body: { orderId: string; amount: number; reason: string; userId?: string }) =>
+  adminAction('refund', body.orderId, () => adminReq<any>('/api/admin/refund', { method: 'POST', body }));
+export const adjust = (body: { account: string; amount: number; reason: string }) =>
+  adminAction('adjust', body.account, () => adminReq<any>('/api/admin/adjust', { method: 'POST', body }));
 export const getAccount = (uid: string) => adminReq<any>(`/api/admin/account/${encodeURIComponent(uid)}`);
 
 // config / kill switches (EXISTING endpoints)
 export const getConfig = () => request<Record<string, any>>('/api/admin/config');
-export const putConfig = async (patch: Record<string, any>) => adminReq<{ ok: boolean; config: Record<string, any> }>('/api/admin/config', { method: 'PUT', body: patch });
+export const putConfig = (patch: Record<string, any>) =>
+  adminAction('config_set', Object.keys(patch).join(','), () =>
+    adminReq<{ ok: boolean; config: Record<string, any> }>('/api/admin/config', { method: 'PUT', body: patch }));
 
 // alerts (NEW)
 export const getAlerts = (status = 'open') => adminReq<{ alerts: Alert[] }>('/api/admin/alerts', { query: { status } });
-export const ackAlert = (id: string) => adminReq<{ ok: boolean }>(`/api/admin/alerts/${encodeURIComponent(id)}/ack`, { method: 'POST' });
-export const resolveAlert = (id: string) => adminReq<{ ok: boolean }>(`/api/admin/alerts/${encodeURIComponent(id)}/resolve`, { method: 'POST' });
-export const evaluateAlerts = () => adminReq<{ ok: boolean; checked: number; tripped: number; opened: number }>('/api/admin/alerts/evaluate', { method: 'POST' });
+export const ackAlert = (id: string) => adminAction('alert_ack', id, () =>
+  adminReq<{ ok: boolean }>(`/api/admin/alerts/${encodeURIComponent(id)}/ack`, { method: 'POST' }));
+export const resolveAlert = (id: string) => adminAction('alert_resolve', id, () =>
+  adminReq<{ ok: boolean }>(`/api/admin/alerts/${encodeURIComponent(id)}/resolve`, { method: 'POST' }));
+export const evaluateAlerts = () => adminAction('alerts_evaluate', 'all', () =>
+  adminReq<{ ok: boolean; checked: number; tripped: number; opened: number }>('/api/admin/alerts/evaluate', { method: 'POST' }));
 export const getAlertRules = () => adminReq<{ rules: AlertRule[] }>('/api/admin/alert-rules');
-export const createAlertRule = (body: Partial<AlertRule>) => adminReq<{ ok: boolean; id: string }>('/api/admin/alert-rules', { method: 'POST', body });
-export const updateAlertRule = (id: string, body: Partial<AlertRule>) => adminReq<{ ok: boolean }>(`/api/admin/alert-rules/${encodeURIComponent(id)}`, { method: 'PUT', body });
-export const deleteAlertRule = (id: string) => adminReq<{ ok: boolean }>(`/api/admin/alert-rules/${encodeURIComponent(id)}`, { method: 'DELETE' });
+export const createAlertRule = (body: Partial<AlertRule>) => adminAction('alert_rule_create', body.metric ?? 'unknown', () =>
+  adminReq<{ ok: boolean; id: string }>('/api/admin/alert-rules', { method: 'POST', body }));
+export const updateAlertRule = (id: string, body: Partial<AlertRule>) => adminAction('alert_rule_update', id, () =>
+  adminReq<{ ok: boolean }>(`/api/admin/alert-rules/${encodeURIComponent(id)}`, { method: 'PUT', body }));
+export const deleteAlertRule = (id: string) => adminAction('alert_rule_delete', id, () =>
+  adminReq<{ ok: boolean }>(`/api/admin/alert-rules/${encodeURIComponent(id)}`, { method: 'DELETE' }));
 
 // roles (NEW, super only)
 export const getRoles = () => adminReq<{ roles: RoleRow[] }>('/api/admin/roles');
-export const setRole = (uid: string, role: string) => adminReq<{ ok: boolean }>(`/api/admin/roles/${encodeURIComponent(uid)}`, { method: 'PUT', body: { role } });
+export const setRole = (uid: string, role: string) => adminAction('role_set', uid, () =>
+  adminReq<{ ok: boolean }>(`/api/admin/roles/${encodeURIComponent(uid)}`, { method: 'PUT', body: { role } }));
 
 // ───────────────────────── gate hook ─────────────────────────
 export type GateState = 'checking' | 'admin' | 'anon' | 'forbidden';

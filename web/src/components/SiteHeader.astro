@@ -172,6 +172,17 @@ const { links = DEFAULT_LINKS, sticky = true } = Astro.props;
     burger.setAttribute('aria-expanded', String(!open));
     if (panel) panel.hidden = open;
   });
+
+  // [WEB-POSTHOG-1] §2.9 nav_click{item}. Contract:
+  // Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md §2.9. Delegated on the header
+  // root rather than per-link, so it keeps working across the desktop bar, the
+  // mobile panel and either auth-state pair without re-wiring on toggle.
+  document.querySelectorAll<HTMLAnchorElement>('.avh-nav a, .avh-mobile a, .avh-cta, .avh-mobile-auth').forEach((el) => {
+    el.addEventListener('click', () => {
+      const item = (el.textContent || el.getAttribute('href') || 'unknown').trim();
+      import('../lib/analytics').then(({ capture }) => capture('nav_click', { item }));
+    });
+  });
 </script>
 
 <style is:global>

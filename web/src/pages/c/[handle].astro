@@ -69,9 +69,18 @@ function fmt(n?: number | null): string {
         </div>
       ) : (
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {listings.map((l) => <ListingTile listing={l} />)}
+          {listings.map((l, i) => <ListingTile listing={l} position={i} section="creator_channel" />)}
         </div>
       )}
     </section>
   </main>
+
+  <script define:vars={{ creatorId: creator.id ?? creator.handle, hasStats: !!stats }}>
+    // [WEB-POSTHOG-1] §2.4 creator_view. Contract: Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md §2.4.
+    // `badges` isn't a field the Creator type carries today (no kyc_verified /
+    // badge list on the channel response) — omitted rather than invented.
+    import('../../lib/analytics').then(({ capture }) => {
+      capture('creator_view', { creator_id: creatorId, has_stats: hasStats });
+    });
+  </script>
 </Base>

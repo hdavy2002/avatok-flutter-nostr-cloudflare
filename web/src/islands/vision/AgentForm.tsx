@@ -20,6 +20,7 @@ import { Field } from '../../components/Field';
 import { Pill } from '../../components/Pill';
 import { ApiError } from '../../lib/apiClient';
 import { inr } from '../../lib/money';
+import { capture, withTrace } from '../../lib/analytics';
 import {
   createAgent,
   publishAgent,
@@ -200,19 +201,23 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
     inFlight.current = true;
     setPublishing(true);
     setError(null);
+    const isEdit = Boolean(draftIdRef.current);
     try {
-      const jwt = await requireGuestAuth(); // creator must be authed
-      // create-or-update the draft, then publish.
-      let id = draftIdRef.current;
-      if (!id) {
-        const created = await createAgent(d, jwt);
-        id = created.id;
-        draftIdRef.current = id;
-      } else {
-        await updateAgent(id, d, jwt);
-      }
-      const published = await publishAgent(id, jwt);
-      setDone({ id: published.id || id });
+      await withTrace(async () => {
+        const jwt = await requireGuestAuth(); // creator must be authed
+        // create-or-update the draft, then publish.
+        let id = draftIdRef.current;
+        if (!id) {
+          const created = await createAgent(d, jwt);
+          id = created.id;
+          draftIdRef.current = id;
+        } else {
+          await updateAgent(id, d, jwt);
+        }
+        const published = await publishAgent(id, jwt);
+        setDone({ id: published.id || id });
+      });
+      capture(isEdit ? 'agent_edit' : 'agent_create', { outcome: 'ok' });
     } catch (e) {
       if (e instanceof ApiError) {
         setError(e.error || 'Could not publish. Please try again.');
@@ -221,6 +226,7 @@ function AgentFormInner({ category, template, onBack }: AgentFormProps) {
       } else {
         setError('Could not publish. Please try again.');
       }
+      capture(isEdit ? 'agent_edit' : 'agent_create', { outcome: 'error' });
     } finally {
       setPublishing(false);
       inFlight.current = false;

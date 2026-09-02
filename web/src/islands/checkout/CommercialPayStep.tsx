@@ -32,6 +32,7 @@ import { Spinner } from '../../components/Spinner';
 import { inr, inrOrFree, priceBreakdown } from '../../lib/money';
 import { listingErrorMessage } from '../../lib/listingErrors';
 import { cta, freeBox } from '../../lib/copy';
+import { capture } from '../../lib/analytics';
 import { GatewayPicker } from './GatewayPicker';
 import type { Listing } from '../../lib/types';
 import type { BookingResult, BookSelection, CommercialCheckoutNeedsFunding, CommercialCheckoutResult, PayStatusResponse, WalletBalance } from './types';
@@ -124,6 +125,12 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
     setFreeBusy(true);
     setFreeError(null);
     setFreeFull(false);
+    const submitStart = Date.now();
+    try {
+      capture('checkout_submit', { gateway: 'free', amount_paise: 0, free: true });
+    } catch {
+      /* best-effort */
+    }
     try {
       const pathKind = selection.kind === 'live_event' ? 'live' : 'consult';
       // Same endpoint as the wallet rail — the server contract is: for a
@@ -150,15 +157,52 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
         paid: false,
         spots_left: result.spots_left ?? result.seats_left ?? null,
       });
+      try {
+        capture('checkout_result', {
+          outcome: 'ok',
+          status: 200,
+          gateway: 'free',
+          ms: Date.now() - submitStart,
+          entitlement_id: result.entitlement_id ?? result.booking_id ?? result.order_id,
+        });
+      } catch {
+        /* best-effort */
+      }
     } catch (e) {
       if (e instanceof ApiError && e.status === 409 && e.error === 'free_session_full') {
         setFreeFull(true);
+        try {
+          capture('checkout_free_refused', { reason: 'full' });
+        } catch {
+          /* best-effort */
+        }
       } else if (e instanceof ApiError && e.status === 403 && e.error === 'free_sessions_disabled') {
         setFreeError(freeBox.disabled);
+        try {
+          capture('checkout_free_refused', { reason: 'disabled' });
+        } catch {
+          /* best-effort */
+        }
       } else if (e instanceof ApiError) {
         setFreeError(listingErrorMessage(e.error, e.body && typeof e.body === 'object' ? (e.body as { message?: unknown }).message : undefined));
+        try {
+          capture('checkout_result', {
+            outcome: 'error',
+            reason: e.error,
+            status: e.status,
+            gateway: 'free',
+            ms: Date.now() - submitStart,
+          });
+        } catch {
+          /* best-effort */
+        }
       } else {
         setFreeError('That didn’t go through. Please try again.');
+        try {
+          capture('checkout_result', { outcome: 'error', reason: 'network', gateway: 'free', ms: Date.now() - submitStart });
+        } catch {
+          /* best-effort */
+        }
       }
     } finally {
       setFreeBusy(false);
@@ -189,6 +233,12 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
     if (!accepted || walletBusy) return;
     setWalletBusy(true);
     setWalletError(null);
+    const submitStart = Date.now();
+    try {
+      capture('checkout_submit', { gateway: 'wallet', amount_paise: clientTotal * 100, free: false });
+    } catch {
+      /* best-effort */
+    }
     try {
       const pathKind = selection.kind === 'live_event' ? 'live' : 'consult';
       const result = await request<CommercialCheckoutResult>(
@@ -212,6 +262,17 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
         paid: charged > 0,
         escrow_coins: charged > 0 ? charged : undefined,
       });
+      try {
+        capture('checkout_result', {
+          outcome: 'ok',
+          status: 200,
+          gateway: 'wallet',
+          ms: Date.now() - submitStart,
+          entitlement_id: result.entitlement_id ?? result.booking_id ?? result.order_id,
+        });
+      } catch {
+        /* best-effort */
+      }
     } catch (e) {
       if (e instanceof ApiError && e.status === 402) {
         // [WEB-COMM-PAY-2] No order_id ever arrives here — see the file header. This is
@@ -222,10 +283,37 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
         setWalletError(
           `Your Token balance can’t cover this${Number.isFinite(needed) && needed > 0 ? ` (need ${inr(needed)})` : ''}. No charge was made — pay by card or UPI below instead.`,
         );
+        try {
+          capture('checkout_result', {
+            outcome: 'refused',
+            reason: 'insufficient_funds',
+            status: 402,
+            gateway: 'wallet',
+            ms: Date.now() - submitStart,
+          });
+        } catch {
+          /* best-effort */
+        }
       } else if (e instanceof ApiError) {
         setWalletError(listingErrorMessage(e.error, e.body && typeof e.body === 'object' ? (e.body as { message?: unknown }).message : undefined));
+        try {
+          capture('checkout_result', {
+            outcome: 'error',
+            reason: e.error,
+            status: e.status,
+            gateway: 'wallet',
+            ms: Date.now() - submitStart,
+          });
+        } catch {
+          /* best-effort */
+        }
       } else {
         setWalletError('That didn’t go through. Please try again.');
+        try {
+          capture('checkout_result', { outcome: 'error', reason: 'network', gateway: 'wallet', ms: Date.now() - submitStart });
+        } catch {
+          /* best-effort */
+        }
       }
     } finally {
       setWalletBusy(false);

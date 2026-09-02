@@ -22,10 +22,12 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ClerkIsland, requireGuestAuth } from '../../lib/clerk';
+import { IslandBoundary } from '../../components/IslandBoundary';
 import { Button, Spinner } from '../../components';
 import { PreJoin } from './PreJoin';
 import { Countdown } from './Countdown';
 import { CallStage } from './CallStage';
+import { capture, captureException } from '../../lib/analytics';
 import {
   joinCommercialSession,
   consultPrejoin,
@@ -69,6 +71,9 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
   const prefsRef = useRef<JoinPrefs | null>(null);
   const previewStreamRef = useRef<MediaStream | null>(null);
   const leavingRef = useRef(false);
+  // [WEB-POSTHOG-1] §2.6 consult_end `billed_min` — set the moment the call
+  // is actually joined.
+  const joinedAtRef = useRef<number | null>(null);
 
   const teardownCall = useCallback(() => {
     const c = call;
@@ -104,8 +109,18 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
     setJwt(jwt);
     const res = await consultPrejoin(booking, jwt);
     if ('reason' in res) {
+      try {
+        capture('consult_prejoin', { booking_id: booking, outcome: 'refused' });
+      } catch {
+        /* best-effort */
+      }
       showRefusal(res);
       return;
+    }
+    try {
+      capture('consult_prejoin', { booking_id: booking, outcome: 'ok' });
+    } catch {
+      /* best-effort */
     }
     setPrejoin(res);
     setPhase('prejoin');
@@ -128,9 +143,15 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
       }
       setJoinErr(null);
       setPhase('joining');
+      const joinStart = Date.now();
 
       const res = await joinCommercialSession('consult', booking, jwt);
       if (!res.ok) {
+        try {
+          capture('consult_join_result', { outcome: 'refused', reason: res.reason, status: res.status, ms: Date.now() - joinStart });
+        } catch {
+          /* best-effort */
+        }
         showRefusal(res);
         return;
       }
@@ -139,6 +160,8 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
       try {
         const rawClient = await streamClientFor(res);
         const client = rawClient as unknown as StreamVideoClient;
+        // [WEB-POSTHOG-1] gs_sdk_error is wired once, client-wide, in
+        // lib/getstream.ts's `streamClientFor` — no per-call hook needed here.
         const c = client.call(res.call_type, res.call_id, { reuseInstance: true });
 
         // Apply the green room's choices to the Call's OWN device managers —
@@ -164,9 +187,22 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
         }
 
         setPhase('live');
-      } catch {
+        joinedAtRef.current = Date.now();
+        try {
+          capture('consult_join_result', { outcome: 'ok', status: 200, ms: Date.now() - joinStart });
+        } catch {
+          /* best-effort */
+        }
+      } catch (e) {
         setJoinErr('Could not start your video. Check your connection and try again.');
         setPhase('prejoin');
+        try {
+          capture('gs_sdk_error', { code: 'consult_join_failed', message: e instanceof Error ? e.message : String(e) });
+          capture('consult_join_result', { outcome: 'error', reason: 'sdk_error', ms: Date.now() - joinStart });
+          captureException(e, { code: 'gs_consult_join_failed', booking_id: booking });
+        } catch {
+          /* best-effort */
+        }
       }
     },
     [booking, bootstrap, prejoin],
@@ -189,6 +225,14 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
       if (leavingRef.current) return;
       leavingRef.current = true;
       setEndReason(reason);
+      try {
+        const billedMin = joinedAtRef.current != null ? Math.max(1, Math.round((Date.now() - joinedAtRef.current) / 60000)) : 0;
+        capture('consult_end', { billed_min: billedMin });
+      } catch {
+        /* best-effort */
+      } finally {
+        joinedAtRef.current = null;
+      }
       teardownCall();
       setPhase('ended');
     },
@@ -378,9 +422,11 @@ function Centered({ children }: { children: React.ReactNode }) {
 /** Public entry: wraps the room in ClerkIsland so requireGuestAuth() can open the gate. */
 export function ConsultRoomGS({ booking }: { booking: string }) {
   return (
-    <ClerkIsland>
-      <ConsultRoomGSInner booking={booking} />
-    </ClerkIsland>
+    <IslandBoundary island="consult-gs-room">
+      <ClerkIsland>
+        <ConsultRoomGSInner booking={booking} />
+      </ClerkIsland>
+    </IslandBoundary>
   );
 }
 

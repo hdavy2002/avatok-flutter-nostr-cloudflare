@@ -23,6 +23,8 @@ import { API_BASE, cfImage } from '../../lib/config';
 import { listingErrorMessage, isKycGate, isLivenessGate } from '../../lib/listingErrors';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
+import { IslandBoundary } from '../../components/IslandBoundary';
+import { capture, withTrace } from '../../lib/analytics';
 
 type Cover = { type: string; url: string };
 type Listing = {
@@ -48,24 +50,22 @@ function inferImageMime(file: File): string | null {
   return m ? IMAGE_EXT_MIME[m[0]] ?? null : null;
 }
 
-/** Telemetry must never throw or block the upload flow. No PostHog client is wired
- * into web/ yet (see LoginIsland.tsx), so this reports through the loader-injected
- * global if present and is a silent no-op otherwise. */
-function reportUploadFailure(fields: {
-  listingId: string; fileName?: string; fileSize?: number; fileType?: string;
-  stage: 'upload' | 'save'; status: string;
+/** §2.7 `listing_cover_upload` {outcome,status,reason,size,type,ms} — the
+ * 2026-09-02 bug. Replaces the old ad-hoc `window.posthog` helper now that
+ * `web/src/lib/analytics.ts` is wired everywhere; telemetry must never throw
+ * or block the upload flow, hence `capture`'s own internal try/catch. */
+function reportUploadOutcome(fields: {
+  outcome: 'ok' | 'error'; status: string; reason?: string;
+  size?: number; type?: string; ms: number;
 }) {
-  try {
-    (window as unknown as { posthog?: { capture: (e: string, p: Record<string, unknown>) => void } })
-      .posthog?.capture('listing_cover_upload_failed', {
-        listing_id: fields.listingId,
-        file_name: fields.fileName,
-        file_size: fields.fileSize,
-        file_type: fields.fileType,
-        stage: fields.stage,
-        status: fields.status,
-      });
-  } catch { /* telemetry must never throw */ }
+  capture('listing_cover_upload', {
+    outcome: fields.outcome,
+    status: fields.status,
+    reason: fields.reason,
+    size: fields.size,
+    type: fields.type,
+    ms: fields.ms,
+  });
 }
 
 function parseCovers(raw: unknown): Cover[] {
@@ -106,6 +106,7 @@ function Panel({ id }: { id: string }) {
   }, [id]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { capture('listing_step_view', { step: 'publish' }); }, []);
 
   /** Persist the cover list. Kept separate so an upload failure never loses the rest. */
   async function saveCovers(next: Cover[]) {
@@ -136,6 +137,7 @@ function Panel({ id }: { id: string }) {
       const failures: string[] = [];
 
       for (const file of Array.from(files).slice(0, room)) {
+        const uploadStart = Date.now();
         const mime = inferImageMime(file);
         if (!mime) { failures.push(`${file.name}: photos only, please.`); continue; }
         if (file.size > MAX_BYTES) { failures.push(`${file.name} is too large (max 8 MB).`); continue; }
@@ -145,7 +147,7 @@ function Panel({ id }: { id: string }) {
         try {
           // Raw bytes with x-content-type — exactly what the app does. This is NOT a
           // multipart form; /upload/public reads req.arrayBuffer() directly.
-          const res = await fetch(`${API_BASE}/upload/public`, {
+          const res = await withTrace(() => fetch(`${API_BASE}/upload/public`, {
             method: 'POST',
             headers: {
               Authorization: `Bearer ${token}`,
@@ -155,7 +157,7 @@ function Panel({ id }: { id: string }) {
             },
             body: file,
             signal: controller.signal,
-          });
+          }));
           if (!res.ok) {
             let serverError: string | null = null;
             try {
@@ -165,14 +167,19 @@ function Panel({ id }: { id: string }) {
             failures.push(serverError
               ? `Upload rejected (${res.status}): ${serverError}`
               : `Couldn't upload ${file.name} (${res.status}).`);
-            reportUploadFailure({
-              listingId: id, fileName: file.name, fileSize: file.size, fileType: mime,
-              stage: 'upload', status: String(res.status),
+            reportUploadOutcome({
+              outcome: 'error', status: String(res.status), reason: serverError ?? undefined,
+              size: file.size, type: mime, ms: Date.now() - uploadStart,
             });
             continue;
           }
           const body = await res.json() as { url?: string };
-          if (body.url) added.push({ type: 'image', url: body.url });
+          if (body.url) {
+            added.push({ type: 'image', url: body.url });
+            reportUploadOutcome({
+              outcome: 'ok', status: '200', size: file.size, type: mime, ms: Date.now() - uploadStart,
+            });
+          }
         } catch (e) {
           const aborted = e instanceof DOMException && e.name === 'AbortError';
           const reason = aborted
@@ -181,9 +188,9 @@ function Panel({ id }: { id: string }) {
               ? 'network/connection error'
               : e instanceof Error ? e.message : 'unknown error';
           failures.push(`Couldn't upload ${file.name}: ${reason}`);
-          reportUploadFailure({
-            listingId: id, fileName: file.name, fileSize: file.size, fileType: mime,
-            stage: 'upload', status: aborted ? 'timeout' : (e instanceof Error ? e.name : 'unknown'),
+          reportUploadOutcome({
+            outcome: 'error', status: aborted ? 'timeout' : (e instanceof Error ? e.name : 'unknown'),
+            reason, size: file.size, type: mime, ms: Date.now() - uploadStart,
           });
         } finally {
           clearTimeout(timer);
@@ -191,6 +198,7 @@ function Panel({ id }: { id: string }) {
       }
 
       if (added.length) {
+        const saveStart = Date.now();
         try {
           await saveCovers([...covers, ...added]);
         } catch (e) {
@@ -198,9 +206,10 @@ function Panel({ id }: { id: string }) {
             ? `Upload rejected (${e.status}): ${e.error}`
             : e instanceof TypeError ? 'network/connection error' : 'Try again.';
           failures.push(`Photos uploaded but could not be saved: ${reason}`);
-          reportUploadFailure({
-            listingId: id, stage: 'save',
+          reportUploadOutcome({
+            outcome: 'error',
             status: e instanceof ApiError ? String(e.status) : (e instanceof Error ? e.name : 'unknown'),
+            reason, ms: Date.now() - saveStart,
           });
         }
       }
@@ -223,11 +232,12 @@ function Panel({ id }: { id: string }) {
     setRepeating(true); setError(null);
     try {
       const token = await getActiveToken();
-      const r = await request<{ listing_ids?: string[] }>(
+      const r = await withTrace(() => request<{ listing_ids?: string[] }>(
         `/api/listings/${encodeURIComponent(id)}/repeat`,
         { method: 'POST', auth: token, body: { weeks: repeatWeeks } },
-      );
+      ));
       const n = r.listing_ids?.length ?? 0;
+      capture('listing_repeat', { weeks: repeatWeeks, outcome: 'ok' });
       // Straight to the list: the copies are drafts and each needs its own publish, so
       // the useful next screen is the one that shows all of them.
       window.location.href = `/dashboard/listings?repeated=${n}`;
@@ -235,15 +245,20 @@ function Panel({ id }: { id: string }) {
       setError(e instanceof ApiError
         ? listingErrorMessage(e.error, (e.body as { detail?: unknown } | null)?.detail)
         : 'Could not make the copies. Try again.');
+      capture('listing_repeat', { weeks: repeatWeeks, outcome: 'error' });
     } finally { setRepeating(false); }
   }
 
   async function publish() {
-    if (busy) return;
+    if (busy || !listing) return;
     setBusy(true); setError(null); setGate(null);
     try {
       const token = await getActiveToken();
-      await request(`/api/listings/${encodeURIComponent(id)}/publish`, { method: 'POST', auth: token });
+      await withTrace(() => request(`/api/listings/${encodeURIComponent(id)}/publish`, { method: 'POST', auth: token }));
+      capture('listing_publish', {
+        outcome: 'ok', status: 200, kind: listing.kind, price: listing.price ?? 0,
+        free_entry: !listing.price,
+      });
       window.location.href = `/dashboard/listings?published=${encodeURIComponent(id)}`;
     } catch (e) {
       if (e instanceof ApiError) {
@@ -253,6 +268,12 @@ function Panel({ id }: { id: string }) {
       } else {
         setError('Could not publish. Try again.');
       }
+      capture('listing_publish', {
+        outcome: 'error',
+        status: e instanceof ApiError ? e.status : 0,
+        reason: e instanceof ApiError ? e.error : (e instanceof Error ? e.message : 'unknown'),
+        kind: listing.kind, price: listing.price ?? 0, free_entry: !listing.price,
+      });
     } finally { setBusy(false); }
   }
 
@@ -430,9 +451,10 @@ export function ListingPublish() {
   useEffect(() => {
     try { setId(new URLSearchParams(window.location.search).get('id')); } catch { /* */ }
   }, []);
-  if (!id) return <p className="font-body font-bold text-inkSoft">No listing selected.</p>;
   return (
-    <Panel id={id} />
+    <IslandBoundary island="dashboard-listing-publish">
+      {!id ? <p className="font-body font-bold text-inkSoft">No listing selected.</p> : <Panel id={id} />}
+    </IslandBoundary>
   );
 }
 

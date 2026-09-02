@@ -12,6 +12,7 @@ import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { Spinner } from '../../components/Spinner';
 import type { WalletBalance } from '../checkout/types';
+import { capture, withTrace } from '../../lib/analytics';
 
 interface Tx {
   id?: string;
@@ -38,6 +39,7 @@ function Inner() {
   const [busy, setBusy] = useState(false);
   const [reviewer, setReviewer] = useState(false);
   useEffect(() => { setReviewer(isReviewerMode()); }, []);
+  useEffect(() => { capture('wallet_view', {}); }, []);
 
   useEffect(() => {
     void (async () => {
@@ -71,11 +73,11 @@ function Inner() {
     setBusy(true);
     setError(null);
     try {
-      const r = await request<{ url?: string; checkout_url?: string }>('/api/wallet/topup', {
+      const r = await withTrace(() => request<{ url?: string; checkout_url?: string }>('/api/wallet/topup', {
         method: 'POST',
         auth: token,
         body: { amount: 1000 },
-      });
+      }));
       const url = r.url || r.checkout_url;
       if (url) location.href = url;
       else setError('Top-up is not available right now.');

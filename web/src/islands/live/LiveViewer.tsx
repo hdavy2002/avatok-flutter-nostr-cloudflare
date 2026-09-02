@@ -16,6 +16,7 @@ import { ClerkIsland, requireGuestAuth } from '../../lib/clerk';
 import { request, ApiError } from '../../lib/apiClient';
 import { cfImage } from '../../lib/config';
 import { Spinner } from '../../components';
+import { capture } from '../../lib/analytics';
 import { WhepPlayer, type WhepStatus } from './WhepPlayer';
 import { HlsFallback, type HlsStatus } from './HlsFallback';
 import { useLiveRoom, roomUrlFor } from './room';
@@ -91,6 +92,12 @@ function Inner({ listingId, title, poster, creatorHandle }: LiveViewerProps) {
   const [transport, setTransport] = useState<Transport>(null);
   const [muted, setMuted] = useState(true);
   const [playerNote, setPlayerNote] = useState<string | null>(null);
+  // [WEB-POSTHOG-1] §2.6 — join attempt timing + watched-time bookkeeping for
+  // this legacy Cloudflare WHEP/HLS viewer (sibling contract to LiveGsViewer).
+  const joinAttemptStartRef = useRef<number>(0);
+  const joinedAtRef = useRef<number | null>(null);
+  const prevPlayerStateRef = useRef<string | null>(null);
+  const stallCountRef = useRef(0);
 
   // ── Room socket (only once we have a token + we're live/waiting) ──────────
   const roomUrl =
@@ -109,15 +116,42 @@ function Inner({ listingId, title, poster, creatorHandle }: LiveViewerProps) {
       dispatch({ t: 'reset' }); // gate dismissed
       return;
     }
+    joinAttemptStartRef.current = Date.now();
+    try {
+      capture('live_join_attempt', { listing_id: listingId, session_id: null, has_ticket: null });
+    } catch {
+      /* best-effort */
+    }
     try {
       const j = await request<JoinResponse>(`/api/live/${encodeURIComponent(listingId)}/join`, { auth: jwt });
       const creatorHref =
         (creatorHandle && `/c/${encodeURIComponent(creatorHandle)}`) ||
         (j.creator_id ? `/c/${encodeURIComponent(j.creator_id)}` : '/explore');
-      if (j.state === 'ended') { dispatch({ t: 'ended' }); return; }
+      if (j.state === 'ended') {
+        dispatch({ t: 'ended' });
+        try {
+          capture('live_join_result', { outcome: 'refused', reason: 'ended', ms: Date.now() - joinAttemptStartRef.current });
+        } catch {
+          /* best-effort */
+        }
+        return;
+      }
+      try {
+        capture('live_join_result', { outcome: 'ok', status: 200, ms: Date.now() - joinAttemptStartRef.current });
+      } catch {
+        /* best-effort */
+      }
       if (j.live === true && j.whep) dispatch({ t: 'joined', join: j, token: jwt, creatorHref });
       else dispatch({ t: 'waiting', join: j, token: jwt, creatorHref });
     } catch (e) {
+      const reason = e instanceof ApiError ? e.error : 'network';
+      const status = e instanceof ApiError ? e.status : 0;
+      try {
+        capture('live_join_result', { outcome: status === 403 ? 'refused' : 'error', reason, status, ms: Date.now() - joinAttemptStartRef.current });
+        if (status === 403) capture('live_refusal_shown', { reason: 'needs_ticket' });
+      } catch {
+        /* best-effort */
+      }
       if (e instanceof ApiError && e.status === 403) dispatch({ t: 'noticket' });
       else dispatch({ t: 'error', msg: e instanceof ApiError ? e.error : 'Could not join the stream.' });
     }
@@ -149,6 +183,25 @@ function Inner({ listingId, title, poster, creatorHandle }: LiveViewerProps) {
   }, [state.phase, state.token, state.creatorHref, listingId]);
 
   // ── Player: WHEP first, LL-HLS fallback ───────────────────────────────────
+  const emitPlayerState = useCallback((state: 'connecting' | 'playing' | 'stalled' | 'ended') => {
+    if (prevPlayerStateRef.current === state) return;
+    prevPlayerStateRef.current = state;
+    if (state === 'playing' && joinedAtRef.current == null) joinedAtRef.current = Date.now();
+    if (state === 'stalled') {
+      stallCountRef.current += 1;
+      try {
+        capture('live_stall', { ms: 0, count: stallCountRef.current });
+      } catch {
+        /* best-effort */
+      }
+    }
+    try {
+      capture('live_player_state', { state, ms: 0 });
+    } catch {
+      /* best-effort */
+    }
+  }, []);
+
   const startHls = useCallback(async (hls: string) => {
     setTransport('hls');
     setPlayerNote('Low-latency unavailable — using HLS');
@@ -158,7 +211,8 @@ function Inner({ listingId, title, poster, creatorHandle }: LiveViewerProps) {
       url: hls,
       video,
       onStatus: (s: HlsStatus, d) => {
-        if (s === 'failed') setPlayerNote(`Playback error${d ? ` (${d})` : ''}`);
+        if (s === 'failed') { setPlayerNote(`Playback error${d ? ` (${d})` : ''}`); emitPlayerState('stalled'); }
+        else if (s === 'playing') emitPlayerState('playing');
       },
     });
     hlsRef.current = player;
@@ -179,9 +233,10 @@ function Inner({ listingId, title, poster, creatorHandle }: LiveViewerProps) {
           video,
           onStatus: (s: WhepStatus, d) => {
             if (disposed) return;
-            if (s === 'playing') { setTransport('whep'); setPlayerNote(null); }
+            if (s === 'playing') { setTransport('whep'); setPlayerNote(null); emitPlayerState('playing'); }
             else if (s === 'failed') {
               // tear down WHEP and fall back to HLS if we have a URL
+              emitPlayerState('stalled');
               whepRef.current?.close();
               whepRef.current = null;
               if (hls && transport !== 'hls') void startHls(hls);
@@ -215,11 +270,38 @@ function Inner({ listingId, title, poster, creatorHandle }: LiveViewerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.phase, state.join]);
 
+  // §2.6 live_leave — cover the "closed the tab while watching" case, which
+  // the room.ended effect above (server-driven) never sees.
+  useEffect(() => {
+    const onPageHide = () => {
+      if (state.phase !== 'live' || joinedAtRef.current == null) return;
+      try {
+        const watchedS = Math.round((Date.now() - joinedAtRef.current) / 1000);
+        capture('live_leave', { watched_s: watchedS });
+      } catch {
+        /* best-effort */
+      }
+      joinedAtRef.current = null;
+    };
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
+  }, [state.phase]);
+
   // ── Lifecycle: room broadcasts session_ended → tear down + ended card ─────
   useEffect(() => {
     if (room.ended && state.phase === 'live') {
       whepRef.current?.close();
       hlsRef.current?.close();
+      try {
+        const watchedS = joinedAtRef.current != null ? Math.round((Date.now() - joinedAtRef.current) / 1000) : 0;
+        capture('live_leave', { watched_s: watchedS });
+        capture('live_player_state', { state: 'ended', ms: 0 });
+      } catch {
+        /* best-effort */
+      } finally {
+        joinedAtRef.current = null;
+        prevPlayerStateRef.current = null;
+      }
       dispatch({ t: 'ended' });
     }
   }, [room.ended, state.phase]);

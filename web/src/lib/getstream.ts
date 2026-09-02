@@ -36,6 +36,7 @@
  */
 
 import { request, ApiError } from './apiClient';
+import { capture, captureException } from './analytics';
 
 /** The two paid session kinds. Matches the server's route segment, not its DB `kind`. */
 export type CommercialKind = 'live' | 'consult';
@@ -219,7 +220,41 @@ export function commercialSessionState(
 
 type AnyStreamClient = {
   disconnectUser: () => Promise<void>;
+  // Present on the real SDK client; typed loosely (see the module header) so
+  // this file does not force the SDK's types onto every caller.
+  on?: (event: string, cb: (payload: unknown) => void) => void;
 };
+
+// [WEB-POSTHOG-1] §2.6 gs_sdk_error — every GetStream client error, wherever
+// in the SDK's own event surface it fires, reported both as a named event
+// (for the funnel dashboards) and as an `$exception` (for error tracking).
+// Best-effort only: a telemetry failure here must never break a call.
+function wireClientErrorTelemetry(client: AnyStreamClient, userId: string): void {
+  try {
+    client.on?.('connection.error', (payload) => {
+      capture('gs_sdk_error', { code: 'connection.error', message: describeGsError(payload) });
+      captureException(payload instanceof Error ? payload : new Error(describeGsError(payload)), {
+        code: 'gs_connection_error',
+        user_id: userId,
+      });
+    });
+    client.on?.('call.error', (payload) => {
+      capture('gs_sdk_error', { code: 'call.error', message: describeGsError(payload) });
+      captureException(payload instanceof Error ? payload : new Error(describeGsError(payload)), {
+        code: 'gs_call_error',
+        user_id: userId,
+      });
+    });
+  } catch {
+    /* best-effort — the client still works without this wiring */
+  }
+}
+
+function describeGsError(payload: unknown): string {
+  if (payload instanceof Error) return payload.message;
+  if (payload && typeof payload === 'object' && 'message' in payload) return String((payload as { message: unknown }).message);
+  return String(payload);
+}
 
 let cached: { key: string; client: AnyStreamClient } | null = null;
 
@@ -251,6 +286,7 @@ export async function streamClientFor(creds: CommercialJoinCredentials): Promise
     user: { id: creds.user_id },
     token: creds.token,
   }) as unknown as AnyStreamClient;
+  wireClientErrorTelemetry(client, creds.user_id);
 
   cached = { key, client };
   return client;

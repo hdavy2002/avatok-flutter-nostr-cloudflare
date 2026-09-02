@@ -28,6 +28,7 @@ import { inr } from '../../lib/money';
 import { listingErrorMessage } from '../../lib/listingErrors';
 import { openGatewaySheet, createStripeElements, confirmStripePayment } from './gatewaySheet';
 import { stashPayReturn } from './PayReturn';
+import { capture } from '../../lib/analytics';
 import type { StripeElementsHandle } from './gatewaySheet';
 import type { GatewayId, GatewayOrderResponse, PayMethod, PayMethodsResponse, PayStatusResponse } from './types';
 
@@ -74,6 +75,10 @@ export function GatewayPicker({
   const [order, setOrder] = useState<GatewayOrderResponse | null>(null);
   const [stripeHandle, setStripeHandle] = useState<StripeElementsHandle | null>(null);
   const stripeContainerRef = useRef<HTMLDivElement | null>(null);
+  // [WEB-POSTHOG-1] §2.5 — timestamp of the last `pay()` attempt, so the
+  // eventual checkout_result (however it resolves: poll success, poll
+  // failure, or timeout) can report `ms`.
+  const submitStartRef = useRef<number>(0);
 
   useEffect(() => {
     void (async () => {
@@ -114,10 +119,30 @@ export function GatewayPicker({
         query: { order_id: orderId },
       });
       if (s.status === 'paid') {
+        try {
+          capture('checkout_result', {
+            outcome: 'ok',
+            status: 200,
+            gateway,
+            ms: Date.now() - submitStartRef.current,
+          });
+        } catch {
+          /* best-effort */
+        }
         onPaid(s);
         return;
       }
       if (s.status === 'failed' || s.status === 'refunded') {
+        try {
+          capture('checkout_result', {
+            outcome: 'refused',
+            reason: s.status,
+            gateway,
+            ms: Date.now() - submitStartRef.current,
+          });
+        } catch {
+          /* best-effort */
+        }
         setBusy(false);
         setPhase('pick');
         setError('That payment did not go through. No charge was made — try again or pick another method.');
@@ -125,6 +150,18 @@ export function GatewayPicker({
       }
     } catch {
       /* transient — keep polling until the attempt budget runs out */
+    }
+    if (attempt + 1 >= POLL_ATTEMPTS) {
+      try {
+        capture('checkout_result', {
+          outcome: 'error',
+          reason: 'poll_timeout',
+          gateway,
+          ms: Date.now() - submitStartRef.current,
+        });
+      } catch {
+        /* best-effort */
+      }
     }
     await new Promise((r) => setTimeout(r, POLL_MS));
     return pollStatus(gateway, orderId, attempt + 1);
@@ -135,6 +172,16 @@ export function GatewayPicker({
     setBusy(true);
     setError(null);
     setPhase('opening');
+    submitStartRef.current = Date.now();
+    try {
+      capture('checkout_submit', {
+        gateway: selected,
+        amount_paise: clientTotalCoins != null ? clientTotalCoins * 100 : null,
+        free: false,
+      });
+    } catch {
+      /* best-effort */
+    }
     try {
       const created = await request<GatewayOrderResponse>(`/api/pay/${selected}/order`, {
         method: 'POST',
@@ -153,6 +200,16 @@ export function GatewayPicker({
         setError(
           `The price changed since you started checkout. You’d be charged ${inr(serverTotal)}, not ${inr(clientTotalCoins)}. Review the price above and try again.`,
         );
+        try {
+          capture('checkout_result', {
+            outcome: 'refused',
+            reason: 'price_drift',
+            gateway: selected,
+            ms: Date.now() - submitStartRef.current,
+          });
+        } catch {
+          /* best-effort */
+        }
         return;
       }
 
@@ -172,11 +229,31 @@ export function GatewayPicker({
         onDismiss: () => {
           setBusy(false);
           setPhase('pick');
+          try {
+            capture('checkout_result', {
+              outcome: 'refused',
+              reason: 'dismissed',
+              gateway: selected,
+              ms: Date.now() - submitStartRef.current,
+            });
+          } catch {
+            /* best-effort */
+          }
         },
         onError: (message) => {
           setBusy(false);
           setPhase('pick');
           setError(message);
+          try {
+            capture('checkout_result', {
+              outcome: 'error',
+              reason: message,
+              gateway: selected,
+              ms: Date.now() - submitStartRef.current,
+            });
+          } catch {
+            /* best-effort */
+          }
         },
         // Paytm (today; any future redirect-based gateway) navigates away before
         // any of the callbacks above can fire. Persist what /pay/return needs
@@ -193,6 +270,17 @@ export function GatewayPicker({
       setError(
         e instanceof ApiError ? listingErrorMessage(e.error) : e instanceof Error ? e.message : 'Could not start that payment. Try again.',
       );
+      try {
+        capture('checkout_result', {
+          outcome: 'error',
+          reason: e instanceof ApiError ? e.error : 'unknown',
+          status: e instanceof ApiError ? e.status : 0,
+          gateway: selected,
+          ms: Date.now() - submitStartRef.current,
+        });
+      } catch {
+        /* best-effort */
+      }
     }
   }
 
@@ -204,6 +292,16 @@ export function GatewayPicker({
     setBusy(false);
     if (!result.ok) {
       setError(result.error);
+      try {
+        capture('checkout_result', {
+          outcome: 'error',
+          reason: result.error,
+          gateway: 'stripe',
+          ms: Date.now() - submitStartRef.current,
+        });
+      } catch {
+        /* best-effort */
+      }
       return;
     }
     void pollStatus('stripe', order.order_id);
@@ -294,11 +392,23 @@ export function GatewayPicker({
                 role="radio"
                 aria-checked={isSelected}
                 disabled={busy || disabled}
-                onClick={() => setSelected(m.gateway)}
+                onClick={() => {
+                  setSelected(m.gateway);
+                  try {
+                    capture('checkout_gateway_pick', { gateway: m.gateway });
+                  } catch {
+                    /* best-effort */
+                  }
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     setSelected(m.gateway);
+                    try {
+                      capture('checkout_gateway_pick', { gateway: m.gateway });
+                    } catch {
+                      /* best-effort */
+                    }
                   }
                 }}
                 className={[

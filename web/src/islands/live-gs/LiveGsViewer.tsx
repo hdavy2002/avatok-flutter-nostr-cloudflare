@@ -16,10 +16,12 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { StreamVideo, StreamCall, type Call } from '@stream-io/video-react-sdk';
 import { ClerkIsland, requireGuestAuth } from '../../lib/clerk';
+import { IslandBoundary } from '../../components/IslandBoundary';
 import { cfImage } from '../../lib/config';
 import { inrOrFree } from '../../lib/money';
 import { freeBox } from '../../lib/copy';
 import { Spinner } from '../../components';
+import { capture, captureException } from '../../lib/analytics';
 import {
   joinCommercialSession,
   streamClientFor,
@@ -71,6 +73,10 @@ function Inner({ listingId, title, poster, price, creatorName, creatorHandle, cr
   const jwtRef = useRef<string | null>(null);
   const [client, setClient] = useState<Awaited<ReturnType<typeof streamClientFor>> | null>(null);
   const [call, setCall] = useState<Call | null>(null);
+  // [WEB-POSTHOG-1] §2.6 live_leave `watched_s` — set the moment the call is
+  // actually joined (StreamCall mounted), not at attempt time.
+  const joinedAtRef = useRef<number | null>(null);
+  const hasTicket = typeof price === 'number';
 
   const bookHref = `/book/${encodeURIComponent(listingId)}`;
   const creatorHref = creatorHandle ? `/c/${encodeURIComponent(creatorHandle)}` : '/explore';
@@ -86,13 +92,34 @@ function Inner({ listingId, title, poster, price, creatorName, creatorHandle, cr
     }
     jwtRef.current = jwt;
     dispatch({ t: 'joining' });
+    const attemptStart = Date.now();
+    try {
+      capture('live_join_attempt', { listing_id: listingId, session_id: null, has_ticket: hasTicket });
+    } catch {
+      /* best-effort */
+    }
     const result = await joinCommercialSession('live', listingId, jwt);
     if (!result.ok) {
+      try {
+        capture('live_join_result', {
+          outcome: 'refused',
+          reason: result.reason,
+          status: result.status,
+          ms: Date.now() - attemptStart,
+        });
+      } catch {
+        /* best-effort */
+      }
       dispatch({ t: 'refused', refusal: result });
       return;
     }
+    try {
+      capture('live_join_result', { outcome: 'ok', status: 200, ms: Date.now() - attemptStart });
+    } catch {
+      /* best-effort */
+    }
     dispatch({ t: 'live', creds: result });
-  }, [listingId]);
+  }, [listingId, hasTicket]);
 
   // Once we have credentials: build the GetStream client + call and join it.
   // The server already authorized this join (window open, ticket held); no
@@ -105,12 +132,21 @@ function Inner({ listingId, title, poster, price, creatorName, creatorHandle, cr
       try {
         const c = await streamClientFor(creds);
         if (disposed) return;
+        // [WEB-POSTHOG-1] gs_sdk_error is wired once, client-wide, in
+        // lib/getstream.ts's `streamClientFor` — no per-call hook needed here.
         const theCall = (c as any).call(creds.call_type, creds.call_id) as Call;
         setClient(c);
         setCall(theCall);
         await theCall.join();
-      } catch {
+        joinedAtRef.current = Date.now();
+      } catch (e) {
         if (disposed) return;
+        try {
+          capture('gs_sdk_error', { code: 'join_failed', message: e instanceof Error ? e.message : String(e) });
+          captureException(e, { code: 'gs_join_failed', listing_id: listingId });
+        } catch {
+          /* best-effort */
+        }
         dispatch({ t: 'refused', refusal: { ok: false, reason: 'unavailable', status: 0, detail: 'could not connect to the stream' } });
       }
     })();
@@ -127,7 +163,31 @@ function Inner({ listingId, title, poster, price, creatorName, creatorHandle, cr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.phase, state.creds]);
 
+  // §2.6 live_leave — cover "closed the tab while watching", which the
+  // reducer's `left`/`refused` transitions never see.
+  useEffect(() => {
+    const onPageHide = () => {
+      if (state.phase !== 'live' || joinedAtRef.current == null) return;
+      try {
+        capture('live_leave', { watched_s: Math.round((Date.now() - joinedAtRef.current) / 1000) });
+      } catch {
+        /* best-effort */
+      }
+      joinedAtRef.current = null;
+    };
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
+  }, [state.phase]);
+
   const leave = useCallback(() => {
+    try {
+      const watchedS = joinedAtRef.current != null ? Math.round((Date.now() - joinedAtRef.current) / 1000) : 0;
+      capture('live_leave', { watched_s: watchedS });
+    } catch {
+      /* best-effort */
+    } finally {
+      joinedAtRef.current = null;
+    }
     dispatch({ t: 'left' });
   }, []);
 
@@ -257,6 +317,24 @@ function RefusalScreen({
   title?: string; poster?: string | null; price?: number | null; creatorName?: string | null;
   creatorHref: string; bookHref: string; onRetry: () => void; onJoin: () => void;
 }) {
+  // [WEB-POSTHOG-1] §2.6 live_refusal_shown — once per distinct refusal
+  // actually rendered to the viewer (the free-lane branches below resolve to
+  // a screen the raw `refusal.reason` alone wouldn't tell you).
+  useEffect(() => {
+    const reason =
+      refusal.status === 409 && refusal.detail === 'free_session_full'
+        ? 'free_session_full'
+        : refusal.status === 403 && refusal.detail === 'free_sessions_disabled'
+          ? 'free_sessions_disabled'
+          : refusal.reason;
+    try {
+      capture('live_refusal_shown', { reason });
+    } catch {
+      /* best-effort */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refusal]);
+
   const Frame = ({ children, tone = 'blueInk' }: { children: React.ReactNode; tone?: string }) => (
     <div className="mx-auto max-w-2xl px-4 py-16 text-center">
       <div className="rounded-zine border-zine border-ink bg-card p-10 shadow-zine">
@@ -443,9 +521,11 @@ function TooEarlyScreen({
 /** Public entry: wraps the viewer in <ClerkIsland> so requireGuestAuth() works. */
 export function LiveGsViewer(props: LiveGsViewerProps) {
   return (
-    <ClerkIsland>
-      <Inner {...props} />
-    </ClerkIsland>
+    <IslandBoundary island="live-gs-viewer">
+      <ClerkIsland>
+        <Inner {...props} />
+      </ClerkIsland>
+    </IslandBoundary>
   );
 }
 

@@ -1,7 +1,10 @@
+import { useCallback } from 'react';
 import { cfImage } from '../lib/config';
 import { toCardView, durationLabel, languageLabel, priceLabel } from '../lib/card';
 import { chips as chipCopy, statusPill } from '../lib/copy';
 import type { Card as CardModel, CardView } from '../lib/types';
+// [WEB-POSTHOG-1] Contract: Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md §2.3.
+import { capture } from '../lib/analytics';
 
 export interface ListingTileProps {
   listing: CardModel;
@@ -10,6 +13,77 @@ export interface ListingTileProps {
   /** Poster width hint for the image transform. */
   width?: number;
   className?: string;
+  /** 0-based position within its section/rail, for market_card_impression/click. */
+  position?: number;
+  /** The bazaar section (vertical id) or rail this card renders in, e.g. 'live_now'. */
+  section?: string;
+}
+
+// ── §2.3 market_card_impression — ONE event per batch, up to 50 entries, flushed
+// every 2s via a shared IntersectionObserver across every mounted ListingTile.
+// A per-card capture would be 24+ events per page load; this is one. ──────────
+type Impression = { listing_id: string; position: number; section: string };
+let impressionQueue: Impression[] = [];
+let flushTimer: ReturnType<typeof setInterval> | null = null;
+const seenImpressions = new Set<string>();
+
+function queueImpression(imp: Impression): void {
+  const key = `${imp.section}:${imp.listing_id}:${imp.position}`;
+  if (seenImpressions.has(key)) return; // one impression per card per page view
+  seenImpressions.add(key);
+  impressionQueue.push(imp);
+  if (impressionQueue.length >= 50) flushImpressions();
+  if (!flushTimer && typeof window !== 'undefined') {
+    flushTimer = setInterval(flushImpressions, 2000);
+  }
+}
+
+function flushImpressions(): void {
+  if (impressionQueue.length === 0) return;
+  const batch = impressionQueue.slice(0, 50);
+  impressionQueue = impressionQueue.slice(50);
+  capture('market_card_impression', { impressions: batch });
+}
+
+let sharedObserver: IntersectionObserver | null = null;
+const observedCallbacks = new WeakMap<Element, () => void>();
+
+function getSharedObserver(): IntersectionObserver | null {
+  if (typeof IntersectionObserver === 'undefined') return null;
+  if (!sharedObserver) {
+    sharedObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const cb = observedCallbacks.get(entry.target);
+          if (cb) cb();
+          sharedObserver?.unobserve(entry.target);
+          observedCallbacks.delete(entry.target);
+        }
+      },
+      { threshold: 0.5 },
+    );
+  }
+  return sharedObserver;
+}
+
+/**
+ * Returns a ref callback to attach to the card's anchor. A callback ref (not
+ * `useRef` + `useEffect`) because a plain ref object's assignment doesn't
+ * trigger a re-render, so an effect keyed on `.current` would never see the
+ * mounted node — this fires the moment React attaches the DOM node.
+ */
+function useCardImpression(imp: Impression): (el: HTMLAnchorElement | null) => void {
+  return useCallback(
+    (el: HTMLAnchorElement | null) => {
+      const observer = getSharedObserver();
+      if (!observer || !el) return;
+      observedCallbacks.set(el, () => queueImpression(imp));
+      observer.observe(el);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [imp.listing_id, imp.position, imp.section],
+  );
 }
 
 /**
@@ -134,10 +208,18 @@ function chipsFor(c: CardView, freeEntry: boolean): [string, string] {
  * hardcoded mock data and this reads the API, so anything the comp faked either
  * comes from a real column or is replaced by something true (see chipsFor).
  */
-export function ListingTile({ listing, href, width = 520, className = '' }: ListingTileProps) {
+export function ListingTile({ listing, href, width = 520, className = '', position = 0, section = 'unknown' }: ListingTileProps) {
   const c = toCardView(listing);
   const target = href ?? listingHref(listing);
   const p = paletteFor(c.id);
+  const impressionRef = useCardImpression({ listing_id: c.id, position, section });
+  const onCardClick = useCallback(() => {
+    // [WEB-POSTHOG-1] §2.3 market_card_click. The whole card is one <a> — there
+    // is no separate BOOK NOW / DETAILS control today (both are decorative
+    // spans, see below), so every click leads to the details route.
+    capture('market_card_click', { listing_id: c.id, kind: c.kind ?? listing.kind ?? null, position, section, cta: 'details' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [c.id, c.kind, listing.kind, position, section]);
   // [LIST-FREE-1] Gated on `free_entry` alone (§2.4) — a listing that merely
   // prices at ₹0 without the flag is not this lane, and free_entry rows never
   // reach this component without it (server truth, not a promo).
@@ -160,7 +242,9 @@ export function ListingTile({ listing, href, width = 520, className = '' }: List
 
   return (
     <a
+      ref={impressionRef}
       href={target}
+      onClick={onCardClick}
       className={['group flex flex-col overflow-hidden no-underline', className].join(' ')}
       style={{
         border: `3px solid ${INK}`,

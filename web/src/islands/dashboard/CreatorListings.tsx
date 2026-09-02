@@ -19,6 +19,7 @@ import { toCardView } from '../../lib/card';
 import { inrOrFree } from '../../lib/money';
 import { Spinner } from '../../components/Spinner';
 import type { Card as ListingCard } from '../../lib/types';
+import { capture, withTrace } from '../../lib/analytics';
 
 type Row = ListingCard & { status?: string; joined_count?: number };
 
@@ -84,8 +85,9 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
     if (!token || !confirm('Archive this listing? It will be removed from the marketplace.')) return;
     setBusy(id);
     try {
-      await request(`/api/listings/${id}/status`, { method: 'POST', auth: token, body: { status: 'cancelled' } });
+      await withTrace(() => request(`/api/listings/${id}/status`, { method: 'POST', auth: token, body: { status: 'cancelled' } }));
       setRows((prev) => (prev ?? []).map((l) => (l.id === id ? { ...l, status: 'cancelled' } : l)));
+      capture('listing_status_change', { to: 'cancelled' });
     } catch { alert('Could not archive — try again.'); }
     setBusy(null);
   }
@@ -93,8 +95,9 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
     if (!token || !confirm('Delete this listing permanently? This cannot be undone.')) return;
     setBusy(id);
     try {
-      await request(`/api/listings/${id}`, { method: 'DELETE', auth: token });
+      await withTrace(() => request(`/api/listings/${id}`, { method: 'DELETE', auth: token }));
       setRows((prev) => (prev ?? []).filter((l) => l.id !== id));
+      capture('listing_cancel', {});
     } catch { alert('Could not delete — try again.'); }
     setBusy(null);
   }

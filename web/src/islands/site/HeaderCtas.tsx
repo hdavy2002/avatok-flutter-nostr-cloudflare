@@ -10,6 +10,12 @@ import { ClerkIsland, getActiveToken } from '../../lib/clerk';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/config';
 import { request } from '../../lib/apiClient';
 import type { WalletBalance } from '../checkout/types';
+// [WEB-POSTHOG-1] §2.9 nav_click. Contract: Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md §2.9.
+import { capture } from '../../lib/analytics';
+
+function navClick(item: string) {
+  capture('nav_click', { item });
+}
 
 const ghost =
   'rounded-full border-zine border-ink bg-card px-4 py-2 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine';
@@ -31,7 +37,7 @@ function WalletPill() {
     })();
   }, []);
   return (
-    <a href="/dashboard/wallet" className={`${ghost} flex items-center gap-2`} aria-label="Wallet balance" title="Wallet">
+    <a href="/dashboard/wallet" className={`${ghost} flex items-center gap-2`} aria-label="Wallet balance" title="Wallet" onClick={() => navClick('wallet')}>
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <rect x="2" y="6" width="20" height="14" rx="3" />
         <path d="M2 10h20" />
@@ -46,8 +52,17 @@ function Authed({ onSignOut }: { onSignOut: () => void }) {
   return (
     <>
       <WalletPill />
-      <a href="/dashboard" className={primary}>Open studio</a>
-      <button type="button" onClick={onSignOut} className={ghost}>Sign out</button>
+      <a href="/dashboard" className={primary} onClick={() => navClick('open_studio')}>Open studio</a>
+      <button
+        type="button"
+        onClick={() => {
+          navClick('sign_out');
+          onSignOut();
+        }}
+        className={ghost}
+      >
+        Sign out
+      </button>
     </>
   );
 }
@@ -55,8 +70,8 @@ function Authed({ onSignOut }: { onSignOut: () => void }) {
 function Anon() {
   return (
     <>
-      <a href="/sign-in" className={ghost}>Log in</a>
-      <a href="/sign-up" className={primary}>Sign up</a>
+      <a href="/sign-in" className={ghost} onClick={() => navClick('log_in')}>Log in</a>
+      <a href="/sign-up" className={primary} onClick={() => navClick('sign_up')}>Sign up</a>
     </>
   );
 }

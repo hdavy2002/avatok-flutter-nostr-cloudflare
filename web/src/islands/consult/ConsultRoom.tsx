@@ -21,6 +21,7 @@ import { Button, Spinner } from '../../components';
 import { PreJoin } from './PreJoin';
 import { Countdown } from './Countdown';
 import { MediaControls } from './MediaControls';
+import { capture } from '../../lib/analytics';
 import { SfuClient, type SfuConnState } from './SfuClient';
 import { RoomSocket, parseTrackAnnounce, type RoomEvent, type WelcomeMsg } from './RoomSocket';
 
@@ -88,6 +89,8 @@ function ConsultRoomInner({ booking }: { booking: string }) {
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const publishedRef = useRef<{ sessionId: string; audio: string | null; video: string | null } | null>(null);
+  // [WEB-POSTHOG-1] §2.6 consult_end `billed_min` — legacy native-WebRTC room.
+  const joinedAtRef = useRef<number | null>(null);
 
   const flash = (m: string) => {
     setNotice(m);
@@ -136,6 +139,14 @@ function ConsultRoomInner({ booking }: { booking: string }) {
   const endSession = useCallback(
     (reason: string) => {
       setEndReason(reason);
+      try {
+        const billedMin = joinedAtRef.current != null ? Math.max(1, Math.round((Date.now() - joinedAtRef.current) / 60000)) : 0;
+        capture('consult_end', { billed_min: billedMin });
+      } catch {
+        /* best-effort */
+      } finally {
+        joinedAtRef.current = null;
+      }
       teardown();
       setPhase('ended');
     },
@@ -199,6 +210,7 @@ function ConsultRoomInner({ booking }: { booking: string }) {
       setEndsAt(res.ends_at);
       setStartsAt(res.starts_at);
       setPhase('live');
+      joinedAtRef.current = Date.now();
 
       const token = res.room_token;
 
@@ -258,10 +270,26 @@ function ConsultRoomInner({ booking }: { booking: string }) {
       setPhase('prejoin');
       return;
     }
+    const joinStart = Date.now();
     try {
       const res = await request<JoinResponse>(`/api/consult/${encodeURIComponent(booking)}/join`, { auth: token });
+      try {
+        capture('consult_join_result', { outcome: 'ok', status: 200, ms: Date.now() - joinStart });
+      } catch {
+        /* best-effort */
+      }
       await goLive(res);
     } catch (e) {
+      try {
+        capture('consult_join_result', {
+          outcome: e instanceof ApiError && [403, 425, 410].includes(e.status) ? 'refused' : 'error',
+          reason: e instanceof ApiError ? e.error : 'network',
+          status: e instanceof ApiError ? e.status : 0,
+          ms: Date.now() - joinStart,
+        });
+      } catch {
+        /* best-effort */
+      }
       if (e instanceof ApiError) {
         const body = (e.body ?? {}) as Record<string, unknown>;
         if (e.status === 425) {

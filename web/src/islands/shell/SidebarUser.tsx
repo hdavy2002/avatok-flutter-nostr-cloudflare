@@ -11,6 +11,7 @@ import { useAuth, useUser } from '@clerk/clerk-react';
 import { ClerkIsland } from '../../lib/clerk';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/config';
 import { Avatar } from '../../components/Avatar';
+import { capture, reset } from '../../lib/analytics';
 // [REVIEWER-ONBOARD-1] Rendered inside THIS island's Clerk tree on purpose:
 // SidebarUser owns the dashboard's single <ClerkProvider>, and a second one
 // makes @clerk/clerk-react throw and the React root render nothing.
@@ -108,9 +109,11 @@ function ClerkUser() {
           }
           try {
             await signOut();
+            capture('auth_signout', {});
           } catch {
             /* ignore */
           }
+          reset();
           location.href = '/';
         }}
       />

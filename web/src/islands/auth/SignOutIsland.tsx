@@ -26,6 +26,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth, useClerk } from '@clerk/clerk-react';
 import { ClerkIsland } from '../../lib/clerk';
+import { capture, reset } from '../../lib/analytics';
 
 const GUEST_JWT_KEY = 'avatok_guest_jwt';
 const GUEST_HANDLE_KEY = 'avatok_guest_handle';
@@ -65,11 +66,15 @@ function Inner() {
     void (async () => {
       try {
         await clerk.signOut();
+        capture('auth_signout', {});
       } catch {
         // Already signed out, or Clerk unreachable. Either way there is nothing
         // further this page can do, and leaving is better than hanging.
         setStatus('Signing you out…');
       }
+      // §1.3 — clear the PostHog distinct_id/session on sign-out regardless of
+      // whether Clerk's own call succeeded; there is nothing left to identify.
+      reset();
       finish();
     })();
 

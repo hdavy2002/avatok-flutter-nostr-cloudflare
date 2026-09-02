@@ -41,6 +41,21 @@ const og = listing
 
 // The shell is cacheable; the island fetches join state per-viewer.
 Astro.response.headers.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
+
+// [WEB-POSTHOG-1] §2.4 listing_view for the paid GetStream live lane. Fired
+// from the SSR shell (this page), not the LiveGsViewer island — that island
+// is out of scope here and owns its own §2.6 `live_join_*` telemetry.
+const listingViewProps = listing
+  ? {
+      listing_id: listing.id,
+      kind: (listing.kind ?? 'avatok_livestream') as string,
+      free_entry: Boolean(listing.free_entry),
+      status: (listing as { status?: string | null }).status ?? null,
+      seats_left: listing.seats_left ?? null,
+      has_video: true,
+      section_count: 0,
+    }
+  : null;
 ---
 
 <Base title={og.title} description={og.description} image={og.image} chrome={false}>
@@ -65,4 +80,11 @@ Astro.response.headers.set('Cache-Control', 'public, max-age=30, stale-while-rev
       creatorAvatar={creatorAvatar}
     />
   </main>
+
+  {listingViewProps && (
+    <script define:vars={{ listingViewProps }}>
+      // [WEB-POSTHOG-1] §2.4 listing_view. Contract: Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md §2.4.
+      import('../../lib/analytics').then(({ capture }) => capture('listing_view', listingViewProps));
+    </script>
+  )}
 </Base>

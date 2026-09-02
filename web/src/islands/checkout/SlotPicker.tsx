@@ -23,7 +23,7 @@
  * token yet we show a "See available times" button that calls `onNeedAuth()`
  * (the parent runs requireGuestAuth, then passes a token back down).
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { request, ApiError } from '../../lib/apiClient';
 import type { Listing } from '../../lib/types';
 import { Button } from '../../components/Button';
@@ -32,6 +32,7 @@ import { Pill } from '../../components/Pill';
 import { Field } from '../../components/Field';
 import { Spinner } from '../../components/Spinner';
 import { inrOrFree } from '../../lib/money';
+import { capture } from '../../lib/analytics';
 import type { BookSelection, CalendarSlot } from './types';
 
 function fmtWhen(ms: number): string {
@@ -65,11 +66,31 @@ export interface SlotPickerProps {
 }
 
 export function SlotPicker({ listing, token, onNeedAuth, onSelect }: SlotPickerProps) {
+  // [WEB-POSTHOG-1] §2.5 checkout_slot_pick — `ms_to_pick` measured from when
+  // this step mounted (i.e. the buyer started looking at options).
+  const mountedAtRef = useRef(Date.now());
+  const wrappedOnSelect = useCallback(
+    (sel: BookSelection) => {
+      try {
+        const slotId =
+          sel.type === 'calendar' ? sel.slotId : sel.type === 'commercial' ? (sel.slot ? `${sel.slot.start_at}` : 'no-slot') : 'agent';
+        capture('checkout_slot_pick', {
+          slot_id: slotId,
+          ms_to_pick: Date.now() - mountedAtRef.current,
+        });
+      } catch {
+        /* best-effort */
+      }
+      onSelect(sel);
+    },
+    [onSelect],
+  );
+
   const kind = listing.kind ?? '';
-  if (kind === 'agent') return <AgentForm listing={listing} onSelect={onSelect} />;
-  if (kind === 'live_event') return <LiveTicket listing={listing} onSelect={onSelect} />;
-  if (kind === 'consult') return <ConsultSlots listing={listing} token={token} onNeedAuth={onNeedAuth} onSelect={onSelect} />;
-  return <CalendarSlots listing={listing} token={token} onNeedAuth={onNeedAuth} onSelect={onSelect} />;
+  if (kind === 'agent') return <AgentForm listing={listing} onSelect={wrappedOnSelect} />;
+  if (kind === 'live_event') return <LiveTicket listing={listing} onSelect={wrappedOnSelect} />;
+  if (kind === 'consult') return <ConsultSlots listing={listing} token={token} onNeedAuth={onNeedAuth} onSelect={wrappedOnSelect} />;
+  return <CalendarSlots listing={listing} token={token} onNeedAuth={onNeedAuth} onSelect={wrappedOnSelect} />;
 }
 
 // ──────────────────────── [WEB-COMM-PAY-1] live ticket ───────────────────────

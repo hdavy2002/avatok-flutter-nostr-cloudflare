@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { getLiveNow } from '../../lib/apiClient';
 import type { Card } from '../../lib/types';
 import { ListingTile, Pill, Spinner } from '../../components';
+// [WEB-POSTHOG-1] §2.3 market_live_rail_loaded.
+import { capture } from '../../lib/analytics';
 
 export interface LiveNowRailProps {
   /** Section heading. */
@@ -23,7 +25,11 @@ export function LiveNowRail({ title = 'Live now', hideWhenEmpty = true }: LiveNo
   useEffect(() => {
     ac.current = new AbortController();
     getLiveNow(ac.current.signal)
-      .then((r) => setItems(r.listings ?? []))
+      .then((r) => {
+        const listings = r.listings ?? [];
+        setItems(listings);
+        capture('market_live_rail_loaded', { count: listings.length });
+      })
       .catch((e) => {
         if ((e as Error)?.name !== 'AbortError') setFailed(true);
       });
@@ -49,9 +55,9 @@ export function LiveNowRail({ title = 'Live now', hideWhenEmpty = true }: LiveNo
           {/* [CARD-BAZAAR-1] 232/248px, not 200/220: the bazaar card carries two chips
               and two CTAs side by side and the comp's grid never goes below 14.5rem
               (232px); narrower than that the buttons wrap. pb-3 is shadow clearance. */}
-          {items.map((l) => (
+          {items.map((l, i) => (
             <div key={l.id} className="w-[232px] shrink-0 snap-start sm:w-[248px]">
-              <ListingTile listing={l} href={`/watch/${encodeURIComponent(l.id)}`} width={520} />
+              <ListingTile listing={l} href={`/watch/${encodeURIComponent(l.id)}`} width={520} position={i} section="live_now" />
             </div>
           ))}
         </div>

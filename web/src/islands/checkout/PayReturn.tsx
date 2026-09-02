@@ -32,6 +32,7 @@ import { getActiveTokenWaited } from '../../lib/clerk';
 import { Card } from '../../components/Card';
 import { Spinner } from '../../components/Spinner';
 import { inr } from '../../lib/money';
+import { capture } from '../../lib/analytics';
 import type { GatewayId, PayStatusResponse } from './types';
 import type { Listing } from '../../lib/types';
 
@@ -118,6 +119,19 @@ export function PayReturn({ gateway, orderId }: PayReturnProps) {
 
   const listingIdHint = stash.current.listingId ?? null;
 
+  // [WEB-POSTHOG-1] §2.5 checkout_return — fires once, whichever way this page
+  // resolves (including the 'unmatched' case seeded at mount).
+  useEffect(() => {
+    if (phase === 'unmatched') {
+      try {
+        capture('checkout_return', { gateway: gateway ?? 'unknown', outcome: 'unmatched' });
+      } catch {
+        /* best-effort */
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (!gateway || !orderId) return; // 'unmatched' — nothing to poll
     let cancelled = false;
@@ -132,6 +146,11 @@ export function PayReturn({ gateway, orderId }: PayReturnProps) {
       if (!token) {
         setAuthError(true);
         setPhase('timeout');
+        try {
+          capture('checkout_return', { gateway, outcome: 'no_session' });
+        } catch {
+          /* best-effort */
+        }
         return;
       }
 
@@ -146,6 +165,11 @@ export function PayReturn({ gateway, orderId }: PayReturnProps) {
           setStatus(s);
           if (s.status === 'paid') {
             setPhase('confirmed');
+            try {
+              capture('checkout_return', { gateway, outcome: 'confirmed' });
+            } catch {
+              /* best-effort */
+            }
             if (s.listing_id) {
               request<Listing>(`/api/listings/${encodeURIComponent(s.listing_id)}`)
                 .then((l) => !cancelled && setListing(l))
@@ -157,6 +181,11 @@ export function PayReturn({ gateway, orderId }: PayReturnProps) {
           }
           if (s.status === 'failed' || s.status === 'refunded') {
             setPhase('failed');
+            try {
+              capture('checkout_return', { gateway, outcome: s.status });
+            } catch {
+              /* best-effort */
+            }
             return;
           }
         } catch {
@@ -165,7 +194,14 @@ export function PayReturn({ gateway, orderId }: PayReturnProps) {
         }
         await new Promise((r) => setTimeout(r, POLL_MS));
       }
-      if (!cancelled) setPhase('timeout');
+      if (!cancelled) {
+        setPhase('timeout');
+        try {
+          capture('checkout_return', { gateway, outcome: 'timeout' });
+        } catch {
+          /* best-effort */
+        }
+      }
     }
 
     void run();

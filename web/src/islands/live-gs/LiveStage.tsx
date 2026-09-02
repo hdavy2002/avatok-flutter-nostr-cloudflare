@@ -4,7 +4,7 @@
 // host's published track (viewer role — this NEVER requests a local camera or
 // microphone), a live badge with elapsed time, viewer count, a reconnecting
 // overlay with manual retry, and the chat sidebar (GsChat).
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ParticipantView,
   useCall,
@@ -12,6 +12,7 @@ import {
   CallingState,
 } from '@stream-io/video-react-sdk';
 import { Avatar, Spinner } from '../../components';
+import { capture } from '../../lib/analytics';
 import { GsChat } from './GsChat';
 
 export interface LiveStageProps {
@@ -60,14 +61,46 @@ export function LiveStage({ title, creatorName, creatorAvatar, myName, onLeave }
   const reconnecting = callingState === CallingState.RECONNECTING || callingState === CallingState.MIGRATING;
   const connectionLost = callingState === CallingState.RECONNECTING_FAILED || callingState === CallingState.OFFLINE;
 
+  // [WEB-POSTHOG-1] §2.6 live_player_state — one event per state transition,
+  // with `ms` = time spent in the PREVIOUS state.
+  const playerState: 'connecting' | 'playing' | 'stalled' | 'ended' = connectionLost
+    ? 'ended'
+    : reconnecting
+      ? 'stalled'
+      : host
+        ? 'playing'
+        : 'connecting';
+  const prevPlayerStateRef = useRef<string | null>(null);
+  const prevPlayerStateAtRef = useRef<number>(Date.now());
+  useEffect(() => {
+    if (prevPlayerStateRef.current === playerState) return;
+    const ms = Date.now() - prevPlayerStateAtRef.current;
+    prevPlayerStateRef.current = playerState;
+    prevPlayerStateAtRef.current = Date.now();
+    try {
+      capture('live_player_state', { state: playerState, ms });
+    } catch {
+      /* best-effort */
+    }
+  }, [playerState]);
+
   const [reconnectStuckAt, setReconnectStuckAt] = useState<number | null>(null);
+  const stallCountRef = useRef(0);
   useEffect(() => {
     if (!reconnecting) {
       setReconnectStuckAt(null);
       return;
     }
     if (reconnectStuckAt == null) {
-      const t = setTimeout(() => setReconnectStuckAt(Date.now()), RECONNECT_STUCK_MS);
+      const t = setTimeout(() => {
+        setReconnectStuckAt(Date.now());
+        stallCountRef.current += 1;
+        try {
+          capture('live_stall', { ms: RECONNECT_STUCK_MS, count: stallCountRef.current });
+        } catch {
+          /* best-effort */
+        }
+      }, RECONNECT_STUCK_MS);
       return () => clearTimeout(t);
     }
   }, [reconnecting, reconnectStuckAt]);

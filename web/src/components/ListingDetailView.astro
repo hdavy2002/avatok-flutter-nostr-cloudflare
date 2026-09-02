@@ -190,6 +190,30 @@ const rescheduleLine = typeof rescheduleAllowed === 'boolean'
 const prepInstructions = attrs.commercial_preparation_instructions;
 const prepText = typeof prepInstructions === 'string' && prepInstructions.trim() ? prepInstructions.trim() : null;
 const bookingTerms = [cancelLine, noticeLine, rescheduleLine].filter((s): s is string => !!s);
+
+// [WEB-POSTHOG-1] §2.4 listing_view. Contract:
+// Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md §2.4. `section_count` counts the
+// data-bearing sections actually rendered below (host, before-you-book,
+// description, video, reviews) — a real measure of how much of the page this
+// listing filled in, not a fixed constant.
+const hasVideo = !!(videoEmbed || hasVideoLink);
+const sectionCount = [
+  !!(listing.creator && (creatorSlug || true)),
+  bookingTerms.length > 0 || !!prepText,
+  !!listing.description,
+  hasVideo,
+  reviews.length > 0,
+].filter(Boolean).length;
+const listingViewProps = {
+  listing_id: id,
+  kind,
+  free_entry: isFreeEntry,
+  status: (listing as { status?: string | null }).status ?? null,
+  seats_left: listing.seats_left ?? null,
+  has_video: hasVideo,
+  section_count: sectionCount,
+};
+const bookCtaName = kind === 'agent' ? 'talk' : isFreeEntry ? 'reserve_free' : 'book';
 ---
 
 <main class="mx-auto max-w-5xl px-4 py-8">
@@ -213,7 +237,7 @@ const bookingTerms = [cancelLine, noticeLine, rescheduleLine].filter((s): s is s
       {galleryRest.length > 0 && (
         <div class="mt-3 flex gap-2 overflow-x-auto pb-1">
           {galleryRest.map((url) => (
-            <a href={cfImage(url, { width: 1200, fit: 'cover' })} target="_blank" rel="noopener" class="shrink-0">
+            <a href={cfImage(url, { width: 1200, fit: 'cover' })} target="_blank" rel="noopener" class="shrink-0" data-gallery-open>
               <img
                 src={cfImage(url, { width: 160, fit: 'cover' })}
                 alt=""
@@ -233,7 +257,7 @@ const bookingTerms = [cancelLine, noticeLine, rescheduleLine].filter((s): s is s
       </div>
 
       {listing.creator && creatorSlug && (
-        <a href={`/c/${encodeURIComponent(creatorSlug)}`} class="flex items-center gap-3 no-underline">
+        <a href={`/c/${encodeURIComponent(creatorSlug)}`} class="flex items-center gap-3 no-underline" data-section="host">
           <Avatar src={creatorAvatarUrl} name={listing.creator.name ?? listing.creator.handle} size={48} />
           <div class="flex flex-col">
             <span class="font-display font-semibold text-[17px] text-ink">{listing.creator.name ?? listing.creator.handle}</span>
@@ -242,7 +266,7 @@ const bookingTerms = [cancelLine, noticeLine, rescheduleLine].filter((s): s is s
         </a>
       )}
       {listing.creator && !creatorSlug && (
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-3" data-section="host">
           <Avatar src={creatorAvatarUrl} name={listing.creator.name ?? listing.creator.handle} size={48} />
           <div class="flex flex-col">
             <span class="font-display font-semibold text-[17px] text-ink">{listing.creator.name ?? listing.creator.handle}</span>
@@ -280,16 +304,16 @@ const bookingTerms = [cancelLine, noticeLine, rescheduleLine].filter((s): s is s
       <!-- CTA -->
       {mode === 'dashboard' ? (
         <div class="flex flex-wrap items-center gap-3 pt-1">
-          <a href={actionHref} class={ctaClass('lime')}>{verb}</a>
-          {kind === 'agent' && <a href={bookHref} class={ctaClass('blue')}>Book a session</a>}
+          <a href={actionHref} class={ctaClass('lime')} data-cta={bookCtaName}>{verb}</a>
+          {kind === 'agent' && <a href={bookHref} class={ctaClass('blue')} data-cta="book">Book a session</a>}
         </div>
       ) : (
         <div class="flex flex-col gap-2 pt-1">
           <div class="flex flex-wrap items-center gap-3">
-            <a href={signUpHref} class={ctaClass('lime')}>Sign up to {verb.toLowerCase()}</a>
-            <a href={`/sign-in?next=${encodeURIComponent(detailPath)}`} class="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-blueInk no-underline">Have an account? Log in</a>
+            <a href={signUpHref} class={ctaClass('lime')} data-cta={bookCtaName}>Sign up to {verb.toLowerCase()}</a>
+            <a href={`/sign-in?next=${encodeURIComponent(detailPath)}`} class="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-blueInk no-underline" data-cta="log_in">Have an account? Log in</a>
           </div>
-          <a href={actionHref} class="font-body font-bold text-[13px] text-inkSoft underline decoration-ink/30 underline-offset-2">or continue as a guest</a>
+          <a href={actionHref} class="font-body font-bold text-[13px] text-inkSoft underline decoration-ink/30 underline-offset-2" data-cta={bookCtaName}>or continue as a guest</a>
         </div>
       )}
 
@@ -319,6 +343,7 @@ const bookingTerms = [cancelLine, noticeLine, rescheduleLine].filter((s): s is s
               <a
                 href={bookHref}
                 class="inline-flex items-center justify-center select-none no-underline rounded-full border-zine border-ink shadow-zine-sm bg-lime text-ink transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed px-7 py-4 font-display font-semibold text-[17px] leading-none"
+                data-cta="reserve_free"
               >
                 {cta.RESERVE_FREE}
               </a>
@@ -372,7 +397,7 @@ const bookingTerms = [cancelLine, noticeLine, rescheduleLine].filter((s): s is s
           (not a placeholder) when the listing carries none of these — a category
           that doesn't collect them yet is not the same claim as "no refunds". */}
       {(bookingTerms.length > 0 || prepText) && (
-        <div class="rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm">
+        <div class="rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm" data-section="house_rules">
           <h2 class="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">Before you book</h2>
           {bookingTerms.length > 0 && (
             <ul class="mt-3 flex flex-col gap-1.5">
@@ -406,7 +431,7 @@ const bookingTerms = [cancelLine, noticeLine, rescheduleLine].filter((s): s is s
         <div class="rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm">
           <h2 class="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">Intro video</h2>
           {videoEmbed ? (
-            <div class="mt-3 aspect-video w-full overflow-hidden rounded-zine border-zine border-ink">
+            <div class="mt-3 aspect-video w-full overflow-hidden rounded-zine border-zine border-ink" data-video-block>
               <iframe
                 src={videoEmbed}
                 title={`${listing.title} — intro video`}
@@ -417,7 +442,7 @@ const bookingTerms = [cancelLine, noticeLine, rescheduleLine].filter((s): s is s
               />
             </div>
           ) : (
-            <a href={listing.video_url ?? '#'} target="_blank" rel="noopener" class="mt-2 inline-block font-body font-bold text-[14px] text-blueInk underline decoration-ink/30 underline-offset-2">
+            <a href={listing.video_url ?? '#'} target="_blank" rel="noopener" class="mt-2 inline-block font-body font-bold text-[14px] text-blueInk underline decoration-ink/30 underline-offset-2" data-video-link>
               Watch the intro ↗
             </a>
           )}
@@ -425,7 +450,7 @@ const bookingTerms = [cancelLine, noticeLine, rescheduleLine].filter((s): s is s
       )}
 
       {reviews.length > 0 && (
-        <section class="flex flex-col gap-3">
+        <section class="flex flex-col gap-3" data-section="reviews">
           <h2 class="font-display font-semibold text-[20px] text-ink">Reviews</h2>
           {reviews.slice(0, 8).map((r) => (
             <div class="rounded-zine border-zine border-ink bg-card p-4 shadow-zine-xs">
@@ -448,3 +473,73 @@ const bookingTerms = [cancelLine, noticeLine, rescheduleLine].filter((s): s is s
     </div>
   </div>
 </main>
+
+<script define:vars={{ listingViewProps }}>
+  // [WEB-POSTHOG-1] §2.4 listing_view / listing_section_view / listing_cta_click /
+  // listing_gallery_open / listing_video_play.
+  // Contract: Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md §2.4.
+  //
+  // Only the sections that actually EXIST on this page are wired:
+  // `reviews` (real Reviews block), `house_rules` (the "Before you book" policy
+  // box — the closest match this layout has), and `host` (the creator strip).
+  // `how_it_works`, `faq` and `promises` have no corresponding content here —
+  // wiring them would mean inventing sections, not instrumenting real ones.
+  import('../lib/analytics').then(({ capture }) => {
+    capture('listing_view', listingViewProps);
+
+    const seenSections = new Set();
+    const sectionObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const section = entry.target.getAttribute('data-section');
+          if (!section || seenSections.has(section)) continue;
+          seenSections.add(section);
+          capture('listing_section_view', { section, listing_id: listingViewProps.listing_id });
+          sectionObserver.unobserve(entry.target);
+        }
+      },
+      { threshold: 0.4 },
+    );
+    document.querySelectorAll('[data-section]').forEach((el) => sectionObserver.observe(el));
+
+    document.querySelectorAll('[data-cta]').forEach((el) => {
+      el.addEventListener('click', () => {
+        capture('listing_cta_click', { cta: el.getAttribute('data-cta'), listing_id: listingViewProps.listing_id });
+      });
+    });
+
+    document.querySelectorAll('[data-gallery-open]').forEach((el) => {
+      el.addEventListener('click', () => {
+        capture('listing_gallery_open', { listing_id: listingViewProps.listing_id });
+      });
+    });
+
+    // A YouTube iframe's actual play state is cross-origin and unreachable
+    // without the YT Player API, which this page doesn't load. Best-effort
+    // proxy: fire once the embed scrolls into view (someone is looking at it)
+    // and again if they click through to an external video link.
+    let videoFired = false;
+    const fireVideoPlay = () => {
+      if (videoFired) return;
+      videoFired = true;
+      capture('listing_video_play', { listing_id: listingViewProps.listing_id });
+    };
+    const videoBlock = document.querySelector('[data-video-block]');
+    if (videoBlock) {
+      const videoObserver = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) {
+              fireVideoPlay();
+              videoObserver.disconnect();
+            }
+          }
+        },
+        { threshold: 0.6 },
+      );
+      videoObserver.observe(videoBlock);
+    }
+    document.querySelector('[data-video-link]')?.addEventListener('click', fireVideoPlay);
+  });
+</script>

@@ -14,8 +14,9 @@
  * The whole tree is wrapped in <ClerkIsland> so requireGuestAuth() has its gate
  * host mounted. This is the ONE island the /book/[id].astro page hydrates.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ClerkIsland, getActiveToken } from '../../lib/clerk';
+import { IslandBoundary } from '../../components/IslandBoundary';
 import { EmailCodeSignIn } from '../auth/EmailCodeSignIn';
 import type { Listing } from '../../lib/types';
 import { Card } from '../../components/Card';
@@ -23,6 +24,7 @@ import { Spinner } from '../../components/Spinner';
 import { SlotPicker } from './SlotPicker';
 import { PayStep } from './PayStep';
 import { Confirmation } from './Confirmation';
+import { capture } from '../../lib/analytics';
 import type { BookSelection, BookingResult, Step } from './types';
 
 function StepDots({ step }: { step: Step }) {
@@ -54,6 +56,58 @@ function FlowInner({ listing }: { listing: Listing }) {
   const [selection, setSelection] = useState<BookSelection | null>(null);
   const [result, setResult] = useState<BookingResult | null>(null);
   const [working, setWorking] = useState(false);
+
+  // [WEB-POSTHOG-1] §2.5 checkout_open — once per mount of the checkout flow.
+  useEffect(() => {
+    try {
+      capture('checkout_open', {
+        listing_id: listing.id,
+        kind: listing.kind,
+        price: listing.price ?? listing.effective_price ?? null,
+        free_entry: Boolean(listing.free_entry),
+        from: typeof document !== 'undefined' ? document.referrer || 'direct' : 'direct',
+      });
+    } catch {
+      /* telemetry must never break checkout */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listing.id]);
+
+  // §2.5 checkout_abandon — fired once if the buyer leaves mid-flow (never
+  // having reached 'confirm'). `step`/`stepEnteredAt` are read via refs so the
+  // pagehide/visibilitychange listeners (registered once) always see the
+  // CURRENT step rather than a stale closure from mount time.
+  const stepRef = useRef<Step>('pick');
+  const stepEnteredAtRef = useRef<number>(Date.now());
+  const abandonedRef = useRef(false);
+  useEffect(() => {
+    stepRef.current = step;
+    stepEnteredAtRef.current = Date.now();
+  }, [step]);
+  useEffect(() => {
+    const fireAbandon = () => {
+      if (abandonedRef.current) return;
+      if (stepRef.current === 'confirm') return; // completed, not abandoned
+      abandonedRef.current = true;
+      try {
+        capture('checkout_abandon', {
+          step: stepRef.current,
+          ms_on_step: Date.now() - stepEnteredAtRef.current,
+        });
+      } catch {
+        /* best-effort */
+      }
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') fireAbandon();
+    };
+    window.addEventListener('pagehide', fireAbandon);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pagehide', fireAbandon);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
 
   // [BUY-OTP-1] `requireGuestAuth()` is GONE from this flow.
   //
@@ -149,9 +203,11 @@ export interface BookingFlowProps {
 /** The hydrated checkout island. Wraps the flow in the Clerk/GuestGate host. */
 export function BookingFlow({ listing }: BookingFlowProps) {
   return (
-    <ClerkIsland>
-      <FlowInner listing={listing} />
-    </ClerkIsland>
+    <IslandBoundary island="checkout-booking-flow">
+      <ClerkIsland>
+        <FlowInner listing={listing} />
+      </ClerkIsland>
+    </IslandBoundary>
   );
 }
 

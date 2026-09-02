@@ -20,6 +20,7 @@ import { Spinner } from '../../components/Spinner';
 import type { Listing } from '../../lib/types';
 import type { BookSelection, BookingResult, TopupResult, WalletBalance } from './types';
 import { inr } from '../../lib/money';
+import { capture } from '../../lib/analytics';
 import { CommercialPayStep } from './CommercialPayStep';
 
 // [TOKENS-INR-RAIL-1] Was `$${(coins/100).toFixed(2)}` — a token priced at one
@@ -71,7 +72,16 @@ function LegacyPayStep({ selection, token, onBooked, onBack }: LegacyPayStepProp
         const r = await request<WalletBalance>('/api/wallet/balance', { auth: token });
         const bal = Math.trunc(Number(r.balance ?? 0));
         setBalance(bal);
-        if (required != null && required > 0 && bal < required) setShortfall(required - bal);
+        if (required != null && required > 0 && bal < required) {
+          setShortfall(required - bal);
+          // [WEB-POSTHOG-1] §2.8 topup_open — the moment the "Add Tokens" CTA
+          // is shown to the buyer because the wallet can't cover this booking.
+          try {
+            capture('topup_open', { tokens: required - bal });
+          } catch {
+            /* best-effort */
+          }
+        }
       } catch {
         setBalance(null); // unknown — we still allow the attempt
       } finally {
@@ -83,6 +93,12 @@ function LegacyPayStep({ selection, token, onBooked, onBack }: LegacyPayStepProp
   async function startTopup(coins: number) {
     setBusy(true);
     setError(null);
+    const submitStart = Date.now();
+    try {
+      capture('topup_submit', { gateway: 'stripe' });
+    } catch {
+      /* best-effort */
+    }
     try {
       const r = await request<TopupResult>('/api/wallet/topup', {
         method: 'POST',
@@ -92,6 +108,11 @@ function LegacyPayStep({ selection, token, onBooked, onBack }: LegacyPayStepProp
         // number and is still accepted server-side for older clients.
         body: { tokens: coins },
       });
+      try {
+        capture('topup_result', { outcome: 'ok', status: 200, ms: Date.now() - submitStart });
+      } catch {
+        /* best-effort */
+      }
       // Hand off to Stripe Checkout (settlement is server-side).
       window.location.href = r.checkout_url;
     } catch (e) {
@@ -100,6 +121,16 @@ function LegacyPayStep({ selection, token, onBooked, onBack }: LegacyPayStepProp
       } else {
         setError(e instanceof ApiError ? e.error : 'Could not start the top-up. Try again.');
       }
+      try {
+        capture('topup_result', {
+          outcome: e instanceof ApiError && e.status === 503 ? 'refused' : 'error',
+          reason: e instanceof ApiError ? e.error : 'network',
+          status: e instanceof ApiError ? e.status : 0,
+          ms: Date.now() - submitStart,
+        });
+      } catch {
+        /* best-effort */
+      }
       setBusy(false);
     }
   }
@@ -107,6 +138,12 @@ function LegacyPayStep({ selection, token, onBooked, onBack }: LegacyPayStepProp
   async function confirmBooking() {
     setBusy(true);
     setError(null);
+    const submitStart = Date.now();
+    try {
+      capture('checkout_submit', { gateway: 'wallet', amount_paise: required != null ? required * 100 : null, free: !required });
+    } catch {
+      /* best-effort */
+    }
     try {
       let result: BookingResult;
       if (selection.type === 'calendar') {
@@ -128,6 +165,17 @@ function LegacyPayStep({ selection, token, onBooked, onBack }: LegacyPayStepProp
         });
       }
       onBooked(result);
+      try {
+        capture('checkout_result', {
+          outcome: 'ok',
+          status: 200,
+          gateway: 'wallet',
+          ms: Date.now() - submitStart,
+          entitlement_id: result.booking_id,
+        });
+      } catch {
+        /* best-effort */
+      }
     } catch (e) {
       if (e instanceof ApiError) {
         // Insufficient funds (402): agent returns `needed`; calendar = payment failed.
@@ -139,17 +187,47 @@ function LegacyPayStep({ selection, token, onBooked, onBack }: LegacyPayStepProp
           const gap = needed != null && balance != null ? Math.max(needed - balance, needed) : needed;
           setShortfall(gap ?? null);
           setError('Not enough Tokens to cover this booking. Add coins to continue.');
+          try {
+            capture('checkout_result', { outcome: 'refused', reason: 'insufficient_funds', status: 402, gateway: 'wallet', ms: Date.now() - submitStart });
+          } catch {
+            /* best-effort */
+          }
         } else if (e.status === 409) {
           setError('That time was just taken (or you’ve already booked it). Pick another slot.');
+          try {
+            capture('checkout_result', { outcome: 'refused', reason: 'slot_taken', status: 409, gateway: 'wallet', ms: Date.now() - submitStart });
+          } catch {
+            /* best-effort */
+          }
         } else if (e.status === 425) {
           setError('It’s too early to start this session. You can still book it for later.');
+          try {
+            capture('checkout_result', { outcome: 'refused', reason: 'too_early', status: 425, gateway: 'wallet', ms: Date.now() - submitStart });
+          } catch {
+            /* best-effort */
+          }
         } else if (e.status === 403) {
           setError('You’re not able to book this one.');
+          try {
+            capture('checkout_result', { outcome: 'refused', reason: 'forbidden', status: 403, gateway: 'wallet', ms: Date.now() - submitStart });
+          } catch {
+            /* best-effort */
+          }
         } else {
           setError(e.error || 'Booking failed. No charge was made.');
+          try {
+            capture('checkout_result', { outcome: 'error', reason: e.error, status: e.status, gateway: 'wallet', ms: Date.now() - submitStart });
+          } catch {
+            /* best-effort */
+          }
         }
       } else {
         setError('Booking failed. No charge was made.');
+        try {
+          capture('checkout_result', { outcome: 'error', reason: 'network', gateway: 'wallet', ms: Date.now() - submitStart });
+        } catch {
+          /* best-effort */
+        }
       }
       setBusy(false);
     }

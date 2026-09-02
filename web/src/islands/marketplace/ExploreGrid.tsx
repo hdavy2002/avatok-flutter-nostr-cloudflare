@@ -8,6 +8,9 @@ import { FilterRail, PRICE_BANDS, type RailState } from './FilterRail';
 import { VerticalSection } from './VerticalSection';
 import { LiveNowRail } from './LiveNowRail';
 import { groupByVertical, VERTICALS, type VerticalId } from '../../lib/verticals';
+import { IslandBoundary } from '../../components/IslandBoundary';
+// [WEB-POSTHOG-1] §2.3 market_browse_loaded / market_browse_error / market_search.
+import { capture } from '../../lib/analytics';
 
 export interface ExploreGridProps {
   /** Initial search query from the URL (?q=), set by the hero search strip. */
@@ -51,7 +54,7 @@ const EMPTY_COUNTS = Object.fromEntries(VERTICALS.map((v) => [v.id, 0])) as Reco
  * The counts beside each rail row come from `section_counts`, which the worker
  * computes over the whole catalogue rather than the current page.
  */
-export function ExploreGrid({
+function ExploreGridInner({
   initialQ,
   initialVertical,
   pageSize = PAGE,
@@ -103,6 +106,7 @@ export function ExploreGrid({
       const mine = ++reqId.current;
       setLoading(true);
       setError(null);
+      const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
       // The worker takes an epoch-ms window; the rail gives a local calendar
       // day. Converting here (rather than sending the raw yyyy-mm-dd) keeps
@@ -134,6 +138,18 @@ export function ExploreGrid({
           ? await searchListings({ q: q.trim(), ...common })
           : await getExplore(common);
         if (mine !== reqId.current) return; // a newer request superseded this one
+        const ms = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
+        const results = page.listings?.length ?? 0;
+        if (usingSearch) {
+          capture('market_search', { q_len: q.trim().length, results, ms });
+        } else {
+          capture('market_browse_loaded', {
+            section: rail.vertical ?? null,
+            count: results,
+            ms,
+            cursor: page.cursor ?? null,
+          });
+        }
         setItems((prev) => (append ? [...prev, ...(page.listings ?? [])] : page.listings ?? []));
         setCursor(page.cursor ?? null);
         // Only overwrite counts when the server actually sent them. A worker that
@@ -142,7 +158,11 @@ export function ExploreGrid({
         if (page.section_counts) setCounts(page.section_counts as Record<VerticalId, number>);
       } catch (e) {
         if (mine !== reqId.current) return;
-        if ((e as Error)?.name !== 'AbortError') setError('Could not load listings. Please try again.');
+        if ((e as Error)?.name !== 'AbortError') {
+          setError('Could not load listings. Please try again.');
+          const status = (e as { status?: number })?.status ?? 0;
+          capture('market_browse_error', { status, reason: (e as Error)?.message ?? 'unknown' });
+        }
       } finally {
         if (mine === reqId.current) {
           setLoading(false);
@@ -192,11 +212,27 @@ export function ExploreGrid({
       <div className="flex flex-col items-start gap-8 lg:flex-row">
         <FilterRail
           value={rail}
-          onChange={setRail}
+          onChange={(next) => {
+            // [WEB-POSTHOG-1] §2.3 market_filter_change / market_sort_change — fire
+            // only for the field that actually changed, one capture per real click.
+            if (next.sort !== rail.sort) {
+              capture('market_sort_change', { value: next.sort || '' });
+            } else if (next.vertical !== rail.vertical) {
+              capture('market_filter_change', { key: 'vertical', value: next.vertical ?? null });
+            } else if (next.price !== rail.price) {
+              capture('market_filter_change', { key: 'price', value: next.price });
+            } else if (next.date !== rail.date) {
+              capture('market_filter_change', { key: 'date', value: next.date ?? null });
+            }
+            setRail(next);
+          }}
           counts={counts ?? EMPTY_COUNTS}
           countsKnown={counts != null}
           total={total}
-          onClear={clearAll}
+          onClear={() => {
+            capture('market_filter_change', { key: 'clear', value: null });
+            clearAll();
+          }}
           narrowed={narrowed}
         />
 
@@ -290,6 +326,14 @@ export function ExploreGrid({
         </main>
       </div>
     </div>
+  );
+}
+
+export function ExploreGrid(props: ExploreGridProps) {
+  return (
+    <IslandBoundary island="marketplace-explore-grid">
+      <ExploreGridInner {...props} />
+    </IslandBoundary>
   );
 }
 

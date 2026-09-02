@@ -19,6 +19,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Spinner } from '../../components';
 import { inr } from '../../lib/money';
+import { capture } from '../../lib/analytics';
 import { quoteExtension, confirmExtension, type ExtensionQuote } from './extend';
 
 export interface ExtendPanelProps {
@@ -79,6 +80,11 @@ export function ExtendPanel({ bookingId, jwt, role, onClose, onExtended }: Exten
       quoteRef.current = r;
       setQuote(r);
       if (r.state === 'applied') {
+        try {
+          capture('consult_extension_confirm', { outcome: 'ok' });
+        } catch {
+          /* best-effort */
+        }
         onExtended(r.extension_ends_at);
         onClose();
         return;
@@ -86,6 +92,11 @@ export function ExtendPanel({ bookingId, jwt, role, onClose, onExtended }: Exten
       if (r.state === 'declined' || r.state === 'failed') {
         setStep('error');
         setError(r.state === 'declined' ? 'The other side declined the extension.' : 'The extension could not be completed.');
+        try {
+          capture('consult_extension_confirm', { outcome: 'refused', reason: r.state });
+        } catch {
+          /* best-effort */
+        }
         return;
       }
       if (pollCountRef.current < MAX_POLLS) {
@@ -110,7 +121,17 @@ export function ExtendPanel({ bookingId, jwt, role, onClose, onExtended }: Exten
     if ('error' in r) {
       setStep(r.status === 404 ? 'unavailable' : 'error');
       setError(r.status === 404 ? 'Extending this session isn’t available right now.' : (r.error || 'Could not price the extension.'));
+      try {
+        capture('consult_extension_quote', { outcome: 'error' });
+      } catch {
+        /* best-effort */
+      }
       return;
+    }
+    try {
+      capture('consult_extension_quote', { outcome: 'ok' });
+    } catch {
+      /* best-effort */
     }
     quoteRef.current = r;
     setQuote(r);
@@ -141,12 +162,22 @@ export function ExtendPanel({ bookingId, jwt, role, onClose, onExtended }: Exten
     if ('error' in r) {
       setStep('error');
       setError(r.error || 'Could not confirm the extension.');
+      try {
+        capture('consult_extension_confirm', { outcome: 'error' });
+      } catch {
+        /* best-effort */
+      }
       return;
     }
     if ('extension_id' in r) {
       quoteRef.current = r;
       setQuote(r);
       if (r.state === 'applied') {
+        try {
+          capture('consult_extension_confirm', { outcome: 'ok' });
+        } catch {
+          /* best-effort */
+        }
         onExtended(r.extension_ends_at);
         onClose();
         return;
@@ -157,6 +188,11 @@ export function ExtendPanel({ bookingId, jwt, role, onClose, onExtended }: Exten
     }
     setStep('error');
     setError(r.reason || 'The extension could not be applied.');
+    try {
+      capture('consult_extension_confirm', { outcome: 'refused', reason: r.reason });
+    } catch {
+      /* best-effort */
+    }
   };
 
   const decline = async () => {
@@ -164,6 +200,7 @@ export function ExtendPanel({ bookingId, jwt, role, onClose, onExtended }: Exten
     if (quote) {
       try {
         await confirmExtension(bookingId, jwt, quote.extension_id, false);
+        capture('consult_extension_confirm', { outcome: 'refused', reason: 'declined' });
       } catch {
         /* best-effort */
       }

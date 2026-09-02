@@ -23,13 +23,19 @@
  * Edit (?id=): GET /api/listings/:id to prefill, PUT /api/listings/:id to save.
  * ?kind=live_event|consult preselects the type for a new listing.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getActiveTokenWaited as getActiveToken } from '../../lib/clerk';
 import { request, ApiError } from '../../lib/apiClient';
 import { listingErrorMessage } from '../../lib/listingErrors';
 import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
 import { Card } from '../../components/Card';
+import { IslandBoundary } from '../../components/IslandBoundary';
+import { capture, withTrace } from '../../lib/analytics';
+
+/** §2.7 — this form is one step ("details") of the create-listing flow; the
+ * checklist/publish step lives in ListingPublish.tsx. */
+const STEP = 'details';
 
 type Kind = 'live_event' | 'consult';
 type Category = { id: string; label: string; emoji?: string | null };
@@ -79,6 +85,20 @@ function Form() {
   const [adultsOnly, setAdultsOnly] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const stepStartRef = useRef<number>(Date.now());
+
+  // §2.7 — fires once per mount: a fresh draft is `listing_create_start`, an
+  // edit of an existing one is just the step view (it was already "started").
+  useEffect(() => {
+    const isEdit = (() => {
+      try { return Boolean(new URLSearchParams(location_search()).get('id')); } catch { return false; }
+    })();
+    if (!isEdit) capture('listing_create_start', { kind });
+    capture('listing_step_view', { step: STEP });
+    // Intentionally run once on mount only — `kind` here is the URL-preselected
+    // value, not the later in-form toggle (that's a normal form edit, not a new step).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Categories come from the same table publishListing validates against
   // (`SELECT 1 FROM listing_categories WHERE id=?1 AND active=1`), so a category
@@ -121,24 +141,41 @@ function Form() {
   }, []);
 
   /** Client mirror of the server's publish checks. The server is the authority. */
-  function localProblem(): string | null {
-    if (title.trim().length < 3) return 'Give your listing a title (at least 3 characters).';
-    if (!category) return 'Pick a category.';
+  function localProblem(): { field: string; reason: string } | null {
+    if (title.trim().length < 3) return { field: 'title', reason: 'too_short' };
+    if (!category) return { field: 'category', reason: 'missing' };
     if (kind === 'live_event') {
       const ms = localToEpoch(startsAt);
-      if (ms === null) return 'Pick the date and time your event starts.';
-      if (ms <= Date.now()) return 'The start time needs to be in the future.';
-      if (durationMin < 5 || durationMin > 480) return 'Length must be between 5 minutes and 8 hours.';
+      if (ms === null) return { field: 'starts_at', reason: 'missing' };
+      if (ms <= Date.now()) return { field: 'starts_at', reason: 'not_future' };
+      if (durationMin < 5 || durationMin > 480) return { field: 'duration_min', reason: 'out_of_range' };
     }
-    if (kind === 'consult' && !CAPACITIES.includes(capacity)) return 'Pick how many people can book.';
+    if (kind === 'consult' && !CAPACITIES.includes(capacity)) return { field: 'capacity', reason: 'invalid' };
     return null;
   }
+
+  const PROBLEM_MESSAGE: Record<string, string> = {
+    title: 'Give your listing a title (at least 3 characters).',
+    category: 'Pick a category.',
+    starts_at: 'Pick the date and time your event starts.',
+    duration_min: 'Length must be between 5 minutes and 8 hours.',
+    capacity: 'Pick how many people can book.',
+  };
 
   async function submit() {
     if (busy) return;
     const problem = localProblem();
-    if (problem) { setError(problem); return; }
+    if (problem) {
+      const msg = problem.field === 'starts_at' && problem.reason === 'not_future'
+        ? 'The start time needs to be in the future.'
+        : PROBLEM_MESSAGE[problem.field];
+      setError(msg);
+      capture('listing_field_error', { field: problem.field, reason: problem.reason });
+      return;
+    }
     setBusy(true); setError(null);
+    const fields = ['title', 'description', 'price', 'category', 'adults_only', 'spoken_lang', 'location',
+      ...(kind === 'live_event' ? ['starts_at', 'duration_min'] : ['capacity'])];
     try {
       const token = await getActiveToken();
       const body: Record<string, unknown> = {
@@ -158,20 +195,36 @@ function Form() {
       } else {
         body.capacity = capacity;
       }
-      if (editId) {
-        await request(`/api/listings/${encodeURIComponent(editId)}`, { method: 'PUT', auth: token, body });
-        location_assign(`/dashboard/listings/publish?id=${encodeURIComponent(editId)}`);
-      } else {
-        const r = await request<{ listing_id?: string }>('/api/listings', { method: 'POST', auth: token, body });
+      let listingId: string | null = null;
+      await withTrace(async () => {
+        if (editId) {
+          await request(`/api/listings/${encodeURIComponent(editId)}`, { method: 'PUT', auth: token, body });
+          listingId = editId;
+        } else {
+          const r = await request<{ listing_id?: string }>('/api/listings', { method: 'POST', auth: token, body });
+          listingId = r.listing_id ?? null;
+        }
+      });
+      if (listingId) {
+        capture('listing_save', { outcome: 'ok', status: 200, fields });
+        capture('listing_step_complete', { step: STEP, ms: Date.now() - stepStartRef.current });
         // Straight to the publish screen — the old flow dropped people on the listings
         // index with a draft they had no way to finish.
-        if (r.listing_id) location_assign(`/dashboard/listings/publish?id=${encodeURIComponent(r.listing_id)}`);
-        else setError('Could not create the draft. Try again.');
+        location_assign(`/dashboard/listings/publish?id=${encodeURIComponent(listingId)}`);
+      } else {
+        setError('Could not create the draft. Try again.');
+        capture('listing_save', { outcome: 'error', status: 200, reason: 'no_listing_id', fields });
       }
     } catch (e) {
       setError(e instanceof ApiError
         ? listingErrorMessage(e.error, (e.body as { detail?: unknown } | null)?.detail)
         : 'Could not save. Try again.');
+      capture('listing_save', {
+        outcome: 'error',
+        status: e instanceof ApiError ? e.status : 0,
+        reason: e instanceof ApiError ? e.error : (e instanceof Error ? e.message : 'unknown'),
+        fields,
+      });
     } finally { setBusy(false); }
   }
 
@@ -307,7 +360,9 @@ function location_assign(href: string): void {
  */
 export function CreateListing() {
   return (
-    <Form />
+    <IslandBoundary island="dashboard-create-listing">
+      <Form />
+    </IslandBoundary>
   );
 }
 

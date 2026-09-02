@@ -35,6 +35,7 @@ import { useRef, useState } from 'react';
 import { useSignIn } from '@clerk/clerk-react';
 import { ClerkIsland } from '../../lib/clerk';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/config';
+import { capture, withTrace } from '../../lib/analytics';
 import {
   Field, Button, CheckRow, Divider, SocialPair, SOCIAL_ENABLED, CodeStep,
   validateEmail, validatePassword, clerkError, useClerkStalled, STALLED_MESSAGE,
@@ -105,6 +106,8 @@ function Inner() {
   // message can be the true one.
   const lastPwError = useRef<unknown>(null);
   const stalled = useClerkStalled(isLoaded);
+  // §2.2 auth_signin_start/_result — startRef anchors the `ms` on the eventual result.
+  const signinStartRef = useRef<number>(0);
 
   function set<T>(setter: (v: T) => void, key: string) {
     return (v: T) => {
@@ -114,8 +117,11 @@ function Inner() {
     };
   }
 
-  async function finish(res: SignInLike) {
+  async function finish(res: SignInLike, method: string) {
     await setActive!({ session: res.createdSessionId });
+    capture('auth_signin_result', {
+      method, outcome: 'ok', ms: Date.now() - signinStartRef.current,
+    });
     location.href = nextUrl();
   }
 
@@ -166,7 +172,7 @@ function Inner() {
           const pw = (await signIn.attemptFirstFactor({
             strategy: 'password', password,
           })) as unknown as SignInLike;
-          if (pw.status === 'complete' && pw.createdSessionId) { await finish(pw); return true; }
+          if (pw.status === 'complete' && pw.createdSessionId) { await finish(pw, 'password'); return true; }
           // Not complete, but possibly moved on to a second factor.
           if (pw.status === 'needs_second_factor') return await advance(pw);
           console.warn('[avatok] password first factor did not complete', { status: pw.status });
@@ -274,9 +280,11 @@ function Inner() {
     setSubmitting(true);
     setFormError(null);
     lastPwError.current = null;
+    signinStartRef.current = Date.now();
+    capture('auth_signin_start', { method: 'password' });
     try {
-      const res = await signIn.create({ identifier: email.trim(), password });
-      if (res.status === 'complete' && res.createdSessionId) { await finish(res); return; }
+      const res = await withTrace(() => signIn.create({ identifier: email.trim(), password }));
+      if (res.status === 'complete' && res.createdSessionId) { await finish(res, 'password'); return; }
 
       // Logged, not shown: the status means nothing to the person reading it,
       // but it is the one fact needed to diagnose this, and the web client has
@@ -306,13 +314,22 @@ function Inner() {
       // that fired, never a credential.
       const pwCode = (lastPwError.current as { errors?: { code?: string }[] } | null)
         ?.errors?.[0]?.code;
+      const reason = lastPwError.current ? clerkError(lastPwError.current) : 'no_route';
       setFormError(
         lastPwError.current
           ? `${clerkError(lastPwError.current)}${pwCode ? ` (${pwCode})` : ''}`
           : 'We couldn’t sign you in or email you a code. Please check the email address, or use “Forgot password”.',
       );
+      capture('auth_signin_result', {
+        method: 'password', outcome: 'error', reason: pwCode ?? reason,
+        ms: Date.now() - signinStartRef.current,
+      });
     } catch (err) {
       setFormError(clerkError(err));
+      capture('auth_signin_result', {
+        method: 'password', outcome: 'error', reason: clerkError(err),
+        ms: Date.now() - signinStartRef.current,
+      });
     } finally {
       setSubmitting(false);
     }
@@ -328,13 +345,21 @@ function Inner() {
     setSubmitting(true);
     setFormError(null);
     try {
-      const res = codeKind === 'first'
-        ? await signIn.attemptFirstFactor({ strategy: 'email_code', code: code.trim() })
-        : await signIn.attemptSecondFactor({ strategy: 'totp', code: code.trim() });
-      if (res.status === 'complete') { await finish(res); return; }
+      const method = codeKind === 'first' ? 'email_code' : 'totp';
+      const res = await withTrace(() => codeKind === 'first'
+        ? signIn.attemptFirstFactor({ strategy: 'email_code', code: code.trim() })
+        : signIn.attemptSecondFactor({ strategy: 'totp', code: code.trim() }));
+      if (res.status === 'complete') { await finish(res, method); return; }
       setFormError('That code didn’t complete sign-in. Please try again.');
+      capture('auth_signin_result', {
+        method, outcome: 'error', reason: 'code_incomplete', ms: Date.now() - signinStartRef.current,
+      });
     } catch (err) {
       setFormError(clerkError(err));
+      capture('auth_signin_result', {
+        method: codeKind === 'first' ? 'email_code' : 'totp', outcome: 'error',
+        reason: clerkError(err), ms: Date.now() - signinStartRef.current,
+      });
     } finally {
       setSubmitting(false);
     }
@@ -400,9 +425,15 @@ function Inner() {
 
     setSubmitting(true);
     setFormError(null);
+    signinStartRef.current = Date.now();
+    capture('auth_signin_start', { method: 'email_code' });
     try {
       if (!(await sendEmailCode())) {
         setFormError('We can’t email a code to that address. Check the email and try again.');
+        capture('auth_signin_result', {
+          method: 'email_code', outcome: 'error', reason: 'no_route',
+          ms: Date.now() - signinStartRef.current,
+        });
       }
     } finally {
       setSubmitting(false);

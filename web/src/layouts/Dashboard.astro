@@ -98,7 +98,7 @@ const plainType = !Astro.url.pathname.startsWith('/dashboard/marketplace');
       Everything below that pins itself to the viewport is offset by --avh-h
       (published by SiteHeader) or it slides under the header. */}
   <SiteHeader auth="in" />
-  <div class:list={["flex min-h-[calc(100vh-var(--avh-h))] bg-paper", plainType && "dash-nunito"]}>
+  <div id="dash-root" data-dash-panel={active} class:list={["flex min-h-[calc(100vh-var(--avh-h))] bg-paper", plainType && "dash-nunito"]}>
     <!-- Scrim (mobile) -->
     <div id="dash-scrim" class="fixed inset-0 z-40 hidden bg-ink/40 lg:hidden"></div>
 
@@ -193,6 +193,16 @@ const plainType = !Astro.url.pathname.startsWith('/dashboard/marketplace');
     document.getElementById('dash-burger')?.addEventListener('click', open);
     document.getElementById('dash-close')?.addEventListener('click', hide);
     scrim?.addEventListener('click', hide);
+  </script>
+
+  <script>
+    // §2.7 dashboard_panel_view {panel} — one per dashboard page load. `active`
+    // is baked server-side into #dash-root's data attribute (see the frontmatter
+    // `active` prop) rather than passed via define:vars, so this script stays a
+    // normal ES module that Vite bundles/resolves `../lib/analytics` for.
+    import { capture } from '../lib/analytics';
+    const panel = document.getElementById('dash-root')?.dataset.dashPanel;
+    if (panel) capture('dashboard_panel_view', { panel });
   </script>
 
 <style is:global>
