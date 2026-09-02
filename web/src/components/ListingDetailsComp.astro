@@ -117,12 +117,14 @@ function viewModel(l: Listing, revs: ReviewList | null, others: Card[], browseCa
   const browseEvents = (browseCards ?? [])
     .filter((c) => c.id !== l.id)
     .map((c, i) => {
-      const name = c.creator?.name ?? c.creator?.handle ?? '';
+      const name = (c.creator?.name || c.creator?.handle || '').trim();
+      const verified = c.creator?.kyc_verified === true;
       const cLive = c.live === true || c.status === 'live';
       return {
         id: c.id,
         pk: PAL_KEYS[i % PAL_KEYS.length],
-        serif: i % 5 === 0,
+        // comp: serif/italic titles only ever sit on the light palettes
+        serif: i % 5 === 0 && ['butter', 'oat'].includes(PAL_KEYS[i % PAL_KEYS.length]),
         title: `${c.title} · ${inrOrFree(c.price ?? null)}`,
         blurb: c.one_liner ?? c.blurb ?? '',
         s1: (c.category ?? '').toUpperCase(),
@@ -131,7 +133,8 @@ function viewModel(l: Listing, revs: ReviewList | null, others: Card[], browseCa
         live: cLive,
         name,
         dur: durationLabel(c.duration_min ?? null) ?? '',
-        ini: name.split(' ').map((w) => w[0]).filter(Boolean).join('').slice(0, 2).toUpperCase() || '—',
+        ini: name.split(' ').map((w) => w[0]).filter(Boolean).join('').slice(0, 2).toUpperCase() || 'AC',
+        verified,
         photo: c.cover_media?.[0]?.url ?? (c as { poster?: string }).poster ?? null,
       };
     });
@@ -949,7 +952,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
           <p class="browse-card__blurb">${c.blurb}</p>
           <div class="browse-card__foot">
             <span class="browse-card__ini">${c.ini}</span>
-            <span class="browse-card__name">${c.name} ✓</span>
+            <span class="browse-card__name">${c.name || 'avaTOK creator'}${c.verified ? ' ✓' : ''}</span>
             <span class="browse-card__dur">${c.dur}</span>
           </div>
         </div>
@@ -1327,7 +1330,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
   .browse { max-width: 100rem; margin: 0 auto; padding: 0 clamp(14px, 4vw, 40px) 90px; }
   .browse__quote { display: flex; align-items: flex-end; gap: 12px; flex: none; }
   .browse__quote img { width: 130px; flex: none; transform: rotate(3deg); filter: drop-shadow(4px 5px 0 rgba(22, 22, 20, .4)); }
-  .browse-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 20px; }
+  .browse-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(14.5rem, 1fr)); gap: 20px; }
   .browse-card {
     display: block; cursor: pointer; border: 3px solid #161614; border-radius: 26px; overflow: hidden;
     box-shadow: 6px 7px 0 #161614; transition: transform .12s ease;

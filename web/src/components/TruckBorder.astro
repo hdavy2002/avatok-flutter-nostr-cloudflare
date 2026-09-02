@@ -17,7 +17,9 @@ interface Props {
   count?: number;
   class?: string;
 }
-const { kind, count = 40, class: className = '' } = Astro.props;
+// [LIST-PAGE-3] 40 glyphs covered ~1050px; with the fluid root scale a 100rem
+// container is 2200px wide, so the strip stopped in the middle of the page.
+const { kind, count = 110, class: className = '' } = Astro.props;
 const items = Array.from({ length: count }, (_, i) => i);
 // Tassel droppers alternate length so the row reads as hand-strung, not printed.
 const tasselHeights = [10, 16, 12, 18];
