@@ -259,17 +259,116 @@ class CommercialReceiptSummary {
 /// else rides the authed contract.
 const String _base = 'https://$kSignalingHost/api';
 
+/// Reads a boolean that may arrive as a real bool OR as a 0/1 int/string
+/// (some worker read paths select the raw D1 column instead of coercing it).
+bool _asBool(dynamic v) => v == true || v == 1 || v == '1';
+
+/// Reads a `List<T>` field that may arrive as a real JSON array OR as a
+/// JSON-encoded string (some cached/re-encoded rows ship it that way).
+/// Never throws on a malformed value — falls back to null.
+List<String>? _asStringList(dynamic v) {
+  if (v == null) return null;
+  if (v is List) return v.map((e) => e.toString()).toList();
+  if (v is String && v.isNotEmpty) {
+    try {
+      final d = jsonDecode(v);
+      if (d is List) return d.map((e) => e.toString()).toList();
+    } catch (_) {/* malformed — fall through to null */}
+  }
+  return null;
+}
+
+List<int>? _asIntList(dynamic v) {
+  if (v == null) return null;
+  if (v is List) return v.map((e) => (e as num).toInt()).toList();
+  if (v is String && v.isNotEmpty) {
+    try {
+      final d = jsonDecode(v);
+      if (d is List) return d.map((e) => (e as num).toInt()).toList();
+    } catch (_) {/* malformed — fall through to null */}
+  }
+  return null;
+}
+
 class ListingCreator {
   final String uid;
   final String? handle, name, avatarUrl, avatokNumber;
   final bool kycVerified;
+  /// [LIST-TRUST-1] Follower count shown on the creator trust ladder.
+  final int? followerCount;
   ListingCreator.fromJson(Map<String, dynamic> j)
       : uid = (j['uid'] ?? '').toString(),
         handle = j['handle']?.toString(),
         name = j['name']?.toString(),
         avatarUrl = j['avatar_url']?.toString(),
         avatokNumber = j['avatok_number']?.toString(),
-        kycVerified = j['kyc_verified'] == true;
+        kycVerified = _asBool(j['kyc_verified']),
+        followerCount = (j['follower_count'] as num?)?.toInt();
+}
+
+/// [LIST-TRUST-1] One row of `creator_stats`
+/// (worker/migrations/2026-09-02-creator-stats.sql), verbatim column names.
+/// Filled by a worker cron/on-write refresh — never computed client-side.
+class CreatorTrustStats {
+  final String creatorId;
+  final int showsHosted;
+  final double hoursLive;
+  final double? onTimePct, cancelRate, comebackPct;
+  final int? avgResponseMin;
+  final int sessionsDone, soldOutCount;
+  final int? firstSessionAt, lastSessionAt;
+  final int updatedAt;
+
+  CreatorTrustStats.fromJson(Map<String, dynamic> j)
+      : creatorId = (j['creator_id'] ?? '').toString(),
+        showsHosted = (j['shows_hosted'] as num?)?.toInt() ?? 0,
+        hoursLive = (j['hours_live'] as num?)?.toDouble() ?? 0,
+        onTimePct = (j['on_time_pct'] as num?)?.toDouble(),
+        cancelRate = (j['cancel_rate'] as num?)?.toDouble(),
+        comebackPct = (j['comeback_pct'] as num?)?.toDouble(),
+        avgResponseMin = (j['avg_response_min'] as num?)?.toInt(),
+        sessionsDone = (j['sessions_done'] as num?)?.toInt() ?? 0,
+        soldOutCount = (j['sold_out_count'] as num?)?.toInt() ?? 0,
+        firstSessionAt = (j['first_session_at'] as num?)?.toInt(),
+        lastSessionAt = (j['last_session_at'] as num?)?.toInt(),
+        updatedAt = (j['updated_at'] as num?)?.toInt() ?? 0;
+}
+
+/// [LIST-SLOTS-1] A bookable slot row from `listing_slots`
+/// (worker/migrations/2026-09-02-listing-slots.sql). The booking grain for
+/// `consult`; optional refinement for `live`/`event`.
+class ListingSlot {
+  final String id, listingId, status;
+  final int startsAt, endsAt, capacity, bookedCount;
+  final String? label;
+  ListingSlot.fromJson(Map<String, dynamic> j)
+      : id = (j['id'] ?? '').toString(),
+        listingId = (j['listing_id'] ?? '').toString(),
+        startsAt = (j['starts_at'] as num?)?.toInt() ?? 0,
+        endsAt = (j['ends_at'] as num?)?.toInt() ?? 0,
+        label = j['label']?.toString(),
+        capacity = (j['capacity'] as num?)?.toInt() ?? 0,
+        bookedCount = (j['booked_count'] as num?)?.toInt() ?? 0,
+        status = (j['status'] ?? 'open').toString();
+}
+
+/// [LIST-ASK-1] An "Ask the host" question row from `listing_questions`
+/// (worker/migrations/2026-09-02-creator-stats.sql). The answer is shown to
+/// the asker only, unless promoted into `content_faq` via `promotedToFaq`.
+class ListingQuestion {
+  final String id, listingId, question;
+  final String? answer;
+  final int? answeredAt;
+  final int createdAt;
+  final bool promotedToFaq;
+  ListingQuestion.fromJson(Map<String, dynamic> j)
+      : id = (j['id'] ?? '').toString(),
+        listingId = (j['listing_id'] ?? '').toString(),
+        question = (j['question'] ?? '').toString(),
+        answer = j['answer']?.toString(),
+        answeredAt = (j['answered_at'] as num?)?.toInt(),
+        createdAt = (j['created_at'] as num?)?.toInt() ?? 0,
+        promotedToFaq = _asBool(j['promoted_to_faq']);
 }
 
 class ListingCard {
@@ -321,6 +420,16 @@ class ListingCard {
   final Map<String, dynamic> attrs;
   final String? videoUrl;
   String? description; // only on the details endpoint
+  // [LIST-CONTENT-2] booking/schedule + trust/vibe fields
+  // (Specs/SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING.md §C.1/§C.2,
+  // Specs/SPEC-2026-09-02-LISTING-TRUST-AND-VIBE.md §4). All optional/defaulted
+  // so a client shipping before or after the worker adds them keeps rendering.
+  final String? slug, blurb, scheduleMode, recurrenceTime, timezone, billingUnit, credential;
+  final List<int>? recurrenceDays;
+  final List<String>? vibeTags;
+  final bool freeEntry;
+  final int? maxPerBooking, responseTimeMin, booked24h;
+  final CreatorTrustStats? creatorTrustStats;
 
   ListingCard.fromJson(Map<String, dynamic> j)
       : id = (j['id'] ?? '').toString(),
@@ -360,7 +469,23 @@ class ListingCard {
         attrs = _parseAttrs(j['attrs']),
         videoUrl = j['video_url']?.toString(),
         creator = ListingCreator.fromJson((j['creator'] as Map?)?.cast<String, dynamic>() ?? const {}),
-        description = j['description']?.toString();
+        description = j['description']?.toString(),
+        slug = j['slug']?.toString(),
+        blurb = j['blurb']?.toString(),
+        scheduleMode = j['schedule_mode']?.toString(),
+        recurrenceDays = _asIntList(j['recurrence_days']),
+        recurrenceTime = j['recurrence_time']?.toString(),
+        timezone = j['timezone']?.toString(),
+        billingUnit = j['billing_unit']?.toString(),
+        freeEntry = _asBool(j['free_entry']),
+        maxPerBooking = (j['max_per_booking'] as num?)?.toInt(),
+        responseTimeMin = (j['response_time_min'] as num?)?.toInt(),
+        vibeTags = _asStringList(j['vibe_tags']),
+        credential = j['credential']?.toString(),
+        booked24h = (j['booked_24h'] as num?)?.toInt(),
+        creatorTrustStats = (j['creator_trust_stats'] is Map)
+            ? CreatorTrustStats.fromJson((j['creator_trust_stats'] as Map).cast<String, dynamic>())
+            : null;
 
   /// [MKT1-DETAIL] `attrs` arrives as a JSON object (Dart Map) from the server, but be
   /// defensive: tolerate a JSON *string* (some caches / re-encodes ship it that way) and
@@ -426,6 +551,17 @@ class ListingReview {
   final String id, authorId, body;
   final String? authorName, authorAvatar;
   final int rating, createdAt;
+  /// [LIST-REVIEW-2] Trust columns from `reviews`
+  /// (worker/migrations/2026-09-02-reviews-trust.sql). `verifiedAttendee` is
+  /// set server-side from the entitlement at write time — never client-posted.
+  final bool verifiedAttendee;
+  final String? creatorReply;
+  final int? creatorReplyAt;
+  final int helpfulCount;
+  /// Whether the CURRENT viewer already voted this review helpful.
+  final bool viewerMarkedHelpful;
+  /// Resolved URLs for `reviews.photo_keys` (<=3 R2 keys).
+  final List<String> photoUrls;
   ListingReview.fromJson(Map<String, dynamic> j)
       : id = (j['id'] ?? '').toString(),
         authorId = (j['author_id'] ?? '').toString(),
@@ -433,7 +569,13 @@ class ListingReview {
         authorAvatar = j['author_avatar']?.toString(),
         body = (j['body'] ?? '').toString(),
         rating = (j['rating'] as num?)?.toInt() ?? 0,
-        createdAt = (j['created_at'] as num?)?.toInt() ?? 0;
+        createdAt = (j['created_at'] as num?)?.toInt() ?? 0,
+        verifiedAttendee = _asBool(j['verified_attendee']),
+        creatorReply = (j['creator_reply'] ?? j['reply'])?.toString(),
+        creatorReplyAt = (j['creator_reply_at'] as num?)?.toInt() ?? (j['reply_at'] as num?)?.toInt(),
+        helpfulCount = (j['helpful_count'] as num?)?.toInt() ?? 0,
+        viewerMarkedHelpful = _asBool(j['viewer_marked_helpful']),
+        photoUrls = _asStringList(j['photo_urls']) ?? const [];
 }
 
 class ListingDetail {

@@ -34,6 +34,7 @@ import { commercialCheckout } from "./routes/commercial_checkout";
 import { commercialLifecycle } from "./routes/commercial_lifecycle";
 import { commercialDiagnostics, scanCommercialHealth } from "./routes/commercial_diagnostics";
 import { runCommercialSettlements } from "./commercial_settlement";
+import { refreshStaleCreatorStats } from "./lib/creator_stats"; // [LIST-STATS-1]
 import { messengerCallAuthorize, messengerCallPricing, messengerCallReceipt, messengerCallBillingStatus, cancelMessengerCallAuthorization } from "./routes/messenger_call_billing";
 import { brain } from "./routes/brain";
 import { brainDomains } from "./routes/brain_domains";
@@ -191,12 +192,17 @@ import {
   adminAlertRules, adminAlertRuleMutate, adminRoles, adminRoleSet,
 } from "./routes/admin_dashboard";
 import { marketplaceStub } from "./routes/stubs";
-import { verseSummary, verseAnnounce, verseStatement, reviewReply } from "./routes/verse";
+import { verseSummary, verseAnnounce, verseStatement } from "./routes/verse";
+// [LIST-CONTENT-2] replaces routes/listings.ts's old createReview and routes/verse.ts's
+// old reviewReply — see worker/src/routes/reviews.ts header for the migration context.
+import { createReview, replyReview, helpfulReview, listReviews } from "./routes/reviews";
+// [LIST-ASK-1] "Ask the host" — see worker/src/routes/listing_questions.ts header.
+import { askQuestion, answerQuestion, listMyQuestions, listCreatorQuestions, promoteToFaq } from "./routes/listing_questions";
 import {
   createListing, updateListing, publishListing, setListingStatus, duplicateListing, repeatListing, cancelListing,
   myListings, listingPromotions, deletePromotion, exploreBrowse, exploreLiveNow, exploreSearch,
   exploreCategories, getListing, getCreator, updateMyChannel, followCreator, unfollowCreator,
-  blockCreator, report, bookListing, createReview,
+  blockCreator, report, bookListing,
   listingFeeQuote,
 } from "./routes/listings";
 import { listingStats, creatorStats } from "./routes/insights";
@@ -253,6 +259,7 @@ import { gifSearch, gifTrending } from "./routes/gif";                          
 import { aiCatchup, aiSmartReplies, aiTranslate, aiGroupTranslate, safetyScore, aiBio, aiGender } from "./routes/ai_chat"; // STREAM G + bio writer + gender infer
 import { forwardMsg } from "./routes/messaging";                                                     // STREAM I
 import { addFavorite, removeFavorite, listFavorites } from "./routes/listings";                       // STREAM K
+import { listSlots as listListingSlots, createSlot as createListingSlot, patchSlot as patchListingSlot, deleteSlot as deleteListingSlot } from "./routes/listing_slots"; // [LIST-SLOTS-1]
 
 export { CallRoom } from "./do/call_room";
 export { MeshRoom } from "./do/mesh_room";
@@ -410,6 +417,11 @@ export default {
             if (warnings.length) console.log("[commercial-health]", JSON.stringify({ checked_at: r.checked_at, warnings }));
           })
           .catch((e) => { console.error("[commercial-health] failed:", String(e)); }),
+        // [LIST-STATS-1] Sweeps creator_stats rows older than 6h (or missing
+        // entirely for a creator with sessions), batch of 50 per tick.
+        refreshStaleCreatorStats(env)
+          .then((r) => { if (r.scanned) console.log("[creator-stats-sweep]", JSON.stringify(r)); })
+          .catch((e) => { console.error("[creator-stats-sweep] failed:", String(e)); }),
       ]),
     );
   },
@@ -1347,8 +1359,27 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/verse/announce" && req.method === "POST") return await verseAnnounce(req, env);
       if (p === "/api/verse/statement" && req.method === "GET") return await verseStatement(req, env);
       {
-        const rr = p.match(/^\/api\/reviews\/([A-Za-z0-9-]{1,64})\/reply$/);
-        if (rr && req.method === "POST") return await reviewReply(req, env, rr[1]);
+        // [LIST-CONTENT-2] replyReview/helpfulReview supersede the old Phase 8
+        // reviewReply on this same path — see routes/reviews.ts header.
+        const rr = p.match(/^\/api\/reviews\/([A-Za-z0-9-]{1,64})\/(reply|helpful)$/);
+        if (rr) {
+          const reviewId = rr[1], act = rr[2];
+          if (act === "reply" && req.method === "POST") return await replyReview(req, env, reviewId);
+          if (act === "helpful" && req.method === "POST") return await helpfulReview(req, env, reviewId);
+        }
+      }
+      {
+        // [LIST-ASK-1] "Ask the host" — creator answer + promote-to-FAQ (the
+        // create/list routes live under /api/listings/:id/questions below, next
+        // to the sibling reviews routes).
+        const qa = p.match(/^\/api\/questions\/([A-Za-z0-9-]{1,64})\/(answer|promote)$/);
+        if (qa) {
+          const qid = qa[1], act = qa[2];
+          if (act === "answer" && req.method === "POST") return await answerQuestion(req, env, qid);
+          if (act === "promote" && req.method === "POST") return await promoteToFaq(req, env, qid);
+        }
+        if (p === "/api/questions/mine" && req.method === "GET") return await listMyQuestions(req, env);
+        if (p === "/api/questions/inbox" && req.method === "GET") return await listCreatorQuestions(req, env);
       }
 
       // --- in-app notifications feed ---
@@ -1675,7 +1706,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       {
         const ls = p.match(/^\/api\/listings\/([A-Za-z0-9-]{1,64})\/stats$/);
         if (ls && req.method === "GET") return await listingStats(req, env, ls[1]);
-        const la = p.match(/^\/api\/listings\/([A-Za-z0-9-]{1,64})\/(publish|status|duplicate|repeat|book|reviews|promotions)$/);
+        const la = p.match(/^\/api\/listings\/([A-Za-z0-9-]{1,64})\/(publish|status|duplicate|repeat|book|reviews|promotions|questions)$/);
         if (la) {
           const lid = la[1], act = la[2];
           if (act === "publish" && req.method === "POST") return await publishListing(req, env, lid);
@@ -1684,11 +1715,23 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
           // [CARD-SLOTS-1] "repeat weekly for N weeks" -> N standalone drafts sharing a series_id.
           if (act === "repeat" && req.method === "POST") return await repeatListing(req, env, lid);
           if (act === "book" && req.method === "POST") return await bookListing(req, env, lid);
+          // [LIST-CONTENT-2] createReview replaced (verified_attendee, photo_keys —
+          // see routes/reviews.ts); listReviews (GET) is new, paginated, §4.6-aware.
           if (act === "reviews" && req.method === "POST") return await createReview(req, env, lid);
+          if (act === "reviews" && req.method === "GET") return await listReviews(req, env, lid);
           if (act === "promotions" && (req.method === "GET" || req.method === "POST")) return await listingPromotions(req, env, lid);
+          // [LIST-ASK-1] "Ask the host" — one question per user per listing.
+          if (act === "questions" && req.method === "POST") return await askQuestion(req, env, lid);
         }
         const lpd = p.match(/^\/api\/listings\/([A-Za-z0-9-]{1,64})\/promotions\/([A-Za-z0-9-]{1,64})$/);
         if (lpd && req.method === "DELETE") return await deletePromotion(req, env, lpd[1], lpd[2]);
+        // [LIST-SLOTS-1] C.3 calendar-1:1 booking slots — dark behind listingSlotsEnabled.
+        const lsl = p.match(/^\/api\/listings\/([A-Za-z0-9-]{1,64})\/slots$/);
+        if (lsl && req.method === "GET") return await listListingSlots(req, env, lsl[1]);
+        if (lsl && req.method === "POST") return await createListingSlot(req, env, lsl[1]);
+        const sid = p.match(/^\/api\/slots\/([A-Za-z0-9-]{1,64})$/);
+        if (sid && req.method === "PATCH") return await patchListingSlot(req, env, sid[1]);
+        if (sid && req.method === "DELETE") return await deleteListingSlot(req, env, sid[1]);
         const lm = p.match(/^\/api\/listings\/([A-Za-z0-9-]{1,64})$/);
         if (lm && req.method === "GET") return await getListing(req, env, lm[1]);
         if (lm && req.method === "PUT") return await updateListing(req, env, lm[1]);

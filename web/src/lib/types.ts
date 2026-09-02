@@ -94,10 +94,70 @@ export interface Card {
    * (worker/src/routes/listings.ts). Shape is per-category and per-kind; read
    * defensively rather than assuming every key is present.
    */
-  attrs?: Record<string, unknown> | null;
+  attrs?: (Record<string, unknown> & ListingContentAttrs) | null;
+  /** [LIST-CONTENT-2] Short one-line pitch, distinct from `one_liner` (§C.1/§C.2). */
+  blurb?: string | null;
+  /**
+   * [LIST-CONTENT-2] Booking cadence — how the listing's time is structured
+   * (Specs/SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING.md §C.1/§C.2). Optional
+   * because older listings/clients predate this field.
+   */
+  schedule_mode?: 'fixed_date' | 'recurring' | 'on_request' | 'always_on';
+  /** [LIST-CONTENT-2] For `schedule_mode: 'recurring'` — 0=Sun..6=Sat. Worker may
+   *  send this as a JSON-encoded string or a real array; parse defensively. */
+  recurrence_days?: number[] | null;
+  /** [LIST-CONTENT-2] "HH:mm" local time paired with `recurrence_days`/`timezone`. */
+  recurrence_time?: string | null;
+  /** [LIST-CONTENT-2] IANA tz name the schedule fields above are expressed in. */
+  timezone?: string;
+  /** [LIST-CONTENT-2] What the price is charged per. */
+  billing_unit?: 'session' | 'minute' | '10min' | 'chat' | 'night' | 'game' | null;
+  /** [LIST-CONTENT-2] Whether joining/attending is free (server truth; not a promo). */
+  free_entry?: 0 | 1;
+  /** [LIST-CONTENT-2] Cap on units-per-booking a single buyer may take at once. */
+  max_per_booking?: number;
+  /** [LIST-TRUST-1] Creator's typical reply latency in minutes, backs the JALDI
+   *  JAWAB badge. Null when there isn't enough data yet. */
+  response_time_min?: number | null;
+  /** [LIST-TRUST-1 / VIBE] Freeform vibe/mood tags. Worker may send this as a
+   *  JSON-encoded string or a real array; parse defensively. */
+  vibe_tags?: string[] | null;
+  /** [LIST-TRUST-1] Credential/qualification line shown on the trust ladder. */
+  credential?: string | null;
 }
 
 export type ListingKind = 'live' | 'consult' | 'event' | 'agent' | 'content' | string;
+
+/**
+ * [LIST-CONTENT-2] Typed `attrs` keys added by the listing-content work
+ * (Specs/SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING.md §C.1, §C.2). `attrs`
+ * remains an open `Record<string, unknown>` for every category-specific key —
+ * this interface only documents the ones this phase introduced. Every field is
+ * optional: a listing written before this phase, or one whose creator skipped
+ * a section, sends none of them.
+ */
+export interface ListingContentAttrs {
+  content_how_it_works?: { label: string; body: string }[];
+  content_house_rules?: { heading: string; body: string }[];
+  content_house_rules_intro?: string;
+  content_join_lead_minutes?: number;
+  content_free_cap_tokens?: number;
+  content_what_you_get?: string[];
+  content_who_for?: string[];
+  content_not_for?: string[];
+  content_faq?: { q: string; a: string }[];
+  content_sample_qa?: { q: string; a: string }[];
+  content_sample_chat?: { who: string; line: string }[];
+  content_can_do?: string[];
+  content_cant_do?: string[];
+  join_requirements?: {
+    mic?: boolean;
+    cam?: boolean;
+    listen_only?: boolean;
+    replay_days?: number;
+    recording?: boolean;
+  };
+}
 
 /** One entry of the worker's `cover_media` array. */
 export interface CoverMedia {
@@ -116,8 +176,14 @@ export interface CreatorRef {
   /** Worker sends `avatar_url`; `avatar` is the legacy alias. */
   avatar_url?: string | null;
   avatar?: string | null;
-  /** The A4 trust badge. Every new card comp draws a ✓ — this is what earns it. */
-  kyc_verified?: boolean;
+  /**
+   * The A4 trust badge. Every new card comp draws a ✓ — this is what earns it.
+   * [LIST-TRUST-1] Widened to `boolean | 0 | 1`: some worker read paths select
+   * the raw D1 column (0/1) instead of the coerced boolean.
+   */
+  kyc_verified?: boolean | 0 | 1;
+  /** [LIST-TRUST-1] Follower count shown on the creator trust ladder. */
+  follower_count?: number;
 }
 
 /**
@@ -184,6 +250,15 @@ export interface Listing extends Card {
   intent?: string | null;
   price_semantics?: string | null;
   detail_template?: string | null;
+  /**
+   * [LIST-TRUST-1] The creator's cached trust-ladder row from `creator_stats`
+   * (worker/migrations/2026-09-02-creator-stats.sql). Derived/cached server-side —
+   * never computed client-side, never a form field. Null when the creator has no
+   * row yet (e.g. never hosted a session).
+   */
+  creator_trust_stats?: CreatorTrustStats | null;
+  /** [LIST-TRUST-1] Rolling count of bookings in the last 24h, backs urgency copy. */
+  booked_24h?: number;
 }
 
 export interface CreatorStats {
@@ -191,6 +266,26 @@ export interface CreatorStats {
   listings?: number;
   rating?: number | null;
   reviews?: number;
+}
+
+/**
+ * [LIST-TRUST-1] One row of `creator_stats`
+ * (worker/migrations/2026-09-02-creator-stats.sql), verbatim column names.
+ * Filled by a worker cron/on-write refresh — never computed client-side.
+ */
+export interface CreatorTrustStats {
+  creator_id: string;
+  shows_hosted: number;
+  hours_live: number;
+  on_time_pct?: number | null;
+  cancel_rate?: number | null;
+  comeback_pct?: number | null;
+  avg_response_min?: number | null;
+  sessions_done: number;
+  sold_out_count: number;
+  first_session_at?: number | null;
+  last_session_at?: number | null;
+  updated_at: number;
 }
 
 /** Creator channel from /api/creators/:id. */
@@ -228,7 +323,80 @@ export interface Review {
   reply?: string | null;
   reply_at?: number | null;
   created_at?: number;
+  /**
+   * [LIST-REVIEW-2] Trust columns from `reviews`
+   * (worker/migrations/2026-09-02-reviews-trust.sql). `verified_attendee` is set
+   * server-side from the entitlement at write time — never a client-posted flag.
+   */
+  verified_attendee?: 0 | 1;
+  /** [LIST-REVIEW-2] Alias for `reply`/`reply_at` under the trust-migration's own
+   *  column names — some read paths select these directly. */
+  creator_reply?: string | null;
+  creator_reply_at?: number | null;
+  helpful_count?: number;
+  /** [LIST-REVIEW-2] Whether the CURRENT viewer already voted this review helpful. */
+  viewer_marked_helpful?: boolean;
+  /** [LIST-REVIEW-2] Resolved URLs for `reviews.photo_keys` (<=3 R2 keys). */
+  photo_urls?: string[];
 }
+
+/**
+ * [LIST-REVIEW-2] Paginated review list envelope, e.g. from
+ * /api/listings/:id/reviews.
+ */
+export interface ReviewList {
+  items: Review[];
+  histogram: Record<'1' | '2' | '3' | '4' | '5', number>;
+  verified_count: number;
+  total: number;
+  /** Whether the star rating should be shown at all (e.g. below a minimum count). */
+  show_rating: boolean;
+  next_cursor?: string | null;
+}
+
+/**
+ * [LIST-SLOTS-1] A bookable slot row from `listing_slots`
+ * (worker/migrations/2026-09-02-listing-slots.sql). The booking grain for
+ * `consult`; optional refinement for `live`/`event`.
+ */
+export interface ListingSlot {
+  id: string;
+  listing_id: string;
+  starts_at: number;
+  ends_at: number;
+  label?: string | null;
+  capacity: number;
+  booked_count: number;
+  status: 'open' | 'full' | 'cancelled' | 'done' | string;
+}
+
+/**
+ * [LIST-ASK-1] An "Ask the host" question row from `listing_questions`
+ * (worker/migrations/2026-09-02-creator-stats.sql). The answer is shown to the
+ * asker only, unless promoted into `content_faq` via `promoted_to_faq`.
+ */
+export interface ListingQuestion {
+  id: string;
+  listing_id: string;
+  question: string;
+  answer?: string | null;
+  answered_at?: number | null;
+  created_at: number;
+  promoted_to_faq: 0 | 1;
+}
+
+/**
+ * [LIST-TRUST-1] The six trust/vibe badge ids (§5). A badge id outside this
+ * union is either a typo or a badge added server-side without a client update —
+ * treat it as unknown rather than assuming it renders.
+ */
+export type BADGE_IDS =
+  | 'pehla_show'
+  | 'pakka_host'
+  | 'wapsi'
+  | 'bawaal'
+  | 'seedhi_baat'
+  | 'jaldi_jawab';
 
 export interface Category {
   id: string;

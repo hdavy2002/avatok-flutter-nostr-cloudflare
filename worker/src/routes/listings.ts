@@ -72,6 +72,16 @@ const CAPACITIES = new Set([1, 10, 20]);
 const FANOUT_DAILY_CAP = 2;       // A2 anti-spam
 const FANOUT_MAX_FOLLOWERS = 500;
 
+// [LIST-CONTENT-2] Spec: Specs/SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING.md §C.1.
+// Curated enums for the new listing-content columns. `vibe_tags` in particular is a
+// PICKLIST, never free text (§C.1: "the mock's `100% MASALA` chips are copy, not data").
+const SCHEDULE_MODES = new Set(["fixed_date", "recurring", "on_request", "always_on"]);
+const BILLING_UNITS = new Set(["session", "minute", "10min", "chat", "night", "game"]);
+const VIBE_TAGS = new Set([
+  "safe_space", "cam_optional", "listener_first", "savage", "beginner_ok", "queer_friendly", "women_only",
+]);
+const SLUG_RE = /^[a-z0-9-]{1,48}$/;
+
 async function marketplacePublishOn(env: Env): Promise<boolean> {
   try {
     const cfg = await readConfig(env);
@@ -245,6 +255,200 @@ function commercialPolicyError(kind: string, raw: unknown): string | null {
   return null;
 }
 
+// [LIST-CONTENT-2] Validates the new scalar listing-content COLUMNS (spec §C.1) —
+// schedule shape, timezone, billing unit, seat cap, response-time chip and vibe
+// tags. Mirrors commercialPolicyError's posture: an explicit bad value is REJECTED
+// rather than silently coerced to a fallback, because a rejected write tells the
+// creator something is wrong; a silently-coerced one (a typo'd schedule_mode
+// quietly becoming 'fixed_date') does not. `raw` is the untouched request body —
+// checked directly (not the normalized `f`) so a caller always gets told about the
+// exact value they sent, the same reasoning encodeAttrs()/commercialPolicyError()
+// use elsewhere in this file. Returns null when nothing new-column-shaped is wrong.
+function listingContentFieldsError(raw: any): string | null {
+  if (!raw || typeof raw !== "object") return null;
+  if (raw.schedule_mode !== undefined && raw.schedule_mode !== null && !SCHEDULE_MODES.has(String(raw.schedule_mode))) {
+    return "schedule_mode must be fixed_date, recurring, on_request or always_on";
+  }
+  const mode = raw.schedule_mode !== undefined && raw.schedule_mode !== null ? String(raw.schedule_mode) : undefined;
+  if (raw.recurrence_days !== undefined && raw.recurrence_days !== null) {
+    const arr = raw.recurrence_days;
+    const ok = Array.isArray(arr) && arr.every((d: unknown) => Number.isInteger(Number(d)) && Number(d) >= 0 && Number(d) <= 6);
+    if (!ok) return "recurrence_days must be an array of integers 0-6";
+    if (mode !== undefined && mode !== "recurring") return "recurrence_days only applies when schedule_mode is recurring";
+  }
+  if (raw.recurrence_time !== undefined && raw.recurrence_time !== null) {
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(raw.recurrence_time))) return "recurrence_time must be 'HH:MM'";
+    if (mode !== undefined && mode !== "recurring") return "recurrence_time only applies when schedule_mode is recurring";
+  }
+  if (raw.timezone !== undefined && raw.timezone !== null && !isValidTimezone(String(raw.timezone))) {
+    return "timezone must be a valid IANA timezone";
+  }
+  if (raw.billing_unit !== undefined && raw.billing_unit !== null && !BILLING_UNITS.has(String(raw.billing_unit))) {
+    return "billing_unit must be session, minute, 10min, chat, night or game";
+  }
+  if (raw.max_per_booking !== undefined && raw.max_per_booking !== null) {
+    const n = Math.trunc(Number(raw.max_per_booking));
+    if (!Number.isInteger(n) || n < 1 || n > 20) return "max_per_booking must be an integer from 1 to 20";
+  }
+  if (raw.response_time_min !== undefined && raw.response_time_min !== null) {
+    const n = Math.trunc(Number(raw.response_time_min));
+    if (!Number.isInteger(n) || n < 0) return "response_time_min must be a non-negative integer";
+  }
+  if (raw.vibe_tags !== undefined && raw.vibe_tags !== null) {
+    const arr = raw.vibe_tags;
+    if (!Array.isArray(arr) || arr.length > 2 || arr.some((t: unknown) => !VIBE_TAGS.has(String(t)))) {
+      return `vibe_tags must be up to 2 of: ${[...VIBE_TAGS].join(", ")}`;
+    }
+  }
+  if (raw.blurb !== undefined && raw.blurb !== null && String(raw.blurb).length > 120) {
+    return "blurb must be at most 120 characters";
+  }
+  if (raw.credential !== undefined && raw.credential !== null && String(raw.credential).length > 40) {
+    return "credential must be at most 40 characters";
+  }
+  return null;
+}
+
+/** IANA timezone check the way MDN documents it: Intl.DateTimeFormat throws
+ *  RangeError on an unrecognised zone, so a try/catch IS the validator. */
+function isValidTimezone(tz: string): boolean {
+  try { new Intl.DateTimeFormat("en-US", { timeZone: tz }); return true; } catch { return false; }
+}
+
+/** [LIST-CONTENT-2] `attrs` keys the DETAILS PAGE reads (never the card) — spec
+ *  §C.2 and TRUST §4.3: how-it-works, house rules, FAQ, sample Q&A/chat,
+ *  can/can't-do, join requirements, and the one cross-field rule that belongs
+ *  here because it needs `free_entry`: `content_free_cap_tokens` is REQUIRED
+ *  (a positive int) exactly when the listing is free_entry=1 — the cap the free
+ *  lane (§E) holds from the creator's wallet at go-live.
+ *
+ *  Same posture as commercialPolicyError: unknown/absent keys are never
+ *  violations (a schema addition must never orphan an older client's draft;
+ *  min_required enforcement, if any, belongs at publish time, not here). Only a
+ *  key that IS present and malformed is rejected. */
+function contentAttrsError(attrs: unknown, freeEntry: boolean): string | null {
+  if (!attrs || typeof attrs !== "object" || Array.isArray(attrs)) return null;
+  const a = attrs as Record<string, unknown>;
+
+  const isStr = (v: unknown, max: number) => typeof v === "string" && v.length <= max;
+  const strArray = (v: unknown, max: number, itemMax: number) =>
+    Array.isArray(v) && v.length <= max && v.every((s) => isStr(s, itemMax));
+  const qaArray = (v: unknown, max: number, qMax: number, aMax: number) =>
+    Array.isArray(v) && v.length <= max &&
+    v.every((x) => x && typeof x === "object" && isStr((x as any).q, qMax) && isStr((x as any).a, aMax));
+
+  if (a.content_how_it_works !== undefined) {
+    const v = a.content_how_it_works;
+    const ok = Array.isArray(v) && v.length >= 2 && v.length <= 5 &&
+      v.every((x) => x && typeof x === "object" && isStr((x as any).label, 24) && isStr((x as any).body, 240));
+    if (!ok) return "content_how_it_works must be 2-5 items of {label<=24, body<=240}";
+  }
+  if (a.content_house_rules !== undefined) {
+    const v = a.content_house_rules;
+    const ok = Array.isArray(v) && v.length >= 3 && v.length <= 8 &&
+      v.every((x) => x && typeof x === "object" && isStr((x as any).heading, 32) && isStr((x as any).body, 200));
+    if (!ok) return "content_house_rules must be 3-8 items of {heading<=32, body<=200}";
+  }
+  if (a.content_house_rules_intro !== undefined && !isStr(a.content_house_rules_intro, 280)) {
+    return "content_house_rules_intro must be a string of at most 280 characters";
+  }
+  if (a.content_join_lead_minutes !== undefined) {
+    const n = Number(a.content_join_lead_minutes);
+    if (!Number.isInteger(n) || n < 0 || n > 60) return "content_join_lead_minutes must be an integer 0-60";
+  }
+  // Cross-field: the free lane (§E) cannot hold an undefined cap from the creator's
+  // wallet at go-live, so this is required exactly when free_entry is set — checked
+  // against the EFFECTIVE free_entry the caller passes in (this call, or the row).
+  if (freeEntry) {
+    const n = Number(a.content_free_cap_tokens);
+    if (!Number.isInteger(n) || n <= 0) return "content_free_cap_tokens is required (a positive integer) when free_entry is set";
+  } else if (a.content_free_cap_tokens !== undefined) {
+    const n = Number(a.content_free_cap_tokens);
+    if (!Number.isInteger(n) || n <= 0) return "content_free_cap_tokens must be a positive integer";
+  }
+  if (a.content_what_you_get !== undefined) {
+    const v = a.content_what_you_get;
+    if (!(Array.isArray(v) && v.length >= 3 && v.length <= 5 && v.every((s) => isStr(s, 80)))) {
+      return "content_what_you_get must be 3-5 strings of at most 80 characters";
+    }
+  }
+  if (a.content_who_for !== undefined && !strArray(a.content_who_for, 3, 80)) {
+    return "content_who_for must be up to 3 strings of at most 80 characters";
+  }
+  if (a.content_not_for !== undefined && !strArray(a.content_not_for, 3, 80)) {
+    return "content_not_for must be up to 3 strings of at most 80 characters";
+  }
+  if (a.content_faq !== undefined) {
+    const v = a.content_faq;
+    if (!(Array.isArray(v) && v.length >= 3 && v.length <= 6 && qaArray(v, 6, 120, 300))) {
+      return "content_faq must be 3-6 items of {q<=120, a<=300}";
+    }
+  }
+  if (a.content_sample_qa !== undefined && !qaArray(a.content_sample_qa, 3, 120, 300)) {
+    return "content_sample_qa must be up to 3 items of {q,a}";
+  }
+  if (a.content_sample_chat !== undefined) {
+    const v = a.content_sample_chat;
+    const ok = Array.isArray(v) && v.length <= 6 &&
+      v.every((x) => x && typeof x === "object" && isStr((x as any).who, 40) && isStr((x as any).line, 300));
+    if (!ok) return "content_sample_chat must be up to 6 items of {who,line}";
+  }
+  if (a.content_can_do !== undefined && !strArray(a.content_can_do, 3, 80)) {
+    return "content_can_do must be up to 3 strings";
+  }
+  if (a.content_cant_do !== undefined && !strArray(a.content_cant_do, 3, 80)) {
+    return "content_cant_do must be up to 3 strings";
+  }
+  if (a.join_requirements !== undefined) {
+    const v = a.join_requirements;
+    if (!v || typeof v !== "object" || Array.isArray(v)) return "join_requirements must be an object";
+    const jr = v as Record<string, unknown>;
+    const allowed = new Set(["mic", "cam", "listen_only", "replay_days", "recording"]);
+    if (Object.keys(jr).some((k) => !allowed.has(k))) return "join_requirements has an unsupported field";
+    for (const k of ["mic", "cam", "listen_only", "recording"]) {
+      if (jr[k] !== undefined && typeof jr[k] !== "boolean") return `join_requirements.${k} must be boolean`;
+    }
+    if (jr.replay_days !== undefined && (!Number.isInteger(Number(jr.replay_days)) || Number(jr.replay_days) < 0)) {
+      return "join_requirements.replay_days must be a non-negative integer";
+    }
+  }
+  return null;
+}
+
+/** [LIST-CONTENT-2] slugify(): lowercase, a-z0-9-, <=48 chars — the pretty-URL
+ *  segment a title becomes on create. Strips accents so a Devanagari/emoji-only
+ *  title (which normalizes to nothing) still gets a usable slug via the fallback. */
+function slugify(title: string): string {
+  const base = String(title || "")
+    .toLowerCase()
+    .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48)
+    .replace(/-+$/g, "");
+  return base || "listing";
+}
+
+/** Make `base` unique among this creator's OTHER listings by appending -2, -3, …
+ *  (spec §C.1: "unique per creator by appending -2, -3…"). `excludeId` is the
+ *  listing being created/updated, so it never collides with itself. Two different
+ *  creators may both hold the bare slug "yoga" — the uniqueness is scoped to
+ *  `idx_listings_creator_slug (creator_id, slug)`, not global. */
+async function uniqueSlugFor(env: Env, creatorId: string, base: string, excludeId?: string): Promise<string> {
+  const db = metaSession(env);
+  let candidate = base;
+  for (let n = 2; n <= 200; n++) {
+    const row = excludeId
+      ? await db.prepare("SELECT id FROM listings WHERE creator_id=?1 AND slug=?2 AND id<>?3").bind(creatorId, candidate, excludeId).first()
+      : await db.prepare("SELECT id FROM listings WHERE creator_id=?1 AND slug=?2").bind(creatorId, candidate).first();
+    if (!row) return candidate;
+    candidate = `${base}-${n}`.slice(0, 48);
+  }
+  // 200 straight collisions on one creator/title is not a real case — fall back to a
+  // short random suffix rather than looping forever.
+  return `${base.slice(0, 40)}-${crypto.randomUUID().slice(0, 6)}`;
+}
+
 /** The version triple a listing born RIGHT NOW would pin (§2.4), or null when the
  *  category doesn't exist / isn't migrated yet. Read at creation ONLY — after that
  *  the listing's own pins are the truth and this must never be consulted again. */
@@ -285,8 +489,20 @@ const CARD_SELECT = `
          (SELECT COUNT(*) FROM listing_views lv WHERE lv.subject_kind='listing' AND lv.subject_id = l.id) AS view_count,
          u.handle AS creator_handle, u.display_name AS creator_name, u.avatar_url AS creator_avatar,
          u.avatok_number_display AS creator_number,
-         (SELECT k.status FROM kyc_status k WHERE k.uid = l.creator_id) AS creator_kyc
-    FROM listings l LEFT JOIN users u ON u.uid = l.creator_id`;
+         (SELECT k.status FROM kyc_status k WHERE k.uid = l.creator_id) AS creator_kyc,
+         -- [LIST-CONTENT-2] spec §H.1 / §C.1 — card content columns, plus
+         -- price_semantics (joined off listing_categories, NOT a listings column —
+         -- see worker/migrations/2026-09-02-listings-content.sql's header) and
+         -- follower_count (creator_profiles). LEFT JOINs so a listing whose category
+         -- row or creator_profiles row doesn't exist yet still returns a card.
+         l.blurb, l.slug, l.schedule_mode, l.recurrence_days, l.recurrence_time,
+         l.timezone, l.billing_unit, l.free_entry, l.max_per_booking,
+         l.response_time_min, l.vibe_tags, l.credential,
+         lc.price_semantics AS category_price_semantics,
+         cp.follower_count AS creator_follower_count
+    FROM listings l LEFT JOIN users u ON u.uid = l.creator_id
+         LEFT JOIN listing_categories lc ON lc.id = l.category
+         LEFT JOIN creator_profiles cp ON cp.user_id = l.creator_id`;
 
 /** [UI-MKT-3] Which of these listing ids has `uid` favorited? One IN query (no
  *  N+1). Empty set for a guest (uid null) or no ids. Per-account scoped: the uid
@@ -376,11 +592,34 @@ function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set
       ? Math.max(0, Number(r.capacity) - Number(stats.get(String(r.id))!.seats_taken))
       : null,
     watching: stats?.get(String(r.id))?.watching ?? null,
+    // [LIST-CONTENT-2] spec §H.1 — card/page content columns. All additive with the
+    // same DEFAULTs the migration back-fills (schedule_mode/timezone), so a
+    // pre-migration row and a legacy client both read exactly as before.
+    blurb: r.blurb ?? null,
+    slug: r.slug ?? null,
+    schedule_mode: r.schedule_mode ?? "fixed_date",
+    recurrence_days: parseJson(r.recurrence_days, [] as number[]),
+    recurrence_time: r.recurrence_time ?? null,
+    timezone: r.timezone ?? "Asia/Kolkata",
+    billing_unit: r.billing_unit ?? null,
+    free_entry: !!r.free_entry,
+    max_per_booking: r.max_per_booking != null ? Number(r.max_per_booking) : 4,
+    response_time_min: r.response_time_min != null ? Number(r.response_time_min) : null,
+    vibe_tags: parseJson(r.vibe_tags, [] as string[]),
+    credential: r.credential ?? null,
+    // §C.1 — "price_semantics is not a new column: join listing_categories into
+    // CARD_SELECT/shapeCard". Null when the category row can't be resolved (matches
+    // getListing's own "asking" fallback being applied client-side, not baked in here
+    // since a card has no per-request default the way the detail page's local variable
+    // does).
+    price_semantics: r.category_price_semantics ?? null,
     creator: {
       uid: r.creator_id, handle: r.creator_handle ?? null,
       name: r.creator_name ?? null, avatar_url: r.creator_avatar ?? null,
       avatok_number: r.creator_number ?? null,                        // owner's AvaTOK number (dial inside AvaTOK)
       kyc_verified: r.creator_kyc === "verified",                     // A4 trust badge
+      // [LIST-CONTENT-2] spec §H.1 — "regulars" proof chip source.
+      follower_count: Number(r.creator_follower_count ?? 0),
     },
   };
 }
@@ -527,7 +766,14 @@ export async function fanout(env: Env, creatorId: string, title: string, body: s
 //               the silent behaviour change the whole versioning design exists to stop.
 // proposed_category is also absent: it is the §2.3 record of what the AI proposed when
 // it filed this listing, not a field to be revised afterwards.
-const EDITABLE = ["title", "description", "category", "price", "currency_display", "country", "adults_only", "badges", "cover_media", "starts_at", "duration_min", "capacity", "translation_enabled", "spoken_lang", "agent_instructions", "agent_lang", "agent_voice_persona", "location", "expiry_days", "attrs", "video_url"] as const;
+const EDITABLE = ["title", "description", "category", "price", "currency_display", "country", "adults_only", "badges", "cover_media", "starts_at", "duration_min", "capacity", "translation_enabled", "spoken_lang", "agent_instructions", "agent_lang", "agent_voice_persona", "location", "expiry_days", "attrs", "video_url",
+  // [LIST-CONTENT-2] spec §C.1 — card/page content columns. `slug` rides here too
+  // (rather than being written by a bare column assignment) so it goes through the
+  // same generic SET-builder as everything else; its uniqueness/format check happens
+  // in updateListing BEFORE `f.slug` is set, same pattern as the attrs validation above.
+  "blurb", "slug", "schedule_mode", "recurrence_days", "recurrence_time", "timezone",
+  "billing_unit", "free_entry", "max_per_booking", "response_time_min", "vibe_tags", "credential",
+] as const;
 
 // [AVA-MKT-CVER-1] MATERIAL fields — the subset of EDITABLE whose change invalidates
 // a negotiation a buyer's agent already had. Editing one bumps listings.content_version,
@@ -651,6 +897,34 @@ function normFields(b: any): Record<string, unknown> {
   if (b.proposed_category !== undefined) {
     out.proposed_category = b.proposed_category ? String(b.proposed_category).trim().slice(0, 80) || null : null;
   }
+  // [LIST-CONTENT-2] spec §C.1. Values reaching here have already passed
+  // listingContentFieldsError() at both call sites (createListing/updateListing), so
+  // this block only NORMALIZES — encodes arrays to JSON, applies column defaults — it
+  // does not re-validate. `slug` is deliberately NOT handled here: it needs a DB
+  // uniqueness check (uniqueSlugFor / the creator-scoped clash check), which normFields
+  // has no DB handle to do; both call sites set `out.slug`/`f.slug` themselves.
+  if (b.blurb !== undefined) out.blurb = b.blurb ? String(b.blurb).slice(0, 120) : null;
+  if (b.schedule_mode !== undefined) out.schedule_mode = b.schedule_mode ? String(b.schedule_mode) : "fixed_date";
+  if (b.recurrence_days !== undefined) {
+    out.recurrence_days = Array.isArray(b.recurrence_days)
+      ? JSON.stringify(b.recurrence_days.map((d: unknown) => Math.trunc(Number(d))))
+      : null;
+  }
+  if (b.recurrence_time !== undefined) out.recurrence_time = b.recurrence_time ? String(b.recurrence_time).slice(0, 5) : null;
+  if (b.timezone !== undefined) out.timezone = b.timezone ? String(b.timezone).slice(0, 64) : "Asia/Kolkata";
+  if (b.billing_unit !== undefined) out.billing_unit = b.billing_unit ? String(b.billing_unit) : null;
+  if (b.free_entry !== undefined) out.free_entry = b.free_entry ? 1 : 0;
+  if (b.max_per_booking !== undefined) out.max_per_booking = b.max_per_booking != null ? Math.trunc(Number(b.max_per_booking)) : 4;
+  if (b.response_time_min !== undefined) out.response_time_min = b.response_time_min != null ? Math.trunc(Number(b.response_time_min)) : null;
+  if (b.vibe_tags !== undefined) {
+    out.vibe_tags = Array.isArray(b.vibe_tags) ? JSON.stringify(b.vibe_tags.slice(0, 2).map((t: unknown) => String(t))) : null;
+  }
+  if (b.credential !== undefined) out.credential = b.credential ? String(b.credential).slice(0, 40) : null;
+  // E: the free lane costs the CREATOR, never the buyer — force price=0 unconditionally
+  // the moment free_entry lands at 1 in this call, regardless of what price was sent
+  // alongside it. (The case where free_entry was already 1 on an EARLIER call and this
+  // call only touches price is handled by the caller, which knows the existing row.)
+  if (out.free_entry === 1) out.price = 0;
   return out;
 }
 
@@ -699,6 +973,10 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
   const id = crypto.randomUUID();
   const now = Date.now();
   const f = normFields(b);
+  // [LIST-CONTENT-2] spec §C.1 — new scalar columns (schedule_mode, timezone,
+  // billing_unit, vibe_tags, …) validated before anything is written.
+  const fieldsError = listingContentFieldsError(b);
+  if (fieldsError) return json({ ok: false, error: fieldsError, message: fieldsError, field: "listing" }, 400);
   // [AVA-MKT-VERT-1] §2.2 — attrs is the one field a caller can get wrong in a way
   // worth naming, so say so instead of dropping it silently (normFields would).
   if (b.attrs !== undefined) {
@@ -706,6 +984,12 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
     if (enc.error) return json({ ok: false, error: enc.error, message: enc.error, field: "attrs" }, 422);
     const policyError = commercialPolicyError(kind, b.attrs);
     if (policyError) return json({ ok: false, error: policyError, message: policyError, field: "attrs" }, 422);
+    // [LIST-CONTENT-2] spec §C.2 / TRUST §4.3 — details-page attrs. freeEntry here is
+    // simply `f.free_entry === 1`: there is no existing row yet at create time, so the
+    // "effective" value IS whatever this request sends (normFields already forced
+    // f.price=0 when free_entry=1, above).
+    const contentError = contentAttrsError(b.attrs, Number(f.free_entry) === 1);
+    if (contentError) return json({ ok: false, error: contentError, message: contentError, field: "attrs" }, 422);
   }
   const blocked = await guardWrite(req, env, ctx.uid, APP, [
     { text: f.title as string | undefined, field: "listing_title" },
@@ -737,14 +1021,24 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
   // the migration agree rather than inventing a third answer.
   const catV = versions?.cat ?? 1, pbV = versions?.playbook ?? 1, tplV = versions?.template ?? 1;
 
+  // [LIST-CONTENT-2] spec §C.1 — "slug is generated from the title on create,
+  // unique per creator". Generated even for a title-less draft ("Untitled" is what
+  // the INSERT below falls back to) so every listing has a pretty-URL segment from
+  // birth; a later title edit does NOT reslug (slug is stable once assigned, matching
+  // "editable once" on the update path).
+  const slug = await uniqueSlugFor(env, ctx.uid, slugify((f.title as string) || "Untitled"));
+
   await metaDb(env).prepare(
     `INSERT INTO listings (id, creator_id, kind, title, description, category, price, currency_display,
        country, adults_only, badges, cover_media, starts_at, duration_min, capacity, status, created_at, updated_at,
        agent_instructions, agent_lang, agent_voice_persona, market_type, social_sub, location, expiry_days,
        vertical, attrs, video_url, proposed_category, cat_version, playbook_version, template_version,
-       spoken_lang, translation_enabled, section)
+       spoken_lang, translation_enabled, section,
+       slug, blurb, schedule_mode, recurrence_days, recurrence_time, timezone, billing_unit,
+       free_entry, max_per_booking, response_time_min, vibe_tags, credential)
      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,'draft',?16,?16,?17,?18,?19,?20,?21,?22,?23,
-             ?24,?25,?26,?27,?28,?29,?30,?31,?32,?33)`,
+             ?24,?25,?26,?27,?28,?29,?30,?31,?32,?33,
+             ?34,?35,?36,?37,?38,?39,?40,?41,?42,?43,?44,?45)`,
   ).bind(id, ctx.uid, kind, (f.title as string) ?? "Untitled", f.description ?? null, category,
     f.price ?? 0, f.currency_display ?? "USD", f.country ?? null, f.adults_only ?? 0, f.badges ?? null,
     f.cover_media ?? null, f.starts_at ?? null, f.duration_min ?? null,
@@ -765,7 +1059,14 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
     // category) and stored, so the marketplace can filter, count and sort by it
     // server-side. Not `vertical` — see lib/listing_section.ts for why those are
     // two different things.
-    sectionFor(kind, category)).run();
+    sectionFor(kind, category),
+    // [LIST-CONTENT-2] spec §C.1 new columns. schedule_mode/timezone fall back to the
+    // column DEFAULTs (fixed_date / Asia/Kolkata) exactly like the migration does, so a
+    // caller that sends neither creates a row indistinguishable from a pre-migration one.
+    slug, f.blurb ?? null, f.schedule_mode ?? "fixed_date", f.recurrence_days ?? null,
+    f.recurrence_time ?? null, f.timezone ?? "Asia/Kolkata", f.billing_unit ?? null,
+    f.free_entry ?? 0, f.max_per_booking ?? 4, f.response_time_min ?? null,
+    f.vibe_tags ?? null, f.credential ?? null).run();
   track(env, ctx.uid, "listing_draft_created", APP, {
     kind, vertical, category, section: sectionFor(kind, category), proposed_category: f.proposed_category ?? null,
     cat_version: catV, playbook_version: pbV, template_version: tplV,
@@ -789,13 +1090,44 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
   const row = await metaDb(env).prepare(
     // [MARKET-SECTION-1] `section` rides along so the update below can tell
     // whether an edit actually moves the listing to a different bazaar section.
-    "SELECT creator_id, status, kind, content_version, title, description, price, currency_display, category, attrs, cat_version, section FROM listings WHERE id=?1",
+    // [LIST-CONTENT-2] `free_entry` and `slug` ride along: free_entry to compute the
+    // EFFECTIVE free-lane state when a caller only touches price (or only touches
+    // free_entry) in this PUT; slug for the uniqueness clash check below.
+    "SELECT creator_id, status, kind, content_version, title, description, price, currency_display, category, attrs, cat_version, section, free_entry, slug FROM listings WHERE id=?1",
   ).bind(id).first<any>();
   if (!row || row.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
   if (MARKET_KINDS.has(String(row.kind)) && !(await marketplacePublishOn(env))) return marketplaceOff();
   if (row.status === "cancelled" || row.status === "completed") return json({ error: "listing closed" }, 409);
   const b = (await req.json().catch(() => ({}))) as any;
   const f = normFields(b);
+  // [LIST-CONTENT-2] spec §C.1 — new scalar columns.
+  const fieldsError = listingContentFieldsError(b);
+  if (fieldsError) return json({ ok: false, error: fieldsError, message: fieldsError, field: "listing" }, 400);
+  // E: the free lane forces price=0. normFields already did this when THIS call sets
+  // free_entry=1, but a call that edits price alone while free_entry=1 was already
+  // true on the row (or a call that flips free_entry=1 without resending price) also
+  // needs the force — so recompute the EFFECTIVE value from the row when absent here.
+  const effectiveFreeEntry = ("free_entry" in f ? Number(f.free_entry) : Number(row.free_entry ?? 0)) === 1;
+  if (effectiveFreeEntry) f.price = 0;
+  // [LIST-CONTENT-2] spec §C.1 — "on update accept an explicit slug once — reject with
+  // 409 if taken by another of the creator's listings". Validated and uniqueness-
+  // checked HERE (not in normFields, which has no DB handle) before `keys` is built so
+  // f.slug rides the same generic SET-builder as every other column below.
+  if (b.slug !== undefined) {
+    const want = String(b.slug || "").trim().toLowerCase();
+    if (!SLUG_RE.test(want)) {
+      return json({ ok: false, error: "slug must be lowercase a-z0-9- (max 48 chars)", message: "slug must be lowercase a-z0-9- (max 48 chars)", field: "slug" }, 400);
+    }
+    if (want !== String(row.slug ?? "")) {
+      const clash = await metaSession(env).prepare(
+        "SELECT 1 FROM listings WHERE creator_id=?1 AND slug=?2 AND id<>?3",
+      ).bind(row.creator_id, want, id).first();
+      if (clash) {
+        return json({ ok: false, error: "slug_taken", message: "You already have a listing with this slug.", field: "slug" }, 409);
+      }
+    }
+    f.slug = want;
+  }
   const keys = (EDITABLE as readonly string[]).filter((k) => k in f);
   if (!keys.length) return json({ error: "nothing to update" }, 400);
 
@@ -820,6 +1152,10 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
     if (enc.error) return json({ ok: false, error: enc.error, message: enc.error, field: "attrs" }, 422);
     const policyError = commercialPolicyError(String(row.kind), b.attrs);
     if (policyError) return json({ ok: false, error: policyError, message: policyError, field: "attrs" }, 422);
+    // [LIST-CONTENT-2] spec §C.2 / TRUST §4.3 — details-page attrs, checked against the
+    // EFFECTIVE free_entry computed above (this call's value, or the row's).
+    const contentError = contentAttrsError(b.attrs, effectiveFreeEntry);
+    if (contentError) return json({ ok: false, error: contentError, message: contentError, field: "attrs" }, 422);
     // A category change in the same PUT validates against the NEW category — still at
     // the pinned cat_version, because re-pinning is an explicit admin migration (§2.4),
     // never a side effect of a seller edit.
@@ -1692,12 +2028,64 @@ export async function getListing(req: Request, env: Env, id: string): Promise<Re
     if (catLive?.intent) intent = String(catLive.intent);
     if (catLive?.price_semantics) priceSemantics = String(catLive.price_semantics);
   } catch { /* pre-migration: category columns/tables absent — keep the safe defaults */ }
+
+  // [LIST-CONTENT-2] TRUST §4.2 — `creator_stats` is a SEPARATE table from
+  // `creator_profiles` (the rating_avg/rating_count/follower_count already read into
+  // `prof` above). Read-only here; a cron/on-write refresh ([LIST-STATS-1], not this
+  // change) is what fills it. FAILS SOFT: the table may not be migrated/populated yet,
+  // and a missing trust row must never take down the detail page (same posture as
+  // cardStatsFor). Named `creator_trust_stats` in the response, NOT `creator_stats` —
+  // that key already exists below with a DIFFERENT shape (rating/follower numbers from
+  // creator_profiles), and rule J/§5 forbids changing an existing key's shape.
+  let creatorTrustStats: Record<string, unknown> | null = null;
+  try {
+    const cs = await metaSession(env).prepare(
+      `SELECT shows_hosted, hours_live, on_time_pct, cancel_rate, comeback_pct, avg_response_min,
+              sessions_done, sold_out_count, first_session_at, last_session_at, updated_at
+         FROM creator_stats WHERE creator_id=?1`,
+    ).bind(r.creator_id).first<any>();
+    if (cs) {
+      creatorTrustStats = {
+        shows_hosted: Number(cs.shows_hosted ?? 0),
+        hours_live: Number(cs.hours_live ?? 0),
+        on_time_pct: cs.on_time_pct != null ? Number(cs.on_time_pct) : null,
+        cancel_rate: cs.cancel_rate != null ? Number(cs.cancel_rate) : null,
+        comeback_pct: cs.comeback_pct != null ? Number(cs.comeback_pct) : null,
+        avg_response_min: cs.avg_response_min != null ? Number(cs.avg_response_min) : null,
+        sessions_done: Number(cs.sessions_done ?? 0),
+        sold_out_count: Number(cs.sold_out_count ?? 0),
+        first_session_at: cs.first_session_at ?? null,
+        last_session_at: cs.last_session_at ?? null,
+        updated_at: cs.updated_at ?? null,
+      };
+    }
+  } catch { /* creator_stats not migrated/populated yet — null, not an error */ }
+
+  // [LIST-CONTENT-2] spec item 4 — "booked_24h (count of entitlements/bookings for
+  // this listing in last 24h)". Reuses the exact table + state list cardStatsFor's
+  // seats_taken uses, so this number and the card's seats_taken agree on what counts
+  // as "booked". Same fail-soft posture: pre-migration ⇒ null, not a 500.
+  let booked24h: number | null = null;
+  try {
+    const row24 = await metaSession(env).prepare(
+      `SELECT COUNT(*) n FROM commercial_entitlements
+        WHERE listing_id=?1 AND role IN ('viewer','buyer')
+          AND state IN ('reserved','held','active','consumed')
+          AND created_at >= ?2`,
+    ).bind(id, Date.now() - 86_400_000).first<any>();
+    booked24h = Number(row24?.n ?? 0);
+  } catch { /* commercial migration not applied — no 24h count, not an error */ }
+
   return json({
     listing: {
       ...card, description: r.description ?? "",
       intent, detail_template: detailTemplate, price_semantics: priceSemantics,
     },
     creator_stats: { rating_avg: prof?.rating_avg ?? null, rating_count: prof?.rating_count ?? 0, follower_count: prof?.follower_count ?? 0 },
+    // [LIST-CONTENT-2] new, additive keys — see the comments above for why the trust
+    // table's data is under its own name rather than overloading `creator_stats`.
+    creator_trust_stats: creatorTrustStats,
+    booked_24h: booked24h,
     reviews: reviews.results ?? [],
     viewer: { following, booked, is_owner: isOwner },
   });
