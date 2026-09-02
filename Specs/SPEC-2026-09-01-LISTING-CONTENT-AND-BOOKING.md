@@ -34,6 +34,28 @@ re-litigated: `Specs/PIVOT-2026-08-27-MARKETPLACE-FIRST-PAID-SESSIONS.md`,
   lead reviews every diff, runs the compile checks, and sends work back until
   it passes. Agents never commit, push, deploy, or run migrations.
 
+## A1. Owner decisions 2026-09-02 (afternoon) — layout and public pages
+
+1. **Marketplace is a public, full-width page for everyone, logged in or not.**
+   `/marketplace` renders the bazaar comp (`design/live-streaming/avaTOK
+   Marketplace.dc.html`): big hero board, wide card grid, site footer — never
+   inside the dashboard shell. **`/dashboard/marketplace` is removed** (301 →
+   `/marketplace`). The header's MARKETPLACE link always goes to `/marketplace`;
+   a logged-in user returns via the header's DASHBOARD button. No auth redirect
+   may bounce a signed-in user from `/marketplace` into the dashboard.
+2. **The site footer from the comp (`SiteFooter.dc.html`, pic 5) is site-wide
+   on desktop** — every page that uses `Base.astro`, and the landing document.
+3. **Every listing details page is public and chrome-free**: no sidebar, not
+   inside the dashboard, for live events, 1:1, 1:many, AI voice agents and free.
+   The comp (`avaTOK Listing Details.dc.html`) IS the page, wired to real data.
+   `/dashboard/l/:id` 301s to `/l/:id`; the creator's edit affordance is a small
+   bar on the public page when the viewer owns the listing. An unregistered
+   buyer signs in with **email + code** inline in the booking box, pays, and
+   gets everything in the verified email — **never pushed to the dashboard**.
+4. **The creator form must collect what the comp shows.** Steps per §F; the
+   fields already exist server-side (`[LIST-CONTENT-2]`); the web form is the
+   thin one and gets parity + the new steps first.
+
 ## A. Where we are (plain English)
 
 **Done and live:**
