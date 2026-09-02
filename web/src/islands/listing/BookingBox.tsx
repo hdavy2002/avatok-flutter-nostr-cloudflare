@@ -32,10 +32,58 @@ export interface BookingBoxProps {
   scheduleMode?: string | null;
 }
 
-function fmtSlotTime(ms: number): string {
+// [LIST-DETAIL-BUG-1] Every date/time computed in this file — the calendar
+// grid's "today"/day dots, which day a slot falls on, and the slot time
+// labels — used to read `Date.getFullYear/getMonth/getDate/toLocaleString()`
+// straight off the browser's own clock. That's the VIEWER's timezone, not the
+// host's, so a slot the host scheduled for 9 PM IST could land on the "wrong"
+// calendar day for a viewer west of India, and the displayed clock time never
+// matched what the host actually said. `timezone` (plumbed in from
+// ListingDetailView, default 'Asia/Kolkata') is now the single source of truth
+// for every day/time computation here.
+
+/** {y, m (0-based), d} for `ms` as read on a wall clock in `timeZone` — lets
+ *  day-bucketing (sameDay/startOfDay/the calendar grid) work in LISTING time
+ *  instead of the browser's local zone, by building a "proxy" Date from these
+ *  parts and comparing with the existing y/m/d-based helpers below. */
+function tzDateParts(ms: number, timeZone: string): { y: number; m: number; d: number } {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(ms));
+    const get = (t: string) => Number(parts.find((p) => p.type === t)?.value);
+    return { y: get('year'), m: get('month') - 1, d: get('day') };
+  } catch {
+    const d = new Date(ms);
+    return { y: d.getFullYear(), m: d.getMonth(), d: d.getDate() };
+  }
+}
+/** A plain (browser-local) Date standing in for "this calendar day, in `timeZone`" —
+ *  safe to feed into sameDay/startOfDay/buildMonthCells, which only ever read
+ *  y/m/d off it, never an absolute instant. */
+function tzDay(ms: number, timeZone: string): Date {
+  const { y, m, d } = tzDateParts(ms, timeZone);
+  return new Date(y, m, d);
+}
+
+/**
+ * The ONE slot-time formatter for this island — signature:
+ *   fmtSlotTime(ms: number, timeZone: string): string
+ * "Sat 5 Sept · 9:00 PM IST" in the LISTING's timezone, never the viewer's.
+ */
+function fmtSlotTime(ms: number, timeZone: string): string {
   const d = new Date(ms);
   if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+  try {
+    const datePart = new Intl.DateTimeFormat('en-IN', { timeZone, weekday: 'short', day: 'numeric', month: 'short' }).format(d);
+    const timePart = new Intl.DateTimeFormat('en-IN', { timeZone, hour: 'numeric', minute: '2-digit' }).format(d);
+    let abbr = '';
+    try {
+      const p = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'short' }).formatToParts(d);
+      abbr = p.find((x) => x.type === 'timeZoneName')?.value ?? '';
+    } catch { /* no abbreviation available for this zone */ }
+    return `${datePart} · ${timePart}${abbr ? ` ${abbr}` : ''}`;
+  } catch {
+    return d.toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+  }
 }
 
 // ─────────────────────────── month calendar ────────────────────────────────
@@ -91,15 +139,19 @@ function buildMonthCells(viewMonth: Date, isShowDay: (d: Date) => boolean, selec
 }
 
 function MonthCalendar({
-  showDates, recurrenceDays, scheduleMode, selected, onSelect,
+  showDates, recurrenceDays, scheduleMode, selected, onSelect, timezone,
 }: {
   showDates: Date[];
   recurrenceDays?: number[] | null;
   scheduleMode?: string | null;
   selected: Date | null;
   onSelect: (d: Date) => void;
+  /** IANA zone `showDates`/`selected` are already bucketed in (via `tzDay`) —
+   *  "today" must be computed the same way, or "today" highlights the wrong
+   *  cell for a viewer on the other side of midnight from the host. */
+  timezone: string;
 }) {
-  const today = useMemo(() => startOfDay(new Date()), []);
+  const today = useMemo(() => tzDay(Date.now(), timezone), [timezone]);
   const [viewMonth, setViewMonth] = useState(() => startOfDay(selected ?? showDates[0] ?? today));
 
   const showDateKeys = useMemo(
@@ -191,19 +243,26 @@ export default function BookingBox({
 }: BookingBoxProps) {
   const [qty, setQty] = useState(1);
   const cap = Math.max(1, maxPerBooking || 4);
+  // [LIST-DETAIL-BUG-1] Default matches the server-side default in
+  // ListingDetailView.astro — avaTOK is India-only today (CLAUDE.md "no
+  // company"), so a null/older `timezone` field means Asia/Kolkata, not the
+  // reader's own browser zone.
+  const tz = timezone || 'Asia/Kolkata';
 
   // [LIST-PAGE-2 gap 1] Show days = slots' dates (if slots exist) else the
   // listing's own starts_at, else a recurring weekday expanded over whichever
   // month the calendar is showing (handled inside MonthCalendar itself).
+  // Bucketed via `tzDay` so a slot the host scheduled late at night IST lands
+  // on the correct calendar day regardless of the viewer's own clock.
   const allSlots = slots ?? [];
   const showDates = useMemo(
-    () => (allSlots.length > 0 ? allSlots.map((s) => new Date(s.starts_at)) : startsAtMs != null ? [new Date(startsAtMs)] : []),
-    [allSlots, startsAtMs],
+    () => (allSlots.length > 0 ? allSlots.map((s) => tzDay(s.starts_at, tz)) : startsAtMs != null ? [tzDay(startsAtMs, tz)] : []),
+    [allSlots, startsAtMs, tz],
   );
   const showCalendar = !isFreeEntry && kind !== 'agent' && (showDates.length > 0 || (scheduleMode === 'recurring' && !!recurrenceDays?.length));
 
   const [selectedDate, setSelectedDate] = useState<Date | null>(() => {
-    const today = startOfDay(new Date());
+    const today = tzDay(Date.now(), tz);
     const upcoming = showDates.map(startOfDay).filter((d) => d.getTime() >= today.getTime()).sort((a, b) => a.getTime() - b.getTime());
     return upcoming[0] ?? null;
   });
@@ -211,8 +270,8 @@ export default function BookingBox({
   const openSlots = useMemo(() => allSlots.filter((s) => s.status === 'open'), [allSlots]);
   const dateFilteredSlots = useMemo(() => {
     if (!selectedDate || openSlots.length === 0) return openSlots;
-    return openSlots.filter((s) => sameDay(new Date(s.starts_at), selectedDate));
-  }, [openSlots, selectedDate]);
+    return openSlots.filter((s) => sameDay(tzDay(s.starts_at, tz), selectedDate));
+  }, [openSlots, selectedDate, tz]);
 
   const [slotId, setSlotId] = useState<string | null>(dateFilteredSlots[0]?.id ?? openSlots[0]?.id ?? null);
   const visibleSlots = showCalendar ? dateFilteredSlots : openSlots;
@@ -250,7 +309,10 @@ export default function BookingBox({
           borderRadius: 16, padding: '12px 16px', background: isLive ? '#d93825' : '#161614',
           color: '#fdf1d3', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
         }}>
-          <span style={{ fontWeight: 900, fontSize: '0.8125rem', letterSpacing: '.06em' }}>
+          <span
+            style={{ fontWeight: 900, fontSize: '0.8125rem', letterSpacing: '.06em' }}
+            {...(!isLive && startsAtMs != null ? { 'data-listing-time': '', 'data-ms': startsAtMs, 'data-tz': tz } : {})}
+          >
             {isLive ? bookingBox.liveNow : startsAtLabel}
           </span>
           {isLive && watching != null && (
@@ -259,9 +321,14 @@ export default function BookingBox({
         </div>
       )}
 
-      {timezone && (
+      {/* [LIST-DETAIL-BUG-1] This used to claim "your time zone shown", which was
+          backwards — every time on this page is the HOST's time, in `tz`. The
+          page-level enhancer (ListingDetailView.astro) appends "(your time: …)"
+          next to any `data-listing-time` element only when the viewer's own zone
+          actually differs; this line just states which zone is authoritative. */}
+      {tz && (
         <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 700, color: '#5a5a54' }}>
-          Your time zone shown · host is on {timezone}
+          Times shown are the host's — {tz}
         </p>
       )}
 
@@ -271,6 +338,7 @@ export default function BookingBox({
           recurrenceDays={recurrenceDays}
           scheduleMode={scheduleMode}
           selected={selectedDate}
+          timezone={tz}
           onSelect={(d) => {
             setSelectedDate(d);
             capture('listing_calendar_date_select', { listing_id: listingId, kind });
@@ -306,7 +374,7 @@ export default function BookingBox({
                     }}
                   >
                     <span style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                      <span>{s.label ?? fmtSlotTime(s.starts_at)}</span>
+                      <span data-listing-time data-ms={s.starts_at} data-tz={tz}>{s.label ?? fmtSlotTime(s.starts_at, tz)}</span>
                       <span style={{ fontWeight: 800, fontSize: '0.6875rem', color: full ? '#d93825' : '#8c6a52' }}>
                         {full ? 'FULL' : `${seatsLeftForSlot} LEFT`}
                       </span>

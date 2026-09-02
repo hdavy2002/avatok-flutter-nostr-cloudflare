@@ -81,19 +81,42 @@ if (browseMore.length === 0 && listing.category) {
 }
 
 // ── Creator ─────────────────────────────────────────────────────────────────
+// [LIST-DETAIL-BUG-5] `??` only falls through on null/undefined — a creator row
+// with `name: ''` / `handle: ''` (empty string, not absent) used to slip past
+// the fallback chain untouched, leaving `creatorName` an empty string. That fed
+// an empty `name` into <Avatar>, whose own fallback renders a bare "?" instead
+// of initials, and produced blank/placeholder text wherever creatorName was
+// printed directly. `||` treats "" the same as missing, which is what we want
+// here — nobody's real display name is deliberately blank.
 const creator = listing.creator ?? null;
 const creatorSlug = creator?.handle || creator?.uid || creator?.id || null;
-const creatorAvatarUrl = creator?.avatar ?? creator?.avatar_url ?? null;
-const creatorName = creator?.name ?? (creator?.handle ? `@${creator.handle}` : 'avaTOK creator');
-const hostFirstName = creatorName.split(' ')[0] || creatorName;
-const hostInitials = creatorName.split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
+const creatorAvatarUrl = creator?.avatar || creator?.avatar_url || null;
+const creatorHandle = creator?.handle || null;
+const creatorDisplayName = creator?.name || null;
+const creatorName = creatorDisplayName || (creatorHandle ? `@${creatorHandle}` : 'avaTOK creator');
+const hostFirstName = creatorDisplayName ? (creatorDisplayName.split(' ')[0] || creatorDisplayName) : (creatorHandle || 'the host');
+// Initials for the avatar fallback: from the real name if there is one, else
+// from the handle, else the honest "AC" (avaTOK Creator) rather than a "?".
+const hostInitials = creatorDisplayName
+  ? creatorDisplayName.split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
+  : creatorHandle
+    ? creatorHandle.replace(/^@/, '').slice(0, 2).toUpperCase()
+    : 'AC';
 
 // [LIST-PAGE-2 gap 2] Two-tone Anton title (comp: "ANTAKSHARI FRIDAY" / red
 // "WITH SUNNY."). Only splits when there's enough to split — a 1-2 word title
 // has no natural "lede vs accent" break, so it renders plain.
+// [LIST-DETAIL-BUG-2] `titleAccent` always appended a "." even when the last
+// word already ended in punctuation ("TRY KARO!" -> "TRY KARO!."), and the gap
+// between the lead and accent spans relied on a bare whitespace text node
+// between two template expressions, which is exactly the whitespace JSX/Astro
+// is liable to collapse away ("ANTAKSHARI FRIDAY" + "WITH DAVY." rendering with
+// no space). Render uses an explicit `{' '}` for the former; this only fixes
+// the latter (no redundant "..").
 const titleWords = listing.title.trim().split(/\s+/).filter(Boolean);
 const titleLead = titleWords.length >= 3 ? titleWords.slice(0, -2).join(' ') : null;
-const titleAccent = titleWords.length >= 3 ? `${titleWords.slice(-2).join(' ')}.` : null;
+const titleAccentRaw = titleWords.length >= 3 ? titleWords.slice(-2).join(' ') : null;
+const titleAccent = titleAccentRaw ? (/[.!?]$/.test(titleAccentRaw) ? titleAccentRaw : `${titleAccentRaw}.`) : null;
 
 const trust = listing.creator_trust_stats ?? null;
 const respMin = listing.response_time_min ?? trust?.avg_response_min ?? null;
@@ -136,16 +159,57 @@ function youtubeEmbedUrl(url?: string | null): string | null {
 const videoEmbed = youtubeEmbedUrl(listing.video_url);
 
 // ── Live band / countdown ───────────────────────────────────────────────────
+// [LIST-DETAIL-BUG-1] This is SSR'd on Cloudflare's Worker clock, which is
+// UTC — `toLocaleDateString()`/`toLocaleString()` with no `timeZone` format in
+// whatever zone the RUNTIME happens to be in, not the host's. A creator who
+// entered 21:00 IST saw the page print "3:30 pm" (21:00 IST - 5:30 = 15:30
+// UTC). Every server-rendered clock on this page must pass `timeZone: tz`
+// explicitly. `tz` defaults to Asia/Kolkata — avaTOK has no international
+// hosts today (see CLAUDE.md "no company" / India-only market) and the field
+// is optional on older listings.
+const tz = listing.timezone || 'Asia/Kolkata';
+
 function toMs(t?: number | null): number | null { if (t == null) return null; return t < 1e12 ? t * 1000 : t; }
 const startMs = toMs(listing.starts_at);
 const endMs = toMs(listing.ends_at);
-function formatStartsAt(ms: number | null): string | null {
-  if (ms == null) return null;
-  const d = new Date(ms);
-  if (Number.isNaN(d.getTime())) return null;
-  return `${d.toLocaleDateString('en-IN', { weekday: 'short' })}, ${d.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}`;
+
+/** IANA zone abbreviation for a given instant, e.g. "IST", "GMT+5:30". */
+function tzAbbr(ms: number, timeZone: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'short' }).formatToParts(new Date(ms));
+    return parts.find((p) => p.type === 'timeZoneName')?.value ?? '';
+  } catch { return ''; }
 }
-const startsAtLabel = formatStartsAt(startMs);
+
+/**
+ * The ONE date+time formatter for this page — signature:
+ *   formatListingTime(ms: number, timeZone: string): string
+ * "Sat 5 Sept · 9:00 PM IST" — always rendered in `timeZone` (the listing's
+ * host timezone), regardless of what clock the server or the reader is on.
+ */
+function formatListingTime(ms: number, timeZone: string): string {
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return '';
+  try {
+    const datePart = new Intl.DateTimeFormat('en-IN', { timeZone, weekday: 'short', day: 'numeric', month: 'short' }).format(d);
+    const timePart = new Intl.DateTimeFormat('en-IN', { timeZone, hour: 'numeric', minute: '2-digit' }).format(d);
+    const abbr = tzAbbr(ms, timeZone);
+    return `${datePart} · ${timePart}${abbr ? ` ${abbr}` : ''}`;
+  } catch { return d.toISOString(); }
+}
+
+/** Just the clock face, tz-aware — "9:00 PM IST" — for spots that only need the time. */
+function formatListingClock(ms: number, timeZone: string): string {
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return '';
+  try {
+    const timePart = new Intl.DateTimeFormat('en-IN', { timeZone, hour: 'numeric', minute: '2-digit' }).format(d);
+    const abbr = tzAbbr(ms, timeZone);
+    return abbr ? `${timePart} ${abbr}` : timePart;
+  } catch { return d.toLocaleTimeString('en-IN'); }
+}
+
+const startsAtLabel = startMs != null ? formatListingTime(startMs, tz) : null;
 
 // ── Chips / facts ────────────────────────────────────────────────────────────
 const langTag = languageLabel(listing.spoken_lang ?? null);
@@ -228,7 +292,7 @@ const listingViewProps = {
       <div class="ld-wrap ld-live-band-row">
         <span class="ld-live-lead"><span class="ld-live-dot"></span>LIVE NOW</span>
         {listing.watching != null && <span class="ld-live-sub">{listing.watching} WATCHING</span>}
-        {endMs && <span class="ld-live-sub">ENDS {new Date(endMs).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}</span>}
+        {endMs && <span class="ld-live-sub" data-listing-time data-ms={endMs} data-tz={tz}>ENDS {formatListingClock(endMs, tz)}</span>}
         <a href={`/watch/${encodeURIComponent(id)}`} class="ld-join-now" data-cta="join_now">▸ JOIN NOW</a>
       </div>
     </div>
@@ -307,7 +371,7 @@ const listingViewProps = {
       {eyebrowParts.length > 0 && <div class="ld-eyebrow-tag">{eyebrowParts.join(' · ')}</div>}
       <h1 class="ld-title">
         {titleAccent ? (
-          <>{titleLead} <span class="ld-title-accent">{titleAccent}</span></>
+          <>{titleLead}{' '}<span class="ld-title-accent">{titleAccent}</span></>
         ) : (
           listing.title
         )}
@@ -416,7 +480,7 @@ const listingViewProps = {
             <span class="ld-booking-live-sub">BOOK &amp; JOIN INSTANTLY</span>
           </div>
         ) : startsAtLabel ? (
-          <div class="ld-booking-next-header"><span>NEXT SHOW · {startsAtLabel}</span></div>
+          <div class="ld-booking-next-header"><span data-listing-time data-ms={startMs} data-tz={tz}>NEXT SHOW · {startsAtLabel}</span></div>
         ) : null}
         <div class="ld-booking-body">
           <div class="ld-booking-title-row">
@@ -436,7 +500,7 @@ const listingViewProps = {
             freeSpotsLeft={freeSpotsLeft}
             startsAtLabel={startsAtLabel}
             startsAtMs={startMs}
-            timezone={listing.timezone ?? null}
+            timezone={tz}
             slots={slots}
             joinLeadMinutes={joinLeadMinutes}
             recurrenceDays={listing.recurrence_days ?? null}
@@ -591,4 +655,41 @@ const listingViewProps = {
       vo.observe(videoBlock);
     }
   });
+
+  // [LIST-DETAIL-BUG-1] Every host-timezone time on this page — hero/live-band,
+  // the booking box header, and (client-side, inside the BookingBox React
+  // island) the calendar/slot labels — carries `data-listing-time` +
+  // `data-ms`/`data-tz`. Never REPLACE the host time (a buyer must always see
+  // when the host says the show starts); only APPEND "(your time: …)" when the
+  // viewer's own zone actually differs. Runs after hydration and watches for
+  // BookingBox's client-rendered slot list, which mounts/re-renders after this
+  // script's first pass.
+  (function enhanceListingTimesForViewer() {
+    let viewerTz = 'Asia/Kolkata';
+    try { viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone || viewerTz; } catch {}
+
+    function run() {
+      document.querySelectorAll('[data-listing-time]:not([data-viewer-enhanced])').forEach((el) => {
+        el.setAttribute('data-viewer-enhanced', '1');
+        const ms = Number(el.getAttribute('data-ms'));
+        const listingTz = el.getAttribute('data-tz');
+        if (!Number.isFinite(ms) || !listingTz || listingTz === viewerTz) return;
+        try {
+          const viewerStr = new Intl.DateTimeFormat('en-IN', {
+            timeZone: viewerTz, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit',
+          }).format(new Date(ms));
+          const note = document.createElement('span');
+          note.className = 'ld-your-time';
+          note.style.opacity = '0.7';
+          note.style.marginLeft = '0.4em';
+          note.textContent = `(your time: ${viewerStr})`;
+          el.appendChild(note);
+        } catch { /* Intl not available for this zone — leave the host time as-is */ }
+      });
+    }
+
+    run();
+    const mo = new MutationObserver(run);
+    mo.observe(document.body, { childList: true, subtree: true });
+  })();
 </script>

@@ -115,7 +115,15 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
   // truth (worker/migrations/2026-09-02-listings-content.sql), not a promo — the
   // creator pays from escrow, the buyer pays ₹0. When set, this step skips the
   // wallet/gateway split entirely: there is nothing to fund on the buyer's side.
-  const isFreeEntry = Boolean(listing.free_entry) || (baseTokens === 0 && Boolean(listing.free_entry));
+  //
+  // [WEB-CHECKOUT-BUG-4] A listing can price at ₹0 without the creator ever having
+  // flipped `free_entry` (a promo, a data-entry zero, a not-yet-priced draft). Gating
+  // this purely on `free_entry` left those listings showing "Pay from wallet / Not
+  // enough balance", a card/UPI picker and a "Total to pay ₹0" button for a charge
+  // that can never succeed (priceBreakdown() returns null for base<=0, so `breakdown`
+  // is already null and the wallet/gateway UI has nothing real to charge). There is
+  // nothing to fund at ₹0 either way, so route it through the same free lane.
+  const isFreeEntry = Boolean(listing.free_entry) || baseTokens <= 0;
   const [freeBusy, setFreeBusy] = useState(false);
   const [freeError, setFreeError] = useState<string | null>(null);
   const [freeFull, setFreeFull] = useState(false);
@@ -329,9 +337,10 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
     });
   }
 
-  // [LIST-FREE-1] The free lane's entire "pay" step — no wallet card, no
-  // GatewayPicker, no cancellation checkbox to gate a charge that never
-  // happens. One summary, one button, one back link.
+  // [LIST-FREE-1 / WEB-CHECKOUT-BUG-4] The free lane's entire "pay" step — no
+  // wallet card, no GatewayPicker, no "Pay ₹0" button. Still shows the honest
+  // breakdown ("Free") and the cancellation terms (a free booking can still be
+  // a no-show), then one summary, one button, one back link.
   if (isFreeEntry) {
     return (
       <div className="flex flex-col gap-4">
@@ -342,11 +351,20 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
             </span>
             <Pill kind="plain">{selection.title}</Pill>
           </div>
+          <div className="flex items-center justify-between border-t-zine border-inkMute pt-3">
+            <span className="font-display font-semibold text-[16px] text-ink">Price</span>
+            <span className="font-mono font-bold text-[16px] text-ink">Free</span>
+          </div>
         </Card>
 
         <Card fillClassName="bg-mint" shadow="sm">
           <p className="font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink">Free</p>
           <p className="mt-1 font-body font-bold text-[15px] text-ink">{freeBox.hostPays}</p>
+        </Card>
+
+        <Card fillClassName="bg-paper2" shadow="sm">
+          <p className="font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-inkSoft">Cancellation terms</p>
+          <p className="mt-1 font-body font-bold text-[14px] text-ink">{policyText}</p>
         </Card>
 
         {freeFull && (
