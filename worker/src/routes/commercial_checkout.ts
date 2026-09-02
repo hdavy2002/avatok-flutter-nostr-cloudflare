@@ -19,6 +19,7 @@ import { taxFor, type TaxBreakdown } from "../lib/commercial_tax";
 import { claimBlock, releaseBlocks } from "../cal/engine";
 import { notifyCommercialUsers } from "../lib/commercial_notifications";
 import type { GatewayId } from "../lib/payments/types";
+import { freeSessionPolicy, countFreeEntitlements } from "../lib/free_session"; // [LIST-FREE-1]
 
 type CheckoutKind = "live_event" | "consult_1to1";
 
@@ -42,6 +43,7 @@ type Listing = {
   duration_min: number | null;
   capacity: number | null;
   attrs: string | null;
+  free_entry: number | null; // [LIST-FREE-1]
 };
 
 type CheckoutOperation = {
@@ -352,7 +354,7 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
     return json({ error: "policy confirmation required" }, 400);
   }
   const listing = await metaDb(env).prepare(
-    `SELECT id,creator_id,kind,title,status,price,currency_display,starts_at,duration_min,capacity,attrs
+    `SELECT id,creator_id,kind,title,status,price,currency_display,starts_at,duration_min,capacity,attrs,free_entry
        FROM listings WHERE id=?1`,
   ).bind(route.listingId).first<Listing>();
   if (!listing || listing.kind !== route.kind && !(route.kind === "consult_1to1" && listing.kind === "consult")
@@ -362,6 +364,23 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
   if (listing.creator_id === auth.uid) return json({ error: "cannot buy your own service" }, 400);
   if (route.kind === "consult_1to1" && Number(listing.capacity ?? 1) !== 1) {
     return json({ error: "consultation must have exactly one buyer" }, 409);
+  }
+
+  // [LIST-FREE-1] Free lane gate — spec §E. A free_entry listing costs the CREATOR, not the
+  // buyer, and only when the platform kill switch is also on. `price` is already forced to
+  // 0 for a free_entry row (listings.ts), so the funding branch below naturally takes the
+  // free path once these gates pass; nothing else in this function changes for free_entry.
+  if (Number(listing.free_entry) === 1) {
+    const policy = await freeSessionPolicy(env, listing);
+    if (!policy.enabled) {
+      commercialEvent(env, "checkout", auth.uid, { kind: route.kind, outcome: "refused", reason: "free_sessions_disabled" });
+      return json({ error: "free_sessions_disabled" }, 403);
+    }
+    const current = await countFreeEntitlements(env, route.kind, listing.id);
+    if (current >= policy.maxAttendees) {
+      commercialEvent(env, "checkout", auth.uid, { kind: route.kind, outcome: "refused", reason: "free_session_full" });
+      return json({ error: "free_session_full", message: "this free session is full" }, 409);
+    }
   }
 
   const policy = policyFor(route.kind, parseAttrs(listing.attrs), config);
@@ -953,7 +972,7 @@ export async function provisionFromGatewayPurchase(env: Env, args: {
   const gateway: GatewayId = args.gateway ?? "cashfree";
   const config = await readConfig(env);
   const listing = await metaDb(env).prepare(
-    `SELECT id,creator_id,kind,title,status,price,currency_display,starts_at,duration_min,capacity,attrs
+    `SELECT id,creator_id,kind,title,status,price,currency_display,starts_at,duration_min,capacity,attrs,free_entry
        FROM listings WHERE id=?1`,
   ).bind(args.listingId).first<Listing>();
   if (!listing) return json({ error: "listing unavailable" }, 404);

@@ -8,6 +8,7 @@ import { Avatar, Pill } from '../components';
 import { cfImage } from '../lib/config';
 import { durationLabel, languageLabel, priceLabel } from '../lib/card';
 import { inrOrFree, priceBreakdown } from '../lib/money';
+import { cta, freeBox } from '../lib/copy';
 import type { CoverMedia, Listing } from '../lib/types';
 
 interface Props { listing: Listing; mode?: 'public' | 'dashboard'; }
@@ -89,6 +90,22 @@ function priceTag(price: number | null, semantics?: string | null): string | nul
 const price = priceTag(listing.price ?? null, listing.price_semantics);
 // [TAX-GST-DISPLAY-1] Quoted, not charged yet by every gateway on every listing.
 const breakdown = priceBreakdown(listing.price);
+
+/*
+ * [LIST-FREE-1] SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING.md §D "Free join" /
+ * SPEC-2026-09-02-LISTING-TRUST-AND-VIBE.md §2.4, §3.4. Moved in from the
+ * caller pages (public /l/<id> had grown its own duplicate box above this
+ * component because it couldn't reach in here) — this is now the ONE place
+ * a free listing's booking box renders, on both /l/<id> and /dashboard/l/<id>.
+ * Every non-free listing still renders the `breakdown &&` box exactly as
+ * before; this block only ever substitutes for it when free_entry is truthy.
+ */
+const isFreeEntry = Boolean(listing.free_entry);
+const freeCapacity = listing.capacity ?? null;
+const freeSeatsTaken = listing.seats_taken ?? null;
+const freeSpotsLeft =
+  freeCapacity != null && freeSeatsTaken != null ? Math.max(0, freeCapacity - freeSeatsTaken) : (listing.seats_left ?? null);
+const freeFull = freeSpotsLeft === 0;
 
 // [LIST-DETAIL-1] This listing's OWN rating/review count — not the creator's
 // channel-wide `creator_stats`, which is what the page showed before (every listing
@@ -276,7 +293,39 @@ const bookingTerms = [cancelLine, noticeLine, rescheduleLine].filter((s): s is s
         </div>
       )}
 
-      {breakdown && (
+      {isFreeEntry ? (
+        <div class="rounded-zine border-zine border-ink bg-mint p-5 shadow-zine-sm">
+          <div class="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p class="font-mono font-bold uppercase text-[13px] tracking-[0.1em] text-ink">Free</p>
+              <p class="mt-1 font-display font-semibold text-[28px] leading-none text-ink">FREE</p>
+              <p class="mt-2 font-body font-bold text-[14px] text-ink/80">
+                {freeFull ? freeBox.full : freeBox.hostPays}
+              </p>
+              {!freeFull && freeSpotsLeft != null && (
+                <p class="mt-1 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink/70">
+                  {freeBox.spotsLeft(freeSpotsLeft)}
+                </p>
+              )}
+            </div>
+            {freeFull ? (
+              <span
+                aria-disabled="true"
+                class="inline-flex items-center justify-center select-none rounded-full border-zine border-ink bg-card px-7 py-4 font-display font-semibold text-[17px] leading-none text-inkMute opacity-70"
+              >
+                {freeBox.full}
+              </span>
+            ) : (
+              <a
+                href={bookHref}
+                class="inline-flex items-center justify-center select-none no-underline rounded-full border-zine border-ink shadow-zine-sm bg-lime text-ink transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed px-7 py-4 font-display font-semibold text-[17px] leading-none"
+              >
+                {cta.RESERVE_FREE}
+              </a>
+            )}
+          </div>
+        </div>
+      ) : breakdown && (
         <div class="rounded-zine border-zine border-ink bg-paper2 p-5 shadow-zine-sm">
           <h2 class="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">What you'd pay</h2>
           <dl class="mt-3 flex flex-col gap-1.5">

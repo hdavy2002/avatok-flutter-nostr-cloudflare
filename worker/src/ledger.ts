@@ -172,6 +172,23 @@ export async function release(env: Env, orderId: string, creatorId: string, opts
 }
 
 /**
+ * feeFromEscrow — [LIST-FREE-1] move `amount` from an escrow bucket to
+ * platform:fees with NO user-account leg. Needed by the free lane, where the
+ * creator's held cap is spent on platform usage and the creator earns nothing
+ * from it: `release()` cannot express that because WalletDO `earn` refuses
+ * amount<=0, so a feeRate of 1 always 400s. Ledger-only, so idempotent on the
+ * row id (wallet_ledger PK) — pass a stable opId per settlement.
+ */
+export async function feeFromEscrow(env: Env, orderId: string, amount: number, opId: string, meta?: object): Promise<LedgerResult> {
+  amount = Math.trunc(Number(amount));
+  if (!(amount > 0)) return { ok: false, status: 400, body: { error: "amount>0 required" } };
+  const avail = await escrowBalance(env, orderId);
+  if (amount > avail) return { ok: false, status: 409, body: { error: "fee exceeds escrow balance", available: avail } };
+  await sendLedgerRow(env, opId, acctEscrow(orderId), ACCT_PLATFORM_FEES, amount, "fee", orderId, meta ?? null);
+  return { ok: true, status: 200, body: { ok: true, orderId, amount } };
+}
+
+/**
  * refund — return coins from escrow to the buyer (partial OK; spendable
  * immediately). opId must be unique per refund (`refund:<orderId>` default —
  * pass your own for multiple partials on one order).

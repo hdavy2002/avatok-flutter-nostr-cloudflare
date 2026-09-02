@@ -31,6 +31,7 @@ import { Pill } from '../../components/Pill';
 import { Spinner } from '../../components/Spinner';
 import { inr, inrOrFree, priceBreakdown } from '../../lib/money';
 import { listingErrorMessage } from '../../lib/listingErrors';
+import { cta, freeBox } from '../../lib/copy';
 import { GatewayPicker } from './GatewayPicker';
 import type { Listing } from '../../lib/types';
 import type { BookingResult, BookSelection, CommercialCheckoutNeedsFunding, CommercialCheckoutResult, PayStatusResponse, WalletBalance } from './types';
@@ -108,7 +109,67 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
   const clientTotal = breakdown?.total ?? 0;
   const policyText = policySummary(selection.kind, attrs);
 
+  // [LIST-FREE-1] SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING.md §D "Free join" /
+  // SPEC-2026-09-02-LISTING-TRUST-AND-VIBE.md §2.4, §3.4. `free_entry` is server
+  // truth (worker/migrations/2026-09-02-listings-content.sql), not a promo — the
+  // creator pays from escrow, the buyer pays ₹0. When set, this step skips the
+  // wallet/gateway split entirely: there is nothing to fund on the buyer's side.
+  const isFreeEntry = Boolean(listing.free_entry) || (baseTokens === 0 && Boolean(listing.free_entry));
+  const [freeBusy, setFreeBusy] = useState(false);
+  const [freeError, setFreeError] = useState<string | null>(null);
+  const [freeFull, setFreeFull] = useState(false);
+
+  async function reserveFree() {
+    if (freeBusy) return;
+    setFreeBusy(true);
+    setFreeError(null);
+    setFreeFull(false);
+    try {
+      const pathKind = selection.kind === 'live_event' ? 'live' : 'consult';
+      // Same endpoint as the wallet rail — the server contract is: for a
+      // free_entry listing this POST returns the SAME response shape as a paid
+      // checkout, with amount 0 and gateway 'free', creating the entitlement
+      // directly. No gateway step exists for this lane.
+      const result = await request<CommercialCheckoutResult>(
+        `/api/commercial/${pathKind}/${encodeURIComponent(selection.listingId)}/checkout`,
+        {
+          method: 'POST',
+          auth: token,
+          headers: { 'Idempotency-Key': idemKey },
+          body: {
+            accept_policy: true,
+            ...(selection.slot ? { slot: selection.slot } : {}),
+          },
+        },
+      );
+      onBooked({
+        ok: true,
+        booking_id: result.booking_id ?? result.order_id,
+        start_at: result.starts_at ?? undefined,
+        end_at: result.ends_at ?? undefined,
+        paid: false,
+        spots_left: result.spots_left ?? result.seats_left ?? null,
+      });
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409 && e.error === 'free_session_full') {
+        setFreeFull(true);
+      } else if (e instanceof ApiError && e.status === 403 && e.error === 'free_sessions_disabled') {
+        setFreeError(freeBox.disabled);
+      } else if (e instanceof ApiError) {
+        setFreeError(listingErrorMessage(e.error, e.body && typeof e.body === 'object' ? (e.body as { message?: unknown }).message : undefined));
+      } else {
+        setFreeError('That didn’t go through. Please try again.');
+      }
+    } finally {
+      setFreeBusy(false);
+    }
+  }
+
   useEffect(() => {
+    // [LIST-FREE-1] The free lane never reads or spends the buyer's wallet —
+    // skip the balance fetch entirely rather than make a network call whose
+    // result this step will never render.
+    if (isFreeEntry) { setLoadingBal(false); return; }
     void (async () => {
       setLoadingBal(true);
       try {
@@ -120,7 +181,7 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
         setLoadingBal(false);
       }
     })();
-  }, [token]);
+  }, [token, isFreeEntry]);
 
   const walletInsufficient = balance != null && clientTotal > 0 && balance < clientTotal;
 
@@ -178,6 +239,58 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
       paid: true,
       escrow_coins: status.total_amount ?? clientTotal,
     });
+  }
+
+  // [LIST-FREE-1] The free lane's entire "pay" step — no wallet card, no
+  // GatewayPicker, no cancellation checkbox to gate a charge that never
+  // happens. One summary, one button, one back link.
+  if (isFreeEntry) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Card>
+          <div className="flex items-center justify-between">
+            <span className="font-mono font-bold uppercase text-[14px] tracking-[0.08em] text-inkSoft">
+              You’re reserving
+            </span>
+            <Pill kind="plain">{selection.title}</Pill>
+          </div>
+        </Card>
+
+        <Card fillClassName="bg-mint" shadow="sm">
+          <p className="font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink">Free</p>
+          <p className="mt-1 font-body font-bold text-[15px] text-ink">{freeBox.hostPays}</p>
+        </Card>
+
+        {freeFull && (
+          <Card fillClassName="bg-paper2" shadow="sm">
+            <p className="font-body font-bold text-[14px] text-coral">⚠ {freeBox.full}</p>
+          </Card>
+        )}
+        {freeError && !freeFull && (
+          <Card fillClassName="bg-paper2" shadow="sm">
+            <p className="font-body font-bold text-[14px] text-coral">⚠ {freeError}</p>
+          </Card>
+        )}
+
+        <Button
+          variant="lime"
+          fullWidth
+          loading={freeBusy}
+          disabled={freeFull}
+          label={freeFull ? freeBox.full : cta.RESERVE_FREE}
+          onClick={() => void reserveFree()}
+        />
+
+        <button
+          type="button"
+          className="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-blueInk underline decoration-blue decoration-2 underline-offset-2 disabled:text-inkMute"
+          disabled={freeBusy}
+          onClick={onBack}
+        >
+          ← Back
+        </button>
+      </div>
+    );
   }
 
   return (

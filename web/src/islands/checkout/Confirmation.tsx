@@ -15,6 +15,7 @@ import { Card } from '../../components/Card';
 import { Pill } from '../../components/Pill';
 import { UpgradePrompt } from '../auth/UpgradePrompt';
 import { AppDownloadCta } from '../../components/AppDownloadCta';
+import { freeBox } from '../../lib/copy';
 import type { BookingResult, BookSelection } from './types';
 
 function fmtWhen(ms?: number): string | null {
@@ -42,6 +43,11 @@ export function Confirmation({ listing, selection, result }: ConfirmationProps) 
   const [showUpgrade, setShowUpgrade] = useState(true);
   const kind = (listing.kind ?? '') as string;
   const bookingId = result.booking_id;
+  // [LIST-FREE-1] The buyer paid ₹0 on this booking because the listing is
+  // free_entry — the host funded it. Read the listing flag (not `result.paid`
+  // alone) so this only fires for the actual free lane.
+  const isFreeEntry = Boolean(listing.free_entry);
+  const spotsLeft = typeof result.spots_left === 'number' ? result.spots_left : null;
 
   let viewerHref: string;
   let viewerLabel: string;
@@ -90,12 +96,18 @@ export function Confirmation({ listing, selection, result }: ConfirmationProps) 
           )}
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <Pill kind="plain">Booking {bookingId.slice(0, 8)}</Pill>
-            {result.paid ? <Pill kind="ok">Paid</Pill> : null}
-            {result.escrow_coins ? <Pill kind="ok">{result.escrow_coins} Tokens held</Pill> : null}
+            {isFreeEntry ? <Pill kind="ok">Free</Pill> : null}
+            {!isFreeEntry && result.paid ? <Pill kind="ok">Paid</Pill> : null}
+            {!isFreeEntry && result.escrow_coins ? <Pill kind="ok">{result.escrow_coins} Tokens held</Pill> : null}
+            {isFreeEntry && spotsLeft != null ? <Pill kind="hint">{freeBox.spotsLeft(spotsLeft)}</Pill> : null}
           </div>
-          <p className="mt-1 font-body font-bold text-[14px] text-ink/70">
-            We emailed your confirmation and reminders.
-          </p>
+          {isFreeEntry ? (
+            <p className="mt-1 font-body font-bold text-[14px] text-ink/70">{freeBox.hostPays}</p>
+          ) : (
+            <p className="mt-1 font-body font-bold text-[14px] text-ink/70">
+              We emailed your confirmation and reminders.
+            </p>
+          )}
         </div>
       </Card>
 

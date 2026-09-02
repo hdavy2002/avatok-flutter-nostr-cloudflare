@@ -144,6 +144,17 @@ export interface CommercialCheckoutResult {
   gst_rate_pct?: number;
   gst_amount?: number;
   charged_amount?: number;
+  /**
+   * [LIST-FREE-1] Free-entry checkout (SPEC-2026-09-01-LISTING-CONTENT-AND-
+   * BOOKING.md §D "Free join") returns the SAME shape as a paid checkout, with
+   * `amount_coins`/`gross_amount`/`charged_amount` all 0 and `gateway: 'free'`.
+   * Spots-remaining after this reservation, when the server sends it — field
+   * name not yet finalised server-side, so both plausible spellings are read
+   * defensively (see CommercialPayStep.tsx).
+   */
+  gateway?: string;
+  spots_left?: number | null;
+  seats_left?: number | null;
 }
 
 /**
@@ -171,6 +182,8 @@ export interface BookingResult {
   end_at?: number;
   paid?: boolean;
   escrow_coins?: number;
+  /** [LIST-FREE-1] Spots remaining after a free-entry reservation, when known. */
+  spots_left?: number | null;
 }
 
 /** Balance shape from POST-less GET /api/wallet/balance (walletOp body). */

@@ -35,5 +35,6 @@ const og = listingOg(listing);
     <AuthRedirect />
     {og.extra.map((m) => (m.property ? <meta property={m.property} content={m.content} /> : <meta name={m.name} content={m.content} />))}
   </Fragment>
+
   <ListingDetailView listing={listing} mode="public" />
 </Base>

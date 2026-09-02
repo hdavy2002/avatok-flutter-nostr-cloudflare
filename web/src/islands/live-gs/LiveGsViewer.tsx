@@ -18,6 +18,7 @@ import { StreamVideo, StreamCall, type Call } from '@stream-io/video-react-sdk';
 import { ClerkIsland, requireGuestAuth } from '../../lib/clerk';
 import { cfImage } from '../../lib/config';
 import { inrOrFree } from '../../lib/money';
+import { freeBox } from '../../lib/copy';
 import { Spinner } from '../../components';
 import {
   joinCommercialSession,
@@ -264,6 +265,39 @@ function RefusalScreen({
       </div>
     </div>
   );
+
+  // [LIST-FREE-1] SPEC-2026-09-02-LISTING-TRUST-AND-VIBE.md §2.4/§3.4. The
+  // free lane's two refusals arrive as raw wire values, not a dedicated
+  // JoinRefusalReason — getstream.ts's refusalFor() doesn't know about the
+  // free lane at all: a 409 falls through to its `unavailable` default, and a
+  // 403 `free_sessions_disabled` would otherwise be misread as `needs_ticket`
+  // (its detail contains neither "not your" nor "ticket|entitlement", so it
+  // hits that catch-all). Match the exact server strings
+  // (worker/src/routes/commercial_stream_sessions.ts) before the reason
+  // switch below, rather than teaching getstream.ts a new reason — this is
+  // additive to the existing refusal screen, not a parallel error path, and
+  // the ticketless→checkout `needs_ticket` branch below is untouched.
+  if (refusal.status === 409 && refusal.detail === 'free_session_full') {
+    return (
+      <Frame tone="blueInk">
+        <h1 className="mt-3 font-display font-semibold text-[26px] leading-tight text-ink">{freeBox.full}</h1>
+        <p className="mt-2 font-body font-bold text-[15px] text-inkSoft">Sab spots bhar gaye — koi buy zaroori nahi tha.</p>
+        <a href={creatorHref} className="mt-6 inline-flex rounded-full border-zine border-ink bg-card px-7 py-3.5 font-display font-semibold text-[16px] text-ink no-underline shadow-zine-sm">
+          View the creator
+        </a>
+      </Frame>
+    );
+  }
+  if (refusal.status === 403 && refusal.detail === 'free_sessions_disabled') {
+    return (
+      <Frame>
+        <h1 className="mt-3 font-display font-semibold text-[26px] leading-tight text-ink">{freeBox.disabled}</h1>
+        <a href="/explore" className="mt-6 inline-flex rounded-full border-zine border-ink bg-card px-7 py-3.5 font-display font-semibold text-[16px] text-ink no-underline shadow-zine-sm">
+          Back to explore
+        </a>
+      </Frame>
+    );
+  }
 
   switch (refusal.reason) {
     case 'too_early':

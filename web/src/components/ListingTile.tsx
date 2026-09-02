@@ -1,5 +1,6 @@
 import { cfImage } from '../lib/config';
 import { toCardView, durationLabel, languageLabel, priceLabel } from '../lib/card';
+import { chips as chipCopy, statusPill } from '../lib/copy';
 import type { Card as CardModel, CardView } from '../lib/types';
 
 export interface ListingTileProps {
@@ -90,9 +91,23 @@ function statusLabel(c: CardView): string {
  * for that, and the layout needs it), but with facts the listing actually has:
  * bookings, seats, rating, language, category, or an honest "NEW LISTING".
  */
-function chipsFor(c: CardView): [string, string] {
-  const one =
-    c.joinedCount > 0 ? `✓ ${c.joinedCount.toLocaleString('en-IN')} BOOKED`
+/**
+ * [LIST-FREE-1] Free-entry chip 1 is always "spots baaki" (§2.4: cap-derived
+ * seats remaining, `→ FULL` at zero) — it outranks the regulars/seats/duration
+ * ladder the paid chip uses, because on a free card "how many spots are left"
+ * is the single fact a buyer needs before the other proof chip.
+ */
+function freeChip1(c: CardView): string {
+  if (c.seatsLeft === 0) return 'FULL';
+  if (c.seatsLeft != null) return chipCopy.seatsLeft(c.seatsLeft).replace('SEATS', 'SPOTS');
+  if (c.capacity != null) return chipCopy.seatsLeft(c.capacity).replace('SEATS', 'SPOTS');
+  return 'NEW LISTING';
+}
+
+function chipsFor(c: CardView, freeEntry: boolean): [string, string] {
+  const one = freeEntry
+    ? freeChip1(c)
+    : c.joinedCount > 0 ? `✓ ${c.joinedCount.toLocaleString('en-IN')} BOOKED`
       : c.capacity ? `${c.capacity} SEATS`
         : c.durationMin ? `${durationLabel(c.durationMin)?.toUpperCase()}`
           : 'NEW LISTING';
@@ -123,8 +138,13 @@ export function ListingTile({ listing, href, width = 520, className = '' }: List
   const c = toCardView(listing);
   const target = href ?? listingHref(listing);
   const p = paletteFor(c.id);
-  const price = priceLabel(c.price, listing.price_semantics);
-  const [chip1, chip2] = chipsFor(c);
+  // [LIST-FREE-1] Gated on `free_entry` alone (§2.4) — a listing that merely
+  // prices at ₹0 without the flag is not this lane, and free_entry rows never
+  // reach this component without it (server truth, not a promo).
+  const isFreeEntry = Boolean(listing.free_entry);
+  // Free cards never show a price in the title (§2.4) — not even "Free".
+  const price = isFreeEntry ? '' : priceLabel(c.price, listing.price_semantics);
+  const [chip1, chip2] = chipsFor(c, isFreeEntry);
   const language = languageLabel(c.spokenLang);
   const duration = durationLabel(c.durationMin);
   const initials = (c.creator?.name || c.creator?.handle || '?')
@@ -163,6 +183,22 @@ export function ListingTile({ listing, href, width = 520, className = '' }: List
           />
         )}
         <div style={{ position: 'absolute', inset: 0, backgroundImage: stripe }} />
+
+        {/* [LIST-FREE-1] The free ribbon (§2.4) — a marigold stripe across the photo
+            corner, reusing the existing --ava-marigold token (styles/ava-tokens.css)
+            rather than a new hex literal. The parent <a> is `overflow-hidden`, which
+            is what clips the rotated banner's corners to the card's rounded frame. */}
+        {isFreeEntry && (
+          <div style={{
+            position: 'absolute', top: 16, right: -38, width: 136,
+            transform: 'rotate(45deg)', textAlign: 'center', zIndex: 1,
+            background: 'var(--ava-marigold)', color: INK,
+            fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 900, fontSize: '0.6875rem',
+            letterSpacing: '.08em', padding: '5px 0', boxShadow: `0 2px 0 ${INK}`,
+          }}>
+            {statusPill.FREE}
+          </div>
+        )}
 
         <div style={{
           position: 'absolute', top: 12, left: 12, right: 12,

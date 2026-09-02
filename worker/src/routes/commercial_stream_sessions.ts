@@ -15,6 +15,10 @@ import { commercialEvent } from "../lib/commercial_telemetry";
 import { hold, refund } from "../ledger";
 import { notifyLiveAudience } from "../lib/commercial_notifications";
 import { refreshCreatorStats } from "../lib/creator_stats"; // [LIST-STATS-1]
+import {
+  freeSessionPolicy, holdFreeSessionCap, settleFreeSession,
+  countFreeWatching, trackFreeSessionJoinRefused, type FreeSessionKind,
+} from "../lib/free_session"; // [LIST-FREE-1]
 
 const USER_TOKEN_TTL_SECONDS = 15 * 60;
 
@@ -26,6 +30,9 @@ type ListingRow = {
   status: string;
   starts_at: number | null;
   duration_min: number | null;
+  free_entry: number | null; // [LIST-FREE-1]
+  attrs: string | null;
+  capacity: number | null;
 };
 
 type BookingRow = {
@@ -198,7 +205,7 @@ async function providerControl(args: {
 
 async function listing(env: Env, listingId: string): Promise<ListingRow | null> {
   return await metaDb(env).prepare(
-    "SELECT id, creator_id, kind, title, status, starts_at, duration_min FROM listings WHERE id=?1",
+    "SELECT id, creator_id, kind, title, status, starts_at, duration_min, free_entry, attrs, capacity FROM listings WHERE id=?1",
   ).bind(listingId).first<ListingRow>();
 }
 
@@ -529,6 +536,25 @@ async function commercialLiveJoinUnsafe(req: Request, env: Env): Promise<Respons
   if (grant.role !== (isHost ? "host" : "viewer")) {
     commercialEvent(env, "join", auth.uid, { kind: "live_event", outcome: "refused", reason: "entitlement_role_mismatch" });
     return json({ error: "commercial entitlement authority mismatch" }, 409);
+  }
+  // [LIST-FREE-1] Free lane join gate — spec §E.5. The checkout-time gate
+  // (commercial_checkout.ts) already caps total tickets issued; this is the SEPARATE
+  // live-attendance gate, read off the same "watching" source the card uses
+  // (listings.ts cardStatsFor), because a ticket holder who already left and rejoins
+  // should not be double-refused by a ticket-count check. Host joins are never gated —
+  // only viewers consume the creator's metered spend.
+  if (!isHost && Number(row.free_entry) === 1) {
+    const policy = await freeSessionPolicy(env, row);
+    if (!policy.enabled) {
+      commercialEvent(env, "join", auth.uid, { kind: "live_event", outcome: "refused", reason: "free_sessions_disabled" });
+      return json({ error: "free_sessions_disabled" }, 403);
+    }
+    const watching = await countFreeWatching(env, listingId);
+    if (watching >= policy.maxAttendees) {
+      trackFreeSessionJoinRefused(env, { creatorId: row.creator_id, sessionId: `live_${listingId}_1`, maxAttendees: policy.maxAttendees, currentCount: watching });
+      commercialEvent(env, "join", auth.uid, { kind: "live_event", outcome: "refused", reason: "free_session_full" });
+      return json({ error: "free_session_full", message: "this free session is full" }, 409);
+    }
   }
   return await authorizeProviderJoin({
     env, config, uid: auth.uid, kind: "live_event", listingId,
@@ -1076,6 +1102,28 @@ export async function commercialLiveGoLive(req: Request, env: Env): Promise<Resp
   const session = await sessionByListing(env, listingId);
   if (!session) return json({ error: "prepare host first" }, 409);
   if (!["scheduled", "backstage"].includes(session.state)) return json({ error: "session cannot go live", state: session.state }, 409);
+  // [LIST-FREE-1] Free lane creator hold — spec §E.2. This runs BEFORE the broadcast
+  // starts, i.e. before anyone can join and start consuming metered attendee-minutes.
+  // Insufficient creator balance refuses the go-live outright (402, dual error codes) —
+  // the show never starts unmetered and the creator's balance never goes negative.
+  if (Number(row.free_entry) === 1) {
+    const policy = await freeSessionPolicy(env, row);
+    if (!policy.enabled) {
+      commercialEvent(env, "broadcast", auth.uid, { kind: "live_event", outcome: "refused", action: "go_live", reason: "free_sessions_disabled" });
+      return json({ error: "free_sessions_disabled" }, 403);
+    }
+    const held = await holdFreeSessionCap(env, {
+      creatorId: row.creator_id, sessionId: session.commercial_session_id,
+      capTokens: policy.capTokens, title: row.title,
+    });
+    if (!held.ok) {
+      commercialEvent(env, "broadcast", auth.uid, { kind: "live_event", outcome: "refused", action: "go_live", reason: "insufficient_tokens" });
+      return json({
+        error: held.error, error_legacy: held.error_legacy,
+        needed: held.needed, balance: held.balance,
+      }, held.status);
+    }
+  }
   return await runControl({
     req, env, actorId: auth.uid, session, action: "go_live",
     recording: config.commercialRecordingEnabled,
@@ -1598,6 +1646,29 @@ export async function recordCommercialStreamEvent(
     ).bind(session.commercial_session_id).first<{ creator_id: string }>()
       .then((row) => { if (row?.creator_id) return refreshCreatorStats(env, row.creator_id); })
       .catch((e) => console.warn("creator_stats refresh hook skipped:", String(e)));
+
+    // [LIST-FREE-1] Free-lane settlement — spec §E.4. Same fire-and-forget posture as the
+    // creator_stats refresh just above: this webhook must never fail or slow down because
+    // of it, and `session` here only carries commercial_session_id/state, so the listing's
+    // free_entry/attrs/capacity and the session's kind/creator_id are looked up fresh.
+    void metaDb(env).prepare(
+      `SELECT s.commercial_session_id, s.kind, s.creator_id,
+              l.free_entry, l.attrs, l.capacity, l.duration_min
+         FROM commercial_sessions s JOIN listings l ON l.id = s.listing_id
+        WHERE s.commercial_session_id = ?1`,
+    ).bind(session.commercial_session_id).first<{
+      commercial_session_id: string; kind: FreeSessionKind; creator_id: string;
+      free_entry: number | null; attrs: string | null; capacity: number | null; duration_min: number | null;
+    }>()
+      .then(async (freeRow) => {
+        if (!freeRow || Number(freeRow.free_entry) !== 1) return;
+        const policy = await freeSessionPolicy(env, freeRow);
+        await settleFreeSession(env, {
+          sessionId: freeRow.commercial_session_id, creatorId: freeRow.creator_id, kind: freeRow.kind,
+          capTokens: policy.capTokens, ratePerAttendeeMinute: policy.ratePerAttendeeMinute,
+        });
+      })
+      .catch((e) => console.warn("free session settlement skipped:", String(e)));
   }
   await metaDb(env).prepare(
     "UPDATE commercial_provider_events SET processing_state='applied',processed_at=?2 WHERE provider_event_id=?1",
