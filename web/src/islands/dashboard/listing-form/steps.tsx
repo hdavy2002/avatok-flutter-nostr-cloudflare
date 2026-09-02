@@ -8,6 +8,7 @@ import { Field } from '../../../components/Field';
 import { Card } from '../../../components/Card';
 import { Button } from '../../../components/Button';
 import { PreviewCard } from './PreviewCard';
+import { CopyReview } from './CopyReview';
 import { TwoFieldListEditor, StringListEditor, ChatLineEditor, labelCls, inputCls, textareaCls, SectionHeader, charCount } from './Editors';
 import { VIBE_TAGS, BILLING_UNITS, REFUND_WINDOWS, BOOKING_NOTICE_HOURS } from './wizardLogic';
 import { defaultsFor, SERVICE_CATEGORY_IDS } from '../../../lib/listingDefaults';
@@ -109,9 +110,11 @@ export function Step1Type({ draft, patch, err }: { draft: ListingDraft; patch: P
 }
 
 // ── Step 2 — Pitch ─────────────────────────────────────────────────────────
-export function Step2Pitch({ draft, patch, err, categories, creator }: {
+export function Step2Pitch({ draft, patch, err, categories, creator, onReviewed }: {
   draft: ListingDraft; patch: Patch; err: FieldErr; categories: { id: string; label: string; emoji?: string | null }[];
   creator?: CreatorInfo;
+  /** [CARD-AI-REVIEW-1] Ticks the publish checklist once a review has run. */
+  onReviewed: () => void;
 }) {
   // [LIST-WIZ-CAT-1] The wizard only ever creates live_event/consult/ai_agent
   // listings — /api/explore/categories has no per-row kind to filter server-side,
@@ -177,6 +180,10 @@ export function Step2Pitch({ draft, patch, err, categories, creator }: {
             })}
           </div>
         </div>
+        {/* [CARD-AI-REVIEW-1] Sits directly under the fields it edits, and above
+            the live preview on narrow screens, so "Use this" and the card that
+            changes because of it are visible in one glance. */}
+        <CopyReview draft={draft} patch={patch} onReviewed={onReviewed} />
       </div>
       <div className="lg:sticky lg:top-4 lg:self-start">
         <p className="mb-2 text-center font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">Live preview</p>
@@ -613,10 +620,12 @@ export function Step7Photos({ draft, patch, err, onUpload, onRemoveCover, upload
 }
 
 // ── Step 8 — Preview & publish ─────────────────────────────────────────────
-export function Step8Preview({ draft, checks, ready, onPublish, publishing, published, publicHref, error,
-  repeatOpen, setRepeatOpen, repeatWeeks, setRepeatWeeks, onRepeat, repeating, isLive, creator,
+export function Step8Preview({ draft, patch, checks, ready, onPublish, publishing, published, publicHref, error,
+  repeatOpen, setRepeatOpen, repeatWeeks, setRepeatWeeks, onRepeat, repeating, isLive, creator, copyReviewed, onReviewed,
 }: {
-  draft: ListingDraft; checks: { ok: boolean; label: string }[]; ready: boolean;
+  draft: ListingDraft; patch: Patch; checks: { ok: boolean; label: string }[]; ready: boolean;
+  /** [CARD-AI-REVIEW-1] Reviewed in this session? Drives the panel below. */
+  copyReviewed: boolean; onReviewed: () => void;
   onPublish: () => void; publishing: boolean; published: boolean; publicHref: string | null; error: string | null;
   repeatOpen: boolean; setRepeatOpen: (v: boolean) => void; repeatWeeks: number; setRepeatWeeks: (n: number) => void;
   onRepeat: () => void; repeating: boolean; isLive: boolean; creator?: CreatorInfo;
@@ -633,6 +642,14 @@ export function Step8Preview({ draft, checks, ready, onPublish, publishing, publ
             </div>
           ))}
         </div>
+
+        {/* [CARD-AI-REVIEW-1] The review is a publish check, so the way to
+            satisfy it lives HERE, next to the blocked button — not only back on
+            step 2. A checklist that fails without an adjacent way to fix it is
+            how a form becomes a dead end. */}
+        {!published && !copyReviewed && (
+          <CopyReview draft={draft} patch={patch} onReviewed={onReviewed} />
+        )}
 
         {error && <p className="font-body font-bold text-[14px] text-coral">⚠ {error}</p>}
 

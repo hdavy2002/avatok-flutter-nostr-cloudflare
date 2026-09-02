@@ -4,7 +4,7 @@ import { searchListings } from './api';
 import type { Card, CardPage } from '../../lib/types';
 import { Button, Spinner } from '../../components';
 import { SearchBox } from './SearchBox';
-import { FilterRail, PRICE_BANDS, type RailState } from './FilterRail';
+import { FilterRail, PRICE_BANDS, activeFilterCount, type RailState } from './FilterRail';
 import { VerticalSection } from './VerticalSection';
 import { LiveNowRail } from './LiveNowRail';
 import { groupByVertical, VERTICALS, type VerticalId } from '../../lib/verticals';
@@ -69,6 +69,8 @@ function ExploreGridInner({
     sort: '',
   });
 
+  // Closed at every width — see the drawer note on the render below.
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [items, setItems] = useState<Card[]>([]);
   const [counts, setCounts] = useState<Record<VerticalId, number> | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -204,13 +206,24 @@ function ExploreGridInner({
     [counts, items.length],
   );
 
+  const appliedCount = activeFilterCount(rail);
+
   return (
     <div className="flex flex-col gap-8">
       {showLiveRail && <LiveNowRail />}
       {showSearch && <SearchBox value={q} onChange={setQ} />}
 
-      <div className="flex flex-col items-start gap-8 lg:flex-row">
+      {/* [MARKET-FILTER-DRAWER-1 2026-09-03, owner decision] The rail is a
+          DRAWER now, closed by default at every width, because the permanent
+          248px column was squeezing a 4-up grid of wide-format cards into
+          ~230px tracks and crushing them. The grid gets the full row; the rail
+          arrives over it when asked for. The Filters button below carries the
+          applied-filter count so a collapsed rail can never hide the reason the
+          grid looks short. */}
+      <div className="flex flex-col items-stretch gap-8">
         <FilterRail
+          open={filtersOpen}
+          onClose={() => setFiltersOpen(false)}
           value={rail}
           onChange={(next) => {
             // [WEB-POSTHOG-1] §2.3 market_filter_change / market_sort_change — fire
@@ -237,7 +250,36 @@ function ExploreGridInner({
         />
 
         <main className="min-w-0 flex-1">
-          <div className="mb-8 flex items-center gap-3.5">
+          <div className="mb-8 flex flex-wrap items-center gap-3.5">
+            <button
+              type="button"
+              onClick={() => {
+                capture('market_filter_drawer_toggle', { open: true, applied: appliedCount });
+                setFiltersOpen(true);
+              }}
+              className="inline-flex flex-none items-center gap-2 rounded-full border-zine border-ink bg-card px-5 py-2.5 font-label text-[0.75rem] font-extrabold uppercase tracking-[0.1em] text-ink shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
+              aria-expanded={filtersOpen}
+            >
+              <span aria-hidden="true">☰</span>
+              Filters
+              {appliedCount > 0 && (
+                <span className="grid h-5 min-w-[20px] place-items-center rounded-full bg-coral px-1.5 font-label text-[0.6875rem] font-extrabold text-card">
+                  {appliedCount}
+                </span>
+              )}
+            </button>
+            {appliedCount > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  capture('market_filter_change', { key: 'clear', value: null });
+                  clearAll();
+                }}
+                className="flex-none font-label text-[0.75rem] font-extrabold uppercase tracking-[0.08em] text-coral underline"
+              >
+                Sab hatao
+              </button>
+            )}
             <span className="font-label text-[0.8125rem] font-extrabold uppercase tracking-[0.12em] text-ink">
               {loaded
                 ? `${items.length} ${items.length === 1 ? 'listing' : 'listings'} · Pura bazaar`

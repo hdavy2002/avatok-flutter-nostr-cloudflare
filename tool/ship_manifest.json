@@ -4208,5 +4208,35 @@
       }
     ],
     "_verified_at": "worker/src/commercial_settlement.ts creatorConnectedMs() + the delivery re-classification in settleOne; worker/src/lib/commercial_refund_rail.ts finalizeCommercialRefund(); worker/src/routes/commercial_admin_claims.ts switched onto it. Roles confirmed against the entitlement writers: live_event host self-grant writes role='host' (commercial_stream_sessions.ts), consult creator row writes role='creator' (commercial_checkout.ts, [COMM-CONSULT-ENT-1]) - both are commercial_session_members roles by the time an interval exists. min_connected_ms read from the snapshot with the same 60_000 fallback deliveryError uses. npx tsc --noEmit clean in worker/."
+  },
+  "CARD-AI-REVIEW-1": {
+    "description": "[CARD-AI-REVIEW-1 / CARD-UNIFORM-1 / MARKET-FILTER-DRAWER-1] The marketplace grid was crushing its cards: a permanent 248px FILTERS rail took a quarter of the row from a 4-up grid of wide-format cards, and the cards themselves rendered an uneven slot set - one tile showed a seat count and rating, its neighbour showed neither, and a blurb-less listing rendered a shorter body block - so the grid read as half-built. THREE CHANGES. (1) MARKET-FILTER-DRAWER-1: FilterRail is now a drawer, closed by default at EVERY width, opened from a Filters button that carries the applied-filter count (activeFilterCount, which excludes sort - sort reorders, it never hides a card). The grid takes the full row. (2) CARD-UNIFORM-1: lib/card.ts gains uniformChips() - exactly three chips in the same three slots on every lane (availability / proof / context), each a ladder of REAL data ending in a terminal rung that claims nothing beyond 'this listing is published' (BOOKING_OPEN, PEHLA SHOW, the lane name). cardBlurb() supplies a lane-derived fallback line when the creator left the blurb empty. ListingTile clamps title and body to fixed two-line blocks so a three-word title and a forty-word one produce the same card. NO listing data was written - this is render-side only, per the owner's choice. (3) CARD-AI-REVIEW-1: NEW worker route POST /api/listings/copy-review (routes/listing_copy_review.ts) - suggest-only, never writes a listing. A deterministic length pass ALWAYS runs (title clamped to the card's 58 chars on a word boundary, description to 900 at a sentence break); the model half is layered on top behind the NEW flag listingAiReviewEnabled and every model string is put back through the same clamp, because the model misses the length and an overflowing suggestion is the exact bug being fixed. The response's `source` field says ai|rules and the UI prints it, so it never claims a review that did not happen. Wizard: CopyReview.tsx on step 2 (Pitch) and again on step 8 next to the blocked Publish button, plus a publishReadiness check 'Ava has reviewed the copy' that is SESSION state - no column records a review, so persisting one would be inventing it; the server-side backstop is the follow-up.",
+    "shipped": "2026-09-03",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "listingAiReviewEnabled",
+      "aiEnabled",
+      "marketplaceEnabled"
+    ],
+    "success": [
+      {
+        "event": "listing_copy_review",
+        "where": {},
+        "property": "source",
+        "equals": "ai",
+        "min_events": 1,
+        "note": "SUCCESS VALUE, declared before the ship: the review ran AND the model half answered. source='rules' arriving instead is the FAILURE VALUE - the route still returned a correctly-sized suggestion, so nothing errors and nobody complains, but listingAiReviewEnabled is off, aiEnabled is off, or the provider is unreachable. A run of source=rules means the AI review is silently not happening."
+      },
+      {
+        "event": "market_filter_drawer_toggle",
+        "where": {},
+        "property": "open",
+        "equals": true,
+        "min_events": 1,
+        "note": "The rail is closed by default now, so this event is the only proof the filters are still reachable. Zero of these alongside normal market_browse_loaded traffic means the Filters button is not being found - the collapse hid the feature instead of giving the cards room."
+      }
+    ],
+    "_verified_at": "web/src/islands/marketplace/FilterRail.tsx (drawer wrapper + activeFilterCount), web/src/islands/marketplace/ExploreGrid.tsx (filtersOpen state, Filters button, full-width main), web/src/lib/card.ts (uniformChips + cardBlurb), web/src/lib/copy.ts (laneName, laneBlurbFallback, BOOKING_OPEN/ENTRY_OPEN/SLOTS_OPEN), web/src/components/ListingTile.tsx (fixed-height clamped title/body, three chips), worker/src/routes/listing_copy_review.ts, worker/src/routes/config.ts (listingAiReviewEnabled declared in the PlatformConfig interface AND in DEFAULTS in the same change - an undeclared key is a fake flag putConfig rejects with 400), worker/src/index.ts (route matched BEFORE the /api/listings/:id patterns, since 'copy-review' matches that id regex). track() called with the full five-arg form (env, uid, event, app_name, props). `npx tsc --noEmit` clean in BOTH web/ and worker/ - the worker was typechecked before deploy per CLAUDE.md, since wrangler's esbuild strips types without checking them. NOTE: `npm run build` could not run in the Linux sandbox (EPERM unlinking into the mounted node_modules/.vite and src/generated), so the Astro build is proven by CI, not locally."
   }
 }

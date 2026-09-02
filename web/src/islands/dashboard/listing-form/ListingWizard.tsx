@@ -105,6 +105,9 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
   const [fieldErr, setFieldErr] = useState<FieldErr>({ field: null, message: null });
   const [gate, setGate] = useState<'liveness' | 'kyc' | null>(null);
   const [publishing, setPublishing] = useState(false);
+  // [CARD-AI-REVIEW-1] Has the copy review run in this session? Session-only —
+  // see the note on publishReadiness for why this is not persisted.
+  const [copyReviewed, setCopyReviewed] = useState(false);
   const [slotsSupported, setSlotsSupported] = useState<boolean | null>(null);
   const [slotBusy, setSlotBusy] = useState(false);
   const [categories, setCategories] = useState<{ id: string; label: string; emoji?: string | null }[]>([]);
@@ -435,7 +438,7 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
     } finally { setRepeating(false); }
   }
 
-  const checks = useMemo(() => publishReadiness(draft), [draft]);
+  const checks = useMemo(() => publishReadiness(draft, { copyReviewed }), [draft, copyReviewed]);
   const ready = checks.every((c) => c.ok);
   const published = Boolean(draft.status && draft.status !== 'draft');
   const publicHref = draft.id ? `/l/${encodeURIComponent(draft.id)}` : null;
@@ -465,7 +468,12 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
 
       <div className="max-w-2xl">
         {step === 0 && <Step1Type draft={draft} patch={patch} err={fieldErr} />}
-        {step === 1 && <Step2Pitch draft={draft} patch={patch} err={fieldErr} categories={categories} creator={creatorInfo} />}
+        {step === 1 && (
+          <Step2Pitch
+            draft={draft} patch={patch} err={fieldErr} categories={categories} creator={creatorInfo}
+            onReviewed={() => setCopyReviewed(true)}
+          />
+        )}
         {step === 2 && <Step3Money draft={draft} patch={patch} err={fieldErr} />}
         {step === 3 && <Step4Time draft={draft} patch={patch} err={fieldErr} slotsSupported={slotsSupported} onAddSlot={onAddSlot} onRemoveSlot={onRemoveSlot} slotBusy={slotBusy} />}
         {step === 4 && <Step5HowItWorks draft={draft} patch={patch} />}
@@ -473,7 +481,8 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
         {step === 6 && <Step7Photos draft={draft} patch={patch} err={fieldErr} onUpload={onUpload} onRemoveCover={onRemoveCover} uploading={uploading} />}
         {step === 7 && (
           <Step8Preview
-            draft={draft} checks={checks} ready={ready} onPublish={onPublish} publishing={publishing}
+            draft={draft} patch={patch} checks={checks} ready={ready} onPublish={onPublish} publishing={publishing}
+            copyReviewed={copyReviewed} onReviewed={() => setCopyReviewed(true)}
             published={published} publicHref={publicHref} error={error}
             repeatOpen={repeatOpen} setRepeatOpen={setRepeatOpen} repeatWeeks={repeatWeeks} setRepeatWeeks={setRepeatWeeks}
             onRepeat={onRepeat} repeating={repeating} isLive={isLive} creator={creatorInfo}

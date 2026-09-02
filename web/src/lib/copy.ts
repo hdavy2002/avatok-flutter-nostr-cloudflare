@@ -213,6 +213,41 @@ export const laneBadge = {
   NEW_LISTING: 'NEW LISTING',
   JUST_ADDED: 'JUST ADDED',
   FULL: 'FULL',
+  /** Availability slot's terminal rung: no capacity was ever set on the
+   *  listing, so there is no number to print. "BOOKING OPEN" claims only what
+   *  publishing the listing already claims — never a seat count. */
+  BOOKING_OPEN: 'BOOKING OPEN',
+  ENTRY_OPEN: 'ENTRY OPEN',
+  SLOTS_OPEN: 'SLOTS OPEN',
+} as const;
+
+/** [CARD-UNIFORM-1] The lane's own name, used as the third chip's terminal
+ *  rung. True by construction — the lane IS what the listing is — so it can
+ *  fill the slot on a listing with no promo and no freshness left. */
+export const laneName = {
+  live: 'GROUP SHOW',
+  free: 'FREE ENTRY',
+  consult: '1-ON-1',
+  agent: 'AI AGENT',
+  adda: 'ADDA ROOM',
+} as const;
+
+/**
+ * [CARD-UNIFORM-1 2026-09-03, owner decision] The description line a card falls
+ * back to when the creator left the blurb empty, so every tile carries the same
+ * two-line body block instead of some cards looking half-built.
+ *
+ * Each string states only what the LANE already guarantees — a free listing
+ * really is free entry, a consult really is 1-on-1. Nothing here describes the
+ * content of the session, because this text is not the creator's and must never
+ * put words in their mouth.
+ */
+export const laneBlurbFallback = {
+  live: 'Live group show — book a seat and join when it starts.',
+  free: 'Free entry — reserve your spot and join when it starts.',
+  consult: 'A private 1-on-1 session, booked for your own slot.',
+  agent: 'An AI voice agent you can talk to any time.',
+  adda: 'A regular room that meets on schedule — drop in.',
 } as const;
 
 /** `⚡ 10 MIN RESPONSE` — consult chip 1 (§2.2). */

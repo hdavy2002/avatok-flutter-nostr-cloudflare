@@ -232,8 +232,17 @@ export function validateStep(d: ListingDraft, step: StepIndex): FieldProblem | n
 }
 
 /** Required-for-`live_event` at publish (spec §F): blurb, how-it-works, house rules. */
-export function publishReadiness(d: ListingDraft): { ok: boolean; label: string }[] {
+export function publishReadiness(
+  d: ListingDraft,
+  /** [CARD-AI-REVIEW-1] Whether the copy review has run in THIS session. It is
+   *  session state on purpose: there is no column on `listings` recording a
+   *  review, so persisting it would mean inventing one. Re-running the review
+   *  is one click on the Pitch step, and the server-side backstop (a follow-up)
+   *  is what will make this durable. Until then, do not fake a stored flag. */
+  opts: { copyReviewed?: boolean } = {},
+): { ok: boolean; label: string }[] {
   const checks = [
+    { ok: Boolean(opts.copyReviewed), label: 'Ava has reviewed the copy' },
     { ok: d.title.trim().length >= 3, label: 'Has a title' },
     { ok: Boolean(d.category), label: 'Has a category' },
     { ok: d.cover_media.length >= 1, label: `Has at least one photo (${d.cover_media.length}/5)` },

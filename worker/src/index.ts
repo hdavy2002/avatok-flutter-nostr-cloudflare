@@ -260,6 +260,7 @@ import { aiCatchup, aiSmartReplies, aiTranslate, aiGroupTranslate, safetyScore, 
 import { forwardMsg } from "./routes/messaging";                                                     // STREAM I
 import { addFavorite, removeFavorite, listFavorites } from "./routes/listings";                       // STREAM K
 import { listSlots as listListingSlots, createSlot as createListingSlot, patchSlot as patchListingSlot, deleteSlot as deleteListingSlot } from "./routes/listing_slots"; // [LIST-SLOTS-1]
+import { listingCopyReview } from "./routes/listing_copy_review";                                    // [CARD-AI-REVIEW-1]
 
 export { CallRoom } from "./do/call_room";
 export { MeshRoom } from "./do/mesh_room";
@@ -1671,6 +1672,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/explore/categories" && req.method === "GET") return await cached(req, ctx, () => exploreCategories(env), 300);
       if (p === "/api/listings" && req.method === "POST") return await createListing(req, env);
       if (p === "/api/listings/mine" && req.method === "GET") return await myListings(req, env);
+      // [CARD-AI-REVIEW-1] Suggest-only copy review for the creator wizard. Must
+      // be matched BEFORE the /api/listings/:id patterns further down — "copy-review"
+      // is a valid [A-Za-z0-9-]{1,64} id as far as that regex is concerned.
+      if (p === "/api/listings/copy-review" && req.method === "POST") return await listingCopyReview(req, env);
       // --- AvaMarketplace (buy/sell/social + agent negotiation) ---
       // [MKT1-CATAPI] Category engine (PLAN-2026-07-17 §2.0-2.4). Categories are DATA,
       // not code: adding "Boats for sale" is a D1 insert, not a release. `vertical`

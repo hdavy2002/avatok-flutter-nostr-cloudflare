@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { VERTICALS, VERTICALS_WITHOUT_A_SOURCE, type VerticalId } from '../../lib/verticals';
 
 /** Price buckets, in tokens (₹1 = 1 token). `max: null` means "and up". */
@@ -50,6 +51,24 @@ export interface FilterRailProps {
   onClear: () => void;
   /** True when anything is actually narrowed — drives SAB HATAO. */
   narrowed: boolean;
+  /** Drawer visibility. The rail is closed by default at every width. */
+  open: boolean;
+  onClose: () => void;
+}
+
+/**
+ * How many filters are actually applied. The rail is COLLAPSED by default now,
+ * so this number is the only thing standing between a visitor and "why are
+ * there only two listings?" — it rides on the Filters button and must count
+ * exactly what narrows the grid, nothing else. Sort is excluded on purpose: it
+ * reorders, it never hides a card.
+ */
+export function activeFilterCount(value: RailState): number {
+  let n = 0;
+  if (value.vertical) n++;
+  if (value.date) n++;
+  if (value.price && value.price !== 'all') n++;
+  return n;
 }
 
 /**
@@ -78,13 +97,44 @@ export interface FilterRailProps {
  *     count. They stay listed — they are real products the owner wants visible —
  *     but they are not clickable filters leading to a dead end.
  */
-export function FilterRail({ value, onChange, counts, countsKnown, total, onClear, narrowed }: FilterRailProps) {
+export function FilterRail({ value, onChange, counts, countsKnown, total, onClear, narrowed, open, onClose }: FilterRailProps) {
   const set = (patch: Partial<RailState>) => onChange({ ...value, ...patch });
 
   const label = 'font-label text-[0.75rem] font-extrabold uppercase tracking-[0.14em] text-inkMute';
 
+  // [MARKET-FILTER-DRAWER-1] Escape closes, and the page behind stops scrolling
+  // while the drawer is up. Both effects are unconditional hooks with an early
+  // return inside — a `if (!open) return null` ABOVE a hook would change the
+  // hook count between renders, which React treats as a bug, not a shortcut.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  useEffect(() => {
+    if (!open || typeof document === 'undefined') return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [open]);
+
+  if (!open) return null;
+
   return (
-    <aside className="w-full lg:sticky lg:top-4 lg:w-[248px] lg:flex-none">
+    <div
+      className="fixed inset-0 z-50 flex"
+      style={{ background: 'rgba(35,27,20,0.45)' }}
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Filters"
+    >
+      <aside
+        className="h-full w-full max-w-[330px] overflow-y-auto overscroll-contain bg-paper p-4 shadow-zine"
+        onClick={(e) => e.stopPropagation()}
+      >
       <div className="overflow-hidden rounded-zine border-zine border-ink bg-card shadow-zine">
         {/* The comp's lotus strip. Rendered here as markup rather than the
             TruckBorder Astro component because this is a React island. */}
@@ -102,15 +152,25 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
 
         <div className="flex items-baseline justify-between gap-2.5 px-5 pb-1.5 pt-4">
           <h2 className="font-display text-[1.5rem] font-normal uppercase tracking-[0.05em] text-ink">Filters</h2>
-          {narrowed && (
+          <div className="flex items-center gap-3">
+            {narrowed && (
+              <button
+                type="button"
+                onClick={onClear}
+                className="font-label text-[0.75rem] font-extrabold uppercase tracking-[0.08em] text-coral underline"
+              >
+                Sab hatao
+              </button>
+            )}
             <button
               type="button"
-              onClick={onClear}
-              className="font-label text-[0.75rem] font-extrabold uppercase tracking-[0.08em] text-coral underline"
+              onClick={onClose}
+              aria-label="Close filters"
+              className="grid h-7 w-7 flex-none place-items-center self-center rounded-full border-2 border-ink bg-card font-label text-[0.875rem] font-extrabold leading-none text-ink"
             >
-              Sab hatao
+              ✕
             </button>
-          )}
+          </div>
         </div>
 
         <div className="px-5 pb-4 pt-2">
@@ -214,11 +274,23 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
         </div>
       </div>
 
+      <button
+        type="button"
+        onClick={onClose}
+        className="mt-4 w-full rounded-full border-zine border-ink bg-coral px-6 py-3 font-display text-[0.9375rem] font-normal uppercase tracking-[0.06em] text-card shadow-zine-sm"
+      >
+        {/* No count on this button: `total` is the CATALOGUE total, not the
+            filtered result count, so printing it here would promise a number
+            the grid is about to contradict. */}
+        Dikhao
+      </button>
+
       <p className="mx-2.5 mt-4 -rotate-2 font-hand text-[1.125rem] leading-[1.35] text-coral">
         Jo dhoondoge, wahi milega.
         <br />— Bazaar rule #1
       </p>
-    </aside>
+      </aside>
+    </div>
   );
 }
 

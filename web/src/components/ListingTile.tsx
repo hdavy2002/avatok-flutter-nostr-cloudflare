@@ -3,7 +3,7 @@ import type { MouseEvent } from 'react';
 import { cfImage } from '../lib/config';
 import {
   toCardView, languageLabel, priceLabel,
-  laneFor, pillLabel, chipsForLane, bottomRightForLane, buttonsForLane,
+  laneFor, pillLabel, uniformChips, cardBlurb, bottomRightForLane, buttonsForLane,
 } from '../lib/card';
 import { statusPill, ctaExtra } from '../lib/copy';
 import type { Card as CardModel, CardView } from '../lib/types';
@@ -182,7 +182,9 @@ export function ListingTile({
 
   const lane = laneFor(listing, c);
   const pill = pillLabel(lane, listing, c);
-  const [chip1, chip2] = chipsForLane(lane, listing, c);
+  // [CARD-UNIFORM-1] Three chips, same three slots, every lane — see uniformChips.
+  const chips = uniformChips(lane, listing, c);
+  const blurb = cardBlurb(lane, listing, c);
   const bottomRight = bottomRightForLane(lane, listing, c);
   const buttons = buttonsForLane(lane);
   // §2.3 the sample-voice preview only ever appears next to TALK NOW, and only
@@ -355,28 +357,44 @@ export function ListingTile({
           <span className="truncate">{language ?? 'AVATOK'}</span>
         </div>
 
+        {/* [CARD-UNIFORM-1] Title and body are FIXED-HEIGHT blocks — two lines
+            each, clamped. Without this a three-word title and a forty-word one
+            push everything below them to different heights, which is what made
+            a row of cards look like some were half-finished. `line-height ×
+            lines` is set as BOTH min and max height so a short title reserves
+            its second line and a long one is cut rather than reflowing the
+            card. 1.07 line-height on Anton: the display face carries a hard
+            shadow, and a tighter leading makes a wrapped second line collide
+            with the shadow of the first (CLAUDE.md type rules). */}
         <h4 style={{
           fontFamily: 'Anton, Impact, sans-serif', fontWeight: 400, fontSize: '1.4375rem',
           lineHeight: 1.07, textTransform: 'uppercase', color: textCol, margin: 0,
           // Never negative tracking on display type — CLAUDE.md standing rule.
           letterSpacing: '.02em', wordSpacing: '.08em',
           textShadow: p.dark && p.shad ? `3px 3px 0 ${p.shad}` : 'none',
+          display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
+          overflow: 'hidden', height: 'calc(1.4375rem * 1.07 * 2)',
         }}>
           {c.title}{price ? ` · ${price}` : ''}
         </h4>
 
-        {(listing.blurb || c.oneLiner) && (
-          <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 500, lineHeight: 1.45, color: bodyCol }}>
-            {listing.blurb || c.oneLiner}
-          </p>
-        )}
+        <p style={{
+          margin: 0, fontSize: '0.875rem', fontWeight: 500, lineHeight: 1.45, color: bodyCol,
+          display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
+          overflow: 'hidden', height: 'calc(0.875rem * 1.45 * 2)',
+        }}>
+          {blurb}
+        </p>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
-          {[chip1, chip2].map((chip, i) => (
+          {chips.map((chip, i) => (
             <span key={`${chip}-${i}`} style={{
               fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800, fontSize: '0.6875rem',
-              letterSpacing: '.05em', border: `1.5px solid ${chipCol}`, borderRadius: 100,
-              padding: '6px 10px', color: chipCol,
+              // Three chips share the row now, so they run slightly tighter than
+              // the comp's two — 9px side padding instead of 10, .04em tracking
+              // instead of .05 — to keep a 4-up card on one line at desktop width.
+              letterSpacing: '.04em', border: `1.5px solid ${chipCol}`, borderRadius: 100,
+              padding: '6px 9px', color: chipCol, whiteSpace: 'nowrap',
             }}>{chip}</span>
           ))}
         </div>

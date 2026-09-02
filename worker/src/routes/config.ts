@@ -1549,6 +1549,15 @@ export interface PlatformConfig {
   // remains the escape hatch (M-D7) until the compose_started→listing_published funnel
   // proves out (§7.4).
   aiComposeEnabled: boolean;
+  // [CARD-AI-REVIEW-1] The MODEL half of POST /api/listings/copy-review — the
+  // creator wizard's pre-publish copy review. OFF here does NOT disable the
+  // feature: the route's deterministic length pass still runs and still returns
+  // a correctly-sized title/blurb/description, and the response says
+  // `source: "rules"` so the UI stops claiming an AI review. This is the brake
+  // for the LLM call only (cost, or an output-quality incident), which is why it
+  // is separate from aiComposeEnabled — compose writes listing text on the
+  // seller's behalf; this only ever suggests.
+  listingAiReviewEnabled: boolean;
   // [MKT6] Compose brain enrichment (PLAN §6.1). When ON, the compose greeting is
   // pre-filled from the seller's OWN listing history + a minimal-domain brainRecall
   // (domains:['listings'], k<=5). Default OFF, and it is only ONE of FOUR gates: (1) this
@@ -2277,6 +2286,11 @@ const DEFAULTS: PlatformConfig = {
   // OLX surface (/api/olx/*) — DARK. Was previously ungated in production; flip ON in
   // KV (staging first) when it should be reachable.
   olxEnabled: false,
+  // [CARD-AI-REVIEW-1] Wizard copy review — the model half is ON. The route is
+  // suggest-only (it never writes a listing) and it degrades to a deterministic
+  // length pass when the provider is unavailable, so the failure mode of ON is a
+  // slower form, not bad published copy.
+  listingAiReviewEnabled: true,
   // AI-chat listing creation (/api/marketplace/compose/*) — DARK. An LLM that talks to
   // sellers and drafts public listing text; staging first, and the form stays as the
   // escape hatch until the funnel says otherwise (M-D7).

@@ -23,7 +23,7 @@
  * (the mockup pages do) keeps working.
  */
 import type { Card, CardView, CoverMedia, CreatorRef } from './types';
-import { chips as chipCopy, cta, statusPill, laneBadge, spotsLeft, seatsBaakiUrgent, earlyBird, regularsHeart, chatsCount, AI_INSTANT, responseTime, billingUnitLabel, liveWatching, pillExtra } from './copy';
+import { chips as chipCopy, cta, statusPill, laneBadge, laneName, laneBlurbFallback, spotsLeft, seatsBaakiUrgent, earlyBird, regularsHeart, chatsCount, AI_INSTANT, responseTime, billingUnitLabel, liveWatching, pillExtra } from './copy';
 
 function firstCoverUrl(media: unknown): string | null {
   if (!Array.isArray(media)) return null;
@@ -356,6 +356,85 @@ export function chipsForLane(lane: ListingLane, card: Card, c: CardView): [strin
       return [one, two];
     }
   }
+}
+
+/**
+ * [CARD-UNIFORM-1 2026-09-03, owner decision] THE UNIFORM CHIP LADDER.
+ *
+ * Every card gets exactly THREE chips, in the same order, in every lane:
+ *
+ *   1. AVAILABILITY — how many spots/seats are left, or the honest terminal
+ *      rung when the listing never set a capacity.
+ *   2. PROOF        — rating, then regulars/chats, then the lane's "new" badge.
+ *   3. CONTEXT      — an active promo, else NEW/JUST ADDED inside 48h, else the
+ *      lane's own name.
+ *
+ * The owner's complaint this fixes: "some cards get some buttons and some
+ * cards don't" — a grid where one tile shows a seat count and its neighbour
+ * shows nothing reads as broken rather than as two different listings.
+ *
+ * ⚠️ The fix is a SLOT that is always filled, never a FACT that is always
+ * invented. Each rung below is data the listing actually carries; the terminal
+ * rungs (BOOKING_OPEN, PEHLA SHOW, the lane name) claim nothing beyond "this
+ * listing is published". Do not add a rung that prints a number the row does
+ * not have — a fake seat count is worse than an uneven grid.
+ *
+ * `chipsForLane` above is kept: it is the §2 two-chip contract other surfaces
+ * still read against, and the detail page's own ladder is derived from it.
+ */
+export function uniformChips(lane: ListingLane, card: Card, c: CardView): [string, string, string] {
+  const rating = ratingOrNull(c);
+
+  // ── 1. availability ───────────────────────────────────────────────────────
+  let availability: string;
+  if (c.seatsLeft === 0) {
+    availability = laneBadge.FULL;
+  } else if (c.seatsLeft != null) {
+    const pct = card.capacity && card.capacity > 0 ? c.seatsLeft / card.capacity : null;
+    availability = lane === 'free'
+      ? spotsLeft(c.seatsLeft)
+      : pct != null && pct <= 0.2 ? seatsBaakiUrgent(c.seatsLeft) : chipCopy.seatsLeft(c.seatsLeft);
+  } else if (card.capacity != null && card.capacity > 0) {
+    availability = lane === 'free' ? spotsLeft(card.capacity) : chipCopy.seatsLeft(card.capacity);
+  } else if (lane === 'agent') {
+    availability = AI_INSTANT;
+  } else if (lane === 'consult') {
+    availability = card.response_time_min != null
+      ? responseTime(card.response_time_min)
+      : card.schedule_mode === 'on_request' ? pillExtra.ON_REQUEST : laneBadge.SLOTS_OPEN;
+  } else {
+    availability = lane === 'free' ? laneBadge.ENTRY_OPEN : laneBadge.BOOKING_OPEN;
+  }
+
+  // ── 2. proof ──────────────────────────────────────────────────────────────
+  const newBadge =
+    lane === 'agent' ? laneBadge.NAYA_AGENT
+      : lane === 'consult' ? laneBadge.NEW_EXPERT
+        : lane === 'adda' ? laneBadge.NEW_LISTING
+          : laneBadge.PEHLA_SHOW;
+  const proof =
+    rating
+    ?? (lane === 'agent' && c.joinedCount > 0 ? chatsCount(c.joinedCount) : null)
+    ?? regularsOrNull(card)
+    ?? newBadge;
+
+  // ── 3. context ────────────────────────────────────────────────────────────
+  const tags = parseArrayMaybe<string>(card.vibe_tags);
+  const context =
+    (card.promo_pct ? earlyBird(card.promo_pct) : null)
+    ?? (isNew(c.createdAt) ? laneBadge.JUST_ADDED : null)
+    ?? (tags && tags[0] ? tags[0].toUpperCase() : null)
+    ?? laneName[lane];
+
+  return [availability, proof, context];
+}
+
+/** [CARD-UNIFORM-1] The body line, with the lane's fallback when the creator
+ *  left the blurb empty. Never invents a description of the session itself —
+ *  see the note on `laneBlurbFallback`. */
+export function cardBlurb(lane: ListingLane, card: Card, c: CardView): string {
+  const written = (card.blurb || c.oneLiner || '').trim();
+  return written || laneBlurbFallback[lane];
 }
 
 /** The bottom-right cadence label per §2's per-type rule. */
