@@ -1,6 +1,47 @@
 {
   "_readme": "[SHIP-GATE-1] What SUCCESS looks like, in telemetry, for every issue that ships behaviour to app/ or worker/. Written BEFORE the build goes out, not after. tool/check_ship_readiness.py --check manifest fails when an issue shipped without an entry here; --check telemetry queries PostHog and fails when the events are absent OR present-but-carrying-a-failure-value. Written on 2026-08-08 because three of four call fixes shipped the day before and did nothing: the telemetry arrived saying `presence=unknown decision=ring_unknown` on every single call and was reported as 'telemetry is flowing'. Event and property names below were read out of the emit sites in the code, not from memory — see `_verified_at` on each entry.",
   "_schema": "See the module docstring of tool/check_ship_readiness.py. Required per entry: description, two_sided, min_devices_on_build, flags, success[]. Escape hatch for a commit that ships no user-visible behaviour: \"no_telemetry\": \"<reason>\" (a reason is mandatory).",
+  "AVATALK-CHAT-ONLY-1": {
+    "description": "[AVATALK-CHAT-ONLY-1] Messenger becomes chat-only per PIVOT-2026-08-27. New kill switch messengerCallingEnabled (PlatformConfig + DEFAULTS false, worker/src/routes/config.ts:126/1819; Dart getter core/remote_config.dart:213) enforced at the client choke point routeToStreamCallIfEnabled (app/lib/features/avatok/place_1to1_call.dart:53) and inside the Stream prepare gate (worker/src/routes/stream_video_calls.ts:561). Deliberately NOT implemented by flipping streamCallsEnabled off: that flag only routes, and off it falls through to the legacy Cloudflare CallScreen which has failed 100% of calls since build 10612, i.e. it would ship broken calling instead of no calling. Incoming side refuses in push_service.dart at _showIncoming (3764), _routeToBrandedIncoming (3083) and _openCall (6722) so a stale build cannot ring a new one. Commercial lanes (avatok_livestream, avatok_consult_1to1) read no flag defined here and are unaffected.",
+    "shipped": "2026-09-03",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "messengerCallingEnabled"
+    ],
+    "success": [
+      {
+        "event": "messenger_call_refused_feature_off",
+        "property": "config_present",
+        "equals": true,
+        "min_events": 1,
+        "note": "The caller-side refusal actually firing from the server gate. config_present:false instead means the KV config read failed and the route failed closed — an infrastructure signal, not the product one, and a sustained volume of it means /api/config is unhealthy on the call path rather than that the feature is working."
+      }
+    ],
+    "_verified_at": "worker/src/routes/config.ts messengerCallingEnabled in PlatformConfig and DEFAULTS false; worker/src/routes/stream_video_calls.ts:561 config.messengerCallingEnabled !== true -> 403; app/lib/features/avatok/place_1to1_call.dart:53 gate returns handled before billing"
+  },
+  "AVATALK-CHAT-ONLY-2": {
+    "description": "[AVATALK-CHAT-ONLY-2] Closes the two gaps AVATALK-CHAT-ONLY-1 left. (1) SERVER: /api/call (worker/src/routes/api.ts) never consulted messengerCallingEnabled at all — the Stream prepare gate is only REACHED when the body opts into the Stream pilot, so any pre-pivot build, any client omitting the field, and any direct HTTP POST fell through to admission, the CallRoom DO and the push/WS ring with Messenger calling 'off'. The switch was a client-side courtesy, not an enforcement point. A refusal now returns 403 messenger_calling_disabled placed after the read-only admission verdict but BEFORE the billing authorization block, the CallRoom DO and Q_PUSH/InboxDO, so a refused call neither rings nor bills. Fail-CLOSED on !== true, matching the other gate: the intended state of the feature is OFF, and failing open would resurrect the lane exactly when a KV outage leaves us blind. (2) CLIENT: the dial affordances in avaphone/ava_phone_contacts.dart, avaphone/ava_phone_screen.dart, shell/v2/avadial_root.dart, avadial/dialpad_search_tab.dart and avatok/calls_screen.dart were still visible and tapped into a silent no-op; each is now wrapped in RemoteConfig.messengerCallingEnabled, the same idiom as contact_detail_screen.dart:231. The shared dialpad Call button is deliberately left alone because the same button also places paid PSTN/virtual-number calls, which are a separate product and are not being killed.",
+    "shipped": "2026-09-03",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "messengerCallingEnabled"
+    ],
+    "success": [
+      {
+        "event": "messenger_call_refused_feature_off",
+        "where": {
+          "stream_capable": false
+        },
+        "property": "config_present",
+        "equals": true,
+        "min_events": 1,
+        "note": "This is the whole point of -2 and the assertion -1 could not make: a refusal on the LEGACY path, where stream_capable is absent/false. Before this change that population rang through and emitted nothing. Zero such events while call_ring_path_ms is still being emitted for Messenger calls means the gate did not deploy — check that the worker deploy landed, not that users stopped calling."
+      }
+    ],
+    "_verified_at": "worker/src/routes/api.ts call(): callPolicyConfig?.messengerCallingEnabled !== true -> trackUser messenger_call_refused_feature_off then settleRingPath() then 403, inserted after markRingStage('config') and before the messengerCallBillingEnabled block"
+  },
   "RESP-SHORT-1": {
     "description": "[RESP-SHORT-1] The HEIGHT axis for core/ui/breakpoints.dart, and the first three call sites to use it. Every threshold in that file keyed off WIDTH, so the tester's BlackBerry-style QWERTY handset (KEYone/KEY2 class, ~393 x 590dp: normal width, two-thirds the usual height, hardware keyboard below the display) classified `regular`, took the full 1.22 type bump and got chromeScale 1.0 — [RESP-SMALL-1] and [RESP-SMALL-2] gave it exactly zero relief. NEW API, thresholds shortMax=640 / xshortMax=520 as proposed by Specs/AUDIT-SHORT-SCREEN-2026-08-21.md and adopted unchanged: isShort(context), heroHeightFraction(context) (1.0 / 0.42 / 0.34), chromeScaleHV(context) = min(chromeScale, vertical 1.0/0.85/0.72), each with a pure `*For`/`*Height` twin taking a raw double so the tiers are testable without pumping a widget. NO new ZineWidthClass variant and no ZineHeightClass enum — that enum is exhaustively switched at ~20 call sites and with no local Dart compiler a new variant is ~20 CI errors 40-80 minutes later; the helpers read the size directly, exactly as chromeScale does. Height NEVER scales type (main.dart's builder owns text scale once, app-wide; multiplying compounds into unreadable text on the very device this helps) and NEVER shrinks tap targets. chromeScaleHV is a NEW NAME, not a redefinition of chromeScale, so no existing caller changes behaviour. KEYBOARD DECISION: all helpers read the RAW MediaQuery.sizeOf().height, not height-minus-viewInsets — subtracting insets would make an ordinary 852dp phone read 552dp (i.e. `short`) the instant a keyboard rose and flip tiers back on dismiss, a visible layout jump on the majority of phones; a caller that needs remaining space must subtract viewInsets itself and clamp at 0. CONSUMERS (audit findings 5/6/7): (5) call_hero_composition.dart capped the width-derived hero height, 350dp = 59% of a 590dp viewport, at heroHeightFraction x viewport with width re-derived so the artwork keeps its aspect ratio — ~248dp on the tester's phone, unchanged at 350dp on a normal one; (6) ZineAppBar gained an OPTIONAL heightScale (default 1.0, so all ~45 existing call sites are unchanged) floored at 62dp so the 40dp back button plus its 8/12 padding cannot overflow the band, wired at the two hosts the audit named, inbox_list_screen.dart and marketplace_browse.dart; (7) RichPickerPanel's height is capped at 45% of the viewport in rich_input_bar.dart — its 300dp default is learned from the SOFT keyboard, which a hardware-keyboard phone may never raise, and 0.45 x 852 = 383 so the cap never binds on a normal phone. Findings 1-4 were fixed structurally in e44eb652 and are untouched. Client-only: no worker change, no schema change, no new flag, no new event.",
     "shipped": "2026-08-21",

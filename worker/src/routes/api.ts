@@ -449,6 +449,67 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   const callPolicyConfig = await configPromise;
   markRingStage("config");
 
+  // ── [AVATALK-CHAT-ONLY-2] MESSENGER CALLING KILL SWITCH ────────────────────
+  //
+  // Messenger is chat-only (PIVOT-2026-08-27). `messengerCallingEnabled`
+  // (DEFAULTS false, routes/config.ts) was already enforced inside the Stream
+  // prepare gate (stream_video_calls.ts:561), but that gate is only REACHED
+  // from this route when the body opts into the Stream pilot explicitly
+  // (see the [STREAM-CALL-PILOT-1] branch below). Every other caller — any
+  // pre-pivot build, any client that omits the field, any direct HTTP POST —
+  // fell straight through to admission, the CallRoom DO, and the push/WS ring.
+  // The switch was therefore a client-side courtesy, not an enforcement point:
+  // a stale handset could still ring a callee with Messenger calling "off".
+  //
+  // Placed here deliberately: after the admission gate (a read-only blocklist
+  // verdict with no side effect on the callee) but BEFORE the billing
+  // authorization block below, before the CallRoom DO, and before Q_PUSH /
+  // InboxDO — so a refused call never rings and never bills, which is exactly
+  // what the pivot spec requires.
+  //
+  // Fail-CLOSED on `!== true`, matching that same gate: a config read that
+  // fails leaves the flag undefined, and the intended state of this feature is
+  // OFF. Refusing during a KV outage costs nothing while calling is disabled;
+  // failing open would resurrect the lane precisely when we are blind.
+  //
+  // This does NOT touch the commercial lanes. Paid live streaming
+  // (`avatok_livestream`) and paid 1:1 consultations (`avatok_consult_1to1`)
+  // are authorized in routes/commercial_stream_sessions.ts, never reach this
+  // route, and read no flag defined here.
+  if (callPolicyConfig?.messengerCallingEnabled !== true) {
+    try {
+      // Two-sided by design: either party's email must retrieve this refusal,
+      // because "my calls stopped working" arrives from callers and callees
+      // alike and the two timelines only make sense side by side.
+      const [callerEmail, calleeEmail] = await Promise.all([
+        emailFor(env, ctx.uid).catch(() => null),
+        emailFor(env, b.to).catch(() => null),
+      ]);
+      await trackUser(env, ctx.uid, callerEmail, "messenger_call_refused_feature_off", "avatok", {
+        call_id: b.callId,
+        from_uid: ctx.uid,
+        to_uid: callTo,
+        from_email: callerEmail,
+        to_email: calleeEmail,
+        kind: b.kind ?? "audio",
+        via: b.via ?? "chat",
+        // Distinguishes "flag explicitly off" from "config unreadable, failed
+        // closed" — the second is an infrastructure signal, not a product one.
+        config_present: callPolicyConfig != null,
+        stream_capable: b.stream_capable === true,
+        trace_id: traceId,
+        app_name: "avatok", service_name: "avatok-api", worker: true,
+      });
+    } catch { /* telemetry must never change a refusal */ }
+    await settleRingPath();
+    return json({
+      error: "messenger_calling_disabled",
+      code: "messenger_calling_disabled",
+      reachable: false,
+      sent: 0,
+    }, 403);
+  }
+
   // Free Messenger audio is the Cloudflare lane. Once its master gate is
   // armed, a free-audio ring is admitted only from the immutable D1
   // authorization created by /api/messenger-call/authorize. Paid audio starts
