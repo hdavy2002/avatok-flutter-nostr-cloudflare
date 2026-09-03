@@ -470,12 +470,12 @@ export function buttonsForLane(lane: ListingLane): LaneButtons {
     case 'consult':
       return { primaryLabel: cta.BOOK_SLOT, primaryCta: 'book', secondaryLabel: 'CALENDAR', secondaryCta: 'calendar' };
     case 'agent':
-      return { primaryLabel: cta.TALK_NOW, primaryCta: 'talk', secondaryLabel: 'DETAILS', secondaryCta: 'details' };
+      return { primaryLabel: cta.TALK_NOW, primaryCta: 'talk', secondaryLabel: 'MORE INFO', secondaryCta: 'details' };
     case 'free':
-      return { primaryLabel: cta.RESERVE_FREE, primaryCta: 'reserve', secondaryLabel: 'DETAILS', secondaryCta: 'details' };
+      return { primaryLabel: cta.RESERVE_FREE, primaryCta: 'reserve', secondaryLabel: 'MORE INFO', secondaryCta: 'details' };
     case 'adda':
     case 'live':
     default:
-      return { primaryLabel: cta.BOOK_NOW, primaryCta: 'book', secondaryLabel: 'DETAILS', secondaryCta: 'details' };
+      return { primaryLabel: cta.BOOK_NOW, primaryCta: 'book', secondaryLabel: 'MORE INFO', secondaryCta: 'details' };
   }
 }
