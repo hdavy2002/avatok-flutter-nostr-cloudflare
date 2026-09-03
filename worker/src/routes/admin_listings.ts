@@ -18,7 +18,7 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
   const body = await req.json().catch(() => ({})) as any;
   const action = String(body.action || "");
   const db = env.DB_META;
-  const row = await db.prepare("SELECT id,title,description,status,attrs FROM listings WHERE id=?1").bind(id).first<any>();
+  const row = await db.prepare("SELECT id,title,description,status,attrs,cover_media FROM listings WHERE id=?1").bind(id).first<any>();
   if (!row) return json({ error: "not found" }, 404);
   const now = Date.now();
   if (!["approve_listing","reject_listing","generate_poster","approve_poster","reject_poster","publish"].includes(action)) return json({ error: "invalid action" }, 400);
@@ -36,7 +36,18 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
       const hash = await sha256Hex(generated.bytes);
       const key = `u/${a.uid}/public/posters/${id}/${hash}.png`;
       await env.BLOBS.put(key, generated.bytes, { httpMetadata: { contentType: "image/png" } });
-      attrs.poster = { ...attrs.poster, status: "draft", url: `${env.BLOSSOM_BASE_URL}/${key}`, key, bytes: generated.bytes.byteLength, completed_at: Date.now() };
+      const url = `${env.BLOSSOM_BASE_URL}/${key}`;
+      attrs.poster = { ...attrs.poster, status: "draft", url, key, bytes: generated.bytes.byteLength, completed_at: Date.now() };
+      // The public listing read model is driven by cover_media, not attrs. Keep
+      // the generated poster in both places so cards/details immediately render
+      // it while attrs retains the moderation metadata and audit trail.
+      let covers: any[] = [];
+      try { covers = row.cover_media ? JSON.parse(row.cover_media) : []; } catch { covers = []; }
+      covers = Array.isArray(covers) ? covers.filter((c) => c && c.url !== url && c.source !== "ai_poster") : [];
+      covers.unshift({ type: "image", url, source: "ai_poster", generated: true });
+      attrs.poster.cover_media_url = url;
+      attrs.poster.status = "draft";
+      (attrs as any).__generated_cover_media = covers;
     } catch (e) {
       attrs.poster = { ...attrs.poster, status: "failed", error: String((e as any)?.message || "provider unavailable").slice(0, 180) };
     }
@@ -57,7 +68,12 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
     if (attrs.poster?.status !== "approved") return json({ error: "poster approval required" }, 409);
     next = "published";
   }
-  await db.prepare("UPDATE listings SET status=?2, attrs=?3, updated_at=?4 WHERE id=?1").bind(id, next, JSON.stringify(attrs), now).run();
+  let coverMedia = row.cover_media ?? null;
+  if (Array.isArray(attrs.__generated_cover_media)) {
+    coverMedia = JSON.stringify(attrs.__generated_cover_media);
+    delete attrs.__generated_cover_media;
+  }
+  await db.prepare("UPDATE listings SET status=?2, attrs=?3, cover_media=?4, updated_at=?5 WHERE id=?1").bind(id, next, JSON.stringify(attrs), coverMedia, now).run();
   // Keep moderation actions visible in the existing admin audit stream.
   try {
     await env.DB_WALLET.prepare(

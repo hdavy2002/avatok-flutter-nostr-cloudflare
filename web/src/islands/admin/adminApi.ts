@@ -7,7 +7,7 @@
  */
 import { useEffect, useState } from 'react';
 import { request, ApiError } from '../../lib/apiClient';
-import { getActiveToken } from '../../lib/clerk';
+import { getActiveTokenWaited } from '../../lib/clerk';
 import { inr } from '../../lib/money';
 import { capture, withTrace } from '../../lib/analytics';
 
@@ -143,7 +143,9 @@ export function useAdminGate(): { state: GateState; error: string | null; retry:
     let alive = true;
     void (async () => {
       setState('checking'); setError(null);
-      const token = await getActiveToken();
+      // Admin pages mount beside their panel, so wait for ClerkBridge to
+      // publish the live session token before failing closed as anonymous.
+      const token = await getActiveTokenWaited();
       if (!token) { if (alive) setState('anon'); return; }
       try {
         await getOverview();

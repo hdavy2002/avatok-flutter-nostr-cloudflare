@@ -35,12 +35,14 @@ export function Modal({ open, onClose, title, children, dismissable = true, maxW
       aria-modal="true"
     >
       <div
-        className={['w-full rounded-zine border-zineLg border-ink bg-card shadow-zine p-6', className].join(' ')}
+        className={['flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-zine border-zineLg border-ink bg-card shadow-zine p-6', className].join(' ')}
         style={{ maxWidth }}
         onClick={(e) => e.stopPropagation()}
       >
-        {title && <div className="mb-4 font-display font-semibold text-[24px] leading-tight text-ink">{title}</div>}
-        {children}
+        {title && <div className="mb-4 flex-none font-display font-semibold text-[24px] leading-tight text-ink">{title}</div>}
+        <div className="min-h-0 overflow-y-auto overscroll-contain pr-1">
+          {children}
+        </div>
       </div>
     </div>
   );

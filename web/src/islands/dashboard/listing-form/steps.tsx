@@ -550,7 +550,8 @@ export function Step7Photos({ draft, patch, err, onUpload, onRemoveCover, upload
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <span className={labelCls}>Photos (up to 5)</span>
+        <span className={labelCls}>Photos (optional · up to 5)</span>
+        <p className="mt-1 font-body text-[13px] text-inkSoft">No photo? That’s okay — an AI poster will be created after approval.</p>
         <div className="grid grid-cols-3 gap-3">
           {draft.cover_media.map((c) => (
             <div key={c.url} className="relative aspect-square overflow-hidden rounded-zine border-zine border-ink shadow-zine-xs">

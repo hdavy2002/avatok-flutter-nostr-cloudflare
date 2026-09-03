@@ -221,7 +221,6 @@ export function validateStep(d: ListingDraft, step: StepIndex): FieldProblem | n
       }
       return null;
     case 6: // Photos & policy
-      if (!d.cover_media.length) return { field: 'cover_media', message: 'Add at least one photo.' };
       if (d.kind === 'consult' && d.commercial_preparation_instructions.length > 600) {
         return { field: 'commercial_preparation_instructions', message: 'Keep preparation instructions under 600 characters.' };
       }
@@ -245,7 +244,7 @@ export function publishReadiness(
     { ok: Boolean(opts.copyReviewed), label: 'Ava has reviewed the copy' },
     { ok: d.title.trim().length >= 3, label: 'Has a title' },
     { ok: Boolean(d.category), label: 'Has a category' },
-    { ok: d.cover_media.length >= 1, label: `Has at least one photo (${d.cover_media.length}/5)` },
+    { ok: true, label: d.cover_media.length ? `Optional photos added (${d.cover_media.length}/5)` : 'AI poster can be generated' },
     { ok: d.blurb.trim().length > 0, label: 'Has a one-line blurb' },
     { ok: d.content_how_it_works.length >= 2, label: 'How it works is filled in' },
     { ok: d.content_house_rules.length >= 3, label: 'House rules are filled in' },
