@@ -46,9 +46,9 @@ dependencies:
   # Official Stream Chat client stack for commercial chat/reactions/moderation.
   # We use the low-level client plus the Flutter core package so the app keeps
   # its custom UI while still getting Stream's controllers/state management.
-  stream_chat: ^9.7.0
-  stream_chat_flutter_core: ^9.7.0
-  stream_chat_flutter: ^9.7.0
+  stream_chat: 9.28.0
+  stream_chat_flutter_core: 9.28.0
+  stream_chat_flutter: 9.28.0
   # Wi-Fi ⇆ cellular handoff detection → proactive ICE restart mid-call.
   # [STREAM-LANE-1] ^6.1.0 -> ^7.0.0: required by stream_video ^1.4.3.
   connectivity_plus: ^7.0.0
@@ -156,7 +156,7 @@ dependencies:
   # NATIVE plugin — validated by a CI APK build; unknowable fields stay null.
   # [STREAM-LANE-1] ^10.1.2 -> ^12.1.0: required by stream_video ^1.4.3 (>=12.1 <14).
   device_info_plus: ^12.1.0
-  file_picker: ^8.1.6
+  file_picker: ^10.3.10
   audioplayers: ^6.1.0
   # Liveness V3 voice fallback (Specs/LIVENESS-V3-VOICE-GUIDED-PLAN-DRAFT.md §1):
   # when a language's pre-recorded Ava clip is missing (download failed / not yet
@@ -272,7 +272,7 @@ dependencies:
   # initialize() is deprecated in favour of WorkmanagerDebug handlers.
   workmanager: ^0.9.0+3
   # Native share sheet for the "invite a friend" message + download link.
-  share_plus: ^10.1.2
+  share_plus: ^11.0.0
   # Copy a chat IMAGE to the system clipboard (paste into any app) — Flutter's
   # built-in Clipboard is text-only. Used by chat_thread.dart's full-screen photo
   # viewer + the long-press "Copy image" action. NATIVE: super_clipboard pulls a
