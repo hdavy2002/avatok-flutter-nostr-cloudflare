@@ -13,6 +13,48 @@ export async function adminListings(req: Request, env: Env): Promise<Response> {
   return json({ listings: q.results ?? [], statuses: ["draft", "pending_review", "published", "rejected"] });
 }
 
+function writeListingApprovalHistory(
+  env: Env,
+  args: {
+    listingId: string;
+    actorId: string;
+    action: string;
+    previousStatus: string | null;
+    nextStatus: string | null;
+    reason?: string | null;
+    posterStatus?: string | null;
+  },
+): D1PreparedStatement {
+  return env.DB_META.prepare(
+    `INSERT INTO listing_approval_history
+     (id, listing_id, actor_id, action, previous_status, next_status, reason, poster_status, created_at)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)`,
+  ).bind(
+    crypto.randomUUID(),
+    args.listingId,
+    args.actorId,
+    args.action,
+    args.previousStatus,
+    args.nextStatus,
+    args.reason ?? null,
+    args.posterStatus ?? null,
+    Date.now(),
+  );
+}
+
+function approvalRequired(listing: { id: string; status: string; poster_status?: string | null; approval_status?: string | null }): Response {
+  return json({
+    approved: false,
+    code: "approval_required",
+    reason: "approval_required",
+    listing_id: listing.id,
+    status: listing.status,
+    approval_status: listing.approval_status ?? listing.status,
+    poster_status: listing.poster_status ?? null,
+    message: "Listing approval is required before publish.",
+  }, 409);
+}
+
 export async function adminListingAction(req: Request, env: Env, id: string): Promise<Response> {
   const a = await requireAdmin(req, env); if (a instanceof Response) return a;
   const body = await req.json().catch(() => ({})) as any;
@@ -55,16 +97,31 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
     if (!attrs.poster) return json({ error: "poster not generated" }, 409);
     attrs.poster.status = "approved";
   } else if (action === "reject_poster") {
-    attrs.poster = { ...(attrs.poster || {}), status: "rejected", feedback: String(body.feedback || "") };
+    const reason = String(body.reason || body.feedback || "").trim();
+    if (!reason) return json({ error: "reason required" }, 400);
+    attrs.poster = { ...(attrs.poster || {}), status: "rejected", feedback: reason, rejected_reason: reason };
   }
   let next = row.status;
   if (action === "approve_listing") {
     if (!["draft", "pending_review"].includes(String(row.status))) return json({ error: "listing not awaiting approval", status: row.status }, 409);
     next = "approved";
   }
-  if (action === "reject_listing") next = "rejected";
+  if (action === "reject_listing") {
+    const reason = String(body.reason || "").trim();
+    if (!reason) return json({ error: "reason required" }, 400);
+    next = "rejected";
+    await writeListingApprovalHistory(env, {
+      listingId: id,
+      actorId: a.uid,
+      action,
+      previousStatus: row.status,
+      nextStatus: next,
+      reason,
+      posterStatus: attrs.poster?.status ?? null,
+    });
+  }
   if (action === "publish") {
-    if (String(row.status) !== "approved") return json({ error: "listing approval required", status: row.status }, 409);
+    if (String(row.status) !== "approved") return approvalRequired({ id: row.id, status: row.status, approval_status: row.status, poster_status: attrs.poster?.status ?? null });
     if (attrs.poster?.status !== "approved") return json({ error: "poster approval required" }, 409);
     next = "published";
   }
@@ -73,12 +130,24 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
     coverMedia = JSON.stringify(attrs.__generated_cover_media);
     delete attrs.__generated_cover_media;
   }
-  await db.prepare("UPDATE listings SET status=?2, attrs=?3, cover_media=?4, updated_at=?5 WHERE id=?1").bind(id, next, JSON.stringify(attrs), coverMedia, now).run();
+  const history = writeListingApprovalHistory(env, {
+    listingId: id,
+    actorId: a.uid,
+    action,
+    previousStatus: row.status,
+    nextStatus: next,
+    reason: action === "publish" ? "published_by_admin" : (action === "reject_listing" ? String(body.reason || "").trim() : action === "reject_poster" ? String(body.reason || body.feedback || "").trim() : null),
+    posterStatus: attrs.poster?.status ?? null,
+  });
+  await db.batch([
+    history,
+    db.prepare("UPDATE listings SET status=?2, attrs=?3, cover_media=?4, updated_at=?5 WHERE id=?1").bind(id, next, JSON.stringify(attrs), coverMedia, now),
+  ]);
   // Keep moderation actions visible in the existing admin audit stream.
   try {
     await env.DB_WALLET.prepare(
       "INSERT INTO admin_audit (id, admin_id, action, target, meta, created_at) VALUES (?1,?2,?3,?4,?5,?6)",
-    ).bind(crypto.randomUUID(), a.uid, `listing_${action}`, id, JSON.stringify({ previous_status: row.status, next_status: next, poster_status: attrs.poster?.status ?? null }), now).run();
+    ).bind(crypto.randomUUID(), a.uid, `listing_${action}`, id, JSON.stringify({ previous_status: row.status, next_status: next, poster_status: attrs.poster?.status ?? null, reason: String(body.reason || body.feedback || "").trim() || null }), now).run();
   } catch { /* audit is best-effort, matching existing admin routes */ }
   return json({ ok: true, id, status: next, poster: attrs.poster || null, admin_id: a.uid });
 }

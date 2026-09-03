@@ -1249,6 +1249,35 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
   return json({ ok: true, content_version: version, attrs_missing: attrsMissing });
 }
 
+// POST /api/listings/:id/submit — creator moves a draft into the approval queue.
+export async function submitListingForApproval(req: Request, env: Env, id: string): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const db = metaDb(env);
+  const row = await db.prepare("SELECT id, creator_id, status, attrs FROM listings WHERE id=?1").bind(id).first<any>();
+  if (!row || row.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
+  if (String(row.status) !== "draft") return json({ error: "listing not draft", status: row.status }, 409);
+  let attrs: any = {};
+  try { attrs = row.attrs ? JSON.parse(String(row.attrs)) : {}; } catch { attrs = {}; }
+  const now = Date.now();
+  await db.batch([
+    db.prepare(
+      `INSERT INTO listing_approval_history
+       (id, listing_id, actor_id, action, previous_status, next_status, reason, poster_status, created_at)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)`,
+    ).bind(crypto.randomUUID(), id, ctx.uid, "submit_for_review", row.status, "pending_review", null, attrs.poster?.status ?? null, now),
+    db.prepare("UPDATE listings SET status='pending_review', updated_at=?2 WHERE id=?1").bind(id, now),
+  ]);
+  try {
+    await env.DB_WALLET.prepare(
+      "INSERT INTO admin_audit (id, admin_id, action, target, meta, created_at) VALUES (?1,?2,?3,?4,?5,?6)",
+    ).bind(crypto.randomUUID(), ctx.uid, "listing_submit_for_review", id, JSON.stringify({ previous_status: row.status, next_status: "pending_review", poster_status: attrs.poster?.status ?? null }), now).run();
+  } catch {
+    // audit best-effort; core state and history already committed atomically.
+  }
+  return json({ ok: true, id, status: "pending_review" });
+}
+
 // GET /api/marketplace/listing-quote?listing_id=... — authoritative fee preview.
 // The listing must already be the caller's draft so a client cannot probe another
 // account's quota/balance or manufacture a period identity.
@@ -1283,15 +1312,23 @@ export async function publishListing(req: Request, env: Env, id: string): Promis
   const db = metaDb(env);
   const l = await db.prepare("SELECT * FROM listings WHERE id=?1").bind(id).first<any>();
   if (!l || l.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
-  if (l.status !== "draft") {
-    // A prior request may have committed the listing and lost its response
-    // after the D1 batch. Reconcile the operation before reporting a conflict
-    // so a retry cannot strand an entitled listing in an ambiguous state.
-    if (MARKET_KINDS.has(String(l.kind)) && String(l.status) === "published") {
-      const reconciled = await markListingEntitlementPublished(env, { listingId: id });
-      if (reconciled) return json({ ok: true, status: "published", reconciled: true });
-    }
-    return json({ error: "already published", status_now: l.status }, 409);
+  if (MARKET_KINDS.has(String(l.kind)) && String(l.status) === "published") {
+    const reconciled = await markListingEntitlementPublished(env, { listingId: id });
+    if (reconciled) return json({ ok: true, status: "published", reconciled: true });
+  }
+  if (String(l.status) !== "approved") {
+    return json({
+      approved: false,
+      code: "approval_required",
+      reason: "approval_required",
+      listing_id: id,
+      status: String(l.status ?? "draft"),
+      approval_status: String(l.status ?? "draft"),
+      poster_status: (() => {
+        try { return l.attrs ? JSON.parse(String(l.attrs))?.poster?.status ?? null : null; } catch { return null; }
+      })(),
+      message: "Listing approval is required before publish.",
+    }, 409);
   }
   if (MARKET_KINDS.has(String(l.kind)) && !(await marketplacePublishOn(env))) return marketplaceOff();
 
