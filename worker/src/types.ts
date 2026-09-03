@@ -230,6 +230,11 @@ export interface Env {
   // secret and is never committed. Both are unused while the pilot flag is off.
   STREAM_VIDEO_API_KEY?: string;
   STREAM_VIDEO_API_SECRET?: string;
+  // GetStream Chat. Reuses the same Stream app when available. Optional
+  // dedicated aliases support future split-app setups; the route prefers the
+  // chat-specific pair when present and otherwise falls back to the video pair.
+  STREAM_CHAT_API_KEY?: string;
+  STREAM_CHAT_API_SECRET?: string;
   // Comma-separated staging account ids allowed into the dark Stream pilot.
   // Unset/empty means nobody can use the pilot even if its config flag is on.
   STREAM_VIDEO_PILOT_UIDS?: string;

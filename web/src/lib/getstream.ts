@@ -55,6 +55,19 @@ export interface CommercialJoinCredentials {
   call_id: string;
   /** `host` | `viewer` for live; `creator` | `buyer` for consult. */
   role: string;
+  /** Server-authorized Stream Chat channel descriptor for commercial chat. */
+  chat?: {
+    api_key: string;
+    channel_type: string;
+    channel_id: string;
+    permissions: string[];
+    user_id: string;
+    token: string;
+    token_expires_at: number;
+    session_id: string;
+    entitlement_id: string;
+    role: string;
+  };
   /** The `commercial_sessions` row id, for receipts and telemetry correlation. */
   session_id?: string;
 }

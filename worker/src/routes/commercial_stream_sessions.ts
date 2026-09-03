@@ -89,37 +89,70 @@ async function signJwt(secret: string, payload: Record<string, unknown>): Promis
   return `${header}.${body}.${b64url(new Uint8Array(signature))}`;
 }
 
-function configured(env: Env): env is Env & {
-  STREAM_VIDEO_API_KEY: string;
-  STREAM_VIDEO_API_SECRET: string;
-} {
-  return Boolean(env.STREAM_VIDEO_API_KEY && env.STREAM_VIDEO_API_SECRET);
+function streamChatBindings(env: Env): { apiKey: string; apiSecret: string } | null {
+  const apiKey = env.STREAM_CHAT_API_KEY ?? env.STREAM_VIDEO_API_KEY ?? "";
+  const apiSecret = env.STREAM_CHAT_API_SECRET ?? env.STREAM_VIDEO_API_SECRET ?? "";
+  return apiKey && apiSecret ? { apiKey, apiSecret } : null;
 }
 
-async function providerTokens(env: Env & {
-  STREAM_VIDEO_API_KEY: string;
-  STREAM_VIDEO_API_SECRET: string;
-}, uid: string): Promise<{ server: string; user: string; expiresAt: number }> {
+function streamVideoBindings(env: Env): { apiKey: string; apiSecret: string } | null {
+  const apiKey = env.STREAM_VIDEO_API_KEY ?? "";
+  const apiSecret = env.STREAM_VIDEO_API_SECRET ?? "";
+  return apiKey && apiSecret ? { apiKey, apiSecret } : null;
+}
+
+function configured(env: Env): env is Env {
+  return Boolean(streamVideoBindings(env) && streamChatBindings(env));
+}
+
+async function providerTokens(bindings: { apiSecret: string }, uid: string): Promise<{ server: string; user: string; expiresAt: number }> {
   const now = Math.floor(Date.now() / 1000);
   const expiresAt = now + USER_TOKEN_TTL_SECONDS;
   const [server, user] = await Promise.all([
-    signJwt(env.STREAM_VIDEO_API_SECRET, { server: true, iat: now, exp: expiresAt }),
-    signJwt(env.STREAM_VIDEO_API_SECRET, { user_id: uid, iat: now, exp: expiresAt }),
+    signJwt(bindings.apiSecret, { server: true, iat: now, exp: expiresAt }),
+    signJwt(bindings.apiSecret, { user_id: uid, iat: now, exp: expiresAt }),
   ]);
   return { server, user, expiresAt };
 }
 
-function providerUrl(env: Env & { STREAM_VIDEO_API_KEY: string }, callType: string, callId: string, suffix = ""): string {
-  return `https://video.stream-io-api.com/api/v2/video/call/${encodeURIComponent(callType)}/${encodeURIComponent(callId)}${suffix}?api_key=${encodeURIComponent(env.STREAM_VIDEO_API_KEY)}`;
+async function chatToken(env: Env, uid: string, payload: Record<string, unknown>): Promise<string | null> {
+  const bindings = streamChatBindings(env);
+  if (!bindings) return null;
+  const now = Math.floor(Date.now() / 1000);
+  return await signJwt(bindings.apiSecret, { user_id: uid, iat: now, exp: now + USER_TOKEN_TTL_SECONDS, ...payload });
+}
+
+function providerUrl(env: Env, callType: string, callId: string, suffix = ""): string {
+  return `https://video.stream-io-api.com/api/v2/video/call/${encodeURIComponent(callType)}/${encodeURIComponent(callId)}${suffix}?api_key=${encodeURIComponent(env.STREAM_VIDEO_API_KEY ?? "")}`;
+}
+
+function commercialChatChannel(args: {
+  kind: CommercialSessionKind;
+  listingId: string;
+  bookingId?: string | null;
+  sessionId: string;
+  role: "host" | "viewer" | "creator" | "buyer";
+}): { channel_type: string; channel_id: string; permissions: string[] } {
+  const channelId = args.kind === "live_event"
+    ? `commercial-live:${args.listingId}`
+    : `commercial-consult:${args.bookingId}`;
+  const moderator = args.role === "host" || args.role === "creator";
+  return {
+    channel_type: "livestream",
+    channel_id: channelId,
+    permissions: moderator
+      ? ["read", "write", "react", "report", "mute", "block", "moderate", "ban", "delete_any"]
+      : ["read", "write", "react", "report", "mute", "block"],
+  };
 }
 
 async function upsertProviderUser(
-  env: Env & { STREAM_VIDEO_API_KEY: string },
+  env: Env,
   serverToken: string,
   uid: string,
 ): Promise<boolean> {
   const response = await fetch(
-    `https://video.stream-io-api.com/api/v2/users?api_key=${encodeURIComponent(env.STREAM_VIDEO_API_KEY)}`,
+    `https://video.stream-io-api.com/api/v2/users?api_key=${encodeURIComponent(env.STREAM_VIDEO_API_KEY ?? "")}`,
     {
       method: "POST",
       headers: { Authorization: serverToken, "Content-Type": "application/json", "stream-auth-type": "jwt" },
@@ -130,7 +163,7 @@ async function upsertProviderUser(
 }
 
 async function createProviderCall(args: {
-  env: Env & { STREAM_VIDEO_API_KEY: string };
+  env: Env;
   serverToken: string;
   callType: string;
   callId: string;
@@ -158,7 +191,7 @@ async function createProviderCall(args: {
 }
 
 async function addProviderMember(args: {
-  env: Env & { STREAM_VIDEO_API_KEY: string };
+  env: Env;
   serverToken: string;
   callType: string;
   callId: string;
@@ -173,14 +206,16 @@ async function addProviderMember(args: {
 }
 
 async function providerControl(args: {
-  env: Env & { STREAM_VIDEO_API_KEY: string; STREAM_VIDEO_API_SECRET: string };
+  env: Env;
   callType: string;
   callId: string;
   action: "go_live" | "mark_ended";
   body?: Record<string, unknown>;
 }): Promise<{ confirmed: boolean; uncertain: boolean; status: number | null }> {
   try {
-    const token = (await providerTokens(args.env, "server-control")).server;
+    const bindings = streamVideoBindings(args.env);
+    if (!bindings) return { confirmed: false, uncertain: true, status: null };
+    const token = (await providerTokens(bindings, "server-control")).server;
     const response = await fetch(
       providerUrl(args.env, args.callType, args.callId, `/${args.action}`),
       {
@@ -305,7 +340,9 @@ async function authorizeProviderJoin(args: {
   const sessionId = args.kind === "live_event"
     ? `live_${args.listingId}_1`
     : `consult_${args.bookingId}`;
-  const tokens = await providerTokens(args.env, args.uid);
+  const videoBindings = streamVideoBindings(args.env);
+  if (!videoBindings) return refused("provider_unavailable", { error: "commercial media unavailable" }, 503);
+  const tokens = await providerTokens(videoBindings, args.uid);
   if (!await upsertProviderUser(args.env, tokens.server, args.uid)) {
     return refused("provider_user_unavailable", { error: "provider user unavailable" }, 502);
   }
@@ -455,6 +492,23 @@ async function authorizeProviderJoin(args: {
     return refused("membership_authority_mismatch", { error: "commercial membership authority mismatch" }, 409);
   }
 
+  const chat = commercialChatChannel({
+    kind: args.kind,
+    listingId: args.listingId,
+    bookingId: args.bookingId ?? null,
+    sessionId: sessionId,
+    role: args.role,
+  });
+  const chatBindings = streamChatBindings(args.env);
+  if (!chatBindings) return refused("provider_unavailable", { error: "commercial media unavailable" }, 503);
+  const chatTokenValue = await chatToken(args.env, args.uid, {
+    entitlement_id: args.entitlementId,
+    session_id: sessionId,
+    commercial_kind: args.kind,
+    commercial_role: args.role,
+    commercial_channel_id: chat.channel_id,
+  });
+  if (!chatTokenValue) return refused("provider_unavailable", { error: "commercial media unavailable" }, 503);
   commercialEvent(args.env, "join", args.uid, { kind: args.kind, outcome: "authorized", role: args.role });
   return json({
     ok: true,
@@ -470,6 +524,16 @@ async function authorizeProviderJoin(args: {
     call_type: identity.callType,
     call_id: identity.callId,
     role: args.role,
+    chat: {
+      ...chat,
+      api_key: chatBindings.apiKey,
+      user_id: args.uid,
+      token: chatTokenValue,
+      token_expires_at: tokens.expiresAt,
+      session_id: sessionId,
+      entitlement_id: args.entitlementId,
+      role: args.role,
+    },
     opens_at: window.opensAt,
     closes_at: window.closesAt,
     title: args.title,
@@ -1744,7 +1808,9 @@ export async function reconcileCommercialSessions(
   let restored = 0;
   let reviewPending = 0;
   for (const row of rows.results ?? []) {
-    const tokens = await providerTokens(env, "server-reconciliation");
+    const bindings = streamVideoBindings(env);
+    if (!bindings) continue;
+    const tokens = await providerTokens(bindings, "server-reconciliation");
     let response: Response;
     try {
       response = await fetch(providerUrl(env, row.provider_call_type, row.provider_call_id), {

@@ -11,9 +11,21 @@ import 'config.dart';
 class CommercialSessionRecord {
   final String entitlementId, kind, listingId, title;
   final String? bookingId, orderId, sessionId, receiptId;
+  final String? chatChannelId, chatChannelType;
+  final List<String> chatPermissions;
   final String entitlementState, bookingStatus, orderStatus;
-  final String? sessionState, settlementState, receiptSettlementState, refundSettlementState, currency;
-  final int price, startsAt, endsAt, opensAt, closesAt, serverNowAtFetch, fetchedAtLocal;
+  final String? sessionState,
+      settlementState,
+      receiptSettlementState,
+      refundSettlementState,
+      currency;
+  final int price,
+      startsAt,
+      endsAt,
+      opensAt,
+      closesAt,
+      serverNowAtFetch,
+      fetchedAtLocal;
 
   const CommercialSessionRecord({
     required this.entitlementId,
@@ -39,9 +51,13 @@ class CommercialSessionRecord {
     this.receiptSettlementState,
     this.refundSettlementState,
     this.currency,
+    this.chatChannelId,
+    this.chatChannelType,
+    this.chatPermissions = const [],
   });
 
-  static int _int(dynamic value) => value is num ? value.toInt() : int.tryParse('$value') ?? 0;
+  static int _int(dynamic value) =>
+      value is num ? value.toInt() : int.tryParse('$value') ?? 0;
 
   factory CommercialSessionRecord.fromJson(
     Map<String, dynamic> json, {
@@ -66,6 +82,18 @@ class CommercialSessionRecord {
       receiptSettlementState: json['receipt_settlement_state']?.toString(),
       refundSettlementState: json['refund_settlement_state']?.toString(),
       currency: json['currency_display']?.toString(),
+      chatChannelId: (json['chat'] is Map)
+          ? (json['chat']['channel_id']?.toString())
+          : json['chat_channel_id']?.toString(),
+      chatChannelType: (json['chat'] is Map)
+          ? (json['chat']['channel_type']?.toString())
+          : json['chat_channel_type']?.toString(),
+      chatPermissions:
+          (json['chat'] is Map && json['chat']['permissions'] is List)
+              ? (json['chat']['permissions'] as List)
+                  .map((e) => e.toString())
+                  .toList()
+              : const [],
       price: _int(json['price']),
       startsAt: _int(json['starts_at']),
       endsAt: _int(json['ends_at']),
@@ -78,7 +106,8 @@ class CommercialSessionRecord {
 
   /// Current server-time estimate anchored to the last response.
   int get estimatedServerNow =>
-      serverNowAtFetch + (DateTime.now().millisecondsSinceEpoch - fetchedAtLocal);
+      serverNowAtFetch +
+      (DateTime.now().millisecondsSinceEpoch - fetchedAtLocal);
 
   bool get isLiveEvent => kind == 'live_event';
   bool get isConsultation => kind == 'consult_1to1' || kind == 'consult';
@@ -96,8 +125,7 @@ class CommercialSessionRecord {
       (bookingStatus == 'completed' ||
           sessionState == 'ended' ||
           (endsAt > 0 && estimatedServerNow >= endsAt));
-  bool get isLiveNow =>
-      !isRefunded && !isCompleted && sessionState == 'live';
+  bool get isLiveNow => !isRefunded && !isCompleted && sessionState == 'live';
   bool get isJoinWindowOpen =>
       !isRefunded &&
       !isCompleted &&
@@ -106,11 +134,15 @@ class CommercialSessionRecord {
       estimatedServerNow >= opensAt &&
       estimatedServerNow <= closesAt;
 
+  bool get hasCommercialChat =>
+      (chatChannelId ?? '').isNotEmpty && (chatChannelType ?? '').isNotEmpty;
+
   String get joinLabel {
     if (isRefunded) return 'Refunded';
     if (isCompleted) return 'Completed';
     if (isJoinWindowOpen) return 'Join';
-    if (opensAt > estimatedServerNow) return 'Opens in ${_duration(opensAt - estimatedServerNow)}';
+    if (opensAt > estimatedServerNow)
+      return 'Opens in ${_duration(opensAt - estimatedServerNow)}';
     return 'Join window closed';
   }
 
@@ -136,7 +168,8 @@ class CommercialSessionsResponse {
   final int serverNow;
   final List<CommercialSessionRecord> sessions;
 
-  const CommercialSessionsResponse({required this.serverNow, required this.sessions});
+  const CommercialSessionsResponse(
+      {required this.serverNow, required this.sessions});
 
   factory CommercialSessionsResponse.fromJson(Map<String, dynamic> json) {
     final serverNow = CommercialSessionRecord._int(json['server_now']);
@@ -151,7 +184,8 @@ class CommercialSessionsResponse {
               serverNow: serverNow,
               fetchedAt: fetchedAt,
             ))
-        .where((row) => row.entitlementId.isNotEmpty && row.listingId.isNotEmpty)
+        .where(
+            (row) => row.entitlementId.isNotEmpty && row.listingId.isNotEmpty)
         .toList();
     return CommercialSessionsResponse(serverNow: serverNow, sessions: rows);
   }
@@ -166,7 +200,8 @@ class CommercialSessionsApi {
       if (response.statusCode != 200) return null;
       final decoded = jsonDecode(response.body);
       if (decoded is! Map) return null;
-      return CommercialSessionsResponse.fromJson(decoded.cast<String, dynamic>());
+      return CommercialSessionsResponse.fromJson(
+          decoded.cast<String, dynamic>());
     } catch (_) {
       return null;
     }

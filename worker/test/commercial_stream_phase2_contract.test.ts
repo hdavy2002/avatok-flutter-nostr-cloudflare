@@ -145,6 +145,15 @@ describe("Phase 2 commercial lane contracts", () => {
     expect(routes).toContain("hostGrant");
     expect(routes).toContain("commercial entitlement authority mismatch");
     expect(routes).toContain("entitlement_role_mismatch");
+    expect(routes).toContain("commercialChatChannel");
+    expect(routes).toContain("channel_type: \"livestream\"");
+    expect(routes).toContain("delete_any");
+    expect(routes).toContain("commercial-live:");
+    expect(routes).toContain("commercial-consult:");
+    expect(routes).toContain("streamChatBindings");
+    expect(routes).toContain("STREAM_CHAT_API_KEY");
+    expect(routes).toContain("commercial_channel_id");
+    expect(routes).toContain("token_expires_at");
     expect(routes).not.toContain("clientCallId");
     expect(routes).not.toContain("clientRole");
   });
