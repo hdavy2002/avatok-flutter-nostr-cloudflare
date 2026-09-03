@@ -142,6 +142,31 @@ const PAL_ORDER = ['teal', 'butter', 'oat', 'brick'] as const;
 const INK = '#161614';
 const CREAM = '#fdf1d3';
 
+/** Compact, dependency-free metadata glyphs. The visible card only needs the
+ *  shape; the complete value remains available to assistive tech and as a
+ *  native hover tooltip on each item. */
+function MetadataIcon({ slot }: { slot: number }) {
+  const common = {
+    width: 15,
+    height: 15,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 2,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+  };
+
+  if (slot === 0) {
+    return <svg {...common}><path d="M3 8.5A2.5 2.5 0 0 0 3 13.5V17a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3.5a2.5 2.5 0 0 0 0-5V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2Z" /><path d="M13 5v2M13 11v2M13 17v2" /></svg>;
+  }
+  if (slot === 1) {
+    return <svg {...common}><path d="m12 3 2.75 5.57 6.15.9-4.45 4.33 1.05 6.12L12 17.03l-5.5 2.89 1.05-6.12L3.1 9.47l6.15-.9Z" /></svg>;
+  }
+  return <svg {...common}><path d="M20.6 13.6 13.7 20.5a2 2 0 0 1-2.8 0L3.5 13.1a2 2 0 0 1-.6-1.4V5a2 2 0 0 1 2-2h6.7a2 2 0 0 1 1.4.6l7.6 7.2a2 2 0 0 1 0 2.8Z" /><circle cx="8" cy="8" r="1" fill="currentColor" stroke="none" /></svg>;
+}
+
 /**
  * Which colour a listing gets. Derived from its id, NOT its position in the
  * grid, so a card keeps the same colour when the list is filtered, sorted or
@@ -386,16 +411,23 @@ export function ListingTile({
           {blurb}
         </p>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+        <div
+          role="group"
+          aria-label="Listing highlights"
+          style={{ display: 'flex', alignItems: 'center', gap: 6, minHeight: 30 }}
+        >
           {chips.map((chip, i) => (
-            <span key={`${chip}-${i}`} style={{
-              fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800, fontSize: '0.6875rem',
-              // Three chips share the row now, so they run slightly tighter than
-              // the comp's two — 9px side padding instead of 10, .04em tracking
-              // instead of .05 — to keep a 4-up card on one line at desktop width.
-              letterSpacing: '.04em', border: `1.5px solid ${chipCol}`, borderRadius: 100,
-              padding: '6px 9px', color: chipCol, whiteSpace: 'nowrap',
-            }}>{chip}</span>
+            <span
+              key={`${chip}-${i}`}
+              aria-label={chip}
+              title={chip}
+              style={{
+                width: 30, height: 30, flex: 'none', display: 'grid', placeItems: 'center',
+                border: `1.5px solid ${chipCol}`, borderRadius: 100, color: chipCol,
+              }}
+            >
+              <MetadataIcon slot={i} />
+            </span>
           ))}
         </div>
 

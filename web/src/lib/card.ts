@@ -366,8 +366,9 @@ export function chipsForLane(lane: ListingLane, card: Card, c: CardView): [strin
  *   1. AVAILABILITY — how many spots/seats are left, or the honest terminal
  *      rung when the listing never set a capacity.
  *   2. PROOF        — rating, then regulars/chats, then the lane's "new" badge.
- *   3. CONTEXT      — an active promo, else NEW/JUST ADDED inside 48h, else the
- *      lane's own name.
+ *   3. CONTEXT      — an active promo, else a real vibe tag, else the lane's
+ *      own name. Freshness is already communicated by the status pill when it
+ *      is useful; repeating JUST ADDED here wastes scarce card space.
  *
  * The owner's complaint this fixes: "some cards get some buttons and some
  * cards don't" — a grid where one tile shows a seat count and its neighbour
@@ -422,7 +423,6 @@ export function uniformChips(lane: ListingLane, card: Card, c: CardView): [strin
   const tags = parseArrayMaybe<string>(card.vibe_tags);
   const context =
     (card.promo_pct ? earlyBird(card.promo_pct) : null)
-    ?? (isNew(c.createdAt) ? laneBadge.JUST_ADDED : null)
     ?? (tags && tags[0] ? tags[0].toUpperCase() : null)
     ?? laneName[lane];
 
