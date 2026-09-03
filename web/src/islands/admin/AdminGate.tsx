@@ -5,8 +5,9 @@ import { useAdminGate } from './adminApi';
 import { Card } from '../../components/Card';
 import { Spinner } from '../../components/Spinner';
 import { Button } from '../../components/Button';
+import { ClerkIsland } from '../../lib/clerk';
 
-export function AdminGate({ children }: { children: ReactNode }) {
+function AdminGateInner({ children }: { children: ReactNode }) {
   const { state, error, retry } = useAdminGate();
 
   if (state === 'checking') {
@@ -38,6 +39,12 @@ export function AdminGate({ children }: { children: ReactNode }) {
       </div>
     </Card>
   );
+}
+
+/** Every admin island needs the Clerk bridge; dashboard pages get one from
+ * their shell, while standalone /admin pages do not. */
+export function AdminGate({ children }: { children: ReactNode }) {
+  return <ClerkIsland><AdminGateInner>{children}</AdminGateInner></ClerkIsland>;
 }
 
 export default AdminGate;

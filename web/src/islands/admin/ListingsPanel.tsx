@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AdminGate } from './AdminGate';
 import { getAdminListings, adminListingAction } from './adminApi';
-import { ClerkIsland } from '../../lib/clerk';
 
 function Inner() {
   const [rows, setRows] = useState<any[]>([]); const [status, setStatus] = useState('all'); const [busy, setBusy] = useState('');
@@ -15,7 +14,5 @@ function Inner() {
   </div>;
 }
 export default function ListingsPanel() {
-  // Admin pages do not use the dashboard shell (which normally owns the
-  // single ClerkProvider). Keep the auth bridge local to this gated island.
-  return <ClerkIsland><AdminGate><Inner /></AdminGate></ClerkIsland>;
+  return <AdminGate><Inner /></AdminGate>;
 }
