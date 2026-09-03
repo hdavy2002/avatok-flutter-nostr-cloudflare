@@ -31,6 +31,7 @@ const settlement = readFileSync(
 );
 const listings = readFileSync(resolve(root, "src/routes/listings.ts"), "utf8");
 const lifecycle = readFileSync(resolve(root, "src/routes/commercial_lifecycle.ts"), "utf8");
+const reviews = readFileSync(resolve(root, "src/routes/reviews.ts"), "utf8");
 
 describe("Phase 2 commercial lane contracts", () => {
   it("is account-entitled and GetStream-only", () => {
@@ -162,6 +163,16 @@ describe("Phase 2 commercial lane contracts", () => {
     expect(routes).toContain("settlement job authority mismatch");
   });
 
+  it("consumes paid entitlements only from authoritative session end and requires that state for reviews", () => {
+    expect(routes).toContain("consumeCommercialEntitlementsOnSessionEnd");
+    expect(routes).toContain("state='consumed'");
+    expect(routes).toContain("session_ended");
+    expect(routes).toContain("min_connected_ms");
+    expect(routes).toContain("connected_ms");
+    expect(reviews).toContain("state='consumed' LIMIT 1");
+    expect(reviews).not.toContain("SELECT 1 FROM commercial_entitlements WHERE kind=?1 AND listing_id=?2 AND account_id=?3 LIMIT 1");
+  });
+
   it("keeps creator controls server-authorized and idempotent", () => {
     for (const handler of [
       "commercialLivePrepareHost",
@@ -240,7 +251,7 @@ describe("Phase 2 commercial lane contracts", () => {
     expect(settlement).toContain('receipt.settlement_state !== "settled"');
     expect(routes).toContain("commercial_refund_receipts");
     expect(routes).toContain("refund_receipt");
-    expect(routes).toContain("const refundReceipt = session.order_id");
+    expect(routes).toContain("SELECT 1 ok FROM commercial_refund_receipts");
   });
 
   it("never exposes provider credentials through state or receipts", () => {

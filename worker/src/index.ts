@@ -33,7 +33,7 @@ import {
 import { commercialCheckout } from "./routes/commercial_checkout";
 import { commercialLifecycle } from "./routes/commercial_lifecycle";
 import { commercialDiagnostics, scanCommercialHealth } from "./routes/commercial_diagnostics";
-import { runCommercialSettlements } from "./commercial_settlement";
+import { runCommercialSettlements, runCommercialHostNoShowSweep } from "./commercial_settlement";
 import { refreshStaleCreatorStats } from "./lib/creator_stats"; // [LIST-STATS-1]
 import { messengerCallAuthorize, messengerCallPricing, messengerCallReceipt, messengerCallBillingStatus, cancelMessengerCallAuthorization } from "./routes/messenger_call_billing";
 import { brain } from "./routes/brain";
@@ -200,7 +200,7 @@ import { createReview, replyReview, helpfulReview, listReviews } from "./routes/
 // [LIST-ASK-1] "Ask the host" — see worker/src/routes/listing_questions.ts header.
 import { askQuestion, answerQuestion, listMyQuestions, listCreatorQuestions, promoteToFaq } from "./routes/listing_questions";
 import {
-  createListing, updateListing, publishListing, setListingStatus, duplicateListing, repeatListing, cancelListing,
+  createListing, updateListing, publishListing, submitListingForApproval, setListingStatus, duplicateListing, repeatListing, cancelListing,
   myListings, listingPromotions, deletePromotion, exploreBrowse, exploreLiveNow, exploreSearch,
   exploreCategories, getListing, getListingBySlug, getCreator, updateMyChannel, followCreator, unfollowCreator,
   blockCreator, report, bookListing,
@@ -410,6 +410,9 @@ export default {
         reconcileCommercialSessions(env)
           .then((r) => { if (r.scanned) console.log("[commercial-reconciliation]", JSON.stringify(r)); })
           .catch((e) => { console.error("[commercial-reconciliation] failed:", String(e)); }),
+        runCommercialHostNoShowSweep(env)
+          .then((r) => { if (r.scanned) console.log("[commercial-host-no-show-sweep]", JSON.stringify(r)); })
+          .catch((e) => { console.error("[commercial-host-no-show-sweep] failed:", String(e)); }),
         runCommercialSettlements(env)
           .then((r) => { if (r.scanned) console.log("[commercial-settlement]", JSON.stringify(r)); })
           .catch((e) => { console.error("[commercial-settlement] failed:", String(e)); }),
@@ -1714,10 +1717,11 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       {
         const ls = p.match(/^\/api\/listings\/([A-Za-z0-9-]{1,64})\/stats$/);
         if (ls && req.method === "GET") return await listingStats(req, env, ls[1]);
-        const la = p.match(/^\/api\/listings\/([A-Za-z0-9-]{1,64})\/(publish|status|duplicate|repeat|book|reviews|promotions|questions)$/);
+        const la = p.match(/^\/api\/listings\/([A-Za-z0-9-]{1,64})\/(publish|submit|status|duplicate|repeat|book|reviews|promotions|questions)$/);
         if (la) {
           const lid = la[1], act = la[2];
           if (act === "publish" && req.method === "POST") return await publishListing(req, env, lid);
+          if (act === "submit" && req.method === "POST") return await submitListingForApproval(req, env, lid);
           if (act === "status" && req.method === "POST") return await setListingStatus(req, env, lid);
           if (act === "duplicate" && req.method === "POST") return await duplicateListing(req, env, lid);
           // [CARD-SLOTS-1] "repeat weekly for N weeks" -> N standalone drafts sharing a series_id.

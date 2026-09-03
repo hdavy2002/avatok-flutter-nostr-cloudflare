@@ -53,6 +53,18 @@ describe("commercial money lifecycle contracts", () => {
     expect(lifecycle).toContain("completeCommercialMoneyClaim");
   });
 
+  it("adds a bounded host no-show sweep that reuses the shared refund primitives", () => {
+    expect(settlement).toContain("runCommercialHostNoShowSweep");
+    expect(settlement).toContain("loadOverdueNoShowAuthorities");
+    expect(settlement).toContain("state IN ('scheduled','backstage')");
+    expect(settlement).toContain("finalizeOverdueNoShow");
+    expect(settlement).toContain("claimCommercialMoney");
+    expect(settlement).toContain("finalizeCommercialRefund");
+    expect(settlement).toContain("completeCommercialMoneyClaim");
+    expect(settlement).toContain("commercial:receipt:");
+    expect(router).toContain("runCommercialHostNoShowSweep");
+  });
+
   it("blocks the legacy booking endpoint only for enabled commercial service lanes", () => {
     expect(listings).toContain("commercialBookingLaneOn");
     expect(listings).toContain("commercialLiveListingsEnabled");

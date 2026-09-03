@@ -95,20 +95,16 @@ export async function createReview(req: Request, env: Env, id: string): Promise<
 
   if (PAID_SESSION_KINDS.has(kind)) {
     const entKind = entitlementKindFor(kind);
-    let entAny: unknown = null;
     let entConsumed: unknown = null;
     try {
-      entAny = await db.prepare(
-        "SELECT 1 FROM commercial_entitlements WHERE kind=?1 AND listing_id=?2 AND account_id=?3 LIMIT 1",
-      ).bind(entKind, id, ctx.uid).first();
       entConsumed = await db.prepare(
         "SELECT 1 FROM commercial_entitlements WHERE kind=?1 AND listing_id=?2 AND account_id=?3 AND state='consumed' LIMIT 1",
       ).bind(entKind, id, ctx.uid).first();
     } catch {
       // Pre-migration: commercial_entitlements absent — fail closed (no entitlement).
     }
-    if (!entAny) return json({ error: "not_attendee" }, 403);
-    verifiedAttendee = entConsumed ? 1 : 0;
+    if (!entConsumed) return json({ error: "not_attendee" }, 403);
+    verifiedAttendee = 1;
   } else {
     // Older listing kinds (sell/buy/social) — unchanged pre-existing gate: a
     // confirmed/completed booking whose window has passed. Never verified.

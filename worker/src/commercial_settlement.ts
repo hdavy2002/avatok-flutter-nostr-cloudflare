@@ -49,6 +49,39 @@ type SettlementAuthority = {
   gst_amount: number | null;
 };
 
+type OverdueNoShowAuthority = {
+  commercial_session_id: string;
+  kind: "live_event" | "consult_1to1";
+  listing_id: string;
+  booking_id: string | null;
+  creator_id: string;
+  buyer_id: string;
+  order_id: string;
+  order_status: string;
+  session_state: string;
+  settlement_state: string;
+  scheduled_at: number;
+  policy_snapshot_id: string;
+  gross_amount: number;
+  currency: string;
+  creator_fee_pct: number;
+  settlement_hold_hours: number;
+  platform_fee_amount: number;
+  creator_amount: number;
+  cancellation_policy_json: string;
+  gst_amount: number | null;
+};
+
+function safeJson(raw: string | null): Record<string, unknown> | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
 async function markReview(env: Env, jobId: string, reason: string): Promise<void> {
   const now = Date.now();
   await metaDb(env).batch([
@@ -85,6 +118,25 @@ async function loadAuthority(env: Env, job: SettlementJob): Promise<SettlementAu
           WHERE rr.order_id=o.id AND rr.settlement_state='refunded'
        )`,
   ).bind(job.commercial_session_id, job.order_id).first<SettlementAuthority>();
+}
+
+async function loadOverdueNoShowAuthorities(env: Env, limit: number): Promise<OverdueNoShowAuthority[]> {
+  const rows = await metaDb(env).prepare(
+    `SELECT s.commercial_session_id,s.kind,s.listing_id,s.booking_id,s.creator_id,
+      o.buyer_id,o.id order_id,o.status order_status,s.state session_state,s.settlement_state,
+      s.scheduled_at,p.policy_snapshot_id,p.gross_amount,p.currency,p.creator_fee_pct,
+      p.settlement_hold_hours,p.platform_fee_amount,p.creator_amount,p.cancellation_policy_json,p.gst_amount
+     FROM commercial_sessions s
+     JOIN commercial_policy_snapshots p
+       ON p.listing_id=s.listing_id AND COALESCE(p.booking_id,'')=COALESCE(s.booking_id,'')
+     JOIN orders o ON o.id=p.order_id
+     WHERE s.state IN ('scheduled','backstage')
+       AND s.settlement_state NOT IN ('settled','refunded')
+       AND s.scheduled_at <= ?1
+     ORDER BY s.scheduled_at ASC
+     LIMIT ?2`,
+  ).bind(Date.now() - 15 * 60_000, Math.max(1, Math.min(50, Math.trunc(limit)))).all<OverdueNoShowAuthority>();
+  return rows.results ?? [];
 }
 
 async function deliveryError(
@@ -475,6 +527,139 @@ async function processJob(env: Env, job: SettlementJob): Promise<void> {
   await finishSettlement(env, job, authority);
 }
 
+async function refundCreatorNoShow(
+  env: Env,
+  job: SettlementJob,
+  authority: SettlementAuthority,
+): Promise<"refunded" | "review_pending"> {
+  const claim = await claimCommercialMoney(env, {
+    orderId: authority.order_id,
+    claimType: "refund",
+    claimId: `no-show:${job.settlement_job_id}`,
+  });
+  if (!claim.owned) {
+    const owner = claim.existing
+      ? `${claim.existing.claim_type}:${claim.existing.claim_id}`
+      : "unknown";
+    await markReview(env, job.settlement_job_id, `commercial money claim owned by ${owner}`);
+    return "review_pending";
+  }
+  const gross = Math.trunc(Number(authority.gross_amount));
+  const gstAmount = Math.max(0, Math.trunc(Number(authority.gst_amount ?? 0)));
+  const refundable = gross + gstAmount;
+  const money = await executeCommercialRefund(env, {
+    orderId: authority.order_id,
+    buyerId: authority.buyer_id,
+    amount: refundable,
+    reason: "creator_no_show",
+  });
+  if (!money.ok) {
+    await markReview(env, job.settlement_job_id, `creator_no_show_refund_failed:${money.error}`);
+    return "review_pending";
+  }
+  await finalizeCommercialRefund(env, {
+    orderId: authority.order_id,
+    sessionId: job.commercial_session_id,
+    listingId: authority.listing_id,
+    bookingId: authority.booking_id,
+    buyerId: authority.buyer_id,
+    creatorId: authority.creator_id,
+    kind: authority.kind,
+    grossAmount: gross,
+    refundedAmount: refundable,
+    gstAmount,
+    currency: authority.currency,
+    policySnapshotId: authority.policy_snapshot_id,
+    reason: "creator_no_show",
+    actor: "system",
+  });
+  await completeCommercialMoneyClaim(env, {
+    orderId: authority.order_id,
+    claimType: "refund",
+    claimId: `no-show:${job.settlement_job_id}`,
+  });
+  commercialEvent(env, "settlement", null, { outcome: "refunded", reason: "creator_no_show", kind: authority.kind });
+  return "refunded";
+}
+
+async function finalizeOverdueNoShow(
+  env: Env,
+  authority: OverdueNoShowAuthority,
+  claimId: string,
+): Promise<"refunded" | "review_pending"> {
+  const policy = safeJson(authority.cancellation_policy_json);
+  if (!policy) return "review_pending";
+  const pct = Number(policy.creator_cancel_refund_pct);
+  if (pct !== 100) {
+    await metaDb(env).prepare(
+      `UPDATE commercial_sessions SET settlement_state='review_pending',updated_at=?2
+       WHERE commercial_session_id=?1 AND settlement_state NOT IN ('settled','refunded')`,
+    ).bind(authority.commercial_session_id, Date.now()).run();
+    commercialEvent(env, "settlement", null, { outcome: "review_pending", reason: "creator_no_show" });
+    return "review_pending";
+  }
+  const claim = await claimCommercialMoney(env, {
+    orderId: authority.order_id,
+    claimType: "refund",
+    claimId,
+  });
+  if (!claim.owned) {
+    await metaDb(env).prepare(
+      `UPDATE commercial_sessions SET settlement_state='review_pending',updated_at=?2
+       WHERE commercial_session_id=?1 AND settlement_state NOT IN ('settled','refunded')`,
+    ).bind(authority.commercial_session_id, Date.now()).run();
+    return "review_pending";
+  }
+  const gross = Math.trunc(Number(authority.gross_amount));
+  const gstAmount = Math.max(0, Math.trunc(Number(authority.gst_amount ?? 0)));
+  const refundable = gross + gstAmount;
+  const money = await executeCommercialRefund(env, {
+    orderId: authority.order_id,
+    buyerId: authority.buyer_id,
+    amount: refundable,
+    reason: "creator_no_show",
+  });
+  if (!money.ok) return "review_pending";
+  const receiptId = await finalizeCommercialRefund(env, {
+    orderId: authority.order_id,
+    sessionId: authority.commercial_session_id,
+    listingId: authority.listing_id,
+    bookingId: authority.booking_id,
+    buyerId: authority.buyer_id,
+    creatorId: authority.creator_id,
+    kind: authority.kind,
+    grossAmount: gross,
+    refundedAmount: refundable,
+    gstAmount,
+    currency: authority.currency,
+    policySnapshotId: authority.policy_snapshot_id,
+    reason: "creator_no_show",
+    actor: "system",
+  });
+  await completeCommercialMoneyClaim(env, { orderId: authority.order_id, claimType: "refund", claimId });
+  await metaDb(env).batch([
+    metaDb(env).prepare(
+      `UPDATE commercial_sessions SET state='cancelled',settlement_state='refunded',state_version=state_version+1,updated_at=?2
+       WHERE commercial_session_id=?1 AND state IN ('scheduled','backstage')`,
+    ).bind(authority.commercial_session_id, Date.now()),
+    metaDb(env).prepare(
+      `UPDATE commercial_settlement_jobs SET state='refunded',last_error=?2,updated_at=?3
+       WHERE commercial_session_id=?1 AND state IN ('pending','processing','review_pending')`,
+    ).bind(authority.commercial_session_id, "creator_no_show", Date.now()),
+    metaDb(env).prepare(
+      `UPDATE orders SET status='refunded',cancelled_by='creator',cancelled_at=?2,updated_at=?2
+       WHERE id=?1 AND status IN ('held','free')`,
+    ).bind(authority.order_id, Date.now()),
+    metaDb(env).prepare(
+      `UPDATE commercial_entitlements SET state='refunded',updated_at=?2
+       WHERE order_id=?1 AND state IN ('reserved','held','active','consumed')`,
+    ).bind(authority.order_id, Date.now()),
+  ]);
+  commercialEvent(env, "settlement", null, { outcome: "refunded", reason: "creator_no_show", kind: authority.kind });
+  void receiptId;
+  return "refunded";
+}
+
 export async function runCommercialSettlements(
   env: Env,
   limit = 10,
@@ -512,4 +697,28 @@ export async function runCommercialSettlements(
     }
   }
   return { scanned: (rows.results ?? []).length, settled, reviewPending };
+}
+
+export async function runCommercialHostNoShowSweep(
+  env: Env,
+  limit = 10,
+): Promise<{ scanned: number; refunded: number; reviewPending: number }> {
+  const safeLimit = Math.max(1, Math.min(50, Math.trunc(limit)));
+  const rows = await loadOverdueNoShowAuthorities(env, safeLimit);
+  let refunded = 0;
+  let reviewPending = 0;
+  for (const authority of rows) {
+    const claimId = `no-show:${authority.commercial_session_id}:${authority.order_id}`;
+    try {
+      if ((await finalizeOverdueNoShow(env, authority, claimId)) === "refunded") refunded++;
+      else reviewPending++;
+    } catch (error) {
+      await metaDb(env).prepare(
+        `UPDATE commercial_sessions SET settlement_state='review_pending',updated_at=?2
+         WHERE commercial_session_id=?1 AND settlement_state NOT IN ('settled','refunded')`,
+      ).bind(authority.commercial_session_id, Date.now()).run();
+      reviewPending++;
+    }
+  }
+  return { scanned: rows.length, refunded, reviewPending };
 }

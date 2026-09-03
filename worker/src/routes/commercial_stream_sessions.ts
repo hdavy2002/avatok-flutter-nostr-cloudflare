@@ -1208,6 +1208,48 @@ async function canViewSession(env: Env, session: SessionAuthority, uid: string):
   return Boolean(anyGrant);
 }
 
+async function consumeCommercialEntitlementsOnSessionEnd(env: Env, sessionId: string): Promise<void> {
+  const session = await metaDb(env).prepare(
+    `SELECT s.kind, s.listing_id, s.booking_id, p.cancellation_policy_json
+       FROM commercial_sessions s
+       JOIN commercial_policy_snapshots p ON p.order_id IN (
+         SELECT order_id FROM commercial_settlement_jobs WHERE commercial_session_id=?1
+       )
+      WHERE s.commercial_session_id=?1
+      ORDER BY p.created_at DESC LIMIT 1`,
+  ).bind(sessionId).first<{ kind: CommercialSessionKind; listing_id: string; booking_id: string | null; cancellation_policy_json: string | null }>();
+  if (!session) return;
+  let policy: { min_connected_ms?: number } = {};
+  try { policy = JSON.parse(String(session.cancellation_policy_json ?? "{}")) as { min_connected_ms?: number }; } catch { /* use safe default */ }
+  const minimumMs = Number.isFinite(Number(policy.min_connected_ms))
+    ? Math.max(0, Math.trunc(Number(policy.min_connected_ms)))
+    : 60_000;
+  const rows = await metaDb(env).prepare(
+    `SELECT e.entitlement_id, e.account_id, e.role,
+        COALESCE(SUM(i.connected_ms),0) connected_ms
+       FROM commercial_entitlements e
+       LEFT JOIN commercial_session_members m
+         ON m.commercial_session_id=?1 AND m.entitlement_id=e.entitlement_id
+       LEFT JOIN commercial_participant_intervals i
+         ON i.commercial_session_id=?1 AND i.account_id=e.account_id
+      WHERE m.commercial_session_id=?1
+        AND e.state IN ('reserved','held','active')
+      GROUP BY e.entitlement_id, e.account_id, e.role`,
+  ).bind(sessionId).all<{
+    entitlement_id: string;
+    account_id: string;
+    role: string;
+    connected_ms: number;
+  }>();
+  const consumable = (rows.results ?? []).filter((row) => Number(row.connected_ms ?? 0) >= minimumMs);
+  if (!consumable.length) return;
+  const now = Date.now();
+  await metaDb(env).batch(consumable.map((row) => metaDb(env).prepare(
+    `UPDATE commercial_entitlements SET state='consumed',updated_at=?2
+       WHERE entitlement_id=?1 AND state IN ('reserved','held','active')`,
+  ).bind(row.entitlement_id, now)));
+}
+
 function safeSessionState(session: SessionAuthority): Record<string, unknown> {
   return {
     session_id: session.commercial_session_id,
@@ -1596,6 +1638,7 @@ export async function recordCommercialStreamEvent(
            )`,
       ).bind(session.commercial_session_id, input.webhookId, Date.now()),
     ]);
+    await consumeCommercialEntitlementsOnSessionEnd(env, session.commercial_session_id);
     const jobs = await metaDb(env).prepare(
       `SELECT settlement_job_id,commercial_session_id,order_id,state,terminal_event_id
          FROM commercial_settlement_jobs WHERE commercial_session_id=?1`,
