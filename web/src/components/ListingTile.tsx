@@ -304,10 +304,9 @@ export function ListingTile({
         transition: 'transform 120ms ease-out, box-shadow 120ms ease-out',
       }}
     >
-      {/* Photo band. The comp is a flat colour; a real listing has a cover, so the
-          colour becomes the backdrop the photo sits on and the fallback when there
-          is none. */}
-      <div style={{ height: 186, background: p.photo, position: 'relative' }}>
+      {/* Poster-first artwork: generated posters carry the story, so give them a
+          generous portrait canvas and keep the metadata below compact. */}
+      <div style={{ height: 'clamp(230px, 28vw, 360px)', background: p.photo, position: 'relative' }}>
         {c.poster && (
           <img
             src={cfImage(c.poster, { width, fit: 'cover' })}
@@ -415,21 +414,22 @@ export function ListingTile({
             card. 1.07 line-height on Anton: the display face carries a hard
             shadow, and a tighter leading makes a wrapped second line collide
             with the shadow of the first (CLAUDE.md type rules). */}
-        <h4 style={{
+        <span className="sr-only">{c.title}. {blurb}</span>
+        <h4 aria-hidden="true" style={{
           fontFamily: 'Anton, Impact, sans-serif', fontWeight: 400, fontSize: '1.4375rem',
           lineHeight: 1.07, textTransform: 'uppercase', color: textCol, margin: 0,
           // Never negative tracking on display type — CLAUDE.md standing rule.
           letterSpacing: '.02em', wordSpacing: '.08em',
           textShadow: p.dark && p.shad ? `3px 3px 0 ${p.shad}` : 'none',
-          display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
+          display: 'none', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
           overflow: 'hidden', height: 'calc(1.4375rem * 1.07 * 2)',
         }}>
           {c.title}{price ? ` · ${price}` : ''}
         </h4>
 
-        <p style={{
+        <p aria-hidden="true" style={{
           margin: 0, fontSize: '0.875rem', fontWeight: 500, lineHeight: 1.45, color: bodyCol,
-          display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
+          display: 'none', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
           overflow: 'hidden', height: 'calc(0.875rem * 1.45 * 2)',
         }}>
           {blurb}
@@ -446,11 +446,13 @@ export function ListingTile({
               aria-label={chip}
               title={chip}
               style={{
-                width: 30, height: 30, flex: 'none', display: 'grid', placeItems: 'center',
+                minHeight: 26, maxWidth: '48%', padding: '3px 8px', flex: '0 1 auto', display: 'grid', placeItems: 'center',
                 border: `1.5px solid ${chipCol}`, borderRadius: 100, color: chipCol,
+                fontFamily: 'Nunito, system-ui, sans-serif', fontSize: '0.625rem', fontWeight: 800,
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
               }}
             >
-              <MetadataIcon slot={i} />
+              {chip}
             </span>
           ))}
         </div>
@@ -472,7 +474,7 @@ export function ListingTile({
             flex: 1, textAlign: 'center', fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800,
             fontSize: '0.75rem', letterSpacing: '.08em', padding: '13px 8px', borderRadius: 100,
             border: `2px solid ${INK}`, background: CREAM, color: INK,
-          }}>{buttons.secondaryLabel}</span>
+          }}>MORE INFO</span>
         </div>
 
         <div style={{

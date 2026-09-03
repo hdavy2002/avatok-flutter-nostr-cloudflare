@@ -80,6 +80,8 @@ async function adminAction<T>(action: string, target: string, fn: () => Promise<
 
 // ───────────────────────── named helpers ─────────────────────────
 export const getOverview = () => adminReq<Overview>('/api/admin/overview');
+export const getAdminListings = (status = 'all') => adminReq<{ listings: any[] }>('/api/admin/listings', { query: { status } });
+export const adminListingAction = (id: string, action: string) => adminReq<any>(`/api/admin/listings/${encodeURIComponent(id)}`, { method: 'POST', body: { action } });
 export const getLive = () => adminReq<LiveSnapshot>('/api/admin/live');
 export const getAgents = () => adminReq<AgentsSnapshot>('/api/admin/agents');
 export const getHealth = () => adminReq<Health>('/api/admin/health');

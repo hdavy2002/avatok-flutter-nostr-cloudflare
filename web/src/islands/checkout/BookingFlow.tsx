@@ -16,6 +16,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { ClerkIsland, getActiveToken } from '../../lib/clerk';
+import { useUser } from '@clerk/clerk-react';
 import { IslandBoundary } from '../../components/IslandBoundary';
 import { EmailCodeSignIn } from '../auth/EmailCodeSignIn';
 import type { Listing } from '../../lib/types';
@@ -51,11 +52,50 @@ function StepDots({ step }: { step: Step }) {
 }
 
 function FlowInner({ listing }: { listing: Listing }) {
-  const [step, setStep] = useState<Step>('pick');
+  const { user } = useUser();
+  // Drafts are account-scoped once Clerk knows the account. Anonymous drafts
+  // stay isolated under a single temporary namespace and are never mixed with
+  // another signed-in account.
+  const scope = user?.id || 'anonymous';
+  const draftKey = `avatok:checkout-draft:${scope}:${listing.id}`;
+  type Draft = { step: Step; selection: BookSelection | null; savedAt: number };
+  const [draft] = useState<Draft | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = window.localStorage.getItem(draftKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as Draft;
+      if (!parsed || !parsed.savedAt || Date.now() - parsed.savedAt > 1000 * 60 * 60 * 24 * 30) return null;
+      return parsed;
+    } catch { return null; }
+  });
+  // A resumed pay step must re-authenticate first; never persist or restore a
+  // bearer token. `afterSignIn` will advance to pay with a fresh token.
+  const initialStep = draft?.step === 'confirm' || !draft ? 'pick' : draft.step === 'pay' ? 'identify' : draft.step;
+  const [step, setStep] = useState<Step>(initialStep);
   const [token, setToken] = useState<string | null>(null);
-  const [selection, setSelection] = useState<BookSelection | null>(null);
+  const [selection, setSelection] = useState<BookSelection | null>(draft?.selection ?? null);
   const [result, setResult] = useState<BookingResult | null>(null);
   const [working, setWorking] = useState(false);
+
+  // Keep resumable checkout state local to this listing and account session. No
+  // payment data or auth tokens are persisted; the existing auth/payment APIs
+  // remain the authority when the buyer resumes.
+  useEffect(() => {
+    if (step === 'confirm') {
+      try { window.localStorage.removeItem(draftKey); } catch { /* private mode */ }
+      return;
+    }
+    try {
+      window.localStorage.setItem(draftKey, JSON.stringify({ step, selection, savedAt: Date.now() } satisfies Draft));
+    } catch { /* storage unavailable/full — checkout still works */ }
+  }, [draftKey, step, selection]);
+
+  useEffect(() => {
+    if (!draft || draft.step === 'pick') return;
+    try { capture('checkout_resume', { listing_id: listing.id, step: draft.step, age_ms: Date.now() - draft.savedAt }); } catch { /* best-effort */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // [WEB-POSTHOG-1] §2.5 checkout_open — once per mount of the checkout flow.
   useEffect(() => {
@@ -153,6 +193,11 @@ function FlowInner({ listing }: { listing: Listing }) {
 
   return (
     <div className="mx-auto w-full max-w-md">
+      {draft && draft.step !== 'pick' && (
+        <div className="mb-4 rounded-zine border-zine border-ink bg-lime px-4 py-3 font-body text-[14px] font-bold text-ink" role="status">
+          Your unfinished booking is saved. Picking up where you left off.
+        </div>
+      )}
       <StepDots step={step} />
 
       {step === 'pick' && (
