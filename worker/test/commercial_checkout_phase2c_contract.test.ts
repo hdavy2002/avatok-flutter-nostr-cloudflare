@@ -15,8 +15,9 @@ describe("Phase 2C commercial checkout contracts", () => {
     expect(route).toContain("/checkout");
     expect(route).not.toContain("/api/listings/:id/book");
     expect(route).not.toContain("cloudflare");
-    expect(route).toContain("commercialLiveCheckoutEnabled");
-    expect(route).toContain("commercialConsultCheckoutEnabled");
+    expect(route).toContain("commercialLaneState(config, kind)");
+    expect(route).toContain("commercialLaneFlags(config, route.kind)");
+    expect(route).toContain("lane_misconfigured");
   });
 
   it("requires account auth, policy acceptance, and a valid idempotency key", () => {

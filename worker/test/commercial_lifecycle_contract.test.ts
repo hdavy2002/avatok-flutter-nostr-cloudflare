@@ -6,6 +6,7 @@ const root = resolve(import.meta.dirname, "..");
 const lifecycle = readFileSync(resolve(root, "src/routes/commercial_lifecycle.ts"), "utf8");
 const checkout = readFileSync(resolve(root, "src/routes/commercial_checkout.ts"), "utf8");
 const settlement = readFileSync(resolve(root, "src/commercial_settlement.ts"), "utf8");
+const refundRail = readFileSync(resolve(root, "src/lib/commercial_refund_rail.ts"), "utf8");
 const moneyClaim = readFileSync(resolve(root, "src/commercial_money_claim.ts"), "utf8");
 const listings = readFileSync(resolve(root, "src/routes/listings.ts"), "utf8");
 const router = readFileSync(resolve(root, "src/index.ts"), "utf8");
@@ -16,14 +17,14 @@ describe("commercial money lifecycle contracts", () => {
     expect(lifecycle).toContain("cancellation_policy_json");
     expect(lifecycle).toContain("creator_cancel_refund_pct");
     expect(lifecycle).toContain("provider_failure_refund_pct");
-    expect(lifecycle).toContain("late_cancel_policy_missing");
+    expect(lifecycle).toContain("policy_missing");
     expect(lifecycle).toContain("review_pending");
     expect(lifecycle).not.toContain("rules.ts");
   });
 
   it("refunds from escrow exactly once and writes immutable refund authority", () => {
-    expect(lifecycle).toContain("commercial:refund:");
-    expect(lifecycle).not.toContain("commercial:refund:${authority.order_id}:${action}");
+    expect(refundRail).toContain("commercial:refund:");
+    expect(refundRail).not.toContain("commercial:refund:${authority.order_id}:${action}");
     expect(lifecycle).toContain("commercial_lifecycle_operations");
     expect(lifecycle).toContain("INSERT OR IGNORE INTO commercial_refund_receipts");
     expect(lifecycle).toContain("refund_receipt_immutable_mismatch");
@@ -46,7 +47,7 @@ describe("commercial money lifecycle contracts", () => {
     expect(settlement).toContain("claimCommercialMoney");
     expect(lifecycle).toContain("claimCommercialMoney");
     expect(settlement.indexOf("const claim = await claimCommercialMoney")).toBeLessThan(settlement.indexOf("await releaseSnapshot"));
-    expect(lifecycle.indexOf("const claim = await claimCommercialMoney")).toBeLessThan(lifecycle.indexOf("const money = await refund"));
+    expect(lifecycle.indexOf("claimCommercialMoney(env, {")).toBeLessThan(lifecycle.indexOf("executeCommercialRefund(env, {"));
     expect(settlement).toContain("commercial money claim owned by");
     expect(lifecycle).toContain("commercial money claim owned by");
     expect(settlement).toContain("completeCommercialMoneyClaim");
@@ -67,8 +68,8 @@ describe("commercial money lifecycle contracts", () => {
 
   it("blocks the legacy booking endpoint only for enabled commercial service lanes", () => {
     expect(listings).toContain("commercialBookingLaneOn");
-    expect(listings).toContain("commercialLiveListingsEnabled");
-    expect(listings).toContain("commercialConsultListingsEnabled");
+    expect(listings).toContain("commercialLaneState(await readConfig(env), kind)");
+    expect(listings).toContain("commercial_lane_misconfigured");
     expect(listings).toContain("commercial_checkout_required");
     expect(listings).toContain("commercial configuration unavailable");
     expect(listings.indexOf("commercialBookingLaneOn")).toBeLessThan(listings.indexOf("claimBlock(env, { userId: ctx.uid"));
