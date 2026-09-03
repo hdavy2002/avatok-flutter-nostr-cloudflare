@@ -44,21 +44,16 @@ on:
         # updater) for installs IT owns. A side-loaded APK can never be updated by
         # either mechanism, no matter what the app code does.
         #
-        # DEFAULT IS `alpha`, and that default is the feature. It shipped as
-        # `none` for one day and the owner immediately hit the thing it causes: he
-        # ran a build, the publish step silently skipped because he'd left the
-        # dropdown alone, and he was back to downloading the .aab and uploading it
-        # to Play by hand — the exact manual work this automation exists to remove.
-        # A safe-looking default that makes the common path fail silently is not
-        # safe. Closed Alpha is the owner's canonical tester release track; pick
-        # `none` explicitly if you want a build artifact without touching Play.
+        # DEFAULT IS `none` so staging builds stay publish-free unless someone
+        # explicitly opts into Play. Closed Alpha is still the owner's canonical
+        # tester release track for prod builds.
         #
         # `production` is deliberately NOT an option: it makes a build live for real
         # users once review passes, and that belongs to a deliberate click in the
         # Play Console, not a dropdown on a build. Promote from a testing track.
         description: 'Publish the .aab to a Play track (alpha = canonical tester release + update prompt)'
         required: false
-        default: alpha
+        default: none
         type: choice
         options: [alpha, internal, beta, none]
       stream_pilot:
