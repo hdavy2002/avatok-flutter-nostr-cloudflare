@@ -1331,16 +1331,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                         () => _saveUnknownContact(source: 'thread_header'),
                         color: AD.onBand(AD.headerFooter)),
                 ] else if (!c.group) ...[
-                  // [PIVOT-MSGR-CALL-OFF-1] Messenger 1:1 calling is being killed —
-                  // the dial engine already refuses at place_1to1_call.dart, so hide
-                  // these buttons too instead of leaving them visible-and-failing
-                  // with a snackbar.
-                  if (RemoteConfig.messengerCallingEnabled) ...[
-                    _headerAction(PhosphorIcons.phone(PhosphorIconsStyle.bold), () => _call('voice'),
-                        color: AD.onBand(AD.headerFooter)),
-                    _headerAction(PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), () => _call('video'),
-                        color: AD.onBand(AD.headerFooter)),
-                  ],
+                  // Messenger 1:1 calling stays out of the AvaTalk UI. The
+                  // commercial GetStream call flow remains in its dedicated
+                  // surface; this thread header only exposes chat actions.
                 ] else if (RemoteConfig.conferenceEnabled) ...[
                   // Phase 10 RULE CHANGE: group conferences (Cloudflare Realtime A/V, ≤25).
                   // >25 members → greyed icons; tapping pops the limit notice.

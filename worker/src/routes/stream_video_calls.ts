@@ -182,7 +182,12 @@ function rolloutBucket(callId: string, callerUid: string, calleeUid: string): nu
  * effect; old clients therefore remain byte-for-byte on Cloudflare.
  */
 export function selectCallProvider(args: {
-  config: { streamCallPilotEnabled?: boolean; streamCallPilotPercent?: number; messengerCallBillingEnabled?: boolean };
+  config: {
+    streamCallPilotEnabled?: boolean;
+    streamCallPilotPercent?: number;
+    messengerCallBillingEnabled?: boolean;
+    messengerCallingEnabled?: boolean;
+  };
   env: Env;
   callerUid: string;
   calleeUid: string;
@@ -535,7 +540,12 @@ export async function streamVideoToken(req: Request, env: Env): Promise<Response
 /** Create a Stream call after the server has authenticated the caller. */
 export async function prepareStreamCall(args: {
   env: Env;
-  config: { streamCallPilotEnabled?: boolean; streamCallPilotPercent?: number; messengerCallBillingEnabled?: boolean };
+  config: {
+    streamCallPilotEnabled?: boolean;
+    streamCallPilotPercent?: number;
+    messengerCallBillingEnabled?: boolean;
+    messengerCallingEnabled?: boolean;
+  };
   callerUid: string;
   calleeUid: string;
   callId: string;
@@ -548,6 +558,12 @@ export async function prepareStreamCall(args: {
   traceId?: string;
 }): Promise<Response> {
   const { env, config, callerUid, calleeUid, callId, clientSupportsStream, ctx } = args;
+  if (config.messengerCallingEnabled !== true) {
+    // Messenger calling is gone. Fail closed here so a stale client, deep link,
+    // or direct HTTP call cannot revive the legacy 1:1 lane. Commercial Stream
+    // calls use the separate /api/stream-calls/place route and are unaffected.
+    return json({ ok: false, provider: "cloudflare", call_id: callId, error: "messenger calls disabled" }, 403);
+  }
   if (config.messengerCallBillingEnabled === true && args.media !== "video") {
     // The legacy prepare route has no paid-audio authorization contract. Free
     // audio belongs to /api/call; paid audio must use /place with a fresh,
