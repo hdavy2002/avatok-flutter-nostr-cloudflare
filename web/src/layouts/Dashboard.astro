@@ -80,6 +80,16 @@ const groups: { title: string; items: Item[] }[] = [
   ]},
 ];
 
+if (Astro.url.pathname.startsWith('/admin')) {
+  groups.unshift({
+    title: 'Admin',
+    items: [
+      { key: 'admin-overview', label: 'Overview', icon: I.grid, href: '/admin', tone: 'bg-lilac' },
+      { key: 'admin-listings', label: 'Listings & Posters', icon: I.list, href: '/admin/listings', tone: 'bg-coral' },
+    ],
+  });
+}
+
 const heads = heading ?? (title.split(' · ')[0]);
 
 // [WEB-FONT-3 2026-08-26] Owner: every font inside the dashboard is Nunito,

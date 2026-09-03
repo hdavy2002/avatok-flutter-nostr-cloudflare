@@ -33,6 +33,7 @@ import { Card } from '../../components/Card';
 import { Spinner } from '../../components/Spinner';
 import { inr } from '../../lib/money';
 import { capture } from '../../lib/analytics';
+import { livePath } from '../../lib/urls';
 import type { GatewayId, PayStatusResponse } from './types';
 import type { Listing } from '../../lib/types';
 
@@ -98,7 +99,7 @@ function viewerFor(listing: Listing | null, orderId: string): { href: string; la
   // here, so send them to their bookings list, where the confirmed session appears.
   void orderId;
   if (listing && (listing.kind === 'live' || listing.kind === 'live_event')) {
-    return { href: `/watch/${encodeURIComponent(listing.id)}`, label: 'Watch live' };
+    return { href: livePath(listing.id), label: 'Watch live' };
   }
   return { href: '/dashboard/bookings', label: 'View in My Bookings' };
 }

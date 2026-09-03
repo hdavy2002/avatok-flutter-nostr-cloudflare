@@ -20,6 +20,7 @@
 export const prerender = false;
 
 import { renderMockupPage } from '../../lib/mockupPage';
+import { creatorPath } from '../../lib/urls';
 // Staged into web/src/generated/ by prebuild — see scripts/copy-design-demo.mjs
 // for why it is generated rather than committed, and why it is not in public/.
 import mockupHtml from '../../generated/creator-profile.dc.html?raw';
@@ -40,6 +41,6 @@ return renderMockupPage({
   html: mockupHtml,
   title: `@${username} · avaTOK`,
   listingHref: `/${handle}/mock-listing`,
-  profileHref: `/${handle}`,
+  profileHref: creatorPath(username!),
 });
 ---

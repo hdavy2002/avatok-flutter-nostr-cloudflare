@@ -33,6 +33,7 @@ import { durationLabel, languageLabel } from '../lib/card';
 import { inrOrFree } from '../lib/money';
 import { getListingReviews, getListingSlots, getExplore } from '../lib/apiClient';
 import { freeBox, houseRules, sectionTitles, shareCopy } from '../lib/copy';
+import { creatorPath, listingPath } from '../lib/urls';
 import type { CoverMedia, Listing, ReviewList, ListingSlot, Card as CardModel } from '../lib/types';
 import HostCard from './listing/HostCard.astro';
 import ReviewsSection from './listing/ReviewsSection.astro';
@@ -94,6 +95,7 @@ const creatorAvatarUrl = creator?.avatar || creator?.avatar_url || null;
 const creatorHandle = creator?.handle || null;
 const creatorDisplayName = creator?.name || null;
 const creatorName = creatorDisplayName || (creatorHandle ? `@${creatorHandle}` : 'avaTOK creator');
+const creatorHref = creatorSlug ? creatorPath(creatorSlug) : null;
 const hostFirstName = creatorDisplayName ? (creatorDisplayName.split(' ')[0] || creatorDisplayName) : (creatorHandle || 'the host');
 // Initials for the avatar fallback: from the real name if there is one, else
 // from the handle, else the honest "AC" (avaTOK Creator) rather than a "?".
@@ -256,7 +258,8 @@ const freeSpotsLeft = listing.capacity != null && listing.seats_taken != null
 
 const detailUrl = new URL(Astro.request.url);
 detailUrl.search = '';
-const shareUrl = detailUrl.href;
+const canonicalShare = listingPath({ id, handle: creatorHandle, slug: listing.slug ?? null });
+const shareUrl = new URL(canonicalShare, detailUrl).href;
 
 // ── Eyebrow line: "01 · GROUP SHOWS · TICKETED · WEEKLY" style tag row ─────
 const eyebrowParts = [listing.category, isFreeEntry ? 'FREE' : 'TICKETED', listing.schedule_mode === 'recurring' ? 'WEEKLY' : null]
@@ -337,7 +340,7 @@ const listingViewProps = {
         </div>
         <div class="ld-stage-footer">
           {creator && (
-            <a href={creatorSlug ? `/c/${encodeURIComponent(creatorSlug)}` : '#'} class="ld-host-line">
+            <a href={creatorHref ?? '#'} class="ld-host-line">
               <span class="ld-host-line-avatar"><Avatar src={creatorAvatarUrl} name={creatorName} size={30} /></span>
               <span class="ld-host-line-name">{creatorName}{!isAgent && creator.kyc_verified ? ' ✓' : ''}</span>
             </a>

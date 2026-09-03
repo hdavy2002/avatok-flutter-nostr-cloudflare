@@ -1,0 +1,40 @@
+---
+export const prerender = false;
+import Dashboard from '../../layouts/Dashboard.astro';
+---
+
+<Dashboard title="Admin · avatok.ai" heading="Admin" subtitle="Listings, posters, audit and rollout control." active="admin-overview">
+  <div class="grid gap-6">
+    <section class="rounded-zine border-zine border-ink bg-card p-6 shadow-zine-sm">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 class="font-display text-[24px] font-semibold text-ink">Listings & Posters</h2>
+          <p class="mt-2 max-w-2xl font-body text-[15px] font-bold leading-relaxed text-inkSoft">
+            Review creator submissions, approve the listing copy, generate or reject posters, and publish only when both the listing and poster are ready.
+          </p>
+        </div>
+        <a href="/admin/listings" class="rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono text-[13px] font-bold uppercase tracking-[0.06em] text-ink no-underline shadow-zine-xs">
+          Open queue
+        </a>
+      </div>
+    </section>
+
+    <section class="grid gap-4 md:grid-cols-3">
+      <div class="rounded-zine border-zine border-ink bg-paper2 p-4 shadow-zine-sm">
+        <div class="font-mono text-[12px] font-bold uppercase tracking-[0.08em] text-inkSoft">Queue focus</div>
+        <div class="mt-2 font-display text-[22px] font-semibold text-ink">Approve, review, publish</div>
+        <p class="mt-2 font-body text-[14px] font-bold text-inkSoft">Status-driven filters for draft, pending review, rejected and published listings.</p>
+      </div>
+      <div class="rounded-zine border-zine border-ink bg-paper2 p-4 shadow-zine-sm">
+        <div class="font-mono text-[12px] font-bold uppercase tracking-[0.08em] text-inkSoft">Poster safety</div>
+        <div class="mt-2 font-display text-[22px] font-semibold text-ink">Generate, crop, audit</div>
+        <p class="mt-2 font-body text-[14px] font-bold text-inkSoft">Track poster status and keep generation metadata visible before publication.</p>
+      </div>
+      <div class="rounded-zine border-zine border-ink bg-paper2 p-4 shadow-zine-sm">
+        <div class="font-mono text-[12px] font-bold uppercase tracking-[0.08em] text-inkSoft">Audit trail</div>
+        <div class="mt-2 font-display text-[22px] font-semibold text-ink">Every action logged</div>
+        <p class="mt-2 font-body text-[14px] font-bold text-inkSoft">Each moderation step writes the actor, target, previous state, next state and reason server-side.</p>
+      </div>
+    </section>
+  </div>
+</Dashboard>

@@ -5,6 +5,7 @@
  */
 import { Card } from '../../components/Card';
 import { Pill } from '../../components/Pill';
+import { livePath } from '../../lib/urls';
 
 /** A row from GET /api/booking/list (worker/src/routes/booking.ts listBookings). */
 export interface DashboardBooking {
@@ -39,7 +40,7 @@ function fmtWhen(ms?: number): string | null {
 function viewerFor(b: DashboardBooking): { href: string; label: string } | null {
   const k = (b.kind ?? '').toLowerCase();
   if (k.includes('consult')) return { href: `/consult/${encodeURIComponent(b.id)}`, label: 'Join consult' };
-  if (k.includes('live') && b.listing_id) return { href: `/watch/${encodeURIComponent(b.listing_id)}`, label: 'Watch' };
+  if (k.includes('live') && b.listing_id) return { href: livePath(b.listing_id), label: 'Watch' };
   if (k.includes('agent') && b.listing_id) return { href: `/agent/${encodeURIComponent(b.listing_id)}`, label: 'Talk' };
   return null;
 }

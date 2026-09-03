@@ -1,0 +1,40 @@
+---
+// Legacy email join link resolver.
+//
+// Older invites pointed at /j/<token>. The browser should land on the
+// canonical session URL when possible so shared links still work without the
+// app.
+export const prerender = false;
+
+import { API_BASE } from '../../lib/config';
+import { sessionPath } from '../../lib/urls';
+
+const { token } = Astro.params;
+const joinInfoUrl = `${API_BASE}/api/join-info/${encodeURIComponent(token!)}`;
+
+let bookingId: string | null = null;
+let error = false;
+try {
+  const res = await fetch(joinInfoUrl, { headers: { accept: 'application/json' } });
+  if (res.ok) {
+    const data = await res.json() as { booking_id?: string; error?: string };
+    if (typeof data.booking_id === 'string' && data.booking_id) bookingId = data.booking_id;
+    else error = true;
+  } else {
+    error = true;
+  }
+} catch {
+  error = true;
+}
+
+if (bookingId) {
+  return Astro.redirect(`${sessionPath(bookingId)}${Astro.url.search}`, 301);
+}
+
+Astro.response.status = 404;
+---
+<html lang="en">
+  <body>
+    <p>That booking link is invalid or expired.</p>
+  </body>
+</html>

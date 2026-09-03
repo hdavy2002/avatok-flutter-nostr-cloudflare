@@ -10,6 +10,7 @@
  */
 import { useState } from 'react';
 import type { Listing } from '../../lib/types';
+import { livePath } from '../../lib/urls';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { Pill } from '../../components/Pill';
@@ -60,7 +61,7 @@ export function Confirmation({ listing, selection, result }: ConfirmationProps) 
   } else if (kind === 'live' || kind === 'live_event') {
     // [WEB-COMM-PAY-1] Listings of this kind are stored as `live_event`
     // (see worker's checkoutKind()); `live` is kept as a legacy alias.
-    viewerHref = `/watch/${encodeURIComponent(listing.id)}`;
+    viewerHref = livePath(listing.id);
     viewerLabel = 'Watch live';
   } else {
     viewerHref = '/dashboard';

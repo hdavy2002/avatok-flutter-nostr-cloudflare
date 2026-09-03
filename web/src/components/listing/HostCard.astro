@@ -8,6 +8,7 @@
 // listed by" are comp furniture with no data source on the Listing type today
 // — they're intentionally left out rather than faked; see task report.
 import { Avatar } from '../../components';
+import { creatorPath } from '../../lib/urls';
 import type { CreatorRef, CreatorTrustStats } from '../../lib/types';
 
 interface Props {
@@ -29,7 +30,7 @@ const { creator, creatorSlug, avatarUrl, city, bio, chips, isAgent = false, host
 // fallback instead of initials). `||` treats "" the same as absent.
 const name = creator.name || (creator.handle ? `@${creator.handle}` : 'avaTOK creator');
 const verified = !isAgent && Boolean(creator.kyc_verified);
-const profileHref = creatorSlug ? `/c/${encodeURIComponent(creatorSlug)}` : null;
+const profileHref = creatorSlug ? creatorPath(creatorSlug) : null;
 const initials = hostInitials || name.split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'AC';
 ---
 

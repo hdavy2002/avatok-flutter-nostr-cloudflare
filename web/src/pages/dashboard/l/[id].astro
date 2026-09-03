@@ -5,6 +5,7 @@
 // creator's edit affordance lives as a small bar on the public page when the
 // viewer owns the listing, so nothing is lost by dropping the dashboard twin.
 export const prerender = false;
+import { listingPath } from '../../../lib/urls';
 const { id } = Astro.params;
-return Astro.redirect(`/l/${encodeURIComponent(id!)}${Astro.url.search}`, 301);
+return Astro.redirect(`${listingPath({ id: id! })}${Astro.url.search}`, 301);
 ---

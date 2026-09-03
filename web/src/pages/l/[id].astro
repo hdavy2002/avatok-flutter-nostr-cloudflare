@@ -12,6 +12,7 @@ import Base from '../../layouts/Base.astro';
 import ListingDetailsComp from '../../components/ListingDetailsComp.astro';
 import { getListing, getListingReviews, getListingSlots, getExplore, getCreator, ApiError } from '../../lib/apiClient';
 import { listingOg } from '../../lib/og';
+import { listingPath } from '../../lib/urls';
 import type { Listing, ReviewList, ListingSlot, Card, Creator } from '../../lib/types';
 
 const { id } = Astro.params;
@@ -32,9 +33,13 @@ if (notFound || !listing) return new Response('Listing not found', { status: 404
 // [LIST-PAGE-2] SPEC-2026-09-01 §G — /l/<id> 301s to the pretty /<handle>/<slug>
 // URL once both exist, so every already-shared /l/<id> link keeps working
 // forever while new shares/crawls converge on the canonical pretty URL.
-const creatorHandle = listing.creator?.handle?.trim();
-if (creatorHandle && listing.slug?.trim()) {
-  return Astro.redirect(`/${encodeURIComponent(creatorHandle)}/${encodeURIComponent(listing.slug.trim())}`, 301);
+const canonicalPath = listingPath({
+  id: listing.id,
+  handle: listing.creator?.handle ?? null,
+  slug: listing.slug ?? null,
+});
+if (canonicalPath !== `/l/${encodeURIComponent(listing.id)}`) {
+  return Astro.redirect(canonicalPath, 301);
 }
 
 Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
