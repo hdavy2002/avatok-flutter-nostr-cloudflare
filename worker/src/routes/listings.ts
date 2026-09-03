@@ -1966,7 +1966,13 @@ export async function getListing(req: Request, env: Env, id: string): Promise<Re
   const r = await metaSession(env).prepare(`${CARD_SELECT} WHERE l.id=?1`).bind(id).first<any>();
   if (!r) return json({ error: "not found" }, 404);
   const isOwner = uid === r.creator_id;
-  if (r.status === "draft" && !isOwner) return json({ error: "not found" }, 404);
+  // Public details pages must only expose listings that have completed the
+  // creator/admin approval flow.  The owner can still preview any state from
+  // the dashboard, but pending, rejected, or otherwise unpublished listings
+  // must not leak through a guessed `/l/:id` URL.
+  if (!isOwner && !["published", "live"].includes(String(r.status))) {
+    return json({ error: "not found" }, 404);
+  }
   const promos = await promosFor(env, [id]);
   const cardStats = await cardStatsFor(env, [id]);
   const favs = await favoritesFor(env, uid, [id]); // [UI-MKT-3] heart state on the detail page

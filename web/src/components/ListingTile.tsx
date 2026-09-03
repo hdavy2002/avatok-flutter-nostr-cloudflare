@@ -272,6 +272,20 @@ export function ListingTile({
     })();
   }, [c.id, favBusy, favorited]);
 
+  // Keep sharing available from the compact card without changing the listing
+  // contract. The canonical URL is the same href used by the card itself.
+  const onShareClick = useCallback((e: MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const url = new URL(target, window.location.origin).toString();
+    capture('market_card_click', { listing_id: c.id, kind: c.kind ?? listing.kind ?? null, position, section, cta: 'share' });
+    if (navigator.share) {
+      void navigator.share({ title: c.title, url }).catch(() => undefined);
+    } else if (navigator.clipboard) {
+      void navigator.clipboard.writeText(url).catch(() => undefined);
+    }
+  }, [c.id, c.kind, c.title, listing.kind, position, section, target]);
+
   // [LIST-TRUST-1 §2.2] The credential line under the host — only after KYC,
   // and only for a consult listing that actually filled one in.
   const credential = lane === 'consult' && c.creator?.verified ? listing.credential : null;
@@ -361,6 +375,16 @@ export function ListingTile({
             >
               {favorited ? '♥' : '♡'}
             </button>
+            <button
+              type="button"
+              aria-label="Share listing"
+              onClick={onShareClick}
+              style={{
+                width: 30, height: 30, flex: 'none', borderRadius: '50%', border: `1.5px solid ${INK}`,
+                background: CREAM, color: INK, display: 'grid', placeItems: 'center',
+                fontSize: '0.875rem', lineHeight: 1, cursor: 'pointer',
+              }}
+            >↗</button>
           </div>
         </div>
 
