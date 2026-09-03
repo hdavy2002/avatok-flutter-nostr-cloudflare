@@ -213,14 +213,10 @@ function ExploreGridInner({
       {showLiveRail && <LiveNowRail />}
       {showSearch && <SearchBox value={q} onChange={setQ} />}
 
-      {/* [MARKET-FILTER-DRAWER-1 2026-09-03, owner decision] The rail is a
-          DRAWER now, closed by default at every width, because the permanent
-          248px column was squeezing a 4-up grid of wide-format cards into
-          ~230px tracks and crushing them. The grid gets the full row; the rail
-          arrives over it when asked for. The Filters button below carries the
-          applied-filter count so a collapsed rail can never hide the reason the
-          grid looks short. */}
-      <div className="flex flex-col items-stretch gap-8">
+      {/* [MARKET-BAZAAR-RESTORE-1] The original wide sticky rail returns on
+          large screens; phones/tablets keep the compact drawer so the cards
+          remain usable. The server-backed filter state is unchanged. */}
+      <div className="flex flex-col items-stretch gap-8 lg:grid lg:grid-cols-[248px_minmax(0,1fr)] lg:items-start lg:gap-8">
         <FilterRail
           open={filtersOpen}
           onClose={() => setFiltersOpen(false)}
@@ -257,7 +253,7 @@ function ExploreGridInner({
                 capture('market_filter_drawer_toggle', { open: true, applied: appliedCount });
                 setFiltersOpen(true);
               }}
-              className="inline-flex flex-none items-center gap-2 rounded-full border-zine border-ink bg-card px-5 py-2.5 font-label text-[0.75rem] font-extrabold uppercase tracking-[0.1em] text-ink shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
+              className="inline-flex flex-none items-center gap-2 rounded-full border-zine border-ink bg-card px-5 py-2.5 font-label text-[0.75rem] font-extrabold uppercase tracking-[0.1em] text-ink shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed lg:hidden"
               aria-expanded={filtersOpen}
             >
               <span aria-hidden="true">☰</span>

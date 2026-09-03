@@ -77,7 +77,10 @@ export function VerticalSection({
           of ~300px wide-format cards, 2-up tablet, 1-up phone, not "however many
           17rem tracks fit". gap-6 (24px) keeps the cards' 6×7px hard shadows
           clear of each other at every width. */}
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+      <div
+        className="grid gap-6"
+        style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,17rem),1fr))', gridAutoRows: '1fr' }}
+      >
         {listings.map((l, i) => (
           <ListingTile
             key={l.id}

@@ -142,6 +142,19 @@ const PAL_ORDER = ['teal', 'butter', 'oat', 'brick'] as const;
 const INK = '#161614';
 const CREAM = '#fdf1d3';
 
+/** Give each poster a little of the original 70s Hindi-film variety while
+ * keeping all listing copy and data exactly as supplied by the API. */
+function titleFaceFor(id: string): { family: string; style: 'normal' | 'italic' } {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  switch (h % 4) {
+    case 1: return { family: 'Georgia, Times New Roman, serif', style: 'italic' };
+    case 2: return { family: 'Impact, Anton, sans-serif', style: 'normal' };
+    case 3: return { family: 'Trebuchet MS, Nunito, sans-serif', style: 'normal' };
+    default: return { family: 'Anton, Impact, sans-serif', style: 'normal' };
+  }
+}
+
 /** Compact, dependency-free metadata glyphs. The visible card only needs the
  *  shape; the complete value remains available to assistive tech and as a
  *  native hover tooltip on each item. */
@@ -203,6 +216,7 @@ export function ListingTile({
   const c = toCardView(listing);
   const target = href ?? listingHref(listing);
   const p = paletteFor(c.id);
+  const titleFace = titleFaceFor(c.id);
   const impressionRef = useCardImpression({ listing_id: c.id, position, section });
 
   const lane = laneFor(listing, c);
@@ -293,7 +307,7 @@ export function ListingTile({
       {/* Photo band. The comp is a flat colour; a real listing has a cover, so the
           colour becomes the backdrop the photo sits on and the fallback when there
           is none. */}
-      <div style={{ height: 186, background: p.photo, position: 'relative' }}>
+      <div style={{ height: 'clamp(186px, 14vw, 300px)', background: p.photo, position: 'relative' }}>
         {c.poster && (
           <img
             src={cfImage(c.poster, { width, fit: 'cover' })}
@@ -392,21 +406,21 @@ export function ListingTile({
             shadow, and a tighter leading makes a wrapped second line collide
             with the shadow of the first (CLAUDE.md type rules). */}
         <h4 style={{
-          fontFamily: 'Anton, Impact, sans-serif', fontWeight: 400, fontSize: '1.4375rem',
+          fontFamily: titleFace.family, fontStyle: titleFace.style, fontWeight: 400, fontSize: 'clamp(1.4375rem, 1.8vw, 2.25rem)',
           lineHeight: 1.07, textTransform: 'uppercase', color: textCol, margin: 0,
           // Never negative tracking on display type — CLAUDE.md standing rule.
           letterSpacing: '.02em', wordSpacing: '.08em',
           textShadow: p.dark && p.shad ? `3px 3px 0 ${p.shad}` : 'none',
           display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
-          overflow: 'hidden', height: 'calc(1.4375rem * 1.07 * 2)',
+          overflow: 'hidden', height: 'calc(clamp(1.4375rem, 1.8vw, 2.25rem) * 1.07 * 2)',
         }}>
           {c.title}{price ? ` · ${price}` : ''}
         </h4>
 
         <p style={{
-          margin: 0, fontSize: '0.875rem', fontWeight: 500, lineHeight: 1.45, color: bodyCol,
+          margin: 0, fontSize: 'clamp(0.875rem, 1vw, 1.125rem)', fontWeight: 500, lineHeight: 1.45, color: bodyCol,
           display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
-          overflow: 'hidden', height: 'calc(0.875rem * 1.45 * 2)',
+          overflow: 'hidden', height: 'calc(clamp(0.875rem, 1vw, 1.125rem) * 1.45 * 2)',
         }}>
           {blurb}
         </p>
