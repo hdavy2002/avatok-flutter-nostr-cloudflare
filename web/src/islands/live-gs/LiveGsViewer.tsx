@@ -222,6 +222,11 @@ function Inner({ listingId, title, poster, price, creatorName, creatorHandle, cr
             creatorName={creatorName ?? null}
             creatorAvatar={creatorAvatar ?? null}
             myName={creatorHandle ?? state.creds.user_id}
+            chatApiKey={state.creds.chat?.api_key ?? ''}
+            chatUserId={state.creds.chat?.user_id ?? ''}
+            chatToken={state.creds.chat?.token ?? ''}
+            chatChannelId={state.creds.chat?.channel_id ?? ''}
+            chatChannelType={state.creds.chat?.channel_type}
             onLeave={leave}
           />
         </StreamCall>

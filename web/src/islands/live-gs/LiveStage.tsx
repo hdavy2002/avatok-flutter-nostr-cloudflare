@@ -20,6 +20,11 @@ export interface LiveStageProps {
   creatorName: string | null;
   creatorAvatar: string | null;
   myName: string;
+  chatApiKey: string;
+  chatUserId: string;
+  chatToken: string;
+  chatChannelId: string;
+  chatChannelType?: string;
   onLeave: () => void;
 }
 
@@ -41,7 +46,18 @@ function fmtElapsed(startedAt: Date | undefined, now: number): string {
 
 const RECONNECT_STUCK_MS = 15_000;
 
-export function LiveStage({ title, creatorName, creatorAvatar, myName, onLeave }: LiveStageProps) {
+export function LiveStage({
+  title,
+  creatorName,
+  creatorAvatar,
+  myName,
+  chatApiKey,
+  chatUserId,
+  chatToken,
+  chatChannelId,
+  chatChannelType,
+  onLeave,
+}: LiveStageProps) {
   const call = useCall();
   const { useCallCallingState, useIsCallLive, useCallStartedAt, useParticipantCount, useRemoteParticipants } =
     useCallStateHooks();
@@ -222,7 +238,15 @@ export function LiveStage({ title, creatorName, creatorAvatar, myName, onLeave }
           Live chat
         </div>
         <div className="min-h-0 flex-1">
-          <GsChat myName={myName} disabled={connectionLost} />
+          <GsChat
+            apiKey={chatApiKey}
+            userId={chatUserId}
+            token={chatToken}
+            channelId={chatChannelId}
+            channelType={chatChannelType}
+            myName={myName}
+            disabled={connectionLost}
+          />
         </div>
       </aside>
     </div>

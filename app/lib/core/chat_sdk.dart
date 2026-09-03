@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'analytics.dart';
 import 'api_auth.dart';
 import 'config.dart';
+import 'package:stream_chat/stream_chat.dart';
+import '../identity/identity.dart' show AccountScope;
 
 /// Provider-neutral chat foundation for the AvaTOK messenger surfaces.
 ///
@@ -200,7 +202,16 @@ class StubChatSdkGateway implements ChatSdkGateway {
 class ChatSdkFoundation {
   ChatSdkFoundation._();
 
-  static const ChatSdkGateway _gateway = StubChatSdkGateway();
+  /// Current gateway for the chat SDK seam.
+  ///
+  /// The default stays a fail-closed stub so the app never invents chat
+  /// credentials on its own, but the gateway must be replaceable at startup
+  /// once a real provider-backed implementation is wired in.
+  static ChatSdkGateway _gateway = const StubChatSdkGateway();
+
+  static void installGateway(ChatSdkGateway gateway) {
+    _gateway = gateway;
+  }
 
   static ChatSdkGateway get gateway => _gateway;
 
@@ -298,5 +309,102 @@ class ChatSdkFoundation {
       });
       return null;
     }
+  }
+}
+
+/// Minimal Stream Chat adapter for commercial chat/reactions/moderation.
+///
+/// Commercial screens keep their custom UI, but the live identity and channel
+/// state should come from the official Stream client and stay scoped to the
+/// active account.
+class StreamChatCommercialClient {
+  StreamChatCommercialClient._();
+
+  static StreamChatClient? _client;
+  static String? _accountScope;
+  static String? _userId;
+  static String? _apiKey;
+
+  static StreamChatClient? get client =>
+      _client != null && _accountScope == (AccountScope.id ?? '')
+          ? _client
+          : null;
+
+  static Future<StreamChatClient?> connect(ChatSdkAuthToken auth) async {
+    final scope = AccountScope.id ?? '';
+    final apiKey = auth.apiKey.trim();
+    if (scope.isEmpty ||
+        auth.userId.isEmpty ||
+        auth.token.isEmpty ||
+        apiKey.isEmpty) {
+      return null;
+    }
+    if (_client != null &&
+        _accountScope == scope &&
+        _userId == auth.userId &&
+        _apiKey == apiKey &&
+        !auth.isExpired) {
+      return _client;
+    }
+    await disconnect();
+    final client = StreamChatClient(apiKey, logLevel: Level.INFO);
+    await client.connectUser(
+      User(
+        id: auth.userId,
+        extraData: {
+          'account_scope': scope,
+          'service': auth.service,
+        },
+      ),
+      auth.token,
+    );
+    _client = client;
+    _accountScope = scope;
+    _userId = auth.userId;
+    _apiKey = apiKey;
+    return client;
+  }
+
+  static Future<void> disconnect() async {
+    final client = _client;
+    _client = null;
+    _accountScope = null;
+    _userId = null;
+    _apiKey = null;
+    if (client != null) {
+      await client.disconnectUser();
+    }
+  }
+
+  static String channelIdForThread(String threadId) {
+    final scope = AccountScope.id ?? '';
+    if (scope.isEmpty) {
+      throw StateError('Stream Chat channel scope unavailable');
+    }
+    return 'commercial:$scope:$threadId';
+  }
+
+  static Channel channelForThread({
+    required String threadId,
+    String type = 'messaging',
+  }) {
+    final client = _client;
+    if (client == null) {
+      throw StateError('Stream Chat client is not connected');
+    }
+    return client.channel(type, id: channelIdForThread(threadId));
+  }
+
+  /// Opens a server-authorized channel id. Commercial channels are supplied
+  /// by the Worker and must not be rewritten with the messenger namespace.
+  static Channel channelForId({
+    required String channelId,
+    String type = 'messaging',
+  }) {
+    final client = _client;
+    if (client == null) {
+      throw StateError('Stream Chat client is not connected');
+    }
+    return client.channel(type, id: channelId);
   }
 }

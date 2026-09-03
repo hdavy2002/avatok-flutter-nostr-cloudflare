@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:stream_video_flutter/stream_video_flutter.dart';
+import 'package:stream_chat_flutter/stream_chat_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/listings_api.dart';
@@ -476,6 +477,9 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
   @override
   Widget build(BuildContext context) {
     final others = _call.state.value.otherParticipants.toList();
+    final chatClient = widget.session.chatClient;
+    final chatChannel = widget.session.chatChannel;
+    final hasChat = chatClient != null && chatChannel != null;
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -505,44 +509,81 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
             ]),
           ),
           Expanded(
-            child: others.isEmpty
-                ? Center(
-                    child: Text(
-                        'Your camera is ready. Audience media will appear here when available.',
-                        textAlign: TextAlign.center,
-                        style: ADText.preview()))
-                : GridView.builder(
-                    padding: const EdgeInsets.all(Msg.s3),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: Msg.s3,
-                      mainAxisSpacing: Msg.s3,
-                      childAspectRatio: .8,
-                    ),
-                    itemCount: others.length,
-                    itemBuilder: (_, index) {
-                      final p = others[index];
-                      return ClipRRect(
-                        borderRadius: BorderRadius.circular(Msg.rLg),
-                        child: Container(
-                          color: AD.card,
-                          child:
-                              p.publishedTracks.containsKey(SfuTrackType.video)
-                                  ? StreamVideoRenderer(
-                                      call: _call,
-                                      participant: p,
-                                      videoTrackType: SfuTrackType.video)
-                                  : Center(
-                                      child: Icon(
-                                          PhosphorIcons.userCircle(
-                                              PhosphorIconsStyle.regular),
-                                          size: 48,
-                                          color: AD.textTertiary)),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: hasChat ? 3 : 4,
+                  child: others.isEmpty
+                      ? Center(
+                          child: Text(
+                              'Your camera is ready. Audience media will appear here when available.',
+                              textAlign: TextAlign.center,
+                              style: ADText.preview()))
+                      : GridView.builder(
+                          padding: const EdgeInsets.all(Msg.s3),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            crossAxisSpacing: Msg.s3,
+                            mainAxisSpacing: Msg.s3,
+                            childAspectRatio: .8,
+                          ),
+                          itemCount: others.length,
+                          itemBuilder: (_, index) {
+                            final p = others[index];
+                            return ClipRRect(
+                              borderRadius: BorderRadius.circular(Msg.rLg),
+                              child: Container(
+                                color: AD.card,
+                                child: p.publishedTracks
+                                        .containsKey(SfuTrackType.video)
+                                    ? StreamVideoRenderer(
+                                        call: _call,
+                                        participant: p,
+                                        videoTrackType: SfuTrackType.video)
+                                    : Center(
+                                        child: Icon(
+                                            PhosphorIcons.userCircle(
+                                                PhosphorIconsStyle.regular),
+                                            size: 48,
+                                            color: AD.textTertiary)),
+                              ),
+                            );
+                          },
                         ),
-                      );
-                    },
+                ),
+                if (hasChat)
+                  Expanded(
+                    flex: 2,
+                    child: Padding(
+                      padding:
+                          const EdgeInsets.fromLTRB(Msg.s4, 0, Msg.s4, Msg.s4),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(Msg.rLg),
+                        child: StreamChat(
+                          client: chatClient!,
+                          child: StreamChannel(
+                            channel: chatChannel!,
+                            child: const Column(
+                              children: [
+                                Padding(
+                                  padding: EdgeInsets.all(Msg.s3),
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Text('Live chat'),
+                                  ),
+                                ),
+                                Expanded(child: StreamMessageListView()),
+                                StreamMessageInput(),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
+              ],
+            ),
           ),
           if (widget.capabilities.captions)
             const Text('Captions available', style: TextStyle(fontSize: 12)),
@@ -697,6 +738,8 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
     final session = _session;
     final others = session?.call.state.value.otherParticipants.toList() ??
         const <CallParticipantState>[];
+    final chatClient = session?.chatClient;
+    final chatChannel = session?.chatChannel;
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: AppBar(
@@ -720,51 +763,88 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
           ),
         ),
         Expanded(
-          child: !active
-              ? Center(
-                  child: Text(
-                      'The creator has not started yet.\nKeep this screen open to join when the event begins.',
-                      textAlign: TextAlign.center,
-                      style: ADText.preview()))
-              : others.isEmpty
-                  ? Center(
-                      child: Text(
-                          'Live is on. Waiting for the creator’s camera…',
-                          style: ADText.preview()))
-                  : GridView.builder(
-                      padding: const EdgeInsets.all(Msg.s3),
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 1, childAspectRatio: 1.35),
-                      itemCount: others.length,
-                      itemBuilder: (_, index) {
-                        final p = others[index];
-                        return ClipRRect(
-                          borderRadius: BorderRadius.circular(Msg.rLg),
-                          child: Container(
-                            color: Colors.black,
-                            child: p.publishedTracks
-                                    .containsKey(SfuTrackType.video)
-                                ? StreamVideoRenderer(
-                                    call: session!.call,
-                                    participant: p,
-                                    videoTrackType: SfuTrackType.video)
-                                : Center(
-                                    child: Icon(
-                                        PhosphorIcons.userCircle(
-                                            PhosphorIconsStyle.regular),
-                                        size: 64,
-                                        // [DESIGN-GUARD-DEBT-1] Was
-                                        // Colors.white54. NOT AD.textTertiary
-                                        // despite what the guard's fix hint
-                                        // says — that token is ink-on-cream and
-                                        // this icon sits on the Colors.black
-                                        // tile above, where it would vanish.
-                                        color: AD.onMediaFaint)),
+          child: Row(
+            children: [
+              Expanded(
+                flex: chatClient != null && chatChannel != null ? 3 : 4,
+                child: !active
+                    ? Center(
+                        child: Text(
+                            'The creator has not started yet.\nKeep this screen open to join when the event begins.',
+                            textAlign: TextAlign.center,
+                            style: ADText.preview()))
+                    : others.isEmpty
+                        ? Center(
+                            child: Text(
+                                'Live is on. Waiting for the creator’s camera…',
+                                style: ADText.preview()))
+                        : GridView.builder(
+                            padding: const EdgeInsets.all(Msg.s3),
+                            gridDelegate:
+                                const SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 1, childAspectRatio: 1.35),
+                            itemCount: others.length,
+                            itemBuilder: (_, index) {
+                              final p = others[index];
+                              return ClipRRect(
+                                borderRadius: BorderRadius.circular(Msg.rLg),
+                                child: Container(
+                                  color: Colors.black,
+                                  child: p.publishedTracks
+                                          .containsKey(SfuTrackType.video)
+                                      ? StreamVideoRenderer(
+                                          call: session!.call,
+                                          participant: p,
+                                          videoTrackType: SfuTrackType.video)
+                                      : Center(
+                                          child: Icon(
+                                              PhosphorIcons.userCircle(
+                                                  PhosphorIconsStyle.regular),
+                                              size: 64,
+                                              // [DESIGN-GUARD-DEBT-1] Was
+                                              // Colors.white54. NOT AD.textTertiary
+                                              // despite what the guard's fix hint
+                                              // says — that token is ink-on-cream and
+                                              // this icon sits on the Colors.black
+                                              // tile above, where it would vanish.
+                                              color: AD.onMediaFaint)),
+                                ),
+                              );
+                            },
                           ),
-                        );
-                      },
+              ),
+              if (chatClient != null && chatChannel != null)
+                Expanded(
+                  flex: 2,
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.fromLTRB(Msg.s4, 0, Msg.s4, Msg.s4),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(Msg.rLg),
+                      child: StreamChat(
+                        client: chatClient!,
+                        child: StreamChannel(
+                          channel: chatChannel!,
+                          child: const Column(
+                            children: [
+                              Padding(
+                                padding: EdgeInsets.all(Msg.s3),
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text('Live chat'),
+                                ),
+                              ),
+                              Expanded(child: StreamMessageListView()),
+                              StreamMessageInput(),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
+                  ),
+                ),
+            ],
+          ),
         ),
         if (widget.capabilities.captions)
           const Text('Captions available', style: TextStyle(fontSize: 12)),

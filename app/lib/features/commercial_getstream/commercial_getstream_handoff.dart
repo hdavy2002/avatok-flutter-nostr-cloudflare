@@ -5,8 +5,10 @@
 // call type and call id. Keeping this contract separate from the widgets makes
 // it difficult for a future UI to accidentally fall back to Cloudflare, a
 // legacy CallRoom, or a client-generated room.
-import 'package:stream_video_flutter/stream_video_flutter.dart';
+import 'package:stream_video_flutter/stream_video_flutter.dart' as video;
+import 'package:stream_chat/stream_chat.dart' as chat;
 
+import '../../core/chat_sdk.dart';
 import '../../core/remote_config.dart';
 import '../../identity/identity.dart' show AccountScope;
 
@@ -68,6 +70,12 @@ class CommercialGetStreamJoinHandoff {
     required this.callId,
     required this.sessionId,
     required this.expiresAtMs,
+    this.chatChannelType,
+    this.chatChannelId,
+    this.chatApiKey,
+    this.chatUserId,
+    this.chatToken,
+    this.chatExpiresAtMs,
   });
 
   final CommercialGetStreamProduct product;
@@ -80,6 +88,12 @@ class CommercialGetStreamJoinHandoff {
   final String callId;
   final String sessionId;
   final int expiresAtMs;
+  final String? chatChannelType;
+  final String? chatChannelId;
+  final String? chatApiKey;
+  final String? chatUserId;
+  final String? chatToken;
+  final int? chatExpiresAtMs;
 
   bool get isExpired => DateTime.now().millisecondsSinceEpoch >= expiresAtMs;
 
@@ -149,8 +163,49 @@ class CommercialGetStreamJoinHandoff {
       callId: requiredString('call_id'),
       sessionId: requiredString('session_id'),
       expiresAtMs: expiry,
+      chatChannelType: (json['chat'] is Map
+                      ? json['chat']['channel_type']
+                      : json['chat_channel_type'])
+                  ?.toString()
+                  .trim()
+                  .isNotEmpty ==
+              true
+          ? (json['chat'] is Map
+                  ? json['chat']['channel_type']
+                  : json['chat_channel_type'])
+              .toString()
+              .trim()
+          : null,
+      chatChannelId: (json['chat'] is Map
+                      ? json['chat']['channel_id']
+                      : json['chat_channel_id'])
+                  ?.toString()
+                  .trim()
+                  .isNotEmpty ==
+              true
+          ? (json['chat'] is Map
+                  ? json['chat']['channel_id']
+                  : json['chat_channel_id'])
+              .toString()
+              .trim()
+          : null,
+      chatApiKey: json['chat'] is Map
+          ? json['chat']['api_key']?.toString().trim()
+          : null,
+      chatUserId: json['chat'] is Map
+          ? json['chat']['user_id']?.toString().trim()
+          : null,
+      chatToken:
+          json['chat'] is Map ? json['chat']['token']?.toString().trim() : null,
+      chatExpiresAtMs:
+          json['chat'] is Map && json['chat']['token_expires_at'] is num
+              ? (json['chat']['token_expires_at'] as num).toInt() * 1000
+              : null,
     );
   }
+
+  bool get hasChatChannel =>
+      (chatChannelType ?? '').isNotEmpty && (chatChannelId ?? '').isNotEmpty;
 
   CommercialGetStreamMediaPlan get mediaPlan =>
       CommercialGetStreamMediaPlan.forRole(role);
@@ -159,7 +214,8 @@ class CommercialGetStreamJoinHandoff {
     if (isExpired) throw StateError('Commercial media authorization expired');
     final account = AccountScope.id;
     if (account == null || account.isEmpty || account != userId) {
-      throw StateError('Commercial media authorization is not for this account');
+      throw StateError(
+          'Commercial media authorization is not for this account');
     }
   }
 }
@@ -181,10 +237,10 @@ class CommercialGetStreamJoinFlags {
         consultationJoinEnabled: RemoteConfig.commercialConsultJoinEnabled,
       );
 
-  bool allows(CommercialGetStreamProduct product) => product ==
-          CommercialGetStreamProduct.liveEvent
-      ? liveJoinEnabled
-      : consultationJoinEnabled;
+  bool allows(CommercialGetStreamProduct product) =>
+      product == CommercialGetStreamProduct.liveEvent
+          ? liveJoinEnabled
+          : consultationJoinEnabled;
 }
 
 /// Initial media state passed to GetStream's [Call.join]. The SDK defaults
@@ -212,21 +268,33 @@ class CommercialGetStreamMediaPlan {
     );
   }
 
-  CallConnectOptions get connectOptions => CallConnectOptions(
-        camera: TrackOption.fromSetting(enabled: cameraEnabled),
-        microphone: TrackOption.fromSetting(enabled: microphoneEnabled),
+  video.CallConnectOptions get connectOptions => video.CallConnectOptions(
+        camera: video.TrackOption.fromSetting(enabled: cameraEnabled),
+        microphone: video.TrackOption.fromSetting(enabled: microphoneEnabled),
       );
 }
 
 class CommercialGetStreamSession {
-  const CommercialGetStreamSession({required this.client, required this.call});
+  const CommercialGetStreamSession({
+    required this.client,
+    required this.call,
+    this.chatClient,
+    this.chatChannel,
+  });
 
-  final StreamVideo client;
-  final Call call;
+  final video.StreamVideo client;
+  final video.Call call;
+  final chat.StreamChatClient? chatClient;
+  final chat.Channel? chatChannel;
 
   Future<void> leave() async {
     try {
       await call.leave().timeout(const Duration(seconds: 3));
+    } catch (_) {}
+    try {
+      if (chatClient != null) {
+        await chatClient!.disconnectUser().timeout(const Duration(seconds: 3));
+      }
     } catch (_) {}
     try {
       await client.disconnect().timeout(const Duration(seconds: 3));
@@ -261,9 +329,11 @@ class ServerAuthorizedCommercialGetStreamConnector
     implements CommercialGetStreamConnector, CommercialGetStreamMediaConnector {
   const ServerAuthorizedCommercialGetStreamConnector();
 
+  @override
   Future<CommercialGetStreamSession> connect(
     CommercialGetStreamJoinHandoff handoff,
-  ) => connectWithMedia(
+  ) =>
+      connectWithMedia(
         handoff,
         cameraEnabled: handoff.mediaPlan.cameraEnabled,
         microphoneEnabled: handoff.mediaPlan.microphoneEnabled,
@@ -276,9 +346,9 @@ class ServerAuthorizedCommercialGetStreamConnector
     required bool microphoneEnabled,
   }) async {
     handoff.assertForAccount();
-    final client = StreamVideo.create(
+    final client = video.StreamVideo.create(
       handoff.apiKey,
-      user: User.regular(userId: handoff.userId, name: 'AvaTOK'),
+      user: video.User.regular(userId: handoff.userId, name: 'AvaTOK'),
       userToken: handoff.userToken,
     );
     try {
@@ -286,8 +356,33 @@ class ServerAuthorizedCommercialGetStreamConnector
       if (connected.isFailure) {
         throw StateError('GetStream authorization rejected');
       }
+      if (!handoff.hasChatChannel) {
+        throw StateError('Commercial chat channel descriptor missing');
+      }
+      final chatToken = handoff.chatToken == null || handoff.chatApiKey == null
+          ? null
+          : ChatSdkAuthToken(
+              userId: handoff.chatUserId ?? handoff.userId,
+              token: handoff.chatToken!,
+              apiKey: handoff.chatApiKey!,
+              expiresAtMs: handoff.chatExpiresAtMs ?? handoff.expiresAtMs,
+            );
+      if (chatToken == null ||
+          chatToken.token.isEmpty ||
+          chatToken.apiKey.isEmpty ||
+          chatToken.isExpired) {
+        throw StateError('Commercial chat credentials unavailable');
+      }
+      final chatClient = await StreamChatCommercialClient.connect(chatToken);
+      if (chatClient == null) {
+        throw StateError('Commercial chat client unavailable');
+      }
+      final chatChannel = StreamChatCommercialClient.channelForId(
+        channelId: handoff.chatChannelId!,
+        type: handoff.chatChannelType!,
+      );
       final call = client.makeCall(
-        callType: StreamCallType.fromString(handoff.callType),
+        callType: video.StreamCallType.fromString(handoff.callType),
         id: handoff.callId,
       );
       final plan = CommercialGetStreamMediaPlan(
@@ -302,10 +397,16 @@ class ServerAuthorizedCommercialGetStreamConnector
                 handoff.role == CommercialGetStreamRole.host,
       );
       if (joined.isFailure) throw StateError('GetStream room join rejected');
-      return CommercialGetStreamSession(client: client, call: call);
+      return CommercialGetStreamSession(
+        client: client,
+        call: call,
+        chatClient: chatClient,
+        chatChannel: chatChannel,
+      );
     } catch (_) {
       await client.disconnect();
       await client.dispose();
+      await StreamChatCommercialClient.disconnect();
       rethrow;
     }
   }

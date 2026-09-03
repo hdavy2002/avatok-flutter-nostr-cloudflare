@@ -43,6 +43,12 @@ dependencies:
   # the fix is retiring `flutter_webrtc` from the old call lane (P4), not re-commenting these.
   stream_video_flutter: ^1.4.3
   stream_video_push_notification: ^1.4.3
+  # Official Stream Chat client stack for commercial chat/reactions/moderation.
+  # We use the low-level client plus the Flutter core package so the app keeps
+  # its custom UI while still getting Stream's controllers/state management.
+  stream_chat: ^9.7.0
+  stream_chat_flutter_core: ^9.7.0
+  stream_chat_flutter: ^9.7.0
   # Wi-Fi ⇆ cellular handoff detection → proactive ICE restart mid-call.
   # [STREAM-LANE-1] ^6.1.0 -> ^7.0.0: required by stream_video ^1.4.3.
   connectivity_plus: ^7.0.0
