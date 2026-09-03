@@ -10,6 +10,7 @@ import { request, ApiError } from '../../lib/apiClient';
 import { getActiveTokenWaited } from '../../lib/clerk';
 import { inr } from '../../lib/money';
 import { capture, withTrace } from '../../lib/analytics';
+import { useAuth } from '@clerk/clerk-react';
 
 // ───────────────────────── response shapes ─────────────────────────
 export interface Overview {
@@ -54,8 +55,8 @@ export const COMPARATORS = ['gt', 'gte', 'lt', 'lte', 'eq', 'ne'] as const;
 export const ANALYTICS_INSIGHTS = ['dau', 'events_total', 'signups', 'errors', 'error_by_endpoint', 'active_now', 'trend_daily'] as const;
 
 // ───────────────────────── core ─────────────────────────
-async function adminReq<T>(path: string, opts: { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown; query?: Record<string, any> } = {}): Promise<T> {
-  const auth = await getActiveToken();
+async function adminReq<T>(path: string, opts: { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown; query?: Record<string, any>; auth?: string | null } = {}): Promise<T> {
+  const auth = opts.auth === undefined ? await getActiveToken() : opts.auth;
   return request<T>(path, { method: opts.method ?? 'GET', body: opts.body, query: opts.query, auth });
 }
 
@@ -79,7 +80,7 @@ async function adminAction<T>(action: string, target: string, fn: () => Promise<
 }
 
 // ───────────────────────── named helpers ─────────────────────────
-export const getOverview = () => adminReq<Overview>('/api/admin/overview');
+export const getOverview = (auth?: string | null) => adminReq<Overview>('/api/admin/overview', { auth });
 export const getAdminListings = (status = 'all') => adminReq<{ listings: any[] }>('/api/admin/listings', { query: { status } });
 export const adminListingAction = (id: string, action: string) => adminReq<any>(`/api/admin/listings/${encodeURIComponent(id)}`, { method: 'POST', body: { action } });
 export const getLive = () => adminReq<LiveSnapshot>('/api/admin/live');
@@ -135,6 +136,7 @@ export type GateState = 'checking' | 'admin' | 'anon' | 'forbidden';
 /** Resolve the session token, then confirm admin via the Worker (a 403 means
  *  "not an admin"). The Worker is the real boundary — we never trust the client. */
 export function useAdminGate(): { state: GateState; error: string | null; retry: () => void } {
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const [state, setState] = useState<GateState>('checking');
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
@@ -142,13 +144,13 @@ export function useAdminGate(): { state: GateState; error: string | null; retry:
   useEffect(() => {
     let alive = true;
     void (async () => {
+      if (!isLoaded) return;
       setState('checking'); setError(null);
-      // Admin pages mount beside their panel, so wait for ClerkBridge to
-      // publish the live session token before failing closed as anonymous.
-      const token = await getActiveTokenWaited();
+      if (!isSignedIn) { if (alive) setState('anon'); return; }
+      const token = await getToken();
       if (!token) { if (alive) setState('anon'); return; }
       try {
-        await getOverview();
+        await getOverview(token);
         if (alive) setState('admin');
         // Reveal the (otherwise hidden) Admin nav link for confirmed admins only.
         try { localStorage.setItem('avatok_is_admin', '1'); } catch { /* ignore */ }
@@ -161,7 +163,7 @@ export function useAdminGate(): { state: GateState; error: string | null; retry:
       }
     })();
     return () => { alive = false; };
-  }, [nonce]);
+  }, [nonce, getToken, isLoaded, isSignedIn]);
 
   return { state, error, retry: () => setNonce((n) => n + 1) };
 }
