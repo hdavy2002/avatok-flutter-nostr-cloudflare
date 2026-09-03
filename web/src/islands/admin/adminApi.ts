@@ -7,7 +7,7 @@
  */
 import { useEffect, useState } from 'react';
 import { request, ApiError } from '../../lib/apiClient';
-import { getActiveTokenWaited } from '../../lib/clerk';
+import { getActiveToken } from '../../lib/clerk';
 import { inr } from '../../lib/money';
 import { capture, withTrace } from '../../lib/analytics';
 import { useAuth } from '@clerk/clerk-react';
