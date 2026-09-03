@@ -1,6 +1,7 @@
 import type { Env } from "../types";
-import { json } from "../util";
+import { json, sha256Hex } from "../util";
 import { requireAdmin } from "./admin_money";
+import { generateImage } from "./ava_image";
 
 // Admin-only moderation queue. Poster metadata is kept in listings.attrs so this
 // remains compatible with the existing schema and does not alter creator data.
@@ -17,13 +18,28 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
   const body = await req.json().catch(() => ({})) as any;
   const action = String(body.action || "");
   const db = env.DB_META;
-  const row = await db.prepare("SELECT id,status,attrs FROM listings WHERE id=?1").bind(id).first<any>();
+  const row = await db.prepare("SELECT id,title,description,status,attrs FROM listings WHERE id=?1").bind(id).first<any>();
   if (!row) return json({ error: "not found" }, 404);
   const now = Date.now();
   if (!["approve_listing","reject_listing","generate_poster","approve_poster","reject_poster","publish"].includes(action)) return json({ error: "invalid action" }, 400);
   let attrs: any = {}; try { attrs = row.attrs ? JSON.parse(row.attrs) : {}; } catch { attrs = {}; }
   if (action === "generate_poster") {
-    attrs.poster = { ...(attrs.poster || {}), status: "draft", prompt: body.prompt || null, generated_at: now };
+    const prompt = String(body.prompt || `Create a vivid Indian film-poster artwork for the event titled "${row.title || "Untitled listing"}". Scene and mood: ${row.description || "a lively creator marketplace experience"}. Use fictional characters only, bold readable typography, printed-poster texture, and no real celebrity likenesses.`).slice(0, 1800);
+    // Use the existing Vertex/Gemini image provider and public media bucket. The
+    // generated asset is saved as a reviewable draft; admin approval is still
+    // required before publish. This keeps image generation out of the card and
+    // reuses the same moderation/provider path as Ava image generation.
+    attrs.poster = { ...(attrs.poster || {}), status: "generating", generated_at: now, provider: "vertex", prompt_hash: await sha256Hex(prompt) };
+    await db.prepare("UPDATE listings SET attrs=?2, updated_at=?3 WHERE id=?1").bind(id, JSON.stringify(attrs), now).run();
+    try {
+      const generated = await generateImage(env, "", prompt, a.uid);
+      const hash = await sha256Hex(generated.bytes);
+      const key = `u/${a.uid}/public/posters/${id}/${hash}.png`;
+      await env.BLOBS.put(key, generated.bytes, { httpMetadata: { contentType: "image/png" } });
+      attrs.poster = { ...attrs.poster, status: "draft", url: `${env.BLOSSOM_BASE_URL}/${key}`, key, bytes: generated.bytes.byteLength, completed_at: Date.now() };
+    } catch (e) {
+      attrs.poster = { ...attrs.poster, status: "failed", error: String((e as any)?.message || "provider unavailable").slice(0, 180) };
+    }
   } else if (action === "approve_poster") {
     if (!attrs.poster) return json({ error: "poster not generated" }, 409);
     attrs.poster.status = "approved";

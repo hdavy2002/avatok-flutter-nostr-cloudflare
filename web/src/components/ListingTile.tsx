@@ -7,10 +7,13 @@ import {
 } from '../lib/card';
 import { statusPill, ctaExtra } from '../lib/copy';
 import type { Card as CardModel, CardView } from '../lib/types';
+import type { Listing } from '../lib/types';
 // [WEB-POSTHOG-1] Contract: Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md §2.3.
 import { capture } from '../lib/analytics';
 import { getActiveToken, requireGuestAuth } from '../lib/clerk';
-import { addFavorite, removeFavorite } from '../lib/apiClient';
+import { addFavorite, removeFavorite, getListing } from '../lib/apiClient';
+import { Modal } from './Modal';
+import BookingFlow from '../islands/checkout/BookingFlow';
 
 export interface ListingTileProps {
   listing: CardModel;
@@ -215,6 +218,8 @@ export function ListingTile({
   // §2.3 the sample-voice preview only ever appears next to TALK NOW, and only
   // once a real clip exists — hidden by default (no caller passes the prop yet).
   const showSuno = lane === 'agent' && Boolean(voiceHighlightUrl);
+  const [bookingListing, setBookingListing] = useState<Listing | null>(null);
+  const [bookingLoading, setBookingLoading] = useState(false);
 
   const onCardClick = useCallback((e: MouseEvent<HTMLAnchorElement>) => {
     // [WEB-POSTHOG-1] §2.3 market_card_click. The whole card is one <a> so a
@@ -223,6 +228,11 @@ export function ListingTile({
     // was, defaulting to "details" for a click anywhere else on the card.
     const ctaTarget = (e.target as HTMLElement).closest<HTMLElement>('[data-cta]');
     const cta = ctaTarget?.dataset.cta ?? 'details';
+    if (cta === 'book' || cta === 'talk' || cta === 'reserve' || cta === 'calendar') {
+      e.preventDefault();
+      setBookingLoading(true);
+      void getListing(c.id).then((full) => setBookingListing(full)).catch(() => undefined).finally(() => setBookingLoading(false));
+    }
     capture('market_card_click', { listing_id: c.id, kind: c.kind ?? listing.kind ?? null, position, section, cta });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [c.id, c.kind, listing.kind, position, section]);
@@ -291,6 +301,7 @@ export function ListingTile({
   const credential = lane === 'consult' && c.creator?.verified ? listing.credential : null;
 
   return (
+    <>
     <a
       ref={impressionRef}
       href={target}
@@ -512,6 +523,17 @@ export function ListingTile({
         </div>
       </div>
     </a>
+    {(bookingLoading || bookingListing) && (
+      <Modal
+        open
+        dismissable={false}
+        maxWidth={560}
+        title={<div className="flex items-center justify-between gap-3"><span>{bookingListing?.title ?? 'Opening booking…'}</span><button type="button" aria-label="Close booking" onClick={() => { setBookingListing(null); setBookingLoading(false); }} className="text-2xl leading-none text-ink">×</button></div>}
+      >
+        {bookingListing ? <BookingFlow listing={bookingListing} /> : <div className="py-8 text-center font-mono font-bold text-inkSoft">Loading booking…</div>}
+      </Modal>
+    )}
+    </>
   );
 }
 
