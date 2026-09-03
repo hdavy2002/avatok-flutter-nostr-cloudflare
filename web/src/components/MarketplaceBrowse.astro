@@ -38,6 +38,10 @@ const mpBase = `${hrefBase}/marketplace`;
 // owner's decision. The three with no data source (see verticals.ts) still get
 // a tile — they are real products — but they are marked, not silently dead.
 const tiles = VERTICALS;
+// [MARKET-TILE-CURATION-1] Keep these products available to the server and
+// section model, but omit the three tiles the owner does not want in the first
+// row of the public bazaar navigation.
+const visibleTiles = tiles.filter((v) => !['astro_tarot', 'consulting', 'glow_up'].includes(v.id));
 
 // The comp gives each tile a different truck-art strip. Cycling by INDEX (not
 // at random) keeps a tile's strip stable across renders — a tile that changes
@@ -82,7 +86,7 @@ const gutters = showHero ? 'mx-auto max-w-[1760px] px-4 sm:px-10' : '';
 
 <section class={showHero ? 'relative -mt-10' : 'pt-2'}>
   <div class={`grid gap-3.5 ${gutters}`} style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));">
-    {tiles.map((v, i) => {
+    {visibleTiles.map((v, i) => {
       const soon = VERTICALS_WITHOUT_A_SOURCE.has(v.id);
       return (
         <a
