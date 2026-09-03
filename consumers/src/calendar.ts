@@ -58,6 +58,7 @@ function reminderHtml(tier: "24h" | "60m", o: { title: string; start: number; ot
     <h2 style="margin:0 0 12px">${head}</h2>
     <p style="margin:0 0 8px;font-weight:600">${o.title}</p>
     <p style="margin:0 0 8px">${line}</p>
+    <p style="margin:0 0 8px">${tier === "24h" ? "Your invite is ready whenever you need it." : "The same invite lives in your calendar attachment."}</p>
     <p style="margin:20px 0"><a href="${o.joinUrl}" style="background:#08C4C4;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:600">${tier === "24h" ? "View booking" : "Join now"}</a></p>
     <p style="color:#999;font-size:12px;margin-top:20px">AvaTOK · times shown in UTC — the join page and app show your local time.</p>
   </div>`;

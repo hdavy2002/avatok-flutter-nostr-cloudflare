@@ -347,6 +347,31 @@ async function captureConsumerException(
 
 async function sendEmail(msg: EmailMsg, env: Env): Promise<void> {
   if (!env.BREVO_API_KEY) { console.warn("BREVO_API_KEY unset; skipping email"); return; }
+  const dedupeKey = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(JSON.stringify({
+      to: msg.to,
+      subject: msg.subject,
+      html: msg.html,
+      from: msg.from ?? null,
+      replyTo: msg.replyTo ?? null,
+      attachments: (msg.attachments ?? []).map((a) => ({ name: a.name, content: a.content })),
+    })),
+  ).then((buf) => [...new Uint8Array(buf)].map((byte) => byte.toString(16).padStart(2, "0")).join(""));
+  const outboxKey = `brevo:${dedupeKey}`;
+  try {
+    const row = await env.DB_META.prepare("SELECT state FROM email_outbox WHERE outbox_key=?1 LIMIT 1").bind(outboxKey).first<{ state: string }>();
+    if (row?.state === "sent") return;
+    if (!row) {
+      await env.DB_META.prepare(
+        "INSERT INTO email_outbox (outbox_key, kind, state, payload_json, created_at, updated_at) VALUES (?1,'brevo_send','pending',?2,?3,?3)",
+      ).bind(outboxKey, JSON.stringify({ to: msg.to, subject: msg.subject }), Date.now()).run();
+    }
+    const locked = await env.DB_META.prepare(
+      "UPDATE email_outbox SET state='sending', updated_at=?2 WHERE outbox_key=?1 AND state IN ('pending','failed')",
+    ).bind(outboxKey, Date.now()).run();
+    if ((locked.meta?.changes ?? 0) === 0 && row) return;
+  } catch { /* best-effort dedupe; send continues */ }
   const res = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
     headers: { "api-key": env.BREVO_API_KEY, "Content-Type": "application/json", accept: "application/json" },
@@ -362,7 +387,11 @@ async function sendEmail(msg: EmailMsg, env: Env): Promise<void> {
       ...(msg.attachments?.length ? { attachment: msg.attachments.map((a) => ({ name: a.name, content: a.content })) } : {}),
     }),
   });
-  if (!res.ok) throw new Error("Brevo send failed: " + res.status + " " + (await res.text()).slice(0, 200));
+  if (!res.ok) {
+    try { await env.DB_META.prepare("UPDATE email_outbox SET state='failed', error_message=?2, updated_at=?3 WHERE outbox_key=?1").bind(outboxKey, (await res.text()).slice(0, 500), Date.now()).run(); } catch { /* noop */ }
+    throw new Error("Brevo send failed: " + res.status + " " + (await res.text()).slice(0, 200));
+  }
+  try { await env.DB_META.prepare("UPDATE email_outbox SET state='sent', sent_at=?2, updated_at=?2 WHERE outbox_key=?1").bind(outboxKey, Date.now()).run(); } catch { /* noop */ }
 }
 
 // --- analytics consumer (PostHog /batch; identity by uid only, never PII) ---
