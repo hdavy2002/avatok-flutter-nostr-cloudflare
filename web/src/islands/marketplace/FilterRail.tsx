@@ -51,15 +51,17 @@ export interface FilterRailProps {
   onClear: () => void;
   /** True when anything is actually narrowed — drives SAB HATAO. */
   narrowed: boolean;
-  /** Drawer visibility below lg; large screens keep the original sticky rail. */
+  /** Drawer visibility. The rail is closed by default at every width. */
   open: boolean;
   onClose: () => void;
 }
 
 /**
- * How many filters are actually applied. This rides on the compact Filters
- * button and must count exactly what narrows the grid, nothing else. Sort is
- * excluded on purpose: it reorders, it never hides a card.
+ * How many filters are actually applied. The rail is COLLAPSED by default now,
+ * so this number is the only thing standing between a visitor and "why are
+ * there only two listings?" — it rides on the Filters button and must count
+ * exactly what narrows the grid, nothing else. Sort is excluded on purpose: it
+ * reorders, it never hides a card.
  */
 export function activeFilterCount(value: RailState): number {
   let n = 0;
@@ -118,20 +120,22 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
     return () => { document.body.style.overflow = prev; };
   }, [open]);
 
+  if (!open) return null;
+
   return (
     <div
-      className={`${open ? 'fixed inset-0 z-50 flex' : 'hidden'} lg:static lg:z-auto lg:block lg:self-stretch`}
-      style={open ? { background: 'rgba(35,27,20,0.45)' } : undefined}
-      onClick={open ? onClose : undefined}
-      role={open ? 'dialog' : undefined}
-      aria-modal={open ? true : undefined}
+      className="fixed inset-0 z-50 flex"
+      style={{ background: 'rgba(35,27,20,0.45)' }}
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
       aria-label="Filters"
     >
       <aside
         // pt-24: the site header is FIXED, and it paints over the top of this
         // panel. Without the offset the drawer's own "FILTERS" heading and its
         // close button sit underneath the nav bar and cannot be clicked.
-        className="h-full w-full max-w-[330px] overflow-y-auto overscroll-contain bg-paper p-4 pt-24 shadow-zine lg:sticky lg:top-24 lg:h-auto lg:w-full lg:max-w-none lg:bg-transparent lg:p-0 lg:pt-0 lg:shadow-none"
+        className="h-full w-full max-w-[330px] overflow-y-auto overscroll-contain bg-paper p-4 pt-24 shadow-zine"
         onClick={(e) => e.stopPropagation()}
       >
       <div className="overflow-hidden rounded-zine border-zine border-ink bg-card shadow-zine">
