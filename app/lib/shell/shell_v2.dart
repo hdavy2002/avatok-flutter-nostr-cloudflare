@@ -167,6 +167,7 @@ class ShellV2 extends StatefulWidget {
       case 'marketplace':
       case 'listing':
       case 'commercial_session':
+      case 'live':
       case 'wallet':
       case 'payout':
         return RootId.services;

@@ -7,6 +7,7 @@ import '../features/avatok/add_by_link_sheet.dart';
 import '../features/avatok/ava_number.dart';
 import '../features/avatok/contacts.dart';
 import '../features/booking/commercial_customer_screens.dart';
+import '../features/avalive/avalive_discovery.dart';
 import '../features/explore/listing_detail.dart';
 import 'analytics.dart';
 import 'affiliate_bind_service.dart';
@@ -75,9 +76,25 @@ class DeepLinks {
       });
       return;
     }
+    final live = _livePath(uri);
+    if (live.isNotEmpty) {
+      Analytics.capture('live_link_opened', {
+        'path_shape': '/live',
+        'scheme': uri.scheme,
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final st = _navKey?.currentState;
+        if (st == null) return;
+        st.push(MaterialPageRoute(
+          builder: (_) => const AvaLiveDiscovery(),
+        ));
+      });
+      return;
+    }
     final session = _commercialSession(uri);
     if (session != null) {
       Analytics.capture('commercial_session_link_opened', {
+        'path_shape': '/session',
         'scheme': uri.scheme,
         'has_listing_id': session.$1 != null,
         'has_booking_id': session.$2 != null,
@@ -198,6 +215,15 @@ class DeepLinks {
     final listing = clean(uri.queryParameters['listing_id'] ?? uri.queryParameters['listing']);
     final booking = clean(uri.queryParameters['booking_id'] ?? uri.queryParameters['booking']);
     return listing == null && booking == null ? null : (listing, booking);
+  }
+
+  /// Live discovery link — `avatok://live` or `https://avatok.ai/live`.
+  static String _livePath(Uri uri) {
+    final isCustom = uri.scheme == 'avatok' &&
+        (uri.host == 'live' || uri.path == 'live' || uri.path == '/live');
+    final isHttp = (uri.scheme == 'https' || uri.scheme == 'http') &&
+        uri.host.endsWith('avatok.ai') && uri.path.startsWith('/live');
+    return isCustom || isHttp ? 'live' : '';
   }
 
   /// Token of a booking join link — `https://avatok.ai/j/<token>` or

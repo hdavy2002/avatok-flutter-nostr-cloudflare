@@ -6,6 +6,8 @@ import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../avavoice/avavoice_home.dart';
+import '../avavision/avavision_home.dart';
 import '../identity/listing_liveness_gate.dart';
 import '../explore/explore_home.dart';
 import 'marketplace_browse.dart' show marketplaceTitle;
@@ -63,6 +65,30 @@ class MarketplaceHub extends StatelessWidget {
               Analytics.capture('marketplace_opened', {'via': 'hub_browse'});
               Navigator.of(context).push(MaterialPageRoute(
                 builder: (_) => ExploreHome(onMenu: () => Navigator.of(context).maybePop()),
+              ));
+            },
+          ),
+          const SizedBox(height: Msg.s3),
+          _Tile(
+            icon: PhosphorIcons.microphone(PhosphorIconsStyle.regular),
+            title: 'Voice creator studio',
+            subtitle: 'Build and manage AI voice agents',
+            onTap: () {
+              Analytics.capture('creator_studio_opened', {'studio': 'avavoice'});
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => const AvaVoiceHome(),
+              ));
+            },
+          ),
+          const SizedBox(height: Msg.s3),
+          _Tile(
+            icon: PhosphorIcons.eye(PhosphorIconsStyle.regular),
+            title: 'Vision creator studio',
+            subtitle: 'Build and manage AI vision coaches',
+            onTap: () {
+              Analytics.capture('creator_studio_opened', {'studio': 'avavision'});
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => const AvaVisionHome(),
               ));
             },
           ),
