@@ -3,6 +3,15 @@ import { json } from "../util";
 import { requireAdmin } from "./admin_money";
 import { track } from "../hooks";
 import { generateListingPoster, type PosterState } from "../lib/listing_poster";
+// [C03 MKT-PUBLISH-UNIFY-1] The one authoritative publish path — see the doc
+// comment on publishListingAuthoritative() in routes/listings.ts. `publish`
+// below no longer does its own raw status UPDATE; it defers to the same
+// function the creator's own publish endpoint calls.
+import { publishListingAuthoritative } from "./listings";
+// [C01 MKT-STATUS-GATE-1] Same transition table setListingStatus()/publish use —
+// see item 4: `reject_listing` used to flip ANY status straight to 'rejected'
+// with no source-status guard at all.
+import { checkTransition } from "../lib/listing_transitions";
 
 // Admin-only moderation queue. Poster metadata is kept in listings.attrs so this
 // remains compatible with the existing schema and does not alter creator data.
@@ -131,6 +140,23 @@ function writeListingApprovalHistory(
   );
 }
 
+// [ADMIN-QUEUE-TELEMETRY-1] web/src/islands/admin/* carries zero PostHog and
+// there is no time-in-queue metric anywhere for the review pipeline. This reads
+// the `next_status='pending_review'` row `submitListingForApproval()` writes
+// (routes/listings.ts) so `queue_ms` on the publish event below is a real
+// measurement, not a guess. Best-effort: a lookup failure must never block a
+// publish, it just means that one event carries `queue_ms: null`.
+async function queuedSinceMs(env: Env, listingId: string): Promise<number | null> {
+  try {
+    const row = await env.DB_META.prepare(
+      `SELECT created_at FROM listing_approval_history
+        WHERE listing_id=?1 AND next_status='pending_review'
+        ORDER BY created_at DESC LIMIT 1`,
+    ).bind(listingId).first<{ created_at: number }>();
+    return row ? Number(row.created_at) : null;
+  } catch { return null; }
+}
+
 function approvalRequired(listing: { id: string; status: string; poster_status?: string | null; approval_status?: string | null }): Response {
   return json({
     approved: false,
@@ -198,6 +224,59 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
     if (!reason) return json({ error: "reason required" }, 400);
     attrs.poster = { ...(attrs.poster || {}), status: "rejected", feedback: reason, rejected_reason: reason };
   }
+  // [C03 MKT-PUBLISH-UNIFY-1] `publish` is handled ENTIRELY by
+  // publishListingAuthoritative() — no raw status UPDATE here anymore. The two
+  // admin-only pre-checks below (approved status, poster approved) stay: they are
+  // ADDITIONAL gates specific to the moderation queue, not a replacement for
+  // anything the shared publisher does. See the doc comment on
+  // publishListingAuthoritative() in routes/listings.ts for the full list of
+  // checks this now runs that the old bare UPDATE skipped.
+  if (action === "publish") {
+    if (String(row.status) !== "approved") return approvalRequired({ id: row.id, status: row.status, approval_status: row.status, poster_status: attrs.poster?.status ?? null });
+    if (attrs.poster?.status !== "approved") return json({ error: "poster approval required" }, 409);
+
+    const result = await publishListingAuthoritative(env, { listingId: id, actor: "admin", actorUid: a.uid });
+    const nextStatus = String((result.body as any)?.status ?? row.status);
+    const reasonForHistory = result.ok ? "published_by_admin" : String((result.body as any)?.error ?? "publish_failed");
+
+    await writeListingApprovalHistory(env, {
+      listingId: id,
+      actorId: a.uid,
+      action,
+      previousStatus: row.status,
+      nextStatus: result.ok ? nextStatus : row.status,
+      reason: reasonForHistory,
+      posterStatus: attrs.poster?.status ?? null,
+    }).run();
+    // Keep moderation actions visible in the existing admin audit stream.
+    try {
+      await env.DB_WALLET.prepare(
+        "INSERT INTO admin_audit (id, admin_id, action, target, meta, created_at) VALUES (?1,?2,?3,?4,?5,?6)",
+      ).bind(crypto.randomUUID(), a.uid, `listing_${action}`, id, JSON.stringify({
+        previous_status: row.status, next_status: result.ok ? nextStatus : row.status,
+        poster_status: attrs.poster?.status ?? null, reason: reasonForHistory, ok: result.ok,
+      }), now).run();
+    } catch { /* audit is best-effort, matching existing admin routes */ }
+
+    // [ADMIN-QUEUE-TELEMETRY-1] `queue_ms` — how long this listing sat in the
+    // review queue before an admin published it. See queuedSinceMs() above.
+    const queuedAt = await queuedSinceMs(env, id);
+    safeTrack(env, a.uid, "admin_listing_published", {
+      listing_id: id,
+      ok: result.ok,
+      previous_status: row.status ?? null,
+      next_status: result.ok ? nextStatus : row.status,
+      poster_status: attrs.poster?.status ?? null,
+      admin_id: a.uid,
+      creator_id: row.creator_id ?? null,
+      queue_ms: queuedAt != null ? now - queuedAt : null,
+      fail_reason: result.ok ? null : (result.body as any)?.error ?? null,
+    });
+
+    if (!result.ok) return json(result.body, result.status);
+    return json({ ok: true, id, status: nextStatus, poster: attrs.poster || null, admin_id: a.uid, reason: null, ...result.body });
+  }
+
   let next = row.status;
   if (action === "approve_listing") {
     if (!["draft", "pending_review"].includes(String(row.status))) return json({ error: "listing not awaiting approval", status: row.status }, 409);
@@ -206,22 +285,44 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
   if (action === "reject_listing") {
     const reason = String(body.reason || "").trim();
     if (!reason) return json({ error: "reason required" }, 400);
+    // [C01/C03 admin-reject-guard] Previously this flipped ANY status straight to
+    // 'rejected' with no source-status check at all — a terminal listing
+    // (completed/cancelled) or an already-live one could be "rejected" with
+    // nothing to stop the write. checkTransition() is the single authority on
+    // (from, to, actor) legality everywhere else in this pipeline (see C01);
+    // admin reject now obeys the same table instead of being a silent bypass.
+    const check = checkTransition(String(row.status), "rejected", "admin");
+    if (!check.ok) {
+      safeTrack(env, a.uid, "listing_moderation_transition_refused", {
+        listing_id: id, from: row.status, to: "rejected", reason: check.reason, action,
+      });
+      return json({ error: "transition_not_allowed", reason: check.reason, status_now: row.status, allowed_targets: check.allowedTargets }, 409);
+    }
     next = "rejected";
-  }
-  if (action === "publish") {
-    if (String(row.status) !== "approved") return approvalRequired({ id: row.id, status: row.status, approval_status: row.status, poster_status: attrs.poster?.status ?? null });
-    if (attrs.poster?.status !== "approved") return json({ error: "poster approval required" }, 409);
-    next = "published";
   }
   let coverMedia = row.cover_media ?? null;
   if (Array.isArray(attrs.__generated_cover_media)) {
+    // [C03 cover-cap] Same 1-5 cover cap publishListingAuthoritative() enforces
+    // for creators. lib/listing_poster.ts:132-136 PREPENDS the AI poster onto
+    // cover_media with no cap of its own, so a poster generated on top of an
+    // already-full gallery (5 uploads) produces 6 — which the creator's own
+    // publish endpoint then rejects with "max 5 photos". Not fixed there — we do
+    // not own lib/listing_poster.ts — but this write must not silently truncate
+    // media a reviewer just approved (dropping one of their photos would be its
+    // own kind of wrong): refuse the write and name the count so the reviewer
+    // knows exactly why and can remove one before saving.
+    if (attrs.__generated_cover_media.length > 5) {
+      return json({
+        error: "max 5 photos", code: "cover_cap_exceeded",
+        cover_count: attrs.__generated_cover_media.length, limit: 5,
+        message: `Poster generation produced ${attrs.__generated_cover_media.length} cover images; the limit is 5. Remove one before saving.`,
+      }, 400);
+    }
     coverMedia = JSON.stringify(attrs.__generated_cover_media);
     delete attrs.__generated_cover_media;
   }
-  const reasonForHistory = action === "publish"
-    ? "published_by_admin"
-    : (action === "reject_listing" ? String(body.reason || "").trim()
-      : (action === "reject_poster" ? String(body.reason || body.feedback || "").trim() : null));
+  const reasonForHistory = action === "reject_listing" ? String(body.reason || "").trim()
+    : (action === "reject_poster" ? String(body.reason || body.feedback || "").trim() : null);
   const history = writeListingApprovalHistory(env, {
     listingId: id,
     actorId: a.uid,

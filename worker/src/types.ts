@@ -494,6 +494,11 @@ export interface Env {
   PLAY_SERVICE_ACCOUNT_JSON?: string;
   AFFILIATE_TOKEN_SECRET?: string;
   AFFILIATE_PAYOUT_ALLOWLIST?: string;
+  // [FREE-ENTRY-GATE-1 2026-09-04] Comma-separated Clerk uids, ADDITIVE to
+  // ADMIN_UIDS, allowed to create/hold a free_entry listing while
+  // freeEntryAllowlistOnly is true (config.ts) — same shape as
+  // AFFILIATE_PAYOUT_ALLOWLIST above. See lib/free_entry_gate.ts.
+  FREE_ENTRY_ALLOWLIST?: string;
 
   // R2 S3 API creds for presigned digital-download URLs (Phase 5). Unset → the
   // OLX download route streams bytes through the Worker as a fallback.

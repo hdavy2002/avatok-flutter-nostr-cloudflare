@@ -105,6 +105,10 @@ const MESSAGES: Record<string, string> = {
   approval_required: 'This listing has been sent for review. Someone on the team checks it before it goes live — we’ll let you know.',
   'listing not draft': 'This listing has already been submitted, so there’s nothing to send. Check its status below.',
   section_unavailable: 'That section isn’t accepting new listings right now.',
+
+  // --- [FREE-ENTRY-GATE-1] worker/src/lib/free_entry_gate.ts, enforced in
+  // worker/src/routes/listings.ts createListing/updateListing (403 on both). ---
+  free_entry_not_allowed: 'Free shows are limited to test accounts right now. Turn off “This is a free show” and set a price to continue.',
 };
 
 /** HTTP status texts the worker's `res.statusText` fallback can produce — never a

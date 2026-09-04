@@ -115,6 +115,16 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
   const [repeatWeeks, setRepeatWeeks] = useState(4);
   const [repeating, setRepeating] = useState(false);
   const [creatorInfo, setCreatorInfo] = useState<CreatorInfo | undefined>(undefined);
+  // [FREE-ENTRY-GATE-1] Fail closed: hidden until GET /api/listings/mine
+  // (a per-user, authenticated read) actually says `free_entry_allowed ===
+  // true` for THIS uid. This used to read the PUBLIC /api/config flag
+  // (`freeEntryAllowlistOnly`), which is the same value for every visitor —
+  // so it hid the checkbox from admins and allowlisted testers too, the
+  // exact accounts the gate is supposed to let through. `free_entry_allowed`
+  // is computed server-side by the same `freeEntryAllowed()` the create/edit
+  // routes enforce, so the control's visibility now tracks the real
+  // per-account verdict instead of a global posture.
+  const [freeEntryLocked, setFreeEntryLocked] = useState(true);
   const stepStartRef = useRef<number>(Date.now());
   // Guards against a double-click on "Save and continue" firing two overlapping
   // background saves (which could double-POST the draft before its id comes
@@ -193,6 +203,29 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
     capture('listing_step_view', { step: STEP_LABELS[step] });
   }, [step]);
 
+  // [FREE-ENTRY-GATE-1] Per-user, authenticated read of the SAME gate the
+  // create/edit routes enforce (worker/src/lib/free_entry_gate.ts via
+  // GET /api/listings/mine's `free_entry_allowed`). A failure leaves the
+  // control hidden (fail closed), same posture as identity_required
+  // elsewhere in this file: never show a control the server is going to 403.
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const token = await getActiveToken();
+        const r = await request<{ free_entry_allowed?: boolean }>('/api/listings/mine', { auth: token });
+        if (!alive) return;
+        const locked = r.free_entry_allowed !== true;
+        setFreeEntryLocked(locked);
+        if (locked) capture('listing_free_entry_control_hidden', { reason: 'not_allowlisted' });
+      } catch {
+        if (!alive) return;
+        capture('listing_free_entry_control_hidden', { reason: 'capability_fetch_failed' });
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
   const isLive = draft.kind === 'live_event';
   const flavourKey = `${draft.category}:${draft.kind}`;
 
@@ -268,6 +301,15 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
       const field = e instanceof ApiError && e.body && typeof e.body === 'object' && 'field' in (e.body as any) ? String((e.body as any).field) : null;
       setError(msg);
       if (field) setFieldErr({ field, message: msg });
+      // [FREE-ENTRY-GATE-1] Server-side refusal (worker/src/lib/free_entry_gate.ts) —
+      // this account tried to create/hold free_entry=1 and isn't allowlisted. The
+      // control should already be hidden for this account (see the config-driven
+      // freeEntryLocked effect above), so reaching this means either a stale
+      // client, a race with the config fetch, or an edited request — still worth
+      // its own event so a spike is visible without grepping listing_save.reason.
+      if (e instanceof ApiError && apiErrorCode(e) === 'free_entry_not_allowed') {
+        capture('listing_free_entry_blocked', { step: STEP_LABELS[currentStep] });
+      }
       capture('listing_field_error', { field: field ?? 'unknown', reason: e instanceof ApiError ? e.error : 'network' });
       capture('listing_save', {
         outcome: 'error', status: e instanceof ApiError ? e.status : 0,
@@ -485,7 +527,7 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
       </div>
 
       <div className="max-w-2xl">
-        {step === 0 && <Step1Type draft={draft} patch={patch} err={fieldErr} />}
+        {step === 0 && <Step1Type draft={draft} patch={patch} err={fieldErr} freeEntryLocked={freeEntryLocked} />}
         {step === 1 && (
           <Step2Pitch
             draft={draft} patch={patch} err={fieldErr} categories={categories} creator={creatorInfo}

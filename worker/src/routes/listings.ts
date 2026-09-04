@@ -65,6 +65,16 @@ import {
   type ListingEntitlementOk,
 } from "../lib/listing_billing";
 import { readConfig } from "./config";
+// [C01 MKT-STATUS-GATE-1] The server-owned status transition table — see the file
+// header there for the exact bypass this closes (setListingStatus used to accept
+// any source status for live|completed|cancelled and every source but 'draft' for
+// draft, which made rejected/pending_review/approved/completed/cancelled -> live
+// all reachable from the client).
+import { checkTransition } from "../lib/listing_transitions";
+// [Step0 FREE-ENTRY-GATE-1] free_entry is metered with no server-side circuit
+// breaker (see the file header there) — creation/edit into free_entry=1 is
+// allowlist-gated, not open to every creator.
+import { freeEntryAllowed } from "../lib/free_entry_gate";
 
 const APP = "avaexplore";
 // live_event/consult = creator services; sell/buy/social = AvaMarketplace listings.
@@ -207,6 +217,40 @@ function encodeAttrs(v: unknown): { json: string | null; error?: string } {
     return { json: null, error: `attrs too large (${bytes} bytes; max ${ATTRS_MAX_BYTES})` };
   }
   return { json: s };
+}
+
+// [C02 MKT-POSTER-PROTECT-1] `attrs.poster` is SERVER-OWNED moderation state:
+// admin_listings.ts reads `attrs.poster.status` as its publish gate (:213) and its
+// regeneration lock (:167). `normFields` used to accept `attrs` wholesale and
+// `encodeAttrs` only checks object-ness/size, so a creator PUT of
+// `{"attrs":{"poster":{"status":"approved"}}}` satisfied the admin publish gate and
+// blocked regeneration — forging or erasing moderation state through a field the
+// creator otherwise legitimately owns (category attrs, etc).
+//
+// This also fixes a related silent-erasure bug: because `attrs` is a full-column
+// REPLACE (not a merge), any normal creator edit that resends `attrs` without a
+// `poster` key — which is every edit a client makes through a form that doesn't
+// round-trip the poster object — would have wiped a previously-approved poster.
+// Splicing the server's existing value back in fixes both directions at once.
+//
+// If another key is ever found to need the same protection, add it here — do not
+// assume `poster` is the only one.
+const RESERVED_ATTRS_KEYS = ["poster"] as const;
+
+/** Strip server-owned keys from creator-supplied `attrs` and splice the server's
+ *  own current value back in, so a creator can neither forge nor erase them.
+ *  `existing` is the row's ALREADY-STORED attrs object (or null for a brand-new
+ *  listing, which has no poster yet). Non-object input is returned unchanged —
+ *  encodeAttrs()/contentAttrsError() are what reject a malformed shape; this
+ *  helper only ever narrows a shape that is already going to be validated. */
+function sanitizeCreatorAttrs(raw: unknown, existing: Record<string, unknown> | null): unknown {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+  const out: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
+  for (const k of RESERVED_ATTRS_KEYS) {
+    delete out[k];
+    if (existing && existing[k] !== undefined) out[k] = existing[k];
+  }
+  return out;
 }
 
 const COMMERCIAL_REFUND_WINDOWS = new Set([0, 12, 24, 48]);
@@ -982,11 +1026,31 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
   if (gate) return gate;
   const id = crypto.randomUUID();
   const now = Date.now();
+  // [C02] Strip/replace server-owned attrs keys BEFORE normFields() touches them —
+  // there is no existing row yet, so `existing` is null (a brand-new listing has no
+  // poster to preserve, only one to refuse forging).
+  if (b.attrs !== undefined) b.attrs = sanitizeCreatorAttrs(b.attrs, null);
   const f = normFields(b);
   // [LIST-CONTENT-2] spec §C.1 — new scalar columns (schedule_mode, timezone,
   // billing_unit, vibe_tags, …) validated before anything is written.
   const fieldsError = listingContentFieldsError(b);
   if (fieldsError) return json({ ok: false, error: fieldsError, message: fieldsError, field: "listing" }, 400);
+  // [Step0 C01-adjacent] free_entry is allowlist-gated (see free_entry_gate.ts) —
+  // checked against the RESULTING state (f.free_entry, after normFields), not the
+  // raw body, though for create the two always agree (no existing row to diff
+  // against). `freeSessionsEnabled=true` + `freeSessionTokensPerAttendeeMinute=1`
+  // are already live in prod, so this is the actual safety mechanism, not a formality.
+  const effectiveFreeEntryCreate = Number(f.free_entry ?? 0) === 1;
+  if (effectiveFreeEntryCreate) {
+    const cfg = await readConfig(env);
+    if (!freeEntryAllowed(env, cfg, ctx.uid)) {
+      track(env, ctx.uid, "listing_free_entry_refused", APP, { listing_id: null, kind, reason: "free_entry_not_allowed" });
+      return json({
+        ok: false, error: "free_entry_not_allowed", field: "free_entry",
+        message: "Free-entry listings are limited to approved creators right now.",
+      }, 403);
+    }
+  }
   // [AVA-MKT-VERT-1] §2.2 — attrs is the one field a caller can get wrong in a way
   // worth naming, so say so instead of dropping it silently (normFields would).
   if (b.attrs !== undefined) {
@@ -998,7 +1062,14 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
     // simply `f.free_entry === 1`: there is no existing row yet at create time, so the
     // "effective" value IS whatever this request sends (normFields already forced
     // f.price=0 when free_entry=1, above).
-    const contentError = contentAttrsError(b.attrs, Number(f.free_entry) === 1);
+    const contentError = contentAttrsError(b.attrs, effectiveFreeEntryCreate);
+    if (contentError) return json({ ok: false, error: contentError, message: contentError, field: "attrs" }, 422);
+  } else if (effectiveFreeEntryCreate) {
+    // [C03/cap-hole] `attrs` wasn't sent at all, so the block above never ran — but
+    // free_entry=1 with no attrs means content_free_cap_tokens can never have been
+    // supplied either. Run the same check against an empty attrs object so this
+    // path can't create a free listing with an unset (0) cap.
+    const contentError = contentAttrsError({}, true);
     if (contentError) return json({ ok: false, error: contentError, message: contentError, field: "attrs" }, 422);
   }
   const blocked = await guardWrite(req, env, ctx.uid, APP, [
@@ -1109,6 +1180,13 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
   if (MARKET_KINDS.has(String(row.kind)) && !(await marketplacePublishOn(env))) return marketplaceOff();
   if (row.status === "cancelled" || row.status === "completed") return json({ error: "listing closed" }, 409);
   const b = (await req.json().catch(() => ({}))) as any;
+  // [C02] Strip/replace server-owned attrs keys BEFORE normFields() (and every
+  // validator below) sees them, splicing the row's OWN stored poster back in so a
+  // creator-supplied attrs blob can neither forge nor silently erase it.
+  if (b.attrs !== undefined) {
+    const existingAttrs = parseJson<Record<string, unknown>>(row.attrs, {});
+    b.attrs = sanitizeCreatorAttrs(b.attrs, existingAttrs);
+  }
   const f = normFields(b);
   // [LIST-CONTENT-2] spec §C.1 — new scalar columns.
   const fieldsError = listingContentFieldsError(b);
@@ -1119,6 +1197,23 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
   // needs the force — so recompute the EFFECTIVE value from the row when absent here.
   const effectiveFreeEntry = ("free_entry" in f ? Number(f.free_entry) : Number(row.free_entry ?? 0)) === 1;
   if (effectiveFreeEntry) f.price = 0;
+  // [Step0 C01-adjacent] free_entry is allowlist-gated — checked against the
+  // RESULTING state, not just an incoming `free_entry:true`: a creator must not be
+  // able to flip an ALREADY-EXISTING listing to free_entry=1 either (e.g. by editing
+  // only `attrs` on a listing that was already free_entry=1 as a way to probe, or a
+  // client bug that resends `free_entry:true` on every save). Someone already on the
+  // allowlist keeps editing their existing free listing normally — freeEntryAllowed
+  // returns true for them regardless of "existing" status.
+  if (effectiveFreeEntry) {
+    const cfg = await readConfig(env);
+    if (!freeEntryAllowed(env, cfg, ctx.uid)) {
+      track(env, ctx.uid, "listing_free_entry_refused", APP, { listing_id: id, kind: row.kind, reason: "free_entry_not_allowed" });
+      return json({
+        ok: false, error: "free_entry_not_allowed", field: "free_entry",
+        message: "Free-entry listings are limited to approved creators right now.",
+      }, 403);
+    }
+  }
   // [LIST-CONTENT-2] spec §C.1 — "on update accept an explicit slug once — reject with
   // 409 if taken by another of the creator's listings". Validated and uniqueness-
   // checked HERE (not in normFields, which has no DB handle) before `keys` is built so
@@ -1194,6 +1289,16 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
       }, 422);
     }
     attrsMissing = v.missing;
+  } else if (effectiveFreeEntry) {
+    // [C03/cap-hole] A PUT of just `{"free_entry": true}` (no `attrs` in the body at
+    // all) used to skip contentAttrsError entirely, because it only ran inside the
+    // `b.attrs !== undefined` branch above — producing a listing with free_entry=1
+    // and content_free_cap_tokens unset (reads back as 0, an unmetered free lane).
+    // Validate the EFFECTIVE attrs (the row's existing, already-stored attrs — this
+    // call isn't changing them) against the now-true effective free_entry.
+    const existingAttrs = parseJson<Record<string, unknown>>(row.attrs, {});
+    const contentError = contentAttrsError(existingAttrs, true);
+    if (contentError) return json({ ok: false, error: contentError, message: contentError, field: "attrs" }, 422);
   }
 
   const blocked = await guardWrite(req, env, ctx.uid, APP, [
@@ -1315,6 +1420,16 @@ export async function submitListingForApproval(req: Request, env: Env, id: strin
   } catch {
     // audit best-effort; core state and history already committed atomically.
   }
+  // [Telemetry] This step previously emitted no server event at all — the only
+  // record of a submit-for-review was the D1 approval-history row, which PostHog
+  // can't query. draft->pending_review is also the one creator-initiated transition
+  // `checkTransition` grants unconditionally (`creator_submit`, requires:"none"), so
+  // this event is the honest signal of submission VOLUME independent of the status
+  // endpoint's own `listing_status_changed`.
+  track(env, ctx.uid, "listing_submitted_for_review", APP, {
+    listing_id: id, kind: row.kind, category: row.category,
+    previous_status: row.status, poster_auto_generate: shouldAutoGenerate,
+  });
 
   if (shouldAutoGenerate) {
     // The ExecutionContext is threaded in from index.ts so the isolate is held
@@ -1455,38 +1570,89 @@ export async function listingFeeQuote(req: Request, env: Env): Promise<Response>
   }
 }
 
-// POST /api/listings/:id/publish — KYC gate + slot claim (live) / rules check (consult).
-export async function publishListing(req: Request, env: Env, id: string): Promise<Response> {
-  const ctx = await requireUser(req, env);
-  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+// [C03 MKT-PUBLISH-UNIFY-1] THE ONE AUTHORITATIVE PUBLISH PATH — every gate, the
+// entitlement charge, and every side effect a listing publish must run, in one
+// place. Extracted from the body of publishListing() (below) so the admin
+// moderation queue's "Publish" button (admin_listings.ts adminListingAction,
+// action:"publish") runs through the SAME checks a creator's own publish call
+// does, instead of the raw `UPDATE listings SET status=...` that used to sit at
+// admin_listings.ts:236. That bare write skipped: identity/liveness, KYC,
+// category-active, the 1-5 cover cap, future starts_at, duration_min bounds,
+// capacity enum, consult availability, section gating, marketplacePublishOn, the
+// entitlement quote+charge, ftsSync, the creator_profiles insert and fanout.
+// Two proven consequences: an admin-published listing never reached
+// `listings_fts` (un-searchable by name — exploreSearch hard-returns empty on an
+// index miss), and a poster generated on top of 5 uploads = 6 covers shipped,
+// which the creator's OWN publish endpoint rejects with "max 5 photos".
+//
+// publishListing() (the HTTP handler right below this) is now a thin wrapper:
+// authenticate, resolve `id`, hand off here with actor:"creator". Ownership
+// (`l.creator_id !== actorUid` -> 404) is enforced HERE, but only for the
+// creator actor — admin has no ownership relationship to check, and its own
+// pre-checks (status==='approved', poster.status==='approved') stay in
+// admin_listings.ts because they are ADDITIONAL gates on top of this function,
+// never a replacement for anything it does.
+//
+// 🚨 CHARGE AND IDENTITY ARE EVALUATED AGAINST `l.creator_id` (`creatorUid`
+// below), NEVER `args.actorUid`. Every step that touches money or KYC/liveness
+// state — identityGate, requireKyc, claimBlock, the availability_rules lookup,
+// quoteListingEntitlement/consumeListingEntitlement/finalizeListingPublication,
+// creator_profiles, fanout, brainIngest — is keyed on the listing's CREATOR. An
+// admin clicking Publish in the review queue must not spend the admin's own
+// wallet balance or be blocked by the admin's own KYC/liveness state: the
+// listing being published belongs to, and is metered against, the person who
+// authored it, regardless of who pressed the button.
+export async function publishListingAuthoritative(
+  env: Env,
+  args: { listingId: string; actor: "creator" | "admin"; actorUid: string },
+): Promise<
+  | { ok: true; status: number; body: Record<string, unknown> }
+  | { ok: false; status: number; body: Record<string, unknown> }
+> {
+  const { listingId: id, actor, actorUid } = args;
   const db = metaDb(env);
   const l = await db.prepare("SELECT * FROM listings WHERE id=?1").bind(id).first<any>();
-  if (!l || l.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
+  if (!l) return { ok: false, status: 404, body: { error: "not found" } };
+  if (actor === "creator" && l.creator_id !== actorUid) return { ok: false, status: 404, body: { error: "not found" } };
+  const creatorUid = String(l.creator_id);
+  // Additive telemetry only — these two keys are absent (or creator-valued) on
+  // the creator path, so the pre-existing event shape for creators is unchanged.
+  const actorProps: Record<string, unknown> = actor === "admin" ? { actor: "admin", admin_id: actorUid } : { actor: "creator" };
+
   if (MARKET_KINDS.has(String(l.kind)) && String(l.status) === "published") {
     const reconciled = await markListingEntitlementPublished(env, { listingId: id });
-    if (reconciled) return json({ ok: true, status: "published", reconciled: true });
+    if (reconciled) return { ok: true, status: 200, body: { ok: true, status: "published", reconciled: true } };
   }
   if (String(l.status) !== "approved") {
-    return json({
-      approved: false,
-      code: "approval_required",
-      reason: "approval_required",
-      listing_id: id,
-      status: String(l.status ?? "draft"),
-      approval_status: String(l.status ?? "draft"),
-      poster_status: (() => {
-        try { return l.attrs ? JSON.parse(String(l.attrs))?.poster?.status ?? null : null; } catch { return null; }
-      })(),
-      message: "Listing approval is required before publish.",
-    }, 409);
+    return {
+      ok: false, status: 409, body: {
+        approved: false,
+        code: "approval_required",
+        reason: "approval_required",
+        listing_id: id,
+        status: String(l.status ?? "draft"),
+        approval_status: String(l.status ?? "draft"),
+        poster_status: (() => {
+          try { return l.attrs ? JSON.parse(String(l.attrs))?.poster?.status ?? null : null; } catch { return null; }
+        })(),
+        message: "Listing approval is required before publish.",
+      },
+    };
   }
-  if (MARKET_KINDS.has(String(l.kind)) && !(await marketplacePublishOn(env))) return marketplaceOff();
+  if (MARKET_KINDS.has(String(l.kind)) && !(await marketplacePublishOn(env))) {
+    return { ok: false, status: 503, body: { error: "marketplace_publish_disabled", message: "Marketplace publishing is temporarily unavailable." } };
+  }
 
   // Marketplace listing gate (2026-07-10): a Didit LIVENESS pass, valid 90 days.
   // Covers publish AND edit-to-republish (a re-publish always funnels back through
-  // here). No phone check — phone verification was removed app-wide.
-  const lg = await identityGate(env, ctx.uid, String(l.kind), id);
-  if (lg) return lg;
+  // here). No phone check — phone verification was removed app-wide. Gated on the
+  // CREATOR's identity state — see the "creatorUid, never actorUid" note above.
+  const lg = await identityGate(env, creatorUid, String(l.kind), id);
+  if (lg) {
+    let body: Record<string, unknown> = {};
+    try { body = await lg.json(); } catch { /* best-effort */ }
+    return { ok: false, status: lg.status, body };
+  }
 
   const isMarket = MARKET_KINDS.has(String(l.kind));
   if (isMarket) {
@@ -1495,10 +1661,13 @@ export async function publishListing(req: Request, env: Env, id: string): Promis
     // NOTE: identity IS enforced — identityGate() above already required a Didit
     // liveness pass. The old "3-factor (video+email+phone), not enforced yet" note
     // here was wrong on both counts: there is no phone factor, and the gate is live.
-    if (!l.title) return json({ error: "title required" }, 400);
+    if (!l.title) return { ok: false, status: 400, body: { error: "title required" } };
     const mc = parseJson(l.cover_media, [] as unknown[]);
-    if (Array.isArray(mc) && mc.length > 5) return json({ error: "max 5 photos" }, 400);
-    if (!(Number(l.price) >= 0)) return json({ error: "bad price" }, 400);
+    // [C03 cover-cap] `cover_count` is additive (a new field on an unchanged
+    // error/status) so the admin queue can show a reviewer WHY, without changing
+    // the shape a creator-facing client already parses.
+    if (Array.isArray(mc) && mc.length > 5) return { ok: false, status: 400, body: { error: "max 5 photos", cover_count: mc.length, limit: 5 } };
+    if (!(Number(l.price) >= 0)) return { ok: false, status: 400, body: { error: "bad price" } };
   } else {
     // Creator services (live_event/consult) — KYC + photos + valid category + slot/availability.
     //
@@ -1516,22 +1685,22 @@ export async function publishListing(req: Request, env: Env, id: string): Promis
     // which is prod's state on 2026-08-29. `listingPublishKycRequired` back to true is a
     // prerequisite in Specs/SPEC-2026-08-29-PAID-SESSIONS-FIX-AND-GUEST-PAY.md Phase 4.
     const kycRequired = await listingPublishKycRequired(env);
-    if (kycRequired === null) return json({ error: "identity configuration unavailable" }, 503);
+    if (kycRequired === null) return { ok: false, status: 503, body: { error: "identity configuration unavailable" } };
     if (kycRequired) {
-      const gate = await requireKyc(env, ctx.uid);
-      if (gate) return json({ error: gate.error, reason: "kyc" }, gate.status);
+      const kycGate = await requireKyc(env, creatorUid);
+      if (kycGate) return { ok: false, status: kycGate.status, body: { error: kycGate.error, reason: "kyc" } };
     } else {
-      track(env, ctx.uid, "listing_publish_kyc_exempt", APP, { listing_id: id, listing_kind: l.kind });
+      track(env, creatorUid, "listing_publish_kyc_exempt", APP, { listing_id: id, listing_kind: l.kind, ...actorProps });
     }
-    if (!l.title || !l.category) return json({ error: "title and category required" }, 400);
+    if (!l.title || !l.category) return { ok: false, status: 400, body: { error: "title and category required" } };
     // Listing photos are mandatory: 1–5 (owner decision 2026-06-11).
     const covers = parseJson(l.cover_media, [] as unknown[]);
     if (!Array.isArray(covers) || covers.length < 1) {
-      return json({ error: "cover_required", detail: "Add at least one photo (up to 5) before publishing." }, 400);
+      return { ok: false, status: 400, body: { error: "cover_required", detail: "Add at least one photo (up to 5) before publishing." } };
     }
-    if (covers.length > 5) return json({ error: "max 5 photos" }, 400);
+    if (covers.length > 5) return { ok: false, status: 400, body: { error: "max 5 photos", cover_count: covers.length, limit: 5 } };
     const cat = await db.prepare("SELECT 1 FROM listing_categories WHERE id=?1 AND active=1").bind(l.category).first();
-    if (!cat) return json({ error: "unknown category" }, 400);
+    if (!cat) return { ok: false, status: 400, body: { error: "unknown category" } };
 
     // [MARKET-SECTION-2 2026-08-31] A section whose DELIVERY is switched off
     // cannot be published into. Today that is adda rooms, which need group
@@ -1545,29 +1714,34 @@ export async function publishListing(req: Request, env: Env, id: string): Promis
     const pubSection = sectionFor(l.kind, l.category);
     const blocked = publishBlockedReason(pubSection, await readConfig(env));
     if (blocked) {
-      track(env, ctx.uid, "listing_publish_section_gated", APP, { listing_id: id, section: pubSection });
-      return json({ error: "section_unavailable", section: pubSection, message: blocked }, 409);
+      track(env, creatorUid, "listing_publish_section_gated", APP, { listing_id: id, section: pubSection, ...actorProps });
+      return { ok: false, status: 409, body: { error: "section_unavailable", section: pubSection, message: blocked } };
     }
 
-    if (!(Number(l.price) >= 0)) return json({ error: "bad price" }, 400);
+    if (!(Number(l.price) >= 0)) return { ok: false, status: 400, body: { error: "bad price" } };
 
     if (l.kind === "live_event") {
       const start = Number(l.starts_at), dur = Number(l.duration_min);
-      if (!(start > Date.now()) || !(dur >= 5 && dur <= 480)) return json({ error: "starts_at (future) and duration_min (5–480) required" }, 400);
-      // Conflict engine: claim the creator's slot — occupied ⇒ 409 (greyed UX client-side).
-      const claim = await claimBlock(env, { userId: ctx.uid, sourceApp: APP, sourceRef: id, start, end: start + dur * 60_000, title: String(l.title) });
-      if (!claim.ok) return json({ error: "conflict", conflictWith: claim.conflict }, 409);
+      if (!(start > Date.now()) || !(dur >= 5 && dur <= 480)) {
+        return { ok: false, status: 400, body: { error: "starts_at (future) and duration_min (5–480) required" } };
+      }
+      // Conflict engine: claim the CREATOR's slot — occupied ⇒ 409 (greyed UX client-side).
+      const claim = await claimBlock(env, { userId: creatorUid, sourceApp: APP, sourceRef: id, start, end: start + dur * 60_000, title: String(l.title) });
+      if (!claim.ok) return { ok: false, status: 409, body: { error: "conflict", conflictWith: claim.conflict } };
     } else {
-      if (!CAPACITIES.has(Number(l.capacity))) return json({ error: "capacity must be 1, 10 or 20" }, 400);
-      // Consult listings attach to availability_rules — there must be some.
-      const rules = await db.prepare("SELECT 1 FROM availability_rules WHERE user_id=?1 LIMIT 1").bind(ctx.uid).first();
-      if (!rules) return json({ error: "no_availability", detail: "Set your availability in AvaCalendar before publishing a consult listing." }, 409);
+      if (!CAPACITIES.has(Number(l.capacity))) return { ok: false, status: 400, body: { error: "capacity must be 1, 10 or 20" } };
+      // Consult listings attach to availability_rules — there must be some, and they
+      // are the CREATOR's, not the admin's.
+      const rules = await db.prepare("SELECT 1 FROM availability_rules WHERE user_id=?1 LIMIT 1").bind(creatorUid).first();
+      if (!rules) return { ok: false, status: 409, body: { error: "no_availability", detail: "Set your availability in AvaCalendar before publishing a consult listing." } };
     }
   }
 
   // [AVA-MKT-ENTITLEMENTS-1] §5 quota + §1.3 charge — the LAST gate before the status
   // flip, and only for marketplace listings (creator services live_event/consult are a
-  // different money model and are not metered here).
+  // different money model and are not metered here). Charged against `creatorUid` —
+  // see the file-header note: an admin-triggered publish must never touch the
+  // reviewing admin's wallet.
   //
   // ORDERING (§3.3c): moderation → entitlement → status flip. In the classic path,
   // content moderation ran at create/edit time (createListing/updateListing → guardWrite),
@@ -1585,23 +1759,23 @@ export async function publishListing(req: Request, env: Env, id: string): Promis
   if (isMarket) {
     try {
       feeQuote = await quoteListingEntitlement(env, {
-        uid: ctx.uid, listingId: id, vertical: String(l.vertical ?? DEFAULT_VERTICAL),
+        uid: creatorUid, listingId: id, vertical: String(l.vertical ?? DEFAULT_VERTICAL),
       });
     } catch {
-      return json({ error: "billing_unavailable", message: "Listing pricing is temporarily unavailable. Try again in a minute." }, 503);
+      return { ok: false, status: 503, body: { error: "billing_unavailable", message: "Listing pricing is temporarily unavailable. Try again in a minute." } };
     }
     const ent = await consumeListingEntitlement(env, {
-      uid: ctx.uid, listingId: id, vertical: String(l.vertical ?? DEFAULT_VERTICAL), period: feeQuote.period,
+      uid: creatorUid, listingId: id, vertical: String(l.vertical ?? DEFAULT_VERTICAL), period: feeQuote.period,
     });
     if (!ent.ok) {
       if (ent.error === "insufficient_funds") {
-        track(env, ctx.uid, "listing_publish_insufficient_funds", APP, { listing_id: id, needed: ent.needed, period: feeQuote.period });
-        return json({ error: "insufficient_funds", needed: ent.needed, feature: "listing_post", fee: feeQuote }, 402);
+        track(env, creatorUid, "listing_publish_insufficient_funds", APP, { listing_id: id, needed: ent.needed, period: feeQuote.period, ...actorProps });
+        return { ok: false, status: 402, body: { error: "insufficient_funds", needed: ent.needed, feature: "listing_post", fee: feeQuote } };
       }
       // charge_failed — wallet unreachable/errored. Fail closed like moderation: nothing
       // charged, nothing published, safe to retry.
-      track(env, ctx.uid, "listing_publish_charge_failed", APP, { listing_id: id, period: feeQuote.period, recovery_required: ent.error === "recovery_required" });
-      return json({ error: "billing_unavailable", message: "Couldn't complete the listing charge right now, try again in a minute." }, 503);
+      track(env, creatorUid, "listing_publish_charge_failed", APP, { listing_id: id, period: feeQuote.period, recovery_required: ent.error === "recovery_required", ...actorProps });
+      return { ok: false, status: 503, body: { error: "billing_unavailable", message: "Couldn't complete the listing charge right now, try again in a minute." } };
     }
     feeEntitlement = ent;
     feeQuote = {
@@ -1622,69 +1796,190 @@ export async function publishListing(req: Request, env: Env, id: string): Promis
       now: pubNow,
     });
     if (!finalized) {
-      track(env, ctx.uid, "listing_publish_finalize_failed", APP, { listing_id: id, period: feeQuote?.period ?? null });
-      return json({ error: "billing_unavailable", message: "The listing charge completed, but publication could not be finalized. Please retry." }, 503);
+      track(env, creatorUid, "listing_publish_finalize_failed", APP, { listing_id: id, period: feeQuote?.period ?? null, ...actorProps });
+      return { ok: false, status: 503, body: { error: "billing_unavailable", message: "The listing charge completed, but publication could not be finalized. Please retry." } };
     }
   } else {
     await db.prepare("UPDATE listings SET status='published', updated_at=?2 WHERE id=?1").bind(id, pubNow).run();
   }
-  // Ensure the channel row exists so follower counts etc. have a home.
-  await db.prepare("INSERT INTO creator_profiles (user_id, updated_at) VALUES (?1,?2) ON CONFLICT(user_id) DO NOTHING").bind(ctx.uid, Date.now()).run();
+  // Ensure the channel row exists so follower counts etc. have a home. Keyed on
+  // the CREATOR, always — an admin publish must not create/touch the admin's own
+  // creator_profiles row.
+  await db.prepare("INSERT INTO creator_profiles (user_id, updated_at) VALUES (?1,?2) ON CONFLICT(user_id) DO NOTHING").bind(creatorUid, Date.now()).run();
+  // [C03 ftsSync-on-admin-path] This is the fix for "admin-published listings are
+  // un-searchable by name": ftsSync() used to run only inside publishListing(), so
+  // admin_listings.ts's raw UPDATE never touched `listings_fts`. Routing admin
+  // publish through this shared function means it now runs here for free — no
+  // second hand-rolled FTS write (compose.ts:2210 already had to make one; do not
+  // add a third).
   await ftsSync(env, id);
 
-  const who = await nameOf(env, ctx.uid);
-  const fo = await fanout(env, ctx.uid, `${who} just scheduled: ${String(l.title).slice(0, 40)}`,
+  const who = await nameOf(env, creatorUid);
+  const fo = await fanout(env, creatorUid, `${who} just scheduled: ${String(l.title).slice(0, 40)}`,
     l.kind === "live_event" ? "New live event — book your spot" : "New session offering", `/explore/listing/${id}`);
-  void brainIngest(env, { uid: ctx.uid, domain: "listings", kind: "listing_published", sourceId: id, text: `Published listing "${l.title}" (${l.kind})`, meta: { kind: l.kind, title: l.title, price: l.price } });
-  track(env, ctx.uid, "listing_published", APP, {
+  void brainIngest(env, { uid: creatorUid, domain: "listings", kind: "listing_published", sourceId: id, text: `Published listing "${l.title}" (${l.kind})`, meta: { kind: l.kind, title: l.title, price: l.price } });
+  track(env, creatorUid, "listing_published", APP, {
     kind: l.kind, price: l.price, fanout: fo.sent,
     fee_source: feeEntitlement?.source ?? feeQuote?.source ?? null, fee_charged: feeEntitlement?.charged ?? 0,
-    fee_period: feeQuote?.period ?? null,
+    fee_period: feeQuote?.period ?? null, ...actorProps,
   });
-  return json({
-    ok: true, status: "published", fanout: fo,
-    ...(feeQuote ? {
-      fee: {
-        source: feeEntitlement?.source ?? feeQuote.source, charged: feeEntitlement?.charged ?? 0, amount: feeQuote.amount,
-        funding_policy: feeQuote.funding_policy, period: feeQuote.period,
-        free_used: feeQuote.free_used, free_remaining: feeQuote.free_remaining,
-        paid_balance: feeQuote.paid_balance, entitlement_expires_at: feeQuote.expires_at,
-      },
-    } : {}),
-  });
+  return {
+    ok: true, status: 200, body: {
+      ok: true, status: "published", fanout: fo,
+      ...(feeQuote ? {
+        fee: {
+          source: feeEntitlement?.source ?? feeQuote.source, charged: feeEntitlement?.charged ?? 0, amount: feeQuote.amount,
+          funding_policy: feeQuote.funding_policy, period: feeQuote.period,
+          free_used: feeQuote.free_used, free_remaining: feeQuote.free_remaining,
+          paid_balance: feeQuote.paid_balance, entitlement_expires_at: feeQuote.expires_at,
+        },
+      } : {}),
+    },
+  };
+}
+
+// POST /api/listings/:id/publish — KYC gate + slot claim (live) / rules check (consult).
+// [C03 MKT-PUBLISH-UNIFY-1] Thin HTTP wrapper — all behaviour lives in
+// publishListingAuthoritative() above. This is a pure refactor for the creator:
+// same auth, same ownership 404, same status codes and response bodies as before.
+export async function publishListing(req: Request, env: Env, id: string): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const result = await publishListingAuthoritative(env, { listingId: id, actor: "creator", actorUid: ctx.uid });
+  return json(result.body, result.status);
 }
 
 // POST /api/listings/:id/status {status} — owner glue for live|completed|cancelled.
+//
+// [C01 MKT-STATUS-GATE-1] This used to validate only the TARGET shape and reject a
+// SOURCE of 'draft' — every other (from, to) pair reached the raw UPDATE, including
+// pending_review/rejected/approved/completed/cancelled -> 'live', which put a
+// sellable, joinable listing on the marketplace having skipped publishListing()'s
+// KYC/photo/section gates and the entitlement charge (see listing_transitions.ts's
+// header for the full writeup). checkTransition() is now the only authority on
+// whether (from, to, actor:"creator") is legal; this function no longer branches on
+// status strings itself except to run the `to==="draft"` revision's own side effects.
 export async function setListingStatus(req: Request, env: Env, id: string): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
   const to = String(b.status || "");
+  // Shape check only — this endpoint's public contract is still these four targets.
+  // Whether (from, to) is actually LEGAL for a creator is checkTransition()'s call,
+  // immediately below.
   if (!["live", "completed", "cancelled", "draft"].includes(to)) return json({ error: "status must be live|completed|cancelled|draft" }, 400);
   const db = metaDb(env);
   const l = await db.prepare("SELECT creator_id, status, title, kind FROM listings WHERE id=?1").bind(id).first<any>();
   if (!l || l.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
+
+  const check = checkTransition(String(l.status), to, "creator");
+  if (!check.ok) {
+    // Covers, among others, the one wrong answer this whole change exists to
+    // prevent: `to==='live'` is refused for EVERY creator request now (reason
+    // "live_is_provider_confirmed") — only systemMarkListingLive() below, called
+    // once a media provider has actually confirmed the broadcast, may set it.
+    track(env, ctx.uid, "listing_status_transition_refused", APP, {
+      listing_id: id, from: l.status, to, reason: check.reason, actor: "creator",
+    });
+    return json({
+      error: "transition_not_allowed", reason: check.reason,
+      status_now: l.status, allowed_targets: check.allowedTargets,
+    }, 409);
+  }
+
   if (to === "draft") {
-    // RESTORE from Archived → back to an editable draft (clear expiry, drop from search).
+    // Revision + archive-restore path. checkTransition above narrowed this to the
+    // table's three creator rows targeting 'draft': rejected (a revision) and
+    // cancelled/completed (restoring an archived listing to reuse it). The source
+    // statuses it now REFUSES are the ones that were the bug — published -> draft
+    // and pending_review/approved -> draft used to work here with no source check.
+    // Per listing_transitions.ts's header this IS a revision: the caller must force
+    // a fresh pending_review on the next submit; this endpoint only owns the STATUS
+    // move + the marketplace entitlement reconciliation, exactly as it did before.
+    //
+    // NOTE: this used to also accept published/live/completed/cancelled -> draft
+    // ("restore from Archived"). completed/cancelled are TERMINAL in the transition
+    // table (no way out, by design — see listing_transitions.test.ts) and
+    // published/live -> draft was never a documented revision path, so both are now
+    // refused above with `terminal_status` / `transition_not_allowed`. If "restore an
+    // archived listing to draft" is a feature the product still wants, it needs its
+    // own named transition row (and its own reconciliation story), not a silent
+    // side door through this revision path — flagging for the owner rather than
+    // guessing.
     if (MARKET_KINDS.has(String(l.kind))) {
       const reconciled = await markListingEntitlementPublished(env, { listingId: id });
       if (!reconciled) return json({ error: "billing_unavailable", message: "The listing entitlement could not be reconciled. Try again shortly." }, 503);
     }
-    await db.prepare("UPDATE listings SET status='draft', expires_at=NULL, updated_at=?2 WHERE id=?1").bind(id, Date.now()).run();
+    // Conditional UPDATE — WHERE status=<the status checkTransition validated
+    // against> — so a concurrent edit between the read above and this write can't
+    // silently apply a transition that was authorized against a status that has
+    // since changed. 0 rows changed = a real conflict, not a no-op.
+    const res = await db.prepare(
+      "UPDATE listings SET status='draft', expires_at=NULL, updated_at=?2 WHERE id=?1 AND status=?3",
+    ).bind(id, Date.now(), l.status).run();
+    if (!(res.meta?.changes ?? 0)) {
+      return json({ error: "conflict", message: "This listing's status changed before the request completed." }, 409);
+    }
     await ftsSync(env, id, true);
     track(env, ctx.uid, "listing_restored", APP, {});
     return json({ ok: true, status: "draft" });
   }
-  if (l.status === "draft") return json({ error: "publish first" }, 409);
-  await db.prepare("UPDATE listings SET status=?2, updated_at=?3 WHERE id=?1").bind(id, to, Date.now()).run();
+
+  const res = await db.prepare(
+    "UPDATE listings SET status=?2, updated_at=?3 WHERE id=?1 AND status=?4",
+  ).bind(id, to, Date.now(), l.status).run();
+  if (!(res.meta?.changes ?? 0)) {
+    return json({ error: "conflict", message: "This listing's status changed before the request completed." }, 409);
+  }
   void partyEmit(env, `listing:${id}`, { t: "listing_update", status: to }); // #8: live SOLD/status change
   if (to === "cancelled" || to === "completed") { await releaseBlocks(env, APP, id); await ftsSync(env, id, true); }
-  if (to === "live") {
-    const who = await nameOf(env, ctx.uid);
-    await fanout(env, ctx.uid, `${who} is LIVE now`, String(l.title).slice(0, 60), `/explore/listing/${id}`);
-  }
+  // NOTE: `to === "live"` can no longer reach this line — checkTransition() above
+  // refuses it unconditionally for actor "creator". The "is LIVE now" fanout that
+  // used to fire here on the (now-closed) creator->live bypass moved to
+  // systemMarkListingLive() below, which is the provider-confirmed replacement.
   track(env, ctx.uid, "listing_status_changed", APP, { to });
   return json({ ok: true, status: to });
+}
+
+// [C01 MKT-STATUS-GATE-1] The ONLY function allowed to flip a listing published ->
+// live. `live` is provider-confirmed per listing_transitions.ts (system actor only,
+// `requires: "provider_confirmed"`) — this function does not itself confirm
+// anything with a media provider; the CALLER must already know the provider
+// confirmed the broadcast actually started before calling this. It carries the
+// follower "is LIVE now" fanout that setListingStatus used to fire on the creator's
+// (now-closed) direct live request — see the NOTE in setListingStatus above.
+//
+// TODO(wiring): the real caller is `recordCommercialStreamEvent()` in
+// worker/src/routes/commercial_stream_sessions.ts, in its `session_started` /
+// `live_started` webhook branch (around line 1666-1675 there, the
+// `UPDATE commercial_sessions SET state='live', ... WHERE ... state IN
+// ('scheduled','backstage','live')` statement) — THAT is the actual moment GetStream
+// confirms the broadcast is live. Call `systemMarkListingLive(env, session.listing_id)`
+// right after that UPDATE succeeds (only for `session.kind === "live_event"`; a
+// consult booking has no marketplace "live" listing state to flip). Do NOT call this
+// from `commercialLiveGoLive()` (commercial_stream_sessions.ts:1157) — that endpoint
+// only REQUESTS go-live and hands off to the provider; at that point nothing has
+// confirmed the broadcast is actually running yet.
+export async function systemMarkListingLive(env: Env, listingId: string): Promise<{ ok: boolean; reason?: string }> {
+  const db = metaDb(env);
+  const row = await db.prepare("SELECT status, title, creator_id, kind FROM listings WHERE id=?1").bind(listingId).first<any>();
+  if (!row) return { ok: false, reason: "not_found" };
+  const check = checkTransition(String(row.status), "live", "system");
+  if (!check.ok) {
+    track(env, String(row.creator_id ?? "system"), "listing_status_transition_refused", APP, {
+      listing_id: listingId, from: row.status, to: "live", reason: check.reason, actor: "system",
+    });
+    return { ok: false, reason: check.reason };
+  }
+  const res = await db.prepare(
+    "UPDATE listings SET status='live', updated_at=?2 WHERE id=?1 AND status=?3",
+  ).bind(listingId, Date.now(), row.status).run();
+  if (!(res.meta?.changes ?? 0)) return { ok: false, reason: "conflict" };
+  void partyEmit(env, `listing:${listingId}`, { t: "listing_update", status: "live" });
+  const who = await nameOf(env, String(row.creator_id));
+  const fo = await fanout(env, String(row.creator_id), `${who} is LIVE now`, String(row.title ?? "").slice(0, 60), `/explore/listing/${listingId}`);
+  track(env, String(row.creator_id), "listing_status_changed", APP, { to: "live", actor: "system", fanout: fo.sent });
+  return { ok: true };
 }
 
 // POST /api/listings/:id/duplicate — A6: copy everything, clear date/slot, draft.
@@ -1853,7 +2148,13 @@ export async function myListings(req: Request, env: Env): Promise<Response> {
   const promos = await promosFor(env, rows.map((r) => r.id));
   const cardStats = await cardStatsFor(env, rows.map((r) => r.id));
   const favs = await favoritesFor(env, ctx.uid, rows.map((r) => String(r.id))); // [UI-MKT-3]
-  return json({ listings: rows.map((r) => shapeCard(r, promos, favs, cardStats)) });
+  // [FREE-ENTRY-GATE-1] Per-user capability so the wizard can show/hide the
+  // "free show" control for the person actually asking, instead of reading
+  // the public config flag (which is the same for every visitor and hid the
+  // checkbox from admins/allowlisted testers too).
+  const cfg = await readConfig(env);
+  const freeEntry = freeEntryAllowed(env, cfg, ctx.uid);
+  return json({ listings: rows.map((r) => shapeCard(r, promos, favs, cardStats)), free_entry_allowed: freeEntry });
 }
 
 // ---------------------------------------------------------------------------

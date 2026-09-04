@@ -54,7 +54,22 @@ const SCHEDULE_OPTS: { key: ListingDraft['schedule_mode']; label: string; sub: s
   { key: 'always_on', label: 'Always on', sub: 'No fixed schedule — join any time' },
 ];
 
-export function Step1Type({ draft, patch, err }: { draft: ListingDraft; patch: Patch; err: FieldErr }) {
+export function Step1Type({ draft, patch, err, freeEntryLocked }: {
+  draft: ListingDraft; patch: Patch; err: FieldErr;
+  /**
+   * [FREE-ENTRY-GATE-1] True while this account may not be allowed to create
+   * free-entry listings (server default: `freeEntryAllowlistOnly=true`, and we
+   * fail closed while /api/config hasn't answered yet — see ListingWizard.tsx).
+   * The server is the real gate (403 `free_entry_not_allowed` on create/update);
+   * this only avoids showing a control that would 403. An EXISTING free listing
+   * (draft.free_entry already true, e.g. loaded from a listing this account made
+   * before the gate existed, or before its allowlist status changed) still
+   * renders its state — read-only — so hiding the control can never silently
+   * flip a saved free show back to paid.
+   */
+  freeEntryLocked: boolean;
+}) {
+  const showFreeEntryCard = !freeEntryLocked || draft.free_entry;
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -73,17 +88,29 @@ export function Step1Type({ draft, patch, err }: { draft: ListingDraft; patch: P
         </div>
       </div>
 
-      <label className="flex items-center gap-3 rounded-zine border-zine border-ink bg-card p-3 shadow-zine-xs">
-        <input type="checkbox" checked={draft.free_entry} onChange={(e) => patch({ free_entry: e.target.checked })}
-          className="h-5 w-5 rounded border-zine border-ink" />
-        <span className="font-body font-bold text-[14px] text-ink">This is a free show</span>
-      </label>
-      {draft.free_entry && (
+      {showFreeEntryCard && (
+        freeEntryLocked ? (
+          // [FREE-ENTRY-GATE-1] Locked but already free (an existing listing) —
+          // show the state, not a checkbox nobody on this account can toggle.
+          <div className="flex items-center gap-3 rounded-zine border-zine border-ink bg-card p-3 shadow-zine-xs">
+            <span className="font-body font-bold text-[14px] text-ink">This is a free show</span>
+            <span className="font-body font-bold text-[11px] text-inkSoft">(locked — free shows are limited to test accounts right now)</span>
+          </div>
+        ) : (
+          <label className="flex items-center gap-3 rounded-zine border-zine border-ink bg-card p-3 shadow-zine-xs">
+            <input type="checkbox" checked={draft.free_entry} onChange={(e) => patch({ free_entry: e.target.checked })}
+              className="h-5 w-5 rounded border-zine border-ink" />
+            <span className="font-body font-bold text-[14px] text-ink">This is a free show</span>
+          </label>
+        )
+      )}
+      {showFreeEntryCard && draft.free_entry && (
         <div>
           <p className="mb-2 font-body font-bold text-[13px] text-inkSoft">
             This is what you&rsquo;re willing to spend from your wallet for this show.
           </p>
           <Field label="Token cap" inputMode="numeric" placeholder="e.g. 500" value={draft.content_free_cap_tokens}
+            disabled={freeEntryLocked}
             onChange={(e) => patch({ content_free_cap_tokens: e.target.value.replace(/[^0-9]/g, '') })} />
           <ErrLine err={err} field="content_free_cap_tokens" />
         </div>

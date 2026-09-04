@@ -1775,6 +1775,18 @@ export interface PlatformConfig {
   // Gates the /api/listings/:id/slots and /api/slots/:slotId routes below
   // (§C.3). Boolean → NOT in numericKeys.
   listingSlotsEnabled: boolean;
+
+  // [FREE-ENTRY-GATE-1 2026-09-04] free_entry listings (freeSessionsEnabled)
+  // are metered by a creator-declared attendee cap with no mid-session
+  // cut-off (lib/free_session.ts checks headcount only at admission and
+  // clamps only at settlement) — an unmetered creator can always just raise
+  // the cap. Creation is therefore restricted to admins + a named test
+  // allowlist rather than left open to every creator. Default TRUE = fail
+  // closed: with freeSessionsEnabled already true in prod today, this is
+  // what actually keeps the free lane from being general-availability.
+  // Escape hatch: set false in KV to reopen it to every creator. Boolean →
+  // NOT in numericKeys. See lib/free_entry_gate.ts for the check itself.
+  freeEntryAllowlistOnly: boolean;
 }
 
 // FREE LAUNCH (2026-06-28, owner-locked Specs/FREE-LAUNCH-DIRECTION.md): ship an
@@ -2404,6 +2416,8 @@ const DEFAULTS: PlatformConfig = {
   freeSessionTokensPerAttendeeMinute: 0,
   listingContentV2Enabled: false,
   listingSlotsEnabled: false,
+  // [FREE-ENTRY-GATE-1 2026-09-04] fail closed — see interface comment above.
+  freeEntryAllowlistOnly: true,
 };
 
 /**

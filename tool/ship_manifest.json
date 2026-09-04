@@ -4357,5 +4357,38 @@
       "posterAutoGenerateMaxAttempts"
     ],
     "no_telemetry": "Declaration-only change: two config keys, a spec doc, and this manifest. Nothing here executes at runtime or emits an event of its own — the flags' behaviour and the events they gate are the OTHER issue ids above (MKT-POSTER-AUTO-1, MKT-ADMIN-DETAIL-1, MKT-ADMIN-UI-1), which each carry their own success definition. Verification for THIS entry is static: `python3 tool/check_ship_readiness.py --check flags` and `--check manifest` both pass, and `scripts/flags.sh set posterAutoGenerateOnSubmit=true posterAutoGenerateMaxAttempts=3` (staging, not run by this agent) would not 400 because both keys are now in DEFAULTS/PlatformConfig/numericKeys."
+  },
+  "LIST-APPROVAL-AUTH-1": {
+    "description": "[LIST-APPROVAL-AUTH-1] Listing approval becomes authority rather than advice. THE BUG: setListingStatus (worker/src/routes/listings.ts, pre-fix ~1658-1688) validated the TARGET status and rejected only a SOURCE of 'draft', so pending_review/rejected/approved/completed/cancelled -> 'live' all reached a raw UPDATE, skipping publishListing's gates entirely; checkout (commercial_checkout.ts:366) and join (commercial_stream_sessions.ts:553) both accept 'live', and all six commercial flags are TRUE in prod, so a REJECTED listing was sellable. Fixed by a server-owned transition table (worker/src/lib/listing_transitions.ts) that is now the only authority on (from,to,actor); 'live' is reachable ONLY via actor 'system' + provider confirmation (systemMarkListingLive), never from a client request. The archive-restore path (cancelled/completed -> draft) is preserved deliberately - an earlier revision of the table made those absolutely terminal and would have 409'd the shipped restore button. SECOND DOOR: adminListingAction's publish wrote status directly (admin_listings.ts:211-236) running none of the creator validations or side effects, so an admin-published listing was never ftsSync'd and therefore un-searchable by name (exploreSearch hard-returns empty on an FTS miss; browse still worked). Both doors now call publishListingAuthoritative, which keys every identity/money check on the LISTING'S CREATOR, never the reviewing admin. THIRD: attrs was accepted wholesale from creators (normFields ~891) while admin publish trusted attrs.poster.status (admin_listings.ts:213), so a creator could forge poster approval; attrs.poster is now a server-owned namespace. FOURTH: free_entry was a plain creator-settable boolean with no role check while freeSessionsEnabled=true in prod, and free sessions have NO mid-session cut-off (free_session.ts is an admission-time headcount ceiling plus a settlement clamp) - creation/edit into free_entry=1 is now allowlist-gated (lib/free_entry_gate.ts) and surfaced per-user via GET /api/listings/mine's free_entry_allowed.",
+    "shipped": "2026-09-04",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "freeEntryAllowlistOnly"
+    ],
+    "success": [
+      {
+        "event": "admin_listing_published",
+        "property": "ok",
+        "equals": true,
+        "min_events": 1,
+        "note": "The admin publish door actually running the shared publisher. Before this change the admin path was a raw UPDATE that emitted NO event at all, so this event existing at all is the proof it was re-routed. ok:false is the failure value and means publishListingAuthoritative refused - read fail_reason; a sustained run of ok:false means the admin door is now correctly refusing work it used to wave through, which is not the same as the feature working."
+      },
+      {
+        "event": "listing_free_entry_control_hidden",
+        "property": "reason",
+        "equals": "not_allowlisted",
+        "min_events": 1,
+        "note": "Proves the PER-USER capability read succeeded and returned false for an ordinary creator. reason:'capability_fetch_failed' is the failure value - it means GET /api/listings/mine threw and the wizard fell back to fail-closed, so the control is hidden from admins and test accounts too, which is the regression this assertion exists to catch."
+      },
+      {
+        "event": "listing_submitted_for_review",
+        "property": "listing_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "draft->pending_review previously emitted no server event at all - the only record was a D1 approval-history row PostHog cannot query. Absence here means the review funnel is invisible again, not that nobody submitted."
+      }
+    ],
+    "_verified_at": "2026-09-04: event and property names read out of the emit sites, not from memory - listings.ts:1047,1210,1429,1881,1969; admin_listings.ts:264,296; ListingWizard.tsx:220,223,311."
   }
 }
