@@ -4279,5 +4279,83 @@
       }
     ],
     "_verified_at": "web/src/islands/marketplace/FilterRail.tsx (drawer wrapper + activeFilterCount), web/src/islands/marketplace/ExploreGrid.tsx (filtersOpen state, Filters button, full-width main), web/src/lib/card.ts (uniformChips + cardBlurb), web/src/lib/copy.ts (laneName, laneBlurbFallback, BOOKING_OPEN/ENTRY_OPEN/SLOTS_OPEN), web/src/components/ListingTile.tsx (fixed-height clamped title/body, three chips), worker/src/routes/listing_copy_review.ts, worker/src/routes/config.ts (listingAiReviewEnabled declared in the PlatformConfig interface AND in DEFAULTS in the same change - an undeclared key is a fake flag putConfig rejects with 400), worker/src/index.ts (route matched BEFORE the /api/listings/:id patterns, since 'copy-review' matches that id regex). track() called with the full five-arg form (env, uid, event, app_name, props). `npx tsc --noEmit` clean in BOTH web/ and worker/ - the worker was typechecked before deploy per CLAUDE.md, since wrangler's esbuild strips types without checking them. NOTE: `npm run build` could not run in the Linux sandbox (EPERM unlinking into the mounted node_modules/.vite and src/generated), so the Astro build is proven by CI, not locally."
+  },
+  "MKT-POSTER-AUTO-1": {
+    "description": "[MKT-POSTER-AUTO-1] Auto-generate a listing poster image at submit time. worker/src/routes/listings.ts submitListingForApproval calls the poster generation lib when posterAutoGenerateOnSubmit is true, capped at posterAutoGenerateMaxAttempts retries per listing, and emits listing_poster_generate with auto=true for every attempt. Default OFF (posterAutoGenerateOnSubmit=false) — ships dark; the owner flips it on in prod once verified. Declared in worker/src/routes/config.ts PlatformConfig + DEFAULTS in the same change as MKT-POSTER-FLAGS-1 (fake-flag rule); posterAutoGenerateMaxAttempts is also in numericKeys.",
+    "shipped": "2026-09-04",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "posterAutoGenerateOnSubmit",
+      "posterAutoGenerateMaxAttempts"
+    ],
+    "success": [
+      {
+        "event": "listing_poster_generate",
+        "where": {
+          "auto": true
+        },
+        "property": "outcome",
+        "equals": "draft",
+        "min_events": 1,
+        "note": "SUCCESS VALUE, declared before the ship: an auto-triggered generation actually produced a draft poster. An event stream that is present but ALL outcome=failed is the 2026-08-08 failure shape repeated — the submit path ran, the generator was invoked, and every attempt errored out. Absence of the event entirely (with posterAutoGenerateOnSubmit on in KV) means submitListingForApproval never calls the generator at all."
+      }
+    ],
+    "_verified_at": "PENDING — Agent B's code lands the emit site in worker/src/routes/listings.ts submitListingForApproval; verify against that file before reporting this shipped, per the ship-gate rule to check the code, not memory notes."
+  },
+  "MKT-ADMIN-DETAIL-1": {
+    "description": "[MKT-ADMIN-DETAIL-1] Admin full-detail endpoint for a listing (worker/src/routes/admin_listings.ts) plus a regenerate-poster admin action. Emits admin_listing_detail_view on every detail fetch and listing_moderation_action with action=regenerate_poster on regenerate. reason_present is a boolean only — the moderation reason free text is never sent to PostHog.",
+    "shipped": "2026-09-04",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "admin_listing_detail_view",
+        "property": "listing_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "The endpoint is being reached and is actually emitting per-listing detail views. Absence means the admin detail route is not wired to telemetry or is not being called."
+      },
+      {
+        "event": "listing_moderation_action",
+        "where": {
+          "action": "regenerate_poster"
+        },
+        "property": "poster_status",
+        "exists": true,
+        "min_events": 1,
+        "note": "The regenerate action actually ran and recorded the resulting poster_status. Absence means the admin regenerate control is not wired to the endpoint, or the endpoint is not emitting on that action."
+      }
+    ],
+    "_verified_at": "PENDING — Agent A's code lands the emit sites in worker/src/routes/admin_listings.ts; verify against that file before reporting this shipped, per the ship-gate rule to check the code, not memory notes."
+  },
+  "MKT-ADMIN-UI-1": {
+    "description": "[MKT-ADMIN-UI-1] Rearranged admin review UI (web/) that calls the MKT-ADMIN-DETAIL-1 endpoint to show full listing detail and drive the regenerate-poster action. Web change only; no worker code in this issue id.",
+    "shipped": "2026-09-04",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "admin_listing_detail_view",
+        "property": "admin_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "Same event as MKT-ADMIN-DETAIL-1's success value — for THIS issue it is the UI's fault if absent: the UI is what calls the endpoint, so no events means the review UI is not reaching it (broken route, missing auth, or the button not wired)."
+      }
+    ],
+    "_verified_at": "PENDING — Agent C's code lands the UI call site in web/; verify the fetch actually hits the admin detail endpoint before reporting this shipped."
+  },
+  "MKT-POSTER-FLAGS-1": {
+    "description": "[MKT-POSTER-FLAGS-1] Declares the two flags MKT-POSTER-AUTO-1 depends on — posterAutoGenerateOnSubmit (boolean, default false) and posterAutoGenerateMaxAttempts (number, default 2) — in worker/src/routes/config.ts PlatformConfig interface, DEFAULTS, and numericKeys (the numeric one). Adds the three listing-poster/moderation events to Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md and writes the ship-manifest entries for this whole workstream (MKT-POSTER-AUTO-1, MKT-ADMIN-DETAIL-1, MKT-ADMIN-UI-1, and this entry). This change ships no runtime behaviour of its own — it only makes the flags real and the events documented.",
+    "shipped": "2026-09-04",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "posterAutoGenerateOnSubmit",
+      "posterAutoGenerateMaxAttempts"
+    ],
+    "no_telemetry": "Declaration-only change: two config keys, a spec doc, and this manifest. Nothing here executes at runtime or emits an event of its own — the flags' behaviour and the events they gate are the OTHER issue ids above (MKT-POSTER-AUTO-1, MKT-ADMIN-DETAIL-1, MKT-ADMIN-UI-1), which each carry their own success definition. Verification for THIS entry is static: `python3 tool/check_ship_readiness.py --check flags` and `--check manifest` both pass, and `scripts/flags.sh set posterAutoGenerateOnSubmit=true posterAutoGenerateMaxAttempts=3` (staging, not run by this agent) would not 400 because both keys are now in DEFAULTS/PlatformConfig/numericKeys."
   }
 }

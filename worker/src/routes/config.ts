@@ -1573,6 +1573,16 @@ export interface PlatformConfig {
   // this ON beta users are not debited — the machinery lands dark twice over. Read side
   // is worker/src/lib/listing_billing.ts.
   listingFeeEnabled: boolean;
+  // [MKT-POSTER-FLAGS-1] Auto-generate a listing poster image at submit time
+  // (worker/src/routes/listings.ts submitListingForApproval, Agent B's code).
+  // Default OFF — ships dark; the owner flips it on in prod when the generation
+  // pipeline has been verified. Boolean → NOT in numericKeys.
+  posterAutoGenerateOnSubmit: boolean;
+  // [MKT-POSTER-FLAGS-1] Cap on auto-generation retries per listing, read by the
+  // same submitListingForApproval path. NUMERIC → it MUST also appear in
+  // `numericKeys` below or `flags.sh set posterAutoGenerateMaxAttempts=3` 400s
+  // `bad type`.
+  posterAutoGenerateMaxAttempts: number;
 
   // --- outbound campaigns ---
   // Outbound AI Calling Campaigns (Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md §18).
@@ -2301,6 +2311,11 @@ const DEFAULTS: PlatformConfig = {
   // Compose brain enrichment — DARK. Needs One Brain B4 + the user's listings consent;
   // separate from aiComposeEnabled so compose can be live without account-history recall.
   listingBrainEnrichmentEnabled: false,
+  // [MKT-POSTER-FLAGS-1] Listing poster auto-generation on submit — DARK. Owner
+  // flips it on in prod once the generation pipeline is verified.
+  posterAutoGenerateOnSubmit: false,
+  // [MKT-POSTER-FLAGS-1] Retry cap for poster auto-generation per listing.
+  posterAutoGenerateMaxAttempts: 2,
 
   // --- outbound campaigns ---
   // Outbound AI Calling Campaigns (Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md §18) — DARK.
@@ -2618,6 +2633,10 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // `bad type`. (`freeSessionsEnabled`/`listingContentV2Enabled`/
     // `listingSlotsEnabled` are BOOLEANS — not listed.)
     "freeSessionTokensPerAttendeeMinute",
+    // [MKT-POSTER-FLAGS-1] retry cap for listing poster auto-generation — numeric,
+    // must be here or `flags.sh set posterAutoGenerateMaxAttempts=3` 400s
+    // `bad type`. (`posterAutoGenerateOnSubmit` is a BOOLEAN — not listed.)
+    "posterAutoGenerateMaxAttempts",
   ]);
   const stringKeys = new Set(["virtualNumberPrimaryProvider"]);
   for (const [k, v] of Object.entries(body)) {

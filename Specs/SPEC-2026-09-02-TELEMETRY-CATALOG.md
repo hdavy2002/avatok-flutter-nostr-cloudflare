@@ -183,6 +183,32 @@ at every LLM completion site. Money paths emit `*_result` with `outcome`.
 Free lane: `free_session_hold`, `free_session_join_refused`,
 `free_session_settled`, `free_session_settle_conflict` (shipped 2026-09-02).
 
+### 5.1 Listing poster generation + moderation (`MKT-POSTER-*`, `worker/`)
+
+`listing_poster_generate` {listing_id, creator_id, auto (bool), attempt (int),
+outcome: draft|failed, duration_ms, error_kind} — emitted from
+`submitListingForApproval` (`routes/listings.ts`, `auto: true`, gated by
+`posterAutoGenerateOnSubmit` / capped by `posterAutoGenerateMaxAttempts`) and
+from the admin generate/regenerate action (`routes/admin_listings.ts`,
+`auto: false`). This is the **ship-gate success value** for
+`MKT-POSTER-AUTO-1` — success is `auto=true` **and** `outcome="draft"`, not
+merely the event's presence.
+
+`listing_moderation_action` {listing_id, action, previous_status, next_status,
+poster_status, admin_id, creator_id, reason_present (bool)} — emitted on every
+admin moderation write (approve, reject, regenerate_poster, …).
+`reason_present` is a boolean flag only; **never send the reason text itself**
+— it is creator-facing free text and may contain anything the admin typed.
+
+`admin_listing_detail_view` {listing_id, status, poster_status, admin_id} —
+emitted by the admin full-detail endpoint (`routes/admin_listings.ts`) and is
+the success value for `MKT-ADMIN-DETAIL-1` / `MKT-ADMIN-UI-1` (the review UI
+is what calls the endpoint).
+
+None of the three events above carry raw error text, exception messages, or
+the rejection reason body — `error_kind` is a short enum/category, not a
+message string, per §1.5.
+
 ---
 
 ## 6. Dashboards and alerts to create once web events flow
