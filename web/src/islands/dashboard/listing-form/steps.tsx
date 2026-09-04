@@ -624,21 +624,29 @@ export function Step7Photos({ draft, patch, err, onUpload, onRemoveCover, upload
   );
 }
 
-// ── Step 8 — Preview & publish ─────────────────────────────────────────────
-export function Step8Preview({ draft, patch, checks, ready, onPublish, publishing, published, publicHref, error,
+// ── Step 8 — Preview & submit for review ────────────────────────────────────
+export function Step8Preview({ draft, patch, checks, ready, onSubmitForReview, publishing,
+  published, pendingReview, approvedAwaitingPublish, rejected, publicHref, error,
   repeatOpen, setRepeatOpen, repeatWeeks, setRepeatWeeks, onRepeat, repeating, isLive, creator, copyReviewed, onReviewed,
 }: {
   draft: ListingDraft; patch: Patch; checks: { ok: boolean; label: string }[]; ready: boolean;
   /** [CARD-AI-REVIEW-1] Reviewed in this session? Drives the panel below. */
   copyReviewed: boolean; onReviewed: () => void;
-  onPublish: () => void; publishing: boolean; published: boolean; publicHref: string | null; error: string | null;
+  /** [LIST-SUBMIT-REVIEW-1] Sends the draft into the admin approval queue —
+   *  POST /api/listings/:id/submit, not the old direct-publish call. */
+  onSubmitForReview: () => void; publishing: boolean;
+  /** Status is now four mutually-exclusive states, not one boolean — a
+   *  `pending_review` or `rejected` listing is very much not "published". */
+  published: boolean; pendingReview: boolean; approvedAwaitingPublish: boolean; rejected: boolean;
+  publicHref: string | null; error: string | null;
   repeatOpen: boolean; setRepeatOpen: (v: boolean) => void; repeatWeeks: number; setRepeatWeeks: (n: number) => void;
   onRepeat: () => void; repeating: boolean; isLive: boolean; creator?: CreatorInfo;
 }) {
+  const isDraftState = !published && !pendingReview && !approvedAwaitingPublish && !rejected;
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
       <div className="flex flex-col gap-4">
-        <SectionHeader title="Ready to publish?" />
+        <SectionHeader title={isDraftState ? 'Ready to send for review?' : 'Status'} />
         <div className="flex flex-col gap-2">
           {checks.map((c) => (
             <div key={c.label} className="flex items-center gap-2">
@@ -648,31 +656,56 @@ export function Step8Preview({ draft, patch, checks, ready, onPublish, publishin
           ))}
         </div>
 
-        {/* [CARD-AI-REVIEW-1] The review is a publish check, so the way to
+        {/* [CARD-AI-REVIEW-1] The review is a submit check, so the way to
             satisfy it lives HERE, next to the blocked button — not only back on
             step 2. A checklist that fails without an adjacent way to fix it is
             how a form becomes a dead end. */}
-        {!published && !copyReviewed && (
+        {isDraftState && !copyReviewed && (
           <CopyReview draft={draft} patch={patch} onReviewed={onReviewed} />
         )}
 
         {error && <p className="font-body font-bold text-[14px] text-coral">⚠ {error}</p>}
 
-        {published ? (
+        {/* [LIST-SUBMIT-REVIEW-1] A real state machine — the creator can only ever
+            be in exactly one of these. Publishing itself is an admin action; the
+            creator's only self-serve action here is submitting a draft. */}
+        {published && (
           <Card fillClassName="bg-paper2">
             <p className="font-body font-bold text-[13px] text-ink">This listing is published.</p>
             {publicHref && <a href={publicHref} className="mt-2 inline-block font-body font-bold text-[13px] text-blueInk underline">Open the public page</a>}
           </Card>
-        ) : (
-          <Button variant="lime" label="Publish" loading={publishing} disabled={!ready} onClick={onPublish} fullWidth />
         )}
-        {publicHref && !published && (
+        {pendingReview && (
+          <Card fillClassName="bg-lilac">
+            <p className="font-body font-bold text-[13px] text-ink">Pending review</p>
+            <p className="mt-1 font-body font-bold text-[13px] text-inkSoft">This listing is with the team for review. We’ll notify you as soon as it’s checked.</p>
+          </Card>
+        )}
+        {approvedAwaitingPublish && (
+          <Card fillClassName="bg-blue">
+            <p className="font-body font-bold text-[13px] text-ink">Approved</p>
+            <p className="mt-1 font-body font-bold text-[13px] text-inkSoft">This listing is approved and will go live shortly.</p>
+          </Card>
+        )}
+        {rejected && (
+          <Card fillClassName="bg-coral">
+            <p className="font-body font-bold text-[13px] text-paper">Changes requested</p>
+            <p className="mt-1 font-body font-bold text-[13px] text-paper">The team asked for changes before this can go live. Edit the earlier steps and send it for review again.</p>
+          </Card>
+        )}
+        {isDraftState && (
+          <>
+            <Button variant="lime" label="Submit for review" loading={publishing} disabled={!ready} onClick={onSubmitForReview} fullWidth />
+            <p className="font-body font-bold text-[12px] text-inkSoft">An AI poster is generated automatically, then a person on the team checks the listing before it goes live.</p>
+          </>
+        )}
+        {publicHref && isDraftState && (
           <a href={publicHref} target="_blank" rel="noreferrer" className="font-body font-bold text-[13px] text-blueInk underline">
             Open the public page preview
           </a>
         )}
 
-        {isLive && !published && (
+        {isLive && isDraftState && (
           <div>
             <button type="button" onClick={() => setRepeatOpen(!repeatOpen)} className="font-body font-bold text-[13px] text-blueInk underline">
               Runs every week? Make copies (optional)

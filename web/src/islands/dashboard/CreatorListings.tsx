@@ -34,10 +34,28 @@ const KIND_LABEL: Record<string, string> = {
 
 const STATUS_TONE: Record<string, string> = {
   draft: 'bg-paper2 text-inkSoft',
+  pending_review: 'bg-lilac text-ink',
+  approved: 'bg-blue text-ink',
+  rejected: 'bg-coral text-paper',
   published: 'bg-mint text-ink',
   live: 'bg-coral text-paper',
   completed: 'bg-blue text-ink',
   cancelled: 'bg-paper2 text-inkMute line-through',
+};
+
+/* [LIST-SUBMIT-REVIEW-1] The badge used to print the raw status string, so a
+ * submitted listing literally read "pending_review" on the creator's own
+ * dashboard. Human labels for everything STATUS_TONE knows about; anything
+ * unmapped falls back to the raw status rather than disappearing. */
+const STATUS_LABEL: Record<string, string> = {
+  draft: 'Draft',
+  pending_review: 'Pending review',
+  approved: 'Approved',
+  rejected: 'Changes requested',
+  published: 'Published',
+  live: 'Live',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
 };
 
 /**
@@ -58,6 +76,19 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('all');
   const [busy, setBusy] = useState<string | null>(null);
+  // [LIST-SUBMIT-REVIEW-1] `?submitted=<id>` lands here from the wizard's new
+  // submit-for-review flow; `?published=` is kept too — nothing reads it today,
+  // but nothing ever stopped anything from linking to it, and a published
+  // listing landing with no banner at all would look like the redirect broke.
+  const [banner, setBanner] = useState<'submitted' | 'published' | null>(null);
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('submitted')) setBanner('submitted');
+      else if (params.get('published')) setBanner('published');
+    } catch { /* ignore */ }
+  }, []);
 
   useEffect(() => { void (async () => { setToken(await getActiveToken()); setChecked(true); })(); }, []);
 
@@ -108,6 +139,21 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
 
   return (
     <div className="flex flex-col gap-5">
+      {banner && (
+        <div className="flex items-start gap-3 rounded-zine border-zine border-ink bg-lilac p-4 shadow-zine-sm">
+          <div className="flex-1">
+            {banner === 'submitted' ? (
+              <>
+                <p className="font-body font-bold text-[15px] text-ink">Submitted for review.</p>
+                <p className="mt-1 font-body font-bold text-[13px] text-inkSoft">A poster is being generated for it now, and the team will check it before it goes live. We’ll let you know.</p>
+              </>
+            ) : (
+              <p className="font-body font-bold text-[15px] text-ink">Published.</p>
+            )}
+          </div>
+          <button type="button" onClick={() => setBanner(null)} aria-label="Dismiss" className="font-mono font-bold text-[13px] text-inkSoft hover:text-ink">✕</button>
+        </div>
+      )}
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-2.5 rounded-zine border-zine border-ink bg-card p-2.5 shadow-zine-sm">
         <div className="flex min-w-[200px] flex-1 items-center gap-2 rounded-full border-zine border-ink bg-paper px-3 py-2">
@@ -117,6 +163,9 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
         <select value={status} onChange={(e) => setStatus(e.target.value)} className="rounded-full border-zine border-ink bg-paper px-3 py-2 font-mono font-bold text-[14px] uppercase tracking-[0.04em] text-ink outline-none">
           <option value="all">All statuses</option>
           <option value="draft">Draft</option>
+          <option value="pending_review">Pending review</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Changes requested</option>
           <option value="published">Published</option>
           <option value="live">Live</option>
           <option value="completed">Completed</option>
@@ -151,7 +200,7 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
                   ) : (
                     <div className="flex h-full w-full items-center justify-center font-mono text-[14px] text-inkMute font-bold">No cover photo</div>
                   )}
-                  <span className={`absolute left-2 top-2 rounded-full border-zine border-ink px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.04em] shadow-zine-xs ${STATUS_TONE[st] ?? 'bg-paper2 text-inkSoft'}`}>{st}</span>
+                  <span className={`absolute left-2 top-2 rounded-full border-zine border-ink px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.04em] shadow-zine-xs ${STATUS_TONE[st] ?? 'bg-paper2 text-inkSoft'}`}>{STATUS_LABEL[st] ?? st}</span>
                 </div>
                 <div className="flex flex-1 flex-col gap-1 p-3">
                   <div className="flex items-center gap-2">

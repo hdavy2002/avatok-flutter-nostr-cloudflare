@@ -16,7 +16,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { getActiveTokenWaited as getActiveToken } from '../../../lib/clerk';
 import { request, ApiError } from '../../../lib/apiClient';
 import { API_BASE } from '../../../lib/config';
-import { listingErrorMessage, isKycGate, isLivenessGate } from '../../../lib/listingErrors';
+import { listingErrorMessage, isKycGate, isLivenessGate, apiErrorCode } from '../../../lib/listingErrors';
 import { Card } from '../../../components/Card';
 import { Button } from '../../../components/Button';
 import { IslandBoundary } from '../../../components/IslandBoundary';
@@ -308,7 +308,7 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
     // [LIST-WIZ-PERF-1] Optimistic step transition: advance immediately and
     // save (plus, on step 2, the early-bird/promo follow-up) in the
     // background behind the "Saving…" pill next to the stepper — only
-    // onPublish still blocks on the network. If the save turns out to have
+    // onSubmitForReview still blocks on the network. If the save turns out to have
     // failed, snap back to the step that failed so the error banner lands
     // where the creator can act on it, instead of surfacing on a later step.
     if (currentStep < 7) setStep((s) => (s + 1) as StepIndex);
@@ -400,25 +400,37 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
     } catch { setError('Could not remove that slot.'); }
   }
 
-  async function onPublish() {
+  // [LIST-SUBMIT-REVIEW-1] Replaces the old direct-publish call. Publishing now
+  // requires admin approval (worker/src/routes/admin_listings.ts), so the creator's
+  // wizard only ever sends a draft INTO the review queue — POST /publish 409s for
+  // anything that isn't already `approved` and is no longer reachable from here.
+  async function onSubmitForReview() {
     if (publishing || !draft.id) return;
     setPublishing(true); setError(null); setGate(null);
     const ok = await saveDraft(7);
     if (!ok) { setPublishing(false); return; }
     try {
       const token = await getActiveToken();
-      await withTrace(() => request(`/api/listings/${encodeURIComponent(draft.id!)}/publish`, { method: 'POST', auth: token }));
-      capture('listing_publish', { outcome: 'ok', status: 200, kind: draft.kind, price: draft.free_entry ? 0 : Number(draft.price) || 0, free_entry: draft.free_entry });
-      window.location.href = `/dashboard/listings?published=${encodeURIComponent(draft.id!)}`;
+      const r = await withTrace(() => request<{ status?: string }>(`/api/listings/${encodeURIComponent(draft.id!)}/submit`, { method: 'POST', auth: token }));
+      capture('listing_submit_review', {
+        outcome: 'ok', status: r.status ?? 'pending_review', kind: draft.kind,
+        price: draft.free_entry ? 0 : Number(draft.price) || 0, free_entry: draft.free_entry,
+      });
+      window.location.href = `/dashboard/listings?submitted=${encodeURIComponent(draft.id!)}`;
     } catch (e) {
       if (e instanceof ApiError) {
-        if (isLivenessGate(e.error)) setGate('liveness');
-        if (isKycGate(e.error)) setGate('kyc');
-        setError(listingErrorMessage(e.error, (e.body as { detail?: unknown } | null)?.detail));
-      } else setError('Could not publish. Try again.');
-      capture('listing_publish', {
+        // The liveness/KYC gate responses DO carry a top-level `error`, so the
+        // resolved code (which prefers body.code/reason first) still matches them.
+        const code = apiErrorCode(e);
+        if (isLivenessGate(code)) setGate('liveness');
+        if (isKycGate(code)) setGate('kyc');
+        const body = e.body && typeof e.body === 'object' ? (e.body as Record<string, unknown>) : null;
+        setError(listingErrorMessage(code, body?.detail, body?.message));
+      } else setError('Could not submit. Try again.');
+      capture('listing_submit_review', {
         outcome: 'error', status: e instanceof ApiError ? e.status : 0,
-        reason: e instanceof ApiError ? e.error : (e instanceof Error ? e.message : 'unknown'), kind: draft.kind,
+        reason: e instanceof ApiError ? apiErrorCode(e) : (e instanceof Error ? e.message : 'unknown'), kind: draft.kind,
+        price: draft.free_entry ? 0 : Number(draft.price) || 0, free_entry: draft.free_entry,
       });
     } finally { setPublishing(false); }
   }
@@ -440,7 +452,13 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
 
   const checks = useMemo(() => publishReadiness(draft, { copyReviewed }), [draft, copyReviewed]);
   const ready = checks.every((c) => c.ok);
-  const published = Boolean(draft.status && draft.status !== 'draft');
+  // [LIST-SUBMIT-REVIEW-1] `status !== 'draft'` used to stand in for "published",
+  // which made a `pending_review` or `rejected` listing render "This listing is
+  // published." — both are very much not. Each state now gets its own explicit flag.
+  const published = draft.status === 'published' || draft.status === 'live' || draft.status === 'completed';
+  const pendingReview = draft.status === 'pending_review';
+  const approvedAwaitingPublish = draft.status === 'approved';
+  const rejected = draft.status === 'rejected';
   const publicHref = draft.id ? `/l/${encodeURIComponent(draft.id)}` : null;
 
   if (loading) return <div className="font-body font-bold text-inkSoft">Loading…</div>;
@@ -481,9 +499,10 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
         {step === 6 && <Step7Photos draft={draft} patch={patch} err={fieldErr} onUpload={onUpload} onRemoveCover={onRemoveCover} uploading={uploading} />}
         {step === 7 && (
           <Step8Preview
-            draft={draft} patch={patch} checks={checks} ready={ready} onPublish={onPublish} publishing={publishing}
+            draft={draft} patch={patch} checks={checks} ready={ready} onSubmitForReview={onSubmitForReview} publishing={publishing}
             copyReviewed={copyReviewed} onReviewed={() => setCopyReviewed(true)}
-            published={published} publicHref={publicHref} error={error}
+            published={published} pendingReview={pendingReview} approvedAwaitingPublish={approvedAwaitingPublish} rejected={rejected}
+            publicHref={publicHref} error={error}
             repeatOpen={repeatOpen} setRepeatOpen={setRepeatOpen} repeatWeeks={repeatWeeks} setRepeatWeeks={setRepeatWeeks}
             onRepeat={onRepeat} repeating={repeating} isLive={isLive} creator={creatorInfo}
           />

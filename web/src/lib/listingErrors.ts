@@ -98,7 +98,56 @@ const MESSAGES: Record<string, string> = {
   'could not start payment': 'Could not start that payment. Try again, or pick a different method.',
   'order_id required': 'That didn’t go through. Please try again.',
   'not found': 'We couldn’t find that payment. Please try again.',
+
+  // --- [LIST-SUBMIT-REVIEW-1] creator submit-for-review + the publish gate
+  // behind it (worker/src/routes/listings.ts submitListingForApproval,
+  // worker/src/routes/admin_listings.ts approvalRequired) ---
+  approval_required: 'This listing has been sent for review. Someone on the team checks it before it goes live — we’ll let you know.',
+  'listing not draft': 'This listing has already been submitted, so there’s nothing to send. Check its status below.',
+  section_unavailable: 'That section isn’t accepting new listings right now.',
 };
+
+/** HTTP status texts the worker's `res.statusText` fallback can produce — never a
+ *  usable error code, so `apiErrorCode` skips over them when something better exists. */
+const STATUS_TEXT_RE = /^(ok|created|accepted|no content|bad request|unauthorized|forbidden|not found|conflict|gone|too many requests|internal server error|bad gateway|service unavailable|gateway timeout)$/i;
+
+/**
+ * The worker is inconsistent about error shape: most refusals carry a top-level
+ * `error`, but publishListing's approval 409 carries only `code`/`reason`, so
+ * ApiError.error falls back to statusText ("Conflict") and every lookup keyed on
+ * it silently misses. Always resolve the code through this.
+ */
+export function apiErrorCode(e: { error?: string; body?: unknown }): string {
+  const body = e.body && typeof e.body === 'object' ? (e.body as Record<string, unknown>) : null;
+  const fromBody = (key: string) => {
+    const v = body?.[key];
+    return typeof v === 'string' && v.trim() ? v.trim() : '';
+  };
+  // ORDER MATTERS, and it is `error` FIRST — not `code`/`reason` first.
+  //
+  // Most refusals in this API carry the real application code in `error` AND a
+  // secondary `reason` describing why. identityGate returns
+  // `{ error: "identity_required", reason: "never_passed" }` and the publish
+  // KYC gate returns `{ error: "identity verification required", reason: "kyc" }`.
+  // Preferring `reason` there resolves to "never_passed" / "kyc", which match
+  // nothing in MESSAGES and — worse — make isLivenessGate()/isKycGate() both
+  // return false, so the "Verify now" card silently stops appearing and the
+  // creator is told only that something went wrong. `reason` is a LAST resort.
+  const err = typeof e.error === 'string' ? e.error.trim() : '';
+  if (err && !STATUS_TEXT_RE.test(err)) return err;
+  // Only now consider the body. publishListing's approval 409 is the case that
+  // needs this: it has no `error` key at all, so ApiError.error fell back to
+  // "Conflict" and was rejected above, leaving `code: "approval_required"`.
+  const code = fromBody('code');
+  if (code) return code;
+  const reason = fromBody('reason');
+  if (reason) return reason;
+  // A bare status-text fallback ("Conflict", "Bad Request"...) is not a real
+  // application code — it's ApiError.error falling back to res.statusText.
+  // Showing it would be exactly the bug this module exists to fix, so treat
+  // it as "no usable code" rather than a code nothing maps to.
+  return '';
+}
 
 /** True when the refusal is the liveness gate, which the client can resolve in place. */
 export function isLivenessGate(code: string): boolean {
@@ -114,10 +163,16 @@ export function isKycGate(code: string): boolean {
  * Turn a worker error code into a sentence. `detail` is used when the worker sent a
  * human string alongside the code (publishListing does this for `cover_required`).
  */
-export function listingErrorMessage(code: unknown, detail?: unknown): string {
+export function listingErrorMessage(code: unknown, detail?: unknown, message?: unknown): string {
   const key = typeof code === 'string' ? code : '';
   const known = MESSAGES[key];
   if (known) return known;
+  // The approval 409 (worker/src/routes/admin_listings.ts approvalRequired) carries a
+  // good human sentence in `message` — prefer it over the generic fallback, same rule
+  // as `detail` below: never show a bare snake_case code.
+  if (typeof message === 'string' && message.trim() && !/^[a-z_]+$/.test(message.trim())) {
+    return message.trim();
+  }
   if (typeof detail === 'string' && detail.trim() && !/^[a-z_]+$/.test(detail.trim())) {
     return detail.trim();
   }
