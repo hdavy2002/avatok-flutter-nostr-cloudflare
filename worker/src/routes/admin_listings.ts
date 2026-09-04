@@ -20,7 +20,7 @@ export async function adminListings(req: Request, env: Env): Promise<Response> {
   const status = new URL(req.url).searchParams.get("status") || "all";
   const where = status === "all" ? "" : "WHERE l.status=?1";
   const q = await env.DB_META.prepare(`SELECT l.id,l.title,l.description,l.kind,l.status,l.price,l.cover_media,l.attrs,l.created_at,l.updated_at,l.creator_id FROM listings l ${where} ORDER BY l.updated_at DESC LIMIT 100`).bind(...(status === "all" ? [] : [status])).all<any>();
-  return json({ listings: q.results ?? [], statuses: ["draft", "pending_review", "published", "rejected"] });
+  return json({ listings: q.results ?? [], statuses: ["draft", "pending_review", "approved", "published", "live", "rejected"] });
 }
 
 function safeParse<T>(raw: unknown, fallback: T): T {
@@ -48,10 +48,9 @@ export async function adminListingDetail(req: Request, env: Env, id: string): Pr
   if (!row) return json({ error: "not found" }, 404);
 
   const attrsRaw: Record<string, any> = safeParse(row.attrs, {} as Record<string, any>);
-  // Admin sees everything the creator submitted except the private transport
-  // key used to stage cover_media between the generate step and the DB write.
+  // Internal keys are server transport/state and never part of the review payload.
   const attrs: Record<string, any> = { ...attrsRaw };
-  delete attrs.__generated_cover_media;
+  for (const key of Object.keys(attrs)) if (key.startsWith("__")) delete attrs[key];
 
   const listing: Record<string, any> = { ...row };
   listing.attrs = attrs;
@@ -182,6 +181,8 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
   const now = Date.now();
   if (!ALLOWED_ACTIONS.includes(action)) return json({ error: "invalid action" }, 400);
   let attrs: any = {}; try { attrs = row.attrs ? JSON.parse(row.attrs) : {}; } catch { attrs = {}; }
+  for (const key of Object.keys(attrs)) if (key.startsWith("__")) delete attrs[key];
+  let generatedCoverMedia: any[] | null = null;
 
   if (action === "generate_poster" || action === "regenerate_poster") {
     const priorStatus: string | undefined = attrs.poster?.status;
@@ -193,11 +194,18 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
       if (priorStatus === "approved") return json({ error: "poster already approved; cannot regenerate", code: "poster_approved" }, 409);
       if (priorStatus === "generating") return json({ error: "poster generation already in progress", code: "poster_generating" }, 409);
     }
+    const existingCovers = safeParse<any[]>(row.cover_media, [])
+      .filter((c) => c && c.source !== "ai_poster");
+    if (existingCovers.length >= 5) {
+      return json({
+        error: "cover_slot_required", code: "cover_slot_required", cover_count: existingCovers.length,
+        message: "Remove one creator photo before generating the AI poster (maximum 5 covers).",
+      }, 409);
+    }
     const promptOverride = typeof body.prompt === "string" ? body.prompt.slice(0, 1800) : undefined;
     const prevAttempt = Number(attrs.poster?.attempt) || 0;
     const attempt = action === "regenerate_poster" ? prevAttempt + 1 : (prevAttempt || 1);
     attrs.poster = { ...(attrs.poster || {}), status: "generating", generated_at: now, attempt };
-    await db.prepare("UPDATE listings SET attrs=?2, updated_at=?3 WHERE id=?1").bind(id, JSON.stringify(attrs), now).run();
     try {
       const result = await generateListingPoster(env, {
         listingId: id,
@@ -209,9 +217,7 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
         attempt,
       });
       attrs.poster = result.poster;
-      if (Array.isArray(result.coverMedia)) {
-        (attrs as any).__generated_cover_media = result.coverMedia;
-      }
+      if (Array.isArray(result.coverMedia)) generatedCoverMedia = result.coverMedia;
     } catch (e) {
       const prevPoster: PosterState | undefined = attrs.poster;
       attrs.poster = { ...(prevPoster || {}), status: "failed", attempt, error: String((e as any)?.message || "provider unavailable").slice(0, 180) };
@@ -279,7 +285,13 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
 
   let next = row.status;
   if (action === "approve_listing") {
-    if (!["draft", "pending_review"].includes(String(row.status))) return json({ error: "listing not awaiting approval", status: row.status }, 409);
+    const legacyRebind = String(row.status) === "approved" && !row.reviewed_content_hash;
+    if (!legacyRebind) {
+      const check = checkTransition(String(row.status), "approved", "admin");
+      if (!check.ok) {
+        return json({ error: "transition_not_allowed", reason: check.reason, status_now: row.status, allowed_targets: check.allowedTargets }, 409);
+      }
+    }
     next = "approved";
   }
   if (action === "reject_listing") {
@@ -301,7 +313,7 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
     next = "rejected";
   }
   let coverMedia = row.cover_media ?? null;
-  if (Array.isArray(attrs.__generated_cover_media)) {
+  if (Array.isArray(generatedCoverMedia)) {
     // [C03 cover-cap] Same 1-5 cover cap publishListingAuthoritative() enforces
     // for creators. lib/listing_poster.ts:132-136 PREPENDS the AI poster onto
     // cover_media with no cap of its own, so a poster generated on top of an
@@ -311,15 +323,14 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
     // media a reviewer just approved (dropping one of their photos would be its
     // own kind of wrong): refuse the write and name the count so the reviewer
     // knows exactly why and can remove one before saving.
-    if (attrs.__generated_cover_media.length > 5) {
+    if (generatedCoverMedia.length > 5) {
       return json({
         error: "max 5 photos", code: "cover_cap_exceeded",
-        cover_count: attrs.__generated_cover_media.length, limit: 5,
-        message: `Poster generation produced ${attrs.__generated_cover_media.length} cover images; the limit is 5. Remove one before saving.`,
+        cover_count: generatedCoverMedia.length, limit: 5,
+        message: `Poster generation produced ${generatedCoverMedia.length} cover images; the limit is 5. Remove one before saving.`,
       }, 400);
     }
-    coverMedia = JSON.stringify(attrs.__generated_cover_media);
-    delete attrs.__generated_cover_media;
+    coverMedia = JSON.stringify(generatedCoverMedia);
   }
   const reasonForHistory = action === "reject_listing" ? String(body.reason || "").trim()
     : (action === "reject_poster" ? String(body.reason || body.feedback || "").trim() : null);
@@ -354,7 +365,19 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
     reviewedBy = null;
   }
 
-  const history = writeListingApprovalHistory(env, {
+  const updated = await db.prepare(
+    `UPDATE listings
+        SET status=?2, attrs=?3, cover_media=?4, updated_at=?5,
+            reviewed_content_hash=?6, reviewed_at=?7, reviewed_by=?8
+      WHERE id=?1 AND status=?9 AND authority_version=?10`,
+  ).bind(
+    id, next, JSON.stringify(attrs), coverMedia, now,
+    reviewedHash, reviewedAt, reviewedBy, row.status, Number(row.authority_version ?? 0),
+  ).run();
+  if (!(updated.meta?.changes ?? 0)) {
+    return json({ error: "conflict", message: "This listing changed while the moderation action was running. Reload and try again." }, 409);
+  }
+  await writeListingApprovalHistory(env, {
     listingId: id,
     actorId: a.uid,
     action,
@@ -362,13 +385,7 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
     nextStatus: next,
     reason: reasonForHistory,
     posterStatus: attrs.poster?.status ?? null,
-  });
-  await db.batch([
-    history,
-    db.prepare(
-      "UPDATE listings SET status=?2, attrs=?3, cover_media=?4, updated_at=?5, reviewed_content_hash=?6, reviewed_at=?7, reviewed_by=?8 WHERE id=?1",
-    ).bind(id, next, JSON.stringify(attrs), coverMedia, now, reviewedHash, reviewedAt, reviewedBy),
-  ]);
+  }).run();
   // Keep moderation actions visible in the existing admin audit stream.
   try {
     await env.DB_WALLET.prepare(

@@ -22,6 +22,7 @@ import { donation } from "../ledger";
 import { track, metric, brainFact } from "../hooks";
 import { notifyUser } from "../notify";
 import { gatePublicAction, emailOf } from "../lib/identity_gate"; // [AVA-IDGATE-1]
+import { readConfig } from "./config";
 
 const APP = "avalive";
 const PRE_LIVE_MS = 15 * 60_000;   // creator can go live 15 min early
@@ -102,6 +103,8 @@ export async function liveStart(req: Request, env: Env): Promise<Response> {
     const blocked = await gatePublicAction(env, ctx.uid, await emailOf(env, ctx.uid), "live");
     if (blocked) return blocked;
   }
+  const cfg = await readConfig(env);
+  if (cfg.liveEnabled !== true) return json({ error: "legacy_live_disabled" }, 404);
   const l = await loadListing(env, id);
   if (!l || l.kind !== "live_event") return json({ error: "listing not found" }, 404);
   if (l.creator_id !== ctx.uid) return json({ error: "not your event" }, 403);
@@ -140,17 +143,16 @@ export async function liveStart(req: Request, env: Env): Promise<Response> {
 
   // Mark live + arm the session DO (alarms at start+wait and end+grace).
   const now = Date.now();
-  await db.batch([
-    db.prepare("UPDATE listings SET status='live', updated_at=?2 WHERE id=?1").bind(id, now),
-    db.prepare("UPDATE live_sessions SET state='live', started_at=COALESCE(started_at,?2), last_disconnect_at=NULL, updated_at=?2 WHERE listing_id=?1").bind(id, now),
-  ]);
+  // Preparing a WHIP input is a request, not evidence that media is flowing.
+  // The signed Cloudflare Stream connected webhook owns both live state flips.
+  await db.prepare(
+    "UPDATE live_sessions SET state='scheduled', last_disconnect_at=NULL, updated_at=?2 WHERE listing_id=?1",
+  ).bind(id, now).run();
   await sessionOp(env, `live:${id}`, { op: "init", creator_uid: ctx.uid });
   await sessionOp(env, `live:${id}`, { op: "schedule", sid: id, kind: "live_event", starts_at: startsAt, ends_at: endsAt, host_id: ctx.uid });
-  await sessionOp(env, `live:${id}`, { op: "host-live", live: true });
 
   const token = await signSessionToken(env, { sid: id, uid: ctx.uid, role: "host", order: null, name: await displayName(env, ctx.uid), exp: endsAt + 6 * 3_600_000 });
-  track(env, ctx.uid, "live_started", APP, { listing: id });
-  brainFact(env, ctx.uid, "went_live", "live", { title: l.title }, `${ctx.uid}:went_live:${id}`);
+  track(env, ctx.uid, "live_input_prepared", APP, { listing: id });
   return json({ ok: true, whip, whep, room_token: token, starts_at: startsAt, ends_at: endsAt });
 }
 

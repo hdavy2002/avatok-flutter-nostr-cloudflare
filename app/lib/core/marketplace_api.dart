@@ -324,8 +324,9 @@ class MarketplaceApi {
     }
   }
 
-  /// §3.3 — publish. The ONLY path that creates a live listing, and only ever
-  /// from an explicit user tap on the review card.
+  /// §3.3 — submit the reviewed draft for admin approval. This creates a
+  /// pending-review listing from an explicit user tap; publication happens later
+  /// through the shared approved-listing publisher.
   ///
   /// Returns the parsed body plus `status`/`ok`, matching [callAgent]. Callers
   /// branch on: 200 {listing_id} · 403 identity_required · 422 {field,reason,
@@ -346,7 +347,7 @@ class MarketplaceApi {
     } catch (_) {
       return {
         'status': 0, 'ok': false, 'error': 'network',
-        'message': "I couldn't reach Ava to publish that — your draft is safe. Try again?",
+        'message': "I couldn't reach Ava to submit that — your draft is safe. Try again?",
       };
     }
   }

@@ -204,7 +204,7 @@ import {
   myListings, listingPromotions, deletePromotion, exploreBrowse, exploreLiveNow, exploreSearch,
   exploreCategories, getListing, getListingBySlug, getCreator, updateMyChannel, followCreator, unfollowCreator,
   blockCreator, report, bookListing,
-  listingFeeQuote,
+  listingFeeQuote, reconcileListingLifecycleProjections, reconcileListingPublicationEffects,
 } from "./routes/listings";
 import { listingStats, creatorStats } from "./routes/insights";
 import {
@@ -410,6 +410,12 @@ export default {
         reconcileCommercialSessions(env)
           .then((r) => { if (r.scanned) console.log("[commercial-reconciliation]", JSON.stringify(r)); })
           .catch((e) => { console.error("[commercial-reconciliation] failed:", String(e)); }),
+        reconcileListingLifecycleProjections(env)
+          .then((r) => { if (r.scanned) console.log("[listing-lifecycle-reconciliation]", JSON.stringify(r)); })
+          .catch((e) => { console.error("[listing-lifecycle-reconciliation] failed:", String(e)); }),
+        reconcileListingPublicationEffects(env)
+          .then((r) => { if (r.scanned) console.log("[listing-publication-reconciliation]", JSON.stringify(r)); })
+          .catch((e) => { console.error("[listing-publication-reconciliation] failed:", String(e)); }),
         runCommercialHostNoShowSweep(env)
           .then((r) => { if (r.scanned) console.log("[commercial-host-no-show-sweep]", JSON.stringify(r)); })
           .catch((e) => { console.error("[commercial-host-no-show-sweep] failed:", String(e)); }),

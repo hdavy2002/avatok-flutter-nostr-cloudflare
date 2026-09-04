@@ -244,8 +244,13 @@ const RESERVED_ATTRS_KEYS = ["poster"] as const;
  *  encodeAttrs()/contentAttrsError() are what reject a malformed shape; this
  *  helper only ever narrows a shape that is already going to be validated. */
 function sanitizeCreatorAttrs(raw: unknown, existing: Record<string, unknown> | null): unknown {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
-  const out: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
+  const out: Record<string, unknown> =
+    raw && typeof raw === "object" && !Array.isArray(raw)
+      ? { ...(raw as Record<string, unknown>) }
+      : {};
+  // Double-underscore keys are server transport internals. Strip every current
+  // and future key; restore reserved state only from the authoritative row.
+  for (const k of Object.keys(out)) if (k.startsWith("__")) delete out[k];
   for (const k of RESERVED_ATTRS_KEYS) {
     delete out[k];
     if (existing && existing[k] !== undefined) out[k] = existing[k];
@@ -760,7 +765,7 @@ async function promosFor(env: Env, ids: string[]): Promise<Map<string, any[]>> {
  *  vertical token into the indexed text as a shortcut: the marketplace MATCH is column-
  *  filtered to {title description category}, so a smuggled token would make "connect"
  *  a query that matches every connect listing by name. */
-async function ftsSync(env: Env, id: string, remove = false): Promise<void> {
+export async function ftsSync(env: Env, id: string, remove = false): Promise<void> {
   const db = metaDb(env);
   await db.prepare("DELETE FROM listings_fts WHERE listing_id=?1").bind(id).run();
   if (remove) return;
@@ -779,31 +784,55 @@ async function ftsSync(env: Env, id: string, remove = false): Promise<void> {
  * Capped at FANOUT_DAILY_CAP per creator per day (anti-spam). Notifications
  * feed rows are batch-inserted; FCM pushes ride Q_PUSH in chunks of 100.
  */
-export async function fanout(env: Env, creatorId: string, title: string, body: string, deeplink: string): Promise<{ sent: number; capped: boolean }> {
+export async function fanout(
+  env: Env,
+  creatorId: string,
+  title: string,
+  body: string,
+  deeplink: string,
+  opts?: { eventId?: string; listingId?: string; eventType?: string },
+): Promise<{ sent: number; capped: boolean }> {
   const db = metaDb(env);
-  const day = new Date().toISOString().slice(0, 10);
-  const cur = await db.prepare("SELECT count FROM fanout_log WHERE creator_id=?1 AND day=?2").bind(creatorId, day).first<{ count: number }>();
-  if ((cur?.count ?? 0) >= FANOUT_DAILY_CAP) return { sent: 0, capped: true };
-  await db.prepare(
-    "INSERT INTO fanout_log (creator_id, day, count) VALUES (?1,?2,1) ON CONFLICT(creator_id, day) DO UPDATE SET count=count+1",
-  ).bind(creatorId, day).run();
+  const now = Date.now();
+  let firstAttempt = true;
+  if (opts?.eventId) {
+    const inserted = await db.prepare(
+      `INSERT OR IGNORE INTO listing_fanout_events
+       (event_id,listing_id,event_type,state,created_at,updated_at)
+       VALUES (?1,?2,?3,'pending',?4,?4)`,
+    ).bind(opts.eventId, opts.listingId ?? "", opts.eventType ?? "listing_update", now).run();
+    firstAttempt = Number(inserted.meta?.changes ?? 0) > 0;
+    const event = await db.prepare("SELECT state FROM listing_fanout_events WHERE event_id=?1")
+      .bind(opts.eventId).first<{ state: string }>();
+    if (event?.state === "sent") return { sent: 0, capped: false };
+  }
+
+  const day = new Date(now).toISOString().slice(0, 10);
+  const cur = await db.prepare("SELECT count FROM fanout_log WHERE creator_id=?1 AND day=?2")
+    .bind(creatorId, day).first<{ count: number }>();
+  if ((cur?.count ?? 0) >= FANOUT_DAILY_CAP) {
+    if (opts?.eventId) await db.prepare(
+      "UPDATE listing_fanout_events SET state='sent',sent_at=?2,updated_at=?2 WHERE event_id=?1",
+    ).bind(opts.eventId, now).run();
+    return { sent: 0, capped: true };
+  }
+  if (firstAttempt) {
+    await db.prepare(
+      "INSERT INTO fanout_log (creator_id, day, count) VALUES (?1,?2,1) ON CONFLICT(creator_id, day) DO UPDATE SET count=count+1",
+    ).bind(creatorId, day).run();
+  }
 
   const rs = await db.prepare(
     "SELECT follower_id FROM creator_follows WHERE creator_id=?1 AND notify=1 LIMIT ?2",
   ).bind(creatorId, FANOUT_MAX_FOLLOWERS).all();
   const followers = ((rs.results ?? []) as any[]).map((r) => String(r.follower_id));
-  if (!followers.length) return { sent: 0, capped: false };
+  await Promise.all(followers.map((uid) => notifyUser(env, uid, {
+    type: "social", title, body, data: { deeplink },
+  }, opts?.eventId ? { id: `listing-fanout:${opts.eventId}:${uid}` } : undefined)));
 
-  const now = Date.now();
-  const data = JSON.stringify({ deeplink });
-  // In-app feed rows — one D1 batch.
-  await db.batch(followers.map((uid) => db.prepare(
-    "INSERT INTO notifications (id, uid, type, title, body, data, read, created_at) VALUES (?1,?2,'social',?3,?4,?5,0,?6)",
-  ).bind(crypto.randomUUID(), uid, title, body, data, now)));
-  // FCM wake — Q_PUSH in chunks of 100.
-  for (let i = 0; i < followers.length; i += 100) {
-    await env.Q_PUSH.sendBatch(followers.slice(i, i + 100).map((uid) => ({ body: { kind: "notify", to: uid, fromName: title.slice(0, 60), ts: now } })));
-  }
+  if (opts?.eventId) await db.prepare(
+    "UPDATE listing_fanout_events SET state='sent',sent_at=?2,updated_at=?2 WHERE event_id=?1",
+  ).bind(opts.eventId, Date.now()).run();
   return { sent: followers.length, capped: false };
 }
 
@@ -909,20 +938,17 @@ function sameAttrs(a: unknown, b: unknown): boolean {
 // MATERIAL's attrs entry above).
 //
 // EXCLUDED, deliberately:
-//   - attrs.poster — SERVER-OWNED moderation state (RESERVED_ATTRS_KEYS above). An
-//     admin regenerating a poster, or the auto-poster pipeline retrying, must not
-//     invalidate a review that never touched the reviewed content at all.
-//   - status — this hash describes CONTENT, not pipeline position. Folding status
-//     in would make the hash flip on the very approve/publish writes that are
-//     supposed to be BOUND BY it, which defeats the whole mechanism.
-//   - view/favourite/rating counters, created_at/updated_at, content_version,
-//     cat_version, section, slug, blurb, video_url, vibe_tags, and every other
-//     EDITABLE field not listed above — none of these are the substance a reviewer
-//     judged; they are presentation, bookkeeping, or (content_version/cat_version)
-//     a DIFFERENT versioning concern with its own MATERIAL list a few lines up.
+//   - attrs.poster and all __* attrs — server-owned moderation/transport state.
+//   - status, revisions, counters and timestamps — pipeline bookkeeping.
+//   - slug and derived section — routing values whose reviewed meaning is already
+//     represented by title/category. Every other public editable field is included.
 const REVIEW_MATERIAL_FIELDS = [
-  "title", "description", "category", "price", "currency_display",
-  "cover_media", "starts_at", "duration_min", "capacity", "free_entry",
+  "title", "description", "category", "price", "currency_display", "country",
+  "adults_only", "badges", "cover_media", "starts_at", "duration_min", "capacity",
+  "translation_enabled", "spoken_lang", "agent_instructions", "agent_lang",
+  "agent_voice_persona", "location", "expiry_days", "video_url", "blurb",
+  "schedule_mode", "recurrence_days", "recurrence_time", "timezone", "billing_unit",
+  "free_entry", "max_per_booking", "response_time_min", "vibe_tags", "credential",
 ] as const;
 
 /** Deterministic JSON: object keys sorted (recursively) so the same content always
@@ -952,11 +978,14 @@ export async function reviewedContentHash(row: Record<string, unknown>): Promise
   const attrsObj = typeof attrsIn === "string" ? parseJson<Record<string, unknown>>(attrsIn, {})
     : ((attrsIn && typeof attrsIn === "object") ? (attrsIn as Record<string, unknown>) : {});
   const creatorAttrs: Record<string, unknown> = { ...attrsObj };
-  for (const k of RESERVED_ATTRS_KEYS) delete creatorAttrs[k];
+  for (const k of Object.keys(creatorAttrs)) {
+    if (k.startsWith("__") || (RESERVED_ATTRS_KEYS as readonly string[]).includes(k)) delete creatorAttrs[k];
+  }
   const material: Record<string, unknown> = { attrs: creatorAttrs };
   for (const f of REVIEW_MATERIAL_FIELDS) {
     const val = row[f];
-    material[f] = f === "cover_media" && typeof val === "string" ? parseJson(val, []) : (val ?? null);
+    const jsonField = ["badges", "cover_media", "recurrence_days", "vibe_tags"].includes(f);
+    material[f] = jsonField && typeof val === "string" ? parseJson(val, []) : (val ?? null);
   }
   const canonical = stableStringify(material);
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
@@ -972,7 +1001,7 @@ export async function reviewedContentHash(row: Record<string, unknown>): Promise
  *  read it as "no sales", per this change's fail-closed/never-strand-a-buyer brief. */
 async function hasSoldEntitlements(env: Env, listingId: string): Promise<boolean | null> {
   try {
-    const row = await metaSession(env).prepare(
+    const row = await metaDb(env).prepare(
       `SELECT COUNT(*) c FROM commercial_entitlements
         WHERE listing_id=?1 AND role IN ('viewer','buyer')
           AND state IN ('reserved','held','active','consumed')`,
@@ -1275,7 +1304,7 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
     // [LIST-REVIEW-BINDING-1] cover_media/starts_at/duration_min/capacity and
     // reviewed_content_hash ride along too — the review-binding check below needs
     // the full REVIEW_MATERIAL_FIELDS set plus the hash it's comparing against.
-    "SELECT creator_id, status, kind, content_version, title, description, price, currency_display, category, attrs, cat_version, section, free_entry, slug, cover_media, starts_at, duration_min, capacity, reviewed_content_hash FROM listings WHERE id=?1",
+    "SELECT * FROM listings WHERE id=?1",
   ).bind(id).first<any>();
   if (!row || row.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
   if (MARKET_KINDS.has(String(row.kind)) && !(await marketplacePublishOn(env))) return marketplaceOff();
@@ -1454,15 +1483,23 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
   // never approved, or (rejected) the hash was already cleared at reject time.
   let demoteToPendingReview = false;
   const reviewedStatus = String(row.status);
-  if (row.reviewed_content_hash && ["approved", "published", "live"].includes(reviewedStatus)) {
+  if (["approved", "published", "live"].includes(reviewedStatus)) {
     const mergedForHash: Record<string, unknown> = { ...row };
     for (const rf of REVIEW_MATERIAL_FIELDS) if (rf in f) mergedForHash[rf] = f[rf];
     // `attrs` isn't in REVIEW_MATERIAL_FIELDS (reviewedContentHash treats it as its
     // own key, stripping RESERVED_ATTRS_KEYS internally) — merge it explicitly or an
     // edited attrs blob would silently hash against the OLD stored value.
     if ("attrs" in f) mergedForHash.attrs = f.attrs;
-    const newHash = await reviewedContentHash(mergedForHash);
-    if (newHash !== row.reviewed_content_hash) {
+    const [currentHash, newHash] = await Promise.all([
+      reviewedContentHash(row),
+      reviewedContentHash(mergedForHash),
+    ]);
+    // Legacy approved rows have no stored hash. An unchanged full-form save is
+    // harmless, but a real reviewed-field edit must earn a fresh approval.
+    const approvalInvalid = row.reviewed_content_hash
+      ? currentHash !== row.reviewed_content_hash || newHash !== row.reviewed_content_hash
+      : newHash !== currentHash;
+    if (approvalInvalid) {
       if (reviewedStatus !== "approved") {
         // published/live — real buyers may be holding a seat. Never silently
         // unpublish out from under them: check for sold entitlements FIRST and
@@ -1517,9 +1554,13 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
     ? ", status='pending_review', reviewed_content_hash=NULL, reviewed_at=NULL, reviewed_by=NULL"
     : "";
 
-  await metaDb(env).prepare(
-    `UPDATE listings SET ${sets}${bump}${sectionSet}${statusSet}, updated_at=?${keys.length + 2} WHERE id=?1`,
-  ).bind(id, ...keys.map((k) => f[k]), Date.now()).run();
+  const updateRes = await metaDb(env).prepare(
+    `UPDATE listings SET ${sets}${bump}${sectionSet}${statusSet}, updated_at=?${keys.length + 2}
+      WHERE id=?1 AND authority_version=?${keys.length + 3} AND status=?${keys.length + 4}`,
+  ).bind(id, ...keys.map((k) => f[k]), Date.now(), Number(row.authority_version ?? 0), row.status).run();
+  if (!(updateRes.meta?.changes ?? 0)) {
+    return json({ error: "conflict", message: "This listing changed while it was being saved. Reload and try again." }, 409);
+  }
   const version = Number(row.content_version ?? 0) + (material ? 1 : 0);
   if (material) {
     track(env, ctx.uid, "listing_content_version_bumped", APP, {
@@ -1555,7 +1596,7 @@ export async function submitListingForApproval(req: Request, env: Env, id: strin
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const db = metaDb(env);
   const row = await db.prepare(
-    "SELECT id, creator_id, status, attrs, title, description, blurb, category, kind, vibe_tags, spoken_lang, cover_media FROM listings WHERE id=?1",
+    "SELECT id, creator_id, status, attrs, title, description, blurb, category, kind, vibe_tags, spoken_lang, cover_media, authority_version FROM listings WHERE id=?1",
   ).bind(id).first<any>();
   if (!row || row.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
   if (String(row.status) !== "draft") return json({ error: "listing not draft", status: row.status }, 409);
@@ -1575,20 +1616,27 @@ export async function submitListingForApproval(req: Request, env: Env, id: strin
   // when there is none yet, or the last attempt failed, and only within the
   // configured attempt budget.
   const eligible = !priorPoster || priorPoster.status === "failed";
-  const shouldAutoGenerate = autoOn && eligible && nextAttempt <= maxAttempts;
+  const manualCoverCount = parseJson<unknown[]>(row.cover_media, [])
+    .filter((c: any) => c && c.source !== "ai_poster").length;
+  // A poster is prepended. Refuse the generation itself when five creator
+  // images already occupy the gallery, rather than producing an unsaveable sixth.
+  const shouldAutoGenerate = autoOn && eligible && nextAttempt <= maxAttempts && manualCoverCount < 5;
 
   if (shouldAutoGenerate) {
     attrs.poster = { status: "generating", generated_at: now, auto: true, attempt: nextAttempt };
   }
 
-  await db.batch([
-    db.prepare(
-      `INSERT INTO listing_approval_history
-       (id, listing_id, actor_id, action, previous_status, next_status, reason, poster_status, created_at)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)`,
-    ).bind(crypto.randomUUID(), id, ctx.uid, "submit_for_review", row.status, "pending_review", null, attrs.poster?.status ?? null, now),
-    db.prepare("UPDATE listings SET status='pending_review', attrs=?2, updated_at=?3 WHERE id=?1").bind(id, JSON.stringify(attrs), now),
-  ]);
+  const submitted = await db.prepare(
+    "UPDATE listings SET status='pending_review', attrs=?2, updated_at=?3 WHERE id=?1 AND status='draft' AND authority_version=?4",
+  ).bind(id, JSON.stringify(attrs), now, Number(row.authority_version ?? 0)).run();
+  if (!(submitted.meta?.changes ?? 0)) {
+    return json({ error: "conflict", message: "This listing changed before submission. Reload and try again." }, 409);
+  }
+  await db.prepare(
+    `INSERT INTO listing_approval_history
+     (id, listing_id, actor_id, action, previous_status, next_status, reason, poster_status, created_at)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)`,
+  ).bind(crypto.randomUUID(), id, ctx.uid, "submit_for_review", row.status, "pending_review", null, attrs.poster?.status ?? null, now).run();
   try {
     await env.DB_WALLET.prepare(
       "INSERT INTO admin_audit (id, admin_id, action, target, meta, created_at) VALUES (?1,?2,?3,?4,?5,?6)",
@@ -1664,7 +1712,7 @@ async function runAutoPosterGeneration(
     if (poster.status === "failed") errorKind = "generation_failed";
 
     const db = metaDb(env);
-    const fresh = await db.prepare("SELECT status, attrs, cover_media FROM listings WHERE id=?1").bind(opts.listingId).first<any>();
+    const fresh = await db.prepare("SELECT status, attrs, cover_media, authority_version FROM listings WHERE id=?1").bind(opts.listingId).first<any>();
     if (!fresh) { errorKind = errorKind || "listing_missing"; return; }
     let freshAttrs: any = {};
     try { freshAttrs = fresh.attrs ? JSON.parse(String(fresh.attrs)) : {}; } catch { freshAttrs = {}; }
@@ -1683,8 +1731,59 @@ async function runAutoPosterGeneration(
     }
     freshAttrs.poster = poster;
     const nextCoverMedia = coverMedia ? JSON.stringify(coverMedia) : fresh.cover_media;
-    await db.prepare("UPDATE listings SET attrs=?2, cover_media=?3, updated_at=?4 WHERE id=?1")
-      .bind(opts.listingId, JSON.stringify(freshAttrs), nextCoverMedia, Date.now()).run();
+    const saved = await db.prepare(
+      "UPDATE listings SET attrs=?2, cover_media=?3, updated_at=?4 WHERE id=?1 AND status='pending_review' AND authority_version=?5",
+    ).bind(opts.listingId, JSON.stringify(freshAttrs), nextCoverMedia, Date.now(), Number(fresh.authority_version ?? 0)).run();
+    if (!(saved.meta?.changes ?? 0)) {
+      // A concurrent ordinary edit may have advanced only the row revision while
+      // leaving this exact poster attempt active. Re-read once and merge against
+      // the latest covers instead of stranding the generating state.
+      const latest = await db.prepare(
+        "SELECT status,attrs,cover_media,authority_version FROM listings WHERE id=?1",
+      ).bind(opts.listingId).first<any>();
+      let latestAttrs: any = {};
+      try { latestAttrs = latest?.attrs ? JSON.parse(String(latest.attrs)) : {}; } catch { latestAttrs = {}; }
+      const sameAttempt = String(latest?.status) === "pending_review"
+        && latestAttrs.poster?.status === "generating"
+        && Number(latestAttrs.poster?.attempt ?? -1) === opts.attempt;
+      if (!sameAttempt) {
+        errorKind = "abandoned_row_changed";
+        outcome = "failed";
+      } else {
+        let mergedCoverMedia = latest.cover_media;
+        let terminalPoster = poster;
+        if (poster.status === "draft" && Array.isArray(coverMedia)) {
+          const generated = coverMedia.find((c: any) => c?.source === "ai_poster");
+          const manual = parseJson<any[]>(latest.cover_media, [])
+            .filter((c: any) => c && c.source !== "ai_poster");
+          if (!generated || manual.length >= 5) {
+            terminalPoster = {
+              ...poster,
+              status: "failed",
+              error: "Remove one creator photo before saving the AI poster.",
+            };
+            outcome = "failed";
+            errorKind = "cover_slot_required";
+          } else {
+            mergedCoverMedia = JSON.stringify([generated, ...manual]);
+          }
+        }
+        latestAttrs.poster = terminalPoster;
+        const retried = await db.prepare(
+          "UPDATE listings SET attrs=?2,cover_media=?3,updated_at=?4 WHERE id=?1 AND status='pending_review' AND authority_version=?5",
+        ).bind(
+          opts.listingId,
+          JSON.stringify(latestAttrs),
+          mergedCoverMedia,
+          Date.now(),
+          Number(latest.authority_version ?? 0),
+        ).run();
+        if (!(retried.meta?.changes ?? 0)) {
+          errorKind = "abandoned_row_changed";
+          outcome = "failed";
+        }
+      }
+    }
   } catch (e) {
     errorKind = errorKind || "unexpected_exception";
     outcome = "failed";
@@ -1693,14 +1792,15 @@ async function runAutoPosterGeneration(
     // this call left it in — same re-read + merge discipline as the happy path.
     try {
       const db = metaDb(env);
-      const fresh = await db.prepare("SELECT status, attrs FROM listings WHERE id=?1").bind(opts.listingId).first<any>();
+      const fresh = await db.prepare("SELECT status, attrs, authority_version FROM listings WHERE id=?1").bind(opts.listingId).first<any>();
       if (fresh) {
         let freshAttrs: any = {};
         try { freshAttrs = fresh.attrs ? JSON.parse(String(fresh.attrs)) : {}; } catch { freshAttrs = {}; }
         if (String(fresh.status) === "pending_review" && freshAttrs.poster?.status === "generating" && Number(freshAttrs.poster?.attempt ?? -1) === opts.attempt) {
           freshAttrs.poster = { ...freshAttrs.poster, status: "failed", error: String((e as any)?.message || "unexpected error").slice(0, 180) };
-          await db.prepare("UPDATE listings SET attrs=?2, updated_at=?3 WHERE id=?1")
-            .bind(opts.listingId, JSON.stringify(freshAttrs), Date.now()).run();
+          await db.prepare(
+            "UPDATE listings SET attrs=?2, updated_at=?3 WHERE id=?1 AND status='pending_review' AND authority_version=?4",
+          ).bind(opts.listingId, JSON.stringify(freshAttrs), Date.now(), Number(fresh.authority_version ?? 0)).run();
         }
       }
     } catch { /* last-resort best-effort; nothing more to do */ }
@@ -1778,6 +1878,39 @@ export async function listingFeeQuote(req: Request, env: Env): Promise<Response>
 // wallet balance or be blocked by the admin's own KYC/liveness state: the
 // listing being published belongs to, and is metered against, the person who
 // authored it, regardless of who pressed the button.
+async function ensurePublicationEffects(env: Env, snapshot: any): Promise<{ sent: number; capped: boolean }> {
+  const db = metaDb(env);
+  const listingId = String(snapshot.id);
+  const listing = await db.prepare("SELECT * FROM listings WHERE id=?1").bind(listingId).first<any>();
+  if (!listing || !["published", "live"].includes(String(listing.status))) {
+    throw new Error("listing is not published");
+  }
+  const creatorUid = String(listing.creator_id);
+  await db.prepare(
+    "INSERT INTO creator_profiles (user_id, updated_at) VALUES (?1,?2) ON CONFLICT(user_id) DO NOTHING",
+  ).bind(creatorUid, Date.now()).run();
+  await ftsSync(env, listingId);
+
+  const who = await nameOf(env, creatorUid);
+  const result = await fanout(
+    env,
+    creatorUid,
+    `${who} just scheduled: ${String(listing.title ?? "").slice(0, 40)}`,
+    listing.kind === "live_event" ? "New live event — book your spot" : "New session offering",
+    `/explore/listing/${listingId}`,
+    { eventId: `listing:${listingId}:published:${Number(listing.publication_version ?? 0)}`, listingId, eventType: "published" },
+  );
+  void brainIngest(env, {
+    uid: creatorUid,
+    domain: "listings",
+    kind: "listing_published",
+    sourceId: listingId,
+    text: `Published listing "${listing.title}" (${listing.kind})`,
+    meta: { kind: listing.kind, title: listing.title, price: listing.price },
+  });
+  return result;
+}
+
 export async function publishListingAuthoritative(
   env: Env,
   args: { listingId: string; actor: "creator" | "admin"; actorUid: string },
@@ -1795,9 +1928,28 @@ export async function publishListingAuthoritative(
   // the creator path, so the pre-existing event shape for creators is unchanged.
   const actorProps: Record<string, unknown> = actor === "admin" ? { actor: "admin", admin_id: actorUid } : { actor: "creator" };
 
-  if (MARKET_KINDS.has(String(l.kind)) && String(l.status) === "published") {
-    const reconciled = await markListingEntitlementPublished(env, { listingId: id });
-    if (reconciled) return { ok: true, status: 200, body: { ok: true, status: "published", reconciled: true } };
+  if (String(l.status) === "published" || String(l.status) === "live") {
+    if (MARKET_KINDS.has(String(l.kind))) {
+      const reconciled = await markListingEntitlementPublished(env, { listingId: id });
+      if (!reconciled) {
+        return { ok: false, status: 503, body: {
+          error: "billing_reconciliation_required",
+          message: "Publication billing is still being reconciled. Please retry in a minute.",
+        } };
+      }
+    }
+    try {
+      const repaired = await ensurePublicationEffects(env, l);
+      return { ok: true, status: 200, body: {
+        ok: true, status: String(l.status), reconciled: true, fanout: repaired,
+      } };
+    } catch {
+      return { ok: false, status: 503, body: {
+        error: "publication_repair_pending",
+        published: true,
+        message: "The listing is published, but its search and notification updates are still being repaired.",
+      } };
+    }
   }
   if (String(l.status) !== "approved") {
     return {
@@ -1815,6 +1967,35 @@ export async function publishListingAuthoritative(
       },
     };
   }
+  const approvedAttrs = parseJson<Record<string, unknown>>(l.attrs, {});
+  const posterStatus = (approvedAttrs.poster as any)?.status ?? null;
+  if (posterStatus !== "approved") {
+    return { ok: false, status: 409, body: {
+      error: "poster_approval_required", poster_status: posterStatus,
+      message: "The current poster must be approved before publication.",
+    } };
+  }
+  if (!l.reviewed_content_hash) {
+    return { ok: false, status: 409, body: {
+      error: "review_binding_required",
+      message: "This approval predates reviewed-content binding. An admin must review it again.",
+    } };
+  }
+  const currentReviewedHash = await reviewedContentHash(l);
+  if (currentReviewedHash !== String(l.reviewed_content_hash)) {
+    return { ok: false, status: 409, body: {
+      error: "review_stale", message: "The listing changed after approval and must be reviewed again.",
+    } };
+  }
+  if (Number(l.free_entry ?? 0) === 1) {
+    const cfg = await readConfig(env);
+    if (!freeEntryAllowed(env, cfg, creatorUid)) {
+      return { ok: false, status: 403, body: {
+        error: "free_entry_not_allowed",
+        message: "Free-entry listings are limited to approved creators right now.",
+      } };
+    }
+  }
   if (MARKET_KINDS.has(String(l.kind)) && !(await marketplacePublishOn(env))) {
     return { ok: false, status: 503, body: { error: "marketplace_publish_disabled", message: "Marketplace publishing is temporarily unavailable." } };
   }
@@ -1831,6 +2012,7 @@ export async function publishListingAuthoritative(
   }
 
   const isMarket = MARKET_KINDS.has(String(l.kind));
+  let claimedCreatorSlot = false;
   if (isMarket) {
     // AvaMarketplace (buy/sell/social): no slots, availability, capacity or valid-
     // category-id requirement; photos are optional so the flow is testable now.
@@ -1904,6 +2086,7 @@ export async function publishListingAuthoritative(
       // Conflict engine: claim the CREATOR's slot — occupied ⇒ 409 (greyed UX client-side).
       const claim = await claimBlock(env, { userId: creatorUid, sourceApp: APP, sourceRef: id, start, end: start + dur * 60_000, title: String(l.title) });
       if (!claim.ok) return { ok: false, status: 409, body: { error: "conflict", conflictWith: claim.conflict } };
+      claimedCreatorSlot = true;
     } else {
       if (!CAPACITIES.has(Number(l.capacity))) return { ok: false, status: 400, body: { error: "capacity must be 1, 10 or 20" } };
       // Consult listings attach to availability_rules — there must be some, and they
@@ -1969,31 +2152,48 @@ export async function publishListingAuthoritative(
       listingId: id,
       period: feeQuote?.period ?? 0,
       expiresAt: feeQuote?.expires_at ?? (pubNow + 30 * 86_400_000),
+      expectedStatus: "approved",
+      expectedAuthorityVersion: Number(l.authority_version ?? 0),
+      expectedReviewedHash: String(l.reviewed_content_hash),
       now: pubNow,
     });
     if (!finalized) {
-      track(env, creatorUid, "listing_publish_finalize_failed", APP, { listing_id: id, period: feeQuote?.period ?? null, ...actorProps });
-      return { ok: false, status: 503, body: { error: "billing_unavailable", message: "The listing charge completed, but publication could not be finalized. Please retry." } };
+      const fresh = await db.prepare("SELECT status FROM listings WHERE id=?1").bind(id).first<{ status: string }>();
+      const publicationWon = fresh?.status === "published"
+        && await markListingEntitlementPublished(env, { listingId: id });
+      if (!publicationWon) {
+        track(env, creatorUid, "listing_publish_finalize_failed", APP, { listing_id: id, period: feeQuote?.period ?? null, ...actorProps });
+        return { ok: false, status: fresh?.status === "published" ? 503 : 409, body: {
+          error: fresh?.status === "published" ? "billing_reconciliation_required" : "publish_conflict",
+          published: fresh?.status === "published",
+          message: fresh?.status === "published"
+            ? "The listing is published while its billing record is being repaired. Retry in a minute."
+            : "The listing changed during publication. Reload and retry; the completed entitlement will be reused.",
+        } };
+      }
     }
   } else {
-    await db.prepare("UPDATE listings SET status='published', updated_at=?2 WHERE id=?1").bind(id, pubNow).run();
+    const published = await db.prepare(
+      `UPDATE listings SET status='published', publication_version=publication_version+1, updated_at=?2
+        WHERE id=?1 AND status='approved' AND authority_version=?3 AND reviewed_content_hash=?4`,
+    ).bind(id, pubNow, Number(l.authority_version ?? 0), String(l.reviewed_content_hash)).run();
+    if (!(published.meta?.changes ?? 0)) {
+      if (claimedCreatorSlot) await releaseBlocks(env, APP, id).catch(() => undefined);
+      return { ok: false, status: 409, body: {
+        error: "publish_conflict", message: "The listing changed during publication. Reload and try again.",
+      } };
+    }
   }
-  // Ensure the channel row exists so follower counts etc. have a home. Keyed on
-  // the CREATOR, always — an admin publish must not create/touch the admin's own
-  // creator_profiles row.
-  await db.prepare("INSERT INTO creator_profiles (user_id, updated_at) VALUES (?1,?2) ON CONFLICT(user_id) DO NOTHING").bind(creatorUid, Date.now()).run();
-  // [C03 ftsSync-on-admin-path] This is the fix for "admin-published listings are
-  // un-searchable by name": ftsSync() used to run only inside publishListing(), so
-  // admin_listings.ts's raw UPDATE never touched `listings_fts`. Routing admin
-  // publish through this shared function means it now runs here for free — no
-  // second hand-rolled FTS write (compose.ts:2210 already had to make one; do not
-  // add a third).
-  await ftsSync(env, id);
-
-  const who = await nameOf(env, creatorUid);
-  const fo = await fanout(env, creatorUid, `${who} just scheduled: ${String(l.title).slice(0, 40)}`,
-    l.kind === "live_event" ? "New live event — book your spot" : "New session offering", `/explore/listing/${id}`);
-  void brainIngest(env, { uid: creatorUid, domain: "listings", kind: "listing_published", sourceId: id, text: `Published listing "${l.title}" (${l.kind})`, meta: { kind: l.kind, title: l.title, price: l.price } });
+  let fo: { sent: number; capped: boolean };
+  try {
+    fo = await ensurePublicationEffects(env, l);
+  } catch {
+    return { ok: false, status: 503, body: {
+      error: "publication_repair_pending",
+      published: true,
+      message: "The listing is published, but its search and notification updates are still being repaired.",
+    } };
+  }
   track(env, creatorUid, "listing_published", APP, {
     kind: l.kind, price: l.price, fanout: fo.sent,
     fee_source: feeEntitlement?.source ?? feeQuote?.source ?? null, fee_charged: feeEntitlement?.charged ?? 0,
@@ -2045,7 +2245,7 @@ export async function setListingStatus(req: Request, env: Env, id: string): Prom
   // immediately below.
   if (!["live", "completed", "cancelled", "draft"].includes(to)) return json({ error: "status must be live|completed|cancelled|draft" }, 400);
   const db = metaDb(env);
-  const l = await db.prepare("SELECT creator_id, status, title, kind FROM listings WHERE id=?1").bind(id).first<any>();
+  const l = await db.prepare("SELECT creator_id, status, title, kind, authority_version FROM listings WHERE id=?1").bind(id).first<any>();
   if (!l || l.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
 
   const check = checkTransition(String(l.status), to, "creator");
@@ -2073,15 +2273,9 @@ export async function setListingStatus(req: Request, env: Env, id: string): Prom
     // a fresh pending_review on the next submit; this endpoint only owns the STATUS
     // move + the marketplace entitlement reconciliation, exactly as it did before.
     //
-    // NOTE: this used to also accept published/live/completed/cancelled -> draft
-    // ("restore from Archived"). completed/cancelled are TERMINAL in the transition
-    // table (no way out, by design — see listing_transitions.test.ts) and
-    // published/live -> draft was never a documented revision path, so both are now
-    // refused above with `terminal_status` / `transition_not_allowed`. If "restore an
-    // archived listing to draft" is a feature the product still wants, it needs its
-    // own named transition row (and its own reconciliation story), not a silent
-    // side door through this revision path — flagging for the owner rather than
-    // guessing.
+    // Rejected, cancelled and completed each have an explicit creator->draft row
+    // in the transition table. Published/live cannot use this endpoint as an
+    // unpublish shortcut.
     if (MARKET_KINDS.has(String(l.kind))) {
       const reconciled = await markListingEntitlementPublished(env, { listingId: id });
       if (!reconciled) return json({ error: "billing_unavailable", message: "The listing entitlement could not be reconciled. Try again shortly." }, 503);
@@ -2091,8 +2285,8 @@ export async function setListingStatus(req: Request, env: Env, id: string): Prom
     // silently apply a transition that was authorized against a status that has
     // since changed. 0 rows changed = a real conflict, not a no-op.
     const res = await db.prepare(
-      "UPDATE listings SET status='draft', expires_at=NULL, updated_at=?2 WHERE id=?1 AND status=?3",
-    ).bind(id, Date.now(), l.status).run();
+      "UPDATE listings SET status='draft', expires_at=NULL, updated_at=?2 WHERE id=?1 AND status=?3 AND authority_version=?4",
+    ).bind(id, Date.now(), l.status, Number(l.authority_version ?? 0)).run();
     if (!(res.meta?.changes ?? 0)) {
       return json({ error: "conflict", message: "This listing's status changed before the request completed." }, 409);
     }
@@ -2102,8 +2296,8 @@ export async function setListingStatus(req: Request, env: Env, id: string): Prom
   }
 
   const res = await db.prepare(
-    "UPDATE listings SET status=?2, updated_at=?3 WHERE id=?1 AND status=?4",
-  ).bind(id, to, Date.now(), l.status).run();
+    "UPDATE listings SET status=?2, updated_at=?3 WHERE id=?1 AND status=?4 AND authority_version=?5",
+  ).bind(id, to, Date.now(), l.status, Number(l.authority_version ?? 0)).run();
   if (!(res.meta?.changes ?? 0)) {
     return json({ error: "conflict", message: "This listing's status changed before the request completed." }, 409);
   }
@@ -2138,24 +2332,147 @@ export async function setListingStatus(req: Request, env: Env, id: string): Prom
 // confirmed the broadcast is actually running yet.
 export async function systemMarkListingLive(env: Env, listingId: string): Promise<{ ok: boolean; reason?: string }> {
   const db = metaDb(env);
-  const row = await db.prepare("SELECT status, title, creator_id, kind FROM listings WHERE id=?1").bind(listingId).first<any>();
+  const row = await db.prepare(
+    "SELECT status,title,creator_id,kind,authority_version,publication_version FROM listings WHERE id=?1",
+  ).bind(listingId).first<any>();
   if (!row) return { ok: false, reason: "not_found" };
-  const check = checkTransition(String(row.status), "live", "system");
-  if (!check.ok) {
-    track(env, String(row.creator_id ?? "system"), "listing_status_transition_refused", APP, {
-      listing_id: listingId, from: row.status, to: "live", reason: check.reason, actor: "system",
-    });
-    return { ok: false, reason: check.reason };
+
+  if (String(row.status) === "published") {
+    const check = checkTransition("published", "live", "system");
+    if (!check.ok) return { ok: false, reason: check.reason };
+    const res = await db.prepare(
+      "UPDATE listings SET status='live', updated_at=?2 WHERE id=?1 AND status='published' AND authority_version=?3",
+    ).bind(listingId, Date.now(), Number(row.authority_version ?? 0)).run();
+    if (!(res.meta?.changes ?? 0)) return { ok: false, reason: "conflict" };
+    void partyEmit(env, `listing:${listingId}`, { t: "listing_update", status: "live" });
+  } else if (String(row.status) !== "live") {
+    return { ok: false, reason: "transition_not_allowed" };
   }
-  const res = await db.prepare(
-    "UPDATE listings SET status='live', updated_at=?2 WHERE id=?1 AND status=?3",
-  ).bind(listingId, Date.now(), row.status).run();
-  if (!(res.meta?.changes ?? 0)) return { ok: false, reason: "conflict" };
-  void partyEmit(env, `listing:${listingId}`, { t: "listing_update", status: "live" });
+
+  // The fan-out has its own durable id. A webhook replay or cron repair resumes
+  // an unfinished projection without creating a second feed row or push.
   const who = await nameOf(env, String(row.creator_id));
-  const fo = await fanout(env, String(row.creator_id), `${who} is LIVE now`, String(row.title ?? "").slice(0, 60), `/explore/listing/${listingId}`);
-  track(env, String(row.creator_id), "listing_status_changed", APP, { to: "live", actor: "system", fanout: fo.sent });
+  const fo = await fanout(
+    env, String(row.creator_id), `${who} is LIVE now`,
+    String(row.title ?? "").slice(0, 60), `/explore/listing/${listingId}`,
+    { eventId: `listing:${listingId}:live:${Number(row.publication_version ?? 0)}`, listingId, eventType: "live" },
+  );
+  track(env, String(row.creator_id), "listing_status_changed", APP, {
+    to: "live", actor: "system", fanout: fo.sent,
+  });
   return { ok: true };
+}
+
+export async function systemMarkListingCompleted(
+  env: Env,
+  listingId: string,
+): Promise<{ ok: boolean; reason?: string }> {
+  const db = metaDb(env);
+  const row = await db.prepare(
+    "SELECT status,creator_id,authority_version,publication_version FROM listings WHERE id=?1",
+  ).bind(listingId).first<any>();
+  if (!row) return { ok: false, reason: "not_found" };
+  if (String(row.status) === "live") {
+    const check = checkTransition("live", "completed", "system");
+    if (!check.ok) return { ok: false, reason: check.reason };
+    const res = await db.prepare(
+      "UPDATE listings SET status='completed', updated_at=?2 WHERE id=?1 AND status='live' AND authority_version=?3",
+    ).bind(listingId, Date.now(), Number(row.authority_version ?? 0)).run();
+    if (!(res.meta?.changes ?? 0)) return { ok: false, reason: "conflict" };
+  } else if (String(row.status) !== "completed") {
+    return { ok: false, reason: "transition_not_allowed" };
+  }
+
+  await releaseBlocks(env, APP, listingId);
+  await ftsSync(env, listingId, true);
+  await db.prepare(
+    `INSERT INTO listing_fanout_events
+     (event_id,listing_id,event_type,state,created_at,updated_at,sent_at)
+     VALUES (?1,?2,'completed_effects','sent',?3,?3,?3)
+     ON CONFLICT(event_id) DO UPDATE SET state='sent',updated_at=excluded.updated_at,sent_at=excluded.sent_at`,
+  ).bind(`listing:${listingId}:completed-effects:${Number(row.publication_version ?? 0)}`, listingId, Date.now()).run();
+  void partyEmit(env, `listing:${listingId}`, { t: "listing_update", status: "completed" });
+  track(env, String(row.creator_id ?? "system"), "listing_status_changed", APP, {
+    to: "completed", actor: "system",
+  });
+  return { ok: true };
+}
+
+export async function reconcileListingPublicationEffects(
+  env: Env,
+  limit = 25,
+): Promise<{ scanned: number; repaired: number }> {
+  const rows = await metaDb(env).prepare(
+    `SELECT l.*
+       FROM listings l
+       LEFT JOIN listing_fanout_events e
+         ON e.event_id=('listing:' || l.id || ':published:' || COALESCE(l.publication_version,0))
+      WHERE l.status IN ('published','live') AND COALESCE(e.state,'pending')<>'sent'
+      ORDER BY l.updated_at ASC LIMIT ?1`,
+  ).bind(Math.max(1, Math.min(100, Math.trunc(limit)))).all<any>();
+  let repaired = 0;
+  for (const row of rows.results ?? []) {
+    try {
+      await ensurePublicationEffects(env, row);
+      repaired++;
+    } catch {
+      // Leave the event pending; the next scheduled pass retries it.
+    }
+  }
+
+  // A Worker interruption during image generation must not leave the admin UI
+  // permanently refusing regeneration. Reset stale attempts to a retryable failure.
+  const stalePosters = await metaDb(env).prepare(
+    `SELECT id,attrs,authority_version FROM listings
+      WHERE status='pending_review'
+        AND json_extract(attrs,'$.poster.status')='generating'
+        AND CAST(json_extract(attrs,'$.poster.generated_at') AS INTEGER)<=?1
+      ORDER BY updated_at ASC LIMIT ?2`,
+  ).bind(Date.now() - 15 * 60_000, Math.max(1, Math.min(100, Math.trunc(limit)))).all<any>();
+  for (const row of stalePosters.results ?? []) {
+    const attrs = parseJson<Record<string, any>>(row.attrs, {});
+    if (attrs.poster?.status !== "generating") continue;
+    attrs.poster = {
+      ...attrs.poster,
+      status: "failed",
+      error: "Poster generation was interrupted. Regenerate to try again.",
+    };
+    const reset = await metaDb(env).prepare(
+      "UPDATE listings SET attrs=?2,updated_at=?3 WHERE id=?1 AND status='pending_review' AND authority_version=?4",
+    ).bind(row.id, JSON.stringify(attrs), Date.now(), Number(row.authority_version ?? 0)).run();
+    if (reset.meta?.changes) repaired++;
+  }
+  return {
+    scanned: (rows.results ?? []).length + (stalePosters.results ?? []).length,
+    repaired,
+  };
+}
+
+export async function reconcileListingLifecycleProjections(
+  env: Env,
+  limit = 25,
+): Promise<{ scanned: number; repaired: number }> {
+  const rows = await metaDb(env).prepare(
+    `SELECT s.listing_id,s.state,l.status
+       FROM commercial_sessions s
+       JOIN listings l ON l.id=s.listing_id
+       LEFT JOIN listing_fanout_events live_event
+         ON live_event.event_id=('listing:' || s.listing_id || ':live:' || COALESCE(l.publication_version,0))
+       LEFT JOIN listing_fanout_events completed_event
+         ON completed_event.event_id=('listing:' || s.listing_id || ':completed-effects:' || COALESCE(l.publication_version,0))
+      WHERE s.kind='live_event'
+        AND ((s.state='live' AND (l.status='published' OR (l.status='live' AND COALESCE(live_event.state,'pending')<>'sent')))
+          OR (s.state='ended' AND (l.status='live' OR (l.status='completed' AND COALESCE(completed_event.state,'pending')<>'sent'))))
+      ORDER BY s.updated_at ASC LIMIT ?1`,
+  ).bind(Math.max(1, Math.min(100, Math.trunc(limit)))).all<any>();
+  let repaired = 0;
+  for (const row of rows.results ?? []) {
+    const result = row.state === "live"
+      ? await systemMarkListingLive(env, String(row.listing_id))
+      : await systemMarkListingCompleted(env, String(row.listing_id));
+    if (result.ok) repaired++;
+  }
+  return { scanned: (rows.results ?? []).length, repaired };
 }
 
 // POST /api/listings/:id/duplicate — A6: copy everything, clear date/slot, draft.
@@ -2280,7 +2597,9 @@ export async function cancelListing(req: Request, env: Env, id: string): Promise
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const db = metaDb(env);
-  const l = await db.prepare("SELECT creator_id, cover_media FROM listings WHERE id=?1").bind(id).first<any>();
+  const l = await db.prepare(
+    "SELECT creator_id,cover_media,status,authority_version FROM listings WHERE id=?1",
+  ).bind(id).first<any>();
   if (!l || l.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
   const permanent = new URL(req.url).searchParams.get("permanent") === "true";
   if (permanent) {
@@ -2302,8 +2621,17 @@ export async function cancelListing(req: Request, env: Env, id: string): Promise
     track(env, ctx.uid, "listing_deleted_permanent", APP, {});
     return json({ ok: true, deleted: true });
   }
-  // Soft remove → goes to Archived (restorable).
-  await db.prepare("UPDATE listings SET status='cancelled', updated_at=?2 WHERE id=?1").bind(id, Date.now()).run();
+  // Soft remove follows the same creator transition authority as the status API.
+  const transition = checkTransition(String(l.status), "cancelled", "creator");
+  if (!transition.ok) {
+    return json({ error: "transition_not_allowed", reason: transition.reason, status_now: l.status }, 409);
+  }
+  const cancelled = await db.prepare(
+    "UPDATE listings SET status='cancelled', updated_at=?2 WHERE id=?1 AND status=?3 AND authority_version=?4",
+  ).bind(id, Date.now(), l.status, Number(l.authority_version ?? 0)).run();
+  if (!(cancelled.meta?.changes ?? 0)) {
+    return json({ error: "conflict", message: "This listing changed before it could be archived." }, 409);
+  }
   await releaseBlocks(env, APP, id);
   await ftsSync(env, id, true);
   return json({ ok: true });

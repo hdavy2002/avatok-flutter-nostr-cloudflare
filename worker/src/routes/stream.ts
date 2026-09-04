@@ -1,6 +1,6 @@
 // POST /webhooks/stream — Cloudflare Stream Live event sink (AvaLive).
-// Verifies the Webhook-Signature (HMAC-SHA256 over "time.body") when
-// STREAM_WEBHOOK_SECRET is set — gated like the rest of the secrets. On a
+// Verifies the Webhook-Signature (HMAC-SHA256 over "time.body") and rejects
+// stale replay timestamps. STREAM_WEBHOOK_SECRET is mandatory. On a
 // connect/disconnect it records live status; when a recording is ready it
 // dispatches the recording to Q_MODERATION for a post-stream content scan.
 //
@@ -10,6 +10,7 @@
 // live_streams (DB_META) for discovery/cleanup and let the client update 30311.
 import type { Env } from "../types";
 import { json } from "../util";
+import { systemMarkListingLive } from "./listings";
 
 export async function streamWebhook(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const raw = await req.text();
@@ -19,7 +20,8 @@ export async function streamWebhook(req: Request, env: Env, ctx: ExecutionContex
     const ok = await verifySignature(env.STREAM_WEBHOOK_SECRET, req.headers.get("webhook-signature"), raw);
     if (!ok) return json({ error: "bad signature" }, 401);
   } else {
-    console.warn("STREAM_WEBHOOK_SECRET unset — accepting Stream webhook unverified");
+    console.error("STREAM_WEBHOOK_SECRET unset — refusing lifecycle webhook");
+    return json({ error: "stream webhook unavailable" }, 503);
   }
 
   let body: any = {};
@@ -60,6 +62,11 @@ export async function streamWebhook(req: Request, env: Env, ctx: ExecutionContex
             "UPDATE live_sessions SET started_at=COALESCE(started_at,?2), state=CASE WHEN state='scheduled' THEN 'live' ELSE state END, updated_at=?2 WHERE listing_id=?1",
           ).bind(sess.listing_id, now).run();
         }
+        if (connected) {
+          ctx.waitUntil(systemMarkListingLive(env, String(sess.listing_id))
+            .then(() => undefined)
+            .catch((e) => console.error("legacy listing live projection failed:", String(e))));
+        }
         // Viewer overlay: "Creator reconnecting…" / auto-resume (A4).
         const stub = env.STREAM_SESSION_DO.get(env.STREAM_SESSION_DO.idFromName(`live:${sess.listing_id}`));
         ctx.waitUntil(stub.fetch("https://session/op", {
@@ -99,6 +106,8 @@ async function verifySignature(secret: string, header: string | null, body: stri
   const time = parts.time;
   const sig = parts.sig1;
   if (!time || !sig) return false;
+  const timestampMs = Number(time) * 1000;
+  if (!Number.isFinite(timestampMs) || Math.abs(Date.now() - timestampMs) > 5 * 60_000) return false;
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${time}.${body}`)));
   const want = [...mac].map((b) => b.toString(16).padStart(2, "0")).join("");

@@ -40,8 +40,30 @@ jobs:
         working-directory: worker
         run: npm ci
 
+      - name: Validate listing authority changes
+        working-directory: worker
+        run: |
+          npm run typecheck
+          npm test -- listing_review_binding.test.ts listing_lifecycle_authority.test.ts listing_billing.test.ts listing_fee_route_contract.test.ts commercial_notifications_contract.test.ts
+
       - name: Select target
         run: printf '%s\n' '${{ inputs.environment }}' > .avatok-target
+
+      - name: Apply listing authority columns
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ALLOW_PROD: ${{ inputs.environment == 'prod' && '1' || '0' }}
+        run: |
+          python3 scripts/d1_apply_alters.py worker/migrations/2026-09-04-listing-reviewed-version.sql --binding DB_META
+          python3 scripts/d1_apply_alters.py worker/migrations/2026-09-04-listing-authority-version.sql --binding DB_META
+
+      - name: Apply listing lifecycle projections
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ALLOW_PROD: ${{ inputs.environment == 'prod' && '1' || '0' }}
+        run: scripts/cf.sh worker d1 execute DB_META --remote --file=worker/migrations/2026-09-04-listing-lifecycle-projections.sql
 
       - name: Apply neutral media job migration
         if: ${{ inputs.apply_media_jobs_neutral }}

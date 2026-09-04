@@ -47,15 +47,29 @@ export async function notifyCommercialUser(env: Env, uid: string, event: Event):
   }, { id: stableId(event, uid) });
 }
 
-export async function notifyCommercialUsers(env: Env, uids: string[], event: Event): Promise<void> {
+export async function notifyCommercialUsers(
+  env: Env,
+  uids: string[],
+  event: Event,
+): Promise<{ attempted: number; failed: number }> {
   const unique = [...new Set(uids.filter(Boolean))].slice(0, 200);
-  // The audience is intentionally bounded; commercial events currently have a
-  // small audience and each account is authorized before it enters this list.
-  await Promise.all(unique.map((uid) => notifyCommercialUser(env, uid, event).catch(() => undefined)));
+  // Stable notification ids make retries safe. Report partial failure so a
+  // durable caller can leave its delivery marker pending and retry.
+  const results = await Promise.allSettled(
+    unique.map((uid) => notifyCommercialUser(env, uid, event)),
+  );
+  return {
+    attempted: unique.length,
+    failed: results.filter((result) => result.status === "rejected").length,
+  };
 }
 
-export async function notifyLiveAudience(env: Env, event: Event, creatorId: string): Promise<void> {
-  if (!event.listingId) return;
+export async function notifyLiveAudience(
+  env: Env,
+  event: Event,
+  creatorId: string,
+): Promise<{ attempted: number; failed: number }> {
+  if (!event.listingId) return { attempted: 0, failed: 0 };
   const rows = await metaDb(env).prepare(
     `SELECT DISTINCT account_id FROM commercial_entitlements
       WHERE listing_id=?1 AND kind='live_event'
@@ -63,5 +77,9 @@ export async function notifyLiveAudience(env: Env, event: Event, creatorId: stri
         AND state IN ('reserved','held','active','consumed')
       LIMIT 200`,
   ).bind(event.listingId).all<{ account_id: string }>();
-  await notifyCommercialUsers(env, [creatorId, ...(rows.results ?? []).map((r) => r.account_id)], event);
+  return notifyCommercialUsers(
+    env,
+    [creatorId, ...(rows.results ?? []).map((r) => r.account_id)],
+    event,
+  );
 }

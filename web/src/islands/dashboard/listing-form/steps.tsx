@@ -64,8 +64,8 @@ export function Step1Type({ draft, patch, err, freeEntryLocked }: {
    * this only avoids showing a control that would 403. An EXISTING free listing
    * (draft.free_entry already true, e.g. loaded from a listing this account made
    * before the gate existed, or before its allowlist status changed) still
-   * renders its state — read-only — so hiding the control can never silently
-   * flip a saved free show back to paid.
+   * renders a checked control that can only be turned off. This gives the owner
+   * a recovery path to convert the listing to paid.
    */
   freeEntryLocked: boolean;
 }) {
@@ -90,12 +90,13 @@ export function Step1Type({ draft, patch, err, freeEntryLocked }: {
 
       {showFreeEntryCard && (
         freeEntryLocked ? (
-          // [FREE-ENTRY-GATE-1] Locked but already free (an existing listing) —
-          // show the state, not a checkbox nobody on this account can toggle.
-          <div className="flex items-center gap-3 rounded-zine border-zine border-ink bg-card p-3 shadow-zine-xs">
+          <label className="flex items-center gap-3 rounded-zine border-zine border-ink bg-card p-3 shadow-zine-xs">
+            <input type="checkbox" checked={draft.free_entry}
+              onChange={(e) => { if (!e.target.checked) patch({ free_entry: false }); }}
+              className="h-5 w-5 rounded border-zine border-ink" />
             <span className="font-body font-bold text-[14px] text-ink">This is a free show</span>
-            <span className="font-body font-bold text-[11px] text-inkSoft">(locked — free shows are limited to test accounts right now)</span>
-          </div>
+            <span className="font-body font-bold text-[11px] text-inkSoft">Turn this off to continue as a paid listing.</span>
+          </label>
         ) : (
           <label className="flex items-center gap-3 rounded-zine border-zine border-ink bg-card p-3 shadow-zine-xs">
             <input type="checkbox" checked={draft.free_entry} onChange={(e) => patch({ free_entry: e.target.checked })}

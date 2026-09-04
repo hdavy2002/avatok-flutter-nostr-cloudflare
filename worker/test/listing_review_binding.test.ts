@@ -60,6 +60,20 @@ describe("reviewedContentHash", () => {
     expect(withoutPoster).toBe(withPoster);
   });
 
+  it("ignores all internal double-underscore attrs", async () => {
+    const clean = await reviewedContentHash({ ...base });
+    const injected = await reviewedContentHash({
+      ...base,
+      attrs: JSON.stringify({
+        level: "beginner",
+        mat_required: true,
+        __generated_cover_media: [{ url: "forged" }],
+        __future_internal: "forged",
+      }),
+    });
+    expect(injected).toBe(clean);
+  });
+
   it("a poster regeneration (only attrs.poster changes) never invalidates the hash", async () => {
     const gen1 = await reviewedContentHash({
       ...base,
@@ -87,9 +101,7 @@ describe("reviewedContentHash", () => {
       cat_version: 3,
       section: "wellness",
       slug: "sunrise-yoga",
-      blurb: "namaste",
-      video_url: "https://youtube.com/x",
-      vibe_tags: JSON.stringify(["safe_space"]),
+      authority_version: 12,
     });
     expect(a).toBe(b);
   });
@@ -108,6 +120,27 @@ describe("reviewedContentHash", () => {
     ["duration_min", { duration_min: 90 }],
     ["capacity", { capacity: 5 }],
     ["free_entry", { free_entry: 1 }],
+    ["country", { country: "IN" }],
+    ["adults_only", { adults_only: 1 }],
+    ["badges", { badges: JSON.stringify(["verified"]) }],
+    ["translation_enabled", { translation_enabled: 1 }],
+    ["spoken_lang", { spoken_lang: JSON.stringify(["hi"]) }],
+    ["agent_instructions", { agent_instructions: "Ask about experience." }],
+    ["agent_lang", { agent_lang: "hi" }],
+    ["agent_voice_persona", { agent_voice_persona: "warm" }],
+    ["location", { location: "Mumbai" }],
+    ["expiry_days", { expiry_days: 45 }],
+    ["video_url", { video_url: "https://youtube.com/x" }],
+    ["blurb", { blurb: "A calmer morning." }],
+    ["schedule_mode", { schedule_mode: "recurring" }],
+    ["recurrence_days", { recurrence_days: JSON.stringify(["monday"]) }],
+    ["recurrence_time", { recurrence_time: "09:00" }],
+    ["timezone", { timezone: "Asia/Kolkata" }],
+    ["billing_unit", { billing_unit: "session" }],
+    ["max_per_booking", { max_per_booking: 2 }],
+    ["response_time_min", { response_time_min: 30 }],
+    ["vibe_tags", { vibe_tags: JSON.stringify(["safe_space"]) }],
+    ["credential", { credential: "RYT-200" }],
     ["attrs (creator-owned key)", { attrs: JSON.stringify({ level: "advanced", mat_required: true }) }],
   ];
 

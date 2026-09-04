@@ -510,7 +510,15 @@ export async function markListingEntitlementPublished(
  */
 export async function finalizeListingPublication(
   env: Env,
-  args: { listingId: string; period: number; expiresAt: number; now?: number },
+  args: {
+    listingId: string;
+    period: number;
+    expiresAt: number;
+    expectedStatus?: string;
+    expectedAuthorityVersion?: number;
+    expectedReviewedHash?: string;
+    now?: number;
+  },
 ): Promise<boolean> {
   try {
     await ensureListingBillingSchema(env);
@@ -518,17 +526,34 @@ export async function finalizeListingPublication(
     const now = args.now ?? Date.now();
     const op = await readOperation(db, args.listingId, args.period);
     if (!op || !["entitled", "published"].includes(String(op.state))) return false;
-    const listing = await db.prepare("SELECT status FROM listings WHERE id=?1").bind(args.listingId).first<any>();
-    if (!listing || !["draft", "published"].includes(String(listing.status))) return false;
+    const listing = await db.prepare(
+      "SELECT status,authority_version,reviewed_content_hash FROM listings WHERE id=?1",
+    ).bind(args.listingId).first<any>();
+    const expectedStatus = args.expectedStatus ?? "approved";
+    if (!listing || String(listing.status) !== expectedStatus) return false;
+    if (args.expectedAuthorityVersion !== undefined
+      && Number(listing.authority_version ?? 0) !== args.expectedAuthorityVersion) return false;
+    if (args.expectedReviewedHash !== undefined
+      && String(listing.reviewed_content_hash ?? "") !== args.expectedReviewedHash) return false;
 
-    await db.batch([
-      db.prepare(
-        "UPDATE listings SET status='published', expires_at=?2, updated_at=?3 WHERE id=?1 AND status IN ('draft','published')",
-      ).bind(args.listingId, args.expiresAt, now),
-      db.prepare(
-        "UPDATE listing_entitlement_operations SET state='published', updated_at=?3 WHERE listing_id=?1 AND period=?2 AND state IN ('entitled','published')",
-      ).bind(args.listingId, args.period, now),
-    ]);
+    // Flip the listing first. Marking the entitlement published before proving
+    // this compare-and-swap won would strand a charged operation on a listing
+    // that changed back to review.
+    const published = await db.prepare(
+      `UPDATE listings SET status='published', publication_version=publication_version+1, expires_at=?2, updated_at=?3
+        WHERE id=?1 AND status=?4 AND authority_version=?5 AND reviewed_content_hash=?6`,
+    ).bind(
+      args.listingId, args.expiresAt, now, expectedStatus,
+      args.expectedAuthorityVersion ?? Number(listing.authority_version ?? 0),
+      args.expectedReviewedHash ?? String(listing.reviewed_content_hash ?? ""),
+    ).run();
+    if (!(published.meta?.changes ?? 0)) return false;
+
+    // If this second write is interrupted, the listing is already published and
+    // markListingEntitlementPublished() repairs it on the idempotent retry.
+    await db.prepare(
+      "UPDATE listing_entitlement_operations SET state='published', updated_at=?3 WHERE listing_id=?1 AND period=?2 AND state IN ('entitled','published')",
+    ).bind(args.listingId, args.period, now).run();
 
     const [publishedListing, publishedOp] = await Promise.all([
       db.prepare("SELECT status, expires_at FROM listings WHERE id=?1").bind(args.listingId).first<any>(),

@@ -18,6 +18,7 @@ import { emailRefundIssued, emailSettlementPaid } from "./cal/emails";
 import { notifyUser } from "./notify";
 import { track } from "./hooks";
 import { settleAffiliate } from "./routes/affiliate";
+import { systemMarkListingCompleted } from "./routes/listings";
 
 export interface MoneyMsg {
   type: "evaluate" | "cancel";
@@ -222,7 +223,7 @@ export async function runMoney(env: Env, msg: MoneyMsg): Promise<{ applied: numb
   }
   if (phase === "end" && msg.kind === "live_event") {
     await metaDb(env).prepare("UPDATE live_sessions SET state='settled', updated_at=?2 WHERE listing_id=?1 AND state IN ('ended','live')").bind(msg.sid, Date.now()).run();
-    await metaDb(env).prepare("UPDATE listings SET status='completed', updated_at=?2 WHERE id=?1 AND status='live'").bind(msg.sid, Date.now()).run();
+    await systemMarkListingCompleted(env, msg.sid);
   }
   return { applied, actions };
 }

@@ -28,8 +28,8 @@ import '../identity/public_action_gate.dart';
 /// local draft "for responsiveness" — it will drift from the server's copy and
 /// the server's copy is the listing.
 ///
-/// **Publishing is a user tap, never a model decision.** The model has no
-/// publish tool; it can only emit a review card that ASKS. [_publish] is the
+/// **Review submission is a user tap, never a model decision.** The model has no
+/// submit tool; it can only emit a review card that ASKS. [_publish] is the
 /// only call that creates a listing, and only [_ReviewCard]'s button reaches it.
 ///
 /// ── THE GATE IS CONVERSATIONAL (§3.1) ──────────────────────────────────────
@@ -170,7 +170,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
   bool _busy = false;
   bool _uploading = false;
   bool _publishing = false;
-  bool _published = false;
+  bool _submitted = false;
 
   /// Set only for states with no way forward (flag off, signed out).
   String? _fatal;
@@ -199,9 +199,9 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
   @override
   void dispose() {
     // §7.4 — the funnel that decides whether this replaces the form:
-    // compose_started → listing_published. An abandon must be as measurable as
-    // a publish, or "the chat is worse than the form" is unfalsifiable.
-    if (!_published && _sessionId != null) {
+    // compose_started → listing_submitted_for_review. An abandon must be as
+    // measurable as a submission, or the funnel cannot be evaluated.
+    if (!_submitted && _sessionId != null) {
       Analytics.capture('compose_abandoned', {
         'session_id': _sessionId!,
         'turns': _turnSeq,
@@ -758,7 +758,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
           _identityOk = false;
           _msgs.add(const _Msg(
             _Role.identity,
-            "I can't put this live until I've checked there's a real person "
+            "I can't submit this until I've checked there's a real person "
             "behind it. Nothing's lost — your listing is saved.",
           ));
         });
@@ -774,8 +774,8 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
 
     if (res['ok'] == true) {
       final id = res['listing_id']?.toString() ?? '';
-      _published = true;
-      Analytics.capture('listing_published', {
+      _submitted = true;
+      Analytics.capture('listing_submitted_for_review', {
         'via': 'compose',
         'listing_id': id,
         'session_id': sid,
@@ -786,7 +786,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
       });
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_publishSuccessText(res))));
+          const SnackBar(content: Text('Submitted for review. You can publish after approval.')));
       Navigator.of(context).maybePop(id);
       return;
     }
@@ -794,19 +794,6 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
   }
 
   int _statusOf(Map<String, dynamic> res) => (res['status'] as num?)?.toInt() ?? 0;
-
-  String _publishSuccessText(Map<String, dynamic> res) {
-    final raw = res['fee'] ?? res['fee_quote'] ?? res['quote'];
-    final fee = raw is Map
-        ? ListingFeeQuote.fromJson(raw.cast<String, dynamic>())
-        : (res.containsKey('fee_tokens') || res.containsKey('amount')
-            ? ListingFeeQuote.fromJson(res)
-            : null);
-    if (fee == null) return 'Your listing is live.';
-    if (fee.isFree) return 'Your listing is live — free entitlement used.';
-    final balance = fee.balance == null ? '' : ' Balance: ${fee.balance} Tokens.';
-    return 'Your listing is live — ${fee.amount} Tokens deducted.$balance';
-  }
 
   void _onPublishFailure(int status, Map<String, dynamic> res) {
     final err = res['error']?.toString();
@@ -854,9 +841,9 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
         'already_published': lid != null && lid.isNotEmpty,
       });
       if (lid != null && lid.isNotEmpty) {
-        // Atomic publish did its job — a double tap published exactly once.
-        _published = true;
-        _add(const _Msg(_Role.ava, "That's already live — you're done."));
+        // Atomic submission did its job — a double tap submitted exactly once.
+        _submitted = true;
+        _add(const _Msg(_Role.ava, "That's already submitted for review — you're done."));
         return;
       }
       // §3.3c — the rev moved under us. Adopt the SERVER's rev rather than
@@ -866,7 +853,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
         if (srev != null) _rev = srev;
         _msgs.add(const _Msg(
             _Role.notice,
-            'This draft moved on somewhere else. Tap publish again to use the '
+            'This draft moved on somewhere else. Tap submit again to use the '
             'latest version.'));
       });
       _jumpToEnd();
@@ -1128,7 +1115,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
           PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
               size: 16, color: _avaGreen),
           const SizedBox(width: Msg.s2),
-          Text('Ready to publish', style: ADText.rowName()),
+          Text('Ready for review', style: ADText.rowName()),
         ]),
         const SizedBox(height: Msg.s3),
         if (cover != null && cover.isNotEmpty) ...[
@@ -1168,10 +1155,10 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
         ],
         const SizedBox(height: Msg.s3),
         _pill(
-          _publishing ? 'Publishing…' : 'Publish it',
+          _publishing ? 'Submitting…' : 'Submit for review',
           _publishing ? AD.card : _avaGreen,
           _publishing ? AD.textTertiary : AD.sendActiveInk,
-          _publishing || card['fee_quote'] is! Map ? null : _publish,
+          _publishing ? null : _publish,
         ),
       ]),
     );
@@ -1183,10 +1170,10 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
         ? ListingFeeQuote.fromJson(raw.cast<String, dynamic>())
         : null;
     final copy = quote == null
-        ? 'Live publishing fee is unavailable. Refresh this review before publishing.'
+        ? 'The publishing fee will be checked after approval.'
         : quote.isFree
-            ? 'Fee: free ${quote.periodDays}-day entitlement${quote.freeRemaining == null ? '' : ' · ${quote.freeRemaining} free slot(s) available'}.'
-            : 'Publishing costs ${quote.amount} Tokens for ${quote.periodDays} days${quote.balance == null ? '' : ' · balance ${quote.balance}'}.';
+            ? 'After approval, publishing can use a free ${quote.periodDays}-day entitlement${quote.freeRemaining == null ? '' : ' · ${quote.freeRemaining} free slot(s) available'}.'
+            : 'After approval, publishing costs ${quote.amount} Tokens for ${quote.periodDays} days${quote.balance == null ? '' : ' · balance ${quote.balance}'}.';
     return Padding(
       padding: const EdgeInsets.only(top: Msg.s3),
       child: Text(copy, style: ADText.preview(c: AD.textSecondary)),

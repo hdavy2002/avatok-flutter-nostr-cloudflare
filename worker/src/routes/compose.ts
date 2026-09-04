@@ -15,7 +15,7 @@
 //     precedent (ava_gemini.ts:342) — `data: {...}` frames, terminated `data: [DONE]`.
 //
 //   POST /api/marketplace/compose/publish   → composePublish(req, env)
-//     The ONLY path that creates a live listing. An explicit USER action.
+//     Creates a pending-review listing after an explicit USER action.
 //
 // All three are gated on `aiComposeEnabled` (default false) → 503 {reason:"flag_off"},
 // matching liveness_v3.ts:243.
@@ -26,10 +26,9 @@
 // field_schema, writes the draft, and computes what is still missing. A malformed
 // model turn loses a turn, never the user's work.
 //
-// **There is deliberately NO publish tool.** The model can only ask "shall I?".
-// Publishing is a separate, explicit user action on a review card (composePublish).
-// Do not add a publish tool — an LLM with one will eventually publish something
-// nobody approved.
+// **There is deliberately NO submission or publish tool.** The model can only ask
+// "shall I?". Submission is a separate user action on a review card, and final
+// publication remains behind admin approval and the shared publisher.
 //
 // ── HOW never_disclose IS KEPT FROM THE MODEL (§3.6b) ────────────────────────
 // `never_disclose` is NEVER placed in any prompt. The only reliable way to stop a
@@ -52,14 +51,9 @@ import { readConfig } from "./config";
 import { avaReason } from "../lib/ava_reason";
 import { moderate } from "../lib/moderation";
 import { guardWrite } from "./moderate";
-import { brainIngest } from "../lib/brain_ingest";
 // [AVA-MKT-ENTITLEMENTS-1] §5 quota + §1.3 token charge, consumed inside the publish
 // keyed on listing_id (§3.3c). Same helper the classic publish path calls.
-import {
-  consumeListingEntitlement,
-  markListingEntitlementPublished,
-  quoteListingEntitlement,
-} from "../lib/listing_billing";
+import { quoteListingEntitlement } from "../lib/listing_billing";
 // [AVA-MKT-COMPOSE-ENRICH] §1.2/§6.1 — brain enrichment for the /session greeting. All
 // four §6.1 gates + the "return null when there's nothing useful" degrade live INSIDE
 // this helper; we only call it and warm the greeting when it returns non-null.
@@ -307,13 +301,6 @@ async function composeEnabled(env: Env): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-async function composePublishEnabled(env: Env): Promise<boolean> {
-  try {
-    const cfg = await readConfig(env) as any;
-    return cfg.marketplaceEnabled === true && cfg.aiComposeEnabled === true && cfg.marketplacePublishEnabled === true;
-  } catch { return false; }
 }
 
 function flagOff(): Response {
@@ -1917,8 +1904,8 @@ async function persistTurn(
 // ---------------------------------------------------------------------------
 
 /**
- * The ONLY path that creates a live listing. An explicit USER action on the review
- * card — never a model decision (§3.3).
+ * Creates a pending-review listing after an explicit USER action on the review
+ * card. It never publishes directly (§3.3).
  *
  * Body: { session_id, rev? }
  * → 200 { listing_id }
@@ -1942,10 +1929,6 @@ export async function composePublish(req: Request, env: Env): Promise<Response> 
     void track(env, ctx.uid, "compose_blocked", APP, { reason: "flag_off", status: 503 });
     return flagOff();
   }
-  if (!(await composePublishEnabled(env))) {
-    void track(env, ctx.uid, "compose_blocked", APP, { reason: "marketplace_publish_flag_off", status: 503 });
-    return json({ error: "marketplace_publish_disabled", reason: "flag_off" }, 503);
-  }
 
   const b = (await req.json().catch(() => ({}))) as any;
   const sessionId = String(b.session_id ?? "").trim();
@@ -1965,6 +1948,18 @@ export async function composePublish(req: Request, env: Env): Promise<Response> 
     return json({ error: "compose_unavailable", detail: String(e?.message ?? e).slice(0, 200) }, 503);
   }
   if (!s) return json({ error: "not_found" }, 404);
+  if (s.status === "submitted" && s.listing_id) {
+    const submitted = await db.prepare(
+      "SELECT status FROM listings WHERE id=?1 AND creator_id=?2",
+    ).bind(s.listing_id, ctx.uid).first<{ status: string }>();
+    if (submitted?.status === "pending_review") {
+      return json({ listing_id: s.listing_id, status: "pending_review", idempotent_replay: true });
+    }
+    await db.prepare(
+      "UPDATE listing_compose_sessions SET status='active',listing_id=NULL,updated_at=?2 WHERE session_id=?1 AND status='submitted'",
+    ).bind(sessionId, Date.now()).run();
+    return json({ error: "submit_recovery_required", message: "The review submission was interrupted. Please tap again." }, 503);
+  }
   if (s.status !== "active") {
     return json({ error: "stale_session", reason: s.status, listing_id: s.listing_id }, 409);
   }
@@ -2037,9 +2032,9 @@ export async function composePublish(req: Request, env: Env): Promise<Response> 
   // 3) PII strip (§3.3b — contact stays in AvaTOK).
   const cleanDesc = await redactContact(env, ctx.uid, description);
 
-  // ── ATOMIC PUBLISH (§3.3c) ──────────────────────────────────────────────────
-  // Claim the session with a single conditional write. A double-tapped publish
-  // button loses the race on the second tap and publishes ONCE. The transcript is
+  // ── ATOMIC SUBMISSION (§3.3c) ───────────────────────────────────────────────
+  // Claim the session with a single conditional write. A double-tapped submit
+  // loses the race on the second tap and creates one review artifact. The transcript is
   // nulled in the same statement — §3.3b: the listing is the artifact, the
   // conversation is packaging, and it does not outlive the draft.
   // Stable across retries of the same compose session. If WalletDO succeeds and
@@ -2051,7 +2046,7 @@ export async function composePublish(req: Request, env: Env): Promise<Response> 
   try {
     const r = await db.prepare(
       `UPDATE listing_compose_sessions
-          SET status='published', listing_id=?3, transcript='[]', rev=rev+1, updated_at=?4
+          SET status='submitted', listing_id=?3, transcript='[]', rev=rev+1, updated_at=?4
         WHERE session_id=?1 AND status='active' AND rev=?2`,
     ).bind(sessionId, s.rev, listingId, now).run();
     claimed = Number((r as any)?.meta?.changes ?? 0) > 0;
@@ -2061,7 +2056,7 @@ export async function composePublish(req: Request, env: Env): Promise<Response> 
   if (!claimed) {
     const cur = await db.prepare("SELECT listing_id, rev FROM listing_compose_sessions WHERE session_id=?1")
       .bind(sessionId).first<any>();
-    // If the loser lost to a PUBLISH, `listing_id` is the answer it needs and there is
+    // If the loser lost to a SUBMISSION, `listing_id` is the answer it needs and there is
     // no draft to converge on. If it lost to a concurrent turn, hand back the draft
     // (§3.3c) so it re-renders instead of re-tapping into the same race.
     const st = cur?.listing_id ? null : await currentState(env, sessionId, ctx.uid);
@@ -2071,42 +2066,9 @@ export async function composePublish(req: Request, env: Env): Promise<Response> 
     }, 409);
   }
 
-  // [AVA-MKT-ENTITLEMENTS-1] §5 quota + §1.3 charge — AFTER moderation passed (the
-  // fail-closed 422/503 gates above already returned), and AFTER the atomic claim, so we
-  // only ever charge the WINNING publish of this session (a double-tapped Publish loses
-  // the claim on the second tap and never reaches here). The listing id is stable for
-  // this session, so the wallet operation and entitlement period can be resumed after
-  // an interrupted D1 write.
-  //
-  // On failure we ROLL THE CLAIM BACK to 'active' (same posture as the listings-INSERT
-  // failure path below) so the draft is not stranded in 'published' with no listing, then
-  // return 402/503 without publishing — the draft stays safe, exactly like the 503
-  // moderation path. Nothing charged, nothing published.
-  const ent = await consumeListingEntitlement(env, {
-    uid: ctx.uid, listingId, vertical: draft.vertical, period: 1,
-  });
-  if (!ent.ok) {
-    try {
-      await db.prepare(
-        "UPDATE listing_compose_sessions SET status='active', listing_id=NULL, updated_at=?2 WHERE session_id=?1 AND status='published'",
-      ).bind(sessionId, Date.now()).run();
-    } catch { /* best-effort — the listing was never inserted regardless */ }
-    if (ent.error === "insufficient_funds") {
-      void trackUser(env, ctx.uid, email, "compose_publish_insufficient_funds", APP, {
-        session_id: sessionId, needed: ent.needed,
-      });
-      return json({
-        error: "insufficient_funds", needed: ent.needed, feature: "listing_post",
-        fee: ent.quote ?? null,
-      }, 402);
-    }
-    void trackUser(env, ctx.uid, email, "compose_publish_charge_failed", APP, { session_id: sessionId });
-    return json({
-      error: "billing_unavailable",
-      message: "I can't complete the listing charge right now, so I won't publish yet. Try again in a minute.",
-      fee: ent.quote ?? null,
-    }, 503);
-  }
+  // Submission creates a pending-review artifact. Listing entitlement is charged
+  // only by publishListingAuthoritative after approval, so moderation and wallet
+  // state cannot diverge.
 
   // §2.3 — `other` is the ESCAPE HATCH, reached only when the model found nothing in
   // the taxonomy and said so via propose_category. It is not the default: a session
@@ -2116,8 +2078,11 @@ export async function composePublish(req: Request, env: Env): Promise<Response> 
   // "other" — the taxonomy, the field schemas and the version pins all quietly unused.)
   const category = s.category ?? "other";
   const currency = String(draft.core.currency ?? "USD").toUpperCase();
+  const creatorAttrs = Object.fromEntries(
+    Object.entries(draft.attrs).filter(([key]) => key !== "poster" && !key.startsWith("__")),
+  );
   const attrsJson = JSON.stringify({
-    ...draft.attrs,
+    ...creatorAttrs,
     // §3.6b — the mandate's model-visible halves live in attrs.mandate.
     mandate: {
       public_agent_brief: draft.mandate.public_agent_brief ?? null,
@@ -2148,83 +2113,70 @@ export async function composePublish(req: Request, env: Env): Promise<Response> 
   } catch { /* pre-migration columns — 1/1 matches the back-fill */ }
 
   try {
-    const existing = await db.prepare("SELECT creator_id, status FROM listings WHERE id=?1").bind(listingId).first<any>();
-    if (existing && String(existing.creator_id) !== ctx.uid) throw new Error("listing id is owned by another account");
-    if (!existing) {
-      await db.prepare(
-        `INSERT INTO listings (id, creator_id, kind, title, description, category, price, currency_display,
-           country, location, cover_media, status, expires_at, created_at, updated_at,
-           agent_lang, market_type, expiry_days, vertical, attrs, video_url, proposed_category,
-           cat_version, playbook_version, template_version,
-           public_agent_brief, seller_private_rules, never_disclose, floor_price, ask_before_commit)
-         VALUES (?1,?2,'sell',?3,?4,?5,?6,?7,?8,?9,?10,'published',?11,?12,?12,?13,'sell',?14,?15,?16,?17,?18,
-                 ?19,?20,?21,?22,?23,?24,?25,?26)`,
-      ).bind(
-        listingId, ctx.uid, title || "Untitled", cleanDesc || null, category,
-        draft.core.price ?? 0, currency, draft.core.country ?? null, draft.core.location ?? null,
-        draft.cover_media ?? null, ent.expires_at, now,
-        draft.mandate.agent_lang ?? draft.lang, draft.expiry_days ?? null,
-        // §2.0 — the vertical the session was opened in, not a constant: set_category
-        // already refused any id outside it, so the listing cannot cross verticals.
-        draft.vertical, attrsJson, draft.video?.video_url ?? null, draft.proposed_category ?? null,
-        s.cat_version, pbV, tplV,
-        draft.mandate.public_agent_brief ?? null,
-        draft.mandate.seller_private_rules ?? null,
-        // The vault reaches D1 in its OWN column so it is trivially auditable that no
-        // code path reads it into a prompt. Nothing in this file, and nothing
-        // in the agent runtime's context builder, selects it.
-        draft.vault.never_disclose ?? null,
-        draft.constraints.floor_price ?? null,
-        draft.constraints.ask_before_commit ? 1 : 0,
-      ).run();
-    } else if (String(existing.status) === "draft") {
-      // A prior request may have created the row and died before returning. Resume
-      // that row rather than inserting or charging another listing period.
-      await db.prepare("UPDATE listings SET status='published', expires_at=?2, updated_at=?3 WHERE id=?1")
-        .bind(listingId, ent.expires_at, now).run();
+    const existing = await db.prepare(
+      "SELECT creator_id,status,authority_version FROM listings WHERE id=?1",
+    ).bind(listingId).first<any>();
+    if (existing && String(existing.creator_id) !== ctx.uid) {
+      throw new Error("listing id is owned by another account");
     }
-    const entitlementPublished = await markListingEntitlementPublished(env, { listingId, period: ent.period, now });
-    if (!entitlementPublished) throw new Error("listing entitlement publish reconciliation failed");
+    if (!existing) {
+      await db.batch([
+        db.prepare(
+          `INSERT INTO listings (
+             id,creator_id,kind,title,description,category,price,currency_display,
+             country,location,cover_media,status,created_at,updated_at,agent_lang,
+             market_type,expiry_days,vertical,attrs,video_url,proposed_category,
+             cat_version,playbook_version,template_version,public_agent_brief,
+             seller_private_rules,never_disclose,floor_price,ask_before_commit
+           ) VALUES (
+             ?1,?2,'sell',?3,?4,?5,?6,?7,?8,?9,?10,'pending_review',?11,?11,
+             ?12,'sell',?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25
+           )`,
+        ).bind(
+          listingId, ctx.uid, title || "Untitled", cleanDesc || null, category,
+          draft.core.price ?? 0, currency, draft.core.country ?? null,
+          draft.core.location ?? null, draft.cover_media ?? null, now,
+          draft.mandate.agent_lang ?? draft.lang, draft.expiry_days ?? null,
+          draft.vertical, attrsJson, draft.video?.video_url ?? null,
+          draft.proposed_category ?? null, s.cat_version, pbV, tplV,
+          draft.mandate.public_agent_brief ?? null,
+          draft.mandate.seller_private_rules ?? null,
+          draft.vault.never_disclose ?? null,
+          draft.constraints.floor_price ?? null,
+          draft.constraints.ask_before_commit ? 1 : 0,
+        ),
+        db.prepare(
+          `INSERT INTO listing_approval_history
+           (id,listing_id,actor_id,action,previous_status,next_status,reason,poster_status,created_at)
+           VALUES (?1,?2,?3,'submit_for_review','draft','pending_review',NULL,NULL,?4)`,
+        ).bind(crypto.randomUUID(), listingId, ctx.uid, now),
+      ]);
+    } else if (String(existing.status) === "draft") {
+      const resumed = await db.prepare(
+        "UPDATE listings SET status='pending_review',updated_at=?2 WHERE id=?1 AND status='draft' AND authority_version=?3",
+      ).bind(listingId, now, Number(existing.authority_version ?? 0)).run();
+      if (!(resumed.meta?.changes ?? 0)) throw new Error("listing changed during submission");
+      await db.prepare(
+        `INSERT INTO listing_approval_history
+         (id,listing_id,actor_id,action,previous_status,next_status,reason,poster_status,created_at)
+         VALUES (?1,?2,?3,'submit_for_review','draft','pending_review',NULL,NULL,?4)`,
+      ).bind(crypto.randomUUID(), listingId, ctx.uid, now).run();
+    } else if (String(existing.status) !== "pending_review") {
+      throw new Error("listing is not reviewable");
+    }
   } catch (e: any) {
-    // The claim succeeded but the listing did not land. Release the session back to
-    // active so the user can retry, rather than stranding them with a 'published'
-    // session and no listing.
     try {
       await db.prepare(
-        "UPDATE listing_compose_sessions SET status='active', listing_id=NULL, updated_at=?2 WHERE session_id=?1 AND status='published'",
+        "UPDATE listing_compose_sessions SET status='active',listing_id=NULL,updated_at=?2 WHERE session_id=?1 AND status='submitted'",
       ).bind(sessionId, Date.now()).run();
-    } catch { /* best-effort */ }
-    void trackUser(env, ctx.uid, email, "compose_publish_failed", APP, {
+    } catch { /* retry can recover the stable listing id */ }
+    void trackUser(env, ctx.uid, email, "compose_submit_failed", APP, {
       session_id: sessionId, error: String(e?.message ?? e).slice(0, 200),
     });
-    return json({ error: "publish_failed", message: "I couldn't publish that — try again?" }, 503);
+    return json({ error: "submit_failed", message: "I couldn't submit that for review - try again?" }, 503);
   }
 
-  // Index it for search. listings.ts owns `ftsSync`, but it is module-private and
-  // that file belongs to another agent, so the row is written here directly — the
-  // same two statements, against the same columns. WITHOUT this a compose-published
-  // listing is invisible to /api/explore/search: it exists, the seller can see it,
-  // and no buyer can ever find it. Best-effort: a listing that published must not be
-  // un-published by an index wobble.
-  try {
-    await db.prepare("DELETE FROM listings_fts WHERE listing_id=?1").bind(listingId).run();
-    const who = await metaSession(env).prepare("SELECT display_name, handle FROM users WHERE uid=?1")
-      .bind(ctx.uid).first<any>();
-    await db.prepare(
-      "INSERT INTO listings_fts (listing_id, title, description, creator_name, category) VALUES (?1,?2,?3,?4,?5)",
-    ).bind(listingId, title, cleanDesc ?? "", `${who?.display_name ?? ""} ${who?.handle ?? ""}`.trim(), category).run();
-  } catch { /* search index is rebuildable; the listing is the artifact */ }
-
-  // §3.3b — ONLY the finished listing is ingested (domain `listings`). The
-  // transcript is NEVER passed to brainIngest and compose is NOT a brain domain.
-  // The scratch never becomes memory.
-  void brainIngest(env, {
-    uid: ctx.uid, domain: "listings", kind: "listing_published", sourceId: listingId,
-    text: `Published listing "${title}"`,
-    meta: { category, price: draft.core.price ?? 0, currency, country: draft.core.country ?? null, via: "compose" },
-  });
-
-  void trackUser(env, ctx.uid, email, "listing_published", APP, {
+  void trackUser(env, ctx.uid, email, "listing_submitted_for_review", APP, {
     listing_id: listingId, session_id: sessionId, via: "compose", category,
     cat_version: s.cat_version, price: draft.core.price ?? 0, currency,
     photo_count: draft.media.length, has_video: !!draft.video,
@@ -2232,13 +2184,5 @@ export async function composePublish(req: Request, env: Env): Promise<Response> 
     has_never_disclose: !!draft.vault.never_disclose,
     proposed_category: draft.proposed_category ?? null, turns: s.turn_seq, lang: draft.lang,
   });
-  return json({
-    listing_id: listingId,
-    fee: {
-      source: ent.source, charged: ent.charged, amount: ent.amount,
-      funding_policy: ent.funding_policy, period: ent.period,
-      free_used: ent.free_used, free_remaining: ent.free_remaining,
-      paid_balance: ent.balance, entitlement_expires_at: ent.expires_at,
-    },
-  });
+  return json({ listing_id: listingId, status: "pending_review" });
 }

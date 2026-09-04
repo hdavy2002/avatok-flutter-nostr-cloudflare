@@ -15,7 +15,7 @@ import { commercialEvent } from "../lib/commercial_telemetry";
 // [LIST-APPROVAL-AUTH-1] Read-only import of the system-actor listing transition
 // landed in fa44bc21. This file only CALLS it from the provider-confirmed webhook
 // path below — it does not own or edit listings.ts.
-import { systemMarkListingLive } from "./listings";
+import { systemMarkListingCompleted, systemMarkListingLive } from "./listings";
 import { hold, refund } from "../ledger";
 import { notifyLiveAudience } from "../lib/commercial_notifications";
 import { refreshCreatorStats } from "../lib/creator_stats"; // [LIST-STATS-1]
@@ -107,6 +107,48 @@ function streamVideoBindings(env: Env): { apiKey: string; apiSecret: string } | 
 
 function configured(env: Env): env is Env {
   return Boolean(streamVideoBindings(env) && streamChatBindings(env));
+}
+
+async function notifyCommercialLifecycleOnce(
+  env: Env,
+  input: {
+    type: "commercial_broadcast_started" | "commercial_broadcast_ended";
+    eventId: string;
+    listingId: string;
+    sessionId: string;
+    title: string;
+    body: string;
+  },
+  creatorId: string,
+): Promise<boolean> {
+  const db = metaDb(env);
+  const markerId = `commercial-notify:${input.eventId}`;
+  const now = Date.now();
+  await db.prepare(
+    `INSERT OR IGNORE INTO listing_fanout_events
+     (event_id,listing_id,event_type,state,created_at,updated_at)
+     VALUES (?1,?2,?3,'pending',?4,?4)`,
+  ).bind(markerId, input.listingId, input.type, now).run();
+  const marker = await db.prepare("SELECT state FROM listing_fanout_events WHERE event_id=?1")
+    .bind(markerId).first<{ state: string }>();
+  if (marker?.state === "sent") return false;
+
+  const delivery = await notifyLiveAudience(env, input, creatorId);
+  if (delivery.failed > 0) {
+    throw new Error(`commercial notification delivery failed for ${delivery.failed} recipient(s)`);
+  }
+  await db.prepare(
+    "UPDATE listing_fanout_events SET state='sent',sent_at=?2,updated_at=?2 WHERE event_id=?1",
+  ).bind(markerId, Date.now()).run();
+  return true;
+}
+
+export function isCommercialLifecycleStart(callType: string, eventType: string): boolean {
+  const parts = eventType.toLowerCase().split(".");
+  const lifecycleName = parts[parts.length - 1] ?? "";
+  return callType === "avatok_livestream"
+    ? lifecycleName === "live_started"
+    : lifecycleName === "session_started";
 }
 
 async function providerTokens(bindings: { apiSecret: string }, uid: string): Promise<{ server: string; user: string; expiresAt: number }> {
@@ -1120,20 +1162,12 @@ async function runControl(args: {
       "UPDATE commercial_control_operations SET state='confirmed',provider_status=?2,updated_at=?3 WHERE operation_id=?1",
     ).bind(operationId, provider.status, Date.now()),
     metaDb(args.env).prepare(
-      `UPDATE commercial_sessions SET state=?2,state_version=state_version+1,updated_at=?3
-       WHERE commercial_session_id=?1 AND state NOT IN ('ended','cancelled','reconciliation_pending')`,
+      `UPDATE commercial_sessions
+          SET state=CASE WHEN ?2='backstage' AND state='live' THEN state ELSE ?2 END,
+              state_version=state_version+1,updated_at=?3
+        WHERE commercial_session_id=?1 AND state NOT IN ('ended','cancelled','reconciliation_pending')`,
     ).bind(args.session.commercial_session_id, args.action === "go_live" ? "backstage" : "ending", Date.now()),
   ]);
-  if (args.session.kind === "live_event") {
-    await notifyLiveAudience(args.env, {
-      type: args.action === "go_live" ? "commercial_broadcast_started" : "commercial_broadcast_ended",
-      eventId: `${args.session.commercial_session_id}:${args.action}`,
-      listingId: args.session.listing_id,
-      sessionId: args.session.commercial_session_id,
-      title: args.action === "go_live" ? "Live event started" : "Live event ended",
-      body: args.action === "go_live" ? "The event is live now." : "The event has ended.",
-    }, args.session.creator_id);
-  }
   commercialEvent(args.env, "broadcast", args.actorId, { kind: args.session.kind, outcome: "authorized", action: args.action });
   return json({ ok: true, state: args.action === "go_live" ? "starting" : "ending" }, 202);
 }
@@ -1484,7 +1518,7 @@ export async function recordCommercialStreamEvent(
   }
   const payloadHash = await sha256Hex(input.rawJson);
   const session = await metaDb(env).prepare(
-    `SELECT commercial_session_id,state,ended_at,listing_id,kind FROM commercial_sessions
+    `SELECT commercial_session_id,state,ended_at,listing_id,kind,creator_id FROM commercial_sessions
       WHERE provider='getstream' AND provider_call_type=?1 AND provider_call_id=?2`,
   ).bind(input.callType, input.callId).first<{
     commercial_session_id: string;
@@ -1492,6 +1526,7 @@ export async function recordCommercialStreamEvent(
     ended_at: number | null;
     listing_id: string;
     kind: string;
+    creator_id: string;
   }>();
   const inserted = await metaDb(env).prepare(
     `INSERT OR IGNORE INTO commercial_provider_events
@@ -1669,7 +1704,8 @@ export async function recordCommercialStreamEvent(
     }
   }
 
-  if (eventLower.includes("session_started") || eventLower.includes("live_started")) {
+  const providerStarted = isCommercialLifecycleStart(input.callType, eventLower);
+  if (providerStarted) {
     commercialEvent(env, "provider_lifecycle", null, {
       kind: input.callType === "avatok_livestream" ? "live_event" : "consult_1to1",
       outcome: "started",
@@ -1703,11 +1739,19 @@ export async function recordCommercialStreamEvent(
     // truth; the listing's `status` column is a downstream projection of it) and so a
     // duplicate/replayed webhook for an already-live session is a no-op (see `wasLive`
     // above) rather than a repeated fanout or a wasted write.
-    if (input.callType === "avatok_livestream" && !wasLive) {
+    if (input.callType === "avatok_livestream") {
       try {
         const projected = await systemMarkListingLive(env, session.listing_id);
+        if (projected.ok) await notifyCommercialLifecycleOnce(env, {
+          type: "commercial_broadcast_started",
+          eventId: `${session.commercial_session_id}:live_started`,
+          listingId: session.listing_id,
+          sessionId: session.commercial_session_id,
+          title: "Live event started",
+          body: "The event is live now.",
+        }, session.creator_id);
         commercialEvent(env, "listing_projection", null, {
-          kind: "live_event", outcome: projected.ok ? "live" : "not_applied",
+          kind: "live_event", outcome: projected.ok ? (wasLive ? "repaired" : "live") : "not_applied",
           reason: projected.reason ?? "",
         });
       } catch (err) {
@@ -1746,6 +1790,28 @@ export async function recordCommercialStreamEvent(
       ).bind(session.commercial_session_id, input.webhookId, Date.now()),
     ]);
     await consumeCommercialEntitlementsOnSessionEnd(env, session.commercial_session_id);
+    if (input.callType === "avatok_livestream") {
+      try {
+        const projected = await systemMarkListingCompleted(env, session.listing_id);
+        await notifyCommercialLifecycleOnce(env, {
+          type: "commercial_broadcast_ended",
+          eventId: `${session.commercial_session_id}:ended`,
+          listingId: session.listing_id,
+          sessionId: session.commercial_session_id,
+          title: "Live event ended",
+          body: "The event has ended.",
+        }, session.creator_id);
+        commercialEvent(env, "listing_projection", null, {
+          kind: "live_event", outcome: projected.ok ? "completed" : "not_applied",
+          reason: projected.reason ?? "",
+        });
+      } catch (err) {
+        commercialEvent(env, "listing_projection", null, {
+          kind: "live_event", outcome: "error",
+          reason: String((err as Error)?.message ?? err).slice(0, 160),
+        });
+      }
+    }
     const jobs = await metaDb(env).prepare(
       `SELECT settlement_job_id,commercial_session_id,order_id,state,terminal_event_id
          FROM commercial_settlement_jobs WHERE commercial_session_id=?1`,
@@ -1836,8 +1902,8 @@ export async function recordCommercialStreamEvent(
 export async function reconcileCommercialSessions(
   env: Env,
   limit = 10,
-): Promise<{ scanned: number; restored: number; reviewPending: number }> {
-  if (!configured(env)) return { scanned: 0, restored: 0, reviewPending: 0 };
+): Promise<{ scanned: number; restored: number; reviewPending: number; notificationsRepaired: number }> {
+  if (!configured(env)) return { scanned: 0, restored: 0, reviewPending: 0, notificationsRepaired: 0 };
   const safeLimit = Math.max(1, Math.min(50, Math.trunc(limit)));
   const rows = await metaDb(env).prepare(
     `SELECT commercial_session_id,provider_call_type,provider_call_id
@@ -1959,5 +2025,42 @@ export async function reconcileCommercialSessions(
       restored++;
     }
   }
-  return { scanned: (rows.results ?? []).length, restored, reviewPending };
+  const notificationRows = await metaDb(env).prepare(
+    `SELECT s.commercial_session_id,s.listing_id,s.creator_id,s.state
+       FROM commercial_sessions s
+       LEFT JOIN listing_fanout_events e
+         ON e.event_id=('commercial-notify:' || s.commercial_session_id ||
+           CASE WHEN s.state='live' THEN ':live_started' ELSE ':ended' END)
+      WHERE s.kind='live_event' AND s.state IN ('live','ended')
+        AND COALESCE(e.state,'pending')<>'sent'
+      ORDER BY s.updated_at ASC LIMIT ?1`,
+  ).bind(safeLimit).all<{
+    commercial_session_id: string;
+    listing_id: string;
+    creator_id: string;
+    state: "live" | "ended";
+  }>();
+  let notificationsRepaired = 0;
+  for (const row of notificationRows.results ?? []) {
+    const ended = row.state === "ended";
+    try {
+      const sent = await notifyCommercialLifecycleOnce(env, {
+        type: ended ? "commercial_broadcast_ended" : "commercial_broadcast_started",
+        eventId: `${row.commercial_session_id}:${ended ? "ended" : "live_started"}`,
+        listingId: row.listing_id,
+        sessionId: row.commercial_session_id,
+        title: ended ? "Live event ended" : "Live event started",
+        body: ended ? "The event has ended." : "The event is live now.",
+      }, row.creator_id);
+      if (sent) notificationsRepaired++;
+    } catch {
+      // Pending marker remains retryable.
+    }
+  }
+  return {
+    scanned: (rows.results ?? []).length,
+    restored,
+    reviewPending,
+    notificationsRepaired,
+  };
 }
