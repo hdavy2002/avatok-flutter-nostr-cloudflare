@@ -885,6 +885,104 @@ function sameAttrs(a: unknown, b: unknown): boolean {
   return canon(a) === canon(b);
 }
 
+// [LIST-REVIEW-BINDING-1] Second half of C02. Commit fa44bc21 (RESERVED_ATTRS_KEYS
+// above) stopped a creator from forging/erasing attrs.poster; it did NOT stop them
+// from rewriting everything else an admin actually judged and keeping the approval.
+// `updateListing`'s only status guard is cancelled/completed -> 409 — the UPDATE
+// never touches `status`, so an approved yoga class can become a published escort
+// listing with the yoga class's approval still on it.
+//
+// `reviewedContentHash()` fingerprints the MATERIAL content of a listing — the
+// subset an admin reviewer actually looks at and judges before clicking approve.
+// It is written to `listings.reviewed_content_hash` at approval time
+// (admin_listings.ts) and recomputed on every `updateListing` write; a mismatch
+// means the content on disk is no longer the content that was approved.
+//
+// INCLUDED — the terms + the substance of what's being sold, exactly what an
+// admin sees on the review screen: title, description, category, price (and
+// currency_display — 500 USD is not the same listing as 500 INR, same reasoning
+// as the MATERIAL list above), cover_media (the photos ARE the review — swapping
+// them post-approval is the textbook version of this bug), starts_at, duration_min,
+// capacity (a live_event/consult's shape), free_entry (free vs paid is a term, not
+// a detail), and the CREATOR-OWNED parts of attrs (category answers — bedrooms,
+// mileage, etc — same "would a reviewer have judged this differently" test as
+// MATERIAL's attrs entry above).
+//
+// EXCLUDED, deliberately:
+//   - attrs.poster — SERVER-OWNED moderation state (RESERVED_ATTRS_KEYS above). An
+//     admin regenerating a poster, or the auto-poster pipeline retrying, must not
+//     invalidate a review that never touched the reviewed content at all.
+//   - status — this hash describes CONTENT, not pipeline position. Folding status
+//     in would make the hash flip on the very approve/publish writes that are
+//     supposed to be BOUND BY it, which defeats the whole mechanism.
+//   - view/favourite/rating counters, created_at/updated_at, content_version,
+//     cat_version, section, slug, blurb, video_url, vibe_tags, and every other
+//     EDITABLE field not listed above — none of these are the substance a reviewer
+//     judged; they are presentation, bookkeeping, or (content_version/cat_version)
+//     a DIFFERENT versioning concern with its own MATERIAL list a few lines up.
+const REVIEW_MATERIAL_FIELDS = [
+  "title", "description", "category", "price", "currency_display",
+  "cover_media", "starts_at", "duration_min", "capacity", "free_entry",
+] as const;
+
+/** Deterministic JSON: object keys sorted (recursively) so the same content always
+ *  serialises identically no matter which caller assembled the object or in what
+ *  key order. Array ORDER is kept — order is material for `cover_media` (the
+ *  gallery sequence is part of what a reviewer saw), matching sameAttrs()'s
+ *  top-level-only canonicalisation being enough for attrs (§2.2 attrs are flat). */
+function stableStringify(v: unknown): string {
+  if (v === null || v === undefined) return "null";
+  if (Array.isArray(v)) return `[${v.map(stableStringify).join(",")}]`;
+  if (typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${stableStringify(o[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(v);
+}
+
+/** Fingerprint of a listing's MATERIAL content (see REVIEW_MATERIAL_FIELDS above).
+ *  `row` may be the raw DB row, or the row with an in-flight edit's changes already
+ *  merged in — updateListing does the latter so it can compare "what this would
+ *  look like after the write" against what was last approved, BEFORE committing.
+ *  `attrs`/`cover_media` are accepted either as the JSON string D1 stores or as an
+ *  already-parsed value, so callers never have to re-encode just to hash. Async
+ *  because a Worker's only hashing primitive is WebCrypto (crypto.subtle). */
+export async function reviewedContentHash(row: Record<string, unknown>): Promise<string> {
+  const attrsIn = row.attrs;
+  const attrsObj = typeof attrsIn === "string" ? parseJson<Record<string, unknown>>(attrsIn, {})
+    : ((attrsIn && typeof attrsIn === "object") ? (attrsIn as Record<string, unknown>) : {});
+  const creatorAttrs: Record<string, unknown> = { ...attrsObj };
+  for (const k of RESERVED_ATTRS_KEYS) delete creatorAttrs[k];
+  const material: Record<string, unknown> = { attrs: creatorAttrs };
+  for (const f of REVIEW_MATERIAL_FIELDS) {
+    const val = row[f];
+    material[f] = f === "cover_media" && typeof val === "string" ? parseJson(val, []) : (val ?? null);
+  }
+  const canonical = stableStringify(material);
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Does this listing have any live (non-refunded/non-revoked) entitlement — a real
+ *  seat someone paid for or claimed? Same table/columns/states cardStatsFor() (the
+ *  `seats_left` source, above) already uses for `seats_taken`, so "has this listing
+ *  sold" means the same thing everywhere in this file. Returns `null` — never `0` —
+ *  when the count could not be determined (e.g. commercial_entitlements hasn't been
+ *  migrated on this environment yet): the caller MUST fail closed on null, never
+ *  read it as "no sales", per this change's fail-closed/never-strand-a-buyer brief. */
+async function hasSoldEntitlements(env: Env, listingId: string): Promise<boolean | null> {
+  try {
+    const row = await metaSession(env).prepare(
+      `SELECT COUNT(*) c FROM commercial_entitlements
+        WHERE listing_id=?1 AND role IN ('viewer','buyer')
+          AND state IN ('reserved','held','active','consumed')`,
+    ).bind(listingId).first<{ c: number }>();
+    return Number(row?.c ?? 0) > 0;
+  } catch {
+    return null;
+  }
+}
+
 function normFields(b: any): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (b.title !== undefined) out.title = String(b.title).slice(0, 140);
@@ -1174,7 +1272,10 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
     // [LIST-CONTENT-2] `free_entry` and `slug` ride along: free_entry to compute the
     // EFFECTIVE free-lane state when a caller only touches price (or only touches
     // free_entry) in this PUT; slug for the uniqueness clash check below.
-    "SELECT creator_id, status, kind, content_version, title, description, price, currency_display, category, attrs, cat_version, section, free_entry, slug FROM listings WHERE id=?1",
+    // [LIST-REVIEW-BINDING-1] cover_media/starts_at/duration_min/capacity and
+    // reviewed_content_hash ride along too — the review-binding check below needs
+    // the full REVIEW_MATERIAL_FIELDS set plus the hash it's comparing against.
+    "SELECT creator_id, status, kind, content_version, title, description, price, currency_display, category, attrs, cat_version, section, free_entry, slug, cover_media, starts_at, duration_min, capacity, reviewed_content_hash FROM listings WHERE id=?1",
   ).bind(id).first<any>();
   if (!row || row.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
   if (MARKET_KINDS.has(String(row.kind)) && !(await marketplacePublishOn(env))) return marketplaceOff();
@@ -1344,8 +1445,80 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
     "category" in f ? String(f.category) : String(row.category),
   );
   const sectionSet = nextSection !== String(row.section ?? "") ? `, section='${nextSection}'` : "";
+
+  // [LIST-REVIEW-BINDING-1] Second half of C02 — is the approval this listing is
+  // carrying still bound to the content that's about to be written? Only matters
+  // once a listing has actually been through review (`reviewed_content_hash` set)
+  // and is sitting in one of the three statuses that CARRY an approval forward.
+  // draft/pending_review/rejected have nothing to invalidate — either they were
+  // never approved, or (rejected) the hash was already cleared at reject time.
+  let demoteToPendingReview = false;
+  const reviewedStatus = String(row.status);
+  if (row.reviewed_content_hash && ["approved", "published", "live"].includes(reviewedStatus)) {
+    const mergedForHash: Record<string, unknown> = { ...row };
+    for (const rf of REVIEW_MATERIAL_FIELDS) if (rf in f) mergedForHash[rf] = f[rf];
+    // `attrs` isn't in REVIEW_MATERIAL_FIELDS (reviewedContentHash treats it as its
+    // own key, stripping RESERVED_ATTRS_KEYS internally) — merge it explicitly or an
+    // edited attrs blob would silently hash against the OLD stored value.
+    if ("attrs" in f) mergedForHash.attrs = f.attrs;
+    const newHash = await reviewedContentHash(mergedForHash);
+    if (newHash !== row.reviewed_content_hash) {
+      if (reviewedStatus !== "approved") {
+        // published/live — real buyers may be holding a seat. Never silently
+        // unpublish out from under them: check for sold entitlements FIRST and
+        // fail closed (refuse the edit) whenever that check can't be trusted.
+        const sold = await hasSoldEntitlements(env, id);
+        if (sold !== false) {
+          track(env, ctx.uid, "listing_material_edit_refused", APP, {
+            listing_id: id, status: reviewedStatus,
+            sold_check: sold === null ? "unavailable" : "sold",
+          });
+          return json({
+            ok: false, error: "material_edit_blocked_sold_out",
+            message: sold === null
+              ? "Could not confirm whether this listing has sold seats; try again shortly, or cancel it first."
+              : "This listing has sold seats/bookings and its material details can't be changed. Cancel it, or make only non-material edits.",
+          }, 409);
+        }
+      }
+      demoteToPendingReview = true;
+    }
+  }
+  // [LIST-REVIEW-BINDING-1] `listing_transitions.ts` now carries the three
+  // `system_review_invalidated_*` rows for (approved|published|live) -> pending_review
+  // — checkTransition() is the AUTHORITY here, not a bystander. If it refuses (e.g. a
+  // future edit to that table drops one of these rows), the demotion must NOT happen:
+  // fail closed by refusing the whole edit with a 409, rather than writing the status
+  // via a literal SQL fragment regardless of the answer. Leaving the status alone and
+  // letting the content write through was rejected as the fail-closed choice — that
+  // would silently re-open the exact hole this mechanism exists to close (rewritten
+  // content sitting under a stale approval), just without the loud refusal a 409 gives.
+  let transitionRuleId: string | null = null;
+  if (demoteToPendingReview) {
+    const transitionCheck = checkTransition(reviewedStatus, "pending_review", "system");
+    if (!transitionCheck.ok) {
+      track(env, ctx.uid, "listing_material_edit_refused", APP, {
+        listing_id: id, status: reviewedStatus,
+        reason: "no_demotion_transition_rule", transition_reason: transitionCheck.reason,
+      });
+      return json({
+        ok: false, error: "material_edit_blocked_no_transition_rule",
+        message: "This edit could not be safely applied right now; try again shortly or contact support.",
+      }, 409);
+    }
+    transitionRuleId = transitionCheck.rule.id;
+    track(env, ctx.uid, "listing_review_invalidated_by_edit", APP, {
+      listing_id: id, from_status: reviewedStatus, to_status: "pending_review",
+      fields: ([...REVIEW_MATERIAL_FIELDS, "attrs"] as string[]).filter((k) => k in f),
+      transition_rule_id: transitionRuleId,
+    });
+  }
+  const statusSet = demoteToPendingReview
+    ? ", status='pending_review', reviewed_content_hash=NULL, reviewed_at=NULL, reviewed_by=NULL"
+    : "";
+
   await metaDb(env).prepare(
-    `UPDATE listings SET ${sets}${bump}${sectionSet}, updated_at=?${keys.length + 2} WHERE id=?1`,
+    `UPDATE listings SET ${sets}${bump}${sectionSet}${statusSet}, updated_at=?${keys.length + 2} WHERE id=?1`,
   ).bind(id, ...keys.map((k) => f[k]), Date.now()).run();
   const version = Number(row.content_version ?? 0) + (material ? 1 : 0);
   if (material) {
@@ -1361,7 +1534,10 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
   // the reopen key without re-fetching the card.
   // [AVA-MKT-VERT-1] attrs_missing is the compose loop's "what must I still ask before
   // this can publish" (§2.2 min_required) — reported, never enforced, on a draft save.
-  return json({ ok: true, content_version: version, attrs_missing: attrsMissing });
+  return json({
+    ok: true, content_version: version, attrs_missing: attrsMissing,
+    ...(demoteToPendingReview ? { status: "pending_review", review_invalidated: true } : {}),
+  });
 }
 
 // POST /api/listings/:id/submit — creator moves a draft into the approval queue.

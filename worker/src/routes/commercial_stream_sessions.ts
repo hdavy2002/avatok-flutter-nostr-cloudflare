@@ -12,6 +12,10 @@ import {
   type CommercialSessionKind,
 } from "../lib/commercial_stream_sessions";
 import { commercialEvent } from "../lib/commercial_telemetry";
+// [LIST-APPROVAL-AUTH-1] Read-only import of the system-actor listing transition
+// landed in fa44bc21. This file only CALLS it from the provider-confirmed webhook
+// path below — it does not own or edit listings.ts.
+import { systemMarkListingLive } from "./listings";
 import { hold, refund } from "../ledger";
 import { notifyLiveAudience } from "../lib/commercial_notifications";
 import { refreshCreatorStats } from "../lib/creator_stats"; // [LIST-STATS-1]
@@ -1480,12 +1484,14 @@ export async function recordCommercialStreamEvent(
   }
   const payloadHash = await sha256Hex(input.rawJson);
   const session = await metaDb(env).prepare(
-    `SELECT commercial_session_id,state,ended_at FROM commercial_sessions
+    `SELECT commercial_session_id,state,ended_at,listing_id,kind FROM commercial_sessions
       WHERE provider='getstream' AND provider_call_type=?1 AND provider_call_id=?2`,
   ).bind(input.callType, input.callId).first<{
     commercial_session_id: string;
     state: string;
     ended_at: number | null;
+    listing_id: string;
+    kind: string;
   }>();
   const inserted = await metaDb(env).prepare(
     `INSERT OR IGNORE INTO commercial_provider_events
@@ -1668,11 +1674,48 @@ export async function recordCommercialStreamEvent(
       kind: input.callType === "avatok_livestream" ? "live_event" : "consult_1to1",
       outcome: "started",
     });
+    // [LIST-APPROVAL-AUTH-1] Capture the PRE-update state before the UPDATE below can
+    // ever move it to 'live'. The UPDATE's WHERE clause matches state IN
+    // ('scheduled','backstage','live') — it matches (and bumps state_version) even when
+    // the session is ALREADY live, so `.meta.changes` alone cannot tell a genuine
+    // scheduled/backstage -> live transition apart from a replayed/duplicate
+    // "session_started"/"live_started" lifecycle event on an already-live session. Only
+    // `wasLive` (read before the mutation) can.
+    const wasLive = session.state === "live";
     await metaDb(env).prepare(
       `UPDATE commercial_sessions SET state='live',
         live_started_at=COALESCE(live_started_at,?2),state_version=state_version+1,updated_at=?3
        WHERE commercial_session_id=?1 AND state IN ('scheduled','backstage','live')`,
     ).bind(session.commercial_session_id, input.occurredAt, Date.now()).run();
+    // [LIST-APPROVAL-AUTH-1] Wires `systemMarkListingLive` (worker/src/routes/listings.ts),
+    // which fa44bc21 introduced to close the creator-bypass in setListingStatus but never
+    // called from anywhere — so today no listing ever reaches 'live' and the "is LIVE now"
+    // follower fanout never fires. This is the correct call site, NOT commercialLiveGoLive
+    // (~line 1157): that function only *requests* go-live from the creator and moves the
+    // SESSION to 'backstage', not 'live' — it has no provider confirmation that the
+    // broadcast is actually up. This branch, by contrast, only runs inside
+    // recordCommercialStreamEvent, which per that function's own doc comment is "Called
+    // only after the shared GetStream receiver verifies the raw signature" — i.e. the
+    // provider itself has confirmed the stream is live. Do not move this call back to
+    // commercialLiveGoLive.
+    //
+    // Guarded so it can never fail the session event (the session row is the source of
+    // truth; the listing's `status` column is a downstream projection of it) and so a
+    // duplicate/replayed webhook for an already-live session is a no-op (see `wasLive`
+    // above) rather than a repeated fanout or a wasted write.
+    if (input.callType === "avatok_livestream" && !wasLive) {
+      try {
+        const projected = await systemMarkListingLive(env, session.listing_id);
+        commercialEvent(env, "listing_projection", null, {
+          kind: "live_event", outcome: projected.ok ? "live" : "not_applied",
+          reason: projected.reason ?? "",
+        });
+      } catch (err) {
+        commercialEvent(env, "listing_projection", null, {
+          kind: "live_event", outcome: "error", reason: String((err as Error)?.message ?? err).slice(0, 160),
+        });
+      }
+    }
   } else if (eventLower.includes("session_ended") || eventLower.includes("call.ended") || eventLower.includes("live_stopped")) {
     commercialEvent(env, "provider_lifecycle", null, {
       kind: input.callType === "avatok_livestream" ? "live_event" : "consult_1to1",

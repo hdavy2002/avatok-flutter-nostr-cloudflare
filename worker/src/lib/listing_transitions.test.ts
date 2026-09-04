@@ -111,6 +111,48 @@ describe("listing_transitions: the documented happy paths", () => {
   });
 });
 
+describe("listing_transitions: [LIST-REVIEW-BINDING-1] system review-invalidation rows", () => {
+  // updateListing (routes/listings.ts) demotes approved/published/live back to
+  // pending_review when a material edit changes reviewedContentHash. These three
+  // rows are the ONLY authority for that move — see this file's header. A creator
+  // or admin must never be able to trigger the same demotion themselves; that would
+  // let a creator bounce their own published listing back into the queue on demand
+  // (e.g. to dodge a hold, a report, or a pending cancellation) instead of it only
+  // happening as a side effect of an edit the system itself judged material.
+  const sources: { from: ListingStatus; id: string }[] = [
+    { from: "approved", id: "system_review_invalidated_approved" },
+    { from: "published", id: "system_review_invalidated_published" },
+    { from: "live", id: "system_review_invalidated_live" },
+  ];
+
+  for (const { from, id } of sources) {
+    it(`system ${from} -> pending_review is allowed, requires "none", id ${id}`, () => {
+      const r = checkTransition(from, "pending_review", "system");
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect(r.rule.requires).toBe("none");
+        expect(r.rule.id).toBe(id);
+      }
+    });
+
+    it(`creator ${from} -> pending_review is refused`, () => {
+      const r = checkTransition(from, "pending_review", "creator");
+      expect(r.ok).toBe(false);
+    });
+
+    it(`admin ${from} -> pending_review is refused`, () => {
+      const r = checkTransition(from, "pending_review", "admin");
+      expect(r.ok).toBe(false);
+    });
+
+    it(`${from} -> pending_review is not offered to creator or admin in allowedTargets`, () => {
+      expect(allowedTargets(from, "creator")).not.toContain("pending_review");
+      expect(allowedTargets(from, "admin")).not.toContain("pending_review");
+      expect(allowedTargets(from, "system")).toContain("pending_review");
+    });
+  }
+});
+
 describe("listing_transitions: never throws on garbage input", () => {
   it("unknown status strings refuse safely", () => {
     expect(() => checkTransition("bogus", "live", "creator")).not.toThrow();

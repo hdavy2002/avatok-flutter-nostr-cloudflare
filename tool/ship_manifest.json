@@ -4390,5 +4390,35 @@
       }
     ],
     "_verified_at": "2026-09-04: event and property names read out of the emit sites, not from memory - listings.ts:1047,1210,1429,1881,1969; admin_listings.ts:264,296; ListingWizard.tsx:220,223,311."
+  },
+  "LIST-REVIEW-BINDING-1": {
+    "shipped": "2026-09-04",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "listing_review_binding_recorded",
+        "property": "hash_prefix",
+        "exists": true,
+        "min_events": 1,
+        "note": "Proves approve_listing actually computed and stored reviewedContentHash() rather than leaving reviewed_content_hash null while flipping status to approved (the exact gap this issue closes: approval used to bind to nothing but the row id). hash_prefix is a content fingerprint slice, never the full hash or listing content."
+      },
+      {
+        "event": "listing_review_invalidated_by_edit",
+        "property": "to_status",
+        "equals": "pending_review",
+        "min_events": 1,
+        "note": "Proves updateListing detected a MATERIAL delta (title/description/category/price/currency_display/cover_media/starts_at/duration_min/capacity/free_entry/creator-owned attrs) against reviewed_content_hash on an approved/published/live listing and actually walked it back to pending_review rather than silently keeping the stale approval. Absence of this event under real creator edit traffic on approved listings is not proof nobody edited a material field after approval - check listing_content_version_bumped volume too - but its total absence forever would mean the hash comparison itself is dead."
+      },
+      {
+        "event": "listing_material_edit_refused",
+        "property": "sold_check",
+        "in": ["sold", "unavailable"],
+        "min_events": 1,
+        "note": "Proves the published/live branch actually reached the sold-entitlement gate and refused the edit with 409 instead of silently unpublishing a listing buyers hold seats on. sold_check:'sold' means countable entitlements were found; 'unavailable' means the entitlement count could not be verified (e.g. commercial_entitlements not migrated on this environment) and the code fail-closed anyway per the never-strand-a-buyer brief - both are the CORRECT refusal, not a bug. This event should be RARE relative to listing_review_invalidated_by_edit (most invalidating edits will hit an approved, not-yet-published listing); zero forever across a window with real published-listing edit traffic would mean the sold-entitlement check itself never runs, which is the regression this assertion exists to catch."
+      }
+    ],
+    "_verified_at": "2026-09-04: event and property names read directly out of the emit sites just added, not from memory - admin_listings.ts:344 (listing_review_binding_recorded); listings.ts:1472 (listing_material_edit_refused), listings.ts:1503 (listing_review_invalidated_by_edit)."
   }
 }

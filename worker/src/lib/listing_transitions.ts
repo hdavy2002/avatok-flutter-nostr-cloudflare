@@ -148,6 +148,23 @@ export const TRANSITIONS: readonly TransitionRule[] = [
   // "live" anywhere in this table — do not add one.
   { from: "published", to: "live", actors: ["system"], requires: "provider_confirmed", id: "system_go_live" },
   { from: "live", to: "completed", actors: ["system"], requires: "provider_confirmed", id: "system_complete" },
+
+  // --- system: review binding ([LIST-REVIEW-BINDING-1]) ---
+  // Every OTHER row in this table models a human decision. These three model a fact:
+  // the content changed out from under an approval, so the approval no longer describes
+  // what is on the page. `reviewed_content_hash` is recorded when an admin approves, and
+  // updateListing re-hashes the material fields on every edit; a mismatch demotes the
+  // listing back into the queue. Without these rows the invalidation path had to bypass
+  // checkTransition with a literal SQL fragment, which is exactly the "two authorities"
+  // shape that made setListingStatus a bypass in the first place — see this file's header.
+  //
+  // published/live only reach here when the listing has NO sold entitlements. With
+  // tickets outstanding, updateListing refuses the edit (409) instead of demoting, because
+  // stranding a paying buyer is worse than refusing a title change. That check lives in
+  // hasSoldEntitlements(); this table only says the status move itself is legal.
+  { from: "approved", to: "pending_review", actors: ["system"], requires: "none", id: "system_review_invalidated_approved" },
+  { from: "published", to: "pending_review", actors: ["system"], requires: "none", id: "system_review_invalidated_published" },
+  { from: "live", to: "pending_review", actors: ["system"], requires: "none", id: "system_review_invalidated_live" },
 ];
 
 function isKnownStatus(s: string): s is ListingStatus {

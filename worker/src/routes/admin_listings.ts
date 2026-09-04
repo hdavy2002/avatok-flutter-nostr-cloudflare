@@ -7,7 +7,7 @@ import { generateListingPoster, type PosterState } from "../lib/listing_poster";
 // comment on publishListingAuthoritative() in routes/listings.ts. `publish`
 // below no longer does its own raw status UPDATE; it defers to the same
 // function the creator's own publish endpoint calls.
-import { publishListingAuthoritative } from "./listings";
+import { publishListingAuthoritative, reviewedContentHash } from "./listings";
 // [C01 MKT-STATUS-GATE-1] Same transition table setListingStatus()/publish use —
 // see item 4: `reject_listing` used to flip ANY status straight to 'rejected'
 // with no source-status guard at all.
@@ -323,6 +323,37 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
   }
   const reasonForHistory = action === "reject_listing" ? String(body.reason || "").trim()
     : (action === "reject_poster" ? String(body.reason || body.feedback || "").trim() : null);
+
+  // [LIST-REVIEW-BINDING-1] Second half of C02 — bind THIS approval to the content
+  // it's approving, so a later creator rewrite of title/price/category/description/
+  // photos can be detected and the stale approval invalidated (see the review-
+  // binding block in updateListing, routes/listings.ts). Only `approve_listing` and
+  // `reject_listing` touch these three columns; every other action here (poster
+  // generate/approve/reject) leaves status — and therefore the review binding —
+  // untouched, so those must carry the row's EXISTING values forward, not null them.
+  let reviewedHash: string | null = row.reviewed_content_hash ?? null;
+  let reviewedAt: number | null = row.reviewed_at ?? null;
+  let reviewedBy: string | null = row.reviewed_by ?? null;
+  if (action === "approve_listing") {
+    // Hash the content as it will actually be WRITTEN below: `attrs`/`coverMedia`
+    // already reflect this request's poster-generation cover-cap merge (if any),
+    // and every other listing field is untouched by this action.
+    reviewedHash = await reviewedContentHash({ ...row, attrs: JSON.stringify(attrs), cover_media: coverMedia });
+    reviewedAt = now;
+    reviewedBy = a.uid;
+    safeTrack(env, a.uid, "listing_review_binding_recorded", {
+      listing_id: id, admin_id: a.uid, creator_id: row.creator_id ?? null,
+      previous_status: row.status ?? null, hash_prefix: reviewedHash.slice(0, 12),
+    });
+  } else if (action === "reject_listing") {
+    // Rejected content is no longer approved by definition — clear the binding so
+    // a future re-approval (via draft -> pending_review -> approve_listing) always
+    // earns a fresh hash rather than carrying a stale one forward.
+    reviewedHash = null;
+    reviewedAt = null;
+    reviewedBy = null;
+  }
+
   const history = writeListingApprovalHistory(env, {
     listingId: id,
     actorId: a.uid,
@@ -334,7 +365,9 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
   });
   await db.batch([
     history,
-    db.prepare("UPDATE listings SET status=?2, attrs=?3, cover_media=?4, updated_at=?5 WHERE id=?1").bind(id, next, JSON.stringify(attrs), coverMedia, now),
+    db.prepare(
+      "UPDATE listings SET status=?2, attrs=?3, cover_media=?4, updated_at=?5, reviewed_content_hash=?6, reviewed_at=?7, reviewed_by=?8 WHERE id=?1",
+    ).bind(id, next, JSON.stringify(attrs), coverMedia, now, reviewedHash, reviewedAt, reviewedBy),
   ]);
   // Keep moderation actions visible in the existing admin audit stream.
   try {
