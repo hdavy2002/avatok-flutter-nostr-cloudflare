@@ -106,7 +106,15 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
   const filtered = useMemo(() => {
     let list = rows ?? [];
     if (kind) list = list.filter((l) => (l.kind === kind) || (kind === 'live_event' && l.kind === 'live'));
-    if (status !== 'all') list = list.filter((l) => (l.status ?? 'draft') === status);
+    // [LIST-ARCHIVE-HIDE-1 2026-09-04, owner decision] "All statuses" excludes
+    // ARCHIVED. Removing a listing is a soft delete (status='cancelled', kept so
+    // it stays restorable and so bookings/orders never point at a missing row),
+    // but this list showed cancelled rows anyway — so the ✕ appeared to do
+    // nothing: the row vanished optimistically, then came back on refresh with a
+    // CANCELLED badge. Archived listings are still reachable, deliberately, via
+    // the Archived option in the status filter. Nothing is deleted here.
+    if (status === 'all') list = list.filter((l) => (l.status ?? 'draft') !== 'cancelled');
+    else list = list.filter((l) => (l.status ?? 'draft') === status);
     const needle = q.trim().toLowerCase();
     if (needle) list = list.filter((l) => (l.title ?? '').toLowerCase().includes(needle));
     return list;
@@ -122,14 +130,25 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
     } catch { alert('Could not archive — try again.'); }
     setBusy(null);
   }
+  /* [LIST-ARCHIVE-HIDE-1] This is a SOFT delete and the copy now says so. It
+   * used to promise "Delete this listing permanently? This cannot be undone."
+   * while calling DELETE without `?permanent=true` — which the worker handles
+   * as "soft remove → goes to Archived (restorable)". The row was then dropped
+   * from local state, so it looked deleted until a refresh brought it back as
+   * CANCELLED. If a real permanent delete is ever wired up here, it must pass
+   * `?permanent=true`; that path cascades R2 covers, FTS and negotiations. */
   async function remove(id: string) {
-    if (!token || !confirm('Delete this listing permanently? This cannot be undone.')) return;
+    if (!token || !confirm('Remove this listing? It moves to Archived — you can still find it under the Archived filter.')) return;
     setBusy(id);
     try {
       await withTrace(() => request(`/api/listings/${id}`, { method: 'DELETE', auth: token }));
-      setRows((prev) => (prev ?? []).filter((l) => l.id !== id));
+      // Mark it archived rather than dropping it from local state. Dropping it
+      // was the optimistic lie that made a refresh look like the delete had
+      // failed; marking it matches what the server actually did, and the
+      // default filter hides it from here anyway.
+      setRows((prev) => (prev ?? []).map((l) => (l.id === id ? { ...l, status: 'cancelled' } : l)));
       capture('listing_cancel', {});
-    } catch { alert('Could not delete — try again.'); }
+    } catch { alert('Could not remove — try again.'); }
     setBusy(null);
   }
 
@@ -161,7 +180,7 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search your listings…" className="min-w-0 flex-1 bg-transparent font-body font-bold text-[14px] text-ink outline-none placeholder:text-placeholder" />
         </div>
         <select value={status} onChange={(e) => setStatus(e.target.value)} className="rounded-full border-zine border-ink bg-paper px-3 py-2 font-mono font-bold text-[14px] uppercase tracking-[0.04em] text-ink outline-none">
-          <option value="all">All statuses</option>
+          <option value="all">All (except archived)</option>
           <option value="draft">Draft</option>
           <option value="pending_review">Pending review</option>
           <option value="approved">Approved</option>
