@@ -1,70 +1,89 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { ReactNode } from 'react';
+// Admin review workbench for marketplace listings (MKT-ADMIN-UI-1). Three
+// regions: the queue rail, "what the creator submitted", and the poster +
+// moderation actions — so an admin can see everything a creator wrote and
+// preview/approve the auto-generated poster in one screen.
+//
+// Split across web/src/islands/admin/*.tsx because a single ~200-line file
+// was the problem this task exists to fix:
+//   AdminListings.tsx     — this file: auth, queue+detail fetching, actions, layout
+//   adminListingsShared.tsx — shared types, formatters, Field/Group/Badge primitives
+//   QueueRail.tsx          — the 360px queue rail (filter/refresh/list)
+//   SubmissionPanel.tsx    — "what the creator submitted" (the heart of the task)
+//   PosterPanel.tsx        — poster preview/state machine + polling while generating
+//   ModerationBar.tsx      — approve/reject listing + gated Publish
+//   AuditTimeline.tsx      — per-listing history (fixes the a.items/entries bug)
+//   RejectControl.tsx      — shared inline "reason required" control
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getActiveTokenWaited as getActiveToken } from '../../lib/clerk';
 import { request, ApiError } from '../../lib/apiClient';
 import { Spinner } from '../../components/Spinner';
-
-type Poster = { status?: string; url?: string; key?: string; generated_at?: number; completed_at?: number; prompt_hash?: string; feedback?: string; error?: string };
-type ListingRow = {
-  id: string;
-  title?: string;
-  description?: string;
-  kind?: string;
-  status?: string;
-  price?: number | null;
-  cover_media?: Array<{ url?: string }>;
-  attrs?: { poster?: Poster } | null;
-  created_at?: number;
-  updated_at?: number;
-  creator_id?: string;
-};
-type AuditRow = { id: string; admin_id: string; action: string; target: string | null; meta: string | null; created_at: number };
-
-const fmt = (ms?: number) => (ms ? new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
-const money = (n?: number | null) => (typeof n === 'number' ? `₹${n}` : '—');
-
-function Badge({ children, tone = 'bg-paper2 text-inkSoft' }: { children: ReactNode; tone?: string }) {
-  return <span className={`inline-flex items-center rounded-full border-zine border-ink px-2 py-0.5 font-mono text-[12px] font-bold uppercase tracking-[0.04em] ${tone}`}>{children}</span>;
-}
+import QueueRail from './QueueRail';
+import SubmissionPanel from './SubmissionPanel';
+import PosterPanel from './PosterPanel';
+import ModerationBar from './ModerationBar';
+import AuditTimeline from './AuditTimeline';
+import type { AdminListingDetailResponse, ListingRow } from './adminListingsShared';
 
 export default function AdminListings() {
   const [token, setToken] = useState<string | null>(null);
   const [checked, setChecked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<ListingRow[]>([]);
-  const [audit, setAudit] = useState<AuditRow[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [status, setStatus] = useState('all');
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [detail, setDetail] = useState<AdminListingDetailResponse | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
   useEffect(() => { void (async () => { setToken(await getActiveToken()); setChecked(true); })(); }, []);
 
-  const load = async (t: string) => {
+  const loadQueue = useCallback(async (t: string, keepSelection = true) => {
     setLoading(true);
     setError(null);
     try {
       const r = await request<{ listings: ListingRow[] }>('/api/admin/listings', { auth: t, query: { status: status === 'all' ? undefined : status } });
       setRows(r.listings ?? []);
-      const a = await request<{ items?: AuditRow[] }>('/api/admin/audit', { auth: t, query: { action: 'listing_', limit: 25 } });
-      setAudit((a.items ?? []).filter((row) => row.action.startsWith('listing_')));
-      setSelected((prev) => prev && (r.listings ?? []).some((row) => row.id === prev) ? prev : (r.listings?.[0]?.id ?? null));
+      setSelected((prev) => (keepSelection && prev && (r.listings ?? []).some((row) => row.id === prev) ? prev : (r.listings?.[0]?.id ?? null)));
     } catch (e) {
       setError(e instanceof ApiError ? e.error : 'Could not load admin listings.');
       setRows([]);
-      setAudit([]);
       setSelected(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, [status]);
+
+  const loadDetail = useCallback(async (t: string, id: string) => {
+    setDetailLoading(true);
+    try {
+      const d = await request<AdminListingDetailResponse>(`/api/admin/listings/${encodeURIComponent(id)}`, { auth: t });
+      setDetail(d);
+      // Patch the queue row's status/title from the freshly-fetched detail so
+      // the rail badge stays truthful without a full requery.
+      setRows((prev) => prev.map((row) => (row.id === id ? { ...row, status: d.listing.status ?? row.status, title: (d.listing.title as string | undefined) ?? row.title } : row)));
+    } catch (e) {
+      setError(e instanceof ApiError ? e.error : 'Could not load listing detail.');
+      setDetail(null);
+    } finally {
+      setDetailLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!checked || !token) { if (checked) setLoading(false); return; }
-    void load(token);
+    void loadQueue(token);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checked, token, status]);
 
-  const current = useMemo(() => rows.find((row) => row.id === selected) ?? null, [rows, selected]);
+  useEffect(() => {
+    if (!token || !selected) { setDetail(null); return; }
+    void loadDetail(token, selected);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, selected]);
+
+  const currentRow = useMemo(() => rows.find((row) => row.id === selected) ?? null, [rows, selected]);
 
   async function action(id: string, act: string, payload: Record<string, unknown> = {}) {
     if (!token) return;
@@ -72,7 +91,9 @@ export default function AdminListings() {
     setError(null);
     try {
       await request(`/api/admin/listings/${encodeURIComponent(id)}`, { auth: token, method: 'POST', body: { action: act, ...payload } });
-      await load(token);
+      // Re-fetch detail (truth for this listing) and patch the queue row —
+      // spec item 7: keep status badges truthful after every action.
+      await loadDetail(token, id);
     } catch (e) {
       setError(e instanceof ApiError ? e.error : 'Action failed.');
     } finally {
@@ -84,117 +105,76 @@ export default function AdminListings() {
     return <div className="flex items-center gap-3 p-8"><Spinner size={22} /> <span className="font-body font-bold text-inkSoft">Loading admin queue…</span></div>;
   }
 
-  return (
-    <div className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
-      <aside className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-center gap-2 rounded-zine border-zine border-ink bg-card p-3 shadow-zine-sm">
-          <select value={status} onChange={(e) => setStatus(e.target.value)} className="rounded-full border-zine border-ink bg-paper px-3 py-2 font-mono text-[13px] font-bold uppercase tracking-[0.04em] text-ink outline-none">
-            <option value="all">All statuses</option>
-            <option value="draft">Draft</option>
-            <option value="pending_review">Pending review</option>
-            <option value="approved">Approved</option>
-            <option value="published">Published</option>
-            <option value="rejected">Rejected</option>
-          </select>
-          <button type="button" onClick={() => token && void load(token)} className="rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono text-[13px] font-bold uppercase tracking-[0.06em] text-ink shadow-zine-xs">Refresh</button>
-        </div>
+  const isBusy = busy !== null;
 
-        <div className="rounded-zine border-zine border-ink bg-paper2 shadow-zine-sm">
-          <div className="border-b-zine border-ink px-4 py-3 font-mono text-[12px] font-bold uppercase tracking-[0.08em] text-inkSoft">Queue</div>
-          <div className="max-h-[70vh] overflow-auto">
-            {rows.length === 0 ? (
-              <div className="p-4 font-body text-[14px] font-bold text-inkSoft">No listings in this queue.</div>
-            ) : rows.map((row) => (
-              <button key={row.id} type="button" onClick={() => setSelected(row.id)} className={`block w-full border-b-zine border-ink px-4 py-3 text-left last:border-b-0 ${selected === row.id ? 'bg-ink text-paper' : 'bg-transparent hover:bg-paper'}`}>
-                <div className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate font-body text-[14px] font-extrabold">{row.title ?? 'Untitled listing'}</span>
-                  <Badge tone={selected === row.id ? 'bg-paper text-ink' : 'bg-paper2 text-inkSoft'}>{row.status ?? 'draft'}</Badge>
-                </div>
-                <div className={`mt-1 flex items-center gap-2 font-mono text-[12px] font-bold uppercase tracking-[0.04em] ${selected === row.id ? 'text-paper/80' : 'text-inkSoft'}`}>
-                  <span>{row.kind ?? 'listing'}</span>
-                  <span>•</span>
-                  <span>{money(row.price)}</span>
-                  <span>•</span>
-                  <span>{fmt(row.updated_at ?? row.created_at)}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      </aside>
+  return (
+    <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
+      <QueueRail
+        rows={rows}
+        selected={selected}
+        status={status}
+        onStatusChange={setStatus}
+        onSelect={setSelected}
+        onRefresh={() => token && void loadQueue(token)}
+      />
 
       <section className="flex flex-col gap-5">
         {error && <div className="rounded-zine border-zine border-ink bg-coral px-4 py-3 font-body text-[14px] font-bold text-paper">{error}</div>}
-        {current ? (
-          <>
-            <div className="rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm">
-              <div className="flex flex-wrap items-start gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="truncate font-display text-[26px] font-semibold text-ink">{current.title ?? 'Untitled listing'}</h2>
-                    <Badge>{current.status ?? 'draft'}</Badge>
-                    <Badge tone="bg-lime text-ink">{current.kind ?? 'listing'}</Badge>
-                  </div>
-                  <p className="mt-2 max-w-3xl font-body text-[15px] font-bold leading-relaxed text-inkSoft">{current.description ?? 'No description provided.'}</p>
-                </div>
-                <div className="flex flex-col items-end gap-2 text-right">
-                  <div className="font-display text-[24px] font-semibold text-ink">{money(current.price)}</div>
-                  <div className="font-mono text-[12px] font-bold uppercase tracking-[0.08em] text-inkSoft">Listing {current.id}</div>
-                </div>
-              </div>
-            </div>
 
-            <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-              <div className="rounded-zine border-zine border-ink bg-paper2 p-5 shadow-zine-sm">
-                <h3 className="font-display text-[18px] font-semibold text-ink">Moderation actions</h3>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <button type="button" disabled={busy !== null} onClick={() => void action(current.id, 'approve_listing')} className="rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono text-[13px] font-bold uppercase tracking-[0.06em] text-ink shadow-zine-xs disabled:opacity-50">Approve listing</button>
-                  <button type="button" disabled={busy !== null} onClick={() => void action(current.id, 'reject_listing', { reason: 'Needs revision' })} className="rounded-full border-zine border-ink bg-paper px-4 py-2 font-mono text-[13px] font-bold uppercase tracking-[0.06em] text-ink shadow-zine-xs disabled:opacity-50">Reject listing</button>
-                  <button type="button" disabled={busy !== null} onClick={() => void action(current.id, 'generate_poster')} className="rounded-full border-zine border-ink bg-blue px-4 py-2 font-mono text-[13px] font-bold uppercase tracking-[0.06em] text-paper shadow-zine-xs disabled:opacity-50">Generate poster</button>
-                  <button type="button" disabled={busy !== null} onClick={() => void action(current.id, 'approve_poster')} className="rounded-full border-zine border-ink bg-mint px-4 py-2 font-mono text-[13px] font-bold uppercase tracking-[0.06em] text-ink shadow-zine-xs disabled:opacity-50">Approve poster</button>
-                  <button type="button" disabled={busy !== null} onClick={() => void action(current.id, 'reject_poster', { feedback: 'Needs crop or copy fixes' })} className="rounded-full border-zine border-ink bg-paper px-4 py-2 font-mono text-[13px] font-bold uppercase tracking-[0.06em] text-ink shadow-zine-xs disabled:opacity-50">Reject poster</button>
-                  <button type="button" disabled={busy !== null} onClick={() => void action(current.id, 'publish')} className="rounded-full border-zine border-ink bg-ink px-4 py-2 font-mono text-[13px] font-bold uppercase tracking-[0.06em] text-paper shadow-zine-xs disabled:opacity-50">Publish</button>
-                </div>
-              </div>
-
-              <div className="rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm">
-                <h3 className="font-display text-[18px] font-semibold text-ink">Poster state</h3>
-                <div className="mt-3 flex flex-col gap-2 font-body text-[14px] font-bold text-inkSoft">
-                  <div>Poster: <span className="text-ink">{current.attrs?.poster?.status ?? 'none'}</span></div>
-                  <div>Generated: <span className="text-ink">{fmt(current.attrs?.poster?.generated_at ?? current.attrs?.poster?.completed_at)}</span></div>
-                  <div>Asset: <span className="break-all text-ink">{current.attrs?.poster?.url ?? 'not generated yet'}</span></div>
-                  {current.attrs?.poster?.error && <div className="text-coral">Error: {current.attrs.poster.error}</div>}
-                  {current.attrs?.poster?.feedback && <div>Feedback: <span className="text-ink">{current.attrs.poster.feedback}</span></div>}
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm">
-              <div className="flex items-center justify-between gap-3">
-                <h3 className="font-display text-[18px] font-semibold text-ink">Audit trail</h3>
-                <span className="font-mono text-[12px] font-bold uppercase tracking-[0.08em] text-inkSoft">latest moderation events</span>
-              </div>
-              <div className="mt-4 grid gap-2">
-                {audit.length === 0 ? (
-                  <div className="rounded-zineField border-zine border-ink bg-paper2 p-4 font-body text-[14px] font-bold text-inkSoft">No admin audit entries loaded yet.</div>
-                ) : audit.map((row) => (
-                  <div key={row.id} className="rounded-zineField border-zine border-ink bg-paper2 p-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge>{row.action}</Badge>
-                      <span className="font-mono text-[12px] font-bold uppercase tracking-[0.08em] text-inkSoft">{row.target ?? 'no target'}</span>
-                      <span className="ml-auto font-mono text-[12px] font-bold uppercase tracking-[0.08em] text-inkSoft">{fmt(row.created_at)}</span>
-                    </div>
-                    <pre className="mt-2 overflow-auto whitespace-pre-wrap font-mono text-[12px] leading-relaxed text-inkSoft">{row.meta ?? '{}'}</pre>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </>
-        ) : (
+        {!currentRow ? (
           <div className="rounded-zine border-zine border-ink bg-card p-6 shadow-zine-sm">
             <h2 className="font-display text-[22px] font-semibold text-ink">No listing selected</h2>
             <p className="mt-2 font-body text-[14px] font-bold text-inkSoft">Pick a listing from the queue to inspect the submission, poster state and audit history.</p>
           </div>
+        ) : detailLoading && !detail ? (
+          <div className="flex items-center gap-3 rounded-zine border-zine border-ink bg-card p-6 shadow-zine-sm"><Spinner size={20} /> <span className="font-body font-bold text-inkSoft">Loading listing…</span></div>
+        ) : !detail ? (
+          <div className="rounded-zine border-zine border-ink bg-card p-6 shadow-zine-sm font-body text-[14px] font-bold text-inkSoft">Could not load this listing.</div>
+        ) : (
+          <>
+            <div className="rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm">
+              <div className="flex flex-wrap items-start gap-3">
+                <div className="min-w-0 flex-1">
+                  <h2 className="truncate font-display text-[26px] font-semibold text-ink">{(detail.listing.title as string) ?? 'Untitled listing'}</h2>
+                  <div className="mt-2 font-mono text-[12px] font-bold uppercase tracking-[0.08em] text-inkSoft">Listing {detail.listing.id}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* At this file's max-w-6xl (1152px) container, a true 3-column
+                layout (rail + submission + poster) is too cramped below the
+                2xl breakpoint — the submission panel in particular needs
+                room for two-column field rows. Poster + moderation stack
+                under the submission panel until 2xl, where they move beside
+                it. See report for the recommendation to widen the Dashboard
+                shell's max-width for this page if a true 3-up is wanted. */}
+            <div className="grid gap-5 2xl:grid-cols-[1.3fr_0.9fr]">
+              <div className="flex flex-col gap-5">
+                <SubmissionPanel listing={detail.listing} creator={detail.creator} category={detail.category} />
+              </div>
+              <div className="flex flex-col gap-5">
+                <ModerationBar
+                  listingStatus={detail.listing.status as string | undefined}
+                  poster={detail.poster}
+                  busy={isBusy}
+                  onApproveListing={() => void action(detail.listing.id, 'approve_listing')}
+                  onRejectListing={(reason) => void action(detail.listing.id, 'reject_listing', { reason })}
+                  onPublish={() => void action(detail.listing.id, 'publish')}
+                />
+                <PosterPanel
+                  poster={detail.poster}
+                  listingTitle={detail.listing.title as string | undefined}
+                  busy={isBusy}
+                  onGenerate={() => void action(detail.listing.id, 'generate_poster')}
+                  onRegenerate={() => void action(detail.listing.id, 'regenerate_poster')}
+                  onApprove={() => void action(detail.listing.id, 'approve_poster')}
+                  onReject={(feedback) => void action(detail.listing.id, 'reject_poster', { feedback })}
+                  onPoll={() => token && void loadDetail(token, detail.listing.id)}
+                />
+                <AuditTimeline history={detail.history} />
+              </div>
+            </div>
+          </>
         )}
       </section>
     </div>
