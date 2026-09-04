@@ -37,6 +37,8 @@ import { claimBlock, releaseBlocks, policyViolation } from "../cal/engine";
 import { hold, refund } from "../ledger";
 import { LANGS as TRL_LANGS, RATE_PER_MIN as TRL_RATE } from "./translate";
 import { track } from "../hooks";
+// [MKT-POSTER-AUTO-1] Shared poster generation, extracted from admin_listings.ts.
+import { buildPosterPrompt, generateListingPoster } from "../lib/listing_poster";
 import { brainIngest } from "../lib/brain_ingest";
 import { partyEmit } from "./messaging"; // PartyKit live nudges (ephemeral)
 import { recordView, trackImpressions, geoOf } from "./insights";
@@ -1250,23 +1252,53 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
 }
 
 // POST /api/listings/:id/submit — creator moves a draft into the approval queue.
-export async function submitListingForApproval(req: Request, env: Env, id: string): Promise<Response> {
+//
+// [MKT-POSTER-AUTO-1] Also kicks off AI poster generation so an admin opening
+// the review queue already has a poster waiting, rather than having to click
+// "generate" themselves. Gated behind `posterAutoGenerateOnSubmit` (default
+// false — declared in routes/config.ts DEFAULTS by a concurrent change; read
+// here via the normal readConfig() layering, never assumed from DEFAULTS
+// alone). Generation must never block this response: the synchronous D1
+// write below flips the poster into a `generating` placeholder so the admin
+// UI shows a spinner immediately, and the actual image call runs detached.
+export async function submitListingForApproval(req: Request, env: Env, id: string, exec?: ExecutionContext): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const db = metaDb(env);
-  const row = await db.prepare("SELECT id, creator_id, status, attrs FROM listings WHERE id=?1").bind(id).first<any>();
+  const row = await db.prepare(
+    "SELECT id, creator_id, status, attrs, title, description, blurb, category, kind, vibe_tags, spoken_lang, cover_media FROM listings WHERE id=?1",
+  ).bind(id).first<any>();
   if (!row || row.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
   if (String(row.status) !== "draft") return json({ error: "listing not draft", status: row.status }, 409);
   let attrs: any = {};
   try { attrs = row.attrs ? JSON.parse(String(row.attrs)) : {}; } catch { attrs = {}; }
   const now = Date.now();
+
+  // [MKT-POSTER-AUTO-1] Decide whether to auto-generate BEFORE the write so the
+  // placeholder poster state lands in the same batch as the status flip.
+  const cfg = await readConfig(env);
+  const autoOn = (cfg as any).posterAutoGenerateOnSubmit === true;
+  const maxAttempts = Number((cfg as any).posterAutoGenerateMaxAttempts ?? 2) || 2;
+  const priorPoster = attrs.poster ?? null;
+  const priorAttempt = Number(priorPoster?.attempt ?? 0) || 0;
+  const nextAttempt = priorAttempt + 1;
+  // Never re-generate over an existing draft/approved/rejected poster — only
+  // when there is none yet, or the last attempt failed, and only within the
+  // configured attempt budget.
+  const eligible = !priorPoster || priorPoster.status === "failed";
+  const shouldAutoGenerate = autoOn && eligible && nextAttempt <= maxAttempts;
+
+  if (shouldAutoGenerate) {
+    attrs.poster = { status: "generating", generated_at: now, auto: true, attempt: nextAttempt };
+  }
+
   await db.batch([
     db.prepare(
       `INSERT INTO listing_approval_history
        (id, listing_id, actor_id, action, previous_status, next_status, reason, poster_status, created_at)
        VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)`,
     ).bind(crypto.randomUUID(), id, ctx.uid, "submit_for_review", row.status, "pending_review", null, attrs.poster?.status ?? null, now),
-    db.prepare("UPDATE listings SET status='pending_review', updated_at=?2 WHERE id=?1").bind(id, now),
+    db.prepare("UPDATE listings SET status='pending_review', attrs=?2, updated_at=?3 WHERE id=?1").bind(id, JSON.stringify(attrs), now),
   ]);
   try {
     await env.DB_WALLET.prepare(
@@ -1275,7 +1307,117 @@ export async function submitListingForApproval(req: Request, env: Env, id: strin
   } catch {
     // audit best-effort; core state and history already committed atomically.
   }
+
+  if (shouldAutoGenerate) {
+    // The ExecutionContext is threaded in from index.ts so the isolate is held
+    // open until generation finishes. Without waitUntil a bare detached
+    // promise can be dropped the moment the response is sent, stranding the
+    // poster on `generating` with nothing to move it off. The `exec` param is
+    // optional only so other callers/tests can omit it; in that case we fall
+    // back to a detached promise, which is best-effort.
+    const work = runAutoPosterGeneration(env, {
+      listingId: id,
+      ownerUid: row.creator_id,
+      row,
+      actorUid: ctx.uid,
+      attempt: nextAttempt,
+    }).catch((e) => {
+      // runAutoPosterGeneration() itself never throws (it wraps everything in
+      // try/catch and always tries to land a terminal state) — this is a final
+      // safety net so a truly unexpected throw can never look like a silently
+      // unhandled rejection.
+      console.error("listing_poster_auto_generate_unhandled", { listing_id: id, error: String((e as any)?.message || e) });
+    });
+    if (exec && typeof exec.waitUntil === "function") exec.waitUntil(work);
+    else void work;
+  }
+
   return json({ ok: true, id, status: "pending_review" });
+}
+
+// [MKT-POSTER-AUTO-1] Runs the actual poster generation off the request path,
+// then re-reads the listing and merges the result back in — never a blind
+// overwrite, because an admin can act on the row (approve/reject/regenerate)
+// while generation is still in flight. If the row has moved on (no longer
+// pending_review, or the poster is no longer in the exact `generating` state
+// this call put it in), the write is abandoned rather than clobbering
+// whatever the admin did. Any failure — including an abandoned write — must
+// still land the poster on `failed`, never leave it stuck on `generating`.
+async function runAutoPosterGeneration(
+  env: Env,
+  opts: { listingId: string; ownerUid: string; row: Record<string, any>; actorUid: string; attempt: number },
+): Promise<void> {
+  const t0 = Date.now();
+  let outcome: "draft" | "failed" = "failed";
+  let errorKind: string | undefined;
+  try {
+    const prompt = buildPosterPrompt(opts.row);
+    const { poster, coverMedia } = await generateListingPoster(env, {
+      listingId: opts.listingId,
+      ownerUid: opts.ownerUid,
+      row: opts.row,
+      prompt,
+      actorUid: opts.actorUid,
+      auto: true,
+      attempt: opts.attempt,
+    });
+    outcome = poster.status === "draft" ? "draft" : "failed";
+    if (poster.status === "failed") errorKind = "generation_failed";
+
+    const db = metaDb(env);
+    const fresh = await db.prepare("SELECT status, attrs, cover_media FROM listings WHERE id=?1").bind(opts.listingId).first<any>();
+    if (!fresh) { errorKind = errorKind || "listing_missing"; return; }
+    let freshAttrs: any = {};
+    try { freshAttrs = fresh.attrs ? JSON.parse(String(fresh.attrs)) : {}; } catch { freshAttrs = {}; }
+    const stillPendingReview = String(fresh.status) === "pending_review";
+    const stillGenerating = freshAttrs.poster?.status === "generating" && Number(freshAttrs.poster?.attempt ?? -1) === opts.attempt;
+    if (!stillPendingReview || !stillGenerating) {
+      // Row moved on (admin acted, or a newer attempt already landed) — abandon
+      // the write rather than clobber it. Still counts as a non-"draft" outcome
+      // for telemetry, since this attempt's result was never persisted.
+      console.warn("listing_poster_auto_generate_abandoned", {
+        listing_id: opts.listingId, status: fresh.status, poster_status: freshAttrs.poster?.status,
+      });
+      errorKind = errorKind || "abandoned_row_changed";
+      outcome = "failed";
+      return;
+    }
+    freshAttrs.poster = poster;
+    const nextCoverMedia = coverMedia ? JSON.stringify(coverMedia) : fresh.cover_media;
+    await db.prepare("UPDATE listings SET attrs=?2, cover_media=?3, updated_at=?4 WHERE id=?1")
+      .bind(opts.listingId, JSON.stringify(freshAttrs), nextCoverMedia, Date.now()).run();
+  } catch (e) {
+    errorKind = errorKind || "unexpected_exception";
+    outcome = "failed";
+    // Best-effort: try to land a terminal `failed` state so nothing is stuck
+    // on `generating` forever, but only if the row is still in the exact spot
+    // this call left it in — same re-read + merge discipline as the happy path.
+    try {
+      const db = metaDb(env);
+      const fresh = await db.prepare("SELECT status, attrs FROM listings WHERE id=?1").bind(opts.listingId).first<any>();
+      if (fresh) {
+        let freshAttrs: any = {};
+        try { freshAttrs = fresh.attrs ? JSON.parse(String(fresh.attrs)) : {}; } catch { freshAttrs = {}; }
+        if (String(fresh.status) === "pending_review" && freshAttrs.poster?.status === "generating" && Number(freshAttrs.poster?.attempt ?? -1) === opts.attempt) {
+          freshAttrs.poster = { ...freshAttrs.poster, status: "failed", error: String((e as any)?.message || "unexpected error").slice(0, 180) };
+          await db.prepare("UPDATE listings SET attrs=?2, updated_at=?3 WHERE id=?1")
+            .bind(opts.listingId, JSON.stringify(freshAttrs), Date.now()).run();
+        }
+      }
+    } catch { /* last-resort best-effort; nothing more to do */ }
+  } finally {
+    try {
+      await track(env, opts.actorUid, "listing_poster_generate", APP, {
+        listing_id: opts.listingId,
+        creator_id: opts.ownerUid,
+        auto: true,
+        attempt: opts.attempt,
+        outcome,
+        duration_ms: Date.now() - t0,
+        error_kind: errorKind,
+      });
+    } catch { /* telemetry best-effort — must never affect poster state */ }
+  }
 }
 
 // GET /api/marketplace/listing-quote?listing_id=... — authoritative fee preview.
