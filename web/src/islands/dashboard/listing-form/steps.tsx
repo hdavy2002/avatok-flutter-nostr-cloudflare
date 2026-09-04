@@ -405,13 +405,16 @@ export function Step5HowItWorks({ draft, patch }: { draft: ListingDraft; patch: 
   }
   return (
     <div className="flex flex-col gap-4">
-      <SectionHeader title="How it works" hint="2–5 short steps explaining what happens once someone books."
+      {/* [LIST-OPTIONAL-CONTENT-1] Optional — min={0}. The copy must not claim
+          a minimum the validator no longer enforces; a form that says
+          "minimum 2" while Next works at 0 is worse than either rule alone. */}
+      <SectionHeader title="How it works" hint="Optional — up to 5 short steps explaining what happens once someone books. Skip it if you'd rather."
         action={<button type="button" onClick={applyDefaults} className="font-body font-bold text-[12px] text-blueInk underline">Use suggested</button>} />
       <TwoFieldListEditor
         items={draft.content_how_it_works as unknown as Record<string, string>[]}
         onChange={(next) => patch({ content_how_it_works: next as unknown as ListingDraft['content_how_it_works'] })}
         aKey="label" bKey="body" aLabel="Step name" bLabel="What happens" aMax={24} bMax={240}
-        aPlaceholder="e.g. Join" bPlaceholder="Describe this step" min={2} max={5}
+        aPlaceholder="e.g. Join" bPlaceholder="Describe this step" min={0} max={5}
         addLabel="Add a step" itemNoun="Step" />
     </div>
   );
@@ -439,7 +442,8 @@ export function Step6HouseRules({ draft, patch }: { draft: ListingDraft; patch: 
   }
   return (
     <div className="flex flex-col gap-7">
-      <SectionHeader title="House rules" hint="3–8 rules, plus a short intro line."
+      {/* [LIST-OPTIONAL-CONTENT-1] Optional — min={0} on the rules editor. */}
+      <SectionHeader title="House rules" hint="Optional — up to 8 rules, plus a short intro line. Skip it if you'd rather."
         action={<button type="button" onClick={applyDefaults} className="font-body font-bold text-[12px] text-blueInk underline">Use suggested for this category</button>} />
       <label className="block">
         <span className={labelCls}>Intro line</span>
@@ -451,7 +455,7 @@ export function Step6HouseRules({ draft, patch }: { draft: ListingDraft; patch: 
         items={draft.content_house_rules as unknown as Record<string, string>[]}
         onChange={(next) => patch({ content_house_rules: next as unknown as ListingDraft['content_house_rules'] })}
         aKey="heading" bKey="body" aLabel="Rule" bLabel="Detail" aMax={32} bMax={200}
-        min={3} max={8} addLabel="Add a rule" itemNoun="Rule" />
+        min={0} max={8} addLabel="Add a rule" itemNoun="Rule" />
 
       <div>
         <span className={labelCls}>What you get (3–5)</span>

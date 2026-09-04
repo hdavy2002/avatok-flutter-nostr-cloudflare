@@ -339,17 +339,25 @@ function contentAttrsError(attrs: unknown, freeEntry: boolean): string | null {
     Array.isArray(v) && v.length <= max &&
     v.every((x) => x && typeof x === "object" && isStr((x as any).q, qMax) && isStr((x as any).a, aMax));
 
+  // [LIST-OPTIONAL-CONTENT-1 2026-09-04, owner decision] Both sections are
+  // OPTIONAL in the wizard now, so the floor is 1, not 2/3. Omitting the key
+  // entirely was always allowed (these are `!== undefined` guards) — what was
+  // NOT allowed was sending a single step, which is a perfectly reasonable
+  // thing for a creator to write and now round-trips instead of 400ing.
+  // Loosening only: every payload that passed before still passes, so no
+  // existing listing or shipped client is affected. The upper caps and the
+  // per-item length limits are unchanged and still enforced.
   if (a.content_how_it_works !== undefined) {
     const v = a.content_how_it_works;
-    const ok = Array.isArray(v) && v.length >= 2 && v.length <= 5 &&
+    const ok = Array.isArray(v) && v.length >= 1 && v.length <= 5 &&
       v.every((x) => x && typeof x === "object" && isStr((x as any).label, 24) && isStr((x as any).body, 240));
-    if (!ok) return "content_how_it_works must be 2-5 items of {label<=24, body<=240}";
+    if (!ok) return "content_how_it_works must be 1-5 items of {label<=24, body<=240}";
   }
   if (a.content_house_rules !== undefined) {
     const v = a.content_house_rules;
-    const ok = Array.isArray(v) && v.length >= 3 && v.length <= 8 &&
+    const ok = Array.isArray(v) && v.length >= 1 && v.length <= 8 &&
       v.every((x) => x && typeof x === "object" && isStr((x as any).heading, 32) && isStr((x as any).body, 200));
-    if (!ok) return "content_house_rules must be 3-8 items of {heading<=32, body<=200}";
+    if (!ok) return "content_house_rules must be 1-8 items of {heading<=32, body<=200}";
   }
   if (a.content_house_rules_intro !== undefined && !isStr(a.content_house_rules_intro, 280)) {
     return "content_house_rules_intro must be a string of at most 280 characters";

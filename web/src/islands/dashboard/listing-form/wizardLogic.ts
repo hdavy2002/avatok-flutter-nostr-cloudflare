@@ -52,8 +52,15 @@ export function normalizeTimezone(tz: string): string {
  *  attrs write would silently erase everything collected in an earlier step. */
 export function buildAttrs(d: ListingDraft): Record<string, unknown> {
   const a: Record<string, unknown> = {};
-  if (d.content_how_it_works.length >= 2) a.content_how_it_works = d.content_how_it_works.slice(0, 5);
-  if (d.content_house_rules.length >= 3) a.content_house_rules = d.content_house_rules.slice(0, 8);
+  // [LIST-OPTIONAL-CONTENT-1] Send whatever the creator actually wrote. These
+  // used to be `>= 2` / `>= 3`, which SILENTLY DISCARDED a single step or a
+  // pair of rules — the creator typed them, hit save, and they were gone with
+  // no error. Now that both sections are optional, one entry is a legitimate
+  // answer, so it must round-trip. The server minimum was lowered to 1 to
+  // match (contentAttrsError in worker/src/routes/listings.ts); keep the two
+  // ends in step or a 1-item list starts 400ing.
+  if (d.content_how_it_works.length) a.content_how_it_works = d.content_how_it_works.slice(0, 5);
+  if (d.content_house_rules.length) a.content_house_rules = d.content_house_rules.slice(0, 8);
   if (d.content_house_rules_intro.trim()) a.content_house_rules_intro = d.content_house_rules_intro.slice(0, 280);
   if (d.content_join_lead_minutes != null) a.content_join_lead_minutes = d.content_join_lead_minutes;
   if (d.free_entry) {
@@ -197,20 +204,31 @@ export function validateStep(d: ListingDraft, step: StepIndex): FieldProblem | n
       }
       return null;
     }
-    case 4: // How it works
-      if (d.content_how_it_works.length < 2 || d.content_how_it_works.length > 5) {
-        return { field: 'content_how_it_works', message: 'Add 2–5 steps explaining how this works.' };
+    // [LIST-OPTIONAL-CONTENT-1 2026-09-04, owner decision] "How it works" and
+    // "House rules" are OPTIONAL. They used to hard-block Next until a creator
+    // wrote 2 steps / 3 rules, which stopped real listings from ever reaching
+    // Publish over descriptive copy the marketplace does not need. Empty is
+    // now a valid answer and the step is skippable.
+    //
+    // What is still enforced is only the shape of what someone DID write: a
+    // step with an empty body, or one over the length caps, would be rejected
+    // by the server's contentAttrsError() with a raw 400 the wizard cannot
+    // explain. Catching it here keeps that error readable. Do not "simplify"
+    // these into unconditional blocks again — that is the bug being fixed.
+    case 4: // How it works — optional
+      if (d.content_how_it_works.length > 5) {
+        return { field: 'content_how_it_works', message: 'Keep it to 5 steps or fewer.' };
       }
       if (d.content_how_it_works.some((s) => !s.label.trim() || s.label.length > 24 || !s.body.trim() || s.body.length > 240)) {
-        return { field: 'content_how_it_works', message: 'Each step needs a label (≤24 chars) and a body (≤240 chars).' };
+        return { field: 'content_how_it_works', message: 'Each step you add needs a label (≤24 chars) and a body (≤240 chars) — or remove it.' };
       }
       return null;
-    case 5: // House rules
-      if (d.content_house_rules.length < 3 || d.content_house_rules.length > 8) {
-        return { field: 'content_house_rules', message: 'Add 3–8 house rules.' };
+    case 5: // House rules — optional
+      if (d.content_house_rules.length > 8) {
+        return { field: 'content_house_rules', message: 'Keep it to 8 house rules or fewer.' };
       }
       if (d.content_house_rules.some((r) => !r.heading.trim() || r.heading.length > 32 || !r.body.trim() || r.body.length > 200)) {
-        return { field: 'content_house_rules', message: 'Each rule needs a heading (≤32 chars) and a body (≤200 chars).' };
+        return { field: 'content_house_rules', message: 'Each rule you add needs a heading (≤32 chars) and a body (≤200 chars) — or remove it.' };
       }
       if (d.content_house_rules_intro.length > 280) return { field: 'content_house_rules_intro', message: 'Keep the intro under 280 characters.' };
       if (d.content_what_you_get.length && (d.content_what_you_get.length < 3 || d.content_what_you_get.length > 5)) {
@@ -246,8 +264,11 @@ export function publishReadiness(
     { ok: Boolean(d.category), label: 'Has a category' },
     { ok: true, label: d.cover_media.length ? `Optional photos added (${d.cover_media.length}/5)` : 'AI poster can be generated' },
     { ok: d.blurb.trim().length > 0, label: 'Has a one-line blurb' },
-    { ok: d.content_how_it_works.length >= 2, label: 'How it works is filled in' },
-    { ok: d.content_house_rules.length >= 3, label: 'House rules are filled in' },
+    // [LIST-OPTIONAL-CONTENT-1] Optional, so these can never hold up a publish.
+    // Kept in the list as informational lines rather than deleted, so the
+    // creator can still see at a glance whether they wrote them.
+    { ok: true, label: d.content_how_it_works.length ? `How it works (${d.content_how_it_works.length} step${d.content_how_it_works.length === 1 ? '' : 's'})` : 'How it works — optional, left blank' },
+    { ok: true, label: d.content_house_rules.length ? `House rules (${d.content_house_rules.length})` : 'House rules — optional, left blank' },
   ];
   if (d.schedule_mode === 'fixed_date') {
     checks.push({ ok: Boolean(localToEpoch(d.starts_at)) && Number(localToEpoch(d.starts_at)) > Date.now(), label: 'Starts in the future' });
