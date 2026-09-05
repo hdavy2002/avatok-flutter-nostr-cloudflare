@@ -120,3 +120,62 @@ export function sectionFor(kind: string | null | undefined, category: string | n
 export function isSection(v: string | null | undefined): v is Section {
   return !!v && (SECTIONS as readonly string[]).includes(v);
 }
+
+/**
+ * [MKT-3GROUP-1 2026-09-05] The THREE marketplace groups the front page and
+ * app show, per Specs/SPEC-2026-09-05-THREE-GROUPS-AND-HOURLY-PRICING.md §1
+ * and Specs/listing-taxonomy.json (the canonical source — mirror exactly, do
+ * not hand-edit headings/emphasis/blurb independently of that file).
+ *
+ * A group sits ABOVE a section, exactly the way a section sits above a
+ * category (see the header comment on SECTIONS above). It is NOT a new
+ * column — `listings.section` already exists and is the stored, indexable
+ * value; a group is a pure grouping of sections, computed on read.
+ */
+export const GROUPS = ["india_goes_live", "find_your_people", "book_their_time"] as const;
+
+export type Group = (typeof GROUPS)[number];
+
+/** Display metadata mirrored verbatim from Specs/listing-taxonomy.json `groups`. */
+export const GROUP_META: Readonly<Record<Group, { heading: string; emphasis: string; blurb: string }>> = {
+  india_goes_live: {
+    heading: "India goes live",
+    emphasis: "live.",
+    blurb: "Temple tours, skills, journeys and moments happening right now.",
+  },
+  find_your_people: {
+    heading: "Find your people",
+    emphasis: "people.",
+    blurb: "Real people you can pay for their time — someone to listen, or simply good company.",
+  },
+  book_their_time: {
+    heading: "Book their time",
+    emphasis: "time.",
+    blurb: "Choose a professional, check their calendar and book a private session.",
+  },
+};
+
+/**
+ * Section -> group. `ai_voice_agents` is deliberately ABSENT — "Voices with
+ * character" is removed from the front page and the marketplace (owner
+ * decision 2026-09-05), but the section value stays in the SECTIONS union
+ * because live rows carry it (see the module header). Absent from this map
+ * means `groupFor` returns null for it, which is the correct "renders
+ * nowhere" answer, not a bug to fix by adding it here.
+ */
+const GROUP_FOR_SECTION: Readonly<Partial<Record<Section, Group>>> = {
+  live_streaming: "india_goes_live",
+  live_friends: "find_your_people",
+  adda_rooms: "find_your_people",
+  consulting: "book_their_time",
+  astro_tarot: "book_their_time",
+  glow_up: "book_their_time",
+};
+
+/** The group a section renders under, or null when it renders nowhere
+ *  (today, only `ai_voice_agents`). Use this rather than re-deriving the
+ *  section->group table anywhere else — it is the one place the mapping
+ *  from Specs/listing-taxonomy.json lives in the worker. */
+export function groupFor(section: string | null | undefined): Group | null {
+  return GROUP_FOR_SECTION[section as Section] ?? null;
+}
