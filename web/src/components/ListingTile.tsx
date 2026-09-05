@@ -477,10 +477,33 @@ export function ListingTile({
           </div>
         </div>
 
-        {/* The ticket-stub scallop that joins the photo to the card body. */}
-        <div style={{
-          position: 'absolute', left: 0, right: 0, bottom: -1, height: 18,
-          background: `radial-gradient(circle at 11px 15px, ${p.fill} 11px, transparent 12px) 0 0/22px 18px repeat-x`,
+        {/* [CARD-BORDER-1 2026-09-05] A truck-art jhalar strip where the plain
+            ticket-stub scallop used to be.
+
+            The old separator was a single radial-gradient of the FOOTER's own
+            colour bulging up into the poster — so it read as a bite taken out of
+            the artwork rather than as a border between two things, and after the
+            palette change it was a row of indigo bumps against a painted poster.
+            The site already dresses its section breaks in truck-art (see
+            TruckBorder.astro); this brings the card in line with that.
+
+            Deliberately still ONE element and pure CSS, not TruckBorder's ~110
+            flex children: this renders once per card in a scrolling grid, and a
+            hundred spans per card is a real cost for a decorative rule. The band
+            is opaque across its full width so it separates cleanly over any
+            artwork, and the amber discs hang into the footer's own colour rather
+            than punching holes through to the poster. */}
+        <div aria-hidden="true" style={{
+          position: 'absolute', left: 0, right: 0, bottom: -1, height: 24,
+          background: [
+            // Topmost layer: the amber discs, centred on the band's lower edge
+            // so they hang into the footer — the shape in the reference strip.
+            `radial-gradient(circle at 11px 15px, #f0a028 7px, transparent 7.5px) 0 0/22px 24px repeat-x`,
+            // The band: ink hairline, teal rule, red field, then the footer's
+            // own colour, so the gaps between discs read as footer rather than
+            // as holes punched through to the artwork.
+            `linear-gradient(#161614 0 2px, #2c7a7b 2px 4.5px, #d93825 4.5px 15px, ${p.fill} 15px 24px) 0 0/100% 24px no-repeat`,
+          ].join(', '),
         }} />
       </div>
 
