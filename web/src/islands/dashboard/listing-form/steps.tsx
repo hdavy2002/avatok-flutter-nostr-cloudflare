@@ -3,7 +3,7 @@
  * plumbing it needs (categories list, upload handler, slot API calls). All
  * validation happens in wizardLogic.ts / ListingWizard.tsx — these components
  * only render inputs and call `patch`. */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Field } from '../../../components/Field';
 import { Card } from '../../../components/Card';
 import { Button } from '../../../components/Button';
@@ -55,6 +55,29 @@ const SCHEDULE_OPTS: { key: ListingDraft['schedule_mode']; label: string; sub: s
   { key: 'on_request', label: 'On request', sub: 'People request a time, you confirm' },
   { key: 'always_on', label: 'Always on', sub: 'No fixed schedule — join any time' },
 ];
+
+// [LIVE-SCHEDULE-FIX-1 2026-09-05] A LIVE EVENT can only be a fixed date today.
+//
+// All four modes were offered for every kind, and for a live_event the other
+// three are a dead end the creator cannot see: the wizard's own checklist goes
+// all-green (wizardLogic.ts only asks for a future start when schedule_mode ===
+// 'fixed_date'), the listing saves, it reaches review, an admin approves it —
+// and then Publish returns "starts_at (future) and duration_min (5–480)
+// required", forever. The owner lost a listing to this on 2026-09-05.
+//
+// The gate is not the bug. Everything downstream of a live_event assumes a real
+// window: commercial_checkout refuses a ticket without one, the GetStream join
+// window computes 1970→1970 and 410s the host and every viewer, and the DO
+// arms a no-show refund alarm that is already in the past. Letting the listing
+// through would publish something unbuyable and unjoinable, which is worse than
+// refusing it.
+//
+// So the honest fix is to stop offering what does not work. Restoring these
+// three means making the join window, the checkout guard and the money engine
+// branch on schedule_mode first — see the notes in worker/src/routes/listings.ts
+// at SLOT_CLAIMED_STATUSES. Consult listings are unaffected; they schedule off
+// availability_rules, not off starts_at.
+const LIVE_EVENT_SCHEDULE_OPTS = SCHEDULE_OPTS.filter((o) => o.key === 'fixed_date');
 
 export function Step1Type({ draft, patch, err, freeEntryLocked }: {
   draft: ListingDraft; patch: Patch; err: FieldErr;
@@ -115,7 +138,7 @@ export function Step1Type({ draft, patch, err, freeEntryLocked }: {
       <div>
         <span className={labelCls}>Schedule</span>
         <div className="flex flex-col gap-2">
-          {SCHEDULE_OPTS.map((o) => (
+          {(draft.kind === 'live_event' ? LIVE_EVENT_SCHEDULE_OPTS : SCHEDULE_OPTS).map((o) => (
             <button key={o.key} type="button" onClick={() => patch({ schedule_mode: o.key })}
               className={['flex items-center justify-between rounded-zine border-zine border-ink p-3 text-left shadow-zine-xs',
                 draft.schedule_mode === o.key ? 'bg-lime' : 'bg-card'].join(' ')}>
@@ -356,6 +379,18 @@ export function Step4Time({ draft, patch, err, slotsSupported, onAddSlot, onRemo
   slotBusy: boolean;
 }) {
   const [slotDraft, setSlotDraft] = useState({ starts_at: '', duration_min: 60, label: '', capacity: draft.kind === 'consult' ? 1 : 10 });
+  // [LIVE-SCHEDULE-FIX-1 2026-09-05] Rescue an EXISTING live_event that was
+  // saved on one of the three modes we no longer offer (see
+  // LIVE_EVENT_SCHEDULE_OPTS). Hiding the buttons is not enough on its own: the
+  // draft still carries e.g. 'always_on', and every time field below is gated on
+  // the mode — so the creator would open the wizard to fix the missing date and
+  // find nowhere to type it. Coercing to fixed_date is what makes those listings
+  // repairable instead of write-offs.
+  useEffect(() => {
+    if (draft.kind === 'live_event' && draft.schedule_mode !== 'fixed_date') {
+      patch({ schedule_mode: 'fixed_date' });
+    }
+  }, [draft.kind, draft.schedule_mode, patch]);
   const showTimeFields = draft.schedule_mode === 'fixed_date' || draft.schedule_mode === 'recurring';
   // [LIST-WIZ-TZ-1] Show the free-text box only when the current timezone isn't
   // one of the friendly options — i.e. it was picked "Other…", loaded from an

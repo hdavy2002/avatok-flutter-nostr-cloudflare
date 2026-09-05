@@ -95,6 +95,12 @@ const FANOUT_MAX_FOLLOWERS = 500;
 // Curated enums for the new listing-content columns. `vibe_tags` in particular is a
 // PICKLIST, never free text (§C.1: "the mock's `100% MASALA` chips are copy, not data").
 const SCHEDULE_MODES = new Set(["fixed_date", "recurring", "on_request", "always_on"]);
+
+/** [LIVE-SCHEDULE-FIX-1 2026-09-05] The statuses in which a live_event has a
+ *  claimed calendar block, i.e. the ones where moving its time would strand a
+ *  real slot. claimBlock() is called in exactly one place — the live_event
+ *  branch of publishListingAuthoritative — so this is the full list. */
+const SLOT_CLAIMED_STATUSES = new Set(["published", "live"]);
 // [PRICE-HOURLY-1] "hour" added — every session is now priced per hour (spec
 // §4). The legacy values stay in the set: they are still on old rows and on
 // the wire for any client that hasn't updated, and BILLING_UNITS is a
@@ -1547,7 +1553,21 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
   ]);
   if (blocked) return blocked;
   // A published live event's time can't silently move (the slot is claimed) — reject.
-  if (row.status !== "draft" && row.kind === "live_event" && ("starts_at" in f || "duration_min" in f)) {
+  //
+  // [LIVE-SCHEDULE-FIX-1 2026-09-05] Scoped to the statuses where a slot ACTUALLY
+  // exists. It used to be `status !== "draft"`, which also covered
+  // pending_review, approved and rejected — none of which have claimed anything,
+  // because claimBlock() only runs inside publishListingAuthoritative (see the
+  // live_event branch of the publish gate below). The effect was a trap: a
+  // live_event that reached review without a start time could never be given
+  // one, and the publish gate then refused it forever with "starts_at (future)
+  // and duration_min (5-480) required". The owner hit exactly that on listing
+  // 845567cb — approved, poster approved, and permanently unpublishable.
+  //
+  // The rule's own justification is the claimed slot, so it belongs on the
+  // statuses that have one.
+  if (SLOT_CLAIMED_STATUSES.has(String(row.status)) && row.kind === "live_event"
+      && ("starts_at" in f || "duration_min" in f)) {
     return json({ error: "cannot move a published event — cancel and re-create" }, 409);
   }
   // A marketplace expiry is a paid/free 30-day entitlement. Updating expiry_days
