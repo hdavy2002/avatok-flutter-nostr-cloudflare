@@ -120,6 +120,31 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
     return list;
   }, [rows, kind, status, q]);
 
+  /* [LIST-ERR-SURFACE-1 2026-09-05] Say WHAT went wrong.
+   *
+   * Both handlers used to `catch { alert('Could not remove — try again.') }`,
+   * which is the worst possible error: it throws away a response that names the
+   * exact reason, and then tells the creator to repeat an action that will fail
+   * identically every time. The owner hit precisely this on two published live
+   * events — the server was refusing for a specific reason and the UI made it
+   * unknowable from the outside, so diagnosing it needed a code read.
+   *
+   * `request()` throws an ApiError carrying status + the parsed body, so the
+   * reason is right there. `transition_not_allowed` also carries `status_now`
+   * and the allowed targets, which is what turns "it won't delete" into "this
+   * listing is completed and can no longer be archived". */
+  function actionError(verb: 'archive' | 'remove', e: unknown): string {
+    const err = e as { status?: number; message?: string; body?: any };
+    const body = err?.body ?? {};
+    const reason = String(body.reason ?? body.error ?? err?.message ?? 'unknown error');
+    const now = body.status_now ? ` (this listing is currently "${body.status_now}")` : '';
+    const allowed = Array.isArray(body.allowedTargets) && body.allowedTargets.length
+      ? ` You can move it to: ${body.allowedTargets.join(', ')}.`
+      : '';
+    const code = err?.status ? ` [${err.status}]` : '';
+    return `Could not ${verb} this listing${code}: ${reason}${now}.${allowed}`;
+  }
+
   async function archive(id: string) {
     if (!token || !confirm('Archive this listing? It will be removed from the marketplace.')) return;
     setBusy(id);
@@ -127,7 +152,7 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
       await withTrace(() => request(`/api/listings/${id}/status`, { method: 'POST', auth: token, body: { status: 'cancelled' } }));
       setRows((prev) => (prev ?? []).map((l) => (l.id === id ? { ...l, status: 'cancelled' } : l)));
       capture('listing_status_change', { to: 'cancelled' });
-    } catch { alert('Could not archive — try again.'); }
+    } catch (e) { alert(actionError('archive', e)); }
     setBusy(null);
   }
   /* [LIST-ARCHIVE-HIDE-1] This is a SOFT delete and the copy now says so. It
@@ -148,7 +173,7 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
       // default filter hides it from here anyway.
       setRows((prev) => (prev ?? []).map((l) => (l.id === id ? { ...l, status: 'cancelled' } : l)));
       capture('listing_cancel', {});
-    } catch { alert('Could not remove — try again.'); }
+    } catch (e) { alert(actionError('remove', e)); }
     setBusy(null);
   }
 

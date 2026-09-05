@@ -2670,8 +2670,22 @@ export async function cancelListing(req: Request, env: Env, id: string): Promise
   if (!(cancelled.meta?.changes ?? 0)) {
     return json({ error: "conflict", message: "This listing changed before it could be archived." }, 409);
   }
-  await releaseBlocks(env, APP, id);
-  await ftsSync(env, id, true);
+  // [LIST-ERR-SURFACE-1 2026-09-05] These run AFTER the status write has already
+  // committed, so a throw here used to turn a SUCCESSFUL archive into a 500 —
+  // the creator saw "could not remove", retried, and the retry then failed with
+  // `noop_transition` because the listing really was already cancelled. The
+  // permanent-delete branch above has always guarded both with `.catch(() => {})`
+  // for exactly this reason; the soft path was the odd one out.
+  //
+  // Failures are logged rather than swallowed silently: an unreleased calendar
+  // block or a stale FTS row is a real (recoverable) problem worth seeing, it is
+  // just not a reason to tell the creator their archive did not happen.
+  await releaseBlocks(env, APP, id).catch((e) => {
+    console.error("listing_cancel_release_blocks_failed", { listing_id: id, error: String((e as any)?.message || e) });
+  });
+  await ftsSync(env, id, true).catch((e) => {
+    console.error("listing_cancel_fts_sync_failed", { listing_id: id, error: String((e as any)?.message || e) });
+  });
   return json({ ok: true });
 }
 
