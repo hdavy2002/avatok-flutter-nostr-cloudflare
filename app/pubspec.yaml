@@ -307,6 +307,7 @@ dependencies:
   # unpack the model tarballs) were dropped with it.
   # path joining (still used app-wide).
   path: ^1.9.0
+  google_fonts: ^8.2.1
   # Phase 4 (Two-Lane Memory) — on-device vector + embedder deps DEFERRED here by
   # Phase 0. DECISION: NO new packages are needed for the free on-device lane.
   #   • FTS5 keyword search → already available (sqlite3_flutter_libs bundles

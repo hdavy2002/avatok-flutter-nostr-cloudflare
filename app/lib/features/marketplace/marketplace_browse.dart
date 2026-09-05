@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
@@ -7,13 +8,11 @@ import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/breakpoints.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/rajasthani_motifs.dart'; // ScallopBorder
 import '../../core/ui/zine_widgets.dart';
 import '../explore/listing_detail.dart';
-import '../booking/commercial_customer_screens.dart';
 import 'commercial_service_cards.dart';
-import 'create_service_choice_sheet.dart';
 import 'intent_theme.dart';
-import 'sell_listing_flow.dart' show kMarketCategories;
 
 /// [UI-MKT-1] Card-impression de-dupe — fire 'mkt_card_impression' once per
 /// listing_id per app session (a simple in-memory set is enough; the point is to
@@ -53,12 +52,6 @@ class MarketplaceBrowse extends StatefulWidget {
 String marketplaceTitle(BuildContext context) =>
     MediaQuery.sizeOf(context).width < 400 ? 'Market…' : 'Marketplace';
 
-String _flagOf(String? cc) {
-  if (cc == null || cc.length != 2) return '🌍';
-  final up = cc.toUpperCase();
-  return String.fromCharCode(0x1F1E6 + up.codeUnitAt(0) - 65) +
-      String.fromCharCode(0x1F1E6 + up.codeUnitAt(1) - 65);
-}
 
 class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
   final _search = TextEditingController();
@@ -98,63 +91,6 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
       }
     }
     return items;
-  }
-
-  /// [UI-MARKET-2026] Holi/bandhani accent per filter family, so country,
-  /// category and each vehicle-style category chip read as different things at
-  /// a glance instead of one undifferentiated orange row.
-  ///
-  /// Order matters: `kMarketCategories` starts with Vehicles, so index 0 is
-  /// terracotta (lac red) — the vehicle filter the owner called out. The rest
-  /// rotate through marigold / rani / indigo / green.
-  static const List<Color> _categoryPalette = <Color>[
-    AD.terracotta,    // Vehicles
-    AD.haldi,         // marigold — LIGHT band, takes ink
-    AD.primaryBadge,  // rani pink — dark, takes cream
-    AD.tabCalls,      // Jodhpur indigo — dark, takes cream
-    AD.online,        // deep green — dark, takes cream
-  ];
-
-  /// Country toggles get their own hue (deep green) so they never look like a
-  /// category. Categories rotate through [_categoryPalette] by position.
-  Color _chipAccent(String label, {int? categoryIndex}) {
-    if (categoryIndex != null && categoryIndex >= 0) {
-      return _categoryPalette[categoryIndex % _categoryPalette.length];
-    }
-    return AD.online;
-  }
-
-  /// Filter chip. Selected = full accent fill with the readable foreground
-  /// [AD.onBand] picks for that hue (cream on indigo/rani/green, ink on
-  /// marigold — never black text on indigo). Unselected = paper with a faint
-  /// wash of the same accent and a 2px accent outline, so the family colour is
-  /// still legible while the selected state stays unmistakable. No blur
-  /// shadows: this palette uses ink outlines, not elevation.
-  Widget _chipStyled({
-    required String label,
-    required bool selected,
-    required ValueChanged<bool> onSelected,
-    int? categoryIndex,
-  }) {
-    final accent = _chipAccent(label, categoryIndex: categoryIndex);
-    return ChoiceChip(
-      label: Text(label),
-      labelStyle: TextStyle(
-        fontFamily: ADText.family,
-        fontWeight: FontWeight.w600,
-        color: selected ? AD.onBand(accent) : AD.textPrimary,
-      ),
-      selected: selected,
-      showCheckmark: false,
-      onSelected: onSelected,
-      elevation: 0,
-      pressElevation: 0,
-      backgroundColor: accent.withValues(alpha: 0.14),
-      selectedColor: accent,
-      side: BorderSide(
-          color: selected ? AD.borderControl : accent, width: AD.wBorder),
-      shape: RoundedRectangleBorder(borderRadius: Msg.brPill),
-    );
   }
 
   @override
@@ -242,47 +178,19 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
             ),
           ),
         ),
-        // Country toggle + category chips.
-        SizedBox(
-          height: 44,
-          child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: Msg.s4), children: [
-            if (_country.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(right: Msg.s2),
-                child: _chipStyled(
-                  label: '${_flagOf(_country)} My country',
-                  selected: _myCountryOnly,
-                  onSelected: (v) { _myCountryOnly = v; _load(); },
-                ),
-              ),
-            Padding(
-              padding: const EdgeInsets.only(right: Msg.s2),
-              child: _chipStyled(
-                label: 'All countries',
-                selected: !_myCountryOnly,
-                onSelected: (v) { _myCountryOnly = !v; _load(); },
-              ),
-            ),
-            const SizedBox(width: Msg.s2),
-            _chipStyled(
-              label: 'All categories',
-              selected: _category == null,
-              categoryIndex: _categoryPalette.length - 1,
-              onSelected: (_) { _category = null; _load(); },
-            ),
-            for (int i = 0; i < kMarketCategories.length; i++) ...[
-              const SizedBox(width: Msg.s2),
-              _chipStyled(
-                label: kMarketCategories[i],
-                selected: _category == kMarketCategories[i],
-                categoryIndex: i,
-                onSelected: (_) { _category = kMarketCategories[i]; _load(); },
-              ),
-            ],
-          ]),
-        ),
-            const SizedBox(height: Msg.s3),
-            Divider(height: 1, color: AD.borderHairline),
+            // [UI-SECTION-HEAD-1 2026-09-05] The country/category chip strip
+            // that used to sit here is REMOVED (owner). It was a 44dp
+            // horizontal scroller carrying "My country" / "All countries" plus
+            // all 17 `kMarketCategories`, and it competed with the category
+            // section headings below, which now do the same job by simply
+            // showing what is actually on offer.
+            //
+            // The FILTER STATE it drove is still live: `_myCountryOnly`
+            // defaults on and auto-falls back to all countries when the user's
+            // country is empty (`_fetch`), and `_category` stays null = all.
+            // They are just no longer user-settable from this screen. If the
+            // filters need to come back, they belong behind a control in the
+            // header rather than as a permanent band.
             if (commercialDiscovery)
               _CommercialServicesShelf(
                 liveEnabled: commercialLive,
@@ -361,6 +269,84 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
           ]),
         ),
       ),
+    );
+  }
+}
+
+/// [UI-SECTION-HEAD-1 2026-09-05] The category headline above each row, in the
+/// website's editorial voice: a small lac-red eyebrow ("01 · MUSIC · 2
+/// SESSIONS"), the category set large in the display face, and a scalloped
+/// jharokha border closing it off.
+///
+/// TYPE RULES (CLAUDE.md, learned the hard way — do not "tidy" these away):
+///   * Anton ships ONE weight. Asking for bold makes the browser/engine
+///     synthesise it by smearing glyphs sideways until the letters touch, and
+///     letter-spacing cannot repair that because the glyphs themselves are
+///     distorted. `fontWeight: w400` here is load-bearing, not a default.
+///   * Tracking is NEVER negative on display or bold type. Display sits at
+///     0.055em–0.07em, small-caps eyebrows at 0.1em–0.16em — expressed here in
+///     logical pixels, so they scale with the font size above them.
+///   * Line height stays at or above 1.02 on display type.
+class _SectionHeading extends StatelessWidget {
+  final int index;
+  final String title;
+  final int count;
+
+  const _SectionHeading({
+    required this.index,
+    required this.title,
+    required this.count,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Scale with the screen so a 320dp phone does not wrap every headline, but
+    // hold a floor and a ceiling — this is a headline, not a fluid unit.
+    final display = (MediaQuery.sizeOf(context).width * 0.093).clamp(30.0, 44.0);
+    final eyebrow =
+        '${index.toString().padLeft(2, '0')} · ${title.toUpperCase()} · '
+        '$count ${count == 1 ? 'SESSION' : 'SESSIONS'}';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s5, Msg.s4, 0),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(
+          eyebrow,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.nunito(
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.7, // ~0.14em
+            color: AD.terracotta,
+          ),
+        ),
+        const SizedBox(height: Msg.s2),
+        // The trailing full stop is the website's device — it is what makes
+        // "MUSIC." read as a masthead rather than a label. It carries the
+        // accent so a one-word category still has the two-colour split that
+        // "LIVE STREAMING & SHOWS." gets.
+        Text.rich(
+          TextSpan(children: [
+            TextSpan(text: title.toUpperCase()),
+            TextSpan(
+                text: '.', style: const TextStyle(color: AD.terracotta)),
+          ]),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.anton(
+            fontSize: display,
+            fontWeight: FontWeight.w400, // see the Anton note above
+            height: 1.04,
+            letterSpacing: display * 0.06,
+            wordSpacing: display * 0.2,
+            color: AD.textPrimary,
+          ),
+        ),
+        const SizedBox(height: Msg.s2),
+        const ScallopBorder(),
+        const SizedBox(height: Msg.s3),
+      ]),
     );
   }
 }
@@ -523,36 +509,13 @@ class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
     return Container(
       color: AD.bg,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s2),
-          child: Row(children: [
-            Expanded(child: Text(
-              widget.query.isEmpty
-                  ? 'Book a creator'
-                  : 'Creator results for “${widget.query}”',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: ADText.rowName(),
-            )),
-            TextButton.icon(
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => const MySessionsScreen())),
-              icon: PhosphorIcon(PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold), size: 16),
-              label: const Text('My sessions'),
-            ),
-            TextButton.icon(
-              onPressed: () async {
-                final created = await openCreateServiceChoice(context);
-                if (created == true && mounted) setState(_reload);
-              },
-              icon: PhosphorIcon(
-                PhosphorIcons.plus(PhosphorIconsStyle.bold),
-                size: 16,
-              ),
-              label: const Text('Offer a service'),
-            ),
-          ]),
-        ),
+        // [UI-SECTION-HEAD-1 2026-09-05] The "Book a creator · My sessions ·
+        // Offer a service" strip that used to open this block is REMOVED
+        // (owner). Both actions now live only in the sidebar's Marketplace
+        // group, which is why the `MySessionsScreen` /
+        // `openCreateServiceChoice` imports are gone from this file. Nothing
+        // was deleted — this is a discoverability change. If sellers stop
+        // listing after this ships, it is the first thing to look at.
         FutureBuilder<List<ListingCard>>(
           future: _all,
           builder: (context, snap) {
@@ -588,20 +551,11 @@ class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                for (final s in sections) ...[
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                        Msg.s4, Msg.s3, Msg.s4, Msg.s2),
-                    child: Row(children: [
-                      Expanded(
-                        child: Text(s.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: ADText.rowName()),
-                      ),
-                      Text('${s.cards.length}',
-                          style: ADText.preview(c: AD.textSecondary)),
-                    ]),
+                for (var i = 0; i < sections.length; i++) ...[
+                  _SectionHeading(
+                    index: i + 1,
+                    title: sections[i].title,
+                    count: sections[i].cards.length,
                   ),
                   SizedBox(
                     height: metrics.height,
@@ -611,11 +565,11 @@ class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
                       // card shadow into the next row's heading; the row is
                       // deliberately its own clipped band.
                       padding: const EdgeInsets.symmetric(horizontal: Msg.s4),
-                      itemCount: s.cards.length,
+                      itemCount: sections[i].cards.length,
                       separatorBuilder: (_, __) =>
                           const SizedBox(width: Msg.s3),
                       itemBuilder: (_, index) {
-                        final card = s.cards[index];
+                        final card = sections[i].cards[index];
                         return card.kind == 'consult'
                             ? ConsultationCard(
                                 card: card, onTap: () => _open(card))

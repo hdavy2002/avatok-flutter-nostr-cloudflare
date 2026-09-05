@@ -365,6 +365,107 @@ class PillMorseFooter extends StatelessWidget {
       );
 }
 
+// ------------------------------------------------------- Scalloped jharokha
+/// [UI-SECTION-HEAD-1 2026-09-05] The classic Rajasthani awning border: a flat
+/// lac-red band studded with marigold dots, its lower edge cut into a row of
+/// hanging semicircular scallops, closed by a green underline that traces the
+/// scallop arcs. Used under a section headline (see the marketplace category
+/// rows), not as a screen seam — so unlike the `*Seam` family above it takes no
+/// `flip` and reserves its own layout space instead of overlaying content.
+///
+/// The scallops are drawn as a single filled path (band rectangle + one
+/// semicircle per column) so the fill never seams between shapes, and the green
+/// line is the same arc geometry stroked rather than a straight rule — a
+/// straight line under a scalloped edge is the thing that makes these borders
+/// look printed-on rather than cut.
+class ScallopBorder extends StatelessWidget {
+  /// Band + scallop fill. Lac red by default.
+  final Color band;
+
+  /// The studs on the band.
+  final Color stud;
+
+  /// The line tracing the scallop edge.
+  final Color underline;
+
+  /// Width of one scallop, which is also the dot pitch. Smaller = busier.
+  final double scallop;
+
+  const ScallopBorder({
+    super.key,
+    this.band = AD.terracotta,
+    this.stud = _haldi,
+    this.underline = AD.online,
+    this.scallop = 22,
+  });
+
+  /// Flat band + the deepest point of a scallop (radius) + the green trace.
+  static const double _bandHeight = 11;
+  double get _height => _bandHeight + scallop / 2 + 3;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: double.infinity,
+        height: _height,
+        child: CustomPaint(
+          painter: _ScallopPainter(band, stud, underline, scallop),
+        ),
+      );
+}
+
+class _ScallopPainter extends CustomPainter {
+  final Color band, stud, underline;
+  final double scallop;
+
+  _ScallopPainter(this.band, this.stud, this.underline, this.scallop);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const bandH = ScallopBorder._bandHeight;
+    // Round the column count so the scallops divide the width exactly — a
+    // partial scallop at the right edge reads as a rendering bug.
+    final columns = math.max(1, (size.width / scallop).round());
+    final w = size.width / columns;
+    final r = w / 2;
+
+    final path = Path()..addRect(Rect.fromLTWH(0, 0, size.width, bandH));
+    for (var i = 0; i < columns; i++) {
+      path.addOval(Rect.fromCircle(center: Offset(i * w + r, bandH), radius: r));
+    }
+    canvas.drawPath(path, Paint()..color = band);
+
+    // Marigold studs, one per scallop, sitting on the flat band above the arcs.
+    final studPaint = Paint()..color = stud;
+    for (var i = 0; i < columns; i++) {
+      canvas.drawCircle(Offset(i * w + r, bandH / 2), 2.2, studPaint);
+    }
+
+    // Green trace along the scallop edge.
+    final trace = Path();
+    for (var i = 0; i < columns; i++) {
+      trace.addArc(
+        Rect.fromCircle(center: Offset(i * w + r, bandH), radius: r),
+        0, // 0 → pi is the lower half, i.e. the visible scallop edge.
+        math.pi,
+      );
+    }
+    canvas.drawPath(
+      trace,
+      Paint()
+        ..color = underline
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.4,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _ScallopPainter old) =>
+      old.band != band ||
+      old.stud != stud ||
+      old.underline != underline ||
+      old.scallop != scallop;
+}
+
 // ------------------------------------------------------------ 2E Flower chain
 /// Y2K daisies straddling a hard 3px ink seam — the band keeps its ink
 /// border; the flowers overlap it. Layer it, don't stack it:
