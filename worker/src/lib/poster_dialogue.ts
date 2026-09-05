@@ -6,10 +6,18 @@
 // sold), and the line under it becomes a filmy dialogue with Hindi slang, the
 // way a real poster carries a punch line rather than a product description.
 //
-// Script: Hinglish in Latin OR Devanagari, the model's choice per poster (owner
-// decision). Devanagari is riskier — image models garble it more often, and
-// poster_verify.ts will fail those and burn a retry — but the variety was worth
-// it to him, and the verifier is exactly the thing that catches the garbling.
+// Script: LATIN ONLY — English or Hinglish. Devanagari was allowed for a few
+// hours on 2026-09-05 and then withdrawn by the owner, because image models
+// garble it far more than Latin: the poster still generates and still looks
+// good while carrying lettering that is not what was asked for, and the only
+// thing standing between that and a live listing is poster_verify.ts failing it
+// and burning a retry. Hindi slang is still wanted — it is spelled out in Latin
+// ("aaj kuch toofani karte hain"), which is how people write it in chat anyway.
+//
+// The rule is enforced TWICE on purpose: asked for in the brief, and checked on
+// the way out. A brief is a request, not a guarantee — a model that answers in
+// Devanagari once in fifty would put a garbled poster on a real listing, and the
+// check costs one regex.
 //
 // This module NEVER throws. A failure returns null and the caller keeps the
 // blurb, which is the old behaviour: a boring poster beats no poster.
@@ -21,6 +29,13 @@ const DEFAULT_MODEL = "gemini-3.7-flash";
 /** Hard cap. Long lines get lettered small, and small lettering is what the
  *  model garbles — so the length limit is a legibility rule, not a style one. */
 const MAX_LINE = 40;
+
+/** Anything outside Latin-1 plus the punctuation a poster line legitimately
+ *  uses. Deliberately a whitelist of what IS allowed rather than a blacklist of
+ *  Devanagari: the failure mode is any script an image model letters badly, and
+ *  naming them one by one would miss the next one. Accented Latin is fine —
+ *  "café" is not a garbling risk. */
+const NON_LATIN = /[^\p{Script=Latin}\p{Nd}\s'’!?.,:;&()"«»…\-—–%+#@]/u;
 
 function parseJsonLoose(raw: string): any | null {
   const cleaned = String(raw || "").replace(/^\s*```(?:json)?/i, "").replace(/```\s*$/, "").trim();
@@ -59,8 +74,9 @@ export async function writePosterDialogue(
     category ? `CATEGORY: ${category}` : "",
     "",
     "Write ONE short line to sit under the title — the sort of filmy dialogue a",
-    "poster shouts. Hindi slang is welcome. Write it in Latin script (Hinglish)",
-    "or in Devanagari, whichever suits the line better.",
+    "poster shouts. Hindi slang is welcome, but spell it in the Latin alphabet",
+    "the way people type it in chat — \"aaj kuch toofani karte hain\", not",
+    "Devanagari. Latin letters only: no Devanagari, no other scripts.",
     `It must be at most ${MAX_LINE} characters, and it must fit THIS session,`,
     "not a generic one.",
     "Do not repeat the title. Do not mention a price, a date or a time.",
@@ -87,6 +103,11 @@ export async function writePosterDialogue(
     // line the verifier will then read back as a mismatch, failing the poster
     // over our own edit.
     if (line.length > MAX_LINE) return null;
+    // Latin-only, enforced. Rejecting rather than transliterating: a machine
+    // transliteration would change the words the verifier is about to check
+    // for, and a wrong-but-plausible line is worse than the blurb we fall back
+    // to. See the header for why Devanagari is out.
+    if (NON_LATIN.test(line)) return null;
     return line;
   } catch {
     return null;
