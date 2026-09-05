@@ -54,7 +54,7 @@ import { commercialLaneState, commercialLaneFlags, type CommercialLaneState } fr
 import { DEFAULT_VERTICAL, resolveCategoryVersion, validateAttrs } from "./categories";
 // [MARKET-SECTION-1] `section` (the bazaar group) is NOT `vertical`
 // (commerce|connect). See lib/listing_section.ts.
-import { sectionFor, isSection, publishBlockedReason, DEFAULT_SECTION, SECTIONS } from "../lib/listing_section";
+import { sectionFor, isSection, publishBlockedReason, DEFAULT_SECTION, SECTIONS, groupFor } from "../lib/listing_section";
 // [AVA-MKT-ENTITLEMENTS-1] §5 quota + §1.3 token charge, consumed inside the publish
 // keyed on listing_id (§3.3c). Same helper the compose publish path calls.
 import {
@@ -75,6 +75,8 @@ import { checkTransition } from "../lib/listing_transitions";
 // breaker (see the file header there) — creation/edit into free_entry=1 is
 // allowlist-gated, not open to every creator.
 import { freeEntryAllowed } from "../lib/free_entry_gate";
+// [PRICE-HOURLY-1]
+import { priceFloorError } from "../lib/session_pricing";
 
 const APP = "avaexplore";
 // live_event/consult = creator services; sell/buy/social = AvaMarketplace listings.
@@ -88,10 +90,18 @@ const FANOUT_MAX_FOLLOWERS = 500;
 // Curated enums for the new listing-content columns. `vibe_tags` in particular is a
 // PICKLIST, never free text (§C.1: "the mock's `100% MASALA` chips are copy, not data").
 const SCHEDULE_MODES = new Set(["fixed_date", "recurring", "on_request", "always_on"]);
-const BILLING_UNITS = new Set(["session", "minute", "10min", "chat", "night", "game"]);
+// [PRICE-HOURLY-1] "hour" added — every session is now priced per hour (spec
+// §4). The legacy values stay in the set: they are still on old rows and on
+// the wire for any client that hasn't updated, and BILLING_UNITS is a
+// validation allowlist, not a statement about what's accepted going forward.
+const BILLING_UNITS = new Set(["session", "minute", "10min", "chat", "night", "game", "hour"]);
 const VIBE_TAGS = new Set([
   "safe_space", "cam_optional", "listener_first", "savage", "beginner_ok", "queer_friendly", "women_only",
 ]);
+// [MKT-3GROUP-1] spec §3 — audio-only vs audio+video. THIS SET ONLY VALIDATES
+// THE FIELD; wiring it into the GetStream call UI is separate work (see the
+// migration header for media_mode).
+const MEDIA_MODES = new Set(["audio_video", "audio_only"]);
 const SLUG_RE = /^[a-z0-9-]{1,48}$/;
 
 async function marketplacePublishOn(env: Env): Promise<boolean> {
@@ -335,7 +345,14 @@ function listingContentFieldsError(raw: any): string | null {
     return "timezone must be a valid IANA timezone";
   }
   if (raw.billing_unit !== undefined && raw.billing_unit !== null && !BILLING_UNITS.has(String(raw.billing_unit))) {
-    return "billing_unit must be session, minute, 10min, chat, night or game";
+    return "billing_unit must be session, minute, 10min, chat, night, game or hour";
+  }
+  // [MKT-3GROUP-1] spec §3 — media_mode. An explicit bad value is rejected,
+  // same posture as billing_unit above; normFields forces the value to
+  // 'hour' for billing_unit but media_mode has two real, meaningful values,
+  // so it is validated-and-kept rather than validated-and-overwritten.
+  if (raw.media_mode !== undefined && raw.media_mode !== null && !MEDIA_MODES.has(String(raw.media_mode))) {
+    return "media_mode must be audio_video or audio_only";
   }
   if (raw.max_per_booking !== undefined && raw.max_per_booking !== null) {
     const n = Math.trunc(Number(raw.max_per_booking));
@@ -556,7 +573,7 @@ const CARD_SELECT = `
          -- row or creator_profiles row doesn't exist yet still returns a card.
          l.blurb, l.slug, l.schedule_mode, l.recurrence_days, l.recurrence_time,
          l.timezone, l.billing_unit, l.free_entry, l.max_per_booking,
-         l.response_time_min, l.vibe_tags, l.credential,
+         l.response_time_min, l.vibe_tags, l.credential, l.media_mode,
          lc.price_semantics AS category_price_semantics,
          cp.follower_count AS creator_follower_count
     FROM listings l LEFT JOIN users u ON u.uid = l.creator_id
@@ -601,6 +618,10 @@ function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set
     // every already-shipped client ignores it. Falls back rather than emitting
     // null: a card with no section would silently vanish from a grouped view.
     section: r.section ?? DEFAULT_SECTION,
+    // [MKT-3GROUP-1] Derived, additive — the marketplace's three-group layer
+    // on top of section (spec §1.2). null for a section that renders nowhere
+    // (today, only ai_voice_agents), never a made-up group.
+    group_id: groupFor(r.section ?? DEFAULT_SECTION),
     price: Number(r.price), effective_price: pct > 0 ? Math.round(Number(r.price) * (100 - pct) / 100) : Number(r.price),
     promo_pct: pct, currency_display: r.currency_display ?? "USD",
     country: r.country ?? null, adults_only: !!r.adults_only,
@@ -665,6 +686,11 @@ function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set
     max_per_booking: r.max_per_booking != null ? Number(r.max_per_booking) : 4,
     response_time_min: r.response_time_min != null ? Number(r.response_time_min) : null,
     vibe_tags: parseJson(r.vibe_tags, [] as string[]),
+    // [MKT-3GROUP-1] spec §3 — audio-only vs audio+video. FIELD ONLY: no call
+    // UI reads this yet (see the migration header). Defaults to the column
+    // default so a pre-migration row and a legacy client both read the same
+    // answer the schema already commits to.
+    media_mode: r.media_mode ?? "audio_video",
     credential: r.credential ?? null,
     // §C.1 — "price_semantics is not a new column: join listing_categories into
     // CARD_SELECT/shapeCard". Null when the category row can't be resolved (matches
@@ -856,6 +882,9 @@ const EDITABLE = ["title", "description", "category", "price", "currency_display
   // in updateListing BEFORE `f.slug` is set, same pattern as the attrs validation above.
   "blurb", "slug", "schedule_mode", "recurrence_days", "recurrence_time", "timezone",
   "billing_unit", "free_entry", "max_per_booking", "response_time_min", "vibe_tags", "credential",
+  // [MKT-3GROUP-1] spec §3 — audio-only vs audio+video, field only (see the
+  // migration + normFields for why it is NOT in REVIEW_MATERIAL_FIELDS).
+  "media_mode",
 ] as const;
 
 // [AVA-MKT-CVER-1] MATERIAL fields — the subset of EDITABLE whose change invalidates
@@ -1093,7 +1122,20 @@ function normFields(b: any): Record<string, unknown> {
   }
   if (b.recurrence_time !== undefined) out.recurrence_time = b.recurrence_time ? String(b.recurrence_time).slice(0, 5) : null;
   if (b.timezone !== undefined) out.timezone = b.timezone ? String(b.timezone).slice(0, 64) : "Asia/Kolkata";
-  if (b.billing_unit !== undefined) out.billing_unit = b.billing_unit ? String(b.billing_unit) : null;
+  // [PRICE-HOURLY-1] spec §4 — "everything is priced per hour", and the
+  // wizard's "Charged per" dropdown is REMOVED. Rather than trust whatever a
+  // caller sends (a stale client could still send an old value), this FORCES
+  // billing_unit to 'hour' the moment the field is present in the request at
+  // all — the same "coerce, don't merely validate" posture normFields already
+  // uses for free_entry's price=0 below. A caller that omits billing_unit
+  // entirely (the normal case once the wizard drops the field) leaves the
+  // column untouched here; createListing's own default fills 'hour' for a
+  // brand-new row (see the INSERT).
+  if (b.billing_unit !== undefined) out.billing_unit = "hour";
+  // [MKT-3GROUP-1] spec §3 — audio-only vs audio+video. Unlike billing_unit
+  // this has two real values, so it is kept (already validated against
+  // MEDIA_MODES by listingContentFieldsError), not overwritten.
+  if (b.media_mode !== undefined) out.media_mode = b.media_mode ? String(b.media_mode) : "audio_video";
   if (b.free_entry !== undefined) out.free_entry = b.free_entry ? 1 : 0;
   if (b.max_per_booking !== undefined) out.max_per_booking = b.max_per_booking != null ? Math.trunc(Number(b.max_per_booking)) : 4;
   if (b.response_time_min !== undefined) out.response_time_min = b.response_time_min != null ? Math.trunc(Number(b.response_time_min)) : null;
@@ -1178,6 +1220,16 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
       }, 403);
     }
   }
+  // [PRICE-HOURLY-1] spec §4.2 — the ₹49/hour floor. Only checked when a price
+  // was actually SENT (not the default-0 a step-1 draft is created with, long
+  // before the wizard's money step asks for one) and only for the two session
+  // kinds this pricing model governs — sell/buy/social are AvaMarketplace
+  // goods with their own price semantics, never hourly. A client check alone
+  // is not a rule; this is the server recomputing and refusing, per spec §4.1.
+  if (!effectiveFreeEntryCreate && b.price !== undefined && (kind === "live_event" || kind === "consult")) {
+    const priceErr = priceFloorError(f.price, false);
+    if (priceErr) return json({ ok: false, error: "price_below_floor", message: priceErr, field: "price" }, 400);
+  }
   // [AVA-MKT-VERT-1] §2.2 — attrs is the one field a caller can get wrong in a way
   // worth naming, so say so instead of dropping it silently (normFields would).
   if (b.attrs !== undefined) {
@@ -1243,10 +1295,10 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
        vertical, attrs, video_url, proposed_category, cat_version, playbook_version, template_version,
        spoken_lang, translation_enabled, section,
        slug, blurb, schedule_mode, recurrence_days, recurrence_time, timezone, billing_unit,
-       free_entry, max_per_booking, response_time_min, vibe_tags, credential)
+       free_entry, max_per_booking, response_time_min, vibe_tags, credential, media_mode)
      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,'draft',?16,?16,?17,?18,?19,?20,?21,?22,?23,
              ?24,?25,?26,?27,?28,?29,?30,?31,?32,?33,
-             ?34,?35,?36,?37,?38,?39,?40,?41,?42,?43,?44,?45)`,
+             ?34,?35,?36,?37,?38,?39,?40,?41,?42,?43,?44,?45,?46)`,
   ).bind(id, ctx.uid, kind, (f.title as string) ?? "Untitled", f.description ?? null, category,
     f.price ?? 0, f.currency_display ?? "USD", f.country ?? null, f.adults_only ?? 0, f.badges ?? null,
     f.cover_media ?? null, f.starts_at ?? null, f.duration_min ?? null,
@@ -1272,9 +1324,16 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
     // column DEFAULTs (fixed_date / Asia/Kolkata) exactly like the migration does, so a
     // caller that sends neither creates a row indistinguishable from a pre-migration one.
     slug, f.blurb ?? null, f.schedule_mode ?? "fixed_date", f.recurrence_days ?? null,
-    f.recurrence_time ?? null, f.timezone ?? "Asia/Kolkata", f.billing_unit ?? null,
+    f.recurrence_time ?? null, f.timezone ?? "Asia/Kolkata",
+    // [PRICE-HOURLY-1] spec §4 — a brand-new session listing (live_event/consult)
+    // is billed hourly from birth even if the (now dropped) wizard field never
+    // sends billing_unit at all. Marketplace-goods kinds (sell/buy/social) keep
+    // null — hourly billing is not their pricing model.
+    f.billing_unit ?? (kind === "live_event" || kind === "consult" ? "hour" : null),
     f.free_entry ?? 0, f.max_per_booking ?? 4, f.response_time_min ?? null,
-    f.vibe_tags ?? null, f.credential ?? null).run();
+    f.vibe_tags ?? null, f.credential ?? null,
+    // [MKT-3GROUP-1] spec §3 — media_mode, defaults to the column default.
+    f.media_mode ?? "audio_video").run();
   track(env, ctx.uid, "listing_draft_created", APP, {
     kind, vertical, category, section: sectionFor(kind, category), proposed_category: f.proposed_category ?? null,
     cat_version: catV, playbook_version: pbV, template_version: tplV,
@@ -1343,6 +1402,15 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
         message: "Free-entry listings are limited to approved creators right now.",
       }, 403);
     }
+  }
+  // [PRICE-HOURLY-1] spec §4.2 — same floor as createListing, only when THIS
+  // call actually sends a price (never retroactively fails an edit that
+  // doesn't touch price, which would turn "fix a typo in the title" into a
+  // surprise 400 for a listing that predates this rule) and only for the two
+  // session kinds this pricing model governs. `row.kind` — kind is not editable.
+  if (!effectiveFreeEntry && b.price !== undefined && (String(row.kind) === "live_event" || String(row.kind) === "consult")) {
+    const priceErr = priceFloorError(f.price, false);
+    if (priceErr) return json({ ok: false, error: "price_below_floor", message: priceErr, field: "price" }, 400);
   }
   // [LIST-CONTENT-2] spec §C.1 — "on update accept an explicit slug once — reject with
   // 409 if taken by another of the creator's listings". Validated and uniqueness-
@@ -1596,10 +1664,20 @@ export async function submitListingForApproval(req: Request, env: Env, id: strin
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const db = metaDb(env);
   const row = await db.prepare(
-    "SELECT id, creator_id, status, attrs, title, description, blurb, category, kind, vibe_tags, spoken_lang, cover_media, authority_version FROM listings WHERE id=?1",
+    "SELECT id, creator_id, status, attrs, title, description, blurb, category, kind, vibe_tags, spoken_lang, cover_media, authority_version, price, free_entry FROM listings WHERE id=?1",
   ).bind(id).first<any>();
   if (!row || row.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
   if (String(row.status) !== "draft") return json({ error: "listing not draft", status: row.status }, 409);
+  // [PRICE-HOURLY-1] spec §4.2 — the floor's LAST word before a listing goes
+  // into the approval queue, independent of whichever create/edit call set
+  // the price: a draft can accumulate its price across several PUTs (each of
+  // which only checks a price it was actually sent), so submit is where an
+  // unpriced or under-floor draft is finally caught rather than slipping
+  // through to review.
+  if (Number(row.free_entry ?? 0) !== 1 && (String(row.kind) === "live_event" || String(row.kind) === "consult")) {
+    const priceErr = priceFloorError(row.price, false);
+    if (priceErr) return json({ ok: false, error: "price_below_floor", message: priceErr, field: "price" }, 400);
+  }
   let attrs: any = {};
   try { attrs = row.attrs ? JSON.parse(String(row.attrs)) : {}; } catch { attrs = {}; }
   const now = Date.now();
@@ -2757,8 +2835,13 @@ export async function deletePromotion(req: Request, env: Env, id: string, pid: s
 // ---------------------------------------------------------------------------
 
 export async function exploreCategories(env: Env): Promise<Response> {
+  // [MKT-3GROUP-1] spec §2 — group_id added so the marketplace's three-group
+  // blips can be rendered from the server's own answer instead of each client
+  // re-deriving (category -> section -> group) on its own. NULL for
+  // marketplace-goods categories (cars, property, mobiles, …), which are a
+  // different product and untouched by this change.
   const rs = await metaSession(env).prepare(
-    "SELECT id, label, emoji FROM listing_categories WHERE active=1 ORDER BY sort",
+    "SELECT id, label, emoji, group_id FROM listing_categories WHERE active=1 ORDER BY sort",
   ).all();
   return json({ categories: rs.results ?? [] });
 }
