@@ -1583,6 +1583,27 @@ export interface PlatformConfig {
   // `numericKeys` below or `flags.sh set posterAutoGenerateMaxAttempts=3` 400s
   // `bad type`.
   posterAutoGenerateMaxAttempts: number;
+  // [POSTER-FIRST-1 2026-09-05] Render the poster at three aspect ratios
+  // (2:3 phone card, 4:3 tablet hero, 16:9 desktop hero) instead of one.
+  // Read by lib/listing_poster.ts. Boolean → NOT in numericKeys.
+  posterVariantsEnabled: boolean;
+  // [POSTER-FIRST-1] The read-back pass: hand the generated poster back to
+  // Gemini, have it read its own lettering, diff against the D1 row. Catches
+  // invented credits and signatures, which a human reviewer skims past.
+  // Read by lib/listing_poster.ts → lib/poster_verify.ts. Boolean.
+  posterVerifyEnabled: boolean;
+  // [POSTER-FIRST-1] After this many failed verifications, stop asking the model
+  // to letter it: render textless artwork and let the CLIENT draw the title and
+  // tagline over it. Read by lib/listing_poster.ts. Boolean.
+  posterComposeFallbackEnabled: boolean;
+  // [POSTER-FIRST-1] How many generate→verify rounds before the fallback above.
+  // NUMERIC → it MUST also appear in `numericKeys` below or
+  // `flags.sh set posterVerifyMaxAttempts=3` 400s `bad type`.
+  posterVerifyMaxAttempts: number;
+  // [POSTER-FIRST-1] Which prompt era produced a poster, so telemetry can tell a
+  // style change from a regression. Bumped alongside POSTER_STYLE_VERSION in
+  // lib/listing_poster.ts. NUMERIC → must be in numericKeys.
+  posterStyleVersion: number;
 
   // --- outbound campaigns ---
   // Outbound AI Calling Campaigns (Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md §18).
@@ -2328,6 +2349,15 @@ const DEFAULTS: PlatformConfig = {
   posterAutoGenerateOnSubmit: false,
   // [MKT-POSTER-FLAGS-1] Retry cap for poster auto-generation per listing.
   posterAutoGenerateMaxAttempts: 2,
+  // [POSTER-FIRST-1 2026-09-05] All DARK. `posterAutoGenerateOnSubmit` is
+  // already true in prod KV, so these ship off and get flipped one at a time —
+  // turning them all on at once would change poster cost, latency and look for
+  // every new listing in the same minute.
+  posterVariantsEnabled: false,
+  posterVerifyEnabled: false,
+  posterComposeFallbackEnabled: false,
+  posterVerifyMaxAttempts: 3,
+  posterStyleVersion: 2,
 
   // --- outbound campaigns ---
   // Outbound AI Calling Campaigns (Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md §18) — DARK.
@@ -2651,6 +2681,11 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // must be here or `flags.sh set posterAutoGenerateMaxAttempts=3` 400s
     // `bad type`. (`posterAutoGenerateOnSubmit` is a BOOLEAN — not listed.)
     "posterAutoGenerateMaxAttempts",
+    // [POSTER-FIRST-1] Both numeric. (`posterVariantsEnabled`,
+    // `posterVerifyEnabled` and `posterComposeFallbackEnabled` are BOOLEANS —
+    // not listed.)
+    "posterVerifyMaxAttempts",
+    "posterStyleVersion",
   ]);
   const stringKeys = new Set(["virtualNumberPrimaryProvider"]);
   for (const [k, v] of Object.entries(body)) {

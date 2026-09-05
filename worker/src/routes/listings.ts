@@ -1668,6 +1668,14 @@ export async function submitListingForApproval(req: Request, env: Env, id: strin
       row,
       actorUid: ctx.uid,
       attempt: nextAttempt,
+      // [POSTER-FIRST-1] Flags are read HERE, on the request path, and passed
+      // down — not re-read inside the detached job. A second readConfig() in
+      // the background could see a different KV value than the one that decided
+      // to start this generation, so the run would not match its own decision.
+      variants: (cfg as any).posterVariantsEnabled === true,
+      verify: (cfg as any).posterVerifyEnabled === true,
+      composeFallback: (cfg as any).posterComposeFallbackEnabled === true,
+      verifyMaxAttempts: Number((cfg as any).posterVerifyMaxAttempts ?? 3) || 3,
     }).catch((e) => {
       // runAutoPosterGeneration() itself never throws (it wraps everything in
       // try/catch and always tries to land a terminal state) — this is a final
@@ -1692,7 +1700,13 @@ export async function submitListingForApproval(req: Request, env: Env, id: strin
 // still land the poster on `failed`, never leave it stuck on `generating`.
 async function runAutoPosterGeneration(
   env: Env,
-  opts: { listingId: string; ownerUid: string; row: Record<string, any>; actorUid: string; attempt: number },
+  opts: {
+    listingId: string; ownerUid: string; row: Record<string, any>; actorUid: string; attempt: number;
+    // [POSTER-FIRST-1] Resolved by the caller from the same readConfig() that
+    // decided to run at all. Optional so existing tests/callers still compile,
+    // defaulting to the pre-POSTER-FIRST behaviour.
+    variants?: boolean; verify?: boolean; composeFallback?: boolean; verifyMaxAttempts?: number;
+  },
 ): Promise<void> {
   const t0 = Date.now();
   let outcome: "draft" | "failed" = "failed";
@@ -1707,6 +1721,10 @@ async function runAutoPosterGeneration(
       actorUid: opts.actorUid,
       auto: true,
       attempt: opts.attempt,
+      variants: opts.variants,
+      verify: opts.verify,
+      composeFallback: opts.composeFallback,
+      maxAttempts: opts.verifyMaxAttempts,
     });
     outcome = poster.status === "draft" ? "draft" : "failed";
     if (poster.status === "failed") errorKind = "generation_failed";
@@ -2051,10 +2069,30 @@ export async function publishListingAuthoritative(
       track(env, creatorUid, "listing_publish_kyc_exempt", APP, { listing_id: id, listing_kind: l.kind, ...actorProps });
     }
     if (!l.title || !l.category) return { ok: false, status: 400, body: { error: "title and category required" } };
-    // Listing photos are mandatory: 1–5 (owner decision 2026-06-11).
+    // A listing must have a primary image: 1–5 (owner decision 2026-06-11).
+    //
+    // [POSTER-FIRST-1 2026-09-05] It no longer has to be a PHOTO. The wizard has
+    // told creators photos are optional since the auto-poster shipped
+    // (`steps.tsx:585`), but this check still demanded one, so a creator with no
+    // photo whose generation failed reached the review queue and then hit a dead
+    // end at publish with an error the UI had promised would not happen. The
+    // generated poster is prepended to cover_media, so in the happy path this
+    // already passed — the fix is for the unhappy one. An approved poster now
+    // satisfies the requirement explicitly, and the message names both ways out.
     const covers = parseJson(l.cover_media, [] as unknown[]);
-    if (!Array.isArray(covers) || covers.length < 1) {
-      return { ok: false, status: 400, body: { error: "cover_required", detail: "Add at least one photo (up to 5) before publishing." } };
+    const posterState = (parseJson(l.attrs, {} as any) || {}).poster;
+    const hasUsablePoster = !!posterState?.url
+      && (posterState.status === "draft" || posterState.status === "approved");
+    if ((!Array.isArray(covers) || covers.length < 1) && !hasUsablePoster) {
+      return {
+        ok: false,
+        status: 400,
+        body: {
+          error: "cover_required",
+          detail: "This listing needs a poster or at least one photo before publishing.",
+          poster_status: posterState?.status ?? null,
+        },
+      };
     }
     if (covers.length > 5) return { ok: false, status: 400, body: { error: "max 5 photos", cover_count: covers.length, limit: 5 } };
     const cat = await db.prepare("SELECT 1 FROM listing_categories WHERE id=?1 AND active=1").bind(l.category).first();

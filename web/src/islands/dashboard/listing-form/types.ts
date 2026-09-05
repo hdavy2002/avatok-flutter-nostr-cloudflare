@@ -100,9 +100,27 @@ export interface ListingDraft {
   commercial_reschedule_allowed: boolean;            // consult
   commercial_booking_notice_hours: number;           // consult
 
+  // [POSTER-FIRST-1 2026-09-05] Read-only mirror of the server's `attrs.poster`.
+  // The creator never edits this and it is NEVER sent back in bodyForSave —
+  // `poster` is in the worker's RESERVED_ATTRS_KEYS (listings.ts:238), so a
+  // client that posted one would have it rejected. It rides on the draft purely
+  // so step 8 can show the real poster instead of a mock card.
+  poster: PosterMirror | null;
+
   // bookkeeping
   defaultsAppliedFor: string | null; // flavour key the prefill was applied for, so we don't clobber edits
 }
+
+export type PosterMirror = {
+  status?: 'generating' | 'draft' | 'approved' | 'rejected' | 'failed';
+  url?: string;
+  /** "overlay" means the artwork is deliberately textless and the CLIENT draws
+   *  the title and tagline — see worker/src/lib/listing_poster.ts. */
+  lettering?: 'baked' | 'overlay';
+  copy?: { title?: string; tagline?: string };
+  variants?: Partial<Record<'portrait' | 'tablet' | 'wide', { url: string }>>;
+  error?: string;
+};
 
 export const STEP_LABELS = [
   'Type', 'Pitch', 'Money', 'Time', 'How it works', 'House rules', 'Photos & policy', 'Preview & publish',
@@ -159,6 +177,7 @@ export function emptyDraft(initial?: Partial<ListingDraft>): ListingDraft {
     commercial_cancellation_window_hours: 24,
     commercial_reschedule_allowed: true,
     commercial_booking_notice_hours: 6,
+    poster: null,
     defaultsAppliedFor: null,
     ...initial,
   };

@@ -47,6 +47,8 @@ function draftFromListing(l: any): Partial<ListingDraft> {
   return {
     id: l.id,
     status: l.status,
+    // [POSTER-FIRST-1] Read-only mirror; never round-tripped (see PosterMirror).
+    poster: (attrs.poster && typeof attrs.poster === 'object') ? attrs.poster : null,
     kind,
     free_entry: Boolean(l.free_entry),
     content_free_cap_tokens: attrs.content_free_cap_tokens != null ? String(attrs.content_free_cap_tokens) : '',

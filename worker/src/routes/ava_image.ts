@@ -458,12 +458,19 @@ async function generateImageVertex(
       parts.push({ inlineData: { mimeType: mime, data: btoa(binary) } });
     }
   }
+  // [POSTER-FIRST-1 2026-09-05] `opts.aspectRatio` was DECLARED on
+  // GenerateImageOptions (line ~380) but never sent, so every caller passing it
+  // — queues/media.ts:288 asks for "1:1" — was silently getting the model's
+  // default ratio and nothing failed to say so. `imageConfig.aspectRatio` is
+  // the correct field and already ships on this exact model in
+  // routes/affiliate_assets.ts:98; it is the sibling `imageSize` that was
+  // preview-only and made the request fail (see the note that used to sit
+  // here). Omitted entirely when unset so existing callers keep the default.
+  const generationConfig: Record<string, unknown> = { responseModalities: ["TEXT", "IMAGE"] };
+  if (opts.aspectRatio) generationConfig.imageConfig = { aspectRatio: opts.aspectRatio };
   const r = await vertexMediaRequest(env, `/publishers/google/models/${model}:generateContent`, {
     contents: [{ role: "user", parts }],
-    // Gemini image generation requires both modalities, even when the client
-    // only needs the returned image bytes. `imageSize` was a preview-only
-    // field and makes the Vertex request fail on the current model.
-    generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
+    generationConfig,
   }, { timeoutMs: 90_000 });
   const responseParts = r.out?.candidates?.[0]?.content?.parts ?? [];
   const imagePart = responseParts.find((p: any) => p?.inlineData?.data || p?.inline_data?.data);

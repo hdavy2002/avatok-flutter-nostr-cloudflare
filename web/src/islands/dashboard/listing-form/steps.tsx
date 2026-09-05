@@ -7,12 +7,12 @@ import { useRef, useState } from 'react';
 import { Field } from '../../../components/Field';
 import { Card } from '../../../components/Card';
 import { Button } from '../../../components/Button';
-import { PreviewCard } from './PreviewCard';
 import { CopyReview } from './CopyReview';
 import { TwoFieldListEditor, StringListEditor, ChatLineEditor, labelCls, inputCls, textareaCls, SectionHeader, charCount } from './Editors';
 import { VIBE_TAGS, BILLING_UNITS, REFUND_WINDOWS, BOOKING_NOTICE_HOURS } from './wizardLogic';
 import { defaultsFor, SERVICE_CATEGORY_IDS } from '../../../lib/listingDefaults';
-import type { ListingDraft, DraftSlot, Kind } from './types';
+import { cfImage } from '../../../lib/config';
+import type { ListingDraft, DraftSlot, Kind, PosterMirror } from './types';
 
 type Patch = (p: Partial<ListingDraft>) => void;
 type CreatorInfo = { name?: string | null; handle?: string | null; avatar?: string | null };
@@ -150,8 +150,16 @@ export function Step2Pitch({ draft, patch, err, categories, creator, onReviewed 
   // show up right next to Teachers and Astrologers. Filter to the fixed
   // service/creator id set before rendering the options.
   const serviceCategories = categories.filter((c) => SERVICE_CATEGORY_IDS.has(c.id));
+  // [POSTER-FIRST-1 2026-09-05] The live preview card that used to sit in a
+  // sticky right-hand column is GONE, and step 2 is a single full-width column.
+  //
+  // It was showing a card that no longer exists: the listing's face is now the
+  // AI poster, generated at the end of the wizard, so a mocked-up tile of chips
+  // and buttons was previewing a layout the creator will never see. Worse, it
+  // updated live as they typed, which framed "how do my chips look" as the job
+  // of this step — the job is the words. Step 8 shows the real poster.
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
+    <div className="mx-auto grid w-full max-w-2xl grid-cols-1 gap-6">
       <div className="flex flex-col gap-5">
         <div>
           <Field label="Title" placeholder="e.g. Friday night live cook-along" value={draft.title}
@@ -208,14 +216,16 @@ export function Step2Pitch({ draft, patch, err, categories, creator, onReviewed 
             })}
           </div>
         </div>
-        {/* [CARD-AI-REVIEW-1] Sits directly under the fields it edits, and above
-            the live preview on narrow screens, so "Use this" and the card that
-            changes because of it are visible in one glance. */}
+        {/* [CARD-AI-REVIEW-1] Sits directly under the fields it edits so "Use
+            this" and the copy it rewrites are visible in one glance.
+            [POSTER-FIRST-1] It now also matters more than it did: the title and
+            blurb it edits are the ONLY two strings that get painted onto the
+            poster. */}
         <CopyReview draft={draft} patch={patch} onReviewed={onReviewed} />
-      </div>
-      <div className="lg:sticky lg:top-4 lg:self-start">
-        <p className="mb-2 text-center font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">Live preview</p>
-        <PreviewCard draft={draft} creator={creator} />
+        <p className="font-body text-[13px] text-inkSoft">
+          Your title and blurb are what get painted onto your poster. Everything
+          else you enter — price, timing, rules — appears next to it, not on it.
+        </p>
       </div>
     </div>
   );
@@ -583,7 +593,16 @@ export function Step7Photos({ draft, patch, err, onUpload, onRemoveCover, upload
     <div className="flex flex-col gap-6">
       <div>
         <span className={labelCls}>Photos (optional · up to 5)</span>
-        <p className="mt-1 font-body text-[13px] text-inkSoft">No photo? That’s okay — an AI poster will be created after approval.</p>
+        {/* [POSTER-FIRST-1 2026-09-05] Says plainly where photos end up. The old
+            copy implied the poster only appears "if you skip this", which is
+            not true — the poster is always the primary image, and photos sit
+            below it. A creator who uploads a photo and then wonders why it is
+            not the cover has been misled by the form, not by the feature. */}
+        <p className="mt-1 font-body text-[13px] text-inkSoft">
+          Your poster is the main image either way. Photos you add here appear
+          below it on your listing page — and if you add one, your poster gets
+          painted from it.
+        </p>
         <div className="grid grid-cols-3 gap-3">
           {draft.cover_media.map((c) => (
             <div key={c.url} className="relative aspect-square overflow-hidden rounded-zine border-zine border-ink shadow-zine-xs">
@@ -752,10 +771,66 @@ export function Step8Preview({ draft, patch, checks, ready, onSubmitForReview, p
           </div>
         )}
       </div>
+      {/* [POSTER-FIRST-1 2026-09-05] Step 8 is the ONLY place a preview belongs,
+          and it shows the real poster once one exists. Before that it explains
+          what is coming rather than showing a mock of a card that no longer
+          exists — a placeholder that looks like a finished product is worse
+          than one that admits it is waiting. */}
       <div className="lg:sticky lg:top-4 lg:self-start">
-        <p className="mb-2 text-center font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">Live preview</p>
-        <PreviewCard draft={draft} creator={creator} />
+        <p className="mb-2 text-center font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">Your poster</p>
+        <PosterPreview poster={draft.poster} draft={draft} creator={creator} />
       </div>
+    </div>
+  );
+}
+
+/** The real poster, or an honest account of why there isn't one yet. */
+function PosterPreview({ poster, draft, creator }: {
+  poster: PosterMirror | null; draft: ListingDraft; creator?: CreatorInfo;
+}) {
+  const url = poster?.variants?.portrait?.url || poster?.url;
+  const status = poster?.status;
+
+  if (url) {
+    const title = poster?.copy?.title || draft.title;
+    const tagline = poster?.copy?.tagline || draft.blurb;
+    return (
+      <div className="mx-auto w-full max-w-[320px]">
+        <div className="relative overflow-hidden rounded-zine border-zine border-ink shadow-zine-xs">
+          <img src={cfImage(url, { width: 640 })} alt={title || 'Listing poster'}
+            className="block w-full" style={{ aspectRatio: '2 / 3', objectFit: 'cover' }} />
+          {/* lettering === 'overlay' means the artwork is deliberately textless
+              because the model could not be trusted to letter it — so the copy
+              is drawn here, as real selectable text. */}
+          {poster?.lettering === 'overlay' && (
+            <div className="pointer-events-none absolute inset-x-0 top-0 p-3">
+              <p className="font-display text-[26px] leading-[1.05] tracking-[0.055em] text-paper drop-shadow">{title}</p>
+              {tagline && <p className="mt-1 font-body font-bold text-[13px] tracking-[0.04em] text-paper drop-shadow">{tagline}</p>}
+            </div>
+          )}
+        </div>
+        {status === 'rejected' && (
+          <p className="mt-2 font-body font-bold text-[12px] text-coral">This poster was rejected — a new one will be generated.</p>
+        )}
+      </div>
+    );
+  }
+
+  const message = status === 'generating'
+    ? 'Painting your poster… this takes a few minutes. You can leave this page.'
+    : status === 'failed'
+      ? `We couldn’t paint a poster this time${poster?.error ? ` (${poster.error})` : ''}. Submitting again will retry it.`
+      : 'Your poster is painted after you submit, from your title and blurb.';
+
+  return (
+    <div className="mx-auto w-full max-w-[320px]">
+      <div className="flex items-center justify-center rounded-zine border-zine border-dashed border-ink bg-paper2 p-5 text-center"
+        style={{ aspectRatio: '2 / 3' }}>
+        <p className="font-body text-[13px] text-inkSoft">{message}</p>
+      </div>
+      {creator?.name && (
+        <p className="mt-2 text-center font-body text-[12px] text-inkSoft">Listing by {creator.name}</p>
+      )}
     </div>
   );
 }

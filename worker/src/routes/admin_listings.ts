@@ -3,6 +3,7 @@ import { json } from "../util";
 import { requireAdmin } from "./admin_money";
 import { track } from "../hooks";
 import { generateListingPoster, type PosterState } from "../lib/listing_poster";
+import { readConfig } from "./config";
 // [C03 MKT-PUBLISH-UNIFY-1] The one authoritative publish path — see the doc
 // comment on publishListingAuthoritative() in routes/listings.ts. `publish`
 // below no longer does its own raw status UPDATE; it defers to the same
@@ -202,6 +203,7 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
         message: "Remove one creator photo before generating the AI poster (maximum 5 covers).",
       }, 409);
     }
+    const posterCfg = await readConfig(env);
     const promptOverride = typeof body.prompt === "string" ? body.prompt.slice(0, 1800) : undefined;
     const prevAttempt = Number(attrs.poster?.attempt) || 0;
     const attempt = action === "regenerate_poster" ? prevAttempt + 1 : (prevAttempt || 1);
@@ -215,6 +217,15 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
         actorUid: a.uid,
         auto: false,
         attempt,
+        // [POSTER-FIRST-1 2026-09-05] The admin regenerate path gets the SAME
+        // flags as the auto path. Omitting them here would make "regenerate"
+        // quietly produce an unverified, single-ratio poster that looks like
+        // every other one — the hardest kind of inconsistency to notice, since
+        // the difference is invisible until someone reads the lettering.
+        variants: (posterCfg as any).posterVariantsEnabled === true,
+        verify: (posterCfg as any).posterVerifyEnabled === true,
+        composeFallback: (posterCfg as any).posterComposeFallbackEnabled === true,
+        maxAttempts: Number((posterCfg as any).posterVerifyMaxAttempts ?? 3) || 3,
       });
       attrs.poster = result.poster;
       if (Array.isArray(result.coverMedia)) generatedCoverMedia = result.coverMedia;

@@ -192,10 +192,16 @@ class AvatarCache {
   ///
   /// A signed URL cannot be transformed without re-signing, so the correct
   /// answer is to leave it alone and pay for the full-size download.
+  ///
+  /// [POSTER-FIRST-1 2026-09-05] `format` is `auto`, not a pinned `avif`.
+  /// Cloudflare negotiates per request from the client's Accept header, so a
+  /// device that handles AVIF still gets AVIF while everything else gets WebP
+  /// or JPEG instead of paying AVIF's decode cost — which on the low-end
+  /// Android hardware this marketplace runs on can exceed the bytes it saves.
   static String transformUrl(String rawUrl, int px) {
     final u = Uri.parse(rawUrl);
     if (u.hasQuery) return rawUrl;
-    final opts = 'format=avif,quality=60,width=$px,fit=cover';
+    final opts = 'format=auto,quality=60,width=$px,fit=cover';
     return '${u.scheme}://${u.host}/cdn-cgi/image/$opts${u.path}';
   }
 

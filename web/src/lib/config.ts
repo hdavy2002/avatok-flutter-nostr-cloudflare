@@ -49,15 +49,23 @@ export function clerkFapiHost(): string | undefined {
 
 /**
  * Cloudflare image-transform helper — the avatar/poster URL pattern used across
- * the kit. Produces `/cdn-cgi/image/format=avif,quality=60,width=N,fit=cover/<path>`.
+ * the kit. Produces `/cdn-cgi/image/format=auto,quality=60,width=N,fit=cover/<path>`.
  * Pass an already-absolute origin path or a full URL.
+ *
+ * [POSTER-FIRST-1 2026-09-05] The default was a hardcoded `format=avif`.
+ * `format=auto` lets Cloudflare negotiate per request from the browser's Accept
+ * header — AVIF where it is supported, WebP where it is not, JPEG as the floor.
+ * That is never larger than pinning AVIF (the same browsers still get AVIF) and
+ * it drops the AVIF decode cost on the cheap Android hardware most of this
+ * marketplace runs on, where decoding can cost more than the bytes saved.
+ * Callers may still pass an explicit `format` when they need one.
  */
 export function cfImage(
   path: string,
   opts: { width?: number; quality?: number; fit?: string; format?: string } = {},
 ): string {
   if (!path) return path;
-  const { width = 256, quality = 60, fit = 'cover', format = 'avif' } = opts;
+  const { width = 256, quality = 60, fit = 'cover', format = 'auto' } = opts;
   const params = `format=${format},quality=${quality},width=${width},fit=${fit}`;
   // Absolute URL → splice the transform segment after the origin.
   try {
