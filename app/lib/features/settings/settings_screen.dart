@@ -20,12 +20,14 @@ import '../../core/ui/rajasthani_motifs.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 import '../ava_ai/ava_ai_setup.dart';
-import '../avabrain/brain_settings_screen.dart';
+// [LAUNCH-DARK-1] brain_settings_screen import removed with the AvaBrain row
+// below; restore it alongside that row.
 // [PA-UI-3] 2026-08-09: the "Auto-Responder" settings row is removed (owner
 // request) and auto_responder_settings_page.dart is deleted with it — nothing
 // else in app/lib referenced that page.
 import 'settings_registry.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../shell/v2/shell_chrome.dart';
 
 /// Account settings — Backup, Manage keys, Delete account.
 class SettingsScreen extends StatefulWidget {
@@ -48,10 +50,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     'ava_voice',    // Ava voice
     'ai_ringback',  // Ringback tone
     'ava_delegate', // Ava delegate
-    // 'ava_guardian' un-hidden (F6): the Guardian section carries the adult-only
-    // content-warning opt-out (adults) + the free scam/spam shield assurance.
     'ava_tools',    // Tools & connectors
     'backup_sync',  // Backup & sync
+    // [LAUNCH-DARK-1 2026-09-05] avaTOK launches as a marketplace: paid live
+    // streaming, paid 1:1 sessions, and a text-only Messenger. Every AI/agent
+    // surface goes dark until there is money to support it, and a settings row
+    // for a dark feature is worse than no row — it invites the user to
+    // configure something that will not run.
+    'ava_receptionist',  // Ava PA
+    'marketplace_agent', // Marketplace Agent — NOTE: its own flag
+                         // (marketplaceAgentSettingsEnabled) only collapses the
+                         // page BODY, so the row rendered regardless. This id is
+                         // what actually removes it.
+    // 'ava_guardian' had been deliberately un-hidden by F6 (it carried the
+    // adult-content opt-out and the scam/spam shield assurance). Re-hidden for
+    // launch at the owner's request — note this REVERSES that decision, so if
+    // the content-warning opt-out is needed for a store review, this is the
+    // line to remove.
+    'ava_guardian', // Guardian / safety
   };
 
   bool _backingUp = false;
@@ -281,7 +297,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       backgroundColor: AD.bg,
       resizeToAvoidBottomInset: true,
-      appBar: _adHeader(context, 'Settings'),
+      appBar: _adHeader(context, 'Settings', showBack: false),
       body: SafeArea(
         child: ListView(padding: EdgeInsets.all(hPad), children: [
         // Soft nudge to verify phone for users who skipped it at onboarding.
@@ -311,8 +327,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // F7 Messaging / Library / Marketplace / Receptionist sources) + "delete my
         // AvaBrain data". Owner 2026-07-03: re-enabled as a page (replaces the inline
         // card). The page reads/writes the same BrainConsent store.
-        _tile(PhosphorIcons.brain(PhosphorIconsStyle.bold), AD.iconVideo, 'AvaBrain',
-            'Control what your AI may remember', () => _push(const BrainSettingsScreen())),
+        // [LAUNCH-DARK-1 2026-09-05] The AvaBrain row is HIDDEN for launch. The
+        // page and the BrainConsent store both stay — consent values already
+        // written keep being honoured by the ingestion paths — but there is no
+        // reason to offer memory controls for an AI the product is not shipping
+        // yet. Un-comment to restore.
+        // _tile(PhosphorIcons.brain(PhosphorIconsStyle.bold), AD.iconVideo, 'AvaBrain',
+        //     'Control what your AI may remember', () => _push(const BrainSettingsScreen())),
         _tile(PhosphorIcons.textAa(PhosphorIconsStyle.bold), AD.iconSearch, 'Display & fonts',
             'Make text across the app bigger or smaller', () => _push(const DisplayFontsScreen())),
         // [PA-UI-3] 2026-08-09: the STREAM F "Auto-Responder" row ("Ava replies
@@ -562,61 +583,12 @@ class _SettingsDetail extends StatelessWidget {
 /// number would only move the breaking point.
 PreferredSizeWidget _adHeader(BuildContext context, String title,
     {bool showBack = true, VoidCallback? onBack, List<Widget> actions = const []}) {
-  // Clamped: past ~1.8x the band would eat the screen, and the title itself
-  // ellipsises rather than wrapping, so it stops growing.
-  // `.toDouble()` is deliberate: `num.clamp` is statically `num` unless every
-  // operand is a double literal, and a stray `num` here is a compile error.
-  final double ts =
-      MediaQuery.textScalerOf(context).scale(1.0).clamp(1.0, 1.8).toDouble();
-  final double bandH = 64.0 * ts + 6;
-  // [UI-CALLS-2026] Settings joins the SHARED chrome: the indigo band + the
-  // gold `DoubleWaveSeam` that every other AvaTOK root wears, instead of the
-  // haldi band + `PillMorseStrip` it alone used. Three consequences, all
-  // deliberate:
-  //
-  //  * foreground flips to `AD.onBand(AD.headerFooter)` — cream. Ink was right
-  //    on the light haldi band and is unreadable on indigo, which is the
-  //    "black text on an indigo surface" the owner reported here.
-  //  * the LIGHT `SystemUiOverlayStyle` is declared, so the clock / wifi /
-  //    signal / battery icons render WHITE over the dark band.
-  //  * the seam is the same 36px `DoubleWaveSeam` as the messenger, so
-  //    Settings no longer reads as a different product.
-  //
-  // Shared by both Settings and `_SettingsDetail` — both call `_adHeader`.
-  final Color onBand = AD.onBand(AD.headerFooter);
-  return PreferredSize(
-    // Height: scaled band + the 36px double wave.
-    preferredSize: Size.fromHeight(bandH + 36),
-    child: AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light.copyWith(
-        statusBarColor: Colors.transparent,
-        systemNavigationBarIconBrightness: Brightness.light,
-      ),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Container(
-          color: AD.headerFooter,
-          child: SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s3, Msg.s3),
-              child: Row(children: [
-                if (showBack)
-                  AdBackButton(onTap: onBack, color: onBand)
-                else
-                  const SizedBox(width: 8),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(title,
-                      style: ADText.appTitle(c: onBand),
-                      maxLines: 1, overflow: TextOverflow.ellipsis),
-                ),
-                ...actions,
-              ]),
-            ),
-          ),
-        ),
-        const DoubleWaveSeam(bandColor: AD.headerFooter),
-      ]),
-    ),
+  // Settings is a signed-in menu surface, so it uses the same wallet/avatar/
+  // notification header as the main menu roots. Detail pages retain a back
+  // affordance; onboarding never calls this helper.
+  return AvaTokHeader(
+    title: title,
+    leading: showBack ? AdBackButton(onTap: onBack, color: AD.onBand(AD.headerFooter)) : null,
+    actions: actions,
   );
 }

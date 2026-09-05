@@ -112,7 +112,14 @@ extension _ChatThreadAiAssist on _ChatThreadScreenState {
   /// Fetch pending drafts for this group. Group threads only; feature-detects
   /// a 404/network failure (AvaGroupApi.listDrafts already degrades to []),
   /// so this is safe to call unconditionally on open/resume/after-decision.
+  /// [LAUNCH-DARK-1 2026-09-05] Gated on `aiEnabled` at the FETCH, not just the
+  /// card. This had no AI flag of any kind and was called unconditionally on
+  /// every group-thread open — so with AI dark it still burned a network round
+  /// trip per thread and, if the server answered, rendered an Ava-branded
+  /// "AVA SUGGESTS" card with Approve/Reject. Guarding here closes both the
+  /// request and the card, since the card renders off `_companionDrafts`.
   Future<void> _fetchCompanionDrafts() async {
+    if (!RemoteConfig.aiEnabled) return;
     if (!_isGroup) return;
     final conv = _serverConvId;
     if (conv == null) return;

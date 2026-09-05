@@ -5,7 +5,9 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../core/admin_tools.dart';
 import '../core/analytics.dart';
 import '../core/app_registry.dart';
+import '../core/ava_log.dart'; // [SIDEBAR-UNIFY-1] AvaSidebarForShell best-effort load logging
 import '../core/avatar.dart';
+import '../core/onboarding_store.dart'; // [SIDEBAR-UNIFY-1] enabledApps() — AvaSidebarForShell
 import '../core/remote_config.dart';
 import '../core/paid_feature.dart';
 import '../core/profile_store.dart';
@@ -13,11 +15,12 @@ import '../core/team_api.dart';
 import '../core/update_service.dart';
 import '../core/ui/zine_widgets.dart';
 import '../core/ui/avatok_dark.dart';
-import '../core/ui/rajasthani_motifs.dart';
 import '../core/wallet_entitlement.dart';
 import '../features/diagnostics/log_page.dart';
 import '../features/settings/about_screen.dart';
 import 'focus_mode.dart';
+import 'shell_v2.dart'; // [SIDEBAR-UNIFY-1] ShellScope — AvaSidebarForShell
+import 'v2/shell_destinations.dart'; // [SIDEBAR-UNIFY-1] rootIdForDestination / openShellDestination
 import '../core/ui/messenger_theme.dart';
 
 /// The AvaTOK sidebar drawer. `onSelect` receives a destination key:
@@ -235,7 +238,9 @@ class _AvaSidebarState extends State<AvaSidebar> {
               ),
             ),
           ),
-          const DoubleWaveSeam(bandColor: AD.headerFooter),
+          // The sidebar is a navigation surface, not a decorative seam host.
+          // Keeping the wave here consumed drawer height and made the footer
+          // compete with the same wave treatment below it.
           const SizedBox(height: Msg.s2),
           // profile (tap → public profile)
           Padding(
@@ -284,7 +289,19 @@ class _AvaSidebarState extends State<AvaSidebar> {
               // AvaTOK first (message people), ChatAVA below it (talk to Ava), then
               // AI Voice Agent (hands-free call), then Library. Connectors live in
               // the ACCOUNT section; AvaExplore/AvaVerse hidden.
-              _special('avatok', 'Messenger', 'Messages & calls',
+              // [LAUNCH-DARK-1 2026-09-05] ORDER IS A PRODUCT DECISION, not a
+              // layout accident. avaTOK launches as a marketplace app — paid
+              // live streaming and paid 1:1 sessions — so Marketplace is the
+              // first thing in the menu, and Messenger is demoted to what it
+              // now is: the place a follower talks to a creator. Keep this
+              // order (Marketplace, Messenger, Library, Wallet) unless the
+              // owner changes the product.
+              if (RemoteConfig.marketplaceVisible) _marketplaceSection(),
+              // Messenger is TEXT ONLY at launch — no audio, no video, no AI.
+              // The subtitle used to say "Messages & calls", which promised a
+              // feature that is deliberately dark; see [LAUNCH-DARK-1] in
+              // core/feature_flags.dart for the full list.
+              _special('avatok', 'Messenger', 'Chat with creators',
                   PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), AD.iconSearch),
               // ChatAVA removed from the sidebar (owner decision 2026-06-27): the
               // private Ava chat now lives INSIDE Messenger as a pinned green
@@ -297,17 +314,18 @@ class _AvaSidebarState extends State<AvaSidebar> {
               //     PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), AD.online, paid: true),
               _special('library', 'Library', 'Saved media & files',
                   PhosphorIcons.folderOpen(PhosphorIconsStyle.bold), AD.online),
-              // Contacts — moved out of ACCOUNT to sit below Library; own colour.
-              _special('invite', 'Contacts', 'Find & manage people',
-                  PhosphorIcons.addressBook(PhosphorIconsStyle.bold), AD.danger),
-              // AvaMarketplace — expandable group with its sub-pages (Browse,
-              // Create listing, My listings, Archived). ADMIN-ONLY during the
-              // pro/live launch (owner decision 2026-07-04): the whole section +
-              // its submenus show only when RemoteConfig.marketplaceVisible is
-              // true — i.e. the global `marketplaceEnabled` KV flag (kept false
-              // in prod) OR the signed-in account is an admin (uid ∈ ADMIN_UIDS).
-              // So the operator dogfoods it in prod while testers never see it.
-              if (RemoteConfig.marketplaceVisible) _marketplaceSection(),
+              // [LAUNCH-DARK-1 2026-09-05] Contacts is HIDDEN. It is an
+              // address-book/invite surface for a peer-to-peer messenger; the
+              // launch product is followers finding creators through the
+              // Marketplace, not people finding each other. The 'invite' route
+              // still exists — only this entry point is gone.
+              //
+              // Marketplace moved ABOVE Messenger (see the order note at the
+              // top of this list). Its expandable group carries Browse, Create
+              // listing, My listings and Archived, and — since the marketplace
+              // page itself dropped its in-page "Offer a service" / "My
+              // sessions" buttons in [UI-SECTION-HEAD-1] — this is now the ONLY
+              // route to those. Do not hide it.
               // Wallet — was ACCOUNT-only (and commented out there since
               // 2026-06-29), which meant the sidebar had NO way to reach it at
               // all. Restored here as a top-level item directly under
@@ -315,6 +333,14 @@ class _AvaSidebarState extends State<AvaSidebar> {
               // itself, Wallet isn't admin/flag-gated.
               _special('avawallet', 'Wallet', 'Balance & Tokens',
                   PhosphorIcons.wallet(PhosphorIconsStyle.bold), AD.online),
+              // [SIDEBAR-UNIFY-1] Payout — was a ShellSidebar-only `extra` row
+              // (services_root.dart) with no AvaSidebar equivalent; added here so
+              // unifying onto AvaSidebar doesn't silently drop the owner's Payout
+              // entry. Same visibility rule as `payoutEntryVisible`
+              // (shell/v2/shell_destinations.dart) — hidden while billing is off.
+              if (RemoteConfig.billingEnabled)
+                _special('avapayout', 'Payout', 'Cash out earnings',
+                    PhosphorIcons.bank(PhosphorIconsStyle.bold), AD.iconSearch),
               // Team — AI receptionist + staff routing. HIDDEN from the sidebar
               // (owner decision 2026-06-28). Re-enable by un-commenting this row.
               // _special('team', 'Team', 'AI receptionist & staff',
@@ -356,35 +382,39 @@ class _AvaSidebarState extends State<AvaSidebar> {
               ),
               // Role-based management tools (Parent / Enterprise).
               ..._managementSection(),
-              // APPS section — hidden when empty (in the default non-focus menu all
-              // standard apps are featured tiles or live under ACCOUNT now).
-              if (apps.isNotEmpty) ...[
-                Padding(
-                    padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s4, Msg.s2, Msg.s2),
-                    child: Text('Apps', style: ADText.sectionLabel())),
-                for (final a in apps) _appRow(a),
-              ],
+              // [LAUNCH-DARK-1 2026-09-05] The APPS group is HIDDEN, header and
+              // all. In focus mode (the default) its only surviving child was
+              // "Virtual Numbers", which the owner wants dark for launch; with
+              // focus mode off it would also surface "AvaIdentity". Rather than
+              // filter ids one at a time — which silently re-exposes anything
+              // added to `AppRegistry` later — the whole group is off.
+              //
+              // `apps` is still computed above, so restoring this is
+              // un-commenting these five lines. Note that AvaTOK numbers
+              // themselves are NOT affected: the number-choice gate in the
+              // shell is a separate flow.
+              // if (apps.isNotEmpty) ...[
+              //   Padding(
+              //       padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s4, Msg.s2, Msg.s2),
+              //       child: Text('Apps', style: ADText.sectionLabel())),
+              //   for (final a in apps) _appRow(a),
+              // ],
               // Invite friends + Diagnostics moved into the ACCOUNT section
               // (owner 2026-06-19).
               _accountSection(),
             ]),
           ),
-          // [UI-CALLS-2026] Log out sits INSIDE the footer band, below the
-          // flipped gold wave — never underneath it. Before this it was a plain
-          // hairline-topped row painting red-on-indigo with nothing separating
-          // it from the list, and on a short drawer the wave overlay could ride
-          // straight over the one control a user must always be able to hit.
-          //
-          // The badge keeps `AD.danger` (a red plate reads as "this is the
-          // destructive one" on any band); the LABEL is cream, because red text
-          // on indigo is the contrast pair the owner rejected.
-          const DoubleWaveSeam(bandColor: AD.headerFooter, flip: true),
           Container(
-            color: AD.headerFooter,
+            // Keep Logout on the paper surface with its own breathing room;
+            // no footer wave can obscure the label or intercept its tap.
+            decoration: const BoxDecoration(
+              color: AD.bg,
+              border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
+            ),
             child: SafeArea(
               top: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, Msg.s2),
+                padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: widget.onSignOut,
@@ -393,7 +423,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
                         icon: PhosphorIcons.signOut(PhosphorIconsStyle.bold),
                         color: AD.danger, size: 30),
                     const SizedBox(width: 12),
-                    Text('Log out', style: ADText.rowName(c: onBand)),
+                    Text('Log out', style: ADText.rowName(c: AD.danger)),
                   ]),
                 ),
               ),
@@ -689,8 +719,13 @@ class _AvaSidebarState extends State<AvaSidebar> {
         _acct('identity', 'Identity', PhosphorIcons.identificationCard(PhosphorIconsStyle.bold)),
         // _acct('billing', 'Billing', PhosphorIcons.creditCard(PhosphorIconsStyle.bold)),
         // _acct('avawallet', 'Wallet', PhosphorIcons.wallet(PhosphorIconsStyle.bold)),
-        _acct('avaapps', 'Connectors', PhosphorIcons.squaresFour(PhosphorIconsStyle.bold)),
-        _acct('avastorage', 'Backup', PhosphorIcons.chartPieSlice(PhosphorIconsStyle.bold)),
+        // [LAUNCH-DARK-1 2026-09-05] Connectors and Backup are HIDDEN. Both are
+        // power-user plumbing for a personal-assistant product; neither has a
+        // job in a marketplace launch, and Backup in particular advertises a
+        // storage/quota story that is not being sold yet. Routes stay
+        // registered — un-comment to restore.
+        // _acct('avaapps', 'Connectors', PhosphorIcons.squaresFour(PhosphorIconsStyle.bold)),
+        // _acct('avastorage', 'Backup', PhosphorIcons.chartPieSlice(PhosphorIconsStyle.bold)),
         // (Contacts moved OUT of ACCOUNT to a featured tile below Library.)
         // _acct('diagnostics', 'Diagnostics', PhosphorIcons.bug(PhosphorIconsStyle.bold),
         //     onTap: () {
@@ -736,4 +771,87 @@ class _AvaSidebarState extends State<AvaSidebar> {
           ]),
         ),
       );
+}
+
+/// [SIDEBAR-UNIFY-1] Owner decision 2026-08-28: [AvaSidebar] is now the ONLY
+/// sidebar in the app. This adapter renders it wired to ShellV2 context, so
+/// every ShellV2 root can use it as a one-line `drawer:` instead of the
+/// retired [ShellSidebar] (see that class for why it stays compiled but
+/// unreferenced).
+///
+/// - `enabledApps`/`accountKind` are sourced the SAME way
+///   `ChatListScreen._bootstrap` in `features/avatok/chat_list.dart` loads them
+///   (`OnboardingStore().enabledApps()` + `AccountKindStore().load()`) — the
+///   single source of truth for the AvaSidebar app list, not a new one. The
+///   load is async and best-effort (mirrors the pattern already used by
+///   `features/askava/askava_screen.dart`'s own AvaSidebar instance): while it
+///   is in flight the drawer still opens, just with an empty/default set,
+///   rather than blocking on it.
+/// - `current`/`onSelect` bridge AvaSidebar's STRING destination keys onto
+///   ShellV2's [RootId]: [rootIdForDestination] (shell/v2/shell_destinations.dart)
+///   maps a key to a root when it names one of the three ShellV2 apps
+///   (avatalk/avadial/services), and [openShellDestination] handles every other
+///   key by pushing the matching screen onto the CURRENT root's navigator —
+///   this is the exact fallback `shell/v2/talk_root.dart` already wires the
+///   reused AvaTOK drawer through, preserved here rather than reinvented so a
+///   tap on (e.g.) "Library" or "Settings" from AvaDial/Services' own drawer
+///   keeps working instead of silently doing nothing.
+class AvaSidebarForShell extends StatefulWidget {
+  const AvaSidebarForShell({super.key});
+
+  @override
+  State<AvaSidebarForShell> createState() => _AvaSidebarForShellState();
+}
+
+class _AvaSidebarForShellState extends State<AvaSidebarForShell> {
+  Set<String> _enabledApps = const {};
+  AccountKind _accountKind = AccountKind.personal;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSidebarState();
+  }
+
+  /// Off the critical path — the drawer must open instantly even if these
+  /// reads are slow; a failure just leaves the defaults (empty apps list,
+  /// personal account) rather than blocking or throwing.
+  Future<void> _loadSidebarState() async {
+    try {
+      final enabled = await OnboardingStore().enabledApps();
+      final kind = await AccountKindStore().load();
+      if (!mounted) return;
+      setState(() {
+        _enabledApps = enabled;
+        _accountKind = kind;
+      });
+    } catch (e) {
+      AvaLog.I.log('sidebar', 'AvaSidebarForShell state load failed: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scope = ShellScope.of(context);
+    return AvaSidebar(
+      enabledApps: _enabledApps,
+      accountKind: _accountKind,
+      name: scope.identity?.shortId ?? 'Account',
+      seed: scope.identity?.uid ?? 'avatok',
+      current: scope.activeRoot.key,
+      onSelect: (d) {
+        Navigator.of(context).maybePop(); // close the drawer
+        final root = rootIdForDestination(d);
+        if (root != null) {
+          if (root != scope.activeRoot) scope.switchRoot(root);
+          return;
+        }
+        openShellDestination(context, d);
+      },
+      onSignOut: () {
+        Navigator.of(context).maybePop();
+        scope.onSignOut();
+      },
+    );
+  }
 }

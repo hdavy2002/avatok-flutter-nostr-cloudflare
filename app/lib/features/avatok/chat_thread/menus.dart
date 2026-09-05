@@ -114,7 +114,15 @@ extension _ChatThreadMenus on _ChatThreadScreenState {
                 )),
           // STREAM G [GROUP-AI-1]: catch-up on a busy group thread. Shown only for
           // a group with >25 unread; the guardrail is re-checked in _whatDidIMiss.
-          if ((widget.chat.group || widget.chat.gid != null) && _unreadIncoming > 25)
+          //
+          // [LAUNCH-DARK-1 2026-09-05] `aiEnabled` added. The gated helper
+          // `_catchupAvailable()` already existed in ai_assist.dart and already
+          // checked this — it was simply never called here, so the row rendered
+          // on the raw unread count while the engine refused, i.e. a visible
+          // dead button.
+          if (RemoteConfig.aiEnabled &&
+              (widget.chat.group || widget.chat.gid != null) &&
+              _unreadIncoming > 25)
             _action(ctx, PhosphorIcons.sparkle(PhosphorIconsStyle.bold), 'What did I miss?',
                 () { Navigator.pop(ctx); _whatDidIMiss(); }),
           // STREAM G [GROUP-AI-2/3]: per-member "translate this group for me".

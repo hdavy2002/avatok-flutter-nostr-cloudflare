@@ -75,6 +75,17 @@ extension _ChatThreadSearch on _ChatThreadScreenState {
     // Same query already answered → don't refetch.
     if (_aiSearchedQuery == q && (_aiHits.isNotEmpty || _aiSearchError)) return;
 
+    // [LAUNCH-DARK-1 2026-09-05] AI semantic search is part of the Messenger AI
+    // that goes dark for launch. This previously checked ONLY BrainConsent, so
+    // a consented user still hit the brain-search endpoint with AI otherwise
+    // off. Treated as "brain off" rather than as an error, so the UI falls back
+    // to literal search with its existing copy instead of showing a failure.
+    if (!RemoteConfig.aiEnabled) {
+      if (!mounted) return;
+      setState(() { _aiBrainOff = true; _aiHits = const []; _aiSearchError = false; });
+      return;
+    }
+
     // Respect the existing BrainConsent gate (E2E/private content is only ever
     // indexed under the user's own consented ingestion; if that's off there is
     // nothing to search and we must not pretend otherwise).

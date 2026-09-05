@@ -2388,14 +2388,6 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                     color: AD.onBand(AD.headerFooter)),
                 count: _notifUnread),
           ],
-          // Tab strip — Chat · Community · Call log — directly below the header,
-          // above the tab content (owner spec 2026-07-12).
-          bottom: _AvaTokTabStrip(
-            selectedIndex: _tab,
-            onSelected: (i) => setState(() => _tab = i),
-            chatUnread: _unread.values.fold<int>(0, (a, b) => a + b) > 0,
-            communityInvites: _groupInvites,
-          ),
         ),
         // [RAJ-SEAMS-1] The retired toran divider is replaced by the 1B
         // Squiggle seam on the band (design/seams/patches.md §6). The tab strip
@@ -2799,11 +2791,33 @@ class _AvaTokTabStrip extends StatelessWidget {
   // (The old comment here said "orange / teal / purple" and had been wrong
   // through two recolours.)
   // Not `const`: PhosphorIcons.x(style) is a function call, not a constant.
-  static final _items = <(IconData, IconData, String, Color)>[
-    (PhosphorIcons.chatCircle(PhosphorIconsStyle.regular), PhosphorIcons.chatCircle(PhosphorIconsStyle.fill), 'Chats', AD.tabChats),
-    (PhosphorIcons.usersThree(PhosphorIconsStyle.regular), PhosphorIcons.usersThree(PhosphorIconsStyle.fill), 'Groups', AD.tabGroups),
-    (PhosphorIcons.phoneCall(PhosphorIconsStyle.regular), PhosphorIcons.phoneCall(PhosphorIconsStyle.fill), 'Calls', AD.tabCallsChip),
-  ];
+  //
+  // [LAUNCH-DARK-1 2026-09-05] The Calls tab is DROPPED when Messenger calling
+  // is off — a call log you can read but cannot act on advertises a feature
+  // that is deliberately dark.
+  //
+  // ⚠️ THIS WIDGET IS CURRENTLY UNREACHABLE and the gate below therefore
+  // changes nothing on screen today. `_AvaTokTabStrip` has no call sites, and
+  // `_tab` (chat_list.dart:176) is never assigned, so the enclosing
+  // `IndexedStack` is pinned to index 0 and the Groups/Calls bodies never
+  // render either. CLAUDE.md still describes this as "a hardcoded 3-chip
+  // strip", which is stale. The gate is written anyway so that reviving the
+  // strip cannot silently bring the Calls tab back with it.
+  //
+  // A GETTER, not a `static final`: the old field was evaluated once at class
+  // load, before RemoteConfig has necessarily fetched, and would never react to
+  // a later flag change.
+  //
+  // Calls is the LAST entry on purpose. `selectedIndex` and `onSelected` are
+  // positional and the body is an `IndexedStack`, so dropping the tail leaves
+  // Chats=0 and Groups=1 correct. Removing a MIDDLE item here would silently
+  // shift every index — put new tabs after Calls, or fix both lists together.
+  List<(IconData, IconData, String, Color)> get _items => [
+        (PhosphorIcons.chatCircle(PhosphorIconsStyle.regular), PhosphorIcons.chatCircle(PhosphorIconsStyle.fill), 'Chats', AD.tabChats),
+        (PhosphorIcons.usersThree(PhosphorIconsStyle.regular), PhosphorIcons.usersThree(PhosphorIconsStyle.fill), 'Groups', AD.tabGroups),
+        if (RemoteConfig.messengerCallingEnabled)
+          (PhosphorIcons.phoneCall(PhosphorIconsStyle.regular), PhosphorIcons.phoneCall(PhosphorIconsStyle.fill), 'Calls', AD.tabCallsChip),
+      ];
 
   @override
   Widget build(BuildContext context) {

@@ -210,9 +210,22 @@ class RemoteConfig {
   /// route and push wiring.
   ///
   /// Default FALSE — fail-closed, matching routes/config.ts DEFAULTS.
+  ///
+  /// [LAUNCH-DARK-1 2026-09-05] ANDed with the compile-time
+  /// [kMessengerCallsEnabled] launch gate, so no KV write can reopen it.
   static bool get messengerCallingEnabled =>
-      _b('messengerCallingEnabled', false);
-  static bool get conferenceEnabled => _b('conferenceEnabled', true);
+      kMessengerCallsEnabled && _b('messengerCallingEnabled', false);
+
+  /// [LAUNCH-DARK-1 2026-09-05] ANDed with [kMessengerCallsEnabled] too, and
+  /// this one MATTERS: `conferenceEnabled` defaults TRUE and is NOT covered by
+  /// `messengerCallingEnabled` — turning off Messenger calling alone left the
+  /// group audio/video buttons live in the thread header and let an incoming
+  /// group ring through, because `push_service` routes group calls above that
+  /// guard. Group conference is Messenger A/V, so the launch gate closes it.
+  ///
+  /// The paid live-stream / consultation lane does NOT go through here.
+  static bool get conferenceEnabled =>
+      kMessengerCallsEnabled && _b('conferenceEnabled', true);
   // Cloudflare-only media migration Wave-0 scaffold (Specs/CLOUDFLARE-ONLY-REALTIME-MEDIA-MIGRATION-PROPOSAL-2026-07-24.md).
   static bool get cloudflareConferenceEnabled => _b('cloudflareConferenceEnabled', false);
   // [AVA-VM-NOCOUNTDOWN-1] 3-2-1 Ava warm-up countdown before voicemail. Default ON
@@ -766,7 +779,12 @@ class RemoteConfig {
   /// is the behaviour the marketplace-first pivot's "AI in chat goes dark" needs.
   /// Default TRUE mirrors the server default; the client value only ever gates
   /// presentation and request suppression — the server remains the authority.
-  static bool get aiEnabled => _b('aiEnabled', true);
+  ///
+  /// [LAUNCH-DARK-1 2026-09-05] ANDed with the compile-time [kMessengerAiEnabled]
+  /// launch gate. Prod KV has this key set TRUE and the marketplace launch needs
+  /// AI-in-chat off, so the const is the thing actually holding it shut — a KV
+  /// mistake cannot reopen it. Both must be true. See core/feature_flags.dart.
+  static bool get aiEnabled => kMessengerAiEnabled && _b('aiEnabled', true);
   /// [PIVOT-AI-SWITCHES-1] "Discuss this chat with Ava" — the entry point in the
   /// thread overflow menu (features/avatok/chat_thread/menus.dart). Until
   /// 2026-08-27 this was gated ONLY by the compile-time const
@@ -778,15 +796,19 @@ class RemoteConfig {
   /// The compile const stays as the config-fetch-failure fallback, and the menu
   /// keeps its existing AvaBrain DM/group consent check at use — this flag is a
   /// third gate on top, never a replacement for consent.
+  /// [LAUNCH-DARK-1] ANDed with the launch gate — see [aiEnabled].
   static bool get discussWithAvaEnabled =>
-      _b('discussWithAvaEnabled', kDiscussWithAvaEnabled);
+      kMessengerAiEnabled && _b('discussWithAvaEnabled', kDiscussWithAvaEnabled);
   /// [PIVOT-AI-SWITCHES-1] AskAva — the standalone Ava surface mounted from
   /// shell/shell_v2.dart. It had NO flag of any kind and was only accidentally
   /// dark because `shellV2` is false in prod. That made it a live hazard for the
   /// pivot: flipping `shellV2` on to put Marketplace on the landing screen would
   /// have shipped AskAva with no way to turn it off. Default TRUE for the same
   /// reason as above — the switch itself is behaviour-neutral; the flip is not.
-  static bool get askAvaEnabled => _b('askAvaEnabled', true);
+  /// [LAUNCH-DARK-1] ANDed with the launch gate — see [aiEnabled]. This also
+  /// closes the "AvaBrain" row in the ShellV2 sidebar, which called
+  /// `scope.askAva(...)` unconditionally and did nothing when the flag was off.
+  static bool get askAvaEnabled => kMessengerAiEnabled && _b('askAvaEnabled', true);
   /// Guardian (scam/grooming/deepfake safety) surfaces + settings section.
   /// Mirrors the compile default [kGuardianEnabledDefault]. When false the
   /// Guardian settings section is not registered and the per-chat shield icon is

@@ -70,6 +70,42 @@ const bool kOpenChatUncappedDefault = false;
 /// premium users are not capped by this (server-enforced). Proposal §7.1: ~20–30.
 const int kDailyAvaTurnLimit = 25;
 
+// ---------------------------------------------------------------------------
+// [LAUNCH-DARK-1 2026-09-05] THE LAUNCH GATE — owner decision.
+//
+// avaTOK launches as a MARKETPLACE app. What ships: paid live streaming, paid
+// 1:1 (and 1-to-many) sessions on GetStream, a Marketplace to find them, and a
+// wallet you can pay in and cash out of. Messenger ships as TEXT ONLY — the
+// place a follower talks to a creator — with no audio, no video and no AI.
+// Everything else goes dark until there is revenue to support it.
+//
+// These are compile-time consts ON PURPOSE, not RemoteConfig flags. The whole
+// point is that nothing at runtime — a stale KV blob, a mistyped flag write, a
+// server that fails open — can put a half-built feature back in front of a
+// user. That is exactly how `aiEnabled` ended up TRUE in production with eight
+// live AI surfaces behind it. Flipping one of these to `true` is a deliberate
+// code change, a build and a release, which is the right amount of friction
+// for turning a feature back on.
+//
+// They are ANDed with the existing RemoteConfig flags rather than replacing
+// them (see `RemoteConfig.aiEnabled` / `.conferenceEnabled`), so the server
+// keeps its own kill switch and neither side can override the other upward.
+//
+// To bring a feature back: flip the const here, then check that its server flag
+// is also on — both must agree.
+
+/// Every AI affordance inside the Messenger: Ava in chat, `@ava`/`#ava`, smart
+/// replies, "Discuss with Ava", "What did I miss?", the AVA SUGGESTS companion
+/// card, inline + voice-note translate/transcribe, in-thread semantic search,
+/// and AvaBrain ingestion of messages.
+const bool kMessengerAiEnabled = false;
+
+/// Every audio/video call surface reachable from the Messenger — 1:1 AND group
+/// conference, outbound and incoming. Note the paid-session lane (live streams,
+/// consultations) is a DIFFERENT surface and is NOT affected by this: it runs
+/// on GetStream through its own entry points and must keep working.
+const bool kMessengerCallsEnabled = false;
+
 /// Guardian (scam/grooming/deepfake safety) surfaces. Default ON: the basic
 /// scam/spam flag is free; always-on deep monitoring is premium-gated at use.
 const bool kGuardianEnabledDefault = true;

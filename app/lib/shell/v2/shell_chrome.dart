@@ -43,8 +43,12 @@ Widget shellNavBar({
   // [RAJ-SEAMS-1] Footer seam — one hook covering every shell root, since
   // `shellNavBar()` is the single function they all call for the bottom bar
   // (design/seams/patches.md §5). The TorranDivider that used to be here is
-  // retired: the owner replaced the drape with five seam styles, and the
-  // footer's is always the flipped Double wave on an INDIGO band.
+  // retired: the owner replaced the drape with five seam styles.
+  //
+  // [UI-PILL-FOOTER-2026] That seam was the flipped Double wave; it is now the
+  // 2D Pill morse strip ([PillMorseFooter]) on every footer in the app. Same
+  // indigo band underneath — only the seam above it changed. Headers keep
+  // their wave, so header and footer are no longer mirror images by design.
   //
   // The band moved turquoise -> indigo, which is why every label and icon below
   // is now routed through `AD.onBand`. Indigo is a DARK band, so ink type on it
@@ -61,7 +65,7 @@ Widget shellNavBar({
   return Column(
     mainAxisSize: MainAxisSize.min,
     children: [
-      const DoubleWaveSeam(bandColor: band, flip: true),
+      const PillMorseFooter(),
       Container(
         decoration: const BoxDecoration(color: band),
         // [RAJ-SEAMS-1] `labelTextStyle` and `iconTheme` live on
@@ -270,8 +274,8 @@ class AvaTokHeader extends StatelessWidget implements PreferredSizeWidget {
                 // gutters on the narrowest phone pushes the wordmark and the
                 // trailing controls toward the edges, where they are already
                 // hardest to hit ([RESP-SMALL-1]).
-                padding: EdgeInsets.fromLTRB(
-                    Msg.s4, Msg.s2 * s, Msg.s3, Msg.s2 * s),
+                padding:
+                    EdgeInsets.fromLTRB(Msg.s4, Msg.s2 * s, Msg.s3, Msg.s2 * s),
                 child: Row(children: [
                   leading ?? _MenuButton(onTap: onMenu, color: onBand),
                   const SizedBox(width: 6),
@@ -428,8 +432,8 @@ class _ShellProfileAvatarState extends State<ShellProfileAvatar> {
         // Pushed directly rather than via `openShellDestination`, which calls
         // `ShellScope.of` and therefore asserts when this header is mounted on
         // a screen outside ShellV2. The header has to work everywhere.
-        onTap: () => Navigator.of(context)
-            .push(MaterialPageRoute<void>(builder: (_) => const ProfileScreen())),
+        onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const ProfileScreen())),
         child: Avatar(
           seed: AccountScope.id ?? 'me',
           name: 'You',
@@ -446,6 +450,7 @@ class ShellEmptyState extends StatelessWidget {
   final String title;
   final String subtitle;
   final Color color;
+
   /// [RAJ-SEAMS-1] Optional illustration asset (see `core/ui/illustrations.dart`).
   /// When set it replaces the icon badge; when null every existing call site
   /// renders exactly as before. Decorative only — it always sits above the
@@ -472,10 +477,14 @@ class ShellEmptyState extends StatelessWidget {
           else
             ZineIconBadge(icon: icon, color: color, size: 56),
           const SizedBox(height: 16),
-          Text(title, textAlign: TextAlign.center, style: ADText.threadName().copyWith(fontSize: 18)),
+          Text(title,
+              textAlign: TextAlign.center,
+              style: ADText.threadName().copyWith(fontSize: 18)),
           const SizedBox(height: 8),
-          Text(subtitle, textAlign: TextAlign.center,
-              style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14)),
+          Text(subtitle,
+              textAlign: TextAlign.center,
+              style:
+                  ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14)),
         ]),
       ),
     );
@@ -487,6 +496,15 @@ class ShellEmptyState extends StatelessWidget {
 /// plus any app-specific [extra] rows the root passes in. Reuses the AvaSidebar
 /// visual language (ink-bordered pressable rows) without depending on its
 /// messenger-specific state.
+///
+/// [SIDEBAR-UNIFY-1] SUPERSEDED (owner decision 2026-08-28): `AvaSidebar`
+/// (shell/ava_sidebar.dart), via the `AvaSidebarForShell` adapter, is now the
+/// ONLY sidebar in the app — every former call site of this class
+/// (avadial_root.dart, services_root.dart, wallet_screen.dart,
+/// askava_screen.dart) has been switched over. This class is kept compiled but
+/// UNREFERENCED, the same way the legacy Cloudflare call engine is kept around
+/// elsewhere in this codebase — do not delete it, and do not wire up any new
+/// call site to it.
 class ShellSidebar extends StatelessWidget {
   /// The root currently showing this sidebar (its own app row is omitted).
   final RootId current;
@@ -506,7 +524,8 @@ class ShellSidebar extends StatelessWidget {
       scope.switchRoot(r);
     }
 
-    Widget appRow(RootId r, String name, String sub, IconData icon, Color color) {
+    Widget appRow(
+        RootId r, String name, String sub, IconData icon, Color color) {
       if (r == current) return const SizedBox.shrink();
       return _SidebarRow(
         icon: icon,
@@ -519,7 +538,8 @@ class ShellSidebar extends StatelessWidget {
 
     return Drawer(
       backgroundColor: AD.menu,
-      shape: const Border(right: BorderSide(color: AD.borderHairline, width: 1)),
+      shape:
+          const Border(right: BorderSide(color: AD.borderHairline, width: 1)),
       width: MediaQuery.of(context).size.width * 0.82,
       child: SafeArea(
         child: Column(children: [
@@ -538,7 +558,8 @@ class ShellSidebar extends StatelessWidget {
                       color: AD.textPrimary),
                   children: [
                     const TextSpan(text: 'Ava'),
-                    TextSpan(text: 'TOK', style: TextStyle(color: AD.iconSearch)),
+                    TextSpan(
+                        text: 'TOK', style: TextStyle(color: AD.iconSearch)),
                   ],
                 ),
               ),
@@ -550,106 +571,136 @@ class ShellSidebar extends StatelessWidget {
             ]),
           ),
           Expanded(
-            child: ListView(padding: const EdgeInsets.fromLTRB(Msg.s4, 0, Msg.s4, Msg.s3), children: [
-              Padding(
-                  padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s2, Msg.s2),
-                  child: Text('APPS', style: ADText.sectionLabel(c: AD.textTertiary))),
-              appRow(RootId.avaTalk, 'AvaTOK', 'Messages & in-network calls',
-                  PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), AD.online),
-              // [IOS-PORT-DISABLE-1] 2026-08-14 owner rename: 'AvaDialer' →
-              // 'Calls' (display-only; RootId.key stays 'avadial'). Mirror of
-              // app_switcher_bar `_meta`.
-              appRow(RootId.avaDial, 'Calls', 'AvaTOK calls, contacts & voicemail',
-                  PhosphorIcons.phone(PhosphorIconsStyle.bold), AD.iconSearch),
-              appRow(RootId.services,
-                  RemoteConfig.marketplaceVisible ? 'Marketplace' : 'Services',
-                  'Buy, sell, manage listings & wallet',
-                  PhosphorIcons.storefront(PhosphorIconsStyle.bold), AD.danger),
-              _SidebarRow(
-                icon: PhosphorIcons.sparkle(PhosphorIconsStyle.bold),
-                color: AD.iconVideo,
-                // 2026-07-14 owner rename: 'Ask Ava' → 'AvaBrain', matching the
-                // fixed AI action label in app_switcher_bar. Display-only — the
-                // analytics key stays `askava`.
-                title: 'AvaBrain',
-                subtitle: 'Universal assistant',
-                onTap: () {
-                  Navigator.of(context).maybePop();
-                  scope.askAva(current.key); // seed the assistant with this app's context
-                },
-              ),
-              if (extra.isNotEmpty) ...[
-                const SizedBox(height: Msg.s1),
-                ...extra,
-              ],
-              const SizedBox(height: Msg.s1),
-              Padding(
-                  padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s2, Msg.s2),
-                  child: Text('MORE', style: ADText.sectionLabel(c: AD.textTertiary))),
-              // Rescued from the retired Home dashboard drawer (2026-07-12 nav
-              // rebrand) so they stay reachable from every app, not just Home.
-              _SidebarRow(
-                icon: PhosphorIcons.listNumbers(PhosphorIconsStyle.bold),
-                color: AD.iconVideo,
-                title: 'App order',
-                subtitle: 'Reorder apps & pick your landing app',
-                onTap: () {
-                  Navigator.of(context).maybePop();
-                  Navigator.of(context)
-                      .push(MaterialPageRoute(builder: (_) => const AppOrderScreen()));
-                },
-              ),
-              _SidebarRow(
-                icon: PhosphorIcons.identificationCard(PhosphorIconsStyle.bold),
-                color: AD.iconSearch,
-                title: 'Identity',
-                onTap: () {
-                  Navigator.of(context).maybePop();
-                  openShellDestination(context, 'identity');
-                },
-              ),
-              _SidebarRow(
-                icon: PhosphorIcons.chartPieSlice(PhosphorIconsStyle.bold),
-                color: AD.online,
-                title: 'Backup',
-                onTap: () {
-                  Navigator.of(context).maybePop();
-                  openShellDestination(context, 'avastorage');
-                },
-              ),
-              _SidebarRow(
-                icon: PhosphorIcons.info(PhosphorIconsStyle.bold),
-                color: AD.iconVideo,
-                title: 'About',
-                onTap: () {
-                  Navigator.of(context).maybePop();
-                  openShellDestination(context, 'about');
-                },
-              ),
-              _SidebarRow(
-                icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold),
-                color: AD.danger,
-                title: 'Update',
-                onTap: () {
-                  Navigator.of(context).maybePop();
-                  UpdateService.runManual();
-                },
-              ),
-              const SizedBox(height: Msg.s1),
-              _SidebarRow(
-                icon: PhosphorIcons.gearSix(PhosphorIconsStyle.bold),
-                color: AD.textTertiary,
-                title: 'Settings',
-                onTap: () {
-                  Navigator.of(context).maybePop();
-                  openShellDestination(context, 'settings');
-                },
-              ),
-            ]),
+            child: ListView(
+                padding: const EdgeInsets.fromLTRB(Msg.s4, 0, Msg.s4, Msg.s3),
+                children: [
+                  Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                          Msg.s2, Msg.s2, Msg.s2, Msg.s2),
+                      child: Text('APPS',
+                          style: ADText.sectionLabel(c: AD.textTertiary))),
+                  appRow(
+                      RootId.avaTalk,
+                      'AvaTOK',
+                      'Messages & in-network calls',
+                      PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
+                      AD.online),
+                  // [IOS-PORT-DISABLE-1] 2026-08-14 owner rename: 'AvaDialer' →
+                  // 'Calls' (display-only; RootId.key stays 'avadial'). Mirror of
+                  // app_switcher_bar `_meta`.
+                  appRow(
+                      RootId.avaDial,
+                      'AvaCalls',
+                      'AvaTOK and worldwide calls',
+                      PhosphorIcons.phone(PhosphorIconsStyle.bold),
+                      AD.iconSearch),
+                  appRow(
+                      RootId.services,
+                      RemoteConfig.marketplaceVisible
+                          ? 'Marketplace'
+                          : 'Services',
+                      'Buy, sell, manage listings & wallet',
+                      PhosphorIcons.storefront(PhosphorIconsStyle.bold),
+                      AD.danger),
+                  // [LAUNCH-DARK-1 2026-09-05] `askAvaEnabled` added. This row
+                  // called `scope.askAva(...)` UNCONDITIONALLY while the engine
+                  // (shell_v2.dart) refuses when the flag is off, and the
+                  // app-switcher's equivalent slot was already wrapped in the
+                  // same check — so this was a visible row that silently did
+                  // nothing. `askAvaEnabled` is now ANDed with the compile-time
+                  // launch gate, so this is dark for launch.
+                  if (RemoteConfig.askAvaEnabled)
+                    _SidebarRow(
+                      icon: PhosphorIcons.sparkle(PhosphorIconsStyle.bold),
+                      color: AD.iconVideo,
+                      // 2026-07-14 owner rename: 'Ask Ava' → 'AvaBrain', matching
+                      // the fixed AI action label in app_switcher_bar.
+                      // Display-only — the analytics key stays `askava`.
+                      title: 'AvaBrain',
+                      subtitle: 'Universal assistant',
+                      onTap: () {
+                        Navigator.of(context).maybePop();
+                        scope.askAva(current
+                            .key); // seed the assistant with this app's context
+                      },
+                    ),
+                  if (extra.isNotEmpty) ...[
+                    const SizedBox(height: Msg.s1),
+                    ...extra,
+                  ],
+                  const SizedBox(height: Msg.s1),
+                  Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                          Msg.s2, Msg.s2, Msg.s2, Msg.s2),
+                      child: Text('MORE',
+                          style: ADText.sectionLabel(c: AD.textTertiary))),
+                  // Rescued from the retired Home dashboard drawer (2026-07-12 nav
+                  // rebrand) so they stay reachable from every app, not just Home.
+                  _SidebarRow(
+                    icon: PhosphorIcons.listNumbers(PhosphorIconsStyle.bold),
+                    color: AD.iconVideo,
+                    title: 'App order',
+                    subtitle: 'Reorder apps & pick your landing app',
+                    onTap: () {
+                      Navigator.of(context).maybePop();
+                      Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const AppOrderScreen()));
+                    },
+                  ),
+                  _SidebarRow(
+                    icon: PhosphorIcons.identificationCard(
+                        PhosphorIconsStyle.bold),
+                    color: AD.iconSearch,
+                    title: 'Identity',
+                    onTap: () {
+                      Navigator.of(context).maybePop();
+                      openShellDestination(context, 'identity');
+                    },
+                  ),
+                  _SidebarRow(
+                    icon: PhosphorIcons.chartPieSlice(PhosphorIconsStyle.bold),
+                    color: AD.online,
+                    title: 'Backup',
+                    onTap: () {
+                      Navigator.of(context).maybePop();
+                      openShellDestination(context, 'avastorage');
+                    },
+                  ),
+                  _SidebarRow(
+                    icon: PhosphorIcons.info(PhosphorIconsStyle.bold),
+                    color: AD.iconVideo,
+                    title: 'About',
+                    onTap: () {
+                      Navigator.of(context).maybePop();
+                      openShellDestination(context, 'about');
+                    },
+                  ),
+                  _SidebarRow(
+                    icon:
+                        PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold),
+                    color: AD.danger,
+                    title: 'Update',
+                    onTap: () {
+                      Navigator.of(context).maybePop();
+                      UpdateService.runManual();
+                    },
+                  ),
+                  const SizedBox(height: Msg.s1),
+                  _SidebarRow(
+                    icon: PhosphorIcons.gearSix(PhosphorIconsStyle.bold),
+                    color: AD.textTertiary,
+                    title: 'Settings',
+                    onTap: () {
+                      Navigator.of(context).maybePop();
+                      openShellDestination(context, 'settings');
+                    },
+                  ),
+                ]),
           ),
           Container(
             decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
+              border:
+                  Border(top: BorderSide(color: AD.borderHairline, width: 1)),
             ),
             padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
             child: GestureDetector(
@@ -657,9 +708,12 @@ class ShellSidebar extends StatelessWidget {
               onTap: scope.onSignOut,
               child: Row(children: [
                 ZineIconBadge(
-                    icon: PhosphorIcons.signOut(PhosphorIconsStyle.bold), color: AD.danger, size: 30),
+                    icon: PhosphorIcons.signOut(PhosphorIconsStyle.bold),
+                    color: AD.danger,
+                    size: 30),
                 const SizedBox(width: 12),
-                Text('Log out', style: ADText.rowName(c: AD.danger).copyWith(fontSize: 15)),
+                Text('Log out',
+                    style: ADText.rowName(c: AD.danger).copyWith(fontSize: 15)),
               ]),
             ),
           ),
@@ -720,20 +774,27 @@ class _SidebarRow extends StatelessWidget {
           borderWidth: 1,
           radius: BorderRadius.circular(AD.rListCard),
           boxShadow: const [],
-          padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
+          padding:
+              const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
           child: Row(children: [
             ZineIconBadge(icon: icon, color: color),
             const SizedBox(width: 12),
             Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(title, style: ADText.threadName().copyWith(fontSize: 15)),
-                if (subtitle != null) ...[
-                  const SizedBox(height: 1),
-                  Text(subtitle!, style: ADText.statCaption(c: AD.textSecondary).copyWith(fontSize: 10)),
-                ],
-              ]),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: ADText.threadName().copyWith(fontSize: 15)),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 1),
+                      Text(subtitle!,
+                          style: ADText.statCaption(c: AD.textSecondary)
+                              .copyWith(fontSize: 10)),
+                    ],
+                  ]),
             ),
-            PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 14, color: AD.textSecondary),
+            PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
+                size: 14, color: AD.textSecondary),
           ]),
         ),
       );

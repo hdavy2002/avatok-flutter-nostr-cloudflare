@@ -223,12 +223,23 @@ extension _ChatThreadActions on _ChatThreadScreenState {
                   // STREAM G [GROUP-AI-5]: inline translate any text bubble into the
                   // user's remembered language (added via the existing _action menu
                   // extension point — no Stream K geometry change).
-                  if (m.text.trim().isNotEmpty && m.special != 'ava_status')
+                  //
+                  // [LAUNCH-DARK-1 2026-09-05] `aiEnabled` added. This checked
+                  // only AvaBrain consent, while its GROUP sibling in menus.dart
+                  // was gated on `groupTranslationEnabled` — an inconsistency,
+                  // not a design choice, and it left a live AI call in the
+                  // message menu with AI nominally dark.
+                  if (RemoteConfig.aiEnabled &&
+                      m.text.trim().isNotEmpty &&
+                      m.special != 'ava_status')
                     _action(ctx, PhosphorIcons.translate(PhosphorIconsStyle.bold), 'Translate',
                         () => _inlineTranslate(m)),
                   // Voice notes: transcribe the audio (cloud Whisper) and/or
                   // translate that transcript. Viewer-only, cached per message.
-                  if (_isVoiceNote(m)) ...[
+                  //
+                  // [LAUNCH-DARK-1] Same treatment — these run Whisper and a
+                  // translation model and were behind no AI flag at all.
+                  if (RemoteConfig.aiEnabled && _isVoiceNote(m)) ...[
                     _action(ctx, PhosphorIcons.textAa(PhosphorIconsStyle.bold), 'Transcribe',
                         () => _transcribeVoice(m)),
                     _action(ctx, PhosphorIcons.translate(PhosphorIconsStyle.bold), 'Translate',

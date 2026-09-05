@@ -6708,6 +6708,20 @@ class PushService {
       // CallRoom record nor a receptionist. The GroupCallRoom authority is what
       // admits a joiner, and it admits everyone up to the cap.
       if (e['group'] == true || e['group'] == 'true') {
+        // [LAUNCH-DARK-1 2026-09-05] ...and a group ring is refused when group
+        // conference is off. This branch sits ABOVE the
+        // `messengerCallingEnabled` guard below, which is exactly why turning
+        // off Messenger calling never stopped an incoming group call: it
+        // returned here before ever reaching that check. `conferenceEnabled` is
+        // now ANDed with the compile-time launch gate, so this closes it.
+        if (!RemoteConfig.conferenceEnabled) {
+          Analytics.capture('messenger_incoming_refused_feature_off', {
+            'flag': 'conferenceEnabled',
+            'call_id': room,
+            'group': true,
+          });
+          return;
+        }
         await _openGroupCall(e);
         return;
       }

@@ -112,9 +112,14 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
         controller: _ctrl,
         focusNode: _composerFocus,
         hasText: _hasText,
-        hintText: _avaMode
-            ? 'Ask Ava privately…'
-            : (_avaPublicMode ? 'Message · Ava can join' : 'Message'),
+        // [LAUNCH-DARK-1 2026-09-05] With AI off there is no Ava audience to be
+        // in, so the hint must not advertise one — "Message · Ava can join" on
+        // a thread where she cannot is worse than no hint at all.
+        hintText: !RemoteConfig.aiEnabled
+            ? 'Message'
+            : _avaMode
+                ? 'Ask Ava privately…'
+                : (_avaPublicMode ? 'Message · Ava can join' : 'Message'),
         // [UI-CHAT-2026] One step lighter than the band so the pill still
         // reads as raised now that the band is paper rather than indigo.
         fieldColor: Msg.composerField,
@@ -389,7 +394,16 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
     _composerFocus.requestFocus();
   }
 
-  Widget _avaAudienceControls() => Row(
+  /// The `@ava` / `#ava` audience toggles that sit in the composer.
+  ///
+  /// [LAUNCH-DARK-1 2026-09-05] Returns nothing when AI is off. These two
+  /// buttons were the single most visible ungated AI surface in the Messenger:
+  /// no RemoteConfig check existed anywhere in the path, so they stayed on the
+  /// composer of every thread regardless of `aiEnabled`, and tapping one put
+  /// the composer into a mode whose send route then went nowhere.
+  Widget _avaAudienceControls() => !RemoteConfig.aiEnabled
+      ? const SizedBox.shrink()
+      : Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           _avaAudienceButton(

@@ -624,6 +624,12 @@ extension _ChatThreadVoice on _ChatThreadScreenState {
     String? transcript,
   }) async {
     if (mediaId.isEmpty) return;
+    // [LAUNCH-DARK-1 2026-09-05] AvaBrain ingestion of voice notes goes dark
+    // with the rest of Messenger AI. This path had NO flag — `brainEnabled` is
+    // declared server-side but has zero Flutter consumers, so it could not have
+    // stopped it — meaning every voice note in every thread was still being
+    // sent for indexing while AI was nominally off.
+    if (!RemoteConfig.aiEnabled) return;
     if (!_looksLikeRecordedVoiceNote(fileName)) return;
     // Who the note is WITH. For a DM that is the peer in both directions; for a
     // group, an incoming note is attributed to the member who sent it (falling
