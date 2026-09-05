@@ -4583,5 +4583,35 @@
       }
     ],
     "_verified_at": "Read out of the emit sites, not from memory: the `subject` property is built in runAutoPosterGeneration (worker/src/routes/listings.ts) from the resolveCreatorSubject result and emitted on listing_poster_generate. Flags confirmed live on cache-busted prod /api/config on 2026-09-05: posterCreatorSubjectEnabled=true, posterCreatorPhotoEnabled=true, posterStyleVersion=3 - NOT read from DEFAULTS, where posterCreatorPhotoEnabled is false."
+  },
+  "POSTER-FILMY-1": {
+    "description": "[POSTER-FILMY-1] Every poster came out the same red/green/white cartoon because the prompt DICTATED it: 'THREE-COLOUR SCREEN PRINT', 'ink palette limited to three flat poster inks only - vermilion red, chrome green and black', 'coarse halftone dot screen', 'hard outlines, heavy black linework, no soft shading, no gradients, no airbrush'. The model followed all of it exactly, and 'flat ink, hard outlines, no shading' IS a cartoon - so the same prompt's 'NOT a cartoon' line was arguing with itself and losing. Deleted the whole dictated look. The style block now names the genre, keeps ONE aesthetic constraint (PAINTED not printed: modelled faces, real light and shadow - the actual difference from the reference posters the owner supplied), and explicitly hands palette, era, composition and display lettering to the model per poster. Owner instruction verbatim: 'please dont hard code instructions to AI, let ai think, you just give what content to fill in'. Second change: the tagline was the creator's blurb verbatim ('Chicken curry recipe new'), which is accurate and dead on a film poster. New lib/poster_dialogue.ts writes a filmy punch line from the listing's own facts, Hinglish or Devanagari at the model's choice (owner decision), <=40 chars, temperature 0.9 so two cooking listings do not get the same joke. The listing TITLE stays as the big text (owner decision) so a buyer still recognises what is being sold. Copy is resolved ONCE, before the prompt, because the prompt, poster_verify.ts and PosterState.copy must agree on the exact strings. An over-length or unparseable line is REJECTED, not truncated - a trimmed line fails its own read-back verification. Writer unavailable = fall back to the blurb, i.e. the pre-change behaviour. POSTER_STYLE_VERSION 3 -> 4.",
+    "shipped": "2026-09-05",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "posterDialogueEnabled",
+      "posterVerifyEnabled",
+      "posterAutoGenerateOnSubmit"
+    ],
+    "success": [
+      {
+        "event": "poster_verify",
+        "property": "ok",
+        "equals": true,
+        "min_events": 1,
+        "min_pass_rate": 0.7,
+        "note": "THE risk of this change, and the reason the assertion is a pass RATE and not a count. Devanagari taglines were allowed on the owner's explicit call, and image models garble Devanagari far more than Latin - poster_verify.ts is what catches that, by reading the lettering back and diffing it. A collapse in this rate means the filmy line is being painted wrong, which is invisible in every other event: the poster still generates, still looks good, and carries text that is not what we asked for. Slack is wide because hand-lettering legitimately restyles and some retry is normal and healthy."
+      },
+      {
+        "event": "listing_poster_generate",
+        "property": "outcome",
+        "equals": "draft",
+        "min_events": 1,
+        "min_pass_rate": 0.8,
+        "note": "The run still completing. The dialogue writer adds a text call before the first image call; if that made posters start failing rather than start looking better, this catches it."
+      }
+    ],
+    "_verified_at": "Read out of the code, not from memory: the deleted style lines and the new one are in buildPosterPrompt (worker/src/lib/listing_poster.ts); copy resolution happens once at the top of generateListingPoster and is passed to both buildPosterPrompt and verifyPosterText. Flags confirmed live on cache-busted prod /api/config 2026-09-05: posterDialogueEnabled=true, posterStyleVersion=4."
   }
 }
