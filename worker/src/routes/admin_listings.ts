@@ -270,11 +270,41 @@ export async function adminEditListing(req: Request, env: Env, id: string): Prom
   }
 
   const now = Date.now();
+
+  // [ADMIN-EDIT-2 2026-09-05] RE-BIND THE APPROVAL TO WHAT THE ADMIN JUST WROTE.
+  //
+  // Without this the feature is self-defeating, and was: publish refuses with
+  // `review_stale` when reviewed_content_hash no longer matches the listing
+  // (routes/listings.ts), and REVIEW_MATERIAL_FIELDS covers starts_at,
+  // duration_min, capacity, price, title and most of what an admin would edit.
+  // So on 2026-09-05 the very first admin edit — setting the missing start time
+  // on listing 845567cb — made the listing unpublishable the moment it fixed it.
+  //
+  // Re-binding is exactly the owner's decision ("log it, keep approval") and is
+  // sound on its own terms: the hash exists so a listing cannot be silently
+  // changed AFTER a human judged it, and here a human is judging it right now.
+  // The reviewer is the approver; making them re-approve their own correction is
+  // the busywork that stops people using the feature.
+  //
+  // Only re-bind a listing that ALREADY carries a binding. A draft or a
+  // pending_review listing has none, and minting one here would fabricate an
+  // approval nobody gave — the precise hole the hash was built to close.
+  const wasBound = !!row.reviewed_content_hash;
+  const rebindHash = wasBound
+    ? await reviewedContentHash({ ...row, ...norm })
+    : null;
+
   const setSql = cols.map((c, i) => `${c}=?${i + 2}`).join(", ");
+  const rebindSql = wasBound
+    ? `, reviewed_content_hash=?${cols.length + 4}, reviewed_at=?${cols.length + 5}, reviewed_by=?${cols.length + 6}`
+    : "";
   const updated = await db.prepare(
-    `UPDATE listings SET ${setSql}, updated_at=?${cols.length + 2}
+    `UPDATE listings SET ${setSql}, updated_at=?${cols.length + 2}${rebindSql}
       WHERE id=?1 AND authority_version=?${cols.length + 3}`,
-  ).bind(id, ...cols.map((c) => (norm as any)[c] ?? null), now, Number(row.authority_version ?? 0)).run();
+  ).bind(
+    id, ...cols.map((c) => (norm as any)[c] ?? null), now, Number(row.authority_version ?? 0),
+    ...(wasBound ? [rebindHash, now, a.uid] : []),
+  ).run();
   if (!(updated.meta?.changes ?? 0)) {
     return json({ error: "conflict", message: "This listing changed while you were editing. Reload and try again." }, 409);
   }
@@ -305,6 +335,10 @@ export async function adminEditListing(req: Request, env: Env, id: string): Prom
     status: row.status ?? null,
     fields: Object.keys(changes).join(","),
     field_count: Object.keys(changes).length,
+    // [ADMIN-EDIT-2] Whether the approval was carried across. `false` on an
+    // approved listing would mean the edit just made it unpublishable, which is
+    // the bug this property exists to make visible rather than discoverable.
+    rebound: wasBound,
   });
 
   // The whole reason an admin edits is to make a listing publishable, so answer
