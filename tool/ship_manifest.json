@@ -4549,5 +4549,39 @@
       }
     ],
     "_verified_at": "Read out of the emit sites, not from memory: listing_edit_opened in _MyListingRow._edit (app/lib/features/marketplace/my_listings_screen.dart), both branches; listing_web_form_submitted with the new 'edited' property in _onSubmitted (app/lib/features/marketplace/listing_web_form.dart). Client-side only - inert until an APK ships."
+  },
+  "POSTER-SUBJECT-1": {
+    "description": "[POSTER-SUBJECT-1] The poster prompt described a SCENE and never a PERSON, so the image model invented one from the title and category - which means inventing from a stereotype. 'Cooking with Davy', category Cooking, market India came back as a woman in a sari at a stove. The creator is a man, and the database already knew: users.gender = 'male' and users.avatar_url held a photo of his face. Neither column had ever been read by the poster pipeline. New lib/poster_subject.ts resolveCreatorSubject() reads both; when posterCreatorPhotoEnabled it fetches the avatar (6MB cap) and asks Gemini for strict JSON {faces, usable, gender}, accepting the photo as an editRef likeness reference ONLY on exactly one clear face - an unparseable or unavailable checker falls back to gender-only rather than pasting an unvetted image, because a photo with two faces would put a stranger on a public listing. buildPosterPrompt() gained a WHO block: an emphatic same-face/same-age/same-skin-tone likeness instruction (image models 'improve' a referenced person otherwise) and a separate gender line that stands on its own, so the no-photo path still fixes the fact that was actually wrong. users.gender beats the model's read of the photo - it is the creator's own statement. A creator who stated neither gets NO gender clause, never a guessed one. Wired into BOTH the submit path and the admin regenerate path: an admin regenerating a poster because it showed the wrong person must not get the wrong person again. POSTER_STYLE_VERSION 2 -> 3.",
+    "shipped": "2026-09-05",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "posterCreatorSubjectEnabled",
+      "posterCreatorPhotoEnabled",
+      "posterAutoGenerateOnSubmit"
+    ],
+    "success": [
+      {
+        "event": "listing_poster_generate",
+        "property": "subject",
+        "not_in": [
+          "off",
+          "none:no_photo",
+          "none:unknown",
+          "none:photo_disabled"
+        ],
+        "min_events": 1,
+        "note": "THE assertion, and the reason it is a value and not a count: this event fired on every poster BEFORE this change too, so its arrival proves nothing. The property says which subject the poster was actually painted from - 'likeness:male' (photo accepted), 'gender:male' (photo rejected or off, profile used), 'none:<reason>' (the feature ran and still had nothing to say about who the creator is, i.e. silently back to an invented person), or 'off' (flag dark). A run of 'none:face_check_*' means the vision call is failing and every poster is quietly reverting to the old behaviour while the flag reads true - exactly the shape that looks healthy in a dashboard."
+      },
+      {
+        "event": "listing_poster_generate",
+        "property": "outcome",
+        "equals": "draft",
+        "min_events": 1,
+        "min_pass_rate": 0.8,
+        "note": "The likeness path adds a photo fetch plus a vision call before the first image generation. If that made posters start failing rather than start looking right, this is what catches it."
+      }
+    ],
+    "_verified_at": "Read out of the emit sites, not from memory: the `subject` property is built in runAutoPosterGeneration (worker/src/routes/listings.ts) from the resolveCreatorSubject result and emitted on listing_poster_generate. Flags confirmed live on cache-busted prod /api/config on 2026-09-05: posterCreatorSubjectEnabled=true, posterCreatorPhotoEnabled=true, posterStyleVersion=3 - NOT read from DEFAULTS, where posterCreatorPhotoEnabled is false."
   }
 }
