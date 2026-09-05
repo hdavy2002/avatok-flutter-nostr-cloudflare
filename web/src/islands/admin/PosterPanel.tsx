@@ -4,6 +4,7 @@
 // stopping after ~2 minutes so a stuck generation doesn't poll forever.
 import { useEffect, useRef, useState } from 'react';
 import { Badge, fmt } from './adminListingsShared';
+import { posterStatusLabel } from './labels';
 import type { PosterInfo } from './adminListingsShared';
 import RejectControl from './RejectControl';
 import { Spinner } from '../../components/Spinner';
@@ -109,7 +110,7 @@ export default function PosterPanel({
             status === 'approved' ? 'bg-mint text-mintInk'
               : status === 'rejected' || status === 'failed' ? 'bg-coral text-paper'
               : 'bg-paper2 text-inkSoft'
-          }>{status}</Badge>
+          }>{posterStatusLabel(status)}</Badge>
         ) : null}
       </div>
 
@@ -190,9 +191,52 @@ export default function PosterPanel({
               )}
             </div>
 
+            {/* [POSTER-VARIANTS-UI-1 2026-09-05] The tablet and desktop crops.
+                Approving the poster approves ALL THREE — the public listing page
+                uses tablet and wide as its iPad and desktop heroes
+                (ListingDetailsComp.astro) — so a reviewer who has only seen the
+                phone crop is approving two images sight unseen. They are
+                reframes of the same artwork, so they normally match; "normally"
+                is not a review.
+
+                A missing variant is stated rather than hidden. It is not a
+                failure — the generator drops a variant that errors and the
+                client falls back to the portrait — but the reviewer should know
+                which shape the desktop page will actually show. */}
+            <div className="w-full">
+              <span className="font-mono text-[11px] font-bold uppercase tracking-[0.08em] text-inkSoft">
+                Other shapes
+              </span>
+              <div className="mt-2 grid grid-cols-2 gap-3">
+                {(['tablet', 'wide'] as const).map((ratio) => {
+                  const v = poster.variants?.[ratio];
+                  const label = ratio === 'tablet' ? 'iPad (4:3)' : 'Desktop (16:9)';
+                  return (
+                    <div key={ratio} className="flex flex-col gap-1">
+                      {v?.url ? (
+                        <a href={v.url} target="_blank" rel="noreferrer"
+                          className="block overflow-hidden rounded-zineField border-zine border-ink">
+                          <img src={v.url} alt={`${label} poster for ${listingTitle ?? 'this listing'}`}
+                            className={`w-full object-cover ${ratio === 'tablet' ? 'aspect-[4/3]' : 'aspect-video'}`} />
+                        </a>
+                      ) : (
+                        <div className={`flex w-full items-center justify-center rounded-zineField border-zine border-ink bg-paper2 px-2 text-center font-body text-[12px] font-bold text-inkMute ${ratio === 'tablet' ? 'aspect-[4/3]' : 'aspect-video'}`}>
+                          Not made — the phone crop will be used here
+                        </div>
+                      )}
+                      <span className="font-mono text-[11px] font-bold uppercase tracking-[0.06em] text-inkSoft">{label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="grid gap-1 font-body text-[13px] font-bold text-inkSoft">
               <div>Attempt: <span className="text-ink">{poster.attempt ?? '—'}</span></div>
-              <div>Source: <span className="text-ink">{poster.auto ? 'auto-generated on submit' : 'admin-triggered'}</span></div>
+              <div>Source: <span className="text-ink">{poster.auto ? 'made automatically when the creator submitted' : 'made by an admin'}</span></div>
+              {poster.lettering === 'overlay' && (
+                <div className="text-inkMute">The title is drawn by the page over plain artwork, not painted into the image.</div>
+              )}
               <div>Completed: <span className="text-ink">{fmt(poster.completed_at)}</span></div>
               {status === 'failed' && poster.error && <div className="text-coral">Error: {poster.error}</div>}
               {status === 'rejected' && poster.feedback && <div>Feedback given: <span className="text-ink">{poster.feedback}</span></div>}

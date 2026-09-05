@@ -22,8 +22,8 @@ import type { ListingDetail } from './adminListingsShared';
 /** Mirrors ADMIN_EDITABLE in worker/src/routes/admin_listings.ts. The server is
  *  the authority — it rejects anything outside its own set with
  *  `field_not_editable`, so a drift here is a visible 400, never a silent write. */
-type FieldKind = 'text' | 'textarea' | 'number' | 'datetime';
-const FIELDS: { key: string; label: string; kind: FieldKind; help?: string }[] = [
+type FieldKind = 'text' | 'textarea' | 'number' | 'datetime' | 'select';
+const FIELDS: { key: string; label: string; kind: FieldKind; help?: string; options?: { value: string; label: string }[] }[] = [
   { key: 'title', label: 'Title', kind: 'text' },
   { key: 'blurb', label: 'One-liner', kind: 'text' },
   { key: 'description', label: 'Description', kind: 'textarea' },
@@ -36,6 +36,19 @@ const FIELDS: { key: string; label: string; kind: FieldKind; help?: string }[] =
   { key: 'timezone', label: 'Timezone', kind: 'text' },
   { key: 'location', label: 'Location', kind: 'text' },
   { key: 'video_url', label: 'Video URL', kind: 'text' },
+  // [SESSION-MEDIA-1 2026-09-05] Owner request (a): the creator chooses whether
+  // the session is audio+video or audio only, and an admin must be able to
+  // correct it. The column and the wizard control both already existed; nothing
+  // displayed or edited it. It is not cosmetic — audio_video means the creator
+  // may NOT turn video off mid-session, so getting it wrong is a refund.
+  {
+    key: 'media_mode', label: 'Audio/video', kind: 'select',
+    options: [
+      { value: 'audio_video', label: 'Audio and video' },
+      { value: 'audio_only', label: 'Audio only' },
+    ],
+    help: 'Audio and video means the creator may not turn video off during the session.',
+  },
 ];
 
 const inputCls = 'w-full rounded-zineField border-zine border-ink bg-paper px-3 py-2 font-body text-[14px] font-bold text-ink';
@@ -130,7 +143,12 @@ export default function EditPanel({ listing, busy, focusField, onSave }: {
                   {f.label}
                   {form[f.key] !== initial[f.key] && <span className="ml-2 text-coral">changed</span>}
                 </span>
-                {f.kind === 'textarea' ? (
+                {f.kind === 'select' ? (
+                  <select ref={(el) => { refs.current[f.key] = el; }} className={inputCls}
+                    value={form[f.key]} onChange={(e) => setForm((s) => ({ ...s, [f.key]: e.target.value }))}>
+                    {(f.options ?? []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                ) : f.kind === 'textarea' ? (
                   <textarea ref={(el) => { refs.current[f.key] = el; }} rows={4} className={inputCls}
                     value={form[f.key]} onChange={(e) => setForm((s) => ({ ...s, [f.key]: e.target.value }))} />
                 ) : (

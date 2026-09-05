@@ -1,6 +1,7 @@
 // The 360px queue rail: status filter, refresh, and the list of listings
 // awaiting review. Extracted from AdminListings.tsx unchanged in behaviour.
 import { Badge, fmt, money, type ListingRow } from './adminListingsShared';
+import { statusLabel, kindLabel } from './labels';
 
 export default function QueueRail({
   rows,
@@ -49,10 +50,10 @@ export default function QueueRail({
             >
               <div className="flex items-center gap-2">
                 <span className="min-w-0 flex-1 truncate font-body text-[14px] font-extrabold">{row.title ?? 'Untitled listing'}</span>
-                <Badge tone={selected === row.id ? 'bg-paper text-ink' : 'bg-paper2 text-inkSoft'}>{row.status ?? 'draft'}</Badge>
+                <Badge tone={selected === row.id ? 'bg-paper text-ink' : 'bg-paper2 text-inkSoft'}>{statusLabel(row.status ?? 'draft')}</Badge>
               </div>
               <div className={`mt-1 flex items-center gap-2 font-mono text-[12px] font-bold uppercase tracking-[0.04em] ${selected === row.id ? 'text-paper/80' : 'text-inkSoft'}`}>
-                <span>{row.kind ?? 'listing'}</span>
+                <span>{kindLabel(row.kind ?? 'listing')}</span>
                 <span>•</span>
                 <span>{money(row.price)}</span>
                 <span>•</span>

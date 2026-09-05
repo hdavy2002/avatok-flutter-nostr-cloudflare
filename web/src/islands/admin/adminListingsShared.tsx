@@ -43,6 +43,14 @@ export type PosterInfo = {
   feedback?: string | null;
   attempt?: number | null;
   auto?: boolean | null;
+  /** [POSTER-VARIANTS-UI-1 2026-09-05] The other two shapes. The server has sent
+   *  these since [POSTER-FIRST-1] — `attrs.poster` ships verbatim — but this type
+   *  had no slot for them, so they arrived and were dropped, and the reviewer
+   *  approved a poster having seen only the phone crop. The public listing page
+   *  already uses tablet and wide as its desktop/iPad heroes
+   *  (ListingDetailsComp.astro), so they were going live unreviewed. */
+  variants?: Partial<Record<'portrait' | 'tablet' | 'wide', { url?: string; key?: string; bytes?: number }>> | null;
+  lettering?: 'baked' | 'overlay' | null;
 } | null;
 
 export type HistoryRow = {
@@ -79,6 +87,8 @@ export type AdminListingDetailResponse = {
   slots: ListingSlotRow[];
   blockers?: ListingBlocker[];
   publishable?: boolean;
+  /** [ADMIN-PLAIN-1] uid -> display name, for the history timeline. */
+  actor_names?: Record<string, string> | null;
 };
 
 // Queue-row shape from the unchanged GET /api/admin/listings?status= list.

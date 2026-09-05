@@ -5,6 +5,7 @@
 // across three surfaces and grows).
 import { useMemo } from 'react';
 import { Field, Group, fmt, isEmptyValue, money, pick } from './adminListingsShared';
+import { humanise, kindLabel, sectionLabel, scheduleLabel, mediaModeLabel } from './labels';
 import type { CategoryInfo, CreatorInfo, ListingDetail } from './adminListingsShared';
 
 // Every attrs/listing key rendered explicitly by a named group below. Used
@@ -29,6 +30,9 @@ const HANDLED_ATTR_KEYS = new Set([
 export default function SubmissionPanel({ listing, creator, category }: { listing: ListingDetail; creator: CreatorInfo; category: CategoryInfo }) {
   const attrs = listing.attrs ?? {};
   const p = (key: string) => pick(listing, attrs, key);
+  // [ADMIN-PLAIN-1] Marketplace kinds are the genuinely multi-currency ones;
+  // live events and 1:1 sessions are priced in tokens (1 token = ₹1).
+  const isMarketKind = ['sell', 'buy', 'social'].includes(String(listing.kind ?? ''));
 
   const otherAttrKeys = useMemo(
     () => Object.keys(attrs).filter((k) => !HANDLED_ATTR_KEYS.has(k) && !k.startsWith('commercial_') && !isEmptyValue(attrs[k])),
@@ -60,10 +64,13 @@ export default function SubmissionPanel({ listing, creator, category }: { listin
               <div className="truncate font-mono text-[12px] font-bold uppercase tracking-[0.04em] text-inkSoft">@{creator?.handle ?? 'unknown'}</div>
             </div>
           </div>
-          <Field label="Creator ID" value={listing.creator_id ?? creator?.id} allowEmptyLabel="not provided" />
-          <Field label="KYC status" value={creator?.kyc_status} allowEmptyLabel="not verified" />
+          {/* [ADMIN-PLAIN-1] The uid is kept but named for what it is and put
+              LAST, under the human details — a reviewer needs the name; the id
+              is for when they have to quote it to an engineer. */}
+          <Field label="Identity check" value={humanise(creator?.kyc_status)} allowEmptyLabel="not verified" />
           <Field label="Submitted" value={fmt(listing.created_at as number | undefined)} />
           <Field label="Last updated" value={fmt(listing.updated_at as number | undefined)} />
+          <Field label="Account id (for support)" value={listing.creator_id ?? creator?.id} allowEmptyLabel="not provided" />
         </Group>
 
         <Group title="Basics">
@@ -72,10 +79,9 @@ export default function SubmissionPanel({ listing, creator, category }: { listin
           <Field label="Description" value={listing.description} allowEmptyLabel="not provided" />
           <Field label="Category" value={categoryLabel} allowEmptyLabel="not provided" />
           <Field label="Proposed category" value={p('proposed_category')} />
-          <Field label="Kind" value={listing.kind} allowEmptyLabel="not provided" />
-          <Field label="Vertical" value={p('vertical') ?? category?.vertical} />
-          <Field label="Section" value={p('section')} />
-          <Field label="Slug" value={p('slug')} />
+          <Field label="Type" value={kindLabel(listing.kind)} allowEmptyLabel="not provided" />
+          <Field label="Shown in" value={sectionLabel(p('section'))} />
+          <Field label="Web address" value={p('slug')} />
           <Field label="Vibe tags" value={p('vibe_tags')} />
           <Field label="Spoken languages" value={p('spoken_lang')} />
           <Field label="Credential" value={p('credential')} />
@@ -83,21 +89,40 @@ export default function SubmissionPanel({ listing, creator, category }: { listin
 
         <Group title="Money">
           <Field label="Price" value={money(p('price') as number | undefined)} />
-          <Field label="Billing unit" value={p('billing_unit')} />
-          <Field label="Free entry" value={p('free_entry')} />
+          <Field label="Charged" value={p('billing_unit') === 'hour' ? 'per hour' : humanise(p('billing_unit'))} />
+          <Field label="Free entry" value={Number(p('free_entry')) === 1 ? 'yes' : 'no'} />
           <Field label="Free-entry cap (tokens)" value={p('content_free_cap_tokens')} />
           <Field label="Max per booking" value={p('max_per_booking')} />
-          <Field label="Currency display (legacy)" value={p('currency_display')} />
+          {/* [ADMIN-PLAIN-1 2026-09-05] `currency_display` is hidden for live
+              events and 1:1 sessions, and it was showing "USD" on a listing
+              priced in rupees.
+              It is not a bug in the data so much as a column that does not apply:
+              creator sessions are priced in TOKENS, 1 token = ₹1, and the price
+              above already prints ₹. The web wizard never sets this field, so
+              every web-created listing carries the schema default 'USD'
+              (migrations/listings.sql) — a value nobody chose, describing a
+              currency nobody is charged in. It stays visible for marketplace
+              kinds, which ARE genuinely multi-currency, and it is not deleted
+              from the DB because shipped clients still read the column. */}
+          {isMarketKind && <Field label="Listing currency" value={p('currency_display')} />}
         </Group>
 
         <Group title="Time & availability">
-          <Field label="Schedule mode" value={p('schedule_mode')} />
+          <Field label="Schedule" value={scheduleLabel(p('schedule_mode'))} />
           <Field label="Starts at" value={p('starts_at') ? fmt(Number(p('starts_at'))) : undefined} />
           <Field label="Duration (min)" value={p('duration_min')} />
           <Field label="Recurrence days" value={p('recurrence_days')} />
           <Field label="Recurrence time" value={p('recurrence_time')} />
           <Field label="Timezone" value={p('timezone')} />
           <Field label="Capacity" value={p('capacity')} />
+          {/* [SESSION-MEDIA-1 2026-09-05] Owner request: the reviewer must see
+              whether this session is audio+video or audio only. It is a real
+              `listings` column and has been collected by the wizard since
+              [MKT-3GROUP-1], but no surface ever displayed it. It matters to a
+              reviewer because audio_video means the creator may NOT turn video
+              off — they sold a video session, and one that goes audio-only
+              mid-way is a refund. */}
+          <Field label="Audio/video" value={mediaModeLabel(p('media_mode'))} />
           <Field label="Response time (min)" value={p('response_time_min')} />
         </Group>
 

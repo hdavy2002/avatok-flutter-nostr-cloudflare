@@ -92,6 +92,28 @@ export async function adminListingDetail(req: Request, env: Env, id: string): Pr
   ).bind(id).all<any>();
   const history = historyRs.results ?? [];
 
+  // [ADMIN-PLAIN-1 2026-09-05] Resolve the actors to NAMES.
+  //
+  // The timeline printed a raw clerk uid on every row
+  // ("BY USER_3AUQQADIDHJFTJTTKLD0DTKM8MB"), which tells a non-technical
+  // reviewer nothing about who did what — the owner's actual complaint. One IN
+  // query over the distinct actors, not a join, because the history is capped at
+  // 50 rows and is usually two or three distinct people.
+  const actorIds = [...new Set(history.map((h: any) => String(h.actor_id ?? "")).filter(Boolean))];
+  const actorNames: Record<string, string> = {};
+  if (actorIds.length) {
+    try {
+      const placeholders = actorIds.map((_, i) => `?${i + 1}`).join(",");
+      const us = await db.prepare(
+        `SELECT uid, display_name, handle FROM users WHERE uid IN (${placeholders})`,
+      ).bind(...actorIds).all<any>();
+      for (const u of us.results ?? []) {
+        const name = String(u.display_name ?? "").trim() || (u.handle ? `@${u.handle}` : "");
+        if (name) actorNames[String(u.uid)] = name;
+      }
+    } catch { /* names are a nicety; the timeline still renders without them */ }
+  }
+
   let category: { id: string; label: string; vertical: string | null; intent: string | null } | null = null;
   if (row.category) {
     const c = await db.prepare("SELECT id,label,vertical,intent FROM listing_categories WHERE id=?1").bind(row.category).first<any>();
@@ -118,6 +140,7 @@ export async function adminListingDetail(req: Request, env: Env, id: string): Pr
 
   return json({
     listing, creator, poster, history, category, slots,
+    actor_names: actorNames,
     blockers,
     publishable: blockers.length === 0,
   });
@@ -182,7 +205,7 @@ function approvalRequired(listing: { id: string; status: string; poster_status?:
   }, 409);
 }
 
-const ALLOWED_ACTIONS = ["approve_listing", "reject_listing", "generate_poster", "regenerate_poster", "approve_poster", "reject_poster", "publish"];
+const ALLOWED_ACTIONS = ["approve_listing", "reject_listing", "generate_poster", "regenerate_poster", "approve_poster", "reject_poster", "publish", "reapprove_content"];
 
 // [ADMIN-EDIT-1 2026-09-05] What a reviewer may change on someone else's listing.
 //
@@ -437,6 +460,29 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
     const reason = String(body.reason || body.feedback || "").trim();
     if (!reason) return json({ error: "reason required" }, 400);
     attrs.poster = { ...(attrs.poster || {}), status: "rejected", feedback: reason, rejected_reason: reason };
+  } else if (action === "reapprove_content") {
+    // [ADMIN-EDIT-2 2026-09-05] "I have read the current content and it is still
+    // approved" — re-bind reviewed_content_hash without a status change.
+    //
+    // Publish refuses with `review_stale` when the listing no longer matches the
+    // content that was approved, and before this there was NO admin way back:
+    // approved -> approved is not a legal transition, so the only route was to
+    // reject the listing and make the creator resubmit. That is the right
+    // answer when a CREATOR changed something after approval; it is absurd when
+    // the admin changed it themselves, or when a fix is one field wide.
+    //
+    // This is an approval, not a bypass: it writes the same three review-binding
+    // columns `approve_listing` writes, stamped with this admin's id, and it is
+    // only reachable from a status that has already been approved. An admin
+    // clicking it is asserting they have read what is on the screen — which is
+    // exactly what they assert when they click Approve.
+    if (String(row.status) !== "approved" && String(row.status) !== "published") {
+      return json({
+        error: "not_approved",
+        message: "Only an approved or published listing can have its content re-approved.",
+        status: row.status,
+      }, 409);
+    }
   }
   // [C03 MKT-PUBLISH-UNIFY-1] `publish` is handled ENTIRELY by
   // publishListingAuthoritative() — no raw status UPDATE here anymore. The two
@@ -553,10 +599,14 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
   let reviewedHash: string | null = row.reviewed_content_hash ?? null;
   let reviewedAt: number | null = row.reviewed_at ?? null;
   let reviewedBy: string | null = row.reviewed_by ?? null;
-  if (action === "approve_listing") {
+  if (action === "approve_listing" || action === "reapprove_content") {
     // Hash the content as it will actually be WRITTEN below: `attrs`/`coverMedia`
     // already reflect this request's poster-generation cover-cap merge (if any),
     // and every other listing field is untouched by this action.
+    //
+    // [ADMIN-EDIT-2] `reapprove_content` writes the same three columns with no
+    // status change — see the branch above for why that is an approval and not a
+    // bypass.
     reviewedHash = await reviewedContentHash({ ...row, attrs: JSON.stringify(attrs), cover_media: coverMedia });
     reviewedAt = now;
     reviewedBy = a.uid;

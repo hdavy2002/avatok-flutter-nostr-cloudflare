@@ -274,6 +274,8 @@ export default function AdminListings() {
                   onApproveListing={() => void action(detail.listing.id, 'approve_listing')}
                   onRejectListing={(reason) => void action(detail.listing.id, 'reject_listing', { reason })}
                   onPublish={() => void action(detail.listing.id, 'publish')}
+                  onReapprove={() => void action(detail.listing.id, 'reapprove_content')}
+                  publishable={detail.publishable}
                 />
                 <PosterPanel
                   poster={detail.poster}
@@ -296,7 +298,7 @@ export default function AdminListings() {
                   onReject={(feedback) => void action(detail.listing.id, 'reject_poster', { feedback })}
                   onPoll={() => void loadDetail(detail.listing.id)}
                 />
-                <AuditTimeline history={detail.history} />
+                <AuditTimeline history={detail.history} actorNames={detail.actor_names} />
               </div>
             </div>
           </>
