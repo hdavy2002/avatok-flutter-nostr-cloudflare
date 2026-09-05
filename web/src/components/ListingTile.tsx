@@ -136,7 +136,13 @@ type Pal = {
 };
 
 const PAL: Record<string, Pal> = {
-  teal: { fill: '#2d7180', photo: '#1e5f66', shad: '#0f3f45', dark: true, stub: '#d6ecee' },
+  // [CARD-PALETTE-1 2026-09-05] Was teal (#2d7180). Owner asked for anything but
+  // the green. Replaced with a deep indigo rather than dropped from the rotation:
+  // PAL_ORDER cycles four palettes so adjacent cards differ, and removing one
+  // would put two identical cards side by side. Indigo keeps the `dark: true`
+  // contract — cream text, cream chips, a darker drop shadow — and sits better
+  // against the warm reds and golds the posters come out of than green did.
+  teal: { fill: '#3b3f7a', photo: '#2c2f5e', shad: '#1c1e42', dark: true, stub: '#dcdcf2' },
   butter: { fill: '#f4d8a0', photo: '#c9a86a', shad: '', dark: false, stub: '#5a3d33' },
   oat: { fill: '#d9c3a0', photo: '#b09a76', shad: '', dark: false, stub: '#5a3d33' },
   brick: { fill: '#b8382a', photo: '#a4352a', shad: '#7d271e', dark: true, stub: '#fbe4df' },
@@ -276,6 +282,23 @@ export function ListingTile({
   const bodyCol = p.dark ? CREAM : '#4a3a20';
   const chipCol = p.dark ? CREAM : INK;
   const hairCol = p.dark ? 'rgba(253,241,211,.28)' : 'rgba(22,22,20,.2)';
+
+  // [CARD-CREATOR-LINK-1] The creator's page, when we know their handle. Same
+  // /c/<handle> route the listing page's host card links to, so there is one
+  // answer to "where does a creator's name go".
+  const creatorName = c.creator?.name ?? (c.creator?.handle ? `@${c.creator.handle}` : 'avaTOK');
+  const creatorHref = c.creator?.handle ? `/c/${encodeURIComponent(c.creator.handle)}` : null;
+  const creatorAvatarNode = (
+    <span aria-hidden="true" style={{
+      width: 26, height: 26, flex: 'none', borderRadius: '50%', border: `1.5px solid ${chipCol}`,
+      display: 'grid', placeItems: 'center', fontFamily: 'Nunito, system-ui, sans-serif',
+      fontWeight: 800, fontSize: '0.6875rem', color: chipCol, overflow: 'hidden',
+    }}>
+      {c.creator?.avatar
+        ? <img src={cfImage(c.creator.avatar, { width: 52 })} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        : initials}
+    </span>
+  );
   const stripe = p.dark
     ? 'repeating-linear-gradient(135deg, rgba(253,241,211,.14) 0 9px, transparent 9px 20px)'
     : 'repeating-linear-gradient(135deg, rgba(22,22,20,.12) 0 9px, transparent 9px 20px)';
@@ -402,12 +425,16 @@ export function ListingTile({
         }}>
           <span style={{
             fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800, fontSize: '0.6875rem',
-            letterSpacing: '.08em', background: c.live ? '#d93825' : '#1e5f66', color: CREAM,
+            // [CARD-PALETTE-1] The time pill carried the teal as a hardcoded hex,
+            // so it stayed green on every card regardless of the card's palette —
+            // which is why it survived a palette change on its own. Red still
+            // means LIVE; everything else takes the indigo.
+            letterSpacing: '.08em', background: c.live ? '#d93825' : '#2c2f5e', color: CREAM,
             borderRadius: 100, padding: '6px 11px', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0,
           }}>
             <span style={{
               width: 6, height: 6, borderRadius: '50%', flex: 'none',
-              background: c.live ? '#ffd0c4' : '#8fd0c0',
+              background: c.live ? '#ffd0c4' : '#b9bcf0',
               // [LIST-TRUST-1 §2.3] "ALWAYS ON" gets a pulsing dot, never a time.
               animation: lane === 'agent' ? 'avatok-pill-pulse 1.6s ease-in-out infinite' : undefined,
             }} />
@@ -470,19 +497,45 @@ export function ListingTile({
           <span className="sr-only">
             {c.title}. {blurb} {price ? `Price ${price}.` : ''} {duration ? `${duration}.` : ''}
           </span>
-          <span aria-hidden="true" style={{
-            width: 26, height: 26, flex: 'none', borderRadius: '50%', border: `1.5px solid ${chipCol}`,
-            display: 'grid', placeItems: 'center', fontFamily: 'Nunito, system-ui, sans-serif',
-            fontWeight: 800, fontSize: '0.6875rem', color: chipCol, overflow: 'hidden',
-          }}>
-            {c.creator?.avatar
-              ? <img src={cfImage(c.creator.avatar, { width: 52 })} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              : initials}
-          </span>
-          <span aria-hidden="true" style={{ fontSize: '0.8125rem', fontWeight: 600, color: textCol, minWidth: 0 }} className="truncate">
-            {c.creator?.name ?? (c.creator?.handle ? `@${c.creator.handle}` : 'avaTOK')}
-            {lane === 'agent' ? ' · AI' : c.creator?.verified ? ' ✓' : ''}
-          </span>
+          {/* [CARD-CREATOR-LINK-1 2026-09-05] The avatar and the name go to the
+              creator's page.
+
+              They were `aria-hidden` decoration next to a MORE INFO button, so a
+              visitor who wanted to know who this person is had no way through
+              from the card — which is the question a card about a paid hour with
+              a stranger most provokes. Now one link wrapping both, with a real
+              accessible name, because two adjacent links to the same place is
+              noise for anyone tabbing or listening.
+
+              The whole card is itself clickable, so this stops propagation:
+              without that, clicking the creator would open the listing instead,
+              which is the opposite of what was asked for. */}
+          {creatorHref ? (
+            <a
+              href={creatorHref}
+              data-cta="creator_profile"
+              onClick={(e) => { e.stopPropagation(); }}
+              aria-label={`View ${creatorName}'s profile`}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10, minWidth: 0,
+                textDecoration: 'none', color: 'inherit',
+              }}
+            >
+              {creatorAvatarNode}
+              <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: textCol, minWidth: 0, borderBottom: `1px solid ${chipCol}` }} className="truncate">
+                {creatorName}
+                {lane === 'agent' ? ' · AI' : c.creator?.verified ? ' ✓' : ''}
+              </span>
+            </a>
+          ) : (
+            <>
+              {creatorAvatarNode}
+              <span aria-hidden="true" style={{ fontSize: '0.8125rem', fontWeight: 600, color: textCol, minWidth: 0 }} className="truncate">
+                {creatorName}
+                {lane === 'agent' ? ' · AI' : c.creator?.verified ? ' ✓' : ''}
+              </span>
+            </>
+          )}
           <button
             type="button"
             data-cta="quick_info"

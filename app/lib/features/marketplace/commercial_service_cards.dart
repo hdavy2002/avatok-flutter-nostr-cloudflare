@@ -6,6 +6,7 @@ import '../../core/avatar.dart';
 import '../../core/listings_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../explore/creator_channel.dart' show CreatorChannelScreen;
 import '../explore/widgets.dart' show CoverImage, RatingStars, fmtTokens, fmtWhen;
 import 'listing_quick_info.dart';
 
@@ -272,19 +273,55 @@ class _CommercialServiceCard extends StatelessWidget {
                         const SizedBox(height: Msg.s2),
                       ],
                       Row(children: [
-                        Avatar(
-                          seed: card.creator.uid,
-                          name: creator,
-                          avatarUrl: card.creator.avatarUrl,
-                          size: 28,
+                        // [CARD-CREATOR-LINK-1 2026-09-05] The avatar and name
+                        // open the creator's page.
+                        //
+                        // They were inert decoration, so the question a card
+                        // about a paid hour with a stranger most provokes —
+                        // "who is this person?" — had no answer from the card.
+                        // The web card got the same treatment.
+                        //
+                        // One GestureDetector wrapping both, and it must NOT
+                        // let the tap through: the whole card is already
+                        // tappable and opens the listing, so without an
+                        // absorbing handler tapping the creator would do the
+                        // opposite of what it says.
+                        Semantics(
+                          button: true,
+                          label: 'View $creator’s profile',
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: card.creator.uid.isEmpty
+                                ? null
+                                : () => Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => CreatorChannelScreen(
+                                            creatorUid: card.creator.uid),
+                                      ),
+                                    ),
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                              Avatar(
+                                seed: card.creator.uid,
+                                name: creator,
+                                avatarUrl: card.creator.avatarUrl,
+                                size: 28,
+                              ),
+                              const SizedBox(width: Msg.s2),
+                              ConstrainedBox(
+                                // Bounded, not Expanded: this sits inside a Row
+                                // that already has a rating on the right, and an
+                                // unbounded child inside a GestureDetector in a
+                                // Row is the classic unbounded-width crash.
+                                constraints: const BoxConstraints(maxWidth: 140),
+                                child: Text(creator,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: ADText.preview()),
+                              ),
+                            ]),
+                          ),
                         ),
-                        const SizedBox(width: Msg.s2),
-                        Expanded(
-                          child: Text(creator,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: ADText.preview()),
-                        ),
+                        const Spacer(),
                         RatingStars(
                           rating: card.ratingAvg,
                           count: card.ratingCount,
