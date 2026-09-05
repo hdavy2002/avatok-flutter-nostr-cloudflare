@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getActiveTokenWaited as getActiveToken } from '../../lib/clerk';
 import { request, ApiError } from '../../lib/apiClient';
+import { capture } from '../../lib/analytics';
 import { Spinner } from '../../components/Spinner';
 import QueueRail from './QueueRail';
 import SubmissionPanel from './SubmissionPanel';
@@ -77,9 +78,25 @@ export default function AdminListings() {
       if (!(e instanceof ApiError) || e.status !== 401) throw e;
       const fresh = await getActiveToken(5000, { skipCache: true });
       if (!fresh || fresh === first) {
+        capture('admin_auth_retry', { outcome: fresh ? 'same_token' : 'no_token' });
         throw new ApiError(401, 'Your session ended. Reload the page to sign in again.');
       }
-      return await run(fresh);
+      // The success value to assert. outcome='recovered' is this fix working:
+      // a request that would have shown "auth: expired" instead went through on
+      // a freshly minted token. A run of 'same_token' means Clerk handed back
+      // the identical expired string despite skipCache, which would mean the
+      // session really is dead and the retry is not the answer.
+      try {
+        const out = await run(fresh);
+        capture('admin_auth_retry', { outcome: 'recovered' });
+        return out;
+      } catch (again) {
+        capture('admin_auth_retry', {
+          outcome: 'failed_after_refresh',
+          status: again instanceof ApiError ? again.status : 0,
+        });
+        throw again;
+      }
     }
   }, []);
 
