@@ -52,8 +52,9 @@ gh workflow run android.yml --ref main    -f environment=prod    -f artifact=apk
 
 **"ship local"** is NOT a cloud build and has nothing to do with `gh workflow run`,
 Play, or `latestAppBuild`. It means: **take the APK that was just built locally and
-FRESH-install it on BOTH connected targets** — the owner's phone and the running
-emulator. Skip the two widget questions; the phrase already answers them.
+FRESH-install it on every connected target.** Skip the two widget questions; the
+phrase already answers them. As of 2026-09-05 that is **the phone only** — the
+emulator AVD no longer exists (see the target table below).
 
 ```bash
 scripts/push_apk.sh                              # newest APK under app/build/ -> BOTH
@@ -65,17 +66,32 @@ scripts/push_apk.sh --keep-data                  # in-place upgrade instead (rar
 **Fresh install is the DEFAULT, deliberately** (owner decision 2026-08-22): the
 emulator **hangs on in-place updates**, so the script force-stops the app,
 `adb uninstall ai.avatok.avatok_call`, then installs clean. This **wipes app data —
-he will be logged out on both targets.** Say so in one line when reporting; do not
+he will be logged out.** Say so in one line when reporting; do not
 quietly reach for `--keep-data` to avoid it, and do not "improve" the script back to
 `adb install -r` as the default.
 
-The two targets, verified 2026-08-22 — both Android 16 (API 36), both `arm64-v8a`,
-so **ONE arm64 APK covers both**, no second build:
+🚨 **THERE IS ONLY ONE TARGET TODAY — THE EMULATOR IS GONE (verified 2026-09-05).**
+`emulator -list-avds` prints **nothing**. `~/.android/avd/Pixel_10a.avd` still
+exists but is a 4 KB husk containing only `tmpAdbCmds` — no `config.ini`, no disk
+images — and the `Pixel_10a.ini` that registers it is missing, so the emulator
+exits with `Unknown AVD name [Pixel_10a]`. Do not "start the emulator" and wait for
+a device that will never appear; the leftover directory makes it look present when
+it is not.
 
-| Target | Serial |
-|---|---|
-| motorola edge 70 fusion (owner's phone) | `ZA223K79KG` |
-| Android emulator | `emulator-5554` |
+| Target | Serial | State |
+|---|---|---|
+| motorola edge 70 fusion (owner's phone) | `ZA223K79KG` | ✅ Android 16 (API 36), `arm64-v8a` |
+| Android emulator | ~~`emulator-5554`~~ | ❌ AVD deleted — must be recreated before use |
+
+To bring the emulator back, the `android-36` `google_apis_playstore` `arm64-v8a`
+system image **is still installed**, so only the AVD itself needs creating
+(`avdmanager create avd`). **Ask the owner first** — see the disk warning below.
+
+**⚠️ `push_apk.sh` takes the APK PATH FIRST, then the serial.** A bare
+`scripts/push_apk.sh ZA223K79KG` is read as an APK path and dies with
+`APK not found: ZA223K79KG`, which reads like a missing build rather than a
+misplaced argument. Correct form:
+`scripts/push_apk.sh app/build/app/outputs/flutter-apk/app-debug.apk ZA223K79KG`.
 
 The script does **not** build. If no APK exists under `app/build/`, it says so and
 exits — that is the signal the build hasn't happened yet, not a bug to route around.
@@ -994,11 +1010,16 @@ landed), so they were green on day one and fail only on NEW debt.
   | Android SDK | `/Users/davy/Library/Android/sdk` | SDK 36.0.0, platform android-37.0, build-tools 36.0.0 |
   | `adb` | `…/sdk/platform-tools/adb` | on `PATH` |
   | JDK | `/opt/homebrew/opt/openjdk@17/…` | OpenJDK 17.0.19, set via `flutter config --jdk-dir` |
-  | Emulator + AVD | `…/sdk/emulator` | 37.1.11.0, AVD **`Pixel_10a`** |
+  | Emulator binary | `…/sdk/emulator` | 37.1.11.0 — **but NO AVD exists** (2026-09-05) |
+  | System image | `…/system-images/android-36/google_apis_playstore/arm64-v8a` | installed; an AVD can be recreated from it |
 
   `flutter doctor` is **green on the Android toolchain** with all licences accepted.
-  Disk is ~35 GB free. Total footprint ≈ 10 GB (Flutter 1.5 G, SDK 7.4 G,
-  `~/.pub-cache` 947 M).
+
+  ⚠️ **DISK IS DOWN TO ~15 GB FREE (2026-09-05), not the ~35 GB this file claimed.**
+  A debug APK alone is 271 MB and one AVD is ~8–10 GB, so creating an emulator would
+  take most of what is left. Check `df -h /` before adding anything, and ask the
+  owner before creating an AVD, adding an SDK or installing Xcode. `flutter clean`
+  in `app/` reclaims the most for the least loss.
 
   **`/usr/bin/java` is a stub and reports "Unable to locate a Java Runtime" — that is
   NOT a broken toolchain.** Flutter is pointed at the Homebrew JDK above and Gradle
@@ -1010,10 +1031,17 @@ landed), so they were green on day one and fail only on NEW debt.
   ```bash
   cd app
   flutter analyze                    # compile-check your own Dart — USE THIS
-  flutter build apk --debug          # local APK
+  flutter build apk --debug          # local APK — see the timing note below
   flutter run -d ZA223K79KG          # hot reload on the phone (r = reload, R = restart)
-  /Users/davy/Library/Android/sdk/emulator/emulator -avd Pixel_10a &   # start the AVD
+  # No emulator command: there is no AVD. See the ship-local section above.
   ```
+
+  ⏱ **A cold `flutter build apk --debug` takes ~20 MINUTES on this machine**
+  (measured 2026-09-05: 11:46 → 12:06, arm64 only). Most of it is silent — Gradle
+  prints `Running Gradle task 'assembleDebug'...` and nothing else for ten minutes
+  at a stretch. That is not a hang. Run it detached to a log
+  (`flutter build apk --debug > /tmp/apkbuild.log 2>&1 &`) and poll, rather than
+  holding a foreground call open and concluding it died.
 
   A local `flutter run` leaves `app/build/…/app-debug.apk` next to a
   `*.cache.dill.track.dill` — that `.dill` is the incremental-compiler artifact and is
@@ -1030,12 +1058,11 @@ landed), so they were green on day one and fail only on NEW debt.
   ⚠️ **This does not change the build rules above.** `ship it` still means a cloud
   build via `gh workflow run`, Play distribution still goes through CI, and you still
   **never trigger a cloud build the owner did not ask for**. A local build is for
-  preview on the phone and the emulator (`scripts/push_apk.sh`), never for shipping
+  preview on the phone (`scripts/push_apk.sh`), never for shipping
   to users.
 
-  ⚠️ **Disk is finite — 35 GB free with the toolchain in place.** Do not add Xcode,
-  a second SDK, or more AVDs without asking. If space gets tight, `flutter clean` in
-  `app/` reclaims the most for the least loss.
+  ⚠️ **Disk: see the warning above — ~15 GB free as of 2026-09-05.** Do not add
+  Xcode, a second SDK, or an AVD without asking.
 
 - **REPO LOCATION — `/Users/davy/Documents/websites/avaTOK-2-Flutter` (verified 2026-08-02).**
   This is a REAL directory holding the real `.git`, not a symlink. There is no
