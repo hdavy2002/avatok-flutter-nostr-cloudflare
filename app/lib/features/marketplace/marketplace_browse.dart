@@ -188,12 +188,20 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
       // is what makes "scroll down for more categories" possible at all.
       body: RefreshIndicator(
         onRefresh: () async => _load(fresh: true),
-        // Pull-to-refresh must keep working even when the page is shorter than
-        // the viewport (empty grid, no shelves), which a CustomScrollView will
-        // not do on its default physics.
-        child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
+        // [UI-SEAM-OFF-1 2026-09-05] `removeBottom` so this scroll view runs
+        // flush to the bottom of the shell body. Nested inside the shell's
+        // Scaffold, the MediaQuery reaching this screen can still carry the
+        // device's bottom inset even though the shell's own bar already sits
+        // over it — which shows up as a dead paper strip under the last row.
+        child: MediaQuery.removePadding(
+          context: context,
+          removeBottom: true,
+          // Pull-to-refresh must keep working even when the page is shorter
+          // than the viewport (empty grid, no shelves), which a
+          // CustomScrollView will not do on its default physics.
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
           SliverToBoxAdapter(child: Column(children: [
         Padding(
           // The search field must START BELOW THE TIP OF THE HEADER WAVE and
@@ -349,8 +357,9 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
               );
             },
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: Msg.s5)),
-        ]),
+            const SliverToBoxAdapter(child: SizedBox(height: Msg.s3)),
+          ]),
+        ),
       ),
     );
   }

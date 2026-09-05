@@ -259,11 +259,22 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
                 //
                 // All of that is gone: no gesture detector (so neither a tap
                 // nor a swipe can expand it), no caret, and no "Swipe up"
-                // label. The plain SizedBox keeps the band's 40px height so
-                // the layout above it — and the RAJ-INDIGO-1 footer seam in
-                // shell_v2.dart, which pins itself to this bar's top edge —
-                // is unchanged. Only the affordance is removed, not the band.
-                const SizedBox(height: 40),
+                // label.
+                //
+                // [UI-SEAM-OFF-1 2026-09-05] ...and now the 40px band it left
+                // behind is gone too (owner). With `_kShowAppSwitcherIcons`
+                // false, this Column renders NOTHING — the 40px was kept only
+                // so the RAJ-INDIGO-1 footer seam, which pinned itself to this
+                // bar's top edge, would not move. That seam has since been
+                // deleted, so the height was holding a 40dp empty strip across
+                // the bottom of every screen in the app for no one.
+                //
+                // The enclosing Container + SafeArea deliberately STAY: they
+                // are what paints the indigo under the Android gesture inset,
+                // so the system nav keeps its band instead of sitting on bare
+                // cream. Restore the height here if the icon row ever comes
+                // back.
+                const SizedBox.shrink(),
                 // The app-switcher icon row is hidden with it.
                 if (_kShowAppSwitcherIcons)
                   // Keep the proven full-size cells when open. Only the closed state

@@ -34,8 +34,12 @@ class CommercialCardMetrics {
 
   factory CommercialCardMetrics.of(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final w = (size.width * 0.78).clamp(240.0, 360.0);
-    final h = (w * 1.7).clamp(0.0, size.height * 0.52);
+    // [UI-SEAM-OFF-1 2026-09-05] Bigger again (owner): 0.78 -> 0.87 of the
+    // width and 0.52 -> 0.60 of the height. 0.87 still leaves a visible sliver
+    // of the next card, which is the whole reason this is a fraction and not
+    // full-bleed — at 1.0 the row stops reading as swipeable.
+    final w = (size.width * 0.87).clamp(260.0, 420.0);
+    final h = (w * 1.7).clamp(0.0, size.height * 0.60);
     return CommercialCardMetrics(w, h);
   }
 }

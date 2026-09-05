@@ -15,6 +15,9 @@ import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/rajasthani_motifs.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../shell/ava_sidebar.dart';
+import '../../shell/shell_v2.dart'; // ShellScope — app switch / clerk / sign-out
+import '../../shell/v2/shell_chrome.dart'; // AvaTokHeader — the shared app header
 import '../ava_companion/companion_session_store.dart';
 import '../avadial/block_list.dart';
 import 'askava_tools.dart';
@@ -76,6 +79,13 @@ class _AskAvaHomeState extends State<AskAvaScreen> {
   List<CompanionSession> _sessions = const [];
   bool _loading = true;
   bool _showArchived = false;
+
+  // [SIDEBAR-UNIFY-1] The `_enabledApps`/`_accountKind` sidebar-state fields and
+  // the `_loadSidebar()` loader that used to live here were only needed for the
+  // hand-rolled `AvaSidebar` this screen built inline — `AvaSidebarForShell`
+  // (shell/ava_sidebar.dart) now owns that load itself, so this screen doesn't
+  // need its own copy.
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   void initState() {
@@ -332,88 +342,101 @@ class _AskAvaHomeState extends State<AskAvaScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const band = AD.bandRani;
-    final onBand = AD.onBand(band);
+    // [UI-BRAIN-INDIGO-2026] Owner decision: AvaBrain drops the rani pink band.
+    // Header AND the wave seam under it are both indigo, so they read as ONE
+    // continuous indigo header whose bottom edge is the haldi wave — the same
+    // chrome the rest of the app uses. Do not reintroduce rani here.
+    // [UI-BRAIN-INDIGO-2026 rev4] Owner: the entry page uses THE shared AvaTOK
+    // header (hamburger · wordmark · wallet chip · avatar · bell), not a
+    // bespoke back-arrow bar. AvaBrain is reachable from the footer on every
+    // root, so there is deliberately NO back arrow — `leading` stays null and
+    // the hamburger opens the shell sidebar.
+    //
+    // AvaTokHeader paints its own band BEHIND the status bar and stamps
+    // AvaTheme.bandOverlay, so this body must NOT be wrapped in a top SafeArea
+    // — that would put a cream strip above the indigo.
+    const band = AD.bandIndigo;
+    // [UI-BRAIN-INDIGO-2026 rev5] NOT `ShellScope.of(context)` — that asserts and
+    // then force-unwraps. The one call site today (`_askAva` in shell_v2.dart)
+    // pushes on the active root's navigator, which IS inside the scope, but that
+    // same method falls back to `Navigator.of(context)` when the root's nav key
+    // has no state — the app's root navigator, OUTSIDE ShellScope. Reading it
+    // nullably means that path renders instead of throwing in build.
+    final shell = context.dependOnInheritedWidgetOfExactType<ShellScope>();
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: AD.bg,
-      floatingActionButton: _showArchived
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: _newChat,
-              backgroundColor: AD.primaryBadge,
-              foregroundColor: AD.sendActiveInk,
-              shape: RoundedRectangleBorder(borderRadius: Msg.brPill),
-              icon: PhosphorIcon(PhosphorIcons.plus(PhosphorIconsStyle.bold),
-                  color: AD.sendActiveInk),
-              label: Text('New chat', style: ADText.rowName(c: AD.sendActiveInk)),
+      // The hamburger's target: the same drawer AvaTOK opens. `current: ''` so no
+      // row reads as active — AvaBrain is a global action, not one of the apps.
+      // Outside the shell there is no app-switch/sign-out to wire, so the drawer
+      // is dropped and the header falls back to a back button (below).
+      // [SIDEBAR-UNIFY-1] AvaSidebar is now the only sidebar (owner decision
+      // 2026-08-28), reached here via the shared ShellV2 adapter instead of a
+      // hand-rolled instance. This also fixes a real bug in the previous inline
+      // wiring: it mapped taps through `ShellV2.rootForDeepLink` ONLY, so a
+      // non-root destination (e.g. "Library", "Settings") from AvaBrain's own
+      // drawer silently did nothing after closing it. `AvaSidebarForShell` falls
+      // back to `openShellDestination` for those, matching every other root.
+      drawer: shell == null ? null : const AvaSidebarForShell(),
+      // The centered empty-state action is the only way to start a chat.
+      // Do not duplicate it with a floating "New chat" button.
+      floatingActionButton: null,
+      body: Column(children: [
+        AvaTokHeader(
+          title: _showArchived ? 'Archived' : 'AvaBrain',
+          // In the shell: hamburger, no back arrow (owner). Outside it: a back
+          // button, because a hamburger with no drawer is a dead control.
+          leading: shell == null ? AdBackButton(color: AD.onBand(band)) : null,
+          onMenu: () => _scaffoldKey.currentState?.openDrawer(),
+          // Chats/Groups/Calls is the messenger's tab strip — not this page.
+          bottom: null,
+          actions: [
+            IconButton(
+              tooltip: _showArchived ? 'Back to chats' : 'Archived',
+              icon: PhosphorIcon(
+                  _showArchived
+                      ? PhosphorIcons.chatsCircle(PhosphorIconsStyle.bold)
+                      : PhosphorIcons.archive(PhosphorIconsStyle.bold),
+                  color: AD.onBand(band), size: 22),
+              onPressed: () {
+                setState(() {
+                  _showArchived = !_showArchived;
+                  _loading = true;
+                });
+                _load();
+              },
             ),
-      body: SafeArea(
-        child: Column(children: [
-          // Header band + decorative seam overlay (same Stack pattern as
-          // CompanionHome) so the seam never becomes a layout sibling that
-          // leaves a blank strip.
-          Stack(clipBehavior: Clip.none, children: [
-            Column(mainAxisSize: MainAxisSize.min, children: [
-              _header(band, onBand),
-              const SizedBox(height: 15),
-            ]),
-            const Positioned(left: 0, right: 0, bottom: 0, child: FlowerChainSeam()),
-          ]),
-          Expanded(
-            child: _loading
-                ? const Center(
-                    child: SizedBox(
-                        width: 22, height: 22,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: AD.iconSearch)))
-                : (_sessions.isEmpty ? _emptyState() : _list()),
-          ),
-        ]),
-      ),
-    );
-  }
-
-  Widget _header(Color band, Color onBand) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
-      decoration: BoxDecoration(
-        color: band,
-        border: const Border(bottom: BorderSide(color: AD.borderHairline, width: 3)),
-      ),
-      child: Row(children: [
-        AdBackButton(color: onBand),
-        const SizedBox(width: 4),
-        ZineIconBadge(
-            icon: PhosphorIcons.brain(PhosphorIconsStyle.fill),
-            color: AD.iconVideo, size: 38),
-        const SizedBox(width: Msg.s2),
-        // Short, responsive title: Expanded + ellipsis so the trailing controls
-        // can never be pushed off-screen on a narrow phone.
+          ],
+        ),
+        const DoubleWaveSeam(bandColor: AD.bandIndigo),
+        const SizedBox(height: 8),
         Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('AvaBrain',
-                style: ADText.appTitle(c: onBand),
-                maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false),
-            Text(_showArchived ? 'Archived' : 'Your AvaTOK assistant',
-                style: ADText.preview(c: onBand),
-                maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false),
-          ]),
+          child: _loading
+              ? const Center(
+                  child: SizedBox(
+                      width: 22, height: 22,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: AD.iconSearch)))
+              : (_sessions.isEmpty ? _emptyState() : _list()),
         ),
-        IconButton(
-          tooltip: _showArchived ? 'Back to chats' : 'Archived',
-          icon: PhosphorIcon(
-              _showArchived
-                  ? PhosphorIcons.chatsCircle(PhosphorIconsStyle.bold)
-                  : PhosphorIcons.archive(PhosphorIconsStyle.bold),
-              color: onBand, size: 22),
-          onPressed: () {
-            setState(() {
-              _showArchived = !_showArchived;
-              _loading = true;
-            });
-            _load();
-          },
-        ),
+        // [UI-SEAM-OFF-1 2026-09-05] The `PillMorseFooter` strip that used to
+        // close this list is REMOVED at the owner's request, along with every
+        // other instance of it in the app. History: [UI-BRAIN-PILL-2026]
+        // dropped the indigo wave for the 2D pill-morse strip and
+        // [UI-PILL-FOOTER-2026] moved it to the shared widget. The header keeps
+        // its wave — only footers changed.
+        // [UI-BRAIN-INDIGO-2026 rev4] Replaces the old `SafeArea(bottom: true)`.
+        // Inside the shell this is 0 (Scaffold already removes the bottom
+        // padding for a body that has a bottomNavigationBar, so the SafeArea was
+        // a no-op there). Opened OUTSIDE the shell the inset is real, and it is
+        // filled with the band colour instead of cream — so the system gesture
+        // area is still clear of content AND the footer reads as one indigo.
+        // [UI-BRAIN-INDIGO-2026 rev5] +1: a 1px indigo strip directly under the
+        // wave. The seam and the switcher bar are separate widgets, so on a
+        // fractional devicePixelRatio their shared edge can round apart and let
+        // the Scaffold cream through as a hairline — the thin white line the
+        // owner saw above "Swipe up". Anything that peeks now is band-coloured.
+        Container(height: MediaQuery.paddingOf(context).bottom + 1, color: band),
       ]),
     );
   }
@@ -424,7 +447,7 @@ class _AskAvaHomeState extends State<AskAvaScreen> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             ZineIconBadge(
                 icon: PhosphorIcons.brain(PhosphorIconsStyle.fill),
-                color: AD.iconVideo, size: 54),
+                color: AD.haldi, size: 54),
             const SizedBox(height: Msg.s3),
             Text(_showArchived ? 'No archived chats' : 'Ask me anything',
                 style: ADText.threadName(), textAlign: TextAlign.center),
@@ -440,7 +463,11 @@ class _AskAvaHomeState extends State<AskAvaScreen> {
               const SizedBox(height: Msg.s4),
               AdButton(
                 label: 'Start a chat',
-                variant: AdButtonVariant.primary,
+                // [UI-BRAIN-INDIGO-2026] `primary` is rani pink. `teal` is the
+                // enum's marigold slot (AD.newGroup == AD.haldi), so the CTA
+                // stays the loudest thing on the page without reintroducing
+                // pink. Enum name kept for its ~100 other call sites.
+                variant: AdButtonVariant.teal,
                 fontSize: 15,
                 icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
                 onPressed: _newChat,
@@ -921,10 +948,11 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
 
   @override
   Widget build(BuildContext context) {
-    // [UI-BRAIN-2026] The header band is DARK (rani), so every foreground on it
-    // goes through AD.onBand — the previous ink-on-indigo title and icons were
-    // very nearly invisible.
-    const band = AD.bandRani;
+    // [UI-BRAIN-INDIGO-2026] Indigo band, matched to AskAvaScreen — the wave
+    // seam below it is the same indigo, so header + seam are one band ending in
+    // the haldi wave. The band is still DARK, so every foreground on it keeps
+    // going through AD.onBand (ink on indigo is very nearly invisible).
+    const band = AD.bandIndigo;
     final onBand = AD.onBand(band);
     return Scaffold(
       backgroundColor: AD.bg,
@@ -935,7 +963,11 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
         iconTheme: IconThemeData(color: onBand),
         elevation: 0,
         titleSpacing: 0,
-        shape: const Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
+        shape: const Border(bottom: BorderSide(color: Colors.transparent, width: 0)),
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(36),
+          child: DoubleWaveSeam(bandColor: AD.bandIndigo),
+        ),
         title: Row(children: [
           _sparkleBadge(30),
           const SizedBox(width: Msg.s2),
@@ -959,6 +991,13 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
       ),
       body: SafeArea(
         top: false,
+        // [UI-BRAIN-INDIGO-2026 rev4] bottom: false, with an explicit indigo
+        // inset filler as the Column's last child (below). Inside the shell the
+        // bottom inset is already 0 — Scaffold removes it for a body that has a
+        // bottomNavigationBar — so the old SafeArea was a no-op; opened outside
+        // the shell it is real, and filling it with the band colour keeps
+        // content clear of the gesture area without a cream strip under the wave.
+        bottom: false,
         child: Column(children: [
           Expanded(
             child: _turns.isEmpty
@@ -974,6 +1013,13 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
                   ),
           ),
           _composer(),
+          // [UI-SEAM-OFF-1 2026-09-05] The shared footer strip that sat under
+          // the composer is removed with the rest of them (owner). The indigo
+          // gesture-inset filler below stays — that is what keeps the system
+          // nav area off the composer's paper.
+          Container(
+              height: MediaQuery.paddingOf(context).bottom + 1,
+              color: AD.bandIndigo),
         ]),
       ),
     );
@@ -1112,10 +1158,17 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
     // ink controls on the old indigo fill were effectively invisible.
     return Container(
       decoration: const BoxDecoration(
+        // [UI-BRAIN-INDIGO-2026 rev2] Ink top rule restored — the wave moved
+        // below the composer, so the composer needs its own top edge again.
         border: Border(top: BorderSide(color: AD.borderHairline, width: 2)),
         color: AD.card,
       ),
-      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
+      // The persistent footer/switcher occupies the bottom edge on phones.
+      // Reserve clearance so the input and send button remain fully visible.
+      // [UI-BRAIN-PILL-2026] Bottom padding 2 -> 0. The pill strip carries its
+      // own 7px of paper above the pills, which is all the breathing room the
+      // input box needs below it.
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, 0),
       child: Row(children: [
         Expanded(
           // Input box stays WHITE (owner request 2026-07-13, pic 3).
@@ -1153,12 +1206,16 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
             width: 46,
             height: 46,
             decoration: BoxDecoration(
-              color: _busy ? AD.cardHover : AD.sendActiveBg,
+              // [UI-BRAIN-INDIGO-2026] Send was rani pink (AD.sendActiveBg) —
+              // the last pink on this screen. Haldi keeps it the loudest thing
+              // in the composer and matches the sparkle badge and the footer's
+              // "Swipe up" pill. AD.sendActiveBg is untouched app-wide.
+              color: _busy ? AD.cardHover : AD.haldi,
               borderRadius: BorderRadius.circular(AD.rInput),
               border: Border.all(color: AD.borderControl, width: 1),
             ),
             child: PhosphorIcon(PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.fill),
-                color: _busy ? AD.textTertiary : AD.sendActiveInk, size: 20),
+                color: _busy ? AD.textTertiary : AD.onBand(AD.haldi), size: 20),
           ),
         ),
       ]),
