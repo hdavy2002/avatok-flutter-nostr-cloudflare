@@ -1631,6 +1631,12 @@ export interface PlatformConfig {
   // person. Costs one extra vision call per poster and puts a real likeness on
   // a public image, so it ships dark and is flipped deliberately. Boolean.
   posterCreatorPhotoEnabled: boolean;
+  // [POSTER-FILMY-1 2026-09-05] Replace the creator's blurb as the poster's
+  // tagline with an LLM-written filmy punch line (Hinglish or Devanagari, the
+  // model's choice). Costs one short text call per poster. Read by
+  // routes/listings.ts + routes/admin_listings.ts -> lib/poster_dialogue.ts.
+  // Boolean -> NOT in numericKeys.
+  posterDialogueEnabled: boolean;
 
   // --- outbound campaigns ---
   // Outbound AI Calling Campaigns (Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md §18).
@@ -2388,7 +2394,7 @@ const DEFAULTS: PlatformConfig = {
   posterVerifyEnabled: false,
   posterComposeFallbackEnabled: false,
   posterVerifyMaxAttempts: 3,
-  posterStyleVersion: 3,
+  posterStyleVersion: 4,
   // [POSTER-SUBJECT-1 2026-09-05] The gender clause defaults ON, unlike its
   // neighbours above. It is free (no extra call, a few words of prompt), it is
   // reading a fact the creator stated about themselves, and its absence is the
@@ -2397,6 +2403,10 @@ const DEFAULTS: PlatformConfig = {
   // The likeness half stays dark: an extra vision call per poster, and a real
   // person's face on a public image. Flipped deliberately in KV.
   posterCreatorPhotoEnabled: false,
+  // The punch line is the point of the change, and its failure mode is benign:
+  // if the writer is unavailable the tagline falls back to the blurb, i.e. the
+  // old behaviour. So it defaults ON.
+  posterDialogueEnabled: true,
 
   // --- outbound campaigns ---
   // Outbound AI Calling Campaigns (Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md §18) — DARK.

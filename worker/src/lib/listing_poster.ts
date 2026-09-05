@@ -17,6 +17,7 @@ import { sha256Hex } from "../util";
 import { generateImage } from "../routes/ava_image";
 import { verifyPosterText, type PosterVerdict } from "./poster_verify";
 import type { PosterSubject } from "./poster_subject";
+import { writePosterDialogue } from "./poster_dialogue";
 import { track } from "../hooks";
 
 /** [POSTER-FIRST-1] The three shapes a poster is rendered at. Portrait is the
@@ -86,6 +87,9 @@ export type PosterGenerateOptions = {
    *  face check passed, becomes the editRef; its `gender` becomes a prompt
    *  clause that works with or without the photo. */
   subject?: PosterSubject | null;
+  /** [POSTER-FILMY-1] posterDialogueEnabled — replace the creator's blurb with
+   *  an LLM-written filmy punch line as the poster's tagline. */
+  dialogue?: boolean;
   /** [POSTER-CHECKPOINT-1 2026-09-05] Called the moment the PORTRAIT is in R2
    *  and is therefore a usable poster, BEFORE the tablet/wide reframes run.
    *
@@ -122,13 +126,32 @@ export type CoverMediaItem = {
 // verbatim is a problem the model can actually get right, and the read-back
 // pass in poster_verify.ts checks that it did.
 //
-// The old prompt asked for "printed-poster texture", which is what produced the
-// aged sepia look nobody wanted. The distinction that matters, and the reason
-// this prompt is worded the way it is: PRINTING artifacts (halftone dots, off-
-// register ink, flat limited-ink colour) are what make a 1970s Hindi film
-// poster read as a printed object, while AGING artifacts (sepia, foxing, tears,
-// fading) just make it look old. This asks for the first and explicitly forbids
-// the second.
+// [POSTER-FILMY-1 2026-09-05] STOP DICTATING THE LOOK. This is the second time
+// this prompt has been over-specified into a corner, and the lesson is the same
+// both times.
+//
+// v1 asked for "printed-poster texture" and got an aged sepia thing nobody
+// wanted. v2 over-corrected into a recipe: "THREE-COLOUR SCREEN PRINT", "ink
+// palette limited to three flat poster inks only — vermilion red, chrome green
+// and black", "coarse halftone dot screen", "hard outlines, heavy black
+// linework, no soft shading, no gradients, no airbrush". Every one of those
+// lines was followed exactly, so EVERY poster came out the same red/green/white
+// object — and "flat ink, hard outlines, no shading" is a precise description of
+// a cartoon, which is what the owner said they looked like. The prompt also
+// carried "NOT a cartoon", so it was arguing with itself and losing.
+//
+// What the reference posters he wants actually are: PAINTED. Modelled faces,
+// real light and shadow, full colour, and a different palette, era and display
+// face on every single one — because they were painted by different artists for
+// different films.
+//
+// So the style block now names the genre, insists on paint rather than flat
+// print, and hands the choice of palette, era, lettering and composition to the
+// model. Owner instruction, verbatim: "please dont hard code instructions to AI,
+// let ai think, you just give what content to fill in". If a future poster looks
+// wrong, the fix is to give it better CONTENT (a truer scene, a better line, the
+// right subject), not to add another adjective here. Adding adjectives is what
+// produced the identical red-and-green cartoons.
 //
 // The negative list is not decoration either. Left to itself the model imitates
 // the whole poster OBJECT, which means inventing a cast list, a studio name and
@@ -143,8 +166,10 @@ export type CoverMediaItem = {
 // ---------------------------------------------------------------------------
 
 /** Bump when the prompt changes shape, so telemetry can separate style eras.
- *  3 = [POSTER-SUBJECT-1], which added the WHO block (creator likeness + gender). */
-export const POSTER_STYLE_VERSION = 3;
+ *  3 = [POSTER-SUBJECT-1], which added the WHO block (creator likeness + gender).
+ *  4 = [POSTER-FILMY-1], which deleted the dictated three-ink screen-print look
+ *      and the blurb-as-tagline. */
+export const POSTER_STYLE_VERSION = 4;
 
 export type PosterCopy = { title: string; tagline: string };
 
@@ -181,7 +206,7 @@ function subjectDirection(subject?: PosterSubject | null): string[] {
       "THE SUBJECT IS THE PERSON IN THE SUPPLIED REFERENCE PHOTOGRAPH. Repaint",
       "that same person as the poster's subject — the same face, the same",
       "apparent age, the same skin tone, the same hair and the same build —",
-      "restyled into this poster's hand-painted ink technique. Do NOT substitute",
+      "painted in whatever technique you have chosen for this poster. Do NOT substitute",
       "a different person, do NOT make them younger, lighter-skinned or more",
       "conventionally attractive, and do NOT add a second person.",
     );
@@ -197,8 +222,12 @@ function subjectDirection(subject?: PosterSubject | null): string[] {
 export function buildPosterPrompt(
   row: Record<string, any>,
   subject?: PosterSubject | null,
+  /** [POSTER-FILMY-1] The resolved copy, when the caller already has it (the
+   *  filmy dialogue is written by an LLM and must reach the prompt and the
+   *  verifier as the SAME strings). Falls back to the row's own fields. */
+  copyOverride?: PosterCopy | null,
 ): string {
-  const { title, tagline } = posterCopy(row);
+  const { title, tagline } = copyOverride ?? posterCopy(row);
 
   // Scene direction only — these shape the ARTWORK and are never lettered.
   const scene: string[] = [];
@@ -215,31 +244,39 @@ export function buildPosterPrompt(
   }
 
   const parts: string[] = [
-    "1970s Indian film poster, THREE-COLOUR SCREEN PRINT on bright white paper.",
-    "Ink palette limited to three flat poster inks only — vermilion red, chrome",
-    "green and black — solid unblended ink, coarse halftone dot screen clearly",
-    "visible, slight off-register printing where one plate sits a millimetre off",
-    "the others.",
-    "Hand-painted by an Indian film poster painter: bold confident brush strokes,",
-    "hard outlines, heavy black linework, dramatic high contrast, no soft shading,",
-    "no gradients, no airbrush.",
+    // --- what it is (the genre, and nothing beyond it) ---
+    "A hand-painted Bollywood film poster, painted by a studio poster artist for",
+    "a cinema hoarding.",
+    // --- the ONE aesthetic constraint, because it is the failure mode ---
+    // Painted vs printed is not a style preference, it is the difference between
+    // the reference posters and the flat red/green cartoons v2 produced. Left
+    // unsaid, image models drift to flat vector fills, which is precisely what
+    // "cartoon" means here.
+    "PAINTED, NOT PRINTED: real brushwork, faces modelled with light and shadow,",
+    "believable skin tones, depth. The people must look like real people who were",
+    "painted — not flat vector shapes, not cel-shaded, not a comic panel, not a",
+    "sticker, not a 3D render.",
+    // --- everything else is the model's call, ON PURPOSE ---
+    "Everything else is YOUR choice, and should suit THIS poster and no other:",
+    "the palette, the decade it evokes, the composition, and above all the",
+    "display lettering — invent a face for this title rather than reaching for a",
+    "default. Real posters look nothing like each other, and neither should",
+    "these. Do not limit yourself to two or three flat inks.",
+    // --- what goes in it ---
     scene.length
       ? `Scene: ${scene.join(". ")}.`
       : "Scene: a lively creator at work, large in frame.",
     ...subjectDirection(subject),
-    "Title lettering: MASSIVE hand-painted condensed display letters with a thick",
-    "black outline and a hard drop shadow, slightly uneven and hand-made, filling",
-    "the width of the poster.",
-    "NOT a cartoon. NOT vector art. NOT cel-shaded. NOT a children's book",
-    "illustration. NOT a 3D render. No smooth digital lines.",
-    "CRISP AND NEW: no sepia, no foxing, no tears, no fading, no dust, no scratches.",
+    // --- the safety rules, which are NOT style and stay verbatim ---
     "Render EXACTLY this text and NOTHING ELSE — no cast list, no studio name, no",
     "credits, no price, no dates, no signature, no artist's mark, no printer's",
     "marks, no watermark, no invented words, no filler lettering, and no text of",
     "any kind in the margins:",
     `  TITLE: "${title}"`,
     tagline ? `  TAGLINE: "${tagline}"` : "  (no tagline — render the title only)",
-    "Fictional characters only. No real celebrity likenesses.",
+    "The title is the largest thing on the poster.",
+    "CRISP AND NEW: no sepia, no foxing, no tears, no fading, no dust, no scratches.",
+    "No real celebrity likenesses.",
   ];
 
   return parts.join(" ").slice(0, 1800);
@@ -310,8 +347,21 @@ export async function generateListingPoster(
   env: Env,
   opts: PosterGenerateOptions,
 ): Promise<{ poster: PosterState; coverMedia: CoverMediaItem[] | null }> {
-  const copy = posterCopy(opts.row);
-  const basePrompt = (opts.prompt || buildPosterPrompt(opts.row, opts.subject)).slice(0, 1800);
+  // [POSTER-FILMY-1] The copy is resolved FIRST and once, because three things
+  // must agree on the exact strings: the image prompt, the read-back verifier
+  // (poster_verify.ts diffs against these), and `PosterState.copy`, which the
+  // client letters over the artwork on the compose-fallback path. Deriving it
+  // twice is how a poster ends up failing verification against a tagline it was
+  // never asked to paint.
+  let copy = posterCopy(opts.row);
+  if (opts.dialogue) {
+    const line = await writePosterDialogue(env, opts.row);
+    // A null line means the writer was unavailable or returned something
+    // unusable. Keep the blurb — a plain tagline is a duller poster, not a
+    // broken one, and it is exactly what shipped before this change.
+    if (line) copy = { ...copy, tagline: line };
+  }
+  const basePrompt = (opts.prompt || buildPosterPrompt(opts.row, opts.subject, copy)).slice(0, 1800);
   // [POSTER-SUBJECT-1] An explicit editRef still wins (the admin override), but
   // with none supplied the creator's own vetted photo is the reference.
   const editRef = opts.editRef || opts.subject?.photoUrl || undefined;

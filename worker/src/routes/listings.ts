@@ -39,7 +39,6 @@ import { LANGS as TRL_LANGS, RATE_PER_MIN as TRL_RATE } from "./translate";
 import { track } from "../hooks";
 // [MKT-POSTER-AUTO-1] Shared poster generation, extracted from admin_listings.ts.
 import {
-  buildPosterPrompt,
   generateListingPoster,
   type CoverMediaItem,
   type PosterState,
@@ -1801,6 +1800,7 @@ export async function submitListingForApproval(req: Request, env: Env, id: strin
       // the request path, and passed down.
       subjectEnabled: (cfg as any).posterCreatorSubjectEnabled === true,
       subjectPhoto: (cfg as any).posterCreatorPhotoEnabled === true,
+      dialogue: (cfg as any).posterDialogueEnabled === true,
     }).catch((e) => {
       // runAutoPosterGeneration() itself never throws (it wraps everything in
       // try/catch and always tries to land a terminal state) — this is a final
@@ -1931,6 +1931,8 @@ async function runAutoPosterGeneration(
     variants?: boolean; verify?: boolean; composeFallback?: boolean; verifyMaxAttempts?: number;
     // [POSTER-SUBJECT-1] posterCreatorSubjectEnabled / posterCreatorPhotoEnabled.
     subjectEnabled?: boolean; subjectPhoto?: boolean;
+    // [POSTER-FILMY-1] posterDialogueEnabled.
+    dialogue?: boolean;
   },
 ): Promise<void> {
   const t0 = Date.now();
@@ -1953,13 +1955,16 @@ async function runAutoPosterGeneration(
       : subject.photoUrl ? `likeness:${subject.gender ?? "unknown"}`
       : subject.gender ? `gender:${subject.gender}`
       : `none:${subject.photoSkipped ?? "unknown"}`;
-    const prompt = buildPosterPrompt(opts.row, subject);
+    // [POSTER-FILMY-1] The prompt is NOT built here any more. It now depends on
+    // the resolved copy (the filmy tagline is written by an LLM inside
+    // generateListingPoster), and building it in two places is how the prompt
+    // and the read-back verifier end up disagreeing about what was asked for.
     const { poster, coverMedia } = await generateListingPoster(env, {
       subject,
+      dialogue: opts.dialogue === true,
       listingId: opts.listingId,
       ownerUid: opts.ownerUid,
       row: opts.row,
-      prompt,
       actorUid: opts.actorUid,
       auto: true,
       attempt: opts.attempt,

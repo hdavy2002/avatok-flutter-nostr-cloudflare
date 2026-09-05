@@ -226,6 +226,9 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
         row,
         prompt: promptOverride,
         subject,
+        // [POSTER-FILMY-1] Same on regenerate: an admin re-rolling a poster
+        // should get a fresh punch line, not the same one back.
+        dialogue: (posterCfg as any).posterDialogueEnabled === true,
         actorUid: a.uid,
         auto: false,
         attempt,
