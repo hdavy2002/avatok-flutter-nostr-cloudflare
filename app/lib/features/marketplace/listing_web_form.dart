@@ -46,10 +46,21 @@ import '../../core/ui/messenger_theme.dart';
 import 'my_listings_screen.dart';
 
 class ListingWebFormScreen extends StatefulWidget {
-  const ListingWebFormScreen({super.key, this.listingId, this.source = 'menu'});
+  const ListingWebFormScreen({
+    super.key,
+    this.listingId,
+    this.source = 'menu',
+    this.returnOnSubmit = false,
+  });
 
   /// Resume an existing draft (`?id=`), e.g. from an "unfinished listing" row.
   final String? listingId;
+
+  /// [LIST-EDIT-EMBED-1] Set by callers that ARE My listings (the Edit row), so
+  /// submitting pops back to the screen they came from instead of pushing a
+  /// second copy of My listings on top of the first one — which would leave Back
+  /// landing on a stale duplicate showing the pre-edit card.
+  final bool returnOnSubmit;
 
   /// Where the creator came from — carried into every event on this screen so a
   /// drop-off can be attributed to an entry point rather than to "the form".
@@ -251,7 +262,12 @@ class _ListingWebFormScreenState extends State<ListingWebFormScreen> {
     Analytics.capture('listing_web_form_submitted', {
       'source': widget.source,
       'listing_id': listingId ?? '',
+      'edited': widget.listingId != null,
     });
+    if (widget.returnOnSubmit) {
+      Navigator.of(context).pop(true);
+      return;
+    }
     // Owner's flow: the creator lands on My listings and sees their card with
     // "Review pending" on it. pushReplacement, not push — the half-filled form
     // behind us is finished business and Back from My listings should return to

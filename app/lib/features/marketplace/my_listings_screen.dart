@@ -4,9 +4,11 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
 import '../../core/cached_image.dart';
 import '../../core/listings_api.dart';
+import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import 'edit_listing_screen.dart';
+import 'listing_web_form.dart';
 
 /// Friendly status label (the raw 'published' shows as 'live' to owners).
 ///
@@ -155,6 +157,44 @@ class _MyListingRow extends StatelessWidget {
   }
 
   Future<void> _edit(BuildContext context) async {
+    // [LIST-EDIT-EMBED-1 2026-09-05] Edit MUST open the same form the listing was
+    // created in. Creation is the web wizard (`ListingWebFormScreen`, [LIST-EMBED-1]),
+    // which knows the [MKT-3GROUP-1] taxonomy, ₹-per-hour pricing, media_mode,
+    // schedule and the `attrs` content blocks. `EditListingScreen` below is the
+    // legacy GOODS editor built on the flat `kMarketCategories` list — it does not
+    // merely show the wrong fields, it DESTROYS the listing on save:
+    //
+    //   * `edit_listing_screen.dart:61` falls back to `kMarketCategories.first`
+    //     when the stored category isn't in that list, so a `live_cooking` listing
+    //     silently becomes `Vehicles`;
+    //   * `updateListing` (worker/src/routes/listings.ts:1379) does NOT validate
+    //     `category` on edit and re-derives `section` from it, so the listing is
+    //     moved out of its group and off the marketplace;
+    //   * it forces `price_currency: 'USD'` and a flat price over the ₹/hour one.
+    //
+    // The wizard already supports `?id=` hydration (`ListingWizard.tsx:208`), so
+    // this is a route change, not new edit code. The legacy screen stays for the
+    // old goods listings that predate the wizard, behind the same flag every other
+    // entry point uses.
+    if (RemoteConfig.listingWebFormEnabled) {
+      Analytics.capture('listing_edit_opened', {
+        'listing_id': card.id,
+        'surface': 'web_form',
+      });
+      await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => ListingWebFormScreen(
+          listingId: card.id,
+          source: 'my_listings_edit',
+          returnOnSubmit: true,
+        ),
+      ));
+      onChanged();
+      return;
+    }
+    Analytics.capture('listing_edit_opened', {
+      'listing_id': card.id,
+      'surface': 'legacy_goods_editor',
+    });
     // Full Zine-themed editor (pic 5). Editing bumps the listing's content
     // version server-side, reopening the talk-once-per-version gate (Specs §3 B).
     final saved = await Navigator.of(context).push<bool>(
