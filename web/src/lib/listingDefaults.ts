@@ -177,7 +177,9 @@ const DEFAULTS: Record<ListingFlavor, ListingContentDefaults> = {
     houseRules: [
       { heading: 'Prep before we start', body: 'Chop and measure ahead so you’re not scrambling mid-recipe.' },
       { heading: 'Substitutions are fine', body: 'Don’t have an ingredient? Ask in chat — most things have a swap.' },
-      { heading: 'Camera on your station is optional', body: 'Show your dish if you want feedback, or just cook along quietly.' },
+      // [LIST-DEFAULTS-LEN-1 2026-09-05] 32 chars max — was 'Camera on your
+      // station is optional' (34). See the note at the top of this file.
+      { heading: 'Camera on your station: optional', body: 'Show your dish if you want feedback, or just cook along quietly.' },
       { heading: 'Kitchen safety first', body: 'Take care around the stove — don’t rush a step to keep up.' },
     ],
     whatYouGet: ['A live, guided cook-along', 'A prep list sent before the session', 'Easy ingredient swaps', 'Live Q&A while you cook'],
@@ -199,7 +201,9 @@ const DEFAULTS: Record<ListingFlavor, ListingContentDefaults> = {
     houseRulesIntro: 'Khula dil se aana — sawal jo bhi ho, judgment nahi milega.',
     houseRules: [
       { heading: 'Accurate birth details matter', body: 'A wrong birth time changes the whole chart — double-check before you send it.' },
-      { heading: 'This is guidance, not a guarantee', body: 'Astrology offers perspective — final decisions are always yours.' },
+      // [LIST-DEFAULTS-LEN-1] 32 chars max — was 'This is guidance, not a
+      // guarantee' (33).
+      { heading: 'Guidance, not a guarantee', body: 'Astrology offers perspective — final decisions are always yours.' },
       { heading: 'Privacy respected', body: 'What’s discussed in your session stays between us.' },
       { heading: 'Come with questions', body: 'The more specific your question, the more useful the reading.' },
     ],
@@ -245,7 +249,10 @@ const DEFAULTS: Record<ListingFlavor, ListingContentDefaults> = {
       { label: 'Tell me your goal', body: 'Share what you’re working toward before the call — a switch, a promotion, a first job.' },
       { label: 'The consultation', body: 'We map out where you are, where you want to be, and what’s in the way.' },
       { label: 'An action plan', body: 'You leave with 2-3 concrete next steps, not vague encouragement.' },
-      { label: 'Resume/LinkedIn notes (if relevant)', body: 'Quick feedback on your resume or profile if it’s part of your goal.' },
+      // [LIST-DEFAULTS-LEN-1] 24 chars max — was 'Resume/LinkedIn notes (if
+      // relevant)' (35), which would have blocked every career-coaching
+      // creator the same way the cooking default blocked the owner.
+      { label: 'Resume/LinkedIn notes', body: 'Quick feedback on your resume or profile if it’s part of your goal.' },
     ],
     houseRulesIntro: 'Honest feedback doonga — kabhi thoda kadwa lag sakta hai, but useful hoga.',
     houseRules: [

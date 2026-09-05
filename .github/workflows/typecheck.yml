@@ -78,6 +78,16 @@ jobs:
         if: always()
         run: python3 tool/check_design_guard.py --check icons
 
+      # [LIST-DEFAULTS-LEN-1 2026-09-05] The wizard's prefilled defaults must fit
+      # the Worker's attrs limits. They are applied automatically from step 4 and
+      # sent on EVERY save, so an over-length default 422s a creator on a step
+      # they have not reached, over content they never typed — and per-step
+      # client validation cannot catch it, because it only checks the step in
+      # front of the creator. Three were already over the cap when this landed.
+      - name: Prefilled listing defaults fit the worker's limits -- run locally with `python3 tool/check_listing_defaults.py`
+        if: always()
+        run: python3 tool/check_listing_defaults.py
+
   # [SHIP-GATE-1] Ship-readiness gate. Same shape and same reasoning as
   # design-guard above: plain python3, no deps, ~1s, builds and deploys nothing,
   # and it lives on pull_request because that is the trigger that actually
