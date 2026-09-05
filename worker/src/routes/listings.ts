@@ -87,6 +87,27 @@ import { priceFloorError } from "../lib/session_pricing";
 const APP = "avaexplore";
 // live_event/consult = creator services; sell/buy/social = AvaMarketplace listings.
 const KINDS = new Set(["live_event", "consult", "sell", "buy", "social"]);
+/** [CURRENCY-INR-DEFAULT-1 2026-09-05] The site currency is the rupee, and one
+ *  token is ₹1 (CLAUDE.md, [TOKENS-INR-1]).
+ *
+ *  `currency_display` is a real multi-currency field a MARKETPLACE listing can
+ *  set — this is only the fallback for a listing that never set one. It used to
+ *  be "USD", which is how every web-created listing ended up carrying a currency
+ *  nobody chose: the create wizard does not send the field at all, so the
+ *  fallback WAS the value. The admin queue then showed "USD" beside a price
+ *  printed in ₹, which is what the owner spotted.
+ *
+ *  Note the migration's column DEFAULT is not what produced those rows and
+ *  changing it would not have fixed them — createListing always binds this
+ *  column, so the SQLite default never applies on that path. The fallback here
+ *  is the real default. (SQLite cannot ALTER a column default anyway; it needs a
+ *  table rebuild, which is not worth doing for a value the code always supplies.)
+ *
+ *  commercial_checkout.ts made the same change for the payment rail under
+ *  [PAY-RAIL-2]; this is the other half, so the two can no longer disagree about
+ *  what an unset currency means. */
+export const LISTING_DEFAULT_CURRENCY = "INR";
+
 const MARKET_KINDS = new Set(["sell", "buy", "social"]);
 const CAPACITIES = new Set([1, 10, 20]);
 const FANOUT_DAILY_CAP = 2;       // A2 anti-spam
@@ -649,7 +670,7 @@ function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set
     // (today, only ai_voice_agents), never a made-up group.
     group_id: groupFor(r.section ?? DEFAULT_SECTION),
     price: Number(r.price), effective_price: pct > 0 ? Math.round(Number(r.price) * (100 - pct) / 100) : Number(r.price),
-    promo_pct: pct, currency_display: r.currency_display ?? "USD",
+    promo_pct: pct, currency_display: r.currency_display ?? LISTING_DEFAULT_CURRENCY,
     country: r.country ?? null, adults_only: !!r.adults_only,
     badges: parseJson(r.badges, [] as unknown[]),
     cover_media: parseJson(r.cover_media, [] as unknown[]),
@@ -1349,7 +1370,7 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
              ?24,?25,?26,?27,?28,?29,?30,?31,?32,?33,
              ?34,?35,?36,?37,?38,?39,?40,?41,?42,?43,?44,?45,?46)`,
   ).bind(id, ctx.uid, kind, (f.title as string) ?? "Untitled", f.description ?? null, category,
-    f.price ?? 0, f.currency_display ?? "USD", f.country ?? null, f.adults_only ?? 0, f.badges ?? null,
+    f.price ?? 0, f.currency_display ?? LISTING_DEFAULT_CURRENCY, f.country ?? null, f.adults_only ?? 0, f.badges ?? null,
     f.cover_media ?? null, f.starts_at ?? null, f.duration_min ?? null,
     kind === "consult" ? (f.capacity ?? 1) : null, now,
     f.agent_instructions ?? null, f.agent_lang ?? null, f.agent_voice_persona ?? null,

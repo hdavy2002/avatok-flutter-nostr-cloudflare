@@ -31,7 +31,13 @@ CREATE TABLE IF NOT EXISTS listings (
   description      TEXT,
   category         TEXT NOT NULL,
   price            INTEGER NOT NULL DEFAULT 0, -- coins (0 = free, A5)
-  currency_display TEXT DEFAULT 'USD',
+  -- [CURRENCY-INR-DEFAULT-1 2026-09-05] The site currency is the rupee; 1 token = ₹1.
+  -- NOTE this DEFAULT is not what sets the value in practice: createListing always
+  -- binds the column, so LISTING_DEFAULT_CURRENCY in routes/listings.ts is the real
+  -- default. Changed here so a fresh database agrees with the code. Existing
+  -- databases keep the old column default — SQLite cannot ALTER one without a table
+  -- rebuild, and it is unreachable on every path that writes a listing.
+  currency_display TEXT DEFAULT 'INR',
   country          TEXT,
   adults_only      INTEGER NOT NULL DEFAULT 0,
   badges           TEXT,                       -- JSON: extra icon flags (language, recorded, ...)
