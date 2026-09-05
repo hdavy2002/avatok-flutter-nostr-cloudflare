@@ -44,6 +44,14 @@
   .blip{flex:0 0 auto;white-space:nowrap;display:inline-flex;align-items:center;gap:5px;padding:9px 14px;border:1.5px solid var(--ink);border-radius:999px;background:var(--cream);font:800 0.75rem 'Nunito',sans-serif;text-transform:uppercase;cursor:pointer}
   .blip[aria-pressed='true']{background:var(--red);color:#fff;border-color:var(--ink)}
   .listing-card[hidden]{display:none!important}
+  /* [MKT-3GROUP-WEB-3] While a blip is active the section stops paginating.
+     The pager hides cards by DOM POSITION (`:nth-child(n+5){display:none}`),
+     and that rule wins over `hidden=false` — so a card that matched the blip
+     but happens to sit sixth stayed invisible, and the blip read as "nothing
+     here" when there was something. A filtered section shows every match and
+     hides its Next-4 button; clearing the blip restores the pager. */
+  .category.filtering .listing-card:not([hidden]){display:flex}
+  .category.filtering .more-btn{display:none}
   .cat-kicker{font-size:0.875rem}.cat-intro{font-size:1.25rem}.poster-strip{font-size:0.75rem}.listing-card{min-height:41.25rem}.listing-photo{height:18.125rem;flex-basis:18.125rem}.status{font-size:0.6875rem;padding:9px 12px}.card-body{padding:27px 22px 22px}.micro{font-size:0.6875rem;line-height:1.35;margin-bottom:13px}.card-title{font-size:clamp(2.1875rem,2.35vw,2.9375rem);line-height:1.02}.card-desc{font-size:1rem;line-height:1.45;margin-top:16px!important}.stats{gap:8px;margin-top:20px}.stat{padding:8px 10px;font-size:0.6875rem;line-height:1.2}.feature-icons{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}.feature-icon{display:inline-flex;align-items:center;gap:5px;font:800 0.8125rem 'Nunito',sans-serif}.creator-row{padding-top:20px}.creator-avatar{width:42px;height:42px;font-size:0.875rem}.creator-name{font-size:0.875rem}.duration{font-size:0.6875rem}.more-btn{font-size:0.75rem}.more-btn span{margin-left:5px;opacity:.65}.company-footer h3{font-size:0.75rem}.company-footer a,.footer-tag{font-size:0.875rem}.legal-line{font-size:0.6875rem}
   .listing-card:nth-child(1) .card-title{color:#fff4d3;text-shadow:3px 3px 0 #a5261c,6px 6px 0 #171613}.listing-card:nth-child(2) .card-title{font-family:Georgia,'Times New Roman',serif;font-style:italic;text-transform:none;color:#8a1e18;text-shadow:2px 2px 0 #fff4d3}.listing-card:nth-child(2) .card-body{border-top:8px solid #171613}.listing-card:nth-child(3) .card-body{padding-right:92px}.listing-card:nth-child(3) .card-title{position:absolute;right:15px;top:25px;max-height:285px;writing-mode:vertical-rl;transform:rotate(180deg);font-family:'Arial Black',Impact,sans-serif;font-size:1.9375rem;line-height:.9;color:#a12720}.listing-card:nth-child(4) .listing-photo{height:340px;flex-basis:340px}.listing-card:nth-child(4) .card-body{background:#171613;color:#fff4d3}.listing-card:nth-child(4) .card-title{font-family:Georgia,'Times New Roman',serif;text-align:center;color:#efad24;letter-spacing:.02em}.listing-card:nth-child(4) .micro,.listing-card:nth-child(4) .verified{color:#efad24}.listing-card:nth-child(5) .card-title{font-family:'Arial Black',Impact,sans-serif;color:#fff1ce;-webkit-text-stroke:1.5px #171613;text-shadow:5px 5px 0 #bd2c22}.listing-card:nth-child(5) .card-body{background:#2d7180}.listing-card:nth-child(6) .card-title{font-family:'Brush Script MT','Segoe Script',cursive;font-size:clamp(2.625rem,3vw,3.5rem);line-height:.9;text-transform:none;color:#8e1d25}.listing-card:nth-child(6) .card-body{background:#f4d8a0}.listing-card:nth-child(7) .card-title{font-family:Georgia,'Times New Roman',serif;text-align:center;border-top:4px solid #171613;border-bottom:4px solid #171613;padding:8px 0;color:#b3261e}.listing-card:nth-child(7) .card-body{background:#d9c3a0}.listing-card:nth-child(8) .card-title{font-family:Impact,Haettenschweiler,sans-serif;letter-spacing:.035em;color:#fff4d3;text-shadow:4px 4px 0 #171613}.listing-card:nth-child(8) .card-body{background:#c54131}
   .listing-card:nth-child(3) .card-body{padding-right:22px}.listing-card:nth-child(3) .card-title{position:static;right:auto;top:auto;max-height:none;writing-mode:horizontal-tb;transform:none;font-size:clamp(2.1875rem,2.35vw,2.9375rem)}.listing-sprite{position:absolute;z-index:0;width:200%;height:400%;max-width:none;object-fit:fill}.frame-1 .listing-sprite{left:0;top:0}.frame-2 .listing-sprite{left:-100%;top:0}.frame-3 .listing-sprite{left:0;top:-100%}.frame-4 .listing-sprite{left:-100%;top:-100%}.frame-5 .listing-sprite{left:0;top:-200%}.frame-6 .listing-sprite{left:-100%;top:-200%}.frame-7 .listing-sprite{left:0;top:-300%}.frame-8 .listing-sprite{left:-100%;top:-300%}
@@ -213,6 +221,16 @@
     const cards=()=>section?section.querySelectorAll('.listing-card'):[];
     const all=document.createElement('button');all.type='button';all.className='blip';all.setAttribute('aria-pressed','true');all.textContent='Sab · All';
     row.append(all);
+    /* [MKT-3GROUP-WEB-3] Only render a blip this section can actually fill.
+       The home page is static marketing HTML with eight hand-written demo
+       cards per section, while a group has up to fifteen sub-categories — so
+       rendering the full taxonomy here gives a visitor a row of chips where
+       most clicks empty the section and look broken. The MARKETPLACE keeps
+       every blip, because there the cards are live and an empty result is a
+       true answer; here it would only ever mean "we did not write a demo card
+       for that one". */
+    const present=new Set([...cards()].map((card)=>card.dataset.cat).filter(Boolean));
+    blips=blips.filter((b)=>present.has(b.id));
     blips.forEach((b)=>{
       const btn=document.createElement('button');btn.type='button';btn.className='blip';btn.setAttribute('aria-pressed','false');
       btn.textContent=`${b.emoji?b.emoji+' ':''}${b.label}`;btn.dataset.cat=b.id;
@@ -222,6 +240,11 @@
       row.querySelectorAll('.blip').forEach((other)=>other.setAttribute('aria-pressed',String(other===btn)));
       const cat=btn.dataset.cat;
       cards().forEach((card)=>{card.hidden=Boolean(cat)&&card.dataset.cat!==cat});
+      /* Filtering means showing what matched, all of it — so suspend the
+         four-at-a-time pager while a blip is active (see the .filtering rule)
+         and put the section back on page one when the filter clears. */
+      section?.classList.toggle('filtering', Boolean(cat));
+      if(cat) section?.classList.remove('page-two');
     }));
   });
   document.querySelectorAll('.catalogue .more-btn').forEach((button)=>{
