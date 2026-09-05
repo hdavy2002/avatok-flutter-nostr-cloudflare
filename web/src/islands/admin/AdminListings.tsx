@@ -43,11 +43,54 @@ export default function AdminListings() {
 
   useEffect(() => { void (async () => { setToken(await getActiveToken()); setChecked(true); })(); }, []);
 
-  const loadQueue = useCallback(async (t: string, keepSelection = true) => {
+  // [ADMIN-AUTH-FRESH-1 2026-09-05] Every admin request goes through here, and
+  // this is where "auth: expired" was coming from.
+  //
+  // TWO things were wrong, and only fixing both is enough:
+  //
+  //  1. The token was read ONCE at mount and reused forever. A Clerk session JWT
+  //     lives about a minute, and this is a page an admin leaves open — reading
+  //     a submission, watching a 40-60s poster job — so the mount-time string
+  //     was long dead before the first moderation click. Hence: read it per
+  //     request.
+  //  2. Reading it per request is still not enough, because Clerk CACHES the
+  //     session JWT, and an idle or backgrounded tab gets handed a cached token
+  //     whose `exp` has already passed. The worker verifies the signature
+  //     happily and then rejects it on expiry (worker/src/auth.ts:50) — a live
+  //     session, refused. The only cure is to make Clerk mint a new one, which
+  //     is what `skipCache` does.
+  //
+  // So: try the cached token, and on a 401 force a fresh mint and go again
+  // exactly ONCE. Once, deliberately — a second 401 on a freshly minted token is
+  // a real authentication failure (signed out, revoked, not an admin), and
+  // retrying that is a loop that hides the actual answer.
+  //
+  // `token` state survives, but only as the "are we signed in at all" gate.
+  const withAuth = useCallback(async <T,>(
+    run: (token: string) => Promise<T>,
+  ): Promise<T> => {
+    const first = await getActiveToken();
+    if (!first) throw new ApiError(401, 'Your session ended. Reload the page to sign in again.');
+    try {
+      return await run(first);
+    } catch (e) {
+      if (!(e instanceof ApiError) || e.status !== 401) throw e;
+      const fresh = await getActiveToken(5000, { skipCache: true });
+      if (!fresh || fresh === first) {
+        throw new ApiError(401, 'Your session ended. Reload the page to sign in again.');
+      }
+      return await run(fresh);
+    }
+  }, []);
+
+  const loadQueue = useCallback(async (keepSelection = true) => {
     setLoading(true);
     setError(null);
     try {
-      const r = await request<{ listings: ListingRow[] }>('/api/admin/listings', { auth: t, query: { status: status === 'all' ? undefined : status } });
+      const r = await withAuth((t) => request<{ listings: ListingRow[] }>(
+        '/api/admin/listings',
+        { auth: t, query: { status: status === 'all' ? undefined : status } },
+      ));
       setRows(r.listings ?? []);
       setSelected((prev) => (keepSelection && prev && (r.listings ?? []).some((row) => row.id === prev) ? prev : (r.listings?.[0]?.id ?? null)));
     } catch (e) {
@@ -57,12 +100,14 @@ export default function AdminListings() {
     } finally {
       setLoading(false);
     }
-  }, [status]);
+  }, [status, withAuth]);
 
-  const loadDetail = useCallback(async (t: string, id: string) => {
+  const loadDetail = useCallback(async (id: string) => {
     setDetailLoading(true);
     try {
-      const d = await request<AdminListingDetailResponse>(`/api/admin/listings/${encodeURIComponent(id)}`, { auth: t });
+      const d = await withAuth((t) => request<AdminListingDetailResponse>(
+        `/api/admin/listings/${encodeURIComponent(id)}`, { auth: t },
+      ));
       setDetail(d);
       // Patch the queue row's status/title from the freshly-fetched detail so
       // the rail badge stays truthful without a full requery.
@@ -73,29 +118,31 @@ export default function AdminListings() {
     } finally {
       setDetailLoading(false);
     }
-  }, []);
+  }, [withAuth]);
 
   useEffect(() => {
     if (!checked || !token) { if (checked) setLoading(false); return; }
-    void loadQueue(token);
+    void loadQueue();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checked, token, status]);
 
   useEffect(() => {
     if (!token || !selected) { setDetail(null); return; }
-    void loadDetail(token, selected);
+    void loadDetail(selected);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, selected]);
 
   const currentRow = useMemo(() => rows.find((row) => row.id === selected) ?? null, [rows, selected]);
 
   async function action(id: string, act: string, payload: Record<string, unknown> = {}) {
-    if (!token) return;
     setBusy(`${id}:${act}`);
     setError(null);
     setErrorAct(null);
     try {
-      await request(`/api/admin/listings/${encodeURIComponent(id)}`, { auth: token, method: 'POST', body: { action: act, ...payload } });
+      await withAuth((t) => request(
+        `/api/admin/listings/${encodeURIComponent(id)}`,
+        { auth: t, method: 'POST', body: { action: act, ...payload } },
+      ));
     } catch (e) {
       setError(e instanceof ApiError ? e.error : 'Action failed.');
       setErrorAct(act);
@@ -108,7 +155,7 @@ export default function AdminListings() {
       // succeeded still read "FAILED / Poster generation was interrupted",
       // which is worse than no feedback: it says the opposite of the truth.
       try {
-        await loadDetail(token, id);
+        await loadDetail(id);
       } catch { /* the banner above already carries the real failure */ }
       setBusy(null);
     }
@@ -128,7 +175,7 @@ export default function AdminListings() {
         status={status}
         onStatusChange={setStatus}
         onSelect={setSelected}
-        onRefresh={() => token && void loadQueue(token)}
+        onRefresh={() => void loadQueue()}
       />
 
       <section className="flex flex-col gap-5">
@@ -193,7 +240,7 @@ export default function AdminListings() {
                   onRegenerate={() => void action(detail.listing.id, 'regenerate_poster')}
                   onApprove={() => void action(detail.listing.id, 'approve_poster')}
                   onReject={(feedback) => void action(detail.listing.id, 'reject_poster', { feedback })}
-                  onPoll={() => token && void loadDetail(token, detail.listing.id)}
+                  onPoll={() => void loadDetail(detail.listing.id)}
                 />
                 <AuditTimeline history={detail.history} />
               </div>

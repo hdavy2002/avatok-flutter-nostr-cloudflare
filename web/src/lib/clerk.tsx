@@ -56,7 +56,14 @@ const DEVICE_ID_KEY = 'avatok_device_id';
 
 // ── module-level bridges so non-React callers (requireGuestAuth) can read a
 // live Clerk session and open the gate modal mounted by <ClerkIsland>. ──────
-let _clerkGetToken: (() => Promise<string | null>) | null = null;
+// [ADMIN-AUTH-FRESH-1 2026-09-05] Takes Clerk's own getToken options so a
+// caller can demand a NON-cached mint. Clerk caches the session JWT and
+// normally refreshes it near expiry, but a tab that has been idle or
+// backgrounded can hand back a token whose `exp` has already passed — the
+// worker then answers `auth: expired` (worker/src/auth.ts:50) on a session that
+// is perfectly alive. `skipCache` is the only way to tell Clerk to go and get a
+// new one, and it is what the 401 retry in the admin workbench uses.
+let _clerkGetToken: ((opts?: { skipCache?: boolean }) => Promise<string | null>) | null = null;
 let _clerkSignedIn = false;
 let _openGate: ((resolve: (jwt: string) => void, reject: (e: unknown) => void) => void) | null = null;
 
@@ -101,7 +108,9 @@ export function deviceId(): string {
  * live Clerk session first, then a stored guest_token. Returns null for an
  * anonymous visitor. Use this for optional-auth reads.
  */
-export async function getActiveToken(): Promise<string | null> {
+export async function getActiveToken(
+  opts?: { skipCache?: boolean },
+): Promise<string | null> {
   // [LIST-EMBED-1] The host wins when present: inside the app WebView there is
   // no Clerk session to fall back to, and the stored guest token is not a
   // requireUser JWT (see the header) — so anything but the host's token 401s.
@@ -116,13 +125,19 @@ export async function getActiveToken(): Promise<string | null> {
   }
   if (_clerkSignedIn && _clerkGetToken) {
     try {
-      const t = await _clerkGetToken();
+      const t = await _clerkGetToken(opts);
       if (t) return t;
       capture('auth_token_null', { where: 'getActiveToken' });
     } catch {
       /* fall through to guest */
     }
   }
+  // [ADMIN-AUTH-FRESH-1] A forced refresh must never silently downgrade to the
+  // stored guest token. That token is a static string written on some earlier
+  // visit, so returning it here would turn "mint me a fresh one" into "hand
+  // back an even older one" — and the caller, having explicitly asked for a
+  // fresh mint, would read the resulting 401 as a dead session.
+  if (opts?.skipCache) return null;
   return lsGet(GUEST_JWT_KEY);
 }
 
@@ -133,10 +148,13 @@ export async function getActiveToken(): Promise<string | null> {
  * briefly so a Clerk-only session (no guest token yet) resolves instead of reading
  * null on first paint. Returns null only if nothing resolves within `timeoutMs`.
  */
-export async function getActiveTokenWaited(timeoutMs = 5000): Promise<string | null> {
+export async function getActiveTokenWaited(
+  timeoutMs = 5000,
+  opts?: { skipCache?: boolean },
+): Promise<string | null> {
   const start = Date.now();
   for (;;) {
-    const t = await getActiveToken();
+    const t = await getActiveToken(opts);
     if (t) return t;
     if (Date.now() - start >= timeoutMs) return null;
     await new Promise((r) => setTimeout(r, 150));
@@ -219,7 +237,7 @@ function ClerkBridge() {
   const { user } = useUser();
   useEffect(() => {
     _clerkSignedIn = !!isSignedIn;
-    _clerkGetToken = () => getToken();
+    _clerkGetToken = (opts) => getToken(opts);
     return () => {
       _clerkGetToken = null;
       _clerkSignedIn = false;
