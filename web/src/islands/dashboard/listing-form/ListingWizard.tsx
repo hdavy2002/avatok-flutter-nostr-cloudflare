@@ -58,6 +58,10 @@ function draftFromListing(l: any): Partial<ListingDraft> {
     blurb: l.blurb ?? '',
     description: l.description ?? '',
     category: l.category ?? '',
+    media_mode: l.media_mode === 'audio_only' ? 'audio_only' : 'audio_video',
+    // [MKT-3GROUP-1] Vibe tags are off in the UI; still hydrate whatever an
+    // existing listing carries so a save never silently drops it — see
+    // bodyForSave, which now always sends this straight through unedited.
     vibe_tags: Array.isArray(l.vibe_tags) ? l.vibe_tags : [],
     spoken_lang: typeof l.spoken_lang === 'string' && l.spoken_lang ? l.spoken_lang.split(',').filter(Boolean) : [],
     price: l.price != null ? String(l.price) : '',
@@ -113,7 +117,12 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
   const [copyReviewed, setCopyReviewed] = useState(false);
   const [slotsSupported, setSlotsSupported] = useState<boolean | null>(null);
   const [slotBusy, setSlotBusy] = useState(false);
-  const [categories, setCategories] = useState<{ id: string; label: string; emoji?: string | null }[]>([]);
+  const [categories, setCategories] = useState<{ id: string; label: string; emoji?: string | null; group_id?: string | null }[]>([]);
+  // [MKT-3GROUP-1] `adda_rooms` is a `find_your_people` blip gated on
+  // `conferenceEnabled`, which is FALSE in production (verified on the live
+  // config, not read from DEFAULTS — see CLAUDE.md). Fail closed: hidden
+  // until the public, unauthenticated /api/config read actually says true.
+  const [conferenceEnabled, setConferenceEnabled] = useState(false);
   const [repeatOpen, setRepeatOpen] = useState(false);
   const [repeatWeeks, setRepeatWeeks] = useState(4);
   const [repeating, setRepeating] = useState(false);
@@ -180,7 +189,19 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
       try {
         const r = await request<{ categories?: typeof categories }>('/api/explore/categories');
         setCategories(r.categories ?? []);
-      } catch { /* field stays empty; server refuses rather than silently defaulting */ }
+      } catch { /* field stays empty; the wizard falls back to the static SUB_CATEGORIES mirror */ }
+    })();
+  }, []);
+
+  // [MKT-3GROUP-1] Public, unauthenticated config read for `conferenceEnabled`
+  // only — same fail-closed posture as the free-entry gate above: a failure
+  // or a false leaves the adda_rooms blip hidden rather than shown-but-dead.
+  useEffect(() => {
+    void (async () => {
+      try {
+        const r = await request<{ conferenceEnabled?: boolean }>('/api/config');
+        setConferenceEnabled(r.conferenceEnabled === true);
+      } catch { /* stays hidden */ }
     })();
   }, []);
 
@@ -587,7 +608,7 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
         {step === 1 && (
           <Step2Pitch
             draft={draft} patch={patch} err={fieldErr} categories={categories} creator={creatorInfo}
-            onReviewed={() => setCopyReviewed(true)}
+            conferenceEnabled={conferenceEnabled}
           />
         )}
         {step === 2 && <Step3Money draft={draft} patch={patch} err={fieldErr} />}

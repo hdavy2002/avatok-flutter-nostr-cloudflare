@@ -9,6 +9,7 @@
  * the wizard shows ITS message and highlights ITS field — see ListingWizard.tsx.
  */
 import type { ListingDraft, StepIndex } from './types';
+import { PRICING } from '../../../lib/listingTaxonomy';
 
 export const VIBE_TAGS = ['safe_space', 'cam_optional', 'listener_first', 'savage', 'beginner_ok', 'queer_friendly', 'women_only'] as const;
 export const BILLING_UNITS = ['session', 'minute', '10min', 'chat', 'night', 'game'] as const;
@@ -126,10 +127,17 @@ export function bodyForSave(d: ListingDraft, opts: { includeAttrs: boolean; incl
     blurb: d.blurb.trim() || undefined,
     description: d.description.trim() || undefined,
     category: d.category || undefined,
-    vibe_tags: d.vibe_tags,
+    // [MKT-3GROUP-1] The Vibe tags control is gone from the UI (owner decision
+    // 2026-09-05) — always send an empty array rather than whatever an old
+    // draft happened to load with, per spec §6 step 2.
+    vibe_tags: [],
     spoken_lang: d.spoken_lang.length ? d.spoken_lang.join(',') : undefined,
     price: d.free_entry ? 0 : (d.price ? Math.round(Number(d.price)) : 0),
-    billing_unit: d.billing_unit,
+    // [PRICE-HOURLY-1] Every session is priced per hour now — the "Charged
+    // per" dropdown is gone and the server forces this value anyway; send it
+    // explicitly rather than whatever `d.billing_unit` holds from an older draft.
+    billing_unit: 'hour',
+    media_mode: d.media_mode,
     timezone: d.timezone,
     max_per_booking: d.max_per_booking,
     video_url: d.video_url.trim() || undefined,
@@ -164,23 +172,27 @@ export interface FieldProblem { field: string; message: string }
  *  posture as the server. */
 export function validateStep(d: ListingDraft, step: StepIndex): FieldProblem | null {
   switch (step) {
+    // [MKT-3GROUP-1] The free-show "token cap" is gone (owner decision
+    // 2026-09-05) — a free show no longer asks what the creator is willing to
+    // spend from their wallet, so step 0 has nothing left to validate.
     case 0: // Type
-      if (d.free_entry && (!Number.isInteger(Number(d.content_free_cap_tokens)) || Number(d.content_free_cap_tokens) <= 0)) {
-        return { field: 'content_free_cap_tokens', message: 'Set a token cap you’re willing to spend from your wallet for this free show.' };
-      }
       return null;
     case 1: // Pitch
       if (d.title.trim().length < 3) return { field: 'title', message: 'Give your listing a title (at least 3 characters).' };
       if (d.blurb.length > 120) return { field: 'blurb', message: 'The blurb must be at most 120 characters.' };
-      if (!d.category) return { field: 'category', message: 'Pick a category.' };
-      if (d.vibe_tags.length > 2) return { field: 'vibe_tags', message: 'Pick up to 2 vibe tags.' };
+      if (!d.category) return { field: 'category', message: 'Pick one category.' };
       return null;
     case 2: // Money
       if (!d.free_entry) {
         const p = Number(d.price);
         if (!Number.isFinite(p) || p < 0) return { field: 'price', message: 'Enter a whole number of tokens, or 0 for free.' };
+        // [PRICE-HOURLY-1] The ₹49/hour floor — below it the flat ₹25 fee
+        // leaves the creator with nothing, which is why the server refuses it
+        // too. Surface the reason here rather than let it round-trip as a 400.
+        if (p > 0 && p < PRICING.minPriceTokensPerHour) {
+          return { field: 'price', message: `The lowest price is ₹${PRICING.minPriceTokensPerHour}/hour — below that, avaTOK’s flat fee leaves you with nothing.` };
+        }
       }
-      if (!(BILLING_UNITS as readonly string[]).includes(d.billing_unit)) return { field: 'billing_unit', message: 'Pick what the price is charged per.' };
       if (d.early_bird_pct && !(Number(d.early_bird_pct) >= 1 && Number(d.early_bird_pct) <= 100)) {
         return { field: 'early_bird_pct', message: 'Early-bird discount must be 1–100%.' };
       }
@@ -259,7 +271,9 @@ export function publishReadiness(
   opts: { copyReviewed?: boolean } = {},
 ): { ok: boolean; label: string }[] {
   const checks = [
-    { ok: Boolean(opts.copyReviewed), label: 'Ava has reviewed the copy' },
+    // [LIST-FORM-2] Reads as NOT DONE until the creator actually clicks —
+    // "Ava has reviewed the copy" sounded like a claim that already happened.
+    { ok: Boolean(opts.copyReviewed), label: opts.copyReviewed ? 'AI check of your listing — passed' : 'AI check of your listing — not run yet' },
     { ok: d.title.trim().length >= 3, label: 'Has a title' },
     { ok: Boolean(d.category), label: 'Has a category' },
     { ok: true, label: d.cover_media.length ? `Optional photos added (${d.cover_media.length}/5)` : 'AI poster can be generated' },
@@ -276,9 +290,6 @@ export function publishReadiness(
   }
   if (d.schedule_mode === 'recurring') {
     checks.push({ ok: d.recurrence_days.length > 0, label: 'Recurring days are set' });
-  }
-  if (d.free_entry) {
-    checks.push({ ok: Number.isInteger(Number(d.content_free_cap_tokens)) && Number(d.content_free_cap_tokens) > 0, label: 'Free-show token cap is set' });
   }
   return checks;
 }

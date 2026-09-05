@@ -75,15 +75,26 @@ export function CopyReview({
     <Card fillClassName="bg-paper2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="font-body font-bold text-[14px] text-ink">Ava reviews your copy</p>
+          <p className="font-body font-bold text-[14px] text-ink">AI check of your listing</p>
           <p className="font-body text-[12px] text-inkSoft">
             Sizes the title to the card, and grows or trims the description. Suggestions only — you choose.
           </p>
         </div>
-        <Button variant="blue" label={result ? 'Review again' : 'Review my copy'} loading={busy} onClick={() => void run()} />
+        {/* [LIST-FORM-2] Renamed per spec §6 step 8 — "Review my copy" read like
+            a vague housekeeping action; this names what actually runs. */}
+        <Button variant="blue" label={result ? 'Review again using AI' : 'Review my details using AI'} loading={busy} onClick={() => void run()} />
       </div>
 
       {error && <p className="mt-3 font-body font-bold text-[13px] text-coral">⚠ {error}</p>}
+
+      {/* [LIST-FORM-2] Say plainly, at the top, that the check passed — the
+          checklist line elsewhere only flips a ✓; a person still needs one
+          sentence saying it's fine to submit. */}
+      {result && !error && (
+        <p className="mt-3 font-body font-bold text-[13px] text-ink">
+          ✓ Checked — looks good, ready to send.
+        </p>
+      )}
 
       {result && (
         <div className="mt-4 flex flex-col gap-3">

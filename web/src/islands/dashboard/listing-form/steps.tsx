@@ -9,9 +9,11 @@ import { Card } from '../../../components/Card';
 import { Button } from '../../../components/Button';
 import { CopyReview } from './CopyReview';
 import { TwoFieldListEditor, StringListEditor, ChatLineEditor, labelCls, inputCls, textareaCls, SectionHeader, charCount } from './Editors';
-import { VIBE_TAGS, BILLING_UNITS, REFUND_WINDOWS, BOOKING_NOTICE_HOURS } from './wizardLogic';
-import { defaultsFor, SERVICE_CATEGORY_IDS } from '../../../lib/listingDefaults';
+import { REFUND_WINDOWS, BOOKING_NOTICE_HOURS } from './wizardLogic';
+import { defaultsFor } from '../../../lib/listingDefaults';
 import { cfImage } from '../../../lib/config';
+import { MEDIA_MODES, PRICING, groupsForKind, subCategoriesFor, feeSplit } from '../../../lib/listingTaxonomy';
+import type { GroupId } from '../../../lib/listingTaxonomy';
 import type { ListingDraft, DraftSlot, Kind, PosterMirror } from './types';
 
 type Patch = (p: Partial<ListingDraft>) => void;
@@ -110,18 +112,6 @@ export function Step1Type({ draft, patch, err, freeEntryLocked }: {
           </label>
         )
       )}
-      {showFreeEntryCard && draft.free_entry && (
-        <div>
-          <p className="mb-2 font-body font-bold text-[13px] text-inkSoft">
-            This is what you&rsquo;re willing to spend from your wallet for this show.
-          </p>
-          <Field label="Token cap" inputMode="numeric" placeholder="e.g. 500" value={draft.content_free_cap_tokens}
-            disabled={freeEntryLocked}
-            onChange={(e) => patch({ content_free_cap_tokens: e.target.value.replace(/[^0-9]/g, '') })} />
-          <ErrLine err={err} field="content_free_cap_tokens" />
-        </div>
-      )}
-
       <div>
         <span className={labelCls}>Schedule</span>
         <div className="flex flex-col gap-2">
@@ -143,18 +133,61 @@ export function Step1Type({ draft, patch, err, freeEntryLocked }: {
 }
 
 // ── Step 2 — Pitch ─────────────────────────────────────────────────────────
-export function Step2Pitch({ draft, patch, err, categories, creator, onReviewed }: {
-  draft: ListingDraft; patch: Patch; err: FieldErr; categories: { id: string; label: string; emoji?: string | null }[];
-  creator?: CreatorInfo;
-  /** [CARD-AI-REVIEW-1] Ticks the publish checklist once a review has run. */
-  onReviewed: () => void;
+
+/** One group's blips, preferring the server's `/api/explore/categories` (which
+ *  now carries `group_id` — [MKT-3GROUP-1]) and falling back to the static
+ *  SUB_CATEGORIES mirror only when that fetch failed or hasn't landed yet.
+ *  The server is the authority the publish route validates against, so a blip
+ *  that only exists in the mirror would be rejected at publish — prefer the
+ *  fetched list whenever it has anything for this group. `adda_rooms` (and
+ *  any other `requiresFlag`-gated id) is hidden regardless of source. */
+function blipsForGroup(
+  group: GroupId,
+  categories: { id: string; label: string; emoji?: string | null; group_id?: string | null }[],
+  conferenceEnabled: boolean,
+): { id: string; label: string; emoji?: string | null }[] {
+  const gated = new Set(subCategoriesFor(group).filter((sc) => sc.requiresFlag && !conferenceEnabled).map((sc) => sc.id));
+  const fromServer = categories.filter((c) => c.group_id === group && !gated.has(c.id));
+  if (fromServer.length) return fromServer;
+  return subCategoriesFor(group).filter((sc) => !gated.has(sc.id));
+}
+
+function BlipGroup({ heading, blips, selected, onPick }: {
+  heading: string; blips: { id: string; label: string; emoji?: string | null }[];
+  selected: string; onPick: (id: string) => void;
 }) {
-  // [LIST-WIZ-CAT-1] The wizard only ever creates live_event/consult/ai_agent
-  // listings — /api/explore/categories has no per-row kind to filter server-side,
-  // so a marketplace-goods category (Cars, Properties, Mobiles…) would otherwise
-  // show up right next to Teachers and Astrologers. Filter to the fixed
-  // service/creator id set before rendering the options.
-  const serviceCategories = categories.filter((c) => SERVICE_CATEGORY_IDS.has(c.id));
+  return (
+    <div>
+      <span className={labelCls}>{heading}</span>
+      <div className="flex flex-wrap gap-2">
+        {blips.map((b) => {
+          const on = selected === b.id;
+          return (
+            <button key={b.id} type="button" onClick={() => onPick(b.id)}
+              className={['rounded-zineField border-zine border-ink px-3 py-1.5 font-body font-bold text-[13px] shadow-zine-xs',
+                on ? 'bg-lime text-ink' : 'bg-card text-inkSoft'].join(' ')}>
+              {b.emoji ? `${b.emoji} ` : ''}{b.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+export function Step2Pitch({ draft, patch, err, categories, creator, conferenceEnabled }: {
+  draft: ListingDraft; patch: Patch; err: FieldErr;
+  categories: { id: string; label: string; emoji?: string | null; group_id?: string | null }[];
+  creator?: CreatorInfo;
+  /** [MKT-3GROUP-1] Hides the `adda_rooms` blip while the flag is off. */
+  conferenceEnabled: boolean;
+}) {
+  // [MKT-3GROUP-1] Sub-categories are DRIVEN BY THE STEP-1 KIND. `live_event`
+  // gets one group's blips (india_goes_live); `consult` gets TWO groups' blips
+  // shown under two headings — whichever blip the creator picks is what files
+  // the listing into "Find your people" or "Book their time". The group is
+  // never asked separately; it is derived from the category (spec §6 step 2).
+  const groups = groupsForKind(draft.kind);
   // [POSTER-FIRST-1 2026-09-05] The live preview card that used to sit in a
   // sticky right-hand column is GONE, and step 2 is a single full-width column.
   //
@@ -182,30 +215,31 @@ export function Step2Pitch({ draft, patch, err, categories, creator, onReviewed 
           <textarea className={textareaCls} rows={4} value={draft.description} maxLength={8000}
             placeholder="Tell people what to expect" onChange={(e) => patch({ description: e.target.value })} />
         </label>
-        <label className="block">
-          <span className={labelCls}>Category</span>
-          <select className={inputCls} value={draft.category} onChange={(e) => patch({ category: e.target.value })}>
-            <option value="">Choose one…</option>
-            {serviceCategories.map((c) => <option key={c.id} value={c.id}>{c.emoji ? `${c.emoji} ` : ''}{c.label}</option>)}
-          </select>
-          <ErrLine err={err} field="category" />
-        </label>
+
+        {groups.map((g) => (
+          <BlipGroup key={g.id} heading={groups.length > 1 ? g.heading : 'Category'}
+            blips={blipsForGroup(g.id, categories, conferenceEnabled)}
+            selected={draft.category} onPick={(id) => patch({ category: id })} />
+        ))}
+        <ErrLine err={err} field="category" />
+
         <div>
-          <span className={labelCls}>Vibe (up to 2)</span>
-          <div className="flex flex-wrap gap-2">
-            {VIBE_TAGS.map((t) => {
-              const on = draft.vibe_tags.includes(t);
-              return (
-                <button key={t} type="button"
-                  onClick={() => patch({ vibe_tags: on ? draft.vibe_tags.filter((x) => x !== t) : draft.vibe_tags.length < 2 ? [...draft.vibe_tags, t] : draft.vibe_tags })}
-                  className={['rounded-zineField border-zine border-ink px-3 py-1.5 font-body font-bold text-[12px] shadow-zine-xs', on ? 'bg-lime text-ink' : 'bg-card text-inkSoft'].join(' ')}>
-                  {t.replace(/_/g, ' ')}
-                </button>
-              );
-            })}
+          <span className={labelCls}>Audio and video</span>
+          <div className="flex flex-col gap-2">
+            {MEDIA_MODES.map((m) => (
+              <button key={m.id} type="button" onClick={() => patch({ media_mode: m.id })}
+                className={['flex items-center justify-between rounded-zine border-zine border-ink p-3 text-left shadow-zine-xs',
+                  draft.media_mode === m.id ? 'bg-lime' : 'bg-card'].join(' ')}>
+                <span>
+                  <span className="block font-display font-semibold text-[14px] text-ink">{m.label}</span>
+                  <span className="block font-body font-bold text-[12px] text-inkSoft">{m.help}</span>
+                </span>
+                {draft.media_mode === m.id && <span className="text-[18px]">✓</span>}
+              </button>
+            ))}
           </div>
-          <ErrLine err={err} field="vibe_tags" />
         </div>
+
         <div>
           <span className={labelCls}>Language</span>
           <div className="flex flex-wrap gap-2">
@@ -221,15 +255,10 @@ export function Step2Pitch({ draft, patch, err, categories, creator, onReviewed 
             })}
           </div>
         </div>
-        {/* [CARD-AI-REVIEW-1] Sits directly under the fields it edits so "Use
-            this" and the copy it rewrites are visible in one glance.
-            [POSTER-FIRST-1] It now also matters more than it did: the title and
-            blurb it edits are the ONLY two strings that get painted onto the
-            poster. */}
-        <CopyReview draft={draft} patch={patch} onReviewed={onReviewed} />
         <p className="font-body text-[13px] text-inkSoft">
           Your title and blurb are what get painted onto your poster. Everything
           else you enter — price, timing, rules — appears next to it, not on it.
+          Ava reviews your final copy once, in step 8, right before you submit.
         </p>
       </div>
     </div>
@@ -237,32 +266,74 @@ export function Step2Pitch({ draft, patch, err, categories, creator, onReviewed 
 }
 
 // ── Step 3 — Money ─────────────────────────────────────────────────────────
+/* [PRICE-HOURLY-1] "Charged per" is gone — every session is priced PER HOUR,
+ * and a session shorter than an hour still bills the hour. The wizard shows
+ * the fee split live against whatever the creator has typed, plus a worked
+ * example table, so the ₹49 floor and the ₹25-flat-plus-20% rule are legible
+ * before they type anything. The server recomputes and is the authority — see
+ * listingTaxonomy.ts feeSplit(). */
+const FEE_EXAMPLES = [100, 500] as const;
+
 export function Step3Money({ draft, patch, err }: { draft: ListingDraft; patch: Patch; err: FieldErr }) {
+  const price = Number(draft.price) || 0;
+  const split = feeSplit(price);
   return (
     <div className="flex flex-col gap-5">
       {draft.free_entry ? (
         <Card fillClassName="bg-paper2">
           <p className="font-body font-bold text-[13px] text-inkSoft">
-            This is a free show — attendees pay nothing. Your token cap
-            ({draft.content_free_cap_tokens || '—'} tokens) is what you set in step 1.
+            This is a free show — attendees pay nothing.
           </p>
         </Card>
       ) : (
-        <div>
-          <Field label="Price (Tokens = ₹)" inputMode="numeric" placeholder="0 = free" value={draft.price}
-            onChange={(e) => patch({ price: e.target.value.replace(/[^0-9]/g, '') })} />
-          <ErrLine err={err} field="price" />
-        </div>
-      )}
-      <label className="block">
-        <span className={labelCls}>Charged per</span>
-        <select className={inputCls} value={draft.billing_unit} onChange={(e) => patch({ billing_unit: e.target.value })}>
-          {BILLING_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
-        </select>
-        <ErrLine err={err} field="billing_unit" />
-      </label>
-      {!draft.free_entry && (
         <>
+          <div>
+            <Field label="Price per hour (Tokens = ₹)" inputMode="numeric" placeholder={`min ${PRICING.minPriceTokensPerHour}`} value={draft.price}
+              onChange={(e) => patch({ price: e.target.value.replace(/[^0-9]/g, '') })} />
+            <p className="mt-1 font-body font-bold text-[12px] text-inkSoft">
+              Everything is priced per hour. A session shorter than an hour still bills the full hour.
+            </p>
+            <ErrLine err={err} field="price" />
+          </div>
+
+          {price > 0 && (
+            <Card fillClassName="bg-paper2">
+              <p className="font-body font-bold text-[13px] text-ink">
+                At ₹{price}/hr, avaTOK takes ₹{split.fee} and you keep ₹{split.creator}.
+              </p>
+              <p className="mt-1 font-body text-[12px] text-inkSoft">
+                ₹{PRICING.flatTokensPerHour} flat + {PRICING.commissionPct}% of what’s left. A 2-hour booking bills the flat fee twice.
+              </p>
+            </Card>
+          )}
+
+          <div>
+            <span className={labelCls}>Worked examples</span>
+            <div className="overflow-x-auto rounded-zine border-zine border-ink shadow-zine-xs">
+              <table className="w-full font-body text-[13px]">
+                <thead>
+                  <tr className="border-b-2 border-ink bg-paper2 text-left">
+                    <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft">Creator sets</th>
+                    <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft">avaTOK takes</th>
+                    <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft">Creator keeps</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[PRICING.minPriceTokensPerHour, ...FEE_EXAMPLES].map((p) => {
+                    const s = feeSplit(p);
+                    return (
+                      <tr key={p} className="border-b border-ink/15 last:border-b-0">
+                        <td className="p-2 font-bold text-ink">₹{p}/hr</td>
+                        <td className="p-2 text-inkSoft">₹{s.fee}</td>
+                        <td className="p-2 text-inkSoft">₹{s.creator}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           <div>
             <Field label="Early-bird discount % (optional)" inputMode="numeric" placeholder="e.g. 20" value={draft.early_bird_pct}
               onChange={(e) => patch({ early_bird_pct: e.target.value.replace(/[^0-9]/g, '') })} />
@@ -753,8 +824,10 @@ export function Step8Preview({ draft, patch, checks, ready, onSubmitForReview, p
         )}
         {isDraftState && (
           <>
-            <Button variant="lime" label="Submit for review" loading={publishing} disabled={!ready} onClick={onSubmitForReview} fullWidth />
-            <p className="font-body font-bold text-[12px] text-inkSoft">An AI poster is generated automatically, then a person on the team checks the listing before it goes live.</p>
+            {/* [LIST-FORM-2] Renamed per spec §6 step 8 — "Submit for review"
+                didn't say who reviews it or how long that takes. */}
+            <Button variant="lime" label="Submit for human review" loading={publishing} disabled={!ready} onClick={onSubmitForReview} fullWidth />
+            <p className="font-body font-bold text-[12px] text-inkSoft">Takes 24–48 hours. We’ll email you once it passes.</p>
           </>
         )}
         {publicHref && isDraftState && (

@@ -9,6 +9,8 @@
  */
 
 import { normalizeTimezone } from './wizardLogic';
+import type { MediaMode } from '../../../lib/listingTaxonomy';
+import { MEDIA_MODE_DEFAULT } from '../../../lib/listingTaxonomy';
 
 export type Kind = 'live_event' | 'consult' | 'ai_agent';
 export type ScheduleMode = 'fixed_date' | 'recurring' | 'on_request' | 'always_on';
@@ -48,7 +50,16 @@ export interface ListingDraft {
   title: string;
   blurb: string;
   description: string;
+  /** [MKT-3GROUP-1] The blip picked in step 2. Also the field that files the
+   *  listing into a marketplace group (`groupForCategory`) — a `consult`
+   *  listing's group is DERIVED from this, never asked separately. */
   category: string;
+  /** [MKT-3GROUP-1] `listings.media_mode`. See listingTaxonomy.ts MEDIA_MODES —
+   *  this field only, wiring it into the call UI is separate work. */
+  media_mode: MediaMode;
+  // [MKT-3GROUP-1] Vibe tags are OFF in the wizard UI (owner decision
+  // 2026-09-05) but the field stays — the wire still expects it and an old
+  // draft may still carry values. Always sent as `[]` from here on.
   vibe_tags: string[];
   spoken_lang: string[];
 
@@ -139,6 +150,7 @@ export function emptyDraft(initial?: Partial<ListingDraft>): ListingDraft {
     blurb: '',
     description: '',
     category: '',
+    media_mode: MEDIA_MODE_DEFAULT,
     vibe_tags: [],
     spoken_lang: [],
     price: '',
