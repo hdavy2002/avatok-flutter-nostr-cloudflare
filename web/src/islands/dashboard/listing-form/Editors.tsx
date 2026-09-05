@@ -6,7 +6,13 @@
 import type { ReactNode } from 'react';
 
 const labelCls = 'mb-2 block font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft';
-const inputCls = 'w-full rounded-zineField border-zine border-ink bg-card px-3 py-2.5 font-body font-bold text-[15px] text-ink outline-none shadow-zine-xs';
+/* [LIST-RESPONSIVE-1 2026-09-05] 16px, not 15px, and that one pixel is the
+ * whole point: iOS Safari and the iPad WebView auto-ZOOM the page when you
+ * focus an input whose font-size is under 16px, and they do not zoom back out.
+ * Every text box and <select> in steps 3-7 uses this class, so the old 15px
+ * meant tapping any of them left the creator on a magnified, sideways-scrolling
+ * form for the rest of the wizard. */
+const inputCls = 'w-full rounded-zineField border-zine border-ink bg-card px-3 py-2.5 font-body font-bold text-[16px] text-ink outline-none shadow-zine-xs';
 const textareaCls = `${inputCls} resize-none`;
 
 export function charCount(value: string, max: number) {

@@ -74,7 +74,12 @@ export function Step1Type({ draft, patch, err, freeEntryLocked }: {
     <div className="flex flex-col gap-5">
       <div>
         <span className={labelCls}>Type</span>
-        <div className="grid grid-cols-3 gap-2">
+        {/* [LIST-RESPONSIVE-1 2026-09-05] Three columns at 360px gives each
+            card ~105px, which breaks "Broadcast to ticket holders" onto four
+            lines and leaves the tap target a tall thin sliver. Stacked on a
+            phone (matching the Schedule list right below it), three across from
+            `sm` up. */}
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           {KINDS.map((k) => (
             <button key={k.key} type="button" disabled={k.disabled}
               onClick={() => patch({ kind: k.key })}
@@ -377,7 +382,11 @@ export function Step4Time({ draft, patch, err, slotsSupported, onAddSlot, onRemo
                   {s.id && <button type="button" onClick={() => onRemoveSlot(s.id!)} className="font-body font-bold text-[12px] text-coral">Remove</button>}
                 </div>
               ))}
-              <div className="grid grid-cols-2 gap-2 rounded-zine border-zine border-dashed border-ink p-2.5">
+              {/* [LIST-RESPONSIVE-1] A `datetime-local` control has a fixed
+                  intrinsic width on both mobile engines and will not shrink
+                  into half of a 360px row — it overflows the dashed box. One
+                  column on a phone. */}
+              <div className="grid grid-cols-1 gap-2 rounded-zine border-zine border-dashed border-ink p-2.5 sm:grid-cols-2">
                 <label className="block">
                   <span className={labelCls}>Slot start</span>
                   <input type="datetime-local" className={inputCls} value={slotDraft.starts_at} onChange={(e) => setSlotDraft((s) => ({ ...s, starts_at: e.target.value }))} />
@@ -394,7 +403,7 @@ export function Step4Time({ draft, patch, err, slotsSupported, onAddSlot, onRemo
                   <span className={labelCls}>Seats</span>
                   <input type="number" placeholder="10" className={inputCls} value={slotDraft.capacity} onChange={(e) => setSlotDraft((s) => ({ ...s, capacity: Number(e.target.value) }))} />
                 </label>
-                <Button variant="blue" label="Add slot" loading={slotBusy} className="col-span-2"
+                <Button variant="blue" label="Add slot" loading={slotBusy} className="sm:col-span-2"
                   onClick={() => {
                     const ms = new Date(slotDraft.starts_at).getTime();
                     if (!Number.isFinite(ms)) return;
@@ -603,7 +612,9 @@ export function Step7Photos({ draft, patch, err, onUpload, onRemoveCover, upload
           below it on your listing page — and if you add one, your poster gets
           painted from it.
         </p>
-        <div className="grid grid-cols-3 gap-3">
+        {/* [LIST-RESPONSIVE-1] Two up on a phone: three square thumbs at 360px
+            are ~100px each, too small to judge a photo by or to hit the ✕ on. */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {draft.cover_media.map((c) => (
             <div key={c.url} className="relative aspect-square overflow-hidden rounded-zine border-zine border-ink shadow-zine-xs">
               <img src={c.url} alt="" className="h-full w-full object-cover" />
