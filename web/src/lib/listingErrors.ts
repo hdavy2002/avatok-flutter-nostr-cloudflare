@@ -180,7 +180,27 @@ export function listingErrorMessage(code: unknown, detail?: unknown, message?: u
   if (typeof detail === 'string' && detail.trim() && !/^[a-z_]+$/.test(detail.trim())) {
     return detail.trim();
   }
-  // Deliberately generic. Showing an unmapped code is the bug this module exists to
-  // fix, so the fallback must never be the code itself.
+  // [LIST-ERR-SURFACE-1 2026-09-05] A validation refusal is already a sentence —
+  // show it.
+  //
+  // `contentAttrsError` (worker/src/routes/listings.ts) returns strings like
+  //   "content_how_it_works must be 1-5 items of {label<=24, body<=240}"
+  // and the route sends them as `error`, i.e. they arrive HERE as `code`. Nothing
+  // above matches them: MESSAGES is keyed by short codes, and the `detail` /
+  // `message` escapes never see them. So the single most useful class of error
+  // the wizard can produce — "this exact field is wrong, in this exact way" —
+  // was landing on the generic fallback, telling the creator to retry something
+  // that would fail identically forever. The owner hit precisely this and was
+  // stuck on step 5 with no way to know which field the server objected to.
+  //
+  // The rule this module exists to enforce is "never show a bare snake_case
+  // code", and that still holds: a multi-word string is prose, not a code, so it
+  // is safe to show. `no_such_thing` still falls through to the generic message.
+  const raw = typeof code === 'string' ? code.trim() : '';
+  if (raw && /\s/.test(raw) && !/^[a-z0-9_]+$/.test(raw)) {
+    return raw.charAt(0).toUpperCase() + raw.slice(1);
+  }
+  // Deliberately generic. Showing an unmapped CODE is the bug this module exists
+  // to fix, so the fallback must never be a bare code.
   return 'That didn’t go through. Please try again, or contact us if it keeps happening.';
 }

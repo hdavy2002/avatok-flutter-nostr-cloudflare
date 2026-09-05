@@ -299,7 +299,24 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
       return true;
     } catch (e) {
       const ms = Date.now() - startedAt;
-      const msg = e instanceof ApiError ? listingErrorMessage(e.error, (e.body as { detail?: unknown } | null)?.detail) : 'Could not save. Try again.';
+      // [LIST-ERR-SURFACE-1 2026-09-05] Pass `message` too.
+      //
+      // The 422 from contentAttrsError (worker/src/routes/listings.ts:1393) sends
+      // `{error, message, field}` where BOTH strings are the same human sentence —
+      // "content_how_it_works must be 1-5 items of {label<=24, body<=240}". This
+      // call dropped `message`, and `detail` is absent on that response, so
+      // listingErrorMessage() had nothing to work with and fell through to
+      // "That didn't go through. Please try again" — on a wizard step where
+      // retrying is guaranteed to fail the same way. The publish path (onSubmit,
+      // below) has always passed all three; only the per-step save did not, which
+      // is why publish errors read well and step-save errors did not.
+      const msg = e instanceof ApiError
+        ? listingErrorMessage(
+            e.error,
+            (e.body as { detail?: unknown } | null)?.detail,
+            (e.body as { message?: unknown } | null)?.message,
+          )
+        : 'Could not save. Try again.';
       const field = e instanceof ApiError && e.body && typeof e.body === 'object' && 'field' in (e.body as any) ? String((e.body as any).field) : null;
       setError(msg);
       if (field) setFieldErr({ field, message: msg });
