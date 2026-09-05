@@ -4452,5 +4452,39 @@
       }
     ],
     "_verified_at": "worker/src/lib/listing_poster.ts generateListingPoster emits poster_generate and poster_verify via hooks.track; poster_compose_fallback emitted only on the textless path; worker/src/routes/config.ts declares posterVariantsEnabled, posterVerifyEnabled, posterComposeFallbackEnabled (booleans) and posterVerifyMaxAttempts, posterStyleVersion (both in numericKeys). All five proved non-400 against prod KV on 2026-09-05 and confirmed on three cache-busted /api/config reads."
+  },
+  "LIST-EMBED-1": {
+    "description": "[LIST-EMBED-1] Owner decision 2026-09-05: ONE create-listing form, the web wizard, shown in the app inside an in-app WebView. New Flutter screen app/lib/features/marketplace/listing_web_form.dart loads https://avatok.ai/embed/listing?embed=1 (web/src/pages/embed/listing.astro -> islands/dashboard/EmbeddedCreateListing.tsx -> the SAME ListingWizard /dashboard/listings/new mounts). The WebView has no Clerk session, so the page asks the host for a bearer per request over the AvatokHost JS channel (web/src/lib/embed.ts <-> the Dart _onHostMessage switch) and the host answers from ApiAuth.clerkBearer; nothing is cached on either side because a Clerk token lives ~60s and a creator can spend ten minutes in this form. Every 'Create listing' entry point checks RemoteConfig.listingWebFormEnabled FIRST (shell/ava_shell.dart, shell/v2/shell_destinations.dart, features/marketplace/marketplace_hub.dart), so the AI compose chat ('List with Ava', compose_chat.dart) is unreachable while the flag is on; the file is kept so the flag is a working brake. On submit the page posts {type:'submitted'} instead of navigating and the app pushReplacements to MyListingsScreen(highlightPendingReview: true), where the card now reads 'Review pending' (my_listings_screen.dart _statusLabel previously fell through to the raw 'pending_review' column value). Android needs setOnShowFileSelector or the wizard's <input type=file> does nothing at all, so image_picker is wired to it.",
+    "shipped": "2026-09-05",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "listingWebFormEnabled"
+    ],
+    "success": [
+      {
+        "event": "listing_web_form_ready",
+        "property": "bridge_ms",
+        "lt": 20000,
+        "min_events": 1,
+        "note": "The real success value, not the arrival of an event: this fires ONLY when the page's own bridge handshakes, so it proves the WebView loaded OUR form rather than a captive portal, an offline page or a cached shell. 20s is the watchdog in the screen — past it the user sees an error state instead of a form, so a bridge_ms above it cannot exist and a MISSING event means the form never loaded for anyone."
+      },
+      {
+        "event": "listing_web_form_token",
+        "property": "outcome",
+        "equals": "ok",
+        "min_events": 1,
+        "min_pass_rate": 0.97,
+        "note": "Auth actually crossing the bridge — the one thing most likely to be silently broken, because its only symptom is a form that saves nothing. outcome='no_session' means ApiAuth.clerkBearer returned null (a lapsed session, which legitimately happens to a small share of opens and is what the slack covers); 'error' means it threw. A run of no_session on fresh sessions means the bridge, not the user."
+      },
+      {
+        "event": "listing_web_form_submitted",
+        "property": "listing_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "End to end: a listing was created from inside the app and went into the review queue. An empty listing_id means the page signalled success without an id, which would leave the creator on My listings with nothing new on it."
+      }
+    ],
+    "_verified_at": "Read out of the emit sites, not from memory: listing_web_form_ready + listing_web_form_token + listing_web_form_submitted in app/lib/features/marketplace/listing_web_form.dart (_onHostMessage 'ready', _answerToken, _onSubmitted); flag declared in worker/src/routes/config.ts PlatformConfig and DEFAULTS (true) and read by RemoteConfig.listingWebFormEnabled in app/lib/core/remote_config.dart."
   }
 }

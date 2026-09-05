@@ -30,6 +30,7 @@ import '../features/avavision/avavision_home.dart';
 import '../features/avatok/ava_number.dart';
 import '../features/avatok/chat_list.dart';
 import '../features/avaphone/ava_phone_screen.dart';
+import '../features/virtual_numbers/virtual_numbers.dart';
 import '../features/avatok/invite_screen.dart';
 import '../features/avatok/number_settings_screen.dart';
 import '../features/ava_backup/backup_service.dart';
@@ -40,8 +41,9 @@ import '../features/library/avastorage_screen.dart';
 import '../features/marketplace/my_listings_screen.dart';
 import '../features/marketplace/sell_listing_flow.dart';
 import '../features/marketplace/compose_chat.dart';
+import '../features/marketplace/listing_web_form.dart';
 import '../features/marketplace/archived_screen.dart';
-import '../features/marketplace/marketplace_browse.dart';
+import '../features/marketplace/marketplace_hub.dart';
 import '../features/explore/explore_home.dart';
 import '../features/identity/identity_screen.dart';
 import '../features/identity/listing_liveness_gate.dart';
@@ -71,7 +73,8 @@ class _AvaShellState extends State<AvaShell> {
   final _idStore = IdentityStore();
 
   Identity? _id;
-  bool? _profileComplete; // null = checking, false = show gate, true = enter app
+  bool?
+      _profileComplete; // null = checking, false = show gate, true = enter app
   // Compulsory AvaTOK number (owner decision 2026-06-27): a complete profile with
   // NO number must choose one before entering the app — applies to new users at
   // onboarding AND existing users without a number on next open.
@@ -83,9 +86,11 @@ class _AvaShellState extends State<AvaShell> {
   // second time right after finishing their profile (proven in PostHog:
   // number_gate_shown fired again immediately after profile_completed).
   bool _numberAssignedThisSession = false;
-  String? _authEmail; // email the user signed in with (Clerk) → shown locked in profile
-  String? _authFirst; // first name from the Google sign-in → prefills the profile
-  String? _authLast;  // last name from the Google sign-in → prefills the profile
+  String?
+      _authEmail; // email the user signed in with (Clerk) → shown locked in profile
+  String?
+      _authFirst; // first name from the Google sign-in → prefills the profile
+  String? _authLast; // last name from the Google sign-in → prefills the profile
   // The AvaTOK number the user just picked in the compulsory gate THIS session —
   // handed straight to the profile step so it shows locked without waiting on the
   // `me` cache/network (fixes the onboarding "Assigned just now" blank).
@@ -118,8 +123,10 @@ class _AvaShellState extends State<AvaShell> {
       storedComplete = await DiskCache.read(_kProfileCompleteFlag);
       storedHasNumber = await DiskCache.read(_kHasNumberFlag);
     } catch (_) {/* treat as first run */}
-    final haveCache = storedComplete != null && storedComplete.isNotEmpty &&
-        storedHasNumber != null && storedHasNumber.isNotEmpty;
+    final haveCache = storedComplete != null &&
+        storedComplete.isNotEmpty &&
+        storedHasNumber != null &&
+        storedHasNumber.isNotEmpty;
     if (haveCache && mounted) {
       final needsNumber = storedHasNumber != '1' && !_numberAssignedThisSession;
       setState(() {
@@ -127,7 +134,8 @@ class _AvaShellState extends State<AvaShell> {
         _profileComplete = storedComplete == '1';
         _needsNumber = needsNumber;
       });
-      Analytics.uiInteraction('shell_gate', DateTime.now().difference(gateT0).inMilliseconds,
+      Analytics.uiInteraction(
+          'shell_gate', DateTime.now().difference(gateT0).inMilliseconds,
           source: 'cache');
       // Funnel signal: did the user hit the compulsory number gate?
       if (needsNumber) Analytics.capture('number_gate_shown', const {});
@@ -142,7 +150,8 @@ class _AvaShellState extends State<AvaShell> {
         // (or currentUser() itself can null out on a flaky resume). Fall back to
         // the email PostHog already stamped at sign-in so the locked Email field
         // on the profile step is never left blank when we do know who this is.
-        final email = (u?.email ?? '').isNotEmpty ? u!.email : Analytics.currentEmail;
+        final email =
+            (u?.email ?? '').isNotEmpty ? u!.email : Analytics.currentEmail;
         // [ONBOARD-IDENTITY-2] Make the authenticated email durable in the
         // profile gate's account-scoped store. The setup screen can therefore
         // render it even when Clerk/currentUser resolves after the first frame.
@@ -150,7 +159,10 @@ class _AvaShellState extends State<AvaShell> {
           unawaited(ProfileStore().setEmail(email!.trim()));
         }
         // Capture email + Google-provided name for the profile (prefill + lock).
-        if (mounted && (email != _authEmail || u?.firstName != _authFirst || u?.lastName != _authLast)) {
+        if (mounted &&
+            (email != _authEmail ||
+                u?.firstName != _authFirst ||
+                u?.lastName != _authLast)) {
           setState(() {
             _authEmail = email ?? _authEmail;
             _authFirst = u?.firstName ?? _authFirst;
@@ -172,7 +184,9 @@ class _AvaShellState extends State<AvaShell> {
       // hydrate it so a returning user skips onboarding. Phone is re-added later
       // via the soft nudge (owner request 2026-06-27).
       if (!complete) {
-        try { complete = await store.restoreFromServer(); } catch (_) {/* offline → setup screen */}
+        try {
+          complete = await store.restoreFromServer();
+        } catch (_) {/* offline → setup screen */}
       }
       // R2-F2: when the profile-completion gate is ON, the server is the authority
       // on completeness (its AI vetting — photo moderation, real-name — can mark a
@@ -200,8 +214,12 @@ class _AvaShellState extends State<AvaShell> {
         // mounted or whose callback was interrupted by a rebuild.
         final shownNumber = (me.display ?? '').trim().isNotEmpty
             ? me.display!.trim()
-            : ((me.number ?? '').trim().isNotEmpty ? '+${me.number!.trim()}' : '');
-        if (shownNumber.isNotEmpty && shownNumber != _assignedNumberDisplay && mounted) {
+            : ((me.number ?? '').trim().isNotEmpty
+                ? '+${me.number!.trim()}'
+                : '');
+        if (shownNumber.isNotEmpty &&
+            shownNumber != _assignedNumberDisplay &&
+            mounted) {
           setState(() => _assignedNumberDisplay = shownNumber);
         }
         // [NUMBER-GATE-DIAG 2026-07-10] Rich telemetry to catch the "gate re-appears
@@ -216,7 +234,8 @@ class _AvaShellState extends State<AvaShell> {
         });
       } catch (e) {
         needsNumber = false; // fail-open: a network blip never traps the user
-        Analytics.capture('number_gate_me_error', {'err': e.runtimeType.toString()});
+        Analytics.capture(
+            'number_gate_me_error', {'err': e.runtimeType.toString()});
       }
       // Dup-number fix: if the user already picked a number in this run, trust that
       // over a possibly-stale server read so the gate is never re-shown post-profile.
@@ -228,15 +247,25 @@ class _AvaShellState extends State<AvaShell> {
       } catch (_) {/* best-effort */}
       if (!haveCache) {
         // FIRST RUN: this was the blocking path — reveal the UI now.
-        if (mounted) setState(() { _id = id; _profileComplete = complete; _needsNumber = needsNumber; });
-        Analytics.uiInteraction('shell_gate', DateTime.now().difference(gateT0).inMilliseconds,
+        if (mounted) {
+          setState(() {
+            _id = id;
+            _profileComplete = complete;
+            _needsNumber = needsNumber;
+          });
+        }
+        Analytics.uiInteraction(
+            'shell_gate', DateTime.now().difference(gateT0).inMilliseconds,
             source: 'network');
         if (needsNumber) Analytics.capture('number_gate_shown', const {});
       } else if (mounted &&
           (complete != _profileComplete || needsNumber != _needsNumber)) {
         // Server disagrees with the cached render — re-route (e.g. a user who
         // genuinely lost profile-completeness goes to the gate).
-        setState(() { _profileComplete = complete; _needsNumber = needsNumber; });
+        setState(() {
+          _profileComplete = complete;
+          _needsNumber = needsNumber;
+        });
         if (needsNumber) Analytics.capture('number_gate_shown', const {});
       }
       // Daily auto-backup (best-effort, throttled): encrypt local SQLite → R2
@@ -261,10 +290,17 @@ class _AvaShellState extends State<AvaShell> {
       final bound = Timer(const Duration(seconds: 3), () async {
         if (_id != null || !mounted) return; // network gate already revealed
         var localComplete = false;
-        try { localComplete = (await ProfileStore().load()).isComplete; } catch (_) {/* setup */}
+        try {
+          localComplete = (await ProfileStore().load()).isComplete;
+        } catch (_) {/* setup */}
         if (_id != null || !mounted) return;
-        setState(() { _id = id; _profileComplete = localComplete; _needsNumber = false; });
-        Analytics.uiInteraction('shell_gate', DateTime.now().difference(gateT0).inMilliseconds,
+        setState(() {
+          _id = id;
+          _profileComplete = localComplete;
+          _needsNumber = false;
+        });
+        Analytics.uiInteraction(
+            'shell_gate', DateTime.now().difference(gateT0).inMilliseconds,
             source: 'local_fallback');
       });
       try {
@@ -292,37 +328,63 @@ class _AvaShellState extends State<AvaShell> {
     // matching flag flips back on.
     bool launchBlocked(String key) {
       switch (key) {
-        case 'avalive': return !RemoteConfig.liveEnabled;
+        case 'avalive':
+          return !RemoteConfig.liveEnabled;
         case 'avaconsult':
-        case 'consult': return !RemoteConfig.consultEnabled;
-        case 'avavoice': return !RemoteConfig.avavoiceEnabled;
-        case 'avavision': return !RemoteConfig.avavisionEnabled;
+        case 'consult':
+          return !RemoteConfig.consultEnabled;
+        case 'avavoice':
+          return !RemoteConfig.avavoiceEnabled;
+        case 'avavision':
+          return !RemoteConfig.avavisionEnabled;
         case 'avaaffiliate':
-        case 'affiliate': return !RemoteConfig.avaAffiliateEnabled;
-        case 'verse': return !RemoteConfig.verseEnabled;
+        case 'affiliate':
+          return !RemoteConfig.avaAffiliateEnabled;
+        case 'verse':
+          return !RemoteConfig.verseEnabled;
         case 'subscribe':
-        case 'billing': return !RemoteConfig.billingEnabled;
-        default: return false;
+        case 'billing':
+          return !RemoteConfig.billingEnabled;
+        default:
+          return false;
       }
     }
+
     if (launchBlocked(dest)) {
       _push(AppRegistry.byId(dest) != null
           ? ComingSoon.forApp(dest)
-          : ComingSoon(title: 'Coming soon', subtitle: 'Not available right now',
-              icon: PhosphorIcons.lightning(PhosphorIconsStyle.fill), color: AD.iconSearch));
+          : ComingSoon(
+              title: 'Coming soon',
+              subtitle: 'Not available right now',
+              icon: PhosphorIcons.lightning(PhosphorIconsStyle.fill),
+              color: AD.iconSearch));
       return;
     }
     switch (dest) {
       case 'marketplace':
-        // AvaMarketplace landing = the dedicated buy/sell/social browse (cards
-        // with photo, price, country flag; country-default + AI search filter).
-        _push(const MarketplaceBrowse());
+        // Marketplace now lands on the richer hub so browse/create/listings
+        // live behind one creator-facing entry point.
+        _push(const MarketplaceHub());
         return;
       case 'explore':
         // Legacy AvaExplore creator grid (events/consults) — kept for deep links.
         _push(ExploreHome(onMenu: () => Navigator.of(context).maybePop()));
         return;
       case 'createlisting':
+        // [LIST-EMBED-1 2026-09-05, owner decision] ONE listing form, and it is
+        // the web wizard — shown here in an in-app WebView. This is checked
+        // FIRST and on purpose: while it is on, "List with Ava" (the AI compose
+        // chat below) is unreachable no matter what aiComposeEnabled says.
+        //
+        // No pre-gate here either, for the same reason the compose branch has
+        // none: the liveness/KYC check is part of the form (the wizard shows
+        // "Verify now" on a 403 from the create/submit routes), and sending
+        // someone to a camera screen before they have seen the form is the
+        // drop-off cliff. The Worker is the real gate.
+        if (RemoteConfig.listingWebFormEnabled) {
+          _push(const ListingWebFormScreen(source: 'shell_menu'));
+          return;
+        }
         // [MKT2] When aiComposeEnabled is ON, "Create listing" opens the AI compose
         // chat, which runs the liveness gate CONVERSATIONALLY (§3.1) — so we push it
         // directly, NOT behind the pre-gate (sending the user away first is the
@@ -341,8 +403,9 @@ class _AvaShellState extends State<AvaShell> {
             if (ok) {
               _push(const SellListingFlow());
             } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Verify you\'re a real person to start selling.')));
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content:
+                      Text('Verify you\'re a real person to start selling.')));
             }
           });
         } else {
@@ -357,16 +420,25 @@ class _AvaShellState extends State<AvaShell> {
         return;
       case 'settings':
         // Reload on return — the preview switcher may have changed the account kind.
-        _push(SettingsScreen(clerk: widget.clerk, onSignOut: widget.onSignOut, identity: _id))
+        _push(SettingsScreen(
+                clerk: widget.clerk,
+                onSignOut: widget.onSignOut,
+                identity: _id))
             .then((_) => _load());
         return;
       case 'avatok':
-        _push(ChatListScreen(clerk: widget.clerk, onSignOut: widget.onSignOut, onSwitchApp: _switchFromChild));
+        _push(ChatListScreen(
+            clerk: widget.clerk,
+            onSignOut: widget.onSignOut,
+            onSwitchApp: _switchFromChild));
         return;
       case 'avaphone':
       case 'phone':
+      case 'virtual_numbers':
+        _push(const VirtualNumbersScreen());
+        return;
       case 'dialer':
-        _push(const AvaPhoneScreen()); // PSTN-style dialer over AvaTOK-to-AvaTOK calling
+        _push(const AvaPhoneScreen());
         return;
       case 'avalive':
         _push(const AvaLiveDiscovery());
@@ -452,7 +524,11 @@ class _AvaShellState extends State<AvaShell> {
         // Parent/Enterprise management tools (dummy → coming soon for now).
         final tool = adminToolByKey(dest);
         if (tool != null) {
-          _push(ComingSoon(title: tool.name, subtitle: tool.tagline, icon: tool.icon, color: tool.color));
+          _push(ComingSoon(
+              title: tool.name,
+              subtitle: tool.tagline,
+              icon: tool.icon,
+              color: tool.color));
           return;
         }
         // App registry (standard or hidden) → branded ComingSoon until its
@@ -462,7 +538,8 @@ class _AvaShellState extends State<AvaShell> {
           return;
         }
         final a = appByKey(dest);
-        _push(ComingSoon(title: a.name, subtitle: a.tagline, icon: a.icon, color: a.color));
+        _push(ComingSoon(
+            title: a.name, subtitle: a.tagline, icon: a.icon, color: a.color));
     }
   }
 
@@ -473,47 +550,76 @@ class _AvaShellState extends State<AvaShell> {
   Future<void> _maybeOfferNumber() async {
     const ss = FlutterSecureStorage();
     const flag = 'onboarding_number_offered_v1';
-    try { if (await readScoped(ss, flag) == '1') return; } catch (_) {}
+    try {
+      if (await readScoped(ss, flag) == '1') return;
+    } catch (_) {}
     MyNumber me;
-    try { me = await AvaNumber.me(); } catch (_) { return; } // offline → try again next open
+    try {
+      me = await AvaNumber.me();
+    } catch (_) {
+      return;
+    } // offline → try again next open
     if (!mounted) return;
     // Mark offered now (one-time), regardless of choice — never nag again.
-    try { await ss.write(key: scopedKey(flag), value: '1'); } catch (_) {}
+    try {
+      await ss.write(key: scopedKey(flag), value: '1');
+    } catch (_) {}
     if (!me.featureOn || me.hasNumber || !me.canGenerate) return;
     final go = await showModalBottomSheet<bool>(
       context: context,
       backgroundColor: AD.overlaySheet,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
-      builder: (ctx) => SafeArea(child: Padding(
+      builder: (ctx) => SafeArea(
+          child: Padding(
         padding: const EdgeInsets.all(Msg.s5),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            ZineIconBadge(icon: PhosphorIcons.hash(PhosphorIconsStyle.bold), color: AD.primaryBadge, size: 36),
-            const SizedBox(width: 12),
-            Expanded(child: Text('Get your AvaTOK number', style: ADText.threadName())),
-          ]),
-          const SizedBox(height: 12),
-          Text('Pick a free number that represents you on AvaTOK so you can stay in '
-              'touch without giving out your real phone — your real number always '
-              'stays private. Free accounts get one number; you can choose it now.',
-              style: ADText.preview()),
-          const SizedBox(height: Msg.s4),
-          AdButton(label: 'Choose my number', variant: AdButtonVariant.teal,
-              fullWidth: true, fontSize: 16, trailingIcon: false,
-              icon: PhosphorIcons.hash(PhosphorIconsStyle.bold),
-              onPressed: () => Navigator.pop(ctx, true)),
-          const SizedBox(height: 8),
-          Center(child: TextButton(onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Maybe later', style: TextStyle(fontFamily: ADText.family,
-                  fontWeight: FontWeight.w700, fontSize: 14, color: AD.textSecondary)))),
-        ]),
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                ZineIconBadge(
+                    icon: PhosphorIcons.hash(PhosphorIconsStyle.bold),
+                    color: AD.primaryBadge,
+                    size: 36),
+                const SizedBox(width: 12),
+                Expanded(
+                    child: Text('Get your AvaTOK number',
+                        style: ADText.threadName())),
+              ]),
+              const SizedBox(height: 12),
+              Text(
+                  'Pick a free number that represents you on AvaTOK so you can stay in '
+                  'touch without giving out your real phone — your real number always '
+                  'stays private. Free accounts get one number; you can choose it now.',
+                  style: ADText.preview()),
+              const SizedBox(height: Msg.s4),
+              AdButton(
+                  label: 'Choose my number',
+                  variant: AdButtonVariant.teal,
+                  fullWidth: true,
+                  fontSize: 16,
+                  trailingIcon: false,
+                  icon: PhosphorIcons.hash(PhosphorIconsStyle.bold),
+                  onPressed: () => Navigator.pop(ctx, true)),
+              const SizedBox(height: 8),
+              Center(
+                  child: TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: Text('Maybe later',
+                          style: TextStyle(
+                              fontFamily: ADText.family,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                              color: AD.textSecondary)))),
+            ]),
       )),
     );
     if (go == true && mounted) await _push(const NumberSettingsScreen());
   }
 
-  Future<void> _push(Widget w) => Navigator.push(context, MaterialPageRoute(builder: (_) => w));
+  Future<void> _push(Widget w) =>
+      Navigator.push(context, MaterialPageRoute(builder: (_) => w));
 
   @override
   Widget build(BuildContext context) {
@@ -555,7 +661,12 @@ class _AvaShellState extends State<AvaShell> {
         onSignOut: widget.onSignOut,
         // Re-run the gate after the profile is saved (show the loader meanwhile,
         // no flash to the chat list).
-        onDone: () { setState(() { _profileComplete = null; }); _load(); },
+        onDone: () {
+          setState(() {
+            _profileComplete = null;
+          });
+          _load();
+        },
       );
     }
     // shellV2 (Specs/PLAN-2026-07-12-home-ava-tok-services-shell.md, Phase 1):
@@ -565,7 +676,8 @@ class _AvaShellState extends State<AvaShell> {
     // flag is OFF (default, dark), this returns the exact ChatListScreen below,
     // byte-for-byte today's behaviour.
     if (RemoteConfig.shellV2) {
-      return ShellV2(clerk: widget.clerk, onSignOut: widget.onSignOut, identity: _id);
+      return ShellV2(
+          clerk: widget.clerk, onSignOut: widget.onSignOut, identity: _id);
     }
     // Messaging-first landing (owner decision 2026-06-18, free release): the app
     // opens directly on AvaTOK (ChatListScreen), where users see their chats &

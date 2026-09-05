@@ -9,16 +9,18 @@ import '../../features/identity/identity_screen.dart';
 import '../../features/library/avalibrary_screen.dart';
 import '../../features/library/avastorage_screen.dart';
 import '../../features/marketplace/archived_screen.dart';
-import '../../features/marketplace/marketplace_browse.dart';
+import '../../features/marketplace/marketplace_hub.dart';
 import '../../features/marketplace/my_listings_screen.dart';
 import '../../features/marketplace/sell_listing_flow.dart';
 import '../../features/marketplace/compose_chat.dart';
+import '../../features/marketplace/listing_web_form.dart';
 import '../../features/payout/payout_screen.dart';
 import '../../features/profile/profile_screen.dart';
 import '../../features/settings/about_screen.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../features/subscribe/subscribe_screen.dart';
 import '../../features/wallet/wallet_screen.dart';
+import '../../features/virtual_numbers/virtual_numbers.dart';
 import '../coming_soon.dart';
 import '../shell_v2.dart';
 
@@ -41,7 +43,9 @@ void openShellDestination(BuildContext context, String dest) {
   switch (dest) {
     case 'settings':
       push(SettingsScreen(
-          clerk: scope.clerk, onSignOut: scope.onSignOut, identity: scope.identity));
+          clerk: scope.clerk,
+          onSignOut: scope.onSignOut,
+          identity: scope.identity));
       return;
     case 'profile':
       push(const ProfileScreen());
@@ -63,6 +67,11 @@ void openShellDestination(BuildContext context, String dest) {
     case 'avawallet':
       push(const WalletScreen());
       return;
+    case 'virtual_numbers':
+    case 'avaphone':
+    case 'phone':
+      push(const VirtualNumbersScreen());
+      return;
     // [FIX 2026-07-13] Connectors (Composio apps hub). ShellV2 dropped the old
     // shell's `avaapps` case, so the sidebar "Connectors" tap fell through to the
     // "coming soon" placeholder instead of the real AvaApps grid — this restores it.
@@ -79,7 +88,7 @@ void openShellDestination(BuildContext context, String dest) {
       push(const SubscribeScreen());
       return;
     case 'marketplace':
-      push(const MarketplaceBrowse());
+      push(const MarketplaceHub());
       return;
     case 'mylistings':
       push(const MyListingsScreen());
@@ -88,6 +97,14 @@ void openShellDestination(BuildContext context, String dest) {
       push(const ArchivedScreen());
       return;
     case 'createlisting':
+      // [LIST-EMBED-1 2026-09-05] The web wizard in a WebView — one listing
+      // form for the app and the site. Checked first, so the AI compose chat is
+      // unreachable while this is on. Mirrors ava_shell.dart; keep the two in
+      // step, they are the same menu action reached through two shells.
+      if (RemoteConfig.listingWebFormEnabled) {
+        push(const ListingWebFormScreen(source: 'shell_v2_menu'));
+        return;
+      }
       // [MKT2] AI compose chat when enabled (it runs the liveness gate in-chat,
       // §3.1), else the old form. Mirrors ava_shell.dart.
       push(RemoteConfig.aiComposeEnabled

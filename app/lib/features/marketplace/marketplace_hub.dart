@@ -11,6 +11,7 @@ import '../avavision/avavision_home.dart';
 import '../identity/listing_liveness_gate.dart';
 import '../explore/explore_home.dart';
 import 'marketplace_browse.dart' show marketplaceTitle;
+import 'listing_web_form.dart';
 import 'my_listings_screen.dart';
 import 'sell_listing_flow.dart';
 
@@ -21,6 +22,23 @@ import 'sell_listing_flow.dart';
 /// the check first so a verified user goes straight in and never sees a raw error.
 Future<void> _openListingComposer(BuildContext context) async {
   Analytics.capture('listing_pipeline_opened', {'via': 'hub'});
+  // [LIST-EMBED-1 2026-09-05] The hub's "Create Listing" tile opens the same
+  // one form as the sidebar action. Routing only the menu would leave a second
+  // button in the app creating listings through a different surface with a
+  // different field set — the exact drift this change exists to end.
+  //
+  // The pre-gate below is SKIPPED on this path deliberately: the wizard handles
+  // a 403 liveness_required itself with a "Verify now" link on the step that
+  // hit it, and the Worker is the real gate either way. Showing a camera check
+  // before the creator has seen the form is the drop-off the compose branch in
+  // ava_shell.dart already avoids.
+  if (RemoteConfig.listingWebFormEnabled) {
+    if (!context.mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => const ListingWebFormScreen(source: 'marketplace_hub'),
+    ));
+    return;
+  }
   if (RemoteConfig.listingLivenessGate) {
     final ok = await ensureListingLiveness(context);
     if (!context.mounted) return;

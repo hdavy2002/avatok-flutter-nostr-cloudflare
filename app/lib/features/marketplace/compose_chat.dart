@@ -1,3 +1,14 @@
+// ⚠️ [LIST-EMBED-1 2026-09-05, owner decision] "List with Ava" IS NO LONGER
+// REACHABLE. Every "Create listing" entry point now checks
+// `RemoteConfig.listingWebFormEnabled` (default TRUE) FIRST and opens the web
+// wizard in an in-app WebView instead — features/marketplace/listing_web_form.dart.
+// `aiComposeEnabled` no longer decides anything while that flag is on.
+//
+// The file is kept, not deleted, so the flag remains a working brake: turn
+// listingWebFormEnabled off and this screen comes back. Do not "clean up" the
+// dead-looking route, and do not add a new caller — if you want the AI to write
+// listing copy again, that belongs in the one form, on the web (there is
+// already a copy-review step there: POST /api/listings/copy-review).
 import 'dart:convert';
 
 import 'package:flutter/material.dart';

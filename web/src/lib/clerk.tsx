@@ -60,6 +60,17 @@ let _clerkGetToken: (() => Promise<string | null>) | null = null;
 let _clerkSignedIn = false;
 let _openGate: ((resolve: (jwt: string) => void, reject: (e: unknown) => void) => void) | null = null;
 
+/* [LIST-EMBED-1 2026-09-05] The app's WebView has no Clerk session — the app
+ * holds one natively and hands out tokens over a JS channel (lib/embed.ts).
+ * Registering that provider here rather than at each call site means every
+ * island keeps calling getActiveToken() and simply works inside the app. */
+let _hostToken: (() => Promise<string | null>) | null = null;
+
+/** Install a host-supplied token provider (app WebView). Null clears it. */
+export function setHostTokenProvider(fn: (() => Promise<string | null>) | null): void {
+  _hostToken = fn;
+}
+
 function lsGet(key: string): string | null {
   try {
     return typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
@@ -91,6 +102,18 @@ export function deviceId(): string {
  * anonymous visitor. Use this for optional-auth reads.
  */
 export async function getActiveToken(): Promise<string | null> {
+  // [LIST-EMBED-1] The host wins when present: inside the app WebView there is
+  // no Clerk session to fall back to, and the stored guest token is not a
+  // requireUser JWT (see the header) — so anything but the host's token 401s.
+  if (_hostToken) {
+    try {
+      const t = await _hostToken();
+      if (t) return t;
+      capture('auth_token_null', { where: 'getActiveToken.host' });
+    } catch {
+      /* fall through — a browser-visited embed URL still has the normal paths */
+    }
+  }
   if (_clerkSignedIn && _clerkGetToken) {
     try {
       const t = await _clerkGetToken();

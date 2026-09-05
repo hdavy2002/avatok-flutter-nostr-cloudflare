@@ -21,6 +21,7 @@ import { Card } from '../../../components/Card';
 import { Button } from '../../../components/Button';
 import { IslandBoundary } from '../../../components/IslandBoundary';
 import { capture, withTrace } from '../../../lib/analytics';
+import { isEmbedded, embedNotifyDirty, embedNotifySubmitted } from '../../../lib/embed';
 import { emptyDraft, STEP_LABELS } from './types';
 import type { ListingDraft, StepIndex, DraftSlot } from './types';
 import { bodyForSave, validateStep, publishReadiness, epochToLocal, normalizeTimezone } from './wizardLogic';
@@ -204,6 +205,13 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
     stepStartRef.current = Date.now();
     capture('listing_step_view', { step: STEP_LABELS[step] });
   }, [step]);
+
+  // [LIST-EMBED-1] Tell the app whether closing the WebView now would throw work
+  // away, so its ✕ can ask first. A draft that has reached the server (`id`) is
+  // recoverable and does NOT count — the creator can resume it from My listings;
+  // typed-but-unsaved text on steps 1-2 is what is actually at risk.
+  const unsavedPitch = draft.id === null && (draft.title.trim() !== '' || draft.blurb.trim() !== '');
+  useEffect(() => { embedNotifyDirty(unsavedPitch); }, [unsavedPitch]);
 
   // [FREE-ENTRY-GATE-1] Per-user, authenticated read of the SAME gate the
   // create/edit routes enforce (worker/src/lib/free_entry_gate.ts via
@@ -477,6 +485,11 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
         outcome: 'ok', status: r.status ?? 'pending_review', kind: draft.kind,
         price: draft.free_entry ? 0 : Number(draft.price) || 0, free_entry: draft.free_entry,
       });
+      // [LIST-EMBED-1] Inside the app the destination is the NATIVE My listings
+      // screen (the card there reads "Review pending"), not the web dashboard —
+      // navigating the WebView to /dashboard would leave the creator on a
+      // chrome-less page with no way back into the app.
+      if (isEmbedded()) { embedNotifySubmitted(draft.id); return; }
       window.location.href = `/dashboard/listings?submitted=${encodeURIComponent(draft.id!)}`;
     } catch (e) {
       if (e instanceof ApiError) {
@@ -504,6 +517,9 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
       const r = await withTrace(() => request<{ listing_ids?: string[] }>(`/api/listings/${encodeURIComponent(draft.id!)}/repeat`, { method: 'POST', auth: token, body: { weeks: repeatWeeks } }));
       const n = r.listing_ids?.length ?? 0;
       capture('listing_repeat', { weeks: repeatWeeks, outcome: 'ok' });
+      // [LIST-EMBED-1] Same reason as onSubmitForReview: hand the app back to
+      // its own My listings rather than steering the WebView to the dashboard.
+      if (isEmbedded()) { embedNotifySubmitted(draft.id); return; }
       window.location.href = `/dashboard/listings?repeated=${n}`;
     } catch {
       setError('Could not make the copies. Try again.');
@@ -525,9 +541,30 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
   if (loading) return <div className="font-body font-bold text-inkSoft">Loading…</div>;
 
   return (
-    <div className="flex flex-col gap-6 pb-24">
-      {/* Stepper */}
-      <div className="flex flex-wrap items-center gap-1.5">
+    <div className="flex flex-col gap-6 pb-32 sm:pb-24">
+      {/* [LIST-RESPONSIVE-1 2026-09-05] Stepper, two shapes.
+
+          Eight pills reading "1. TYPE … 8. PREVIEW" wrap to four rows on a
+          360px phone and push the first field below the fold, so on narrow
+          screens this collapses to the line every mobile form uses — where you
+          are, out of how many, and the name of the step — with Back/Next in the
+          sticky bar doing the navigating. The full pill row (which doubles as a
+          jump-to-step control) returns at `sm`, where it fits on one or two
+          rows. */}
+      <div className="sm:hidden">
+        <div className="flex items-baseline gap-2">
+          <span className="font-mono font-bold uppercase text-[11px] tracking-[0.1em] text-inkMute">
+            Step {step + 1} of {STEP_LABELS.length}
+          </span>
+          {saving && <span className="font-mono font-bold uppercase text-[11px] tracking-[0.1em] text-inkSoft">· Saving…</span>}
+        </div>
+        <h2 className="mt-0.5 font-display font-semibold text-[20px] leading-tight text-ink">{STEP_LABELS[step]}</h2>
+        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full border-zine border-ink bg-paper2">
+          <div className="h-full bg-lime transition-[width] duration-200"
+            style={{ width: `${((step + 1) / STEP_LABELS.length) * 100}%` }} />
+        </div>
+      </div>
+      <div className="hidden flex-wrap items-center gap-1.5 sm:flex">
         {STEP_LABELS.map((label, i) => (
           <button key={label} type="button" disabled={i > step && !draft.id}
             onClick={() => { if (i <= step || draft.id) setStep(i as StepIndex); }}
@@ -545,7 +582,7 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
         )}
       </div>
 
-      <div className="max-w-2xl">
+      <div className="w-full max-w-2xl">
         {step === 0 && <Step1Type draft={draft} patch={patch} err={fieldErr} freeEntryLocked={freeEntryLocked} />}
         {step === 1 && (
           <Step2Pitch
@@ -583,14 +620,21 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
 
       {/* Sticky bottom nav */}
       {step < 7 && (
-        <div className="fixed inset-x-0 bottom-0 z-10 border-t-zine border-ink bg-paper px-4 py-3">
+        /* [LIST-RESPONSIVE-1] `pb-[env(safe-area-inset-bottom)]` keeps the
+           primary action clear of the iPhone home indicator and of Android's
+           gesture bar in the app WebView, where there is no browser chrome
+           below this bar to absorb it. The buttons also stretch to fill the row
+           on a phone — a 90px "Next" floating at the right edge of a 360px bar
+           is a small target for a thumb. */
+        <div className="fixed inset-x-0 bottom-0 z-10 border-t-zine border-ink bg-paper px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
           <div className="mx-auto flex max-w-2xl items-center gap-3">
-            {step > 0 && <Button variant="ghost" label="Back" onClick={back} />}
-            <div className="flex-1" />
+            {step > 0 && <Button variant="ghost" label="Back" onClick={back} className="shrink-0" />}
+            <div className="hidden flex-1 sm:block" />
             {/* [LIST-WIZ-PERF-1] No `loading` spinner here on purpose — next()
                 advances the step immediately; the "Saving…" pill by the
                 stepper is the only in-flight indicator now. */}
-            <Button variant="lime" label={step === 0 ? 'Next' : 'Save and continue'} onClick={next} />
+            <Button variant="lime" label={step === 0 ? 'Next' : 'Save and continue'} onClick={next}
+              className="flex-1 sm:flex-none" />
           </div>
         </div>
       )}

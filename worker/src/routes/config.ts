@@ -1549,6 +1549,20 @@ export interface PlatformConfig {
   // remains the escape hatch (M-D7) until the compose_started→listing_published funnel
   // proves out (§7.4).
   aiComposeEnabled: boolean;
+  // [LIST-EMBED-1 2026-09-05, owner decision] "Create listing" in the app opens
+  // the WEB wizard in an in-app WebView (/embed/listing?embed=1) instead of the
+  // native "List with Ava" compose chat. ONE listing form, on the web, shown in
+  // both places — the app and the website can no longer disagree about which
+  // fields exist.
+  //
+  // Default TRUE because this is the owner's decided flow, not an experiment;
+  // the flag exists as a BRAKE. Flip it false and the app falls back to
+  // whichever native path aiComposeEnabled selects, which is what to do if the
+  // WebView misbehaves on a device in the field. Note the fallback is only as
+  // good as those native screens — SellListingFlow cannot enter the content
+  // fields the server now requires (see listingContentFieldsError), so a
+  // listing created that way still needs finishing on the web.
+  listingWebFormEnabled: boolean;
   // [CARD-AI-REVIEW-1] The MODEL half of POST /api/listings/copy-review — the
   // creator wizard's pre-publish copy review. OFF here does NOT disable the
   // feature: the route's deterministic length pass still runs and still returns
@@ -2338,6 +2352,10 @@ const DEFAULTS: PlatformConfig = {
   // sellers and drafts public listing text; staging first, and the form stays as the
   // escape hatch until the funnel says otherwise (M-D7).
   aiComposeEnabled: false,
+  // [LIST-EMBED-1] The app's "Create listing" opens the web wizard in a WebView.
+  // ON by default — it is the shipped flow, and the flag is the brake, not the
+  // switch that turns the feature on.
+  listingWebFormEnabled: true,
   // Per-listing billing — DARK. While off, publishes are free and entitlements are
   // still recorded so the 5-free quota is accurate when this flips on (staging first).
   listingFeeEnabled: false,

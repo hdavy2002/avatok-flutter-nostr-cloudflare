@@ -1,0 +1,41 @@
+---
+// [LIST-EMBED-1 2026-09-05] /embed/listing — the create-listing wizard with no
+// site chrome, for the Flutter app's in-app WebView.
+//
+// The app opens `https://avatok.ai/embed/listing?embed=1` (and `&id=<draft>` to
+// resume). The app supplies the close button, the title bar and the navigation
+// out of here, so this page must render the FORM AND NOTHING ELSE: no site
+// header, no dashboard rail, no footer, no "+ New" CTA. A second header inside
+// the WebView is the tell that gives away that a native screen is a web page.
+//
+// `chrome={false}` drops Base's header/footer; `navStatic` is belt-and-braces
+// for the same reason CreateListing.tsx documents — nothing here may mount a
+// second <ClerkProvider>.
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import EmbeddedCreateListing from '../../islands/dashboard/EmbeddedCreateListing.tsx';
+
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+---
+
+<Base title="New listing" chrome={false} noindex={true} navStatic={true} headerAuth="static">
+  <main id="embed-root" class="min-h-screen bg-paper px-4 py-5 sm:px-6 sm:py-6">
+    {/* max-w-2xl, matching the wizard's own column AND its sticky footer (which
+        centres its buttons in a max-w-2xl of the full viewport). A wider
+        container here left-aligns the fields inside it while the footer stays
+        centred, and on an iPad the two end up ~24px out of line. */}
+    <div class="mx-auto w-full max-w-2xl">
+      <EmbeddedCreateListing client:load />
+    </div>
+  </main>
+</Base>
+
+<style is:global>
+  /* The app's WebView is a phone screen with no browser chrome to absorb an
+     overscroll, and a horizontal one there reads as a broken page. */
+  html, body { overscroll-behavior-x: none; }
+  /* Same reasoning as Dashboard.astro's rule: the `mono` token is Nunito now
+     and does not want the tracking that was picked for a pixel face. */
+  #embed-root .font-mono { letter-spacing: 0.04em; }
+</style>

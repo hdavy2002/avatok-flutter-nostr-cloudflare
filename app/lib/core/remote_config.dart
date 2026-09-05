@@ -833,6 +833,18 @@ class RemoteConfig {
   /// purpose — compose can be dark while the marketplace itself is live.
   static bool get aiComposeEnabled => _b('aiComposeEnabled', false);
 
+  /// [LIST-EMBED-1 2026-09-05, owner decision] "Create listing" opens the WEB
+  /// wizard in an in-app WebView instead of any native listing screen. Mirrors
+  /// `listingWebFormEnabled` in config.ts DEFAULTS, where it is declared — a
+  /// getter with no server-side key can never be flipped (see the fake-flag
+  /// rule in CLAUDE.md).
+  ///
+  /// Default TRUE, unlike most flags here: this is the shipped flow, and the
+  /// flag is the brake. It is checked BEFORE [aiComposeEnabled] wherever
+  /// "Create listing" is handled, so the AI compose chat is unreachable while
+  /// this is on regardless of that flag's value.
+  static bool get listingWebFormEnabled => _b('listingWebFormEnabled', true);
+
   /// Effective Marketplace visibility for the CURRENT account. The global
   /// `marketplaceEnabled` KV flag stays false during the phased/pro launch, so
   /// ordinary testers never see the Marketplace. Admins (see [isAdmin]) get it

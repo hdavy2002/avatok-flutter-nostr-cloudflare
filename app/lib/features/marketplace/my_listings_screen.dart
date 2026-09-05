@@ -9,12 +9,34 @@ import '../../core/ui/messenger_theme.dart';
 import 'edit_listing_screen.dart';
 
 /// Friendly status label (the raw 'published' shows as 'live' to owners).
+///
+/// [LIST-EMBED-1 2026-09-05] `pending_review`, `approved` and `rejected` were
+/// missing, so they fell through to `default` and the row read the raw column
+/// value — "pending_review", with the underscore. That was survivable while the
+/// only way in was the web dashboard (which has its own worded states); it is
+/// not now that submitting the form lands the creator on THIS screen, where the
+/// status line is the entire answer to "did that work?".
 String _statusLabel(String s) {
   switch (s) {
     case 'published': return 'live';
     case 'completed': return 'sold';
     case 'cancelled': return 'archived';
+    case 'pending_review': return 'Review pending';
+    case 'approved': return 'approved — going live shortly';
+    case 'rejected': return 'changes requested';
     default: return s;
+  }
+}
+
+/// Statuses that get a coloured chip rather than a word in the subtitle line —
+/// the three a creator has to act on or wait through.
+const _kNoticeStatuses = {'pending_review', 'approved', 'rejected'};
+
+Color _statusChipColor(String s) {
+  switch (s) {
+    case 'approved': return AD.headerFooter; // jodhpur blue — settled, good news
+    case 'rejected': return AD.danger;
+    default: return AD.haldi; // waiting on us
   }
 }
 
@@ -22,7 +44,15 @@ String _statusLabel(String s) {
 /// mark-sold / renew actions; here it loads and shows status so the screen is
 /// reachable and useful from day one.
 class MyListingsScreen extends StatefulWidget {
-  const MyListingsScreen({super.key});
+  const MyListingsScreen({super.key, this.highlightPendingReview = false});
+
+  /// [LIST-EMBED-1] Set when we arrive straight from a submitted listing form.
+  /// Shows a one-line banner explaining what happens next, because the creator
+  /// has just finished an eight-step form and "Review pending" on a card is a
+  /// thin answer on its own. Purely presentational — the card's own status is
+  /// still whatever the server says.
+  final bool highlightPendingReview;
+
   @override
   State<MyListingsScreen> createState() => _MyListingsScreenState();
 }
@@ -49,7 +79,9 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
         elevation: 0,
         title: Text('My listings', style: ADText.appTitle()),
       ),
-      body: RefreshIndicator(
+      body: Column(children: [
+        if (widget.highlightPendingReview) const _SubmittedBanner(),
+        Expanded(child: RefreshIndicator(
         onRefresh: () async => _reload(),
         child: FutureBuilder<List<ListingCard>>(
           future: _future,
@@ -77,7 +109,31 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
             );
           },
         ),
-      ),
+        )),
+      ]),
+    );
+  }
+}
+
+/// [LIST-EMBED-1] "We got it, here is what happens next." Shown once, on the
+/// hop straight out of the listing form.
+class _SubmittedBanner extends StatelessWidget {
+  const _SubmittedBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
+      color: AD.haldi,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Sent for review', style: ADText.rowName()),
+        const SizedBox(height: Msg.s1),
+        Text(
+          'Your listing is with the team. You will get a notification when it goes live.',
+          style: ADText.preview(c: AD.textPrimary),
+        ),
+      ]),
     );
   }
 }
@@ -118,8 +174,30 @@ class _MyListingRow extends StatelessWidget {
             : PhosphorIcon(PhosphorIcons.package(PhosphorIconsStyle.regular), size: 32, color: AD.textTertiary),
         title: Text(card.title, maxLines: 1, overflow: TextOverflow.ellipsis,
             style: ADText.rowName()),
-        subtitle: Text('${card.displayPrice} · ${_statusLabel(card.status)}',
-            style: ADText.preview()),
+        // [LIST-EMBED-1] A listing waiting on (or turned back by) review gets a
+        // chip, not a word buried after a interpunct. This is the line the
+        // creator reads the moment the form closes, and "₹500 · pending_review"
+        // does not tell them their listing is fine and simply queued.
+        subtitle: _kNoticeStatuses.contains(card.status)
+            ? Row(children: [
+                Flexible(child: Text(card.displayPrice, style: ADText.preview(), overflow: TextOverflow.ellipsis)),
+                const SizedBox(width: Msg.s2),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: _statusChipColor(card.status),
+                    borderRadius: Msg.brPill,
+                  ),
+                  child: Text(
+                    _statusLabel(card.status),
+                    style: ADText.preview(
+                      c: card.status == 'rejected' ? AD.destructiveInk : AD.textPrimary,
+                    ),
+                  ),
+                ),
+              ])
+            : Text('${card.displayPrice} · ${_statusLabel(card.status)}',
+                style: ADText.preview()),
         trailing: PopupMenuButton<String>(
           color: AD.menu,
           iconColor: AD.textSecondary,

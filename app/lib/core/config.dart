@@ -135,6 +135,24 @@ const String kAddResolveUrl = 'https://$kSignalingHost/api/add'; // GET ?t=<shar
 /// Invite link base — share to bring a contact in pre-connected.
 const String kInviteBase = 'https://avatok.ai/i/';
 
+/// [LIST-EMBED-1 2026-09-05] The web create-listing wizard, chrome-less, as
+/// shown inside the app's in-app WebView (features/marketplace/listing_web_form.dart).
+///
+/// `?embed=1` is half of what tells the page it is embedded — the other half is
+/// the `AvatokHost` JavaScript channel the WebView registers. Both are required
+/// (web/src/lib/embed.ts:isEmbedded), so this URL opened in a browser is simply
+/// the ordinary form without the dashboard rail.
+///
+/// ⚠️ THIS IS avatok.ai ON EVERY BUILD, INCLUDING STAGING — deliberately, and
+/// it is a real seam. There is no staging website: `.github/workflows/web-deploy.yml`
+/// deploys one site, and web/src/lib/config.ts points its API at prod. So a
+/// staging APK opening this form talks to the PROD API for listings while the
+/// rest of the app talks to api-staging. Do not "fix" that by pointing this at
+/// a staging host that does not exist; the fix is a staging deployment of the
+/// site, and until then a staging tester creating a listing here is writing to
+/// production data.
+const String kListingWebFormUrl = 'https://avatok.ai/embed/listing?embed=1';
+
 /// Public download / join page shared in invite messages.
 const String kDownloadUrl = 'https://avatok.ai/download';
 
