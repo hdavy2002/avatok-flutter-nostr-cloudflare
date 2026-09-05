@@ -4613,5 +4613,77 @@
       }
     ],
     "_verified_at": "Read out of the code, not from memory: the deleted style lines and the new one are in buildPosterPrompt (worker/src/lib/listing_poster.ts); copy resolution happens once at the top of generateListingPoster and is passed to both buildPosterPrompt and verifyPosterText. Flags confirmed live on cache-busted prod /api/config 2026-09-05: posterDialogueEnabled=true, posterStyleVersion=4."
+  },
+  "LISTING-BLOCKERS-1": {
+    "description": "[LISTING-BLOCKERS-1] There was no single definition of 'publishable'. The rules lived inline inside publishListingAuthoritative and publish was the only way to reach them, so every other surface guessed: the wizard kept a hand-written checklist that branched on schedule_mode without consulting kind; submitListingForApproval validated owner + status + price floor and nothing else; the admin queue showed a reviewer no publishability signal at all. A live_event with schedule_mode='always_on' therefore went all-green in the wizard, entered the review queue, was approved by a human, and was then refused by publish forever - and its schedule could no longer be edited, because that was blocked on anything past draft. New worker/src/lib/listing_blockers.ts holds the rules once; publish, submit, GET /api/listings/:id/blockers and the admin detail payload all read it. Each blocker carries the EXACT legacy status+body publish always returned, so shipped clients see no wire change; `blockers` is additive. Deliberately excluded and still in publish: identityGate/KYC (facts about the account, not the listing) and the two steps with side effects - claimBlock, which books the creator's calendar, and the entitlement charge, which spends money. Neither can run on a read-only preview.",
+    "shipped": "2026-09-05",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "listing_submit_blocked",
+        "property": "codes",
+        "exists": true,
+        "min_events": 1,
+        "note": "The fix working at the point it matters. This event only exists because submit now runs the publish rules, so its presence with a non-empty `codes` proves an unpublishable listing was stopped BEFORE the review queue rather than after a human approved it. `codes` names which rules fired, so a run dominated by one code is a wizard gap to close upstream rather than a creator problem."
+      },
+      {
+        "event": "listing_publish_blocked",
+        "property": "codes",
+        "exists": true,
+        "min_events": 0,
+        "note": "The counterpart, and the one that should trend to ZERO. A publish-time block after this change means something got past submit - a listing submitted before the deploy, or a rule that can go stale between submit and publish (a category deactivated, a start time that has since passed). A rising count here means the two ends have drifted apart again, which is the whole class of bug this shipped to end."
+      }
+    ],
+    "_verified_at": "Read out of the emit sites: listing_submit_blocked in submitListingForApproval and listing_publish_blocked in publishListingAuthoritative, both worker/src/routes/listings.ts. Verified against real prod row 845567cb on 2026-09-05 (live_event, schedule_mode=always_on, starts_at NULL, duration_min NULL, category live_cooking active=1, poster approved) - the expected blockers are exactly starts_at_required and duration_required."
+  },
+  "ADMIN-EDIT-1": {
+    "description": "[ADMIN-EDIT-1] Admins could approve, reject with a reason, and run poster actions - and nothing else. The single UPDATE in admin_listings.ts touched status, attrs, cover_media and the three review-binding columns; no title, price, category, starts_at or capacity. A listing that was 95% right had to be bounced to its creator, who often could not fix it either. New PUT /api/admin/listings/:id writes a content-only allowlist (ADMIN_EDITABLE), coerced through the SAME normListingFields the creator's own PUT uses so an admin fix cannot store something subtly different from the identical input via the wizard. Owner decision: the edit is logged and the listing KEEPS its approval - the reviewer is the approver, so re-opening review would mean re-approving your own correction. The trade (an admin edit is not itself reviewed) is mitigated by attribution rather than a second gate: an admin_edit row in listing_approval_history carrying the exact before/after per field, an admin_audit row, and a PostHog event. Excluded: status (that is what the moderation actions are for), kind/vertical (structural), creator_id (never change who gets paid), cover_media (owned by the poster actions). The response returns the fresh blockers so the reviewer sees whether the edit actually made the listing publishable.",
+    "shipped": "2026-09-05",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "listing_admin_edit",
+        "property": "fields",
+        "exists": true,
+        "min_events": 1,
+        "note": "THE assertion, and the reason it is `fields` and not a count: the route returns 200 with `changed: []` when nothing actually differed, and no event fires then. So this event carrying a non-empty `fields` proves a real column changed, not that the button was clicked. `fields` also answers the owner's actual question - 'I cannot try to find who did what' - since it names the columns, and the history row alongside it carries the before/after values."
+      }
+    ],
+    "_verified_at": "Read out of the emit site: safeTrack('listing_admin_edit', ...) in adminEditListing, worker/src/routes/admin_listings.ts, fired only after the UPDATE reports changes and only for fields whose value actually differed."
+  },
+  "WIZARD-VALIDATE-1": {
+    "description": "[WIZARD-VALIDATE-1 / LISTING-REVIEW-1] Two things the owner called out on 2026-09-05: 'forms are not validated' and 'the AI review at the end is fake'. Both were true. VALIDATION: validateStep let a creator past every step with no blurb (only capped, never required), and its schedule checks branched on schedule_mode with no else and no reference to kind - so a live_event as 'always_on' was asked for nothing. Blurb is now required on the step that collects it, and a live_event without a fixed date or recurrence is refused at step 4 regardless of mode, because a draft can reach that state from the API or an older listing even though the UI no longer offers it. REVIEW: the old step-8 line read 'AI check of your listing - passed' when all that had happened was that /api/listings/copy-review returned; that route reads only title/blurb/description ('You edit ONLY for length, clarity and sentence case'), has no verdict in its response shape, and falls back to a deterministic length clamp when the model is down - and the tick fired on the call returning either way. Four of the checklist's seven base lines were literal ok:true padding. Replaced by POST /api/listings/:id/review: a deterministic layer (listingBlockers - the same rules publish enforces, so a `fail` is trustworthy) plus an advisory model layer that can only add `warn`. The model can never produce a pass on its own and its absence is never a pass - the response says model:'unavailable' and the UI says so too. Any edit to the draft clears the verdict, so a green tick can never belong to an earlier version of the listing.",
+    "shipped": "2026-09-05",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "aiEnabled",
+      "listingAiReviewEnabled"
+    ],
+    "success": [
+      {
+        "event": "listing_review_run",
+        "property": "verdict",
+        "not_in": [
+          "error"
+        ],
+        "min_events": 1,
+        "min_pass_rate": 0.9,
+        "note": "THE assertion, and it is a VALUE because the old check's whole failure was that it reported success on the mere fact of a response. verdict is pass|warn|fail from the server; 'error' means the call itself failed, which leaves the verdict null and Submit LOCKED - honest, but useless to the creator, so a run of them is a real regression. Note that a high `fail` rate is NOT a failure of this change: it is the wizard finally catching listings that used to reach the review queue broken."
+      },
+      {
+        "event": "listing_review_run",
+        "property": "model",
+        "equals": "ok",
+        "min_events": 1,
+        "min_pass_rate": 0.7,
+        "note": "Whether the ADVISORY half is actually running. model='unavailable' still yields a usable verdict from the deterministic rules and the UI says which happened - so this can degrade without lying, which is the design. But a sustained collapse means every creator is getting rules-only review while the feature reads as present, and that is worth knowing before it is discovered the way the last one was."
+      }
+    ],
+    "_verified_at": "Read out of the emit site: capture('listing_review_run', {verdict, model, issues}) in runReview, web/src/islands/dashboard/listing-form/ListingWizard.tsx, on both the success and catch paths. Server verdict logic in worker/src/routes/listing_review.ts - verdict is 'fail' iff a deterministic blocker exists, and `model` is set to 'ok' only after the response parses AND passes the output guard."
   }
 }
