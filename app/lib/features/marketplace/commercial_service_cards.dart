@@ -19,6 +19,27 @@ String _creatorName(ListingCard card) =>
 /// Phase 2 commercial live-event discovery card. This is discovery UI only:
 /// the public listing id may be shared, while checkout remains the server-owned
 /// path that creates an account-bound entitlement.
+/// [UI-MKT-VERT-1 2026-09-05] One place that decides how big a creator-session
+/// card is, so the shelf that reserves the row height and the card that fills it
+/// can never disagree — the old hard-coded `Container(height: 350)` shelf vs a
+/// 2:3 poster card is exactly what produced "BOTTOM OVERFLOWED BY 51 PIXELS".
+///
+/// Portrait and screen-relative: ~78% of the width so the next card peeks in
+/// and the row reads as swipeable, capped so it does not stretch on a tablet,
+/// and capped again against screen HEIGHT so a shelf never eats the whole
+/// viewport — the page below it has to stay visibly scrollable.
+class CommercialCardMetrics {
+  final double width, height;
+  const CommercialCardMetrics(this.width, this.height);
+
+  factory CommercialCardMetrics.of(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final w = (size.width * 0.78).clamp(240.0, 360.0);
+    final h = (w * 1.7).clamp(0.0, size.height * 0.52);
+    return CommercialCardMetrics(w, h);
+  }
+}
+
 class LiveEventCard extends StatelessWidget {
   final ListingCard card;
   final VoidCallback onTap;
@@ -92,6 +113,7 @@ class _CommercialServiceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final creator = _creatorName(card);
+    final m = CommercialCardMetrics.of(context);
     return Semantics(
       button: true,
       label: '$badge, ${card.title}, by $creator, ${fmtTokens(card.effectivePrice)}',
@@ -123,17 +145,23 @@ class _CommercialServiceCard extends StatelessWidget {
             }
           },
           child: SizedBox(
-            width: 286,
+            width: m.width,
+            height: m.height,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // [POSTER-FIRST-1 2026-09-05] A generated poster gets its true
-                // 2:3 shape. Cropping it into the old 132px band would cut off
-                // the painted title, which is the only thing the poster is
-                // carrying — the price pill and badge stay, because those are
-                // deliberately NOT on the poster and come from the row.
-                AspectRatio(
-                  aspectRatio: card.hasAiPoster ? 2 / 3 : 286 / 132,
+                // [UI-MKT-VERT-1 2026-09-05] The artwork takes every pixel the
+                // fixed card height leaves after the text block, instead of
+                // asking for an aspect ratio the shelf may not be able to give
+                // it. That is what keeps this row overflow-proof: the flexible
+                // child absorbs the difference rather than reporting it.
+                //
+                // [POSTER-FIRST-1] The card is now portrait, so a 2:3 poster is
+                // only lightly cropped top and bottom by CoverImage's cover fit
+                // — the painted title, which sits in the upper third, survives.
+                // The price pill and badge stay on the row because they are
+                // deliberately NOT on the poster.
+                Expanded(
                   child: Stack(children: [
                     Positioned.fill(
                       child: CoverImage(

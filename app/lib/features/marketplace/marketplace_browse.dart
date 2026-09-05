@@ -179,7 +179,22 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
               showBack: Navigator.of(context).canPop(),
               heightScale: ZineBreakpoints.chromeScaleHV(context),
             ),
-      body: Column(children: [
+      // [UI-MKT-VERT-1 2026-09-05] One CustomScrollView, not a Column whose
+      // last child is an Expanded grid. The old shape pinned the search box,
+      // the chips and a hard 350dp creator shelf to the top of the viewport and
+      // let only the grid move, so a phone screen was mostly permanent chrome
+      // and the shelves could never grow past one row. Everything is a sliver
+      // now: the header, the shelves and the grid scroll as one surface, which
+      // is what makes "scroll down for more categories" possible at all.
+      body: RefreshIndicator(
+        onRefresh: () async => _load(fresh: true),
+        // Pull-to-refresh must keep working even when the page is shorter than
+        // the viewport (empty grid, no shelves), which a CustomScrollView will
+        // not do on its default physics.
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+          SliverToBoxAdapter(child: Column(children: [
         Padding(
           // The search field must START BELOW THE TIP OF THE HEADER WAVE and
           // never sit behind the golden seam. This is a plain TextField, not
@@ -258,39 +273,45 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
             ],
           ]),
         ),
-        const SizedBox(height: Msg.s3),
-        Divider(height: 1, color: AD.borderHairline),
-        if (commercialDiscovery)
-          _CommercialServicesShelf(
-            liveEnabled: commercialLive,
-            consultEnabled: commercialConsult,
-            query: _commercialQuery,
-          ),
-        Expanded(
-          child: RefreshIndicator(
-            onRefresh: () async => _load(fresh: true),
-            child: FutureBuilder<List<ListingCard>>(
-              future: _future,
-              builder: (context, snap) {
-                if (snap.connectionState != ConnectionState.done) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                final items = snap.data ?? const <ListingCard>[];
-                if (items.isEmpty) {
-                  // [UI-MARKET-2026] Was a left-aligned icon with a centred
-                  // caption and a hard 120px spacer — on a small screen the
-                  // glyph sat in the corner and the copy wrapped awkwardly.
-                  // Centred, padded and word-wrapped instead, still inside a
-                  // scrollable so pull-to-refresh keeps working.
-                  return ListView(
-                    padding: const EdgeInsets.fromLTRB(Msg.s5, 72, Msg.s5, Msg.s5),
-                    children: [
-                      Center(
-                        child: PhosphorIcon(
-                            PhosphorIcons.storefront(PhosphorIconsStyle.regular),
-                            size: 44,
-                            color: AD.textTertiary),
-                      ),
+            const SizedBox(height: Msg.s3),
+            Divider(height: 1, color: AD.borderHairline),
+            if (commercialDiscovery)
+              _CommercialServicesShelf(
+                liveEnabled: commercialLive,
+                consultEnabled: commercialConsult,
+                query: _commercialQuery,
+              ),
+          ])),
+          FutureBuilder<List<ListingCard>>(
+            future: _future,
+            builder: (context, snap) {
+              if (snap.connectionState != ConnectionState.done) {
+                return const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 48),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                );
+              }
+              final items = snap.data ?? const <ListingCard>[];
+              if (items.isEmpty) {
+                // [UI-MARKET-2026] Was a left-aligned icon with a centred
+                // caption and a hard 120px spacer — on a small screen the
+                // glyph sat in the corner and the copy wrapped awkwardly.
+                // Centred, padded and word-wrapped instead.
+                //
+                // [UI-MKT-VERT-1] A sliver now, and NOT a SliverFillRemaining:
+                // with tall shelves above it there is often no remaining
+                // viewport to fill, and forcing one would add a screen of dead
+                // scroll below the last shelf.
+                return SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(Msg.s5, 56, Msg.s5, 56),
+                    child: Column(children: [
+                      PhosphorIcon(
+                          PhosphorIcons.storefront(PhosphorIconsStyle.regular),
+                          size: 44,
+                          color: AD.textTertiary),
                       const SizedBox(height: Msg.s3),
                       Text('Nothing listed here yet',
                           textAlign: TextAlign.center,
@@ -300,11 +321,13 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
                           'Try “All countries”, clear the category filter, or pull down to refresh.',
                           textAlign: TextAlign.center,
                           style: ADText.preview()),
-                    ],
-                  );
-                }
-                return GridView.builder(
-                  padding: const EdgeInsets.all(Msg.s3),
+                    ]),
+                  ),
+                );
+              }
+              return SliverPadding(
+                padding: const EdgeInsets.all(Msg.s3),
+                sliver: SliverGrid(
                   // [UI-MARKET-2026] Max-extent instead of a hard 2 columns:
                   // a 240dp cap still gives exactly 2 columns on every phone
                   // (a 360dp screen leaves 336dp of content → 168dp tiles) but
@@ -318,19 +341,74 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
                     mainAxisSpacing: 12,
                     crossAxisSpacing: 12,
                     childAspectRatio: 0.66),
-                  itemCount: items.length,
-                  itemBuilder: (_, i) => _Card(card: items[i]),
-                );
-              },
-            ),
+                  delegate: SliverChildBuilderDelegate(
+                    (_, i) => _Card(card: items[i]),
+                    childCount: items.length,
+                  ),
+                ),
+              );
+            },
           ),
-        ),
-      ]),
+          const SliverToBoxAdapter(child: SizedBox(height: Msg.s5)),
+        ]),
+      ),
     );
   }
 }
 
-enum _CommercialLane { live, consult }
+/// [UI-MKT-VERT-1 2026-09-05] One horizontally-scrolling row of creator cards
+/// under its own heading. The page stacks several of these, so a heading is the
+/// only thing separating one category's row from the next.
+class _CommercialSection {
+  final String title;
+  final List<ListingCard> cards;
+  const _CommercialSection(this.title, this.cards);
+}
+
+/// Title-case a raw category string from the server (`wellness` → `Wellness`).
+/// Server categories are free text, so anything already cased is left alone.
+String _sectionTitle(String raw) {
+  final t = raw.trim();
+  if (t.isEmpty) return 'More sessions';
+  return t
+      .split(RegExp(r'[\s_-]+'))
+      .where((w) => w.isNotEmpty)
+      .map((w) => w[0].toUpperCase() + w.substring(1))
+      .join(' ');
+}
+
+/// Group creator cards into the rows the page renders, in display order:
+/// anything on air first, then one row per category (biggest first, so a
+/// category with real supply is not buried under a category with one card),
+/// then a catch-all for cards the server left uncategorised.
+///
+/// Deliberately NOT one row per entry in `kMarketCategories`: those are the
+/// goods-for-sale taxonomy, and emitting an empty row per name would give a
+/// page of seventeen headings with nothing under any of them.
+List<_CommercialSection> _sectionsFor(List<ListingCard> cards) {
+  if (cards.isEmpty) return const <_CommercialSection>[];
+  final liveNow = cards.where((c) => c.status == 'live').toList();
+  final rest = cards.where((c) => c.status != 'live').toList();
+
+  final byCategory = <String, List<ListingCard>>{};
+  for (final c in rest) {
+    byCategory.putIfAbsent(c.category.trim().toLowerCase(), () => []).add(c);
+  }
+  final uncategorised = byCategory.remove('') ?? const <ListingCard>[];
+
+  final keys = byCategory.keys.toList()
+    ..sort((a, b) {
+      final n = byCategory[b]!.length.compareTo(byCategory[a]!.length);
+      return n != 0 ? n : a.compareTo(b);
+    });
+
+  return <_CommercialSection>[
+    if (liveNow.isNotEmpty) _CommercialSection('Live now', liveNow),
+    for (final k in keys) _CommercialSection(_sectionTitle(k), byCategory[k]!),
+    if (uncategorised.isNotEmpty)
+      _CommercialSection(_sectionTitle(''), uncategorised),
+  ];
+}
 
 /// Phase 2 discovery shelf. It is completely absent while both listing flags
 /// are false, preserving the current production Marketplace. Public cards lead
@@ -351,16 +429,16 @@ class _CommercialServicesShelf extends StatefulWidget {
 }
 
 class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
-  late _CommercialLane _lane;
-  late Future<List<ListingCard>> _live;
-  late Future<List<ListingCard>> _consult;
+  /// [UI-MKT-VERT-1] Both lanes are fetched together and then grouped by
+  /// category, because the rows are now categories rather than lanes. The old
+  /// "Live & upcoming / 1:1 consultations" chip pair is gone: with a row per
+  /// category the chips were a second, contradictory way to slice the same
+  /// cards, and they were the reason only ONE row could ever be on screen.
+  late Future<List<ListingCard>> _all;
 
   @override
   void initState() {
     super.initState();
-    _lane = widget.liveEnabled
-        ? _CommercialLane.live
-        : _CommercialLane.consult;
     _reload();
   }
 
@@ -375,14 +453,25 @@ class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
   }
 
   void _reload() {
-    _live = widget.liveEnabled
-        ? _loadLive()
-        : Future.value(const <ListingCard>[]);
-    _consult = widget.consultEnabled
-        ? widget.query.isEmpty
+    _all = _loadAll();
+  }
+
+  Future<List<ListingCard>> _loadAll() async {
+    final live = widget.liveEnabled
+        ? await _loadLive()
+        : const <ListingCard>[];
+    final consult = widget.consultEnabled
+        ? await (widget.query.isEmpty
             ? ListingsApi.explore(kind: 'consult')
-            : ListingsApi.search(q: widget.query, kind: 'consult')
-        : Future.value(const <ListingCard>[]);
+            : ListingsApi.search(q: widget.query, kind: 'consult'))
+        : const <ListingCard>[];
+    // De-dupe across lanes — a listing that answers both queries must not
+    // appear twice inside its category row.
+    final byId = <String, ListingCard>{};
+    for (final c in [...live, ...consult]) {
+      byId[c.id] = c;
+    }
+    return byId.values.toList();
   }
 
   Future<List<ListingCard>> _loadLive() async {
@@ -417,9 +506,12 @@ class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
 
   @override
   Widget build(BuildContext context) {
-    final future = _lane == _CommercialLane.live ? _live : _consult;
+    final metrics = CommercialCardMetrics.of(context);
+    // [UI-MKT-VERT-1] No fixed height. This block sizes to its rows, and the
+    // page it sits in is a scroll view — that is the whole fix for the "BOTTOM
+    // OVERFLOWED BY 51 PIXELS" stripe, which was a 350dp box being handed cards
+    // that needed more.
     return Container(
-      height: 350,
       color: AD.bg,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Padding(
@@ -452,78 +544,82 @@ class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
             ),
           ]),
         ),
-        SizedBox(
-          height: 38,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: Msg.s4),
-            children: [
-              if (widget.liveEnabled)
-                ChoiceChip(
-                  label: const Text('Live & upcoming'),
-                  selected: _lane == _CommercialLane.live,
-                  showCheckmark: false,
-                  onSelected: (_) =>
-                      setState(() => _lane = _CommercialLane.live),
-                ),
-              if (widget.liveEnabled && widget.consultEnabled)
-                const SizedBox(width: Msg.s2),
-              if (widget.consultEnabled)
-                ChoiceChip(
-                  label: const Text('1:1 consultations'),
-                  selected: _lane == _CommercialLane.consult,
-                  showCheckmark: false,
-                  onSelected: (_) =>
-                      setState(() => _lane = _CommercialLane.consult),
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: Msg.s2),
-        Expanded(
-          child: FutureBuilder<List<ListingCard>>(
-            future: future,
-            builder: (context, snap) {
-              if (snap.connectionState != ConnectionState.done) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snap.hasError) {
-                return _CommercialShelfMessage(
+        FutureBuilder<List<ListingCard>>(
+          future: _all,
+          builder: (context, snap) {
+            if (snap.connectionState != ConnectionState.done) {
+              return const SizedBox(
+                height: 120,
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
+            if (snap.hasError) {
+              return SizedBox(
+                height: 140,
+                child: _CommercialShelfMessage(
                   icon: PhosphorIcons.cloudSlash(PhosphorIconsStyle.regular),
                   title: 'Creator services are unavailable',
                   action: 'Try again',
                   onAction: () => setState(_reload),
-                );
-              }
-              final cards = snap.data ?? const <ListingCard>[];
-              if (cards.isEmpty) {
-                return _CommercialShelfMessage(
-                  icon: _lane == _CommercialLane.live
-                      ? PhosphorIcons.broadcast(PhosphorIconsStyle.regular)
-                      : PhosphorIcons.videoCamera(PhosphorIconsStyle.regular),
-                  title: _lane == _CommercialLane.live
-                      ? widget.query.isEmpty
-                          ? 'No creator streams scheduled yet'
-                          : 'No live events match this search'
-                      : widget.query.isEmpty
-                          ? 'No 1:1 consultations listed yet'
-                          : 'No consultations match this search',
-                );
-              }
-              return ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.fromLTRB(Msg.s4, 0, Msg.s4, Msg.s3),
-                itemCount: cards.length,
-                separatorBuilder: (_, __) => const SizedBox(width: Msg.s3),
-                itemBuilder: (_, index) {
-                  final card = cards[index];
-                  return _lane == _CommercialLane.live
-                      ? LiveEventCard(card: card, onTap: () => _open(card))
-                      : ConsultationCard(card: card, onTap: () => _open(card));
-                },
+                ),
               );
-            },
-          ),
+            }
+            final sections = _sectionsFor(snap.data ?? const <ListingCard>[]);
+            if (sections.isEmpty) {
+              return SizedBox(
+                height: 140,
+                child: _CommercialShelfMessage(
+                  icon: PhosphorIcons.broadcast(PhosphorIconsStyle.regular),
+                  title: widget.query.isEmpty
+                      ? 'No creator sessions listed yet'
+                      : 'No creator sessions match this search',
+                ),
+              );
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final s in sections) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                        Msg.s4, Msg.s3, Msg.s4, Msg.s2),
+                    child: Row(children: [
+                      Expanded(
+                        child: Text(s.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: ADText.rowName()),
+                      ),
+                      Text('${s.cards.length}',
+                          style: ADText.preview(c: AD.textSecondary)),
+                    ]),
+                  ),
+                  SizedBox(
+                    height: metrics.height,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      // [UI-MKT-VERT-1] `clipBehavior: none` would bleed the
+                      // card shadow into the next row's heading; the row is
+                      // deliberately its own clipped band.
+                      padding: const EdgeInsets.symmetric(horizontal: Msg.s4),
+                      itemCount: s.cards.length,
+                      separatorBuilder: (_, __) =>
+                          const SizedBox(width: Msg.s3),
+                      itemBuilder: (_, index) {
+                        final card = s.cards[index];
+                        return card.kind == 'consult'
+                            ? ConsultationCard(
+                                card: card, onTap: () => _open(card))
+                            : LiveEventCard(
+                                card: card, onTap: () => _open(card));
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: Msg.s3),
+                ],
+              ],
+            );
+          },
         ),
         Divider(height: 1, color: AD.borderHairline),
       ]),
