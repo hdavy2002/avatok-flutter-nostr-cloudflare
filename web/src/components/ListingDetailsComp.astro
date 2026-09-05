@@ -176,6 +176,16 @@ const regularsCount = listing.creator?.follower_count ?? listing.joined_count ??
 const regularsBadge = regularsCount != null ? `♡ ${regularsCount} REGULARS` : null;
 const durLangBadge = [durationLabel(listing.duration_min ?? null), languageLabel(listing.spoken_lang ?? null)].filter(Boolean).join(' · ') || null;
 const humanBadge = listing.kind === 'agent' ? '⚙ AI VOICE AGENT · CLEARLY LABELLED' : '✓ 100% REAL HUMAN · NO AI';
+// [SESSION-MEDIA-1 2026-09-05] Whether the creator will be on camera.
+// Owner request: it has to reach the buyer, not just the database. Stated only
+// for the kinds where it is a promise — `audio_video` means the creator may NOT
+// turn video off mid-session, and `audio_only` means they never appear at all,
+// so a buyer who expected a face and got a voice has a refund case. Worded as
+// what the buyer gets, not as the enum value.
+const isSessionKind = listing.kind === 'live_event' || listing.kind === 'consult';
+const mediaBadge = isSessionKind
+  ? (listing.media_mode === 'audio_only' ? '🎧 AUDIO ONLY · NO CAMERA' : '🎥 ON CAMERA · AUDIO AND VIDEO')
+  : null;
 
 const scheduleLabel = isLive
   ? 'LIVE NOW'
@@ -413,6 +423,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
         {ratingBadge && <span class="badge">{ratingBadge}</span>}
         {regularsBadge && <span class="badge">{regularsBadge}</span>}
         {durLangBadge && <span class="badge">{durLangBadge}</span>}
+        {mediaBadge && <span class="badge">{mediaBadge}</span>}
         <span class="badge badge--teal">{humanBadge}</span>
       </div>
       {lede && <p class="lede">{lede}</p>}

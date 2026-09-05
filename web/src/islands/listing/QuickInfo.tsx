@@ -102,6 +102,12 @@ export function QuickInfo({ card: c, listing, lane, href, onClose, onBook }: Qui
   const duration = minutesLabel(c.durationMin);
   const when = whenLabel(c.startsAt);
   const language = languageLabel(c.spokenLang);
+  // [SESSION-MEDIA-1] Only stated for the kinds where it IS a promise. A
+  // marketplace item has no session, so a row saying "Audio and video" there
+  // would be noise dressed as a fact.
+  const mediaMode = (listing?.kind === 'live_event' || listing?.kind === 'consult')
+    ? (listing?.media_mode === 'audio_only' ? 'Audio only — no camera' : 'Audio and video')
+    : null;
   const about = listing?.description ?? c.oneLiner ?? null;
 
   return (
@@ -133,6 +139,7 @@ export function QuickInfo({ card: c, listing, lane, href, onClose, onBook }: Qui
             {duration && <Row label="Duration" value={duration} />}
             {when && <Row label="Date & time" value={when} />}
             {language && <Row label="Language" value={language} />}
+            {mediaMode && <Row label="Session" value={mediaMode} />}
             {c.location && <Row label="Location" value={c.location} />}
             {c.seatsLeft != null && <Row label="Seats left" value={String(c.seatsLeft)} />}
           </div>

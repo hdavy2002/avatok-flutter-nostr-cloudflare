@@ -809,6 +809,18 @@ class ListingDetailView extends StatelessWidget {
                   AdSticker('🕐 ${fmtWhen(card.startsAt)}'),
                 if (card.durationMin != null)
                   AdSticker('${card.durationMin} min'),
+                // [SESSION-MEDIA-1 2026-09-05] Whether the creator will be on
+                // camera. `mediaMode` has been parsed since [MKT-3GROUP-1] and
+                // had ZERO consumers — a field the creator chose, the server
+                // stored, and no buyer ever saw. It is a promise, not a
+                // preference: 'audio_video' means the creator may NOT turn video
+                // off mid-session, and 'audio_only' means they never appear at
+                // all, so a buyer who expected a face and got a voice has a
+                // refund case. Shown only for the kinds that have a session.
+                if (card.kind == 'live_event' || card.kind == 'consult')
+                  AdSticker(card.mediaMode == 'audio_only'
+                      ? '🎧 Audio only · no camera'
+                      : '🎥 On camera · audio and video'),
                 if (card.country != null && card.country!.isNotEmpty)
                   AdSticker('${flagEmoji(card.country)} ${card.country}'),
                 if (card.adultsOnly)

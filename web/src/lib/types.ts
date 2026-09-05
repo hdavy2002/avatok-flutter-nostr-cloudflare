@@ -124,6 +124,13 @@ export interface Card {
   timezone?: string;
   /** [LIST-CONTENT-2] What the price is charged per. */
   billing_unit?: 'session' | 'minute' | '10min' | 'chat' | 'night' | 'game' | null;
+  /** [SESSION-MEDIA-1 2026-09-05] Whether the session is on camera. Served by
+   *  the worker since [MKT-3GROUP-1] (`media_mode: r.media_mode ?? "audio_video"`)
+   *  and never shown to a buyer until now — which matters, because
+   *  `audio_video` is a promise the creator cannot back out of mid-session and
+   *  `audio_only` means they will never appear on camera at all. A buyer who
+   *  expected a face and got a voice has a refund case. */
+  media_mode?: 'audio_video' | 'audio_only' | null;
   /** [LIST-CONTENT-2] Whether joining/attending is free (server truth; not a promo). */
   free_entry?: 0 | 1;
   /** [LIST-CONTENT-2] Cap on units-per-booking a single buyer may take at once. */

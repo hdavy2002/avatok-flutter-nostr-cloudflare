@@ -25,6 +25,7 @@ import ModerationBar from './ModerationBar';
 import AuditTimeline from './AuditTimeline';
 import BlockerPanel from './BlockerPanel';
 import EditPanel from './EditPanel';
+import DeletePanel from './DeletePanel';
 import type { AdminListingDetailResponse, ListingRow } from './adminListingsShared';
 
 export default function AdminListings() {
@@ -204,6 +205,30 @@ export default function AdminListings() {
     }
   }
 
+  // [ADMIN-PURGE-1] Delete, then leave the detail pane empty and requery the
+  // queue — the selected listing no longer exists, so re-fetching its detail
+  // (which every other action does) would 404 and show "Could not load".
+  async function purge(id: string, confirm: string) {
+    setBusy(`${id}:delete`);
+    setError(null);
+    setErrorAct(null);
+    try {
+      await withAuth((t) => request(`/api/admin/listings/${encodeURIComponent(id)}`, {
+        auth: t, method: 'DELETE', body: { confirm },
+      }));
+      setDetail(null);
+      setSelected(null);
+      await loadQueue(false);
+    } catch (e) {
+      // Rethrown so DeletePanel can show the server's refusal INLINE — "this has
+      // 3 bookings attached" belongs next to the button, not in a banner at the
+      // top of a long page.
+      throw new Error(e instanceof ApiError ? (e.body as any)?.message ?? e.error : 'Could not delete this listing.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   if (!checked || loading) {
     return <div className="flex items-center gap-3 p-8"><Spinner size={22} /> <span className="font-body font-bold text-inkSoft">Loading admin queue…</span></div>;
   }
@@ -299,6 +324,12 @@ export default function AdminListings() {
                   onPoll={() => void loadDetail(detail.listing.id)}
                 />
                 <AuditTimeline history={detail.history} actorNames={detail.actor_names} />
+                <DeletePanel
+                  title={String(detail.listing.title ?? '')}
+                  status={detail.listing.status as string | undefined}
+                  busy={isBusy}
+                  onDelete={(confirm) => purge(detail.listing.id, confirm)}
+                />
               </div>
             </div>
           </>
