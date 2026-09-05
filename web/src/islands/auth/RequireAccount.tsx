@@ -9,7 +9,10 @@
  */
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { ClerkIsland, getActiveToken, requireGuestAuth, SignInButton } from '../../lib/clerk';
+// [ASK-HOST-AUTH-1] Same cross-island race as AskHost — this gate also decides
+// signed-in-or-not from one mount-time read, and showing a signed-in visitor a
+// sign-in wall is the worst version of getting it wrong.
+import { ClerkIsland, getActiveTokenWaited as getActiveToken, requireGuestAuth, SignInButton } from '../../lib/clerk';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/config';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';

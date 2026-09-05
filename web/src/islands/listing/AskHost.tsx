@@ -8,7 +8,20 @@
 // anonymous visitor gets a sign-in link instead of a form — no inline
 // email/OTP flow here, that lives in the booking flow where it's unavoidable.
 import { useEffect, useState } from 'react';
-import { ClerkIsland, getActiveToken } from '../../lib/clerk';
+// [ASK-HOST-AUTH-1 2026-09-05] getActiveTokenWaited, not getActiveToken.
+//
+// This island decided "signed in or not" from a SINGLE immediate read on
+// mount, and lost a race it could not win: `getActiveToken()` returns whatever
+// is available right now, and the module-level Clerk bridge is populated by
+// ClerkBridge's own effect a beat later. Mount first, read null, fall through
+// to the stored guest token (which a Clerk-only visitor does not have) — and
+// render the sign-in card permanently, to somebody who is signed in.
+//
+// `getActiveTokenWaited` exists for exactly this and says so in its doc
+// comment. Every dashboard island already imports it under this alias; this one
+// was simply missed, which is why the bug only showed on the public listing
+// page.
+import { ClerkIsland, getActiveTokenWaited as getActiveToken } from '../../lib/clerk';
 import { askListingQuestion, ApiError } from '../../lib/apiClient';
 import { capture } from '../../lib/analytics';
 import { askHost } from '../../lib/copy';

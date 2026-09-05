@@ -12,7 +12,11 @@
  *   GET /api/identity/level → { uid, level, proofs }   (guest = 0, full = 1..3)
  */
 import { useCallback, useEffect, useState } from 'react';
-import { getActiveToken, requireGuestAuth } from '../../lib/clerk';
+// [ASK-HOST-AUTH-1] `refresh()` runs on mount and decides the viewer's level,
+// so it races ClerkBridge exactly the way AskHost did. It is also called after
+// a sign-in, where the session is already live and the waited version returns
+// immediately — so the tolerance costs nothing on that path.
+import { getActiveTokenWaited as getActiveToken, requireGuestAuth } from '../../lib/clerk';
 import { request, ApiError } from '../../lib/apiClient';
 import type { IdentityLevel } from '../../lib/types';
 import { UpgradePrompt } from './UpgradePrompt';
