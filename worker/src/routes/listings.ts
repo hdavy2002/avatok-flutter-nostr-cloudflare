@@ -44,6 +44,7 @@ import {
   type CoverMediaItem,
   type PosterState,
 } from "../lib/listing_poster";
+import { resolveCreatorSubject } from "../lib/poster_subject";
 import { brainIngest } from "../lib/brain_ingest";
 import { partyEmit } from "./messaging"; // PartyKit live nudges (ephemeral)
 import { recordView, trackImpressions, geoOf } from "./insights";
@@ -1796,6 +1797,10 @@ export async function submitListingForApproval(req: Request, env: Env, id: strin
       verify: (cfg as any).posterVerifyEnabled === true,
       composeFallback: (cfg as any).posterComposeFallbackEnabled === true,
       verifyMaxAttempts: Number((cfg as any).posterVerifyMaxAttempts ?? 3) || 3,
+      // [POSTER-SUBJECT-1] Same reasoning as the flags above: decided here, on
+      // the request path, and passed down.
+      subjectEnabled: (cfg as any).posterCreatorSubjectEnabled === true,
+      subjectPhoto: (cfg as any).posterCreatorPhotoEnabled === true,
     }).catch((e) => {
       // runAutoPosterGeneration() itself never throws (it wraps everything in
       // try/catch and always tries to land a terminal state) — this is a final
@@ -1924,6 +1929,8 @@ async function runAutoPosterGeneration(
     // decided to run at all. Optional so existing tests/callers still compile,
     // defaulting to the pre-POSTER-FIRST behaviour.
     variants?: boolean; verify?: boolean; composeFallback?: boolean; verifyMaxAttempts?: number;
+    // [POSTER-SUBJECT-1] posterCreatorSubjectEnabled / posterCreatorPhotoEnabled.
+    subjectEnabled?: boolean; subjectPhoto?: boolean;
   },
 ): Promise<void> {
   const t0 = Date.now();
@@ -1934,9 +1941,21 @@ async function runAutoPosterGeneration(
   // creator has a poster — and the final write is allowed to overwrite the
   // `draft` this attempt itself wrote.
   let checkpointed = false;
+  let subjectKind = "off";
   try {
-    const prompt = buildPosterPrompt(opts.row);
+    // [POSTER-SUBJECT-1] Resolved inside the detached job, not on the request
+    // path, because it may fetch the profile photo and run a vision call — work
+    // that must not sit between the creator pressing Submit and the response.
+    const subject = opts.subjectEnabled
+      ? await resolveCreatorSubject(env, opts.ownerUid, { usePhoto: opts.subjectPhoto === true })
+      : null;
+    subjectKind = !subject ? "off"
+      : subject.photoUrl ? `likeness:${subject.gender ?? "unknown"}`
+      : subject.gender ? `gender:${subject.gender}`
+      : `none:${subject.photoSkipped ?? "unknown"}`;
+    const prompt = buildPosterPrompt(opts.row, subject);
     const { poster, coverMedia } = await generateListingPoster(env, {
+      subject,
       listingId: opts.listingId,
       ownerUid: opts.ownerUid,
       row: opts.row,
@@ -2011,6 +2030,11 @@ async function runAutoPosterGeneration(
         outcome,
         duration_ms: Date.now() - t0,
         error_kind: errorKind,
+        // [POSTER-SUBJECT-1] Which subject the poster was actually painted
+        // from. "off" = the flag is dark. "none:<reason>" is the one to watch:
+        // the feature ran and still had nothing to say about who the creator
+        // is, which is how a poster silently reverts to an invented person.
+        subject: subjectKind,
         // [POSTER-CHECKPOINT-1] The success value to assert: on a healthy run
         // this is true and `outcome` is "draft". `checkpointed=true` with a
         // failed outcome means the safety net caught a death after the

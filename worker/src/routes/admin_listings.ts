@@ -3,6 +3,7 @@ import { json } from "../util";
 import { requireAdmin } from "./admin_money";
 import { track } from "../hooks";
 import { generateListingPoster, type PosterState } from "../lib/listing_poster";
+import { resolveCreatorSubject } from "../lib/poster_subject";
 import { readConfig } from "./config";
 // [C03 MKT-PUBLISH-UNIFY-1] The one authoritative publish path — see the doc
 // comment on publishListingAuthoritative() in routes/listings.ts. `publish`
@@ -208,12 +209,23 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
     const prevAttempt = Number(attrs.poster?.attempt) || 0;
     const attempt = action === "regenerate_poster" ? prevAttempt + 1 : (prevAttempt || 1);
     attrs.poster = { ...(attrs.poster || {}), status: "generating", generated_at: now, attempt };
+    // [POSTER-SUBJECT-1 2026-09-05] Who the poster is of, from the creator's
+    // profile. Resolved on the regenerate path too — an admin regenerating a
+    // poster that came back with the wrong person, which is the very reason
+    // they are clicking the button, must not get the same wrong person again.
+    const subjectCfg = (posterCfg as any).posterCreatorSubjectEnabled === true;
+    const subject = subjectCfg
+      ? await resolveCreatorSubject(env, String(row.creator_id || ""), {
+          usePhoto: (posterCfg as any).posterCreatorPhotoEnabled === true,
+        })
+      : null;
     try {
       const result = await generateListingPoster(env, {
         listingId: id,
         ownerUid: String(row.creator_id || ""),
         row,
         prompt: promptOverride,
+        subject,
         actorUid: a.uid,
         auto: false,
         attempt,

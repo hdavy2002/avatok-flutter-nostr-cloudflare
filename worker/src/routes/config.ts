@@ -1618,6 +1618,19 @@ export interface PlatformConfig {
   // style change from a regression. Bumped alongside POSTER_STYLE_VERSION in
   // lib/listing_poster.ts. NUMERIC → must be in numericKeys.
   posterStyleVersion: number;
+  // [POSTER-SUBJECT-1 2026-09-05] Tell the image model WHO the poster is of,
+  // from the creator's own profile, instead of letting it invent a person from
+  // the title — which in practice means inventing from a stereotype ("Cooking
+  // with Davy" produced a woman in a sari; Davy is a man and users.gender said
+  // so). This flag covers the free half: a gender clause in the prompt.
+  // Read by routes/listings.ts + routes/admin_listings.ts → lib/poster_subject.ts.
+  // Boolean → NOT in numericKeys.
+  posterCreatorSubjectEnabled: boolean;
+  // [POSTER-SUBJECT-1] The paid half: fetch the creator's profile photo, ask
+  // Gemini whether it holds exactly one clear face, and if so paint THAT
+  // person. Costs one extra vision call per poster and puts a real likeness on
+  // a public image, so it ships dark and is flipped deliberately. Boolean.
+  posterCreatorPhotoEnabled: boolean;
 
   // --- outbound campaigns ---
   // Outbound AI Calling Campaigns (Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md §18).
@@ -2375,7 +2388,15 @@ const DEFAULTS: PlatformConfig = {
   posterVerifyEnabled: false,
   posterComposeFallbackEnabled: false,
   posterVerifyMaxAttempts: 3,
-  posterStyleVersion: 2,
+  posterStyleVersion: 3,
+  // [POSTER-SUBJECT-1 2026-09-05] The gender clause defaults ON, unlike its
+  // neighbours above. It is free (no extra call, a few words of prompt), it is
+  // reading a fact the creator stated about themselves, and its absence is the
+  // bug — a dark default would ship the fix without shipping the fix.
+  posterCreatorSubjectEnabled: true,
+  // The likeness half stays dark: an extra vision call per poster, and a real
+  // person's face on a public image. Flipped deliberately in KV.
+  posterCreatorPhotoEnabled: false,
 
   // --- outbound campaigns ---
   // Outbound AI Calling Campaigns (Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md §18) — DARK.

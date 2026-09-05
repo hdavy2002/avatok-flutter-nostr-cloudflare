@@ -16,6 +16,7 @@ import type { Env } from "../types";
 import { sha256Hex } from "../util";
 import { generateImage } from "../routes/ava_image";
 import { verifyPosterText, type PosterVerdict } from "./poster_verify";
+import type { PosterSubject } from "./poster_subject";
 import { track } from "../hooks";
 
 /** [POSTER-FIRST-1] The three shapes a poster is rendered at. Portrait is the
@@ -80,6 +81,11 @@ export type PosterGenerateOptions = {
   composeFallback?: boolean;
   /** A creator-uploaded photo, so the portrait is painted from their face. */
   editRef?: string;
+  /** [POSTER-SUBJECT-1] Who the poster is of — resolved by the caller from the
+   *  creator's profile (see lib/poster_subject.ts). Its `photoUrl`, when the
+   *  face check passed, becomes the editRef; its `gender` becomes a prompt
+   *  clause that works with or without the photo. */
+  subject?: PosterSubject | null;
   /** [POSTER-CHECKPOINT-1 2026-09-05] Called the moment the PORTRAIT is in R2
    *  and is therefore a usable poster, BEFORE the tablet/wide reframes run.
    *
@@ -136,8 +142,9 @@ export type CoverMediaItem = {
 // untouched and must never be bypassed here.
 // ---------------------------------------------------------------------------
 
-/** Bump when the prompt changes shape, so telemetry can separate style eras. */
-export const POSTER_STYLE_VERSION = 2;
+/** Bump when the prompt changes shape, so telemetry can separate style eras.
+ *  3 = [POSTER-SUBJECT-1], which added the WHO block (creator likeness + gender). */
+export const POSTER_STYLE_VERSION = 3;
 
 export type PosterCopy = { title: string; tagline: string };
 
@@ -153,7 +160,44 @@ export function posterCopy(row: Record<string, any>): PosterCopy {
   return { title, tagline };
 }
 
-export function buildPosterPrompt(row: Record<string, any>): string {
+/** [POSTER-SUBJECT-1 2026-09-05] The direction that says WHO is in the poster.
+ *
+ *  Without it the model invents a person from the title and the category, which
+ *  in practice means inventing from a stereotype: "Cooking with Davy", filed
+ *  under Cooking, in India, came back as a woman in a sari. Davy is a man, and
+ *  both his profile gender and a photo of his face were sitting unread in the
+ *  users table.
+ *
+ *  Wording matters here. The likeness line is emphatic because an image model
+ *  handed a reference photo will otherwise "improve" the person — younger,
+ *  lighter, more symmetrical — and a poster of a prettier stranger is not a
+ *  poster of the creator. The gender line is separate and survives on its own,
+ *  so the fallback path still gets the one fact that was actually wrong. */
+function subjectDirection(subject?: PosterSubject | null): string[] {
+  if (!subject) return [];
+  const out: string[] = [];
+  if (subject.photoUrl) {
+    out.push(
+      "THE SUBJECT IS THE PERSON IN THE SUPPLIED REFERENCE PHOTOGRAPH. Repaint",
+      "that same person as the poster's subject — the same face, the same",
+      "apparent age, the same skin tone, the same hair and the same build —",
+      "restyled into this poster's hand-painted ink technique. Do NOT substitute",
+      "a different person, do NOT make them younger, lighter-skinned or more",
+      "conventionally attractive, and do NOT add a second person.",
+    );
+  }
+  if (subject.gender === "male") {
+    out.push("The person in the poster is a MAN. Do not paint a woman.");
+  } else if (subject.gender === "female") {
+    out.push("The person in the poster is a WOMAN. Do not paint a man.");
+  }
+  return out;
+}
+
+export function buildPosterPrompt(
+  row: Record<string, any>,
+  subject?: PosterSubject | null,
+): string {
   const { title, tagline } = posterCopy(row);
 
   // Scene direction only — these shape the ARTWORK and are never lettered.
@@ -182,6 +226,7 @@ export function buildPosterPrompt(row: Record<string, any>): string {
     scene.length
       ? `Scene: ${scene.join(". ")}.`
       : "Scene: a lively creator at work, large in frame.",
+    ...subjectDirection(subject),
     "Title lettering: MASSIVE hand-painted condensed display letters with a thick",
     "black outline and a hard drop shadow, slightly uneven and hand-made, filling",
     "the width of the poster.",
@@ -213,8 +258,11 @@ export function buildPosterPrompt(row: Record<string, any>): string {
  *  than the browser already gives for free — text baked into a PNG is blurry
  *  when scaled, unselectable, untranslatable and invisible to a screen reader.
  *  Letting the client letter it keeps the text real text at every size. */
-export function buildPosterArtOnlyPrompt(row: Record<string, any>): string {
-  const artwork = buildPosterPrompt(row);
+export function buildPosterArtOnlyPrompt(
+  row: Record<string, any>,
+  subject?: PosterSubject | null,
+): string {
+  const artwork = buildPosterPrompt(row, subject);
   // Strip the "render exactly this text" block and replace the whole
   // instruction with its opposite, rather than appending a contradiction the
   // model gets to choose between.
@@ -263,7 +311,10 @@ export async function generateListingPoster(
   opts: PosterGenerateOptions,
 ): Promise<{ poster: PosterState; coverMedia: CoverMediaItem[] | null }> {
   const copy = posterCopy(opts.row);
-  const basePrompt = (opts.prompt || buildPosterPrompt(opts.row)).slice(0, 1800);
+  const basePrompt = (opts.prompt || buildPosterPrompt(opts.row, opts.subject)).slice(0, 1800);
+  // [POSTER-SUBJECT-1] An explicit editRef still wins (the admin override), but
+  // with none supplied the creator's own vetted photo is the reference.
+  const editRef = opts.editRef || opts.subject?.photoUrl || undefined;
   const maxAttempts = Math.max(1, Math.min(5, Math.trunc(opts.maxAttempts ?? 1)));
   const base: PosterState = {
     status: "generating",
@@ -298,7 +349,7 @@ export async function generateListingPoster(
         ? `${basePrompt} CORRECTION for this attempt: ${hint}.`.slice(0, 1800)
         : basePrompt;
       const generated = await generateImage(
-        env, "", prompt, opts.actorUid, opts.editRef, { aspectRatio: POSTER_RATIOS.portrait },
+        env, "", prompt, opts.actorUid, editRef, { aspectRatio: POSTER_RATIOS.portrait },
       );
       bytes = generated.bytes;
       if (!opts.verify) break;
@@ -321,9 +372,9 @@ export async function generateListingPoster(
     //    One textless render, and the client draws the copy over it.
     // ---------------------------------------------------------------
     if (opts.verify && opts.composeFallback && verdict && !verdict.ok && !verdict.skipped) {
-      const artOnly = buildPosterArtOnlyPrompt(opts.row);
+      const artOnly = buildPosterArtOnlyPrompt(opts.row, opts.subject);
       const generated = await generateImage(
-        env, "", artOnly, opts.actorUid, opts.editRef, { aspectRatio: POSTER_RATIOS.portrait },
+        env, "", artOnly, opts.actorUid, editRef, { aspectRatio: POSTER_RATIOS.portrait },
       );
       bytes = generated.bytes;
       lettering = "overlay";
