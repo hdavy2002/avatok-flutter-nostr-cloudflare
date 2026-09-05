@@ -42,7 +42,7 @@ import { brainMediaPrepare, brainMediaComplete, brainMediaStatus, brainMediaDele
 import { brainExport, brainMemoryList, brainMemoryConfirm, brainMemoryCorrect, brainMemoryDelete, brainMemoryExport } from "./routes/brain_export"; // [AVABRAIN-EXPORT-1]
 import { deleteAccount, cancelDeletion, deletionStatus } from "./routes/account";
 import { adminDeleteUser } from "./routes/admin_delete_user"; // [ADMIN-DELETE-USER-1] admin immediate erasure of another user
-import { adminListings, adminListingAction, adminListingDetail } from "./routes/admin_listings";
+import { adminListings, adminListingAction, adminListingDetail, adminEditListing } from "./routes/admin_listings";
 // [AVADIAL-CALL-INTEL-1] Call-intelligence ingest. The ONLY place raw E.164 and the
 // HMAC secret meet — the device never holds the key. See routes/telemetry_calls.ts.
 import { ingestCallTelemetry } from "./routes/telemetry_calls";
@@ -200,7 +200,7 @@ import { createReview, replyReview, helpfulReview, listReviews } from "./routes/
 // [LIST-ASK-1] "Ask the host" — see worker/src/routes/listing_questions.ts header.
 import { askQuestion, answerQuestion, listMyQuestions, listCreatorQuestions, promoteToFaq } from "./routes/listing_questions";
 import {
-  createListing, updateListing, publishListing, submitListingForApproval, setListingStatus, duplicateListing, repeatListing, cancelListing,
+  createListing, updateListing, publishListing, submitListingForApproval, listingBlockersRoute, setListingStatus, duplicateListing, repeatListing, cancelListing,
   myListings, listingPromotions, deletePromotion, exploreBrowse, exploreLiveNow, exploreSearch,
   exploreCategories, getListing, getListingBySlug, getCreator, updateMyChannel, followCreator, unfollowCreator,
   blockCreator, report, bookListing,
@@ -1253,7 +1253,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // --- AvaAdmin dashboard (Phase 6) — read-mostly aggregation + alerts/roles. requireAdmin enforced inside. ---
       if (p === "/api/admin/overview" && req.method === "GET") return await adminOverview(req, env);
       if (p === "/api/admin/listings" && req.method === "GET") return await adminListings(req, env);
-      { const m = p.match(/^\/api\/admin\/listings\/([A-Za-z0-9-]{1,64})$/); if (m && req.method === "GET") return await adminListingDetail(req, env, m[1]); if (m && req.method === "POST") return await adminListingAction(req, env, m[1]); }
+      { const m = p.match(/^\/api\/admin\/listings\/([A-Za-z0-9-]{1,64})$/); if (m && req.method === "GET") return await adminListingDetail(req, env, m[1]); if (m && req.method === "POST") return await adminListingAction(req, env, m[1]); if (m && req.method === "PUT") return await adminEditListing(req, env, m[1]); }
       if (p === "/api/admin/live" && req.method === "GET") return await adminLive(req, env);
       if (p === "/api/admin/agents" && req.method === "GET") return await adminAgents(req, env);
       if (p === "/api/admin/health" && req.method === "GET") return await adminHealth(req, env);
@@ -1727,6 +1727,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
         if (la) {
           const lid = la[1], act = la[2];
           if (act === "publish" && req.method === "POST") return await publishListing(req, env, lid);
+          // [LISTING-BLOCKERS-1] Read-only: everything standing between this
+          // listing and being live, so the wizard and the admin queue can show
+          // the SERVER's answer instead of each keeping their own checklist.
+          if (act === "blockers" && req.method === "GET") return await listingBlockersRoute(req, env, lid);
           // ctx is threaded in so auto poster generation can run under
           // ctx.waitUntil() — a bare detached promise is not guaranteed to
           // finish once the response is sent, which would strand the poster

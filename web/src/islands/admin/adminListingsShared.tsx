@@ -60,6 +60,16 @@ export type CategoryInfo = { id: string; label: string; vertical?: string; inten
 
 export type ListingSlotRow = Record<string, unknown>;
 
+// [LISTING-BLOCKERS-1 2026-09-05] The server's own answer to "can this go
+// live?", from worker/src/lib/listing_blockers.ts. The admin queue renders THIS
+// rather than keeping a checklist of its own — a second copy of the rules is
+// what let a listing be approved by a reviewer and then refused by publish.
+export type ListingBlocker = {
+  code: string;
+  field: string | null;
+  message: string;
+};
+
 export type AdminListingDetailResponse = {
   listing: ListingDetail;
   creator: CreatorInfo;
@@ -67,6 +77,8 @@ export type AdminListingDetailResponse = {
   history: HistoryRow[];
   category: CategoryInfo;
   slots: ListingSlotRow[];
+  blockers?: ListingBlocker[];
+  publishable?: boolean;
 };
 
 // Queue-row shape from the unchanged GET /api/admin/listings?status= list.

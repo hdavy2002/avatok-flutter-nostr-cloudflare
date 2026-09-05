@@ -9,7 +9,8 @@ import { readConfig } from "./config";
 // comment on publishListingAuthoritative() in routes/listings.ts. `publish`
 // below no longer does its own raw status UPDATE; it defers to the same
 // function the creator's own publish endpoint calls.
-import { publishListingAuthoritative, reviewedContentHash } from "./listings";
+import { publishListingAuthoritative, reviewedContentHash, normListingFields } from "./listings";
+import { listingBlockers } from "../lib/listing_blockers";
 // [C01 MKT-STATUS-GATE-1] Same transition table setListingStatus()/publish use —
 // see item 4: `reject_listing` used to flip ANY status straight to 'rejected'
 // with no source-status guard at all.
@@ -109,7 +110,17 @@ export async function adminListingDetail(req: Request, env: Env, id: string): Pr
     admin_id: a.uid,
   });
 
-  return json({ listing, creator, poster, history, category, slots });
+  // [LISTING-BLOCKERS-1 2026-09-05] The reviewer sees exactly what publish will
+  // refuse, BEFORE they approve. Previously the queue showed no problem at all
+  // and the reviewer found out only when Publish 400'd — on a listing they had
+  // already approved, and whose schedule the creator could no longer edit.
+  const blockers = await listingBlockers(env, row);
+
+  return json({
+    listing, creator, poster, history, category, slots,
+    blockers,
+    publishable: blockers.length === 0,
+  });
 }
 
 function writeListingApprovalHistory(
@@ -172,6 +183,143 @@ function approvalRequired(listing: { id: string; status: string; poster_status?:
 }
 
 const ALLOWED_ACTIONS = ["approve_listing", "reject_listing", "generate_poster", "regenerate_poster", "approve_poster", "reject_poster", "publish"];
+
+// [ADMIN-EDIT-1 2026-09-05] What a reviewer may change on someone else's listing.
+//
+// Until now the answer was NOTHING. The admin queue could approve, reject with a
+// reason, and run poster actions — and that was the whole toolkit, so a listing
+// that was 95% right had to be bounced back to its creator over a typo or a
+// missing start time. The owner's objection on 2026-09-05: "as an admin, I
+// should have full editing capabilities, in case I need to adjust something",
+// and with four thousand listings in a queue, bouncing each one is not a plan.
+//
+// This list is deliberately CONTENT ONLY. Excluded, and why:
+//   status        — that is what the moderation actions are for, and they carry
+//                   the transition table and the review-hash binding
+//   kind, vertical— structural; changing them re-files the listing into a
+//                   different product with different rules mid-review
+//   creator_id    — an edit must never change who owns or gets paid for a listing
+//   cover_media   — owned by the poster actions, which merge creator photos
+//   attrs.poster  — server state, already stripped of `__` keys above
+const ADMIN_EDITABLE = new Set([
+  "title", "blurb", "description", "category",
+  "price", "currency_display", "free_entry",
+  "starts_at", "duration_min", "schedule_mode", "recurrence_days", "recurrence_time",
+  "timezone", "capacity", "max_per_booking", "response_time_min",
+  "location", "country", "video_url", "spoken_lang", "adults_only",
+  "credential", "media_mode",
+]);
+
+/**
+ * PUT /api/admin/listings/:id — a reviewer edits the listing's content.
+ *
+ * [ADMIN-EDIT-1 2026-09-05] Owner decision: the edit is LOGGED and the listing
+ * KEEPS its approval. The reviewer is the approver, so bouncing it back to
+ * pending_review would mean re-approving your own correction — busywork that
+ * teaches reviewers to stop using the feature.
+ *
+ * That is a real trade: it means an admin edit is not itself reviewed. It is
+ * mitigated by making the change fully attributable rather than by adding a
+ * second gate — every edit writes a `admin_edit` row into
+ * listing_approval_history carrying the exact before/after of each field, plus
+ * an admin_audit row, plus a PostHog event. "Who did what" was the owner's
+ * actual worry, and a diff answers it better than a status flip.
+ */
+export async function adminEditListing(req: Request, env: Env, id: string): Promise<Response> {
+  const a = await requireAdmin(req, env); if (a instanceof Response) return a;
+  const body = await req.json().catch(() => ({})) as any;
+  const db = env.DB_META;
+  const row = await db.prepare("SELECT * FROM listings WHERE id=?1").bind(id).first<any>();
+  if (!row) return json({ error: "not found" }, 404);
+
+  // A cancelled or completed listing is history. Editing one would rewrite what
+  // a buyer already saw and, for completed, what they already paid for.
+  if (row.status === "cancelled" || row.status === "completed") {
+    return json({ error: "listing_closed", message: `A ${row.status} listing cannot be edited.` }, 409);
+  }
+
+  const patch = body && typeof body.fields === "object" && body.fields ? body.fields : body;
+  const requested = Object.keys(patch ?? {}).filter((k) => k !== "action" && k !== "fields");
+  const rejected = requested.filter((k) => !ADMIN_EDITABLE.has(k));
+  if (rejected.length) {
+    return json({
+      error: "field_not_editable",
+      message: `These fields cannot be edited here: ${rejected.join(", ")}.`,
+      fields: rejected,
+    }, 400);
+  }
+  if (!requested.length) return json({ error: "nothing to update" }, 400);
+
+  // Same coercion the creator's own PUT applies — see normListingFields.
+  const norm = normListingFields(patch);
+  const cols = Object.keys(norm).filter((k) => ADMIN_EDITABLE.has(k));
+  if (!cols.length) return json({ error: "nothing to update" }, 400);
+
+  // The diff is the point of this route. Captured BEFORE the write, from the row
+  // we read, so it records what actually changed rather than what was asked for
+  // — an admin who "changes" a field to the value it already held should not
+  // leave a history entry claiming they changed something.
+  const changes: Record<string, { from: unknown; to: unknown }> = {};
+  for (const c of cols) {
+    const before = row[c] ?? null;
+    const after = (norm as any)[c] ?? null;
+    if (String(before) !== String(after)) changes[c] = { from: before, to: after };
+  }
+  if (!Object.keys(changes).length) {
+    return json({ ok: true, listing_id: id, changed: [], message: "No values differed — nothing was written." });
+  }
+
+  const now = Date.now();
+  const setSql = cols.map((c, i) => `${c}=?${i + 2}`).join(", ");
+  const updated = await db.prepare(
+    `UPDATE listings SET ${setSql}, updated_at=?${cols.length + 2}
+      WHERE id=?1 AND authority_version=?${cols.length + 3}`,
+  ).bind(id, ...cols.map((c) => (norm as any)[c] ?? null), now, Number(row.authority_version ?? 0)).run();
+  if (!(updated.meta?.changes ?? 0)) {
+    return json({ error: "conflict", message: "This listing changed while you were editing. Reload and try again." }, 409);
+  }
+
+  // Attribution, in the same table the reviewer already reads as the audit
+  // timeline — so an edit sits inline with the approve/reject it happened
+  // between, rather than in a separate log nobody opens.
+  await writeListingApprovalHistory(env, {
+    listingId: id,
+    actorId: a.uid,
+    action: "admin_edit",
+    previousStatus: row.status,
+    nextStatus: row.status,
+    reason: JSON.stringify(changes).slice(0, 2000),
+    posterStatus: null,
+  }).run();
+  try {
+    await env.DB_WALLET.prepare(
+      "INSERT INTO admin_audit (id, admin_id, action, target, meta, created_at) VALUES (?1,?2,?3,?4,?5,?6)",
+    ).bind(crypto.randomUUID(), a.uid, "listing_admin_edit", id,
+      JSON.stringify({ status: row.status, creator_id: row.creator_id ?? null, changes }), now).run();
+  } catch { /* audit is best-effort, matching the other admin routes */ }
+
+  safeTrack(env, a.uid, "listing_admin_edit", {
+    listing_id: id,
+    admin_id: a.uid,
+    creator_id: row.creator_id ?? null,
+    status: row.status ?? null,
+    fields: Object.keys(changes).join(","),
+    field_count: Object.keys(changes).length,
+  });
+
+  // The whole reason an admin edits is to make a listing publishable, so answer
+  // the question they are actually asking rather than making them click again.
+  const fresh = await db.prepare("SELECT * FROM listings WHERE id=?1").bind(id).first<any>();
+  const blockers = await listingBlockers(env, fresh ?? row);
+  return json({
+    ok: true,
+    listing_id: id,
+    changed: Object.keys(changes),
+    changes,
+    publishable: blockers.length === 0,
+    blockers,
+  });
+}
 
 export async function adminListingAction(req: Request, env: Env, id: string): Promise<Response> {
   const a = await requireAdmin(req, env); if (a instanceof Response) return a;

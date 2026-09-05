@@ -44,6 +44,7 @@ import {
   type PosterState,
 } from "../lib/listing_poster";
 import { resolveCreatorSubject } from "../lib/poster_subject";
+import { listingBlockers, blockerResponse, type ListingBlocker } from "../lib/listing_blockers";
 import { brainIngest } from "../lib/brain_ingest";
 import { partyEmit } from "./messaging"; // PartyKit live nudges (ephemeral)
 import { recordView, trackImpressions, geoOf } from "./insights";
@@ -1066,6 +1067,14 @@ async function hasSoldEntitlements(env: Env, listingId: string): Promise<boolean
   }
 }
 
+/** [ADMIN-EDIT-1 2026-09-05] Exported so the admin editor coerces and clamps a
+ *  value EXACTLY the way the creator's own PUT does. Two copies of this mapping
+ *  would drift, and the drift would only show up as an admin "fix" that stored
+ *  something subtly different from what the same input stores via the wizard. */
+export function normListingFields(b: any): Record<string, unknown> {
+  return normFields(b);
+}
+
 function normFields(b: any): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (b.title !== undefined) out.title = String(b.title).slice(0, 140);
@@ -1721,13 +1730,46 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
 // alone). Generation must never block this response: the synchronous D1
 // write below flips the poster into a `generating` placeholder so the admin
 // UI shows a spinner immediately, and the actual image call runs detached.
+/**
+ * GET /api/listings/:id/blockers — everything standing between this listing and
+ * being live, as a structured list.
+ *
+ * [LISTING-BLOCKERS-1 2026-09-05] This is what lets the wizard stop guessing.
+ * Its step-8 checklist was hand-written and had drifted from the server's actual
+ * rules; now it can render the server's answer, so "ready to publish" means the
+ * server agrees rather than that a duplicate checklist in the browser agrees.
+ *
+ * Readable by the listing's creator or an admin — nobody else needs to know why
+ * someone else's draft is incomplete.
+ */
+export async function listingBlockersRoute(req: Request, env: Env, id: string): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const row = await metaDb(env).prepare("SELECT * FROM listings WHERE id=?1").bind(id).first<any>();
+  if (!row) return json({ error: "not found" }, 404);
+  const admins = (env.ADMIN_UIDS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (row.creator_id !== ctx.uid && !admins.includes(ctx.uid)) {
+    // 404, not 403 — someone who cannot see this listing should not learn that
+    // it exists from the shape of the refusal.
+    return json({ error: "not found" }, 404);
+  }
+  const blockers = await listingBlockers(env, row);
+  return json({
+    ok: true,
+    listing_id: id,
+    status: row.status ?? null,
+    publishable: blockers.length === 0,
+    blockers,
+  });
+}
+
 export async function submitListingForApproval(req: Request, env: Env, id: string, exec?: ExecutionContext): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const db = metaDb(env);
-  const row = await db.prepare(
-    "SELECT id, creator_id, status, attrs, title, description, blurb, category, kind, vibe_tags, spoken_lang, cover_media, authority_version, price, free_entry FROM listings WHERE id=?1",
-  ).bind(id).first<any>();
+  // [LISTING-BLOCKERS-1] SELECT * — the publishability check reads schedule,
+  // capacity and category columns the old hand-picked list did not include.
+  const row = await db.prepare("SELECT * FROM listings WHERE id=?1").bind(id).first<any>();
   if (!row || row.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
   if (String(row.status) !== "draft") return json({ error: "listing not draft", status: row.status }, 409);
   // [PRICE-HOURLY-1] spec §4.2 — the floor's LAST word before a listing goes
@@ -1740,6 +1782,39 @@ export async function submitListingForApproval(req: Request, env: Env, id: strin
     const priceErr = priceFloorError(row.price, false);
     if (priceErr) return json({ ok: false, error: "price_below_floor", message: priceErr, field: "price" }, 400);
   }
+
+  // [LISTING-BLOCKERS-1 2026-09-05] A listing that cannot publish must never
+  // enter the review queue.
+  //
+  // Submit used to check the owner, the status and the price floor, and nothing
+  // else — so a live_event with no start time was accepted, queued, reviewed by
+  // a human, approved, and only then refused by publish. That is the worst place
+  // to find out: the creator has waited, a reviewer has spent attention on it,
+  // and the listing is now stuck in a status from which its schedule could not
+  // even be edited. At four thousand listings it is unworkable, which is exactly
+  // the owner's objection on 2026-09-05.
+  //
+  // Refusing here costs the creator one screen and no waiting, and it is the
+  // SAME list publish enforces, so the two can no longer disagree.
+  const preBlockers = await listingBlockers(env, row);
+  if (preBlockers.length) {
+    track(env, ctx.uid, "listing_submit_blocked", APP, {
+      listing_id: id,
+      listing_kind: row.kind,
+      codes: preBlockers.map((b: ListingBlocker) => b.code).join(","),
+      count: preBlockers.length,
+    });
+    return json({
+      ok: false,
+      error: "not_publishable",
+      message: preBlockers.length === 1
+        ? preBlockers[0].message
+        : `${preBlockers.length} things need fixing before this can go for review.`,
+      field: preBlockers[0].field,
+      blockers: preBlockers,
+    }, 400);
+  }
+
   let attrs: any = {};
   try { attrs = row.attrs ? JSON.parse(String(row.attrs)) : {}; } catch { attrs = {}; }
   const now = Date.now();
@@ -2266,20 +2341,31 @@ export async function publishListingAuthoritative(
 
   const isMarket = MARKET_KINDS.has(String(l.kind));
   let claimedCreatorSlot = false;
-  if (isMarket) {
-    // AvaMarketplace (buy/sell/social): no slots, availability, capacity or valid-
-    // category-id requirement; photos are optional so the flow is testable now.
-    // NOTE: identity IS enforced — identityGate() above already required a Didit
-    // liveness pass. The old "3-factor (video+email+phone), not enforced yet" note
-    // here was wrong on both counts: there is no phone factor, and the gate is live.
-    if (!l.title) return { ok: false, status: 400, body: { error: "title required" } };
-    const mc = parseJson(l.cover_media, [] as unknown[]);
-    // [C03 cover-cap] `cover_count` is additive (a new field on an unchanged
-    // error/status) so the admin queue can show a reviewer WHY, without changing
-    // the shape a creator-facing client already parses.
-    if (Array.isArray(mc) && mc.length > 5) return { ok: false, status: 400, body: { error: "max 5 photos", cover_count: mc.length, limit: 5 } };
-    if (!(Number(l.price) >= 0)) return { ok: false, status: 400, body: { error: "bad price" } };
-  } else {
+
+  // [LISTING-BLOCKERS-1 2026-09-05] Every content rule now lives in ONE place
+  // (lib/listing_blockers.ts) so submit, the wizard and the admin queue enforce
+  // the same list publish does. The responses are byte-identical to the inline
+  // checks this replaced — each blocker carries the exact status and body it
+  // always returned — with an additive `blockers` array on top.
+  //
+  // What is NOT in there, and stays below: the KYC/identity gates (facts about
+  // the account, and they can change between submit and publish) and the two
+  // steps with SIDE EFFECTS — claimBlock, which books the creator's calendar,
+  // and the entitlement charge, which spends money. Neither can run on a
+  // read-only preview.
+  const blockers = await listingBlockers(env, l);
+  if (blockers.length) {
+    if (!isMarket) {
+      track(env, creatorUid, "listing_publish_blocked", APP, {
+        listing_id: id, listing_kind: l.kind,
+        codes: blockers.map((b) => b.code).join(","),
+        ...actorProps,
+      });
+    }
+    return blockerResponse(blockers);
+  }
+
+  if (!isMarket) {
     // Creator services (live_event/consult) — KYC + photos + valid category + slot/availability.
     //
     // [LIVE-CARVE-1] This is a SECOND, DIFFERENT gate from the liveness one at
@@ -2303,69 +2389,17 @@ export async function publishListingAuthoritative(
     } else {
       track(env, creatorUid, "listing_publish_kyc_exempt", APP, { listing_id: id, listing_kind: l.kind, ...actorProps });
     }
-    if (!l.title || !l.category) return { ok: false, status: 400, body: { error: "title and category required" } };
-    // A listing must have a primary image: 1–5 (owner decision 2026-06-11).
-    //
-    // [POSTER-FIRST-1 2026-09-05] It no longer has to be a PHOTO. The wizard has
-    // told creators photos are optional since the auto-poster shipped
-    // (`steps.tsx:585`), but this check still demanded one, so a creator with no
-    // photo whose generation failed reached the review queue and then hit a dead
-    // end at publish with an error the UI had promised would not happen. The
-    // generated poster is prepended to cover_media, so in the happy path this
-    // already passed — the fix is for the unhappy one. An approved poster now
-    // satisfies the requirement explicitly, and the message names both ways out.
-    const covers = parseJson(l.cover_media, [] as unknown[]);
-    const posterState = (parseJson(l.attrs, {} as any) || {}).poster;
-    const hasUsablePoster = !!posterState?.url
-      && (posterState.status === "draft" || posterState.status === "approved");
-    if ((!Array.isArray(covers) || covers.length < 1) && !hasUsablePoster) {
-      return {
-        ok: false,
-        status: 400,
-        body: {
-          error: "cover_required",
-          detail: "This listing needs a poster or at least one photo before publishing.",
-          poster_status: posterState?.status ?? null,
-        },
-      };
-    }
-    if (covers.length > 5) return { ok: false, status: 400, body: { error: "max 5 photos", cover_count: covers.length, limit: 5 } };
-    const cat = await db.prepare("SELECT 1 FROM listing_categories WHERE id=?1 AND active=1").bind(l.category).first();
-    if (!cat) return { ok: false, status: 400, body: { error: "unknown category" } };
-
-    // [MARKET-SECTION-2 2026-08-31] A section whose DELIVERY is switched off
-    // cannot be published into. Today that is adda rooms, which need group
-    // calling while `conferenceEnabled` is false in production — publishing one
-    // would put a bookable ticket on the marketplace for a room nobody can join.
-    //
-    // Enforced HERE rather than by hiding the category, on purpose: the creator
-    // keeps their draft and gets a sentence explaining why, and the listing
-    // publishes normally the moment the flag flips. Hiding it would have made
-    // the same listing quietly impossible to finish with no explanation.
-    const pubSection = sectionFor(l.kind, l.category);
-    const blocked = publishBlockedReason(pubSection, await readConfig(env));
-    if (blocked) {
-      track(env, creatorUid, "listing_publish_section_gated", APP, { listing_id: id, section: pubSection, ...actorProps });
-      return { ok: false, status: 409, body: { error: "section_unavailable", section: pubSection, message: blocked } };
-    }
-
-    if (!(Number(l.price) >= 0)) return { ok: false, status: 400, body: { error: "bad price" } };
-
+    // Title, category, cover, category validity, section gate, price, schedule
+    // and capacity all moved to lib/listing_blockers.ts and ran above — see the
+    // note there. What is left here is the one step with a SIDE EFFECT.
     if (l.kind === "live_event") {
-      const start = Number(l.starts_at), dur = Number(l.duration_min);
-      if (!(start > Date.now()) || !(dur >= 5 && dur <= 480)) {
-        return { ok: false, status: 400, body: { error: "starts_at (future) and duration_min (5–480) required" } };
-      }
       // Conflict engine: claim the CREATOR's slot — occupied ⇒ 409 (greyed UX client-side).
+      // Stays out of listingBlockers() precisely because it WRITES: a preview
+      // that ran this would book the creator's diary on every keystroke.
+      const start = Number(l.starts_at), dur = Number(l.duration_min);
       const claim = await claimBlock(env, { userId: creatorUid, sourceApp: APP, sourceRef: id, start, end: start + dur * 60_000, title: String(l.title) });
       if (!claim.ok) return { ok: false, status: 409, body: { error: "conflict", conflictWith: claim.conflict } };
       claimedCreatorSlot = true;
-    } else {
-      if (!CAPACITIES.has(Number(l.capacity))) return { ok: false, status: 400, body: { error: "capacity must be 1, 10 or 20" } };
-      // Consult listings attach to availability_rules — there must be some, and they
-      // are the CREATOR's, not the admin's.
-      const rules = await db.prepare("SELECT 1 FROM availability_rules WHERE user_id=?1 LIMIT 1").bind(creatorUid).first();
-      if (!rules) return { ok: false, status: 409, body: { error: "no_availability", detail: "Set your availability in AvaCalendar before publishing a consult listing." } };
     }
   }
 

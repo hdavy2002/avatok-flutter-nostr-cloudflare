@@ -23,6 +23,8 @@ import SubmissionPanel from './SubmissionPanel';
 import PosterPanel from './PosterPanel';
 import ModerationBar from './ModerationBar';
 import AuditTimeline from './AuditTimeline';
+import BlockerPanel from './BlockerPanel';
+import EditPanel from './EditPanel';
 import type { AdminListingDetailResponse, ListingRow } from './adminListingsShared';
 
 export default function AdminListings() {
@@ -38,6 +40,9 @@ export default function AdminListings() {
   // failure can be shown ON the poster card instead of only in a banner at the
   // top of a tall page the admin may have scrolled past.
   const [errorAct, setErrorAct] = useState<string | null>(null);
+  // [ADMIN-EDIT-1] Set when the admin clicks "Fix <field>" on a blocker, so the
+  // editor opens scrolled to the field that is actually the problem.
+  const [focusField, setFocusField] = useState<string | null>(null);
 
   const [detail, setDetail] = useState<AdminListingDetailResponse | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -178,6 +183,27 @@ export default function AdminListings() {
     }
   }
 
+  // [ADMIN-EDIT-1] PUT the dirty fields only. The response carries the fresh
+  // blockers list, so the reviewer sees immediately whether the edit actually
+  // made the listing publishable rather than having to hit Publish to find out.
+  async function saveEdits(id: string, fields: Record<string, unknown>) {
+    setBusy(`${id}:edit`);
+    setError(null);
+    setErrorAct(null);
+    try {
+      await withAuth((t) => request(`/api/admin/listings/${encodeURIComponent(id)}`, {
+        auth: t, method: 'PUT', body: { fields },
+      }));
+      setFocusField(null);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.error : 'Could not save the edit.');
+      setErrorAct('edit');
+    } finally {
+      try { await loadDetail(id); } catch { /* banner already carries the failure */ }
+      setBusy(null);
+    }
+  }
+
   if (!checked || loading) {
     return <div className="flex items-center gap-3 p-8"><Spinner size={22} /> <span className="font-body font-bold text-inkSoft">Loading admin queue…</span></div>;
   }
@@ -227,7 +253,18 @@ export default function AdminListings() {
                 shell's max-width for this page if a true 3-up is wanted. */}
             <div className="grid gap-5 2xl:grid-cols-[1.3fr_0.9fr]">
               <div className="flex flex-col gap-5">
+                <BlockerPanel
+                  blockers={detail.blockers}
+                  publishable={detail.publishable}
+                  onFix={(f) => setFocusField(f)}
+                />
                 <SubmissionPanel listing={detail.listing} creator={detail.creator} category={detail.category} />
+                <EditPanel
+                  listing={detail.listing}
+                  busy={isBusy}
+                  focusField={focusField}
+                  onSave={(fields) => saveEdits(detail.listing.id, fields)}
+                />
               </div>
               <div className="flex flex-col gap-5">
                 <ModerationBar
