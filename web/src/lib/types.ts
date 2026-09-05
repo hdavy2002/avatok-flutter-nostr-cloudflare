@@ -165,6 +165,24 @@ export interface CoverMedia {
   url?: string;
   /** Older rows, and a stale schema comment in migrations/listings.sql. */
   r2_key?: string;
+  /** [POSTER-FIRST-1] "ai_poster" marks the generated poster, which the worker
+   *  always prepends. This is the ONLY way to tell a poster from a creator's
+   *  photo on the list wire, where `attrs` is not sent. */
+  source?: string;
+  generated?: boolean;
+}
+
+/** [POSTER-FIRST-1 2026-09-05] The generated poster, at whatever ratios exist.
+ *  `url` is always the portrait; `variants` is present only once
+ *  posterVariantsEnabled has produced them, so every consumer must fall back to
+ *  `url` rather than assume a variant it wants exists. */
+export interface AiPoster {
+  url: string;
+  variants?: Partial<Record<'portrait' | 'tablet' | 'wide', { url: string }>>;
+  /** "overlay" = the artwork is deliberately textless because the model could
+   *  not be trusted to letter it, so the CLIENT draws title/tagline. */
+  lettering?: 'baked' | 'overlay';
+  copy?: { title?: string; tagline?: string };
 }
 
 export interface CreatorRef {
@@ -197,6 +215,10 @@ export interface CardView {
   title: string;
   oneLiner: string | null;
   poster: string | null;
+  /** [POSTER-FIRST-1] Non-null ONLY when this listing has a generated poster.
+   *  `poster` above stays whatever image is first, photo or poster, so it
+   *  cannot answer "should this card render poster-first?" — this can. */
+  aiPoster: AiPoster | null;
   category: string | null;
   price: number | null;
   listPrice: number | null;

@@ -4414,11 +4414,43 @@
       {
         "event": "listing_material_edit_refused",
         "property": "sold_check",
-        "in": ["sold", "unavailable"],
+        "in": [
+          "sold",
+          "unavailable"
+        ],
         "min_events": 1,
         "note": "Proves the published/live branch actually reached the sold-entitlement gate and refused the edit with 409 instead of silently unpublishing a listing buyers hold seats on. sold_check:'sold' means countable entitlements were found; 'unavailable' means the entitlement count could not be verified (e.g. commercial_entitlements not migrated on this environment) and the code fail-closed anyway per the never-strand-a-buyer brief - both are the CORRECT refusal, not a bug. This event should be RARE relative to listing_review_invalidated_by_edit (most invalidating edits will hit an approved, not-yet-published listing); zero forever across a window with real published-listing edit traffic would mean the sold-entitlement check itself never runs, which is the regression this assertion exists to catch."
       }
     ],
     "_verified_at": "2026-09-04: event and property names read directly out of the emit sites just added, not from memory - admin_listings.ts:344 (listing_review_binding_recorded); listings.ts:1472 (listing_material_edit_refused), listings.ts:1503 (listing_review_invalidated_by_edit)."
+  },
+  "POSTER-FIRST-1": {
+    "description": "[POSTER-FIRST-1] The listing poster carries the TITLE and TAGLINE only; every fact (price, duration, language, house rules) renders as real HTML/Dart text in the More info panel, so no number ever passes through an image model. Prompt rewritten in worker/src/lib/listing_poster.ts buildPosterPrompt (screen-print style, explicit no-credits/no-signature/no-price list). New read-back pass worker/src/lib/poster_verify.ts hands the generated PNG back to Gemini (responseModalities TEXT) and diffs what it reads against the D1 row: title fuzzy >=0.90, tagline >=0.85, and ANY other text is a failure. A mismatch regenerates with the failure fed back into the prompt, up to posterVerifyMaxAttempts; after that buildPosterArtOnlyPrompt renders textless artwork and the CLIENT letters it (lettering:'overlay'), which is why the fallback is not a server-side pixel compositor: Workers have no canvas, and baked-in text is blurry when scaled, unselectable and invisible to a screen reader. Portrait is generated and verified first; tablet/wide are editRef reframes of it so all three ratios are one poster, not three guesses. Also fixed here: GenerateImageOptions.aspectRatio was declared in routes/ava_image.ts but never sent to Vertex, so queues/media.ts:288's '1:1' request was silently ignored; and publish's cover_required check now accepts an approved poster, which previously dead-ended any creator who had no photo and a failed generation even though the wizard told them photos were optional.",
+    "shipped": "2026-09-05",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "posterVerifyEnabled",
+      "posterVariantsEnabled",
+      "posterComposeFallbackEnabled",
+      "posterAutoGenerateOnSubmit"
+    ],
+    "success": [
+      {
+        "event": "poster_verify",
+        "property": "ok",
+        "equals": true,
+        "min_events": 1,
+        "note": "The read-back pass actually PASSING, not merely running. ok:false is the working case too (it triggers a retry), but a window with no ok:true at all means the prompt cannot satisfy its own verifier and every poster is falling through to the overlay fallback. skipped:true is the one to watch separately: it means the verifier itself could not run (provider error or unparseable JSON) and the poster was accepted unchecked — a silently skipping verifier must not look like a clean pass."
+      },
+      {
+        "event": "poster_generate",
+        "property": "ok",
+        "equals": true,
+        "min_events": 1,
+        "note": "Generation reaching R2 at all. Check the `variants` property on the same event: it must list portrait,tablet,wide once posterVariantsEnabled is on — 'portrait' alone means both reframes failed and every hero is falling back to a stretched portrait, which is the exact problem this work exists to fix."
+      }
+    ],
+    "_verified_at": "worker/src/lib/listing_poster.ts generateListingPoster emits poster_generate and poster_verify via hooks.track; poster_compose_fallback emitted only on the textless path; worker/src/routes/config.ts declares posterVariantsEnabled, posterVerifyEnabled, posterComposeFallbackEnabled (booleans) and posterVerifyMaxAttempts, posterStyleVersion (both in numericKeys). All five proved non-400 against prod KV on 2026-09-05 and confirmed on three cache-busted /api/config reads."
   }
 }

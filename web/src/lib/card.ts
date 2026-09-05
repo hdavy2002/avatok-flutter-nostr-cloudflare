@@ -22,8 +22,53 @@
  * Legacy aliases are still read where they existed, so a caller that hand-built a Card
  * (the mockup pages do) keeps working.
  */
-import type { Card, CardView, CoverMedia, CreatorRef } from './types';
+import type { AiPoster, Card, CardView, CoverMedia, CreatorRef } from './types';
 import { chips as chipCopy, cta, statusPill, laneBadge, laneName, laneBlurbFallback, spotsLeft, seatsBaakiUrgent, earlyBird, regularsHeart, chatsCount, AI_INSTANT, responseTime, billingUnitLabel, liveWatching, pillExtra } from './copy';
+
+/** [POSTER-FIRST-1 2026-09-05] Find the generated poster, from whichever of the
+ *  two wires this card arrived on.
+ *
+ *  The DETAIL response carries `attrs.poster`, which is the richer source — it
+ *  knows the variants and whether the lettering is baked in. The LIST responses
+ *  (/api/explore, search, live-now) do not send `attrs` at all, so there the
+ *  only signal is the `source: "ai_poster"` marker the worker writes onto the
+ *  cover_media entry it prepends. Both paths must work, because the same tile
+ *  renders in a rail and on a detail page.
+ *
+ *  A poster that is not yet usable (generating / failed / rejected) returns
+ *  null, so the card falls back to its ordinary layout rather than rendering a
+ *  broken image or an empty frame. */
+function aiPosterFrom(card: Card): AiPoster | null {
+  const attrs = (card as Card & { attrs?: Record<string, unknown> | null }).attrs;
+  const p = (attrs && typeof attrs === 'object' ? (attrs as Record<string, unknown>).poster : null) as
+    Record<string, unknown> | null | undefined;
+  if (p && typeof p === 'object') {
+    const status = String(p.status ?? '');
+    const url = typeof p.url === 'string' ? p.url : '';
+    if (url && (status === 'draft' || status === 'approved')) {
+      return {
+        url,
+        variants: (p.variants ?? undefined) as AiPoster['variants'],
+        lettering: (p.lettering === 'overlay' ? 'overlay' : 'baked'),
+        copy: (p.copy ?? undefined) as AiPoster['copy'],
+      };
+    }
+    // An attrs.poster that exists but is mid-flight or failed is a definitive
+    // "no poster yet" — do NOT fall through to the cover_media guess below,
+    // which would resurrect a stale poster from a previous attempt.
+    if (status === 'generating' || status === 'failed') return null;
+  }
+  const covers = card.cover_media;
+  if (Array.isArray(covers)) {
+    for (const m of covers) {
+      if (m && typeof m === 'object' && m.source === 'ai_poster') {
+        const url = m.url ?? m.r2_key;
+        if (typeof url === 'string' && url) return { url, lettering: 'baked' };
+      }
+    }
+  }
+  return null;
+}
 
 function firstCoverUrl(media: unknown): string | null {
   if (!Array.isArray(media)) return null;
@@ -73,6 +118,7 @@ export function toCardView(card: Card): CardView {
     // read off the widened record rather than declared on Card.
     oneLiner: (card.one_liner ?? (card as Card & { description?: string | null }).description ?? null) as string | null,
     poster: card.poster ?? firstCoverUrl(covers),
+    aiPoster: aiPosterFrom(card),
     category: card.category ?? null,
 
     price,

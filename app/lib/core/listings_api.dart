@@ -525,6 +525,95 @@ class ListingCard {
     return null;
   }
 
+  // ---------------------------------------------------------------------------
+  // [POSTER-FIRST-1 2026-09-05] The generated poster.
+  //
+  // The poster carries the title and tagline as painted lettering and nothing
+  // else — no price, no duration, no rules — so a card that shows the poster
+  // must NOT also print the title underneath it, and every fact still comes
+  // from these fields, never from the image.
+  //
+  // Two wires, same as web: the DETAIL response carries `attrs.poster` (which
+  // knows the per-ratio variants), while the LIST responses send no `attrs` at
+  // all and the only signal is the `source: "ai_poster"` marker on the
+  // cover_media entry the worker prepends. Both must work — the same card
+  // widget renders in a grid and on a detail page.
+  // ---------------------------------------------------------------------------
+
+  Map<String, dynamic>? get _posterAttrs {
+    final p = attrs['poster'];
+    if (p is Map) return Map<String, dynamic>.from(p);
+    return null;
+  }
+
+  /// True only when a poster exists AND is usable. A poster that is still
+  /// generating, or that failed, must fall back to the ordinary card rather
+  /// than render an empty frame.
+  bool get hasAiPoster => posterUrl != null;
+
+  /// The portrait poster — the canonical one, and what a card slot wants.
+  String? get posterUrl {
+    final p = _posterAttrs;
+    if (p != null) {
+      final status = (p['status'] ?? '').toString();
+      final url = (p['url'] ?? '').toString();
+      if (url.startsWith('http') && (status == 'draft' || status == 'approved')) {
+        final v = p['variants'];
+        if (v is Map && v['portrait'] is Map) {
+          final pv = (v['portrait'] as Map)['url']?.toString();
+          if (pv != null && pv.startsWith('http')) return pv;
+        }
+        return url;
+      }
+      // Mid-flight or failed is a definitive "no poster" — do not fall through
+      // to the cover_media guess, which would resurrect a previous attempt.
+      if (status == 'generating' || status == 'failed') return null;
+    }
+    for (final m in coverMedia) {
+      if (m is Map && m['source'] == 'ai_poster') {
+        final url = (m['url'] ?? m['r2_key'])?.toString();
+        if (url != null && url.startsWith('http')) return url;
+      }
+    }
+    return null;
+  }
+
+  /// The best poster for a given render width. Falls back to the portrait
+  /// whenever the wider variants have not been generated — `posterVariantsEnabled`
+  /// is young, and every listing published before it has portrait only.
+  String? posterUrlForWidth(double width) {
+    final p = _posterAttrs;
+    final v = p?['variants'];
+    String? pick(String key) {
+      if (v is Map && v[key] is Map) {
+        final u = (v[key] as Map)['url']?.toString();
+        if (u != null && u.startsWith('http')) return u;
+      }
+      return null;
+    }
+    if (width >= 1024) return pick('wide') ?? pick('tablet') ?? posterUrl;
+    if (width >= 640) return pick('tablet') ?? posterUrl;
+    return posterUrl;
+  }
+
+  /// "overlay" means the artwork is deliberately textless because the model
+  /// could not be trusted to spell the title — the CLIENT draws it instead.
+  bool get posterNeedsLettering => (_posterAttrs?['lettering'] ?? '') == 'overlay';
+
+  /// The exact strings the poster was built from. Falls back to the row's own
+  /// title/blurb for a poster generated before `copy` was persisted.
+  String get posterTitle {
+    final c = _posterAttrs?['copy'];
+    final t = (c is Map ? c['title'] : null)?.toString();
+    return (t != null && t.isNotEmpty) ? t : title;
+  }
+
+  String get posterTagline {
+    final c = _posterAttrs?['copy'];
+    final t = (c is Map ? c['tagline'] : null)?.toString();
+    return (t != null && t.isNotEmpty) ? t : (blurb ?? '');
+  }
+
   /// "₹1250" — 1 token = Rs 1.
   String money(int tokens) => tokens == 0 ? 'Free' : '₹$tokens';
   String get priceLabel => money(effectivePrice);

@@ -14,6 +14,7 @@
 import TruckBorder from './TruckBorder.astro';
 import AskHostIsland from '../islands/listing/AskHost';
 import { inrOrFree } from '../lib/money';
+import { cfImage } from '../lib/config';
 import { durationLabel, languageLabel, recurrenceLabel, timePillLabel } from '../lib/card';
 import type { Listing, ReviewList, ListingSlot, Card, Creator } from '../lib/types';
 
@@ -202,9 +203,38 @@ const aboutBio = creatorProfile?.bio ?? null;
 
 const howItWorks = listing.attrs?.content_how_it_works ?? [];
 
-const stillUrls = [listing.cover_media?.[1]?.url, listing.cover_media?.[2]?.url, listing.cover_media?.[3]?.url];
 const highlightUrl = listing.video_url ?? null;
-const heroCoverUrl = listing.cover_media?.[0]?.url ?? null;
+
+/* [POSTER-FIRST-1 2026-09-05] The hero, at the right shape for the viewport.
+ *
+ * Two things were wrong here. The hero was a CSS `background-image` carrying the
+ * RAW cover URL, so the page that most needs the image transform was the one
+ * page skipping it — a full-size PNG downloaded on every visit. And a portrait
+ * poster stretched across a desktop hero is exactly the "gets stretched out"
+ * problem this work exists to fix.
+ *
+ * So: a real <img> (a background-image cannot carry srcset) fed by <picture>,
+ * with the wide render on desktop, the 4:3 on tablet and the portrait on phones.
+ * Each variant is optional — posterVariantsEnabled may not have produced them,
+ * and older listings have none — so every source falls back to the portrait and
+ * ultimately to the first cover, and the markup simply omits a <source> whose
+ * variant is missing rather than pointing at a 404.
+ */
+const posterAttr: any = (listing.attrs as any)?.poster ?? null;
+const posterUsable = posterAttr && (posterAttr.status === 'draft' || posterAttr.status === 'approved');
+const posterVariants = posterUsable ? (posterAttr.variants ?? {}) : {};
+const heroBase = (posterUsable ? posterAttr.url : null) ?? listing.cover_media?.[0]?.url ?? null;
+const heroPortrait = posterVariants.portrait?.url ?? heroBase;
+const heroTablet = posterVariants.tablet?.url ?? null;
+const heroWide = posterVariants.wide?.url ?? null;
+const posterOverlay = posterUsable && posterAttr.lettering === 'overlay';
+const posterCopy = posterUsable ? (posterAttr.copy ?? null) : null;
+
+/* Creator photos are SECONDARY to the poster now. When a poster exists the whole
+ * cover_media array is the creator's own uploads (the poster sits at [0] and is
+ * shown as the hero), so the gallery starts at 1 either way — but with a poster
+ * present it is captioned as "more photos", not as the listing's face. */
+const stillUrls = [listing.cover_media?.[1]?.url, listing.cover_media?.[2]?.url, listing.cover_media?.[3]?.url];
 
 const breadcrumbId = `LISTING #${listing.id}`;
 
@@ -281,7 +311,22 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
       </div>
 
       <div class="player-card">
-        <div class="player-card__screen" style={heroCoverUrl ? `background-image:url(${heroCoverUrl}); background-size:cover; background-position:center;` : `background:${cat.photo}`}>
+        <div class="player-card__screen" style={heroBase ? undefined : `background:${cat.photo}`}>
+          {heroBase && (
+            <picture class="player-card__poster">
+              {heroWide && <source media="(min-width: 1024px)" srcset={cfImage(heroWide, { width: 1600, fit: 'cover' })} />}
+              {heroTablet && <source media="(min-width: 640px)" srcset={cfImage(heroTablet, { width: 1100, fit: 'cover' })} />}
+              <img src={cfImage(heroPortrait, { width: 900, fit: 'cover' })} alt={`${listing.title} — poster`} />
+            </picture>
+          )}
+          {posterOverlay && (
+            <div class="player-card__lettering">
+              <p class="player-card__lettering-title">{posterCopy?.title ?? listing.title}</p>
+              {(posterCopy?.tagline ?? listing.blurb) && (
+                <p class="player-card__lettering-tag">{posterCopy?.tagline ?? listing.blurb}</p>
+              )}
+            </div>
+          )}
           <div class="player-card__stripe"></div>
           <div class="player-card__badges">
             <span class="player-badge player-badge--live">
@@ -295,7 +340,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
               <button type="button" id="fav-btn" class="icon-btn" aria-label="Favorite">♡</button>
             </span>
           </div>
-          {!heroCoverUrl && <span class="player-card__center-label">LIVE STAGE · HOST CAMERA<br />16:9 STREAM DROPS HERE</span>}
+          {!heroBase && <span class="player-card__center-label">LIVE STAGE · HOST CAMERA<br />16:9 STREAM DROPS HERE</span>}
           {isLive ? (
             <button type="button" class="btn btn--cta js-join-btn player-card__cta" style={`background:${ctaColor}`}>▸ Join now</button>
           ) : (
@@ -317,9 +362,12 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
       </div>
 
       <div class="thumb-grid">
-        <div class="thumb-tile thumb-tile--butter" style={stillUrls[0] ? `background-image:url(${stillUrls[0]});background-size:cover;` : ''}>{!stillUrls[0] && <span>SHOW STILL</span>}</div>
-        <div class="thumb-tile thumb-tile--brick" style={stillUrls[1] ? `background-image:url(${stillUrls[1]});background-size:cover;` : ''}>{!stillUrls[1] && <span>SHOW STILL</span>}</div>
-        <div class="thumb-tile thumb-tile--oat" style={stillUrls[2] ? `background-image:url(${stillUrls[2]});background-size:cover;` : ''}>{!stillUrls[2] && <span>SHOW STILL</span>}</div>
+        {/* [POSTER-FIRST-1] Creator photos are SECONDARY to the poster and sit
+            below it. Routed through cfImage for the same reason the hero was:
+            these were raw full-size downloads for a 140px tile. */}
+        <div class="thumb-tile thumb-tile--butter" style={stillUrls[0] ? `background-image:url(${cfImage(stillUrls[0]!, { width: 420 })});background-size:cover;` : ''}>{!stillUrls[0] && <span>SHOW STILL</span>}</div>
+        <div class="thumb-tile thumb-tile--brick" style={stillUrls[1] ? `background-image:url(${cfImage(stillUrls[1]!, { width: 420 })});background-size:cover;` : ''}>{!stillUrls[1] && <span>SHOW STILL</span>}</div>
+        <div class="thumb-tile thumb-tile--oat" style={stillUrls[2] ? `background-image:url(${cfImage(stillUrls[2]!, { width: 420 })});background-size:cover;` : ''}>{!stillUrls[2] && <span>SHOW STILL</span>}</div>
         {highlightUrl ? (
           <a href={highlightUrl} target="_blank" rel="noopener" class="thumb-tile thumb-tile--teal"><span>HIGHLIGHT REEL</span></a>
         ) : (
@@ -1080,7 +1128,26 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
   @media (max-width: 560px) { .nazar__img { height: 22px; } .nazar__text { font-size: 0.5625rem; } }
 
   .player-card { border: 3px solid #161614; border-radius: 26px; overflow: hidden; background: #fdf1d3; box-shadow: 7px 8px 0 #161614; }
-  .player-card__screen { height: clamp(300px, 40vw, 540px); position: relative; }
+  .player-card__screen { height: clamp(300px, 40vw, 540px); position: relative; overflow: hidden; }
+  /* [POSTER-FIRST-1] The poster fills the hero as a real <img> so it can carry
+     srcset. object-fit:cover keeps the painted lettering centred instead of
+     squashing a 2:3 poster into a 16:9 frame. */
+  .player-card__poster { position: absolute; inset: 0; display: block; }
+  .player-card__poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  /* Only rendered when the artwork is deliberately textless — see
+     worker/src/lib/listing_poster.ts buildPosterArtOnlyPrompt. */
+  .player-card__lettering { position: absolute; top: 18px; left: 20px; right: 20px; z-index: 2; pointer-events: none; }
+  .player-card__lettering-title {
+    margin: 0; font-family: Anton, Impact, sans-serif; font-weight: 400;
+    font-size: clamp(1.75rem, 4vw, 3rem); line-height: 1.05;
+    letter-spacing: .055em; word-spacing: .12em; text-transform: uppercase;
+    color: #fdf1d3; text-shadow: 4px 4px 0 #161614;
+  }
+  .player-card__lettering-tag {
+    margin: 10px 0 0; font-family: Nunito, system-ui, sans-serif; font-weight: 800;
+    font-size: clamp(.875rem, 1.5vw, 1.125rem); letter-spacing: .05em;
+    color: #fdf1d3; text-shadow: 2px 2px 0 #161614;
+  }
   .player-card__stripe { position: absolute; inset: 0; background-image: repeating-linear-gradient(135deg, rgba(253, 241, 211, .13) 0 9px, transparent 9px 20px); }
   .player-card__badges { position: absolute; top: 14px; left: 14px; right: 14px; display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
   .player-badge { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.75rem; letter-spacing: .08em; border-radius: 100px; padding: 7px 13px; display: flex; align-items: center; gap: 7px; }

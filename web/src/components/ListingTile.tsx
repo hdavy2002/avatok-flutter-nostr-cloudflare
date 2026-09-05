@@ -14,6 +14,7 @@ import { getActiveToken, requireGuestAuth } from '../lib/clerk';
 import { addFavorite, removeFavorite, getListing } from '../lib/apiClient';
 import { Modal } from './Modal';
 import BookingFlow from '../islands/checkout/BookingFlow';
+import QuickInfo from '../islands/listing/QuickInfo';
 
 export interface ListingTileProps {
   listing: CardModel;
@@ -221,6 +222,33 @@ export function ListingTile({
   const [bookingListing, setBookingListing] = useState<Listing | null>(null);
   const [bookingLoading, setBookingLoading] = useState(false);
 
+  // [POSTER-FIRST-1 2026-09-05] Poster-first is decided per CARD, not per site.
+  // A generated poster already carries the title and tagline as painted
+  // lettering, so repeating them underneath is the same words twice — the
+  // poster becomes the card and the only control is "More info". A listing with
+  // no poster (every row that predates this, and any whose generation failed)
+  // keeps the original layout, which is where its title and chips still live.
+  // That is why there is no flag here: the data answers the question, so a
+  // half-migrated marketplace renders correctly instead of half-blank.
+  const posterFirst = Boolean(c.aiPoster);
+  // Prefer the portrait variant when one exists — a card is a portrait slot, so
+  // handing it the wide render would letterbox or crop the lettering.
+  const posterUrl = c.aiPoster?.variants?.portrait?.url ?? c.aiPoster?.url ?? c.poster;
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [quickListing, setQuickListing] = useState<Listing | null>(null);
+
+  const onMoreInfo = useCallback((e: MouseEvent<HTMLElement>) => {
+    // The whole card is one <a>; without this the click navigates to the detail
+    // page and the popup never gets a chance to open.
+    e.preventDefault();
+    e.stopPropagation();
+    capture('market_card_click', { listing_id: c.id, kind: c.kind ?? listing.kind ?? null, position, section, cta: 'quick_info' });
+    setQuickOpen(true);
+    if (!quickListing) {
+      void getListing(c.id).then(setQuickListing).catch(() => undefined);
+    }
+  }, [c.id, c.kind, listing.kind, position, section, quickListing]);
+
   const onCardClick = useCallback((e: MouseEvent<HTMLAnchorElement>) => {
     // [WEB-POSTHOG-1] §2.3 market_card_click. The whole card is one <a> so a
     // click on either CTA span bubbles here; `data-cta` on the span that was
@@ -315,18 +343,42 @@ export function ListingTile({
         transition: 'transform 120ms ease-out, box-shadow 120ms ease-out',
       }}
     >
-      {/* Poster-first artwork: generated posters carry the story, so give them a
-          generous portrait canvas and keep the metadata below compact. */}
-      <div style={{ height: 'clamp(230px, 28vw, 360px)', background: p.photo, position: 'relative' }}>
-        {c.poster && (
+      {/* [POSTER-FIRST-1] A real poster gets its true 2:3 shape, not a cropped
+          band. Cropping it to a 230px strip would cut the lettering it was
+          painted to carry, which is the whole point of the image. */}
+      <div style={posterFirst
+        ? { aspectRatio: '2 / 3', background: p.photo, position: 'relative' }
+        : { height: 'clamp(230px, 28vw, 360px)', background: p.photo, position: 'relative' }}>
+        {posterUrl && (
           <img
-            src={cfImage(c.poster, { width, fit: 'cover' })}
-            alt={c.title}
+            src={cfImage(posterUrl, { width, fit: posterFirst ? 'contain' : 'cover' })}
+            alt={posterFirst ? `${c.title} — poster` : c.title}
             loading="lazy"
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
           />
         )}
-        <div style={{ position: 'absolute', inset: 0, backgroundImage: stripe }} />
+        {/* lettering === 'overlay' means the artwork is deliberately textless
+            because the model could not be trusted to spell it — so the title is
+            drawn here as REAL text, which also keeps it selectable and readable
+            by a screen reader at any size. */}
+        {posterFirst && c.aiPoster?.lettering === 'overlay' && (
+          <div style={{ position: 'absolute', inset: '12px 12px auto 12px', zIndex: 2, pointerEvents: 'none' }}>
+            <p style={{
+              margin: 0, fontFamily: 'Anton, Impact, sans-serif', fontWeight: 400,
+              fontSize: '1.5rem', lineHeight: 1.05, letterSpacing: '.055em', wordSpacing: '.1em',
+              textTransform: 'uppercase', color: CREAM, textShadow: `3px 3px 0 ${INK}`,
+            }}>{c.aiPoster.copy?.title ?? c.title}</p>
+            {(c.aiPoster.copy?.tagline || c.oneLiner) && (
+              <p style={{
+                margin: '6px 0 0', fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800,
+                fontSize: '0.8125rem', letterSpacing: '.04em', color: CREAM, textShadow: `2px 2px 0 ${INK}`,
+              }}>{c.aiPoster.copy?.tagline ?? c.oneLiner}</p>
+            )}
+          </div>
+        )}
+        {/* The halftone stripe is decoration for an empty photo well. Over a
+            printed poster it reads as a printing fault, so it is dropped. */}
+        {!posterFirst && <div style={{ position: 'absolute', inset: 0, backgroundImage: stripe }} />}
 
         {/* [LIST-FREE-1] The free ribbon (§2.4) — a marigold stripe across the photo
             corner, reusing the existing --ava-marigold token (styles/ava-tokens.css)
@@ -405,6 +457,45 @@ export function ListingTile({
         }} />
       </div>
 
+      {/* [POSTER-FIRST-1] The poster already says the title, the tagline and the
+          category, in paint. Repeating them here is the same words twice and it
+          is what made these cards feel cluttered. One control, and the facts
+          live one tap away in the quick-info panel.
+
+          The sr-only line is NOT optional: the poster's lettering is pixels, so
+          without it a screen reader and a search crawler both see an unlabelled
+          image where the listing's name should be. */}
+      {posterFirst ? (
+        <div style={{ padding: '13px 15px 15px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span className="sr-only">
+            {c.title}. {blurb} {price ? `Price ${price}.` : ''} {duration ? `${duration}.` : ''}
+          </span>
+          <span aria-hidden="true" style={{
+            width: 26, height: 26, flex: 'none', borderRadius: '50%', border: `1.5px solid ${chipCol}`,
+            display: 'grid', placeItems: 'center', fontFamily: 'Nunito, system-ui, sans-serif',
+            fontWeight: 800, fontSize: '0.6875rem', color: chipCol, overflow: 'hidden',
+          }}>
+            {c.creator?.avatar
+              ? <img src={cfImage(c.creator.avatar, { width: 52 })} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : initials}
+          </span>
+          <span aria-hidden="true" style={{ fontSize: '0.8125rem', fontWeight: 600, color: textCol, minWidth: 0 }} className="truncate">
+            {c.creator?.name ?? (c.creator?.handle ? `@${c.creator.handle}` : 'avaTOK')}
+            {lane === 'agent' ? ' · AI' : c.creator?.verified ? ' ✓' : ''}
+          </span>
+          <button
+            type="button"
+            data-cta="quick_info"
+            onClick={onMoreInfo}
+            style={{
+              marginLeft: 'auto', flex: 'none', fontFamily: 'Nunito, system-ui, sans-serif',
+              fontWeight: 800, fontSize: '0.75rem', letterSpacing: '.08em',
+              padding: '10px 16px', borderRadius: 100, border: `2px solid ${INK}`,
+              background: CREAM, color: INK, cursor: 'pointer',
+            }}
+          >MORE INFO</button>
+        </div>
+      ) : (
       <div style={{ padding: '15px 17px 17px', display: 'flex', flexDirection: 'column', gap: 11, flex: 1 }}>
         {/* Stub line: category on the left, language on the right — the comp's s1/s2. */}
         <div style={{
@@ -522,7 +613,22 @@ export function ListingTile({
           )}
         </div>
       </div>
+      )}
     </a>
+    {quickOpen && (
+      <QuickInfo
+        card={c}
+        listing={quickListing}
+        lane={lane}
+        href={target}
+        onClose={() => setQuickOpen(false)}
+        onBook={() => {
+          setQuickOpen(false);
+          setBookingLoading(true);
+          void getListing(c.id).then((full) => setBookingListing(full)).catch(() => undefined).finally(() => setBookingLoading(false));
+        }}
+      />
+    )}
     {(bookingLoading || bookingListing) && (
       <Modal
         open

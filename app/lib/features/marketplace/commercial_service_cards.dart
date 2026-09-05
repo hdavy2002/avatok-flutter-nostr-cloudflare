@@ -7,6 +7,7 @@ import '../../core/listings_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../explore/widgets.dart' show CoverImage, RatingStars, fmtTokens, fmtWhen;
+import 'listing_quick_info.dart';
 
 String _creatorName(ListingCard card) =>
     (card.creator.name?.trim().isNotEmpty ?? false)
@@ -107,24 +108,88 @@ class _CommercialServiceCard extends StatelessWidget {
               'lane': lane,
               'kind': card.kind,
               'listing_id': card.id,
+              'poster_first': card.hasAiPoster,
             });
-            onTap();
+            // [POSTER-FIRST-1] On a poster card the facts are not on screen —
+            // the poster only carries the title and tagline — so a tap opens
+            // the quick-info sheet with the price, duration and rules, and
+            // "Details" from there goes to the full page. Without a poster the
+            // card still shows those facts itself, so a tap goes straight
+            // through as before rather than adding a needless extra step.
+            if (card.hasAiPoster) {
+              showListingQuickInfo(context, card, onDetails: onTap);
+            } else {
+              onTap();
+            }
           },
           child: SizedBox(
             width: 286,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(
-                  height: 132,
+                // [POSTER-FIRST-1 2026-09-05] A generated poster gets its true
+                // 2:3 shape. Cropping it into the old 132px band would cut off
+                // the painted title, which is the only thing the poster is
+                // carrying — the price pill and badge stay, because those are
+                // deliberately NOT on the poster and come from the row.
+                AspectRatio(
+                  aspectRatio: card.hasAiPoster ? 2 / 3 : 286 / 132,
                   child: Stack(children: [
                     Positioned.fill(
                       child: CoverImage(
-                        url: card.coverUrl,
+                        url: card.posterUrl ?? card.coverUrl,
                         seed: card.id.hashCode,
                         radius: BorderRadius.zero,
                       ),
                     ),
+                    // Only when the artwork is deliberately textless because
+                    // the model could not be trusted to letter it.
+                    if (card.hasAiPoster && card.posterNeedsLettering)
+                      Positioned(
+                        left: Msg.s3,
+                        right: Msg.s3,
+                        top: Msg.s3,
+                        child: IgnorePointer(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                card.posterTitle.toUpperCase(),
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                                style: ADText.rowName(c: AD.onBandCream).copyWith(
+                                  fontSize: 22,
+                                  height: 1.05,
+                                  // Never negative on display type — CLAUDE.md.
+                                  letterSpacing: 1.2,
+                                  fontWeight: FontWeight.w900,
+                                  // Hard poster-print drop shadow. Token, not
+                                  // a literal — design guard, and it must track
+                                  // the ink colour if that ever changes.
+                                  shadows: const [
+                                    Shadow(offset: Offset(2, 2), color: AD.textPrimary),
+                                  ],
+                                ),
+                              ),
+                              if (card.posterTagline.isNotEmpty) ...[
+                                const SizedBox(height: Msg.s1),
+                                Text(
+                                  card.posterTagline,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: ADText.preview(c: AD.onBandCream).copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.6,
+                                    shadows: const [
+                                      Shadow(offset: Offset(1, 1), color: AD.textPrimary),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
                     Positioned(
                       left: Msg.s3,
                       top: Msg.s3,
@@ -162,11 +227,18 @@ class _CommercialServiceCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(card.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: ADText.rowName()),
-                      const SizedBox(height: Msg.s2),
+                      // [POSTER-FIRST-1] The poster already says the title, in
+                      // paint. Repeating it here is the same words twice — the
+                      // exact clutter the poster was meant to replace. The
+                      // Semantics label above still carries it for TalkBack,
+                      // because painted lettering is pixels to a screen reader.
+                      if (!card.hasAiPoster) ...[
+                        Text(card.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: ADText.rowName()),
+                        const SizedBox(height: Msg.s2),
+                      ],
                       Row(children: [
                         Avatar(
                           seed: card.creator.uid,
