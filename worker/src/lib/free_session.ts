@@ -66,10 +66,25 @@ export async function freeSessionPolicy(env: Env, listing: FreeSessionListingRow
   const config = await readConfig(env);
   const enabled = config.freeSessionsEnabled === true && Number(listing.free_entry) === 1;
   const attrs = parseAttrs(listing.attrs);
-  const capTokens = Math.max(0, Math.trunc(Number(attrs.content_free_cap_tokens ?? 0)));
   const rate = Math.max(0, Number(config.freeSessionTokensPerAttendeeMinute) || 0);
   const capacity = Math.max(1, Math.trunc(Number(listing.capacity ?? 1)));
   const durationMin = Math.max(1, Math.trunc(Number(listing.duration_min ?? 60)));
+  // [PRICE-HOURLY-2 2026-09-05] The cap is DERIVED when the listing does not
+  // carry one, because the wizard stopped asking for it (owner decision: a free
+  // show does not interrogate the admin about their wallet). The default is
+  // "one full house for the whole session" — capacity × duration × rate — so
+  // maxAttendees below works out to exactly the listing's own capacity, which
+  // is what an unqualified "free show" means.
+  //
+  // ⚠️ Do NOT simplify this back to `?? 0`. Zero is not a neutral default here:
+  // with a rate set (it is 1 in production), a cap of 0 makes byBudget 0, so
+  // maxAttendees is 0 and NOBODY can join — a free show that silently admits no
+  // one, with no error for the creator or the viewer to see. An explicit cap on
+  // the row still wins; this only fills the absence.
+  const declaredCap = Number(attrs.content_free_cap_tokens);
+  const capTokens = Number.isFinite(declaredCap) && declaredCap > 0
+    ? Math.trunc(declaredCap)
+    : capacity * durationMin * Math.max(rate, 1);
   let maxAttendees = capacity;
   if (rate > 0) {
     const byBudget = Math.floor(capTokens / (rate * durationMin));

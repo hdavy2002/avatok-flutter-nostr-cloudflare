@@ -432,13 +432,27 @@ function contentAttrsError(attrs: unknown, freeEntry: boolean): string | null {
     const n = Number(a.content_join_lead_minutes);
     if (!Number.isInteger(n) || n < 0 || n > 60) return "content_join_lead_minutes must be an integer 0-60";
   }
-  // Cross-field: the free lane (§E) cannot hold an undefined cap from the creator's
-  // wallet at go-live, so this is required exactly when free_entry is set — checked
-  // against the EFFECTIVE free_entry the caller passes in (this call, or the row).
-  if (freeEntry) {
-    const n = Number(a.content_free_cap_tokens);
-    if (!Number.isInteger(n) || n <= 0) return "content_free_cap_tokens is required (a positive integer) when free_entry is set";
-  } else if (a.content_free_cap_tokens !== undefined) {
+  // [PRICE-HOURLY-2 2026-09-05] NO LONGER REQUIRED WHEN free_entry IS SET.
+  //
+  // It used to be, and that broke the free lane the moment the wizard stopped
+  // asking for it (owner decision 2026-09-05: "if the free option is selected,
+  // then we should not ask the admin to enter a token amount"). The control
+  // went, the server requirement stayed, and step 2 answered every free show
+  // with "content_free_cap_tokens is required" — an error naming a field that
+  // no longer exists on any screen.
+  //
+  // The cap is NOT dead, and it is not decorative: with
+  // `freeSessionTokensPerAttendeeMinute` at 1 in production, it is the budget
+  // that decides how many people may join. So it is now DERIVED rather than
+  // demanded — `freeSessionPolicy` (lib/free_session.ts) falls back to
+  // capacity × duration × rate, i.e. exactly enough to fill the room for the
+  // whole session. An explicit cap still wins if a row carries one.
+  //
+  // Which is why the shape check below survives for a value that IS sent: an
+  // existing listing's cap, or a future control, must still be a positive
+  // integer. A zero here would mean "budget for nobody", and the free lane
+  // would fail closed with no error anyone could see.
+  if (a.content_free_cap_tokens !== undefined) {
     const n = Number(a.content_free_cap_tokens);
     if (!Number.isInteger(n) || n <= 0) return "content_free_cap_tokens must be a positive integer";
   }
@@ -1257,14 +1271,15 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
     // f.price=0 when free_entry=1, above).
     const contentError = contentAttrsError(b.attrs, effectiveFreeEntryCreate);
     if (contentError) return json({ ok: false, error: contentError, message: contentError, field: "attrs" }, 422);
-  } else if (effectiveFreeEntryCreate) {
-    // [C03/cap-hole] `attrs` wasn't sent at all, so the block above never ran — but
-    // free_entry=1 with no attrs means content_free_cap_tokens can never have been
-    // supplied either. Run the same check against an empty attrs object so this
-    // path can't create a free listing with an unset (0) cap.
-    const contentError = contentAttrsError({}, true);
-    if (contentError) return json({ ok: false, error: contentError, message: contentError, field: "attrs" }, 422);
   }
+  // [C03/cap-hole] The `else if (effectiveFreeEntryCreate)` branch that stood
+  // here re-ran contentAttrsError against an empty attrs object, purely to stop
+  // a free listing being created with no content_free_cap_tokens. That cap is
+  // no longer required of the caller ([PRICE-HOURLY-2] — freeSessionPolicy
+  // derives it), so the branch had become a call that could not fail: dead code
+  // whose comment still described a hole it was no longer plugging. The hole
+  // itself is closed further down the pipe now, in lib/free_session.ts, where a
+  // missing cap resolves to one full house rather than to zero.
   const blocked = await guardWrite(req, env, ctx.uid, APP, [
     { text: f.title as string | undefined, field: "listing_title" },
     { text: f.description as string | undefined, field: "listing_desc" },
@@ -1507,11 +1522,15 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
     attrsMissing = v.missing;
   } else if (effectiveFreeEntry) {
     // [C03/cap-hole] A PUT of just `{"free_entry": true}` (no `attrs` in the body at
-    // all) used to skip contentAttrsError entirely, because it only ran inside the
-    // `b.attrs !== undefined` branch above — producing a listing with free_entry=1
-    // and content_free_cap_tokens unset (reads back as 0, an unmetered free lane).
-    // Validate the EFFECTIVE attrs (the row's existing, already-stored attrs — this
-    // call isn't changing them) against the now-true effective free_entry.
+    // all) skips contentAttrsError entirely, because it only runs inside the
+    // `b.attrs !== undefined` branch above. This re-runs it over the row's existing
+    // stored attrs against the now-true effective free_entry.
+    //
+    // [PRICE-HOURLY-2] It no longer guards the CAP — that is not required of a
+    // caller any more and lib/free_session.ts derives it. What it still catches
+    // is every other cross-field rule in contentAttrsError for a listing that
+    // has just become free, so it stays rather than being deleted with the
+    // requirement that first motivated it.
     const existingAttrs = parseJson<Record<string, unknown>>(row.attrs, {});
     const contentError = contentAttrsError(existingAttrs, true);
     if (contentError) return json({ ok: false, error: contentError, message: contentError, field: "attrs" }, 422);
