@@ -10,6 +10,7 @@ import { Button } from '../../../components/Button';
 import { CopyReview } from './CopyReview';
 import { TwoFieldListEditor, StringListEditor, ChatLineEditor, labelCls, inputCls, textareaCls, SectionHeader, charCount } from './Editors';
 import { REFUND_WINDOWS, BOOKING_NOTICE_HOURS } from './wizardLogic';
+import type { ReadinessCheck, ListingReviewResult } from './wizardLogic';
 import { defaultsFor } from '../../../lib/listingDefaults';
 import { cfImage } from '../../../lib/config';
 import { MEDIA_MODES, PRICING, groupsForKind, subCategoriesFor, feeSplit } from '../../../lib/listingTaxonomy';
@@ -792,8 +793,11 @@ export function Step7Photos({ draft, patch, err, onUpload, onRemoveCover, upload
 export function Step8Preview({ draft, patch, checks, ready, onSubmitForReview, publishing,
   published, pendingReview, approvedAwaitingPublish, rejected, publicHref, error,
   repeatOpen, setRepeatOpen, repeatWeeks, setRepeatWeeks, onRepeat, repeating, isLive, creator, copyReviewed, onReviewed,
+  review, reviewing, onRunReview,
 }: {
-  draft: ListingDraft; patch: Patch; checks: { ok: boolean; label: string }[]; ready: boolean;
+  draft: ListingDraft; patch: Patch; checks: ReadinessCheck[]; ready: boolean;
+  /** [WIZARD-VALIDATE-1] The server's verdict, and the button that fetches it. */
+  review: ListingReviewResult | null; reviewing: boolean; onRunReview: () => void;
   /** [CARD-AI-REVIEW-1] Reviewed in this session? Drives the panel below. */
   copyReviewed: boolean; onReviewed: () => void;
   /** [LIST-SUBMIT-REVIEW-1] Sends the draft into the admin approval queue —
@@ -814,11 +818,55 @@ export function Step8Preview({ draft, patch, checks, ready, onSubmitForReview, p
         <div className="flex flex-col gap-2">
           {checks.map((c) => (
             <div key={c.label} className="flex items-center gap-2">
-              <span className={c.ok ? 'text-lime' : 'text-coral'}>{c.ok ? '✓' : '○'}</span>
-              <span className="font-body font-bold text-[14px] text-ink">{c.label}</span>
+              {/* [WIZARD-VALIDATE-1] An `info` line is not a check and must not
+                  wear a tick. The old list padded itself with four hardcoded
+                  `ok: true` rows, so a listing with real problems still showed a
+                  column of green ticks — the visual half of the same lie. */}
+              <span className={c.info ? 'text-inkMute' : c.ok ? 'text-lime' : 'text-coral'}>
+                {c.info ? '·' : c.ok ? '✓' : '○'}
+              </span>
+              <span className={`font-body font-bold text-[14px] ${c.info ? 'text-inkSoft' : 'text-ink'}`}>{c.label}</span>
             </div>
           ))}
         </div>
+
+        {/* [WIZARD-VALIDATE-1] The check, and what it found. Nothing here is
+            claimed unless the server said it: a listing that has not been
+            checked says so, and Submit stays locked. */}
+        {isDraftState && (
+          <Card fillClassName="bg-paper2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-body font-bold text-[14px] text-ink">
+                {review ? (review.verdict === 'fail' ? 'This listing cannot be published yet' : 'Checked') : 'Check this listing'}
+              </span>
+              <Button variant="ghost" label={review ? "Check again" : "Run the check"} loading={reviewing} onClick={onRunReview} />
+            </div>
+            {review && review.model !== 'ok' && (
+              <p className="mt-2 font-body font-bold text-[13px] text-inkSoft">
+                The AI reviewer {review.model === 'off' ? 'is switched off' : 'was unavailable'}, so this ran the
+                publishing rules only. Those are the same rules that decide whether it can go live.
+              </p>
+            )}
+            {review && review.issues.length > 0 && (
+              <ul className="mt-3 flex flex-col gap-2">
+                {review.issues.map((i, n) => (
+                  <li key={`${i.source}-${n}`} className="flex gap-2">
+                    <span className={i.severity === 'fail' ? 'text-coral' : 'text-inkSoft'}>
+                      {i.severity === 'fail' ? '✕' : '!'}
+                    </span>
+                    <span className="font-body font-bold text-[13px] text-ink">
+                      {i.message}
+                      {i.severity === 'warn' && <span className="ml-2 font-normal text-inkMute">suggestion</span>}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {review && review.verdict === 'pass' && (
+              <p className="mt-2 font-body font-bold text-[13px] text-inkSoft">No problems found.</p>
+            )}
+          </Card>
+        )}
 
         {/* [CARD-AI-REVIEW-1] The review is a submit check, so the way to
             satisfy it lives HERE, next to the blocked button — not only back on

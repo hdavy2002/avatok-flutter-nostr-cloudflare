@@ -179,6 +179,12 @@ export function validateStep(d: ListingDraft, step: StepIndex): FieldProblem | n
       return null;
     case 1: // Pitch
       if (d.title.trim().length < 3) return { field: 'title', message: 'Give your listing a title (at least 3 characters).' };
+      // [WIZARD-VALIDATE-1 2026-09-05] The blurb is REQUIRED here, on the step
+      // that collects it. It was only capped, never required — and it is a hard
+      // requirement of the step-8 checklist, so a creator who skipped it sailed
+      // through six more steps before being told, with no indication of which
+      // step to go back to.
+      if (!d.blurb.trim()) return { field: 'blurb', message: 'Write the one-line blurb — it is the line buyers read on the card.' };
       if (d.blurb.length > 120) return { field: 'blurb', message: 'The blurb must be at most 120 characters.' };
       if (!d.category) return { field: 'category', message: 'Pick one category.' };
       return null;
@@ -205,6 +211,23 @@ export function validateStep(d: ListingDraft, step: StepIndex): FieldProblem | n
       return null;
     case 3: { // Time
       if (!isValidTimezone(d.timezone)) return { field: 'timezone', message: 'Pick a valid timezone.' };
+      // [WIZARD-VALIDATE-1 2026-09-05] A LIVE EVENT always needs a real window,
+      // whatever its schedule_mode says.
+      //
+      // The checks below branch on schedule_mode alone, with no else — so a
+      // live_event saved as 'always_on' or 'on_request' was asked for nothing at
+      // all, passed this step, passed the step-8 checklist, reached review, was
+      // approved by a human, and was then refused by publish forever. The owner
+      // lost listing 845567cb to exactly that. Everything downstream of a live
+      // event assumes a window: checkout refuses a ticket without one and the
+      // stream join computes 1970 and locks out the host.
+      //
+      // The mode buttons for those cases are gone from the UI now, but this is
+      // the check that has to hold, because a draft can arrive here from the API,
+      // from an older saved listing, or from any path that never mounts Step4Time.
+      if (d.kind === 'live_event' && d.schedule_mode !== 'fixed_date' && d.schedule_mode !== 'recurring') {
+        return { field: 'starts_at', message: 'A live event needs a date and time — pick "One fixed date".' };
+      }
       if (d.schedule_mode === 'fixed_date') {
         const ms = localToEpoch(d.starts_at);
         if (ms === null) return { field: 'starts_at', message: 'Pick the date and time this starts.' };
@@ -266,36 +289,75 @@ export function validateStep(d: ListingDraft, step: StepIndex): FieldProblem | n
   }
 }
 
-/** Required-for-`live_event` at publish (spec §F): blurb, how-it-works, house rules. */
+/** One line on the step-8 checklist. `info` lines can never block a submit and
+ *  exist only so a creator can see what they did and did not fill in. */
+export type ReadinessCheck = { ok: boolean; label: string; info?: boolean };
+
+/** The server's verdict on this listing — POST /api/listings/:id/review. */
+export type ListingReviewResult = {
+  verdict: 'pass' | 'warn' | 'fail';
+  model: 'ok' | 'unavailable' | 'off';
+  issues: { severity: 'fail' | 'warn'; field: string | null; message: string; source: 'rules' | 'ai' }[];
+};
+
+/**
+ * [WIZARD-VALIDATE-1 2026-09-05] The step-8 checklist, rebuilt around the
+ * server's answer instead of a second opinion computed in the browser.
+ *
+ * What was wrong with the old one, in the owner's words: "the AI review at the
+ * end is fake." Three separate problems:
+ *
+ *   1. Four of its seven base lines were literal `ok: true` — decorative rows
+ *      that could never fail, padding a list that looked like scrutiny.
+ *   2. The schedule lines were pushed only for `fixed_date` / `recurring`, with
+ *      no else and no reference to `kind`, so a live_event with no start time
+ *      had NO schedule line at all and the list went all-green.
+ *   3. The first line claimed an AI check had "passed" when all that had
+ *      happened was that a copy-length request returned. There was no verdict
+ *      in the response to read.
+ *
+ * Now: the blocking lines come from the server (`review.issues` of severity
+ * `fail`, which are exactly the rules publish enforces), the AI line reports the
+ * real verdict, and the local lines that remain are marked `info` so it is
+ * obvious they decide nothing. Until the review has actually run, the list is
+ * NOT ready — an unknown answer is not a pass.
+ */
 export function publishReadiness(
   d: ListingDraft,
-  /** [CARD-AI-REVIEW-1] Whether the copy review has run in THIS session. It is
-   *  session state on purpose: there is no column on `listings` recording a
-   *  review, so persisting it would mean inventing one. Re-running the review
-   *  is one click on the Pitch step, and the server-side backstop (a follow-up)
-   *  is what will make this durable. Until then, do not fake a stored flag. */
-  opts: { copyReviewed?: boolean } = {},
-): { ok: boolean; label: string }[] {
-  const checks = [
-    // [LIST-FORM-2] Reads as NOT DONE until the creator actually clicks —
-    // "Ava has reviewed the copy" sounded like a claim that already happened.
-    { ok: Boolean(opts.copyReviewed), label: opts.copyReviewed ? 'AI check of your listing — passed' : 'AI check of your listing — not run yet' },
-    { ok: d.title.trim().length >= 3, label: 'Has a title' },
-    { ok: Boolean(d.category), label: 'Has a category' },
-    { ok: true, label: d.cover_media.length ? `Optional photos added (${d.cover_media.length}/5)` : 'AI poster can be generated' },
-    { ok: d.blurb.trim().length > 0, label: 'Has a one-line blurb' },
-    // [LIST-OPTIONAL-CONTENT-1] Optional, so these can never hold up a publish.
-    // Kept in the list as informational lines rather than deleted, so the
-    // creator can still see at a glance whether they wrote them.
-    { ok: true, label: d.content_how_it_works.length ? `How it works (${d.content_how_it_works.length} step${d.content_how_it_works.length === 1 ? '' : 's'})` : 'How it works — optional, left blank' },
-    { ok: true, label: d.content_house_rules.length ? `House rules (${d.content_house_rules.length})` : 'House rules — optional, left blank' },
-  ];
-  if (d.schedule_mode === 'fixed_date') {
-    checks.push({ ok: Boolean(localToEpoch(d.starts_at)) && Number(localToEpoch(d.starts_at)) > Date.now(), label: 'Starts in the future' });
-    checks.push({ ok: d.duration_min >= 5 && d.duration_min <= 480, label: 'Length is set' });
+  opts: { review?: ListingReviewResult | null; reviewing?: boolean } = {},
+): ReadinessCheck[] {
+  const review = opts.review ?? null;
+  const checks: ReadinessCheck[] = [];
+
+  // ---- the one line that gates everything ----
+  if (!review) {
+    checks.push({
+      ok: false,
+      label: opts.reviewing ? 'Checking your listing…' : 'Check your listing — not run yet',
+    });
+  } else if (review.verdict === 'fail') {
+    checks.push({ ok: false, label: `Check found ${review.issues.filter((i) => i.severity === 'fail').length} thing(s) that must be fixed` });
+  } else {
+    // Never claim more than actually happened. When the model could not run, the
+    // deterministic half still did, and the label says exactly that rather than
+    // implying a full review.
+    checks.push({
+      ok: true,
+      label: review.model === 'ok'
+        ? (review.verdict === 'warn' ? 'Checked — nothing blocking, some suggestions below' : 'Checked — no problems found')
+        : 'Checked against the publishing rules (the AI reviewer was unavailable)',
+    });
   }
-  if (d.schedule_mode === 'recurring') {
-    checks.push({ ok: d.recurrence_days.length > 0, label: 'Recurring days are set' });
+
+  // ---- every blocking problem the server found, verbatim ----
+  for (const i of review?.issues ?? []) {
+    if (i.severity === 'fail') checks.push({ ok: false, label: i.message });
   }
+
+  // ---- informational only: these decide nothing and say so ----
+  checks.push({ ok: true, info: true, label: d.cover_media.length ? `Photos added (${d.cover_media.length}/5)` : 'No photos — the AI poster will be used' });
+  checks.push({ ok: true, info: true, label: d.content_how_it_works.length ? `How it works (${d.content_how_it_works.length} step${d.content_how_it_works.length === 1 ? '' : 's'})` : 'How it works — optional, left blank' });
+  checks.push({ ok: true, info: true, label: d.content_house_rules.length ? `House rules (${d.content_house_rules.length})` : 'House rules — optional, left blank' });
+
   return checks;
 }

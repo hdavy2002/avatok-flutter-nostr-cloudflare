@@ -43,6 +43,7 @@ import { brainExport, brainMemoryList, brainMemoryConfirm, brainMemoryCorrect, b
 import { deleteAccount, cancelDeletion, deletionStatus } from "./routes/account";
 import { adminDeleteUser } from "./routes/admin_delete_user"; // [ADMIN-DELETE-USER-1] admin immediate erasure of another user
 import { adminListings, adminListingAction, adminListingDetail, adminEditListing } from "./routes/admin_listings";
+import { listingReview } from "./routes/listing_review";
 // [AVADIAL-CALL-INTEL-1] Call-intelligence ingest. The ONLY place raw E.164 and the
 // HMAC secret meet — the device never holds the key. See routes/telemetry_calls.ts.
 import { ingestCallTelemetry } from "./routes/telemetry_calls";
@@ -1731,6 +1732,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
           // listing and being live, so the wizard and the admin queue can show
           // the SERVER's answer instead of each keeping their own checklist.
           if (act === "blockers" && req.method === "GET") return await listingBlockersRoute(req, env, lid);
+          // [LISTING-REVIEW-1] The honest review: deterministic blockers plus an
+          // advisory model pass, with a verdict the wizard can actually gate on.
+          if (act === "review" && req.method === "POST") return await listingReview(req, env, lid);
           // ctx is threaded in so auto poster generation can run under
           // ctx.waitUntil() — a bare detached promise is not guaranteed to
           // finish once the response is sent, which would strand the poster

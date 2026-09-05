@@ -12,7 +12,7 @@
  * per-step diff) so jumping backward and re-advancing never drops a later
  * step's already-collected data — see wizardLogic.bodyForSave.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getActiveTokenWaited as getActiveToken } from '../../../lib/clerk';
 import { request, ApiError } from '../../../lib/apiClient';
 import { API_BASE } from '../../../lib/config';
@@ -25,6 +25,7 @@ import { isEmbedded, embedNotifyDirty, embedNotifySubmitted } from '../../../lib
 import { emptyDraft, STEP_LABELS } from './types';
 import type { ListingDraft, StepIndex, DraftSlot } from './types';
 import { bodyForSave, validateStep, publishReadiness, epochToLocal, normalizeTimezone } from './wizardLogic';
+import type { ListingReviewResult } from './wizardLogic';
 import { defaultsFor } from '../../../lib/listingDefaults';
 import {
   Step1Type, Step2Pitch, Step3Money, Step4Time, Step5HowItWorks, Step6HouseRules, Step7Photos, Step8Preview,
@@ -115,6 +116,12 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
   // [CARD-AI-REVIEW-1] Has the copy review run in this session? Session-only —
   // see the note on publishReadiness for why this is not persisted.
   const [copyReviewed, setCopyReviewed] = useState(false);
+  // [WIZARD-VALIDATE-1 2026-09-05] The SERVER's verdict on this listing. Null
+  // means we have not asked yet, which is deliberately not the same as a pass —
+  // the old checklist treated "no answer" as fine and that is how an
+  // unpublishable listing reached the review queue.
+  const [review, setReview] = useState<ListingReviewResult | null>(null);
+  const [reviewing, setReviewing] = useState(false);
   const [slotsSupported, setSlotsSupported] = useState<boolean | null>(null);
   const [slotBusy, setSlotBusy] = useState(false);
   const [categories, setCategories] = useState<{ id: string; label: string; emoji?: string | null; group_id?: string | null }[]>([]);
@@ -143,7 +150,16 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
   // back) — a ref because it must be read synchronously, not after a re-render.
   const savingRef = useRef(false);
 
-  function patch(p: Partial<ListingDraft>) { setDraft((d) => ({ ...d, ...p })); setFieldErr({ field: null, message: null }); }
+  function patch(p: Partial<ListingDraft>) {
+    setDraft((d) => ({ ...d, ...p }));
+    setFieldErr({ field: null, message: null });
+    // [WIZARD-VALIDATE-1] Any edit throws away the verdict. A green tick that
+    // was earned by an earlier version of the listing is the same lie in a
+    // slower form — the creator changes the price, the check still says
+    // "no problems found", and Submit stays unlocked on an answer about
+    // different data.
+    setReview(null);
+  }
 
   // [LIST-WIZ-HOST-1] The live-preview card's host chip (steps.tsx PreviewCard)
   // needs the signed-in creator's name/avatar. This island is NOT inside a
@@ -548,7 +564,29 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
     } finally { setRepeating(false); }
   }
 
-  const checks = useMemo(() => publishReadiness(draft, { copyReviewed }), [draft, copyReviewed]);
+  // [WIZARD-VALIDATE-1] Ask the server. Any edit invalidates the answer, so the
+  // verdict can never be stale-but-green: `review` is cleared on every patch
+  // (see `patch` below) and Submit is locked again until it is re-run.
+  const runReview = useCallback(async () => {
+    if (!draft.id) return;
+    setReviewing(true);
+    setError(null);
+    try {
+      const r = await request<ListingReviewResult>(`/api/listings/${encodeURIComponent(draft.id)}/review`, {
+        auth: await getActiveToken(), method: 'POST', body: {},
+      });
+      setReview(r);
+      capture('listing_review_run', { verdict: r.verdict, model: r.model, issues: r.issues?.length ?? 0 });
+    } catch (e) {
+      // A failed review is NOT a pass. Leaving `review` null keeps Submit locked
+      // and the checklist honest about not knowing.
+      setReview(null);
+      setError(e instanceof ApiError ? e.error : 'Could not check the listing. Try again.');
+      capture('listing_review_run', { verdict: 'error', model: 'unavailable', issues: 0 });
+    } finally { setReviewing(false); }
+  }, [draft.id]);
+
+  const checks = useMemo(() => publishReadiness(draft, { review, reviewing }), [draft, review, reviewing]);
   const ready = checks.every((c) => c.ok);
   // [LIST-SUBMIT-REVIEW-1] `status !== 'draft'` used to stand in for "published",
   // which made a `pending_review` or `rejected` listing render "This listing is
@@ -620,6 +658,7 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
           <Step8Preview
             draft={draft} patch={patch} checks={checks} ready={ready} onSubmitForReview={onSubmitForReview} publishing={publishing}
             copyReviewed={copyReviewed} onReviewed={() => setCopyReviewed(true)}
+            review={review} reviewing={reviewing} onRunReview={runReview}
             published={published} pendingReview={pendingReview} approvedAwaitingPublish={approvedAwaitingPublish} rejected={rejected}
             publicHref={publicHref} error={error}
             repeatOpen={repeatOpen} setRepeatOpen={setRepeatOpen} repeatWeeks={repeatWeeks} setRepeatWeeks={setRepeatWeeks}
