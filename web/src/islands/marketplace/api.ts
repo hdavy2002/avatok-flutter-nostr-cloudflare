@@ -34,6 +34,10 @@ export interface MarketCategory {
   label: string;
   emoji?: string;
   count?: number;
+  /** [MKT-3GROUP-1] Which of the three marketplace groups this category rolls
+   *  up into — null for a marketplace-goods category (cars, property,
+   *  mobiles, …), which is a different product and untouched by that change. */
+  group_id?: string | null;
 }
 
 /** GET /api/explore/search — public faceted search (no auth). */

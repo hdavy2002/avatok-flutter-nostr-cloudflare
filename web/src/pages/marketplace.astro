@@ -42,10 +42,11 @@ export const prerender = false;
 import Base from '../layouts/Base.astro';
 import MarketplaceBrowse from '../components/MarketplaceBrowse.astro';
 
-// [MARKET-BAZAAR-2] ?vertical= replaces ?category= and ?kind=. The page's
-// taxonomy is now the seven bazaar verticals (web/src/lib/verticals.ts), which
-// is what both the tiles and the filter rail speak.
-const vertical = Astro.url.searchParams.get('vertical') ?? undefined;
+// [MKT-3GROUP-WEB-1 2026-09-05] ?group= replaces ?vertical= (which replaced
+// ?category= and ?kind=). The page's taxonomy is now the THREE marketplace
+// groups (web/src/lib/marketGroups.ts, over lib/listingTaxonomy.ts), which is
+// what both the tiles and the filter rail speak.
+const group = Astro.url.searchParams.get('group') ?? Astro.url.searchParams.get('vertical') ?? undefined;
 // [MARKET-BAZAAR-1] ?q= is set by the bazaar search strip, which is a plain GET
 // form so a search is a real, shareable URL. ExploreGrid seeds itself from it.
 const q = Astro.url.searchParams.get('q')?.trim() || undefined;
@@ -63,6 +64,6 @@ Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-rev
       below the band (its `gutters` const), so wrapping it in a max-w-6xl
       container would both crop the band and double-indent the grid. */}
   <main>
-    <MarketplaceBrowse hrefBase="" vertical={vertical} q={q} showHero={true} showSplit={true} />
+    <MarketplaceBrowse hrefBase="" group={group} q={q} showHero={true} showSplit={true} />
   </main>
 </Base>

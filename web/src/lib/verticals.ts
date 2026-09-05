@@ -1,4 +1,13 @@
 /**
+ * ⚠️ [MKT-3GROUP-WEB-1 2026-09-05] SUPERSEDED. The marketplace and the front
+ * page no longer show these seven bazaar sections as their own tiles/filters —
+ * per Specs/SPEC-2026-09-05-THREE-GROUPS-AND-HOURLY-PRICING.md §1 they now
+ * show THREE groups (lib/marketGroups.ts, built on lib/listingTaxonomy.ts).
+ * Nothing in web/src imports this file's VERTICALS/groupByVertical any more —
+ * it is kept, unused, only because `listings.section` (the column this file
+ * still describes) is real and unchanged; do not wire new marketplace UI to
+ * the seven-section model below. See marketGroups.ts instead.
+ *
  * [MARKET-BAZAAR-2 / MARKET-SECTION-1] The seven bazaar SECTIONS — the groups
  * the marketplace design organises listings into.
  *

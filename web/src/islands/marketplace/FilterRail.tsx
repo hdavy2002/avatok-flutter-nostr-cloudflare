@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { VERTICALS, VERTICALS_WITHOUT_A_SOURCE, type VerticalId } from '../../lib/verticals';
+import { GROUP_ORDER, GROUP_DISPLAY, type GroupId } from '../../lib/marketGroups';
 
 /** Price buckets, in tokens (₹1 = 1 token). `max: null` means "and up". */
 export const PRICE_BANDS: { id: string; label: string; min: number; max: number | null }[] = [
@@ -10,7 +10,8 @@ export const PRICE_BANDS: { id: string; label: string; min: number; max: number 
 ];
 
 export interface RailState {
-  vertical?: VerticalId;
+  /** [MKT-3GROUP-WEB-1] One of the three groups (was a 7-way `vertical`). */
+  group?: GroupId;
   price: string;
   /** ISO date (yyyy-mm-dd) or undefined for "any day". */
   date?: string;
@@ -38,8 +39,9 @@ export const SORTS: { id: string; label: string }[] = [
 export interface FilterRailProps {
   value: RailState;
   onChange: (next: RailState) => void;
-  /** Catalogue-wide count per section, from the worker's `section_counts`. */
-  counts: Record<VerticalId, number>;
+  /** Catalogue-wide count per group, derived from the worker's `section_counts`
+   *  (see marketGroups.groupCountsFromSectionCounts). */
+  counts: Record<GroupId, number>;
   /**
    * False when the worker sent no counts. The rail then shows NO number rather
    * than a zero — "0" and "we could not count" are different claims, and only
@@ -65,7 +67,7 @@ export interface FilterRailProps {
  */
 export function activeFilterCount(value: RailState): number {
   let n = 0;
-  if (value.vertical) n++;
+  if (value.group) n++;
   if (value.date) n++;
   if (value.price && value.price !== 'all') n++;
   return n;
@@ -91,11 +93,12 @@ export function activeFilterCount(value: RailState): number {
  *  2. WHEN THE COUNT IS UNKNOWN, NOTHING IS PRINTED. `countsKnown` is false if
  *     the worker could not compute them; the rail then shows a blank rather
  *     than a zero, because "0" is a claim and "we do not know" is not.
- *  3. A SECTION NOTHING CAN REACH IS MARKED, not silently empty. Three of the
- *     seven have no (kind, category) that resolves to them (see
- *     VERTICALS_WITHOUT_A_SOURCE and its worker twin), so they can never have a
- *     count. They stay listed — they are real products the owner wants visible —
- *     but they are not clickable filters leading to a dead end.
+ *
+ * [MKT-3GROUP-WEB-1 2026-09-05] The rail's category list is now the THREE
+ * marketplace GROUPS (Specs/SPEC-2026-09-05-THREE-GROUPS-AND-HOURLY-PRICING.md
+ * §1), not the seven bazaar sections — each group renders its own sub-category
+ * "blips" inline in its results section instead (VerticalSection.tsx). Every
+ * group is reachable, so the old "Soon" / unreachable-section row is gone.
  */
 export function FilterRail({ value, onChange, counts, countsKnown, total, onClear, narrowed, open, onClose }: FilterRailProps) {
   const set = (patch: Partial<RailState>) => onChange({ ...value, ...patch });
@@ -182,27 +185,22 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
             <RailRadio
               label="Everything"
               count={countsKnown ? total : null}
-              selected={!value.vertical}
-              onSelect={() => set({ vertical: undefined })}
+              selected={!value.group}
+              onSelect={() => set({ group: undefined })}
             />
-            {VERTICALS.map((v) => {
-              const unreachable = VERTICALS_WITHOUT_A_SOURCE.has(v.id);
-              return (
-                <RailRadio
-                  key={v.id}
-                  label={v.label}
-                  count={unreachable || !countsKnown ? null : counts[v.id]}
-                  // "Soon", not "Coming soon": the rail is 248px and the right
-                  // column shares the row with the label. The longer string
-                  // pushed "Live friends", "Adda rooms" and "Glow-up studio"
-                  // onto two lines each, which made a tidy radio list look ragged.
-                  note={unreachable ? 'Soon' : undefined}
-                  disabled={unreachable}
-                  selected={value.vertical === v.id}
-                  onSelect={() => set({ vertical: value.vertical === v.id ? undefined : v.id })}
-                />
-              );
-            })}
+            {/* [MKT-3GROUP-WEB-1] Three groups, not seven sections (spec §1).
+                Every group is reachable — the one gated sub-category
+                (adda_rooms) is hidden at the BLIP level inside its section,
+                not here, so there is no "Soon" row any more. */}
+            {GROUP_ORDER.map((id) => (
+              <RailRadio
+                key={id}
+                label={GROUP_DISPLAY[id].label}
+                count={countsKnown ? counts[id] : null}
+                selected={value.group === id}
+                onSelect={() => set({ group: value.group === id ? undefined : id })}
+              />
+            ))}
           </ul>
         </div>
 

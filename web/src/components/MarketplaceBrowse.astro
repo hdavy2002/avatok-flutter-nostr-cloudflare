@@ -17,31 +17,30 @@ import ExploreGrid from '../islands/marketplace/ExploreGrid.tsx';
 import BazaarHero from './BazaarHero.astro';
 import BazaarSearchStrip from './BazaarSearchStrip.astro';
 import TruckBorder from './TruckBorder.astro';
-import { VERTICALS, VERTICALS_WITHOUT_A_SOURCE } from '../lib/verticals';
+import { GROUP_ORDER, GROUP_DISPLAY } from '../lib/marketGroups';
 
 interface Props {
   hrefBase?: string;
   /** Search query from the URL (?q=), set by the hero search strip. */
   q?: string;
-  /** Vertical from the URL (?vertical=), set by the category tiles. */
-  vertical?: string;
+  /** Group from the URL (?group=), set by the category tiles.
+   *  [MKT-3GROUP-WEB-1] Was `?vertical=`. */
+  group?: string;
   /** Show the marketing "for fans / for creators" block (public only). */
   showSplit?: boolean;
   /** Show the big bazaar hero (public only; the dashboard has its own header). */
   showHero?: boolean;
 }
-const { hrefBase = '', vertical, q, showSplit = false, showHero = false } = Astro.props;
+const { hrefBase = '', group, q, showSplit = false, showHero = false } = Astro.props;
 const mpBase = `${hrefBase}/marketplace`;
 
-// [MARKET-BAZAAR-2 2026-08-31] The tiles are the seven VERTICALS, not the 25
-// classifieds categories the API returns. That is the comp's taxonomy and the
-// owner's decision. The three with no data source (see verticals.ts) still get
-// a tile — they are real products — but they are marked, not silently dead.
-const tiles = VERTICALS;
-// [MARKET-TILE-CURATION-1] Keep these products available to the server and
-// section model, but omit the three tiles the owner does not want in the first
-// row of the public bazaar navigation.
-const visibleTiles = tiles.filter((v) => !['astro_tarot', 'consulting', 'glow_up'].includes(v.id));
+// [MKT-3GROUP-WEB-1 2026-09-05] The tiles are the THREE marketplace GROUPS
+// (Specs/SPEC-2026-09-05-THREE-GROUPS-AND-HOURLY-PRICING.md §1), not the old
+// seven bazaar VERTICALS and not the 25 classifieds categories the API
+// returns. "Voices with character" (ai_voice_agents) is removed entirely —
+// there is no fourth tile and no "Coming soon" marker, because every one of
+// the three groups is reachable.
+const visibleTiles = GROUP_ORDER.map((id) => GROUP_DISPLAY[id]);
 
 // The comp gives each tile a different truck-art strip. Cycling by INDEX (not
 // at random) keeps a tile's strip stable across renders — a tile that changes
@@ -80,34 +79,30 @@ const gutters = showHero ? 'mx-auto max-w-[1760px] px-4 sm:px-10' : '';
 {showHero && (
   <>
     <BazaarSearchStrip action={mpBase || '/marketplace'} value={q} />
-    <BazaarHero browseHref="#listings" liveHref={`${mpBase}?vertical=live_streaming#listings`} />
+    <BazaarHero browseHref="#listings" liveHref={`${mpBase}?group=india_goes_live#listings`} />
   </>
 )}
 
 <section class={showHero ? 'relative -mt-10' : 'pt-2'}>
   <div class={`grid gap-3.5 ${gutters}`} style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));">
-    {visibleTiles.map((v, i) => {
-      const soon = VERTICALS_WITHOUT_A_SOURCE.has(v.id);
-      return (
-        <a
-          href={soon ? '/sign-up' : `${mpBase}?vertical=${encodeURIComponent(v.id)}#listings`}
-          class="block overflow-hidden rounded-[18px] border-[3px] border-ink bg-card no-underline shadow-zine transition-transform duration-zine ease-out hover:-translate-y-[3px] active:translate-y-0 active:shadow-zine-pressed"
-        >
-          <div class="border-b-zine border-ink"><TruckBorder kind={MOTIFS[i % MOTIFS.length]} /></div>
-          {/* [MARKET-BAZAAR-3] Taller and roomier than before. The tiles were
-              px-4/pt-3/pb-3.5, which made a 120px strip that read as a row of
-              buttons rather than the comp's stall signs. */}
-          <div class="flex flex-col gap-2 px-5 pb-5 pt-4">
-            <span class="font-display text-[1.1875rem] font-normal uppercase leading-[1.15] tracking-[0.05em] text-ink">{v.label}</span>
-            {/* The comp prints "8 LISTINGS · PAWRI ZONE" on every tile. The 8 is
-                mock, so only the zone survives here — a count would have to be
-                fetched per vertical and would be a lie the moment it is stale.
-                A vertical nothing can be published into says so instead. */}
-            <span class={stub}>{soon ? `Coming soon · ${v.zone}` : v.zone}</span>
-          </div>
-        </a>
-      );
-    })}
+    {visibleTiles.map((g, i) => (
+      <a
+        href={`${mpBase}?group=${encodeURIComponent(g.id)}#listings`}
+        class="block overflow-hidden rounded-[18px] border-[3px] border-ink bg-card no-underline shadow-zine transition-transform duration-zine ease-out hover:-translate-y-[3px] active:translate-y-0 active:shadow-zine-pressed"
+      >
+        <div class="border-b-zine border-ink"><TruckBorder kind={MOTIFS[i % MOTIFS.length]} /></div>
+        {/* [MARKET-BAZAAR-3] Taller and roomier than before. The tiles were
+            px-4/pt-3/pb-3.5, which made a 120px strip that read as a row of
+            buttons rather than the comp's stall signs. */}
+        <div class="flex flex-col gap-2 px-5 pb-5 pt-4">
+          <span class="font-display text-[1.1875rem] font-normal uppercase leading-[1.15] tracking-[0.05em] text-ink">{g.label}</span>
+          {/* [MKT-3GROUP-WEB-1] All three groups are reachable — no "Coming
+              soon" marker any more (the one gated sub-category, adda_rooms,
+              is hidden at the blip level inside its section, not the tile). */}
+          <span class={stub}>{g.zone}</span>
+        </div>
+      </a>
+    ))}
   </div>
 </section>
 
@@ -138,7 +133,7 @@ const gutters = showHero ? 'mx-auto max-w-[1760px] px-4 sm:px-10' : '';
     <ExploreGrid
       client:visible
       initialQ={q}
-      initialVertical={vertical}
+      initialGroup={group}
       hrefBase={hrefBase}
       showSearch={!showHero}
       showLiveRail={false}

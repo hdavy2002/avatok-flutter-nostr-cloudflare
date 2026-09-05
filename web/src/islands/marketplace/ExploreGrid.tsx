@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getExplore } from '../../lib/apiClient';
-import { searchListings } from './api';
+import { getExplore, request } from '../../lib/apiClient';
+import { searchListings, getCategories, type MarketCategory } from './api';
 import type { Card, CardPage } from '../../lib/types';
 import { Button, Spinner } from '../../components';
 import { SearchBox } from './SearchBox';
 import { FilterRail, PRICE_BANDS, activeFilterCount, type RailState } from './FilterRail';
 import { VerticalSection } from './VerticalSection';
 import { LiveNowRail } from './LiveNowRail';
-import { groupByVertical, VERTICALS, type VerticalId } from '../../lib/verticals';
+import { groupByGroupId, groupCountsFromSectionCounts, GROUP_ORDER, type GroupId } from '../../lib/marketGroups';
 import { IslandBoundary } from '../../components/IslandBoundary';
 // [WEB-POSTHOG-1] §2.3 market_browse_loaded / market_browse_error / market_search.
 import { capture } from '../../lib/analytics';
@@ -17,8 +17,8 @@ export interface ExploreGridProps {
   initialQ?: string;
   /** Render the grid's own search field. False when the page has the hero strip. */
   showSearch?: boolean;
-  /** Initial section from the URL (?vertical=). */
-  initialVertical?: string;
+  /** Initial group from the URL (?group=). [MKT-3GROUP-WEB-1] Was `?vertical=`. */
+  initialGroup?: string;
   /** Page size for each fetch. */
   pageSize?: number;
   /** Render the live rail above the results (default true). */
@@ -29,7 +29,7 @@ export interface ExploreGridProps {
 
 const PAGE = 24;
 
-const EMPTY_COUNTS = Object.fromEntries(VERTICALS.map((v) => [v.id, 0])) as Record<VerticalId, number>;
+const EMPTY_COUNTS = Object.fromEntries(GROUP_ORDER.map((g) => [g, 0])) as Record<GroupId, number>;
 
 /**
  * The marketplace browse island: the comp's two-column body — FILTERS rail on
@@ -56,7 +56,7 @@ const EMPTY_COUNTS = Object.fromEntries(VERTICALS.map((v) => [v.id, 0])) as Reco
  */
 function ExploreGridInner({
   initialQ,
-  initialVertical,
+  initialGroup,
   pageSize = PAGE,
   showLiveRail = true,
   showSearch = true,
@@ -64,7 +64,7 @@ function ExploreGridInner({
 }: ExploreGridProps) {
   const [q, setQ] = useState(initialQ?.trim() ?? '');
   const [rail, setRail] = useState<RailState>({
-    vertical: (initialVertical as VerticalId) || undefined,
+    group: (initialGroup as GroupId) || undefined,
     price: 'all',
     sort: '',
   });
@@ -72,11 +72,37 @@ function ExploreGridInner({
   // Closed at every width — see the drawer note on the render below.
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [items, setItems] = useState<Card[]>([]);
-  const [counts, setCounts] = useState<Record<VerticalId, number> | null>(null);
+  const [counts, setCounts] = useState<Record<GroupId, number> | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const reqId = useRef(0);
+
+  // [MKT-3GROUP-WEB-1] Sub-category blips, per group. The server's categories
+  // (with `group_id`) are the authority; blipsForGroup falls back to the
+  // static SUB_CATEGORIES mirror while this hasn't loaded yet or fails.
+  const [categories, setCategories] = useState<MarketCategory[]>([]);
+  useEffect(() => {
+    void (async () => {
+      try {
+        setCategories(await getCategories());
+      } catch { /* VerticalSection falls back to the static taxonomy mirror */ }
+    })();
+  }, []);
+
+  // [MKT-3GROUP-1] `adda_rooms` is a `find_your_people` blip gated on
+  // `conferenceEnabled`, which is FALSE in production (verified on the live
+  // config, not read from DEFAULTS — see CLAUDE.md). Fail closed: hidden
+  // until the public, unauthenticated /api/config read actually says true.
+  const [conferenceEnabled, setConferenceEnabled] = useState(false);
+  useEffect(() => {
+    void (async () => {
+      try {
+        const r = await request<{ conferenceEnabled?: boolean }>('/api/config');
+        setConferenceEnabled(r.conferenceEnabled === true);
+      } catch { /* stays hidden */ }
+    })();
+  }, []);
 
   /**
    * Whether a fetch has ever COMPLETED. Not the same as `!loading`.
@@ -97,10 +123,18 @@ function ExploreGridInner({
     [rail.price],
   );
 
-  /** Every input the SERVER filters on. A change to any of them refetches. */
+  /**
+   * Every input the SERVER filters on. A change to any of them refetches.
+   *
+   * [MKT-3GROUP-WEB-1] `rail.group` is deliberately NOT in this key. A group
+   * no longer maps to one `section` value the worker can filter on (two of
+   * the three now roll up multiple sections — see GROUPS in
+   * lib/listingTaxonomy.ts), so picking a group narrows which of the already-
+   * fetched sections RENDER, client-side, rather than issuing a new request.
+   */
   const resetKey = useMemo(
-    () => JSON.stringify({ q: q.trim(), s: rail.vertical, p: rail.price, d: rail.date, o: rail.sort }),
-    [q, rail.vertical, rail.price, rail.date, rail.sort],
+    () => JSON.stringify({ q: q.trim(), p: rail.price, d: rail.date, o: rail.sort }),
+    [q, rail.price, rail.date, rail.sort],
   );
 
   const fetchPage = useCallback(
@@ -125,7 +159,6 @@ function ExploreGridInner({
       }
 
       const common = {
-        section: rail.vertical,
         minPrice: band.min > 0 ? band.min : undefined,
         maxPrice: band.max != null ? band.max : undefined,
         from,
@@ -146,7 +179,7 @@ function ExploreGridInner({
           capture('market_search', { q_len: q.trim().length, results, ms });
         } else {
           capture('market_browse_loaded', {
-            section: rail.vertical ?? null,
+            group: rail.group ?? null,
             count: results,
             ms,
             cursor: page.cursor ?? null,
@@ -156,8 +189,10 @@ function ExploreGridInner({
         setCursor(page.cursor ?? null);
         // Only overwrite counts when the server actually sent them. A worker that
         // could not compute them sends null, and rendering that as all-zeroes
-        // would claim an empty catalogue.
-        if (page.section_counts) setCounts(page.section_counts as Record<VerticalId, number>);
+        // would claim an empty catalogue. [MKT-3GROUP-WEB-1] Converted from
+        // per-SECTION to per-GROUP here — see groupCountsFromSectionCounts.
+        const groupCounts = groupCountsFromSectionCounts(page.section_counts);
+        if (groupCounts) setCounts(groupCounts);
       } catch (e) {
         if (mine !== reqId.current) return;
         if ((e as Error)?.name !== 'AbortError') {
@@ -172,7 +207,7 @@ function ExploreGridInner({
         }
       }
     },
-    [usingSearch, q, rail.vertical, rail.date, rail.sort, band, pageSize],
+    [usingSearch, q, rail.group, rail.date, rail.sort, band, pageSize],
   );
 
   useEffect(() => {
@@ -182,10 +217,16 @@ function ExploreGridInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resetKey]);
 
-  const sections = useMemo(() => groupByVertical(items), [items]);
+  const allSections = useMemo(() => groupByGroupId(items), [items]);
+  // [MKT-3GROUP-WEB-1] `rail.group` narrows which already-bucketed sections
+  // RENDER — see the resetKey comment above for why this doesn't refetch.
+  const sections = useMemo(
+    () => (rail.group ? allSections.filter((s) => s.group.id === rail.group) : allSections),
+    [allSections, rail.group],
+  );
 
   const narrowed = Boolean(
-    q.trim() || rail.vertical || rail.date || rail.sort || (rail.price && rail.price !== 'all'),
+    q.trim() || rail.group || rail.date || rail.sort || (rail.price && rail.price !== 'all'),
   );
   const empty = loaded && !loading && items.length === 0 && !error;
 
@@ -230,8 +271,8 @@ function ExploreGridInner({
             // only for the field that actually changed, one capture per real click.
             if (next.sort !== rail.sort) {
               capture('market_sort_change', { value: next.sort || '' });
-            } else if (next.vertical !== rail.vertical) {
-              capture('market_filter_change', { key: 'vertical', value: next.vertical ?? null });
+            } else if (next.group !== rail.group) {
+              capture('market_filter_change', { key: 'group', value: next.group ?? null });
             } else if (next.price !== rail.price) {
               capture('market_filter_change', { key: 'price', value: next.price });
             } else if (next.date !== rail.date) {
@@ -343,11 +384,13 @@ function ExploreGridInner({
           <div className="flex flex-col gap-14">
             {sections.map((s, i) => (
               <VerticalSection
-                key={s.vertical.id}
-                vertical={s.vertical}
+                key={s.group.id}
+                group={s.group}
                 listings={s.listings}
                 index={i}
                 hrefBase={hrefBase}
+                categories={categories}
+                conferenceEnabled={conferenceEnabled}
               />
             ))}
           </div>

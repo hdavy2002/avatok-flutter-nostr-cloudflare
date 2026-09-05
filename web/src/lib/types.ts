@@ -26,6 +26,18 @@ export interface Card {
    * 2026-08-31 worker deploy will not see it.
    */
   section?: string | null;
+  /**
+   * [MKT-3GROUP-1] The three-group layer on top of `section`
+   * (Specs/SPEC-2026-09-05-THREE-GROUPS-AND-HOURLY-PRICING.md §1), computed
+   * server-side (`groupFor(section)`, worker/src/routes/listings.ts shapeCard).
+   * `null` for a section that renders in no group (today, only
+   * `ai_voice_agents` — "Voices with character" is removed from the front page
+   * and marketplace). Optional because a client built before the 2026-09-05
+   * worker deploy will not see it — prefer it over re-deriving from `category`
+   * client-side, but fall back to `groupForCategory()` (lib/listingTaxonomy.ts)
+   * when it is missing.
+   */
+  group_id?: string | null;
   title: string;
   /** First line of the description, sent by the worker as `one_liner`. */
   one_liner?: string | null;
