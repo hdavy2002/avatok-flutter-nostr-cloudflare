@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'api_auth.dart';
 import 'config.dart';
 import 'disk_cache.dart';
+import 'listing_groups.dart' show listingGroupForCategory;
 
 /// Tiny disk cache for marketplace browse results so the grid shows instantly
 /// on reopen instead of reloading blank every time. Entries expire after a TTL
@@ -430,6 +431,16 @@ class ListingCard {
   final bool freeEntry;
   final int? maxPerBooking, responseTimeMin, booked24h;
   final CreatorTrustStats? creatorTrustStats;
+  // [MKT-3GROUP-1] Which of the three marketplace groups this card belongs to.
+  // Server-authoritative; null for marketplace-goods listings, an
+  // ai_voice_agents listing (removed from the front page), or an older
+  // server that hasn't shipped the column — callers fall back to
+  // `listingGroupForCategory(category)` (core/listing_groups.dart) then.
+  final String? groupId;
+  // [MKT-3GROUP-1] `listings.media_mode`: 'audio_video' | 'audio_only'.
+  // Defaults to 'audio_video' to match the server column default; THE FIELD
+  // ONLY — wiring it into the GetStream call UI is separate work.
+  final String mediaMode;
 
   ListingCard.fromJson(Map<String, dynamic> j)
       : id = (j['id'] ?? '').toString(),
@@ -485,7 +496,14 @@ class ListingCard {
         booked24h = (j['booked_24h'] as num?)?.toInt(),
         creatorTrustStats = (j['creator_trust_stats'] is Map)
             ? CreatorTrustStats.fromJson((j['creator_trust_stats'] as Map).cast<String, dynamic>())
-            : null;
+            : null,
+        groupId = j['group_id']?.toString(),
+        mediaMode = (j['media_mode'] ?? 'audio_video').toString();
+
+  /// The group this card belongs to — the server's `group_id` when present,
+  /// else the offline mirror keyed off `category`. See [groupId] for why the
+  /// server value is preferred.
+  String? get resolvedGroupId => groupId ?? listingGroupForCategory(category);
 
   /// [MKT1-DETAIL] `attrs` arrives as a JSON object (Dart Map) from the server, but be
   /// defensive: tolerate a JSON *string* (some caches / re-encodes ship it that way) and
@@ -724,10 +742,21 @@ class CreatorChannel {
 
 class ExploreCategory {
   final String id, label, emoji;
+  /// [MKT-3GROUP-1] Which of the three marketplace groups this category rolls
+  /// into ('india_goes_live' | 'find_your_people' | 'book_their_time'). Null
+  /// for a marketplace-goods category (cars, property, mobiles, …) or an
+  /// older server that hasn't shipped the column yet — callers fall back to
+  /// `listingGroupForCategory` (core/listing_groups.dart) in that case.
+  final String? groupId;
   ExploreCategory.fromJson(Map<String, dynamic> j)
       : id = (j['id'] ?? '').toString(),
         label = (j['label'] ?? '').toString(),
-        emoji = (j['emoji'] ?? '').toString();
+        emoji = (j['emoji'] ?? '').toString(),
+        groupId = j['group_id']?.toString();
+
+  /// The server's `group_id` when present, else the offline mirror keyed off
+  /// `id`. Null for a marketplace-goods category, which belongs to no group.
+  String? get resolvedGroupId => groupId ?? listingGroupForCategory(id);
 }
 
 class ListingsApi {

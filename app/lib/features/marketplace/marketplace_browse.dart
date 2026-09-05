@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
+import '../../core/listing_groups.dart';
 import '../../core/listings_api.dart';
 import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
@@ -351,58 +352,79 @@ class _SectionHeading extends StatelessWidget {
   }
 }
 
-/// [UI-MKT-VERT-1 2026-09-05] One horizontally-scrolling row of creator cards
-/// under its own heading. The page stacks several of these, so a heading is the
-/// only thing separating one category's row from the next.
-class _CommercialSection {
-  final String title;
-  final List<ListingCard> cards;
-  const _CommercialSection(this.title, this.cards);
+/// [MKT-3GROUP-APP-1 2026-09-05] Creator cards, bucketed into the THREE
+/// marketplace groups (`Specs/SPEC-2026-09-05-THREE-GROUPS-AND-HOURLY-PRICING.md`
+/// §1), replacing the old "one row per raw category string" model. A card with
+/// no resolved group (an `ai_voice_agents` listing, or a marketplace-goods
+/// category) renders in none of the three rows — that is the spec, not a bug.
+class _GroupedListings {
+  final Map<String, List<ListingCard>> byGroup;
+  const _GroupedListings(this.byGroup);
+  List<ListingCard> cardsFor(String groupId) =>
+      byGroup[groupId] ?? const <ListingCard>[];
+  bool get isEmpty => byGroup.values.every((l) => l.isEmpty);
 }
 
-/// Title-case a raw category string from the server (`wellness` → `Wellness`).
-/// Server categories are free text, so anything already cased is left alone.
-String _sectionTitle(String raw) {
-  final t = raw.trim();
-  if (t.isEmpty) return 'More sessions';
-  return t
-      .split(RegExp(r'[\s_-]+'))
-      .where((w) => w.isNotEmpty)
-      .map((w) => w[0].toUpperCase() + w.substring(1))
-      .join(' ');
+/// [MKT-3GROUP-APP-1] `adda_rooms` is a `find_your_people` blip gated on
+/// `conferenceEnabled`, which is FALSE in production (verified on the live
+/// config, not read from DEFAULTS — see CLAUDE.md). Hiding the blip while the
+/// flag is off, rather than showing an always-empty one, is the spec: a blip
+/// that can never have cards behind it reads exactly like "nobody has listed
+/// one yet", and only one of those is a bug.
+bool _blipAllowed(String categoryId) =>
+    categoryId != 'adda_rooms' || RemoteConfig.conferenceEnabled;
+
+/// One sub-category blip: id + label + emoji, from whichever source resolved
+/// it (server categories, or the offline mirror).
+class _Blip {
+  final String id, label, emoji;
+  const _Blip(this.id, this.label, this.emoji);
 }
 
-/// Group creator cards into the rows the page renders, in display order:
-/// anything on air first, then one row per category (biggest first, so a
-/// category with real supply is not buried under a category with one card),
-/// then a catch-all for cards the server left uncategorised.
-///
-/// Deliberately NOT one row per entry in `kMarketCategories`: those are the
-/// goods-for-sale taxonomy, and emitting an empty row per name would give a
-/// page of seventeen headings with nothing under any of them.
-List<_CommercialSection> _sectionsFor(List<ListingCard> cards) {
-  if (cards.isEmpty) return const <_CommercialSection>[];
-  final liveNow = cards.where((c) => c.status == 'live').toList();
-  final rest = cards.where((c) => c.status != 'live').toList();
-
-  final byCategory = <String, List<ListingCard>>{};
-  for (final c in rest) {
-    byCategory.putIfAbsent(c.category.trim().toLowerCase(), () => []).add(c);
+/// The blips to render under one group's heading, in the server's order (or
+/// the mirror's `sort` order when the fetch fell back to it), minus any blip
+/// [_blipAllowed] hides.
+List<_Blip> _blipsFor(List<ExploreCategory> categories, String groupId) {
+  final seen = <String>{};
+  final out = <_Blip>[];
+  for (final c in categories) {
+    if (c.resolvedGroupId != groupId) continue;
+    if (!_blipAllowed(c.id)) continue;
+    if (!seen.add(c.id)) continue;
+    out.add(_Blip(c.id, c.label, c.emoji));
   }
-  final uncategorised = byCategory.remove('') ?? const <ListingCard>[];
+  return out;
+}
 
-  final keys = byCategory.keys.toList()
-    ..sort((a, b) {
-      final n = byCategory[b]!.length.compareTo(byCategory[a]!.length);
-      return n != 0 ? n : a.compareTo(b);
-    });
+/// [MKT-3GROUP-APP-1] One horizontally-scrolling row of sub-category chips.
+/// Tapping a blip filters the cards rendered below it in the same group;
+/// tapping the active blip again clears the filter back to "all".
+class _BlipRow extends StatelessWidget {
+  final List<_Blip> blips;
+  final String? selected;
+  final ValueChanged<String> onSelect;
+  const _BlipRow({required this.blips, required this.selected, required this.onSelect});
 
-  return <_CommercialSection>[
-    if (liveNow.isNotEmpty) _CommercialSection('Live now', liveNow),
-    for (final k in keys) _CommercialSection(_sectionTitle(k), byCategory[k]!),
-    if (uncategorised.isNotEmpty)
-      _CommercialSection(_sectionTitle(''), uncategorised),
-  ];
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 40,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4),
+        itemCount: blips.length,
+        separatorBuilder: (_, __) => const SizedBox(width: Msg.s2),
+        itemBuilder: (_, i) {
+          final blip = blips[i];
+          return AdChip(
+            label: '${blip.emoji} ${blip.label}',
+            active: blip.id == selected,
+            onTap: () => onSelect(blip.id),
+          );
+        },
+      ),
+    );
+  }
 }
 
 /// Phase 2 discovery shelf. It is completely absent while both listing flags
@@ -424,12 +446,20 @@ class _CommercialServicesShelf extends StatefulWidget {
 }
 
 class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
-  /// [UI-MKT-VERT-1] Both lanes are fetched together and then grouped by
-  /// category, because the rows are now categories rather than lanes. The old
-  /// "Live & upcoming / 1:1 consultations" chip pair is gone: with a row per
-  /// category the chips were a second, contradictory way to slice the same
-  /// cards, and they were the reason only ONE row could ever be on screen.
-  late Future<List<ListingCard>> _all;
+  /// [MKT-3GROUP-APP-1] Both lanes are fetched together and then bucketed by
+  /// GROUP (`ListingCard.resolvedGroupId`), because the rows are now the three
+  /// marketplace groups rather than raw category strings or live/consult
+  /// lanes.
+  late Future<_GroupedListings> _all;
+
+  /// [MKT-3GROUP-APP-1] The blip labels for every group, fetched once from
+  /// `GET /api/explore/categories` (the runtime authority — a category added
+  /// in D1 must appear without an app release) and falling back to the
+  /// generated offline mirror only when that fetch is empty or fails.
+  late Future<List<ExploreCategory>> _categories;
+
+  /// groupId -> selected category id, or absent/null for "all" in that group.
+  final Map<String, String?> _selectedCategory = {};
 
   @override
   void initState() {
@@ -449,9 +479,30 @@ class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
 
   void _reload() {
     _all = _loadAll();
+    _categories = _loadCategories();
   }
 
-  Future<List<ListingCard>> _loadAll() async {
+  Future<List<ExploreCategory>> _loadCategories() async {
+    try {
+      final fetched = await ListingsApi.categories();
+      if (fetched.isNotEmpty) return fetched;
+    } catch (_) {
+      // fall through to the offline mirror below
+    }
+    // [MKT-3GROUP-APP-1] Offline fallback ONLY — the server categories fetch
+    // is the runtime authority. Reached when the fetch fails or an older
+    // server returns nothing.
+    return kListingSubCategories
+        .map((c) => ExploreCategory.fromJson({
+              'id': c.id,
+              'label': c.label,
+              'emoji': c.emoji,
+              'group_id': c.group,
+            }))
+        .toList();
+  }
+
+  Future<_GroupedListings> _loadAll() async {
     final live = widget.liveEnabled
         ? await _loadLive()
         : const <ListingCard>[];
@@ -461,12 +512,28 @@ class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
             : ListingsApi.search(q: widget.query, kind: 'consult'))
         : const <ListingCard>[];
     // De-dupe across lanes — a listing that answers both queries must not
-    // appear twice inside its category row.
+    // appear twice inside its group's row.
     final byId = <String, ListingCard>{};
     for (final c in [...live, ...consult]) {
       byId[c.id] = c;
     }
-    return byId.values.toList();
+    final byGroup = <String, List<ListingCard>>{};
+    for (final c in byId.values) {
+      final g = c.resolvedGroupId;
+      if (g == null) continue; // ai_voice_agents, or a goods category — renders nowhere.
+      byGroup.putIfAbsent(g, () => []).add(c);
+    }
+    return _GroupedListings(byGroup);
+  }
+
+  void _selectBlip(String groupId, String categoryId) {
+    final next = _selectedCategory[groupId] == categoryId ? null : categoryId;
+    setState(() => _selectedCategory[groupId] = next);
+    Analytics.capture('mkt_blip_tapped', {
+      'group_id': groupId,
+      'category_id': next ?? '',
+      'cleared': next == null,
+    });
   }
 
   Future<List<ListingCard>> _loadLive() async {
@@ -516,7 +583,7 @@ class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
         // `openCreateServiceChoice` imports are gone from this file. Nothing
         // was deleted — this is a discoverability change. If sellers stop
         // listing after this ships, it is the first thing to look at.
-        FutureBuilder<List<ListingCard>>(
+        FutureBuilder<_GroupedListings>(
           future: _all,
           builder: (context, snap) {
             if (snap.connectionState != ConnectionState.done) {
@@ -536,8 +603,8 @@ class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
                 ),
               );
             }
-            final sections = _sectionsFor(snap.data ?? const <ListingCard>[]);
-            if (sections.isEmpty) {
+            final grouped = snap.data ?? const _GroupedListings({});
+            if (grouped.isEmpty) {
               return SizedBox(
                 height: 140,
                 child: _CommercialShelfMessage(
@@ -548,39 +615,88 @@ class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
                 ),
               );
             }
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (var i = 0; i < sections.length; i++) ...[
-                  _SectionHeading(
-                    index: i + 1,
-                    title: sections[i].title,
-                    count: sections[i].cards.length,
-                  ),
-                  SizedBox(
-                    height: metrics.height,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      // [UI-MKT-VERT-1] `clipBehavior: none` would bleed the
-                      // card shadow into the next row's heading; the row is
-                      // deliberately its own clipped band.
+            // [MKT-3GROUP-APP-1] The blip labels load independently of the
+            // cards (a slower/failed categories fetch must not blank out
+            // cards that are otherwise ready) — an empty blip list just means
+            // no filter row renders for that group yet.
+            return FutureBuilder<List<ExploreCategory>>(
+              future: _categories,
+              builder: (context, catSnap) {
+                final categories = catSnap.data ?? const <ExploreCategory>[];
+                final sections = <Widget>[];
+                var index = 0;
+                for (final group in kListingGroups) {
+                  final selected = _selectedCategory[group.id];
+                  final groupCards = grouped.cardsFor(group.id);
+                  if (groupCards.isEmpty) continue;
+                  final filtered = selected == null
+                      ? groupCards
+                      : groupCards.where((c) => c.category == selected).toList();
+                  index++;
+                  sections.add(_SectionHeading(
+                    index: index,
+                    title: group.heading,
+                    count: filtered.length,
+                  ));
+                  final blips = _blipsFor(categories, group.id);
+                  if (blips.isNotEmpty) {
+                    sections.add(_BlipRow(
+                      blips: blips,
+                      selected: selected,
+                      onSelect: (id) => _selectBlip(group.id, id),
+                    ));
+                    sections.add(const SizedBox(height: Msg.s3));
+                  }
+                  if (filtered.isEmpty) {
+                    // The blip's own category has no live supply right now —
+                    // say so rather than silently collapsing the row to
+                    // nothing, which reads as a bug.
+                    sections.add(Padding(
                       padding: const EdgeInsets.symmetric(horizontal: Msg.s4),
-                      itemCount: sections[i].cards.length,
-                      separatorBuilder: (_, __) =>
-                          const SizedBox(width: Msg.s3),
-                      itemBuilder: (_, index) {
-                        final card = sections[i].cards[index];
-                        return card.kind == 'consult'
-                            ? ConsultationCard(
-                                card: card, onTap: () => _open(card))
-                            : LiveEventCard(
-                                card: card, onTap: () => _open(card));
-                      },
+                      child: Text('Nothing listed in this category yet',
+                          style: ADText.preview()),
+                    ));
+                  } else {
+                    sections.add(SizedBox(
+                      height: metrics.height,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        // [UI-MKT-VERT-1] `clipBehavior: none` would bleed the
+                        // card shadow into the next row's heading; the row is
+                        // deliberately its own clipped band.
+                        padding: const EdgeInsets.symmetric(horizontal: Msg.s4),
+                        itemCount: filtered.length,
+                        separatorBuilder: (_, __) =>
+                            const SizedBox(width: Msg.s3),
+                        itemBuilder: (_, i) {
+                          final card = filtered[i];
+                          return card.kind == 'consult'
+                              ? ConsultationCard(
+                                  card: card, onTap: () => _open(card))
+                              : LiveEventCard(
+                                  card: card, onTap: () => _open(card));
+                        },
+                      ),
+                    ));
+                  }
+                  sections.add(const SizedBox(height: Msg.s3));
+                }
+                if (sections.isEmpty) {
+                  return SizedBox(
+                    height: 140,
+                    child: _CommercialShelfMessage(
+                      icon: PhosphorIcons.broadcast(PhosphorIconsStyle.regular),
+                      title: widget.query.isEmpty
+                          ? 'No creator sessions listed yet'
+                          : 'No creator sessions match this search',
                     ),
-                  ),
-                  const SizedBox(height: Msg.s3),
-                ],
-              ],
+                  );
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: sections,
+                );
+              },
             );
           },
         ),

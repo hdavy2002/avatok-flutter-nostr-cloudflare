@@ -165,8 +165,202 @@ export const MEDIA_MODE_DEFAULT: MediaMode = %s;""" % (
     return "\n".join(out).rstrip() + "\n"
 
 
+DART_HEADER = """// [MKT-3GROUP-1 2026-09-05] The marketplace taxonomy, mirrored for Flutter.
+//
+// GENERATED FROM Specs/listing-taxonomy.json by scripts/gen_listing_taxonomy.py.
+// That JSON is canonical and the worker + web mirrors come from it too. Edit
+// the JSON and re-run the generator; a hand-edit here drifts three surfaces
+// apart, which is the exact failure this file exists to prevent.
+//
+// ⚠️ THIS IS AN OFFLINE FALLBACK, NOT THE SOURCE OF TRUTH AT RUNTIME.
+// Categories live in D1 (`listing_categories`) and are served by
+// GET /api/explore/categories, which is what the worker validates a listing's
+// category against. The app must always prefer the fetched list (which now
+// carries `group_id`) and fall back to this mirror only when the fetch is
+// unavailable — otherwise a category added in D1 stays invisible on the app
+// until someone ships a new build.
+//
+// Prose, the wording rules and the reasoning:
+// Specs/SPEC-2026-09-05-THREE-GROUPS-AND-HOURLY-PRICING.md
+
+/// One of the three marketplace top-level groups.
+class ListingGroup {
+  final String id;
+  /// Section heading. `emphasis` is the trailing word that takes the coral.
+  final String heading;
+  final String emphasis;
+  final String blurb;
+  /// Wizard step-1 kinds whose sub-categories come from this group.
+  final List<String> kinds;
+  /// `listings.section` values that roll up into this group.
+  final List<String> sections;
+
+  const ListingGroup({
+    required this.id,
+    required this.heading,
+    required this.emphasis,
+    required this.blurb,
+    required this.kinds,
+    required this.sections,
+  });
+}
+
+/// One sub-category "blip" under a group heading.
+class ListingSubCategory {
+  final String id;
+  final String label;
+  final String emoji;
+  final String group;
+  final int sort;
+  /// Hide the blip while this platform flag is off.
+  final String? requiresFlag;
+
+  const ListingSubCategory({
+    required this.id,
+    required this.label,
+    required this.emoji,
+    required this.group,
+    required this.sort,
+    this.requiresFlag,
+  });
+}
+"""
+
+DART_HIDDEN = """
+/// [MKT-3GROUP-1] 'Voices with character' (ai_voice_agents) is deliberately NOT
+/// a group: the owner removed it from the front page and the marketplace on
+/// 2026-09-05. The SECTION value stays alive in the worker's SECTIONS union
+/// because published rows carry it — it simply maps to no group, so nothing
+/// renders it. Do not "tidy up" by deleting the value.
+const Set<String> kHiddenListingSections = {'ai_voice_agents'};
+"""
+
+DART_HELPERS = """
+/// Sub-categories in one group, in display order.
+List<ListingSubCategory> listingSubCategoriesForGroup(String group) {
+  final out = kListingSubCategories.where((c) => c.group == group).toList();
+  out.sort((a, b) => a.sort.compareTo(b.sort));
+  return out;
+}
+
+/// The groups a wizard step-1 kind can file a listing into.
+///
+/// `consult` returns TWO groups on purpose. A 1:1 listing can be paid company
+/// ('Find your people') or a professional ('Book their time'), and step 1 does
+/// not distinguish them — the owner's decision (2026-09-05) is that the
+/// SUB-CATEGORY decides. So step 2 shows both groups' blips under their two
+/// headings, and whichever the creator picks is what files the listing.
+List<ListingGroup> listingGroupsForKind(String kind) =>
+    kListingGroups.where((g) => g.kinds.contains(kind)).toList();
+
+/// Which group a listing belongs to, from its category. Null when it belongs
+/// to none — a marketplace-goods category, or an ai_voice_agents listing.
+///
+/// Prefer the server's `group_id` (shipped on `GET /api/explore/categories`
+/// and on every listing card) over this offline lookup — this mirror only
+/// covers categories known at build time.
+String? listingGroupForCategory(String? category) {
+  if (category == null || category.isEmpty) return null;
+  for (final c in kListingSubCategories) {
+    if (c.id == category) return c.group;
+  }
+  return null;
+}
+
+/// Fee split for one participant for one hour, in tokens (1 token = ₹1).
+///
+/// ⚠️ FOR DISPLAY ONLY. The worker recomputes this when money actually moves;
+/// a client-computed fee must never reach a ledger row. Keep the two in step.
+class ListingFeeSplit {
+  final int fee;
+  final int creator;
+  const ListingFeeSplit({required this.fee, required this.creator});
+}
+
+ListingFeeSplit listingFeeSplit(num? pricePerHour) {
+  final price = (pricePerHour ?? 0).round().clamp(0, 1 << 31).toInt();
+  if (price <= kListingPricingFlatTokensPerHour) {
+    return ListingFeeSplit(fee: price, creator: 0);
+  }
+  final fee = kListingPricingFlatTokensPerHour +
+      ((price - kListingPricingFlatTokensPerHour) *
+              kListingPricingCommissionPct /
+              100)
+          .round();
+  return ListingFeeSplit(fee: fee, creator: price - fee);
+}
+"""
+
+
+def dart_str(value):
+    # Dart single-quoted string literal, escaping backslash/quote/$ and
+    # emitting real newlines for any embedded ones.
+    out = value.replace("\\", "\\\\").replace("'", "\\'").replace("$", "\\$")
+    out = out.replace("\n", "\\n")
+    return "'%s'" % out
+
+
+def dart_str_list(values):
+    return "[%s]" % ", ".join(dart_str(v) for v in values)
+
+
+def render_dart(data):
+    out = [DART_HEADER, "const List<ListingGroup> kListingGroups = ["]
+    for g in data["groups"]:
+        out.append("  ListingGroup(")
+        out.append("    id: %s," % dart_str(g["id"]))
+        out.append("    heading: %s," % dart_str(g["heading"]))
+        out.append("    emphasis: %s," % dart_str(g["emphasis"]))
+        out.append("    blurb: %s," % dart_str(g["blurb"]))
+        out.append("    kinds: %s," % dart_str_list(g["kinds"]))
+        out.append("    sections: %s," % dart_str_list(g["sections"]))
+        out.append("  ),")
+    out.append("];")
+    out.append(DART_HIDDEN)
+    out.append("const List<ListingSubCategory> kListingSubCategories = [")
+    for c in data["categories"]:
+        flag = (" requiresFlag: %s," % dart_str(c["requires_flag"])) if c.get("requires_flag") else ""
+        out.append("  ListingSubCategory(id: %s, label: %s, emoji: %s, group: %s, sort: %d,%s)," % (
+            dart_str(c["id"]), dart_str(c["label"]), dart_str(c["emoji"]), dart_str(c["group"]), c["sort"], flag))
+    out.append("];")
+    p = data["pricing"]
+    out.append("""
+/// [PRICE-HOURLY-1] Per participant, PER HOUR. A 2-hour booking bills the flat
+/// fee twice (owner decision 2026-09-05: "per 1 hour"). `kListingPricingMinPriceTokensPerHour`
+/// exists because at or below the flat fee the creator would earn nothing —
+/// the wizard refuses to go lower, and so does the server.
+const int kListingPricingFlatTokensPerHour = %d;
+const int kListingPricingCommissionPct = %d;
+const int kListingPricingMinPriceTokensPerHour = %d;""" % (
+        p["flat_tokens_per_hour"], p["commission_pct"], p["min_price_tokens_per_hour"]))
+    m = data["media_mode"]
+    out.append("""
+/// [MKT-3GROUP-1] `listings.media_mode`. audio_only hides the video control
+/// for the whole session; audio_video means the creator may NOT turn video
+/// off — they sold a video session. THE FIELD ONLY: wiring it into the call
+/// UI is separate work.
+class MediaModeOption {
+  final String id;
+  final String label;
+  final String help;
+  const MediaModeOption({required this.id, required this.label, required this.help});
+}
+
+const List<MediaModeOption> kMediaModes = [
+  MediaModeOption(id: 'audio_video', label: %s, help: %s),
+  MediaModeOption(id: 'audio_only', label: %s, help: %s),
+];
+const String kMediaModeDefault = %s;""" % (
+        dart_str(m["labels"]["audio_video"]), dart_str(m["rules"]["audio_video"]),
+        dart_str(m["labels"]["audio_only"]), dart_str(m["rules"]["audio_only"]),
+        dart_str(m["default"])))
+    out.append(DART_HELPERS)
+    return "\n".join(out).rstrip() + "\n"
+
+
 TARGETS = {
     os.path.join("web", "src", "lib", "listingTaxonomy.ts"): render_ts,
+    os.path.join("app", "lib", "core", "listing_groups.dart"): render_dart,
 }
 
 
