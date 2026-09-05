@@ -80,6 +80,21 @@ export type PosterGenerateOptions = {
   composeFallback?: boolean;
   /** A creator-uploaded photo, so the portrait is painted from their face. */
   editRef?: string;
+  /** [POSTER-CHECKPOINT-1 2026-09-05] Called the moment the PORTRAIT is in R2
+   *  and is therefore a usable poster, BEFORE the tablet/wide reframes run.
+   *
+   *  It exists because the auto-generate caller runs this whole function
+   *  detached on `ctx.waitUntil`, and a detached isolate can be killed at any
+   *  point with no `catch` and no `finally`. When that happened on 2026-09-05
+   *  (listing 845567cb) the portrait had already generated and PASSED
+   *  verification 22s in — and was thrown away, because the only D1 write came
+   *  after two more Vertex calls. The row sat on `generating` until the 5-minute
+   *  cron swept it to "Poster generation was interrupted."
+   *
+   *  So: persist the portrait as soon as it exists. Variants are an enhancement
+   *  and are written by a second, later call. A checkpoint that throws is
+   *  swallowed — failing to save early must never lose the run that follows. */
+  onPortrait?: (r: { poster: PosterState; coverMedia: CoverMediaItem[] }) => Promise<void>;
 };
 
 export type CoverMediaItem = {
@@ -324,6 +339,54 @@ export async function generateListingPoster(
     const portrait = await putPoster(env, opts.ownerUid, opts.listingId, "portrait", bytes);
     const variants: PosterVariants = { portrait };
 
+    // [POSTER-CHECKPOINT-1] Build the terminal result NOW, from the portrait
+    // alone, and hand it to the caller to persist. Everything below only ADDS
+    // variants; if the isolate dies from here on, the listing already has a
+    // complete, usable poster instead of nothing. See `onPortrait`.
+    const settle = (): { poster: PosterState; coverMedia: CoverMediaItem[] } => {
+      const poster: PosterState = {
+        ...base,
+        status: "draft",
+        url: portrait.url,
+        key: portrait.key,
+        bytes: portrait.bytes,
+        variants: { ...variants },
+        verify: verdict,
+        lettering,
+        attempt: used,
+        completed_at: Date.now(),
+      };
+      let covers: any[] = [];
+      try {
+        const raw = opts.row?.cover_media;
+        covers = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : [];
+      } catch { covers = []; }
+      covers = Array.isArray(covers)
+        ? covers.filter((c) => c && c.url !== portrait.url && c.source !== "ai_poster")
+        : [];
+      return {
+        poster,
+        coverMedia: [
+          { type: "image", url: portrait.url, source: "ai_poster", generated: true },
+          ...covers,
+        ],
+      };
+    };
+
+    if (opts.onPortrait) {
+      try {
+        await opts.onPortrait(settle());
+      } catch (e) {
+        // Never fatal. The final write below is still coming, and losing the
+        // checkpoint only costs us the safety net, not the poster.
+        void track(env, opts.actorUid, "poster_checkpoint", "avatok", {
+          listing_id: opts.listingId, ok: false,
+          error: String((e as any)?.message || e).slice(0, 180),
+          style_version: POSTER_STYLE_VERSION,
+        });
+      }
+    }
+
     // ---------------------------------------------------------------
     // 3. Tablet and wide, REFRAMED from the approved portrait rather than
     //    generated fresh. Three independent generations would give three
@@ -359,18 +422,7 @@ export async function generateListingPoster(
       }
     }
 
-    const poster: PosterState = {
-      ...base,
-      status: "draft",
-      url: portrait.url,
-      key: portrait.key,
-      bytes: portrait.bytes,
-      variants,
-      verify: verdict,
-      lettering,
-      attempt: used,
-      completed_at: Date.now(),
-    };
+    const settled = settle();
 
     void track(env, opts.actorUid, "poster_generate", "avatok", {
       listing_id: opts.listingId, ratio: "portrait", ok: true,
@@ -379,20 +431,7 @@ export async function generateListingPoster(
       latency_ms: Date.now() - t0, style_version: POSTER_STYLE_VERSION,
     });
 
-    let covers: any[] = [];
-    try {
-      const raw = opts.row?.cover_media;
-      covers = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : [];
-    } catch { covers = []; }
-    covers = Array.isArray(covers)
-      ? covers.filter((c) => c && c.url !== portrait.url && c.source !== "ai_poster")
-      : [];
-    const coverMedia: CoverMediaItem[] = [
-      { type: "image", url: portrait.url, source: "ai_poster", generated: true },
-      ...covers,
-    ];
-
-    return { poster, coverMedia };
+    return settled;
   } catch (e) {
     const poster: PosterState = {
       ...base,

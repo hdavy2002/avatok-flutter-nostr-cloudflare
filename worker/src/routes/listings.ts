@@ -38,7 +38,12 @@ import { hold, refund } from "../ledger";
 import { LANGS as TRL_LANGS, RATE_PER_MIN as TRL_RATE } from "./translate";
 import { track } from "../hooks";
 // [MKT-POSTER-AUTO-1] Shared poster generation, extracted from admin_listings.ts.
-import { buildPosterPrompt, generateListingPoster } from "../lib/listing_poster";
+import {
+  buildPosterPrompt,
+  generateListingPoster,
+  type CoverMediaItem,
+  type PosterState,
+} from "../lib/listing_poster";
 import { brainIngest } from "../lib/brain_ingest";
 import { partyEmit } from "./messaging"; // PartyKit live nudges (ephemeral)
 import { recordView, trackImpressions, geoOf } from "./insights";
@@ -1813,6 +1818,104 @@ export async function submitListingForApproval(req: Request, env: Env, id: strin
 // this call put it in), the write is abandoned rather than clobbering
 // whatever the admin did. Any failure — including an abandoned write — must
 // still land the poster on `failed`, never leave it stuck on `generating`.
+/** [POSTER-CHECKPOINT-1 2026-09-05] Land one poster result on the row.
+ *
+ *  Extracted verbatim from runAutoPosterGeneration so it can be called TWICE in
+ *  one run: once the moment the portrait exists (the checkpoint), and once at
+ *  the end with the variants attached. Splitting it is the whole fix — the auto
+ *  path runs detached on `ctx.waitUntil`, and on 2026-09-05 the isolate was
+ *  killed between "portrait verified" and "write to D1", so a finished poster
+ *  was thrown away and the cron reported it as interrupted.
+ *
+ *  `acceptStatuses` is what makes the second write safe. The checkpoint may only
+ *  overwrite the `generating` placeholder; the final write may also overwrite
+ *  the `draft` its own checkpoint left. Neither may touch `approved` or
+ *  `rejected` — if an admin acted in between, that decision wins and this
+ *  attempt is abandoned rather than reverted.
+ */
+async function persistPosterAttempt(
+  env: Env,
+  listingId: string,
+  attempt: number,
+  poster: PosterState,
+  coverMedia: CoverMediaItem[] | null,
+  acceptStatuses: readonly string[],
+): Promise<{ ok: boolean; errorKind?: string; poster: PosterState }> {
+  const db = metaDb(env);
+  const claims = (attrs: any, status: any) =>
+    String(status) === "pending_review"
+    && acceptStatuses.includes(String(attrs?.poster?.status))
+    && Number(attrs?.poster?.attempt ?? -1) === attempt;
+
+  const fresh = await db.prepare(
+    "SELECT status, attrs, cover_media, authority_version FROM listings WHERE id=?1",
+  ).bind(listingId).first<any>();
+  if (!fresh) return { ok: false, errorKind: "listing_missing", poster };
+
+  let freshAttrs: any = {};
+  try { freshAttrs = fresh.attrs ? JSON.parse(String(fresh.attrs)) : {}; } catch { freshAttrs = {}; }
+  if (!claims(freshAttrs, fresh.status)) {
+    // Row moved on (admin acted, or a newer attempt already landed) — abandon
+    // the write rather than clobber it.
+    console.warn("listing_poster_auto_generate_abandoned", {
+      listing_id: listingId, status: fresh.status, poster_status: freshAttrs.poster?.status,
+    });
+    return { ok: false, errorKind: "abandoned_row_changed", poster };
+  }
+
+  freshAttrs.poster = poster;
+  const nextCoverMedia = coverMedia ? JSON.stringify(coverMedia) : fresh.cover_media;
+  const saved = await db.prepare(
+    "UPDATE listings SET attrs=?2, cover_media=?3, updated_at=?4 WHERE id=?1 AND status='pending_review' AND authority_version=?5",
+  ).bind(listingId, JSON.stringify(freshAttrs), nextCoverMedia, Date.now(), Number(fresh.authority_version ?? 0)).run();
+  if (saved.meta?.changes ?? 0) return { ok: true, poster };
+
+  // A concurrent ordinary edit may have advanced only the row revision while
+  // leaving this exact poster attempt active. Re-read once and merge against
+  // the latest covers instead of stranding the generating state.
+  const latest = await db.prepare(
+    "SELECT status,attrs,cover_media,authority_version FROM listings WHERE id=?1",
+  ).bind(listingId).first<any>();
+  let latestAttrs: any = {};
+  try { latestAttrs = latest?.attrs ? JSON.parse(String(latest.attrs)) : {}; } catch { latestAttrs = {}; }
+  if (!claims(latestAttrs, latest?.status)) {
+    return { ok: false, errorKind: "abandoned_row_changed", poster };
+  }
+
+  let mergedCoverMedia = latest.cover_media;
+  let terminalPoster = poster;
+  let errorKind: string | undefined;
+  if (poster.status === "draft" && Array.isArray(coverMedia)) {
+    const generated = coverMedia.find((c: any) => c?.source === "ai_poster");
+    const manual = parseJson<any[]>(latest.cover_media, [])
+      .filter((c: any) => c && c.source !== "ai_poster");
+    if (!generated || manual.length >= 5) {
+      terminalPoster = {
+        ...poster,
+        status: "failed",
+        error: "Remove one creator photo before saving the AI poster.",
+      };
+      errorKind = "cover_slot_required";
+    } else {
+      mergedCoverMedia = JSON.stringify([generated, ...manual]);
+    }
+  }
+  latestAttrs.poster = terminalPoster;
+  const retried = await db.prepare(
+    "UPDATE listings SET attrs=?2,cover_media=?3,updated_at=?4 WHERE id=?1 AND status='pending_review' AND authority_version=?5",
+  ).bind(
+    listingId,
+    JSON.stringify(latestAttrs),
+    mergedCoverMedia,
+    Date.now(),
+    Number(latest.authority_version ?? 0),
+  ).run();
+  if (!(retried.meta?.changes ?? 0)) {
+    return { ok: false, errorKind: "abandoned_row_changed", poster };
+  }
+  return { ok: !errorKind, errorKind, poster: terminalPoster };
+}
+
 async function runAutoPosterGeneration(
   env: Env,
   opts: {
@@ -1826,6 +1929,11 @@ async function runAutoPosterGeneration(
   const t0 = Date.now();
   let outcome: "draft" | "failed" = "failed";
   let errorKind: string | undefined;
+  // [POSTER-CHECKPOINT-1] Set by the checkpoint below. When true, a portrait is
+  // already on the row, so even if everything after this point is lost the
+  // creator has a poster — and the final write is allowed to overwrite the
+  // `draft` this attempt itself wrote.
+  let checkpointed = false;
   try {
     const prompt = buildPosterPrompt(opts.row);
     const { poster, coverMedia } = await generateListingPoster(env, {
@@ -1840,82 +1948,38 @@ async function runAutoPosterGeneration(
       verify: opts.verify,
       composeFallback: opts.composeFallback,
       maxAttempts: opts.verifyMaxAttempts,
+      // [POSTER-CHECKPOINT-1] The portrait is in R2 and verified; save it NOW,
+      // before the tablet/wide reframes get a chance to outlive the isolate.
+      onPortrait: async ({ poster: p, coverMedia: cm }) => {
+        const r = await persistPosterAttempt(env, opts.listingId, opts.attempt, p, cm, ["generating"]);
+        checkpointed = r.ok;
+        await track(env, opts.actorUid, "listing_poster_checkpoint", APP, {
+          listing_id: opts.listingId,
+          creator_id: opts.ownerUid,
+          attempt: opts.attempt,
+          ok: r.ok,
+          error_kind: r.errorKind,
+          ms_since_start: Date.now() - t0,
+        });
+      },
     });
     outcome = poster.status === "draft" ? "draft" : "failed";
     if (poster.status === "failed") errorKind = "generation_failed";
 
-    const db = metaDb(env);
-    const fresh = await db.prepare("SELECT status, attrs, cover_media, authority_version FROM listings WHERE id=?1").bind(opts.listingId).first<any>();
-    if (!fresh) { errorKind = errorKind || "listing_missing"; return; }
-    let freshAttrs: any = {};
-    try { freshAttrs = fresh.attrs ? JSON.parse(String(fresh.attrs)) : {}; } catch { freshAttrs = {}; }
-    const stillPendingReview = String(fresh.status) === "pending_review";
-    const stillGenerating = freshAttrs.poster?.status === "generating" && Number(freshAttrs.poster?.attempt ?? -1) === opts.attempt;
-    if (!stillPendingReview || !stillGenerating) {
-      // Row moved on (admin acted, or a newer attempt already landed) — abandon
-      // the write rather than clobber it. Still counts as a non-"draft" outcome
-      // for telemetry, since this attempt's result was never persisted.
-      console.warn("listing_poster_auto_generate_abandoned", {
-        listing_id: opts.listingId, status: fresh.status, poster_status: freshAttrs.poster?.status,
-      });
-      errorKind = errorKind || "abandoned_row_changed";
+    // The final write also accepts the `draft` its own checkpoint left, so the
+    // variants can be attached; it still refuses `approved`/`rejected`, so an
+    // admin decision taken mid-run is never reverted.
+    const res = await persistPosterAttempt(
+      env, opts.listingId, opts.attempt, poster, coverMedia,
+      checkpointed ? ["generating", "draft"] : ["generating"],
+    );
+    if (!res.ok) {
+      errorKind = errorKind || res.errorKind;
+      // A checkpointed run already put a usable poster on the listing, so
+      // losing only the variants write is not a failed generation.
+      outcome = checkpointed && res.errorKind === "abandoned_row_changed" ? "draft" : "failed";
+    } else if (res.poster.status !== "draft") {
       outcome = "failed";
-      return;
-    }
-    freshAttrs.poster = poster;
-    const nextCoverMedia = coverMedia ? JSON.stringify(coverMedia) : fresh.cover_media;
-    const saved = await db.prepare(
-      "UPDATE listings SET attrs=?2, cover_media=?3, updated_at=?4 WHERE id=?1 AND status='pending_review' AND authority_version=?5",
-    ).bind(opts.listingId, JSON.stringify(freshAttrs), nextCoverMedia, Date.now(), Number(fresh.authority_version ?? 0)).run();
-    if (!(saved.meta?.changes ?? 0)) {
-      // A concurrent ordinary edit may have advanced only the row revision while
-      // leaving this exact poster attempt active. Re-read once and merge against
-      // the latest covers instead of stranding the generating state.
-      const latest = await db.prepare(
-        "SELECT status,attrs,cover_media,authority_version FROM listings WHERE id=?1",
-      ).bind(opts.listingId).first<any>();
-      let latestAttrs: any = {};
-      try { latestAttrs = latest?.attrs ? JSON.parse(String(latest.attrs)) : {}; } catch { latestAttrs = {}; }
-      const sameAttempt = String(latest?.status) === "pending_review"
-        && latestAttrs.poster?.status === "generating"
-        && Number(latestAttrs.poster?.attempt ?? -1) === opts.attempt;
-      if (!sameAttempt) {
-        errorKind = "abandoned_row_changed";
-        outcome = "failed";
-      } else {
-        let mergedCoverMedia = latest.cover_media;
-        let terminalPoster = poster;
-        if (poster.status === "draft" && Array.isArray(coverMedia)) {
-          const generated = coverMedia.find((c: any) => c?.source === "ai_poster");
-          const manual = parseJson<any[]>(latest.cover_media, [])
-            .filter((c: any) => c && c.source !== "ai_poster");
-          if (!generated || manual.length >= 5) {
-            terminalPoster = {
-              ...poster,
-              status: "failed",
-              error: "Remove one creator photo before saving the AI poster.",
-            };
-            outcome = "failed";
-            errorKind = "cover_slot_required";
-          } else {
-            mergedCoverMedia = JSON.stringify([generated, ...manual]);
-          }
-        }
-        latestAttrs.poster = terminalPoster;
-        const retried = await db.prepare(
-          "UPDATE listings SET attrs=?2,cover_media=?3,updated_at=?4 WHERE id=?1 AND status='pending_review' AND authority_version=?5",
-        ).bind(
-          opts.listingId,
-          JSON.stringify(latestAttrs),
-          mergedCoverMedia,
-          Date.now(),
-          Number(latest.authority_version ?? 0),
-        ).run();
-        if (!(retried.meta?.changes ?? 0)) {
-          errorKind = "abandoned_row_changed";
-          outcome = "failed";
-        }
-      }
     }
   } catch (e) {
     errorKind = errorKind || "unexpected_exception";
@@ -1947,6 +2011,13 @@ async function runAutoPosterGeneration(
         outcome,
         duration_ms: Date.now() - t0,
         error_kind: errorKind,
+        // [POSTER-CHECKPOINT-1] The success value to assert: on a healthy run
+        // this is true and `outcome` is "draft". `checkpointed=true` with a
+        // failed outcome means the safety net caught a death after the
+        // portrait — the creator still has a poster. `checkpointed=false` with
+        // no `listing_poster_checkpoint` event at all is the 2026-09-05 shape
+        // (killed before the portrait) and is the one to alert on.
+        checkpointed,
       });
     } catch { /* telemetry best-effort — must never affect poster state */ }
   }
