@@ -148,21 +148,29 @@ function parseJsonObject(raw: string): Record<string, unknown> | null {
   } catch { return null; }
 }
 
-export async function listingCopyReview(req: Request, env: Env): Promise<Response> {
-  const u = await requireUser(req, env);
-  if (isFail(u)) return json({ error: u.error }, u.status);
-
-  let body: any = {};
-  try { body = await req.json(); } catch { /* empty body → rules pass on empty strings */ }
-
-  const input = {
-    title: squash(body?.title),
-    blurb: squash(body?.blurb),
-    description: String(body?.description ?? "").trim(),
-  };
-  const kind = squash(body?.kind) || "live_event";
-  const category = squash(body?.category);
-  const freeEntry = Boolean(body?.free_entry);
+/**
+ * [COPY-PIPELINE-1 2026-09-05] The review, callable from the SERVER.
+ *
+ * Extracted from the route body unchanged so the submit path can run the exact
+ * same pass a creator gets in the wizard. Previously this logic was reachable
+ * only over HTTP by a signed-in creator clicking a button, which is why the
+ * polish was optional in practice: a creator who never clicked simply shipped
+ * their raw text, and nothing in the pipeline ever looked at it again.
+ *
+ * Still suggests rather than saves — the CALLER decides what to do with the
+ * result. That is deliberate: this function has no idea whether it is being run
+ * for a preview, a submit, or an admin regenerate.
+ */
+export async function reviewListingCopy(
+  env: Env,
+  uid: string,
+  input: { title: string; blurb: string; description: string },
+  meta: { kind?: string; category?: string; freeEntry?: boolean } = {},
+): Promise<CopyReviewResult> {
+  const kind = squash(meta.kind) || "live_event";
+  const category = squash(meta.category);
+  const freeEntry = Boolean(meta.freeEntry);
+  const u = { uid };
 
   // Rule 2: this result is the floor. Everything below can only improve on it.
   let out = rulesPass(input);
@@ -241,5 +249,24 @@ export async function listingCopyReview(req: Request, env: Env): Promise<Respons
     });
   } catch { /* telemetry is never the reason a review fails */ }
 
+  return out;
+}
+
+export async function listingCopyReview(req: Request, env: Env): Promise<Response> {
+  const u = await requireUser(req, env);
+  if (isFail(u)) return json({ error: u.error }, u.status);
+
+  let body: any = {};
+  try { body = await req.json(); } catch { /* empty body → rules pass on empty strings */ }
+
+  const out = await reviewListingCopy(env, u.uid, {
+    title: squash(body?.title),
+    blurb: squash(body?.blurb),
+    description: String(body?.description ?? "").trim(),
+  }, {
+    kind: squash(body?.kind),
+    category: squash(body?.category),
+    freeEntry: Boolean(body?.free_entry),
+  });
   return json(out);
 }

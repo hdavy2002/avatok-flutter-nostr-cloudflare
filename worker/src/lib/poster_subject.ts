@@ -144,7 +144,14 @@ async function checkFace(
 export async function resolveCreatorSubject(
   env: Env,
   ownerUid: string,
-  opts: { usePhoto: boolean },
+  opts: {
+    usePhoto: boolean;
+    /** [FACE-PHOTO-1 2026-09-05] The reference face the creator uploaded FOR
+     *  THIS LISTING (`attrs.face_photo`). It wins over the profile avatar,
+     *  because it is the photo they chose knowing a poster would be painted
+     *  from it — an avatar might be a logo, a group shot, or ten years old. */
+    facePhotoUrl?: string | null;
+  },
 ): Promise<PosterSubject> {
   if (!ownerUid) return { gender: null, genderSource: null, photoUrl: null, photoSkipped: "no_owner" };
 
@@ -158,7 +165,10 @@ export async function resolveCreatorSubject(
   }
 
   const profileGender = normGender(row?.gender);
-  const avatar = String(row?.avatar_url || "").trim();
+  // The listing's own face photo first; the profile avatar is the fallback for a
+  // listing made before this was collected.
+  const listingFace = String(opts.facePhotoUrl || "").trim();
+  const avatar = listingFace || String(row?.avatar_url || "").trim();
 
   if (!opts.usePhoto) {
     return { gender: profileGender, genderSource: profileGender ? "profile" : null, photoUrl: null, photoSkipped: "photo_disabled" };

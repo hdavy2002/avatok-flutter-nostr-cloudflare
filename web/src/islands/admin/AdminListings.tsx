@@ -26,6 +26,7 @@ import AuditTimeline from './AuditTimeline';
 import BlockerPanel from './BlockerPanel';
 import EditPanel from './EditPanel';
 import DeletePanel from './DeletePanel';
+import CopyPanel from './CopyPanel';
 import type { AdminListingDetailResponse, ListingRow } from './adminListingsShared';
 
 export default function AdminListings() {
@@ -284,6 +285,12 @@ export default function AdminListings() {
                   onFix={(f) => setFocusField(f)}
                 />
                 <SubmissionPanel listing={detail.listing} creator={detail.creator} category={detail.category} />
+                <CopyPanel
+                  listing={detail.listing}
+                  busy={isBusy}
+                  onRegenerate={() => void action(detail.listing.id, 'regenerate_copy')}
+                  onRestore={() => void action(detail.listing.id, 'restore_copy')}
+                />
                 <EditPanel
                   listing={detail.listing}
                   busy={isBusy}

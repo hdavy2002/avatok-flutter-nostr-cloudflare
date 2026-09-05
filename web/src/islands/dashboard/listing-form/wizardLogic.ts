@@ -53,6 +53,11 @@ export function normalizeTimezone(tz: string): string {
  *  attrs write would silently erase everything collected in an earlier step. */
 export function buildAttrs(d: ListingDraft): Record<string, unknown> {
   const a: Record<string, unknown> = {};
+  // [FACE-PHOTO-1 2026-09-05] The likeness reference for the poster. Lives in
+  // attrs rather than cover_media on purpose: cover_media IS the public gallery,
+  // and this photo must never appear there. Only sent when set, so an older
+  // draft round-trips unchanged.
+  if (d.face_photo) a.face_photo = { url: d.face_photo };
   // [LIST-OPTIONAL-CONTENT-1] Send whatever the creator actually wrote. These
   // used to be `>= 2` / `>= 3`, which SILENTLY DISCARDED a single step or a
   // pair of rules — the creator typed them, hit save, and they were gone with
@@ -280,6 +285,12 @@ export function validateStep(d: ListingDraft, step: StepIndex): FieldProblem | n
       }
       return null;
     case 6: // Photos & policy
+      // [FACE-PHOTO-1] Required, and checked on the step that collects it.
+      // The server enforces it too (a `face_photo_required` blocker), but a
+      // creator should hear it here rather than two steps later on Submit.
+      if ((d.kind === 'live_event' || d.kind === 'consult') && !d.face_photo) {
+        return { field: 'face_photo', message: 'Upload a photo of your face — your poster is painted from it. It is not shown on your listing.' };
+      }
       if (d.kind === 'consult' && d.commercial_preparation_instructions.length > 600) {
         return { field: 'commercial_preparation_instructions', message: 'Keep preparation instructions under 600 characters.' };
       }

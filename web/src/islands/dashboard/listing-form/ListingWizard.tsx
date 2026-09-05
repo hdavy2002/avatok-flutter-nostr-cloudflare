@@ -24,7 +24,7 @@ import { capture, withTrace } from '../../../lib/analytics';
 import { isEmbedded, embedNotifyDirty, embedNotifySubmitted } from '../../../lib/embed';
 import { emptyDraft, STEP_LABELS } from './types';
 import type { ListingDraft, StepIndex, DraftSlot } from './types';
-import { bodyForSave, validateStep, publishReadiness, epochToLocal, normalizeTimezone } from './wizardLogic';
+import { bodyForSave, buildAttrs, validateStep, publishReadiness, epochToLocal, normalizeTimezone } from './wizardLogic';
 import type { ListingReviewResult } from './wizardLogic';
 import { defaultsFor } from '../../../lib/listingDefaults';
 import {
@@ -91,6 +91,14 @@ function draftFromListing(l: any): Partial<ListingDraft> {
     content_can_do: attrs.content_can_do ?? [],
     content_cant_do: attrs.content_cant_do ?? [],
     cover_media: Array.isArray(l.cover_media) ? l.cover_media : [],
+    // [FACE-PHOTO-1] Accept both the object shape we write and a bare string, so
+    // a value set by any other path still hydrates rather than silently reading
+    // as "not uploaded" and blocking the creator's own submit.
+    face_photo: (() => {
+      const f = (l.attrs as any)?.face_photo;
+      const u = typeof f === 'string' ? f : (f?.url ?? null);
+      return typeof u === 'string' && u.startsWith('https://') ? u : null;
+    })(),
     video_url: l.video_url ?? '',
     location: l.location ?? '',
     adults_only: Boolean(l.adults_only),
@@ -471,6 +479,40 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
       if (failures.length) setError(failures.join(' '));
     } finally { setUploading(false); }
   }
+  // [FACE-PHOTO-1] Its own uploader. It shares /upload/public with the gallery
+  // photos, but is stored in attrs and never added to cover_media — putting it
+  // through the cover path would publish the creator's face on their listing,
+  // which is the one thing this control promises not to do.
+  async function onUploadFace(files: FileList | null) {
+    const file = files?.[0];
+    if (!file || !draft.id) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const token = await getActiveToken();
+      if (!token) { setError('Please sign in again to upload your photo.'); return; }
+      const mime = inferImageMime(file);
+      if (!mime) { setError('Photos only, please.'); return; }
+      if (file.size > MAX_BYTES) { setError('That photo is too large (max 8 MB).'); return; }
+      const res = await withTrace(() => fetch(`${API_BASE}/upload/public`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'x-content-type': mime, 'x-file-name': file.name, 'x-app': 'avatok' },
+        body: file,
+      }));
+      if (!res.ok) { setError(`Couldn't upload that photo (${res.status}).`); return; }
+      const body = await res.json() as { url?: string };
+      if (!body.url) { setError('Upload finished but no photo came back. Try again.'); return; }
+      patch({ face_photo: body.url });
+      await request(`/api/listings/${encodeURIComponent(draft.id)}`, {
+        method: 'PUT', auth: token, body: { attrs: buildAttrs({ ...draft, face_photo: body.url }) },
+      });
+      capture('listing_face_upload', { outcome: 'ok' });
+    } catch (e) {
+      setError(e instanceof ApiError ? e.error : 'Could not upload that photo.');
+      capture('listing_face_upload', { outcome: 'error' });
+    } finally { setUploading(false); }
+  }
+
   async function onRemoveCover(url: string) {
     if (!draft.id) return;
     const next = draft.cover_media.filter((c) => c.url !== url);
@@ -653,7 +695,7 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
         {step === 3 && <Step4Time draft={draft} patch={patch} err={fieldErr} slotsSupported={slotsSupported} onAddSlot={onAddSlot} onRemoveSlot={onRemoveSlot} slotBusy={slotBusy} />}
         {step === 4 && <Step5HowItWorks draft={draft} patch={patch} />}
         {step === 5 && <Step6HouseRules draft={draft} patch={patch} />}
-        {step === 6 && <Step7Photos draft={draft} patch={patch} err={fieldErr} onUpload={onUpload} onRemoveCover={onRemoveCover} uploading={uploading} />}
+        {step === 6 && <Step7Photos draft={draft} patch={patch} err={fieldErr} onUpload={onUpload} onRemoveCover={onRemoveCover} uploading={uploading} onUploadFace={onUploadFace} />}
         {step === 7 && (
           <Step8Preview
             draft={draft} patch={patch} checks={checks} ready={ready} onSubmitForReview={onSubmitForReview} publishing={publishing}

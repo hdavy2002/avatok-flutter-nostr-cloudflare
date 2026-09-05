@@ -9,7 +9,7 @@ import { readConfig } from "./config";
 // comment on publishListingAuthoritative() in routes/listings.ts. `publish`
 // below no longer does its own raw status UPDATE; it defers to the same
 // function the creator's own publish endpoint calls.
-import { publishListingAuthoritative, reviewedContentHash, normListingFields } from "./listings";
+import { publishListingAuthoritative, reviewedContentHash, normListingFields, polishListingCopy } from "./listings";
 import { listingBlockers } from "../lib/listing_blockers";
 // [C01 MKT-STATUS-GATE-1] Same transition table setListingStatus()/publish use —
 // see item 4: `reject_listing` used to flip ANY status straight to 'rejected'
@@ -205,7 +205,7 @@ function approvalRequired(listing: { id: string; status: string; poster_status?:
   }, 409);
 }
 
-const ALLOWED_ACTIONS = ["approve_listing", "reject_listing", "generate_poster", "regenerate_poster", "approve_poster", "reject_poster", "publish", "reapprove_content"];
+const ALLOWED_ACTIONS = ["approve_listing", "reject_listing", "generate_poster", "regenerate_poster", "approve_poster", "reject_poster", "publish", "reapprove_content", "regenerate_copy", "restore_copy"];
 
 // [ADMIN-EDIT-1 2026-09-05] What a reviewer may change on someone else's listing.
 //
@@ -390,6 +390,10 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
   let attrs: any = {}; try { attrs = row.attrs ? JSON.parse(row.attrs) : {}; } catch { attrs = {}; }
   for (const key of Object.keys(attrs)) if (key.startsWith("__")) delete attrs[key];
   let generatedCoverMedia: any[] | null = null;
+  // [COPY-PIPELINE-1] Set by regenerate_copy / restore_copy; written in the same
+  // statement as everything else below so the copy change and the attrs that
+  // describe it can never land apart.
+  let copyRewrite: { title: string; blurb: string; description: string } | null = null;
 
   if (action === "generate_poster" || action === "regenerate_poster") {
     const priorStatus: string | undefined = attrs.poster?.status;
@@ -422,6 +426,12 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
     const subject = subjectCfg
       ? await resolveCreatorSubject(env, String(row.creator_id || ""), {
           usePhoto: (posterCfg as any).posterCreatorPhotoEnabled === true,
+          // [FACE-PHOTO-1] Same source on the admin regenerate path.
+          facePhotoUrl: (() => {
+            const f = (attrs as any)?.face_photo;
+            const u = typeof f === "string" ? f : String(f?.url ?? "");
+            return /^https:\/\//i.test(u) ? u : null;
+          })(),
         })
       : null;
     try {
@@ -460,6 +470,51 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
     const reason = String(body.reason || body.feedback || "").trim();
     if (!reason) return json({ error: "reason required" }, 400);
     attrs.poster = { ...(attrs.poster || {}), status: "rejected", feedback: reason, rejected_reason: reason };
+  } else if (action === "regenerate_copy") {
+    // [COPY-PIPELINE-1 2026-09-05] "Ask the AI to write this again."
+    //
+    // Owner request: before approving, an admin should be able to have the
+    // description or title rewritten rather than bouncing the listing back over
+    // wording. Runs the same pass submit runs — one implementation, so an admin
+    // regenerate and a creator submit cannot produce differently-shaped text.
+    //
+    // Regenerates from the ORIGINAL where we kept one, not from the already
+    // polished text. Polishing a polish drifts: each pass trims and rephrases
+    // what the last one produced, and three rounds in, the listing no longer
+    // says what the creator wrote.
+    const orig = attrs.copy_original ?? null;
+    const base: Record<string, any> = {
+      ...row,
+      title: orig?.title ?? row.title,
+      blurb: orig?.blurb ?? row.blurb,
+      description: orig?.description ?? row.description,
+    };
+    const polished = await polishListingCopy(env, a.uid, base);
+    if (!polished) {
+      return json({
+        error: "copy_unchanged",
+        message: "The copy pass had nothing to change, or the model was unavailable. Nothing was written.",
+      }, 409);
+    }
+    attrs.copy_original = polished.original;
+    attrs.copy_polish = { ...polished.meta, by_admin: a.uid };
+    copyRewrite = { title: base.title, blurb: base.blurb, description: base.description };
+  } else if (action === "restore_copy") {
+    // The other direction: put the creator's own words back. The polish is a
+    // suggestion the platform applied on their behalf, so an admin who thinks it
+    // read better before must be able to undo it — otherwise "keep the original"
+    // is a promise nothing acts on.
+    const orig = attrs.copy_original ?? null;
+    if (!orig) {
+      return json({ error: "no_original", message: "This listing's copy was never rewritten." }, 409);
+    }
+    copyRewrite = {
+      title: String(orig.title ?? row.title ?? ""),
+      blurb: String(orig.blurb ?? row.blurb ?? ""),
+      description: String(orig.description ?? row.description ?? ""),
+    };
+    delete attrs.copy_original;
+    delete attrs.copy_polish;
   } else if (action === "reapprove_content") {
     // [ADMIN-EDIT-2 2026-09-05] "I have read the current content and it is still
     // approved" — re-bind reviewed_content_hash without a status change.
@@ -626,11 +681,17 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
   const updated = await db.prepare(
     `UPDATE listings
         SET status=?2, attrs=?3, cover_media=?4, updated_at=?5,
-            reviewed_content_hash=?6, reviewed_at=?7, reviewed_by=?8
+            reviewed_content_hash=?6, reviewed_at=?7, reviewed_by=?8,
+            title=?11, blurb=?12, description=?13
       WHERE id=?1 AND status=?9 AND authority_version=?10`,
   ).bind(
     id, next, JSON.stringify(attrs), coverMedia, now,
     reviewedHash, reviewedAt, reviewedBy, row.status, Number(row.authority_version ?? 0),
+    // [COPY-PIPELINE-1] Unchanged for every other action — bound to the row's own
+    // values so a poster approval cannot blank a title.
+    copyRewrite ? copyRewrite.title : (row.title ?? null),
+    copyRewrite ? copyRewrite.blurb : (row.blurb ?? null),
+    copyRewrite ? copyRewrite.description : (row.description ?? null),
   ).run();
   if (!(updated.meta?.changes ?? 0)) {
     return json({ error: "conflict", message: "This listing changed while the moderation action was running. Reload and try again." }, 409);

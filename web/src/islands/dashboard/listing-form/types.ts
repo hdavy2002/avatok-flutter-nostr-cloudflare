@@ -103,6 +103,11 @@ export interface ListingDraft {
 
   // Step 7 — Photos & policy
   cover_media: Cover[];
+  /** [FACE-PHOTO-1 2026-09-05] A reference photo of the creator's FACE, separate
+   *  from the up-to-5 gallery photos and never shown publicly. The poster is
+   *  painted from this likeness instead of an invented person. Required before
+   *  submit (owner decision); the server enforces it as a blocker. */
+  face_photo: string | null;
   video_url: string;
   location: string;
   adults_only: boolean;
@@ -182,6 +187,7 @@ export function emptyDraft(initial?: Partial<ListingDraft>): ListingDraft {
     content_can_do: [],
     content_cant_do: [],
     cover_media: [],
+    face_photo: null,
     video_url: '',
     location: '',
     adults_only: false,

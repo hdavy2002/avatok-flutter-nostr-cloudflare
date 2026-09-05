@@ -45,6 +45,7 @@ import {
 } from "../lib/listing_poster";
 import { resolveCreatorSubject } from "../lib/poster_subject";
 import { listingBlockers, blockerResponse, type ListingBlocker } from "../lib/listing_blockers";
+import { reviewListingCopy } from "./listing_copy_review";
 import { brainIngest } from "../lib/brain_ingest";
 import { partyEmit } from "./messaging"; // PartyKit live nudges (ephemeral)
 import { recordView, trackImpressions, geoOf } from "./insights";
@@ -1760,6 +1761,63 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
 // alone). Generation must never block this response: the synchronous D1
 // write below flips the poster into a `generating` placeholder so the admin
 // UI shows a spinner immediately, and the actual image call runs detached.
+/** [COPY-PIPELINE-1 2026-09-05] What we keep so an admin can compare and revert. */
+export type ListingCopyOriginal = { title: string; blurb: string; description: string };
+export type ListingCopyPolishMeta = {
+  at: number;
+  /** "ai" when the model ran, "rules" when only the deterministic length pass
+   *  did — surfaced so nobody reads a length trim as a language fix. */
+  source: string;
+  changed: string[];
+  notes: Record<string, string | null>;
+};
+
+/**
+ * Run the copy pass and, when it changed anything, write the polished text onto
+ * `row` in place (so the caller's UPDATE carries it) and hand back the original.
+ *
+ * Returns null when nothing changed or the pass could not run — the caller then
+ * writes nothing, which is what keeps `attrs.copy_original` meaning "there IS a
+ * different original" rather than "we ran this once".
+ */
+export async function polishListingCopy(
+  env: Env,
+  uid: string,
+  row: Record<string, any>,
+): Promise<{ original: ListingCopyOriginal; meta: ListingCopyPolishMeta } | null> {
+  const original: ListingCopyOriginal = {
+    title: String(row.title ?? ""),
+    blurb: String(row.blurb ?? ""),
+    description: String(row.description ?? ""),
+  };
+  try {
+    const out = await reviewListingCopy(env, uid, original, {
+      kind: String(row.kind ?? ""),
+      category: String(row.category ?? ""),
+      freeEntry: Number(row.free_entry ?? 0) === 1,
+    });
+    const changed: string[] = [];
+    const notes: Record<string, string | null> = {};
+    for (const f of ["title", "blurb", "description"] as const) {
+      const suggested = String((out as any)[f]?.suggested ?? "");
+      notes[f] = (out as any)[f]?.note ?? null;
+      // An empty suggestion is not an improvement. The model is told to leave an
+      // empty field empty, and a rules-only pass on an empty blurb returns "" —
+      // writing that back would be a no-op at best and a wipe at worst.
+      if (suggested && suggested !== original[f]) {
+        row[f] = suggested;
+        changed.push(f);
+      }
+    }
+    if (!changed.length) return null;
+    return { original, meta: { at: Date.now(), source: String(out.source ?? "rules"), changed, notes } };
+  } catch {
+    // A copy pass that cannot run must never block a submit. The creator's own
+    // words ship, which is exactly what happened before this existed.
+    return null;
+  }
+}
+
 /**
  * GET /api/listings/:id/blockers — everything standing between this listing and
  * being live, as a structured list.
@@ -1849,6 +1907,28 @@ export async function submitListingForApproval(req: Request, env: Env, id: strin
   try { attrs = row.attrs ? JSON.parse(String(row.attrs)) : {}; } catch { attrs = {}; }
   const now = Date.now();
 
+  // [COPY-PIPELINE-1 2026-09-05] Polish the copy ON SUBMIT, and keep the
+  // creator's own words.
+  //
+  // The AI copy pass existed but was reachable only by a creator clicking a
+  // button in the wizard and then clicking "Use this" on each field. Miss either
+  // click and the raw text shipped — which is what happened, and why the owner
+  // asked why the AI was not fixing grammar and language "in the form pipeline".
+  //
+  // Owner decision: polish, but never destroy. The polished text goes into the
+  // columns (so the public page and the card read well), and the original is
+  // preserved in `attrs.copy_original` so the admin can compare and revert, and
+  // so a creator's own voice is never silently gone.
+  //
+  // Safe to write these columns here: title/description/blurb are
+  // REVIEW_MATERIAL_FIELDS, but this runs BEFORE the listing is ever approved,
+  // so there is no review binding to invalidate.
+  const copyPolish = await polishListingCopy(env, ctx.uid, row);
+  if (copyPolish) {
+    attrs.copy_original = copyPolish.original;
+    attrs.copy_polish = copyPolish.meta;
+  }
+
   // [MKT-POSTER-AUTO-1] Decide whether to auto-generate BEFORE the write so the
   // placeholder poster state lands in the same batch as the status flip.
   const cfg = await readConfig(env);
@@ -1871,9 +1951,17 @@ export async function submitListingForApproval(req: Request, env: Env, id: strin
     attrs.poster = { status: "generating", generated_at: now, auto: true, attempt: nextAttempt };
   }
 
+  // [COPY-PIPELINE-1] The polished title/blurb/description ride along in the SAME
+  // statement as the status flip. polishListingCopy mutated `row` in place, so
+  // these are either the new text or the creator's unchanged original.
   const submitted = await db.prepare(
-    "UPDATE listings SET status='pending_review', attrs=?2, updated_at=?3 WHERE id=?1 AND status='draft' AND authority_version=?4",
-  ).bind(id, JSON.stringify(attrs), now, Number(row.authority_version ?? 0)).run();
+    `UPDATE listings SET status='pending_review', attrs=?2, updated_at=?3,
+            title=?5, blurb=?6, description=?7
+      WHERE id=?1 AND status='draft' AND authority_version=?4`,
+  ).bind(
+    id, JSON.stringify(attrs), now, Number(row.authority_version ?? 0),
+    row.title ?? null, row.blurb ?? null, row.description ?? null,
+  ).run();
   if (!(submitted.meta?.changes ?? 0)) {
     return json({ error: "conflict", message: "This listing changed before submission. Reload and try again." }, 409);
   }
@@ -2074,7 +2162,19 @@ async function runAutoPosterGeneration(
     // path, because it may fetch the profile photo and run a vision call — work
     // that must not sit between the creator pressing Submit and the response.
     const subject = opts.subjectEnabled
-      ? await resolveCreatorSubject(env, opts.ownerUid, { usePhoto: opts.subjectPhoto === true })
+      ? await resolveCreatorSubject(env, opts.ownerUid, {
+          usePhoto: opts.subjectPhoto === true,
+          // [FACE-PHOTO-1] The face the creator uploaded for THIS listing beats
+          // their profile avatar — see resolveCreatorSubject.
+          facePhotoUrl: (() => {
+        try {
+          const a = typeof (opts.row as any).attrs === "string" ? JSON.parse((opts.row as any).attrs) : ((opts.row as any).attrs ?? {});
+          const f = a?.face_photo;
+          const u = typeof f === "string" ? f : String(f?.url ?? "");
+          return /^https:\/\//i.test(u) ? u : null;
+        } catch { return null; }
+      })(),
+        })
       : null;
     subjectKind = !subject ? "off"
       : subject.photoUrl ? `likeness:${subject.gender ?? "unknown"}`

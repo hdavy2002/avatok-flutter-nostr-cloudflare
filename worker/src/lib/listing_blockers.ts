@@ -185,6 +185,40 @@ export async function listingBlockers(
     }
   } catch { /* a config read failure must not invent a blocker */ }
 
+  // [FACE-PHOTO-1 2026-09-05] A reference face is REQUIRED before submit (owner
+  // decision). The poster is the listing's whole first impression, and without a
+  // face the image model invents a person — which is how "Cooking with Davy"
+  // came back as a woman in a sari. The creator's profile avatar was the stopgap;
+  // it is often a logo, a group shot, or years old, so the wizard now asks for a
+  // photo chosen knowing a poster will be painted from it.
+  //
+  // Not shown anywhere public — see the wizard control. It is a likeness
+  // reference, not a gallery image.
+  //
+  // GRANDFATHERED past a listing that already HAS a usable poster. The face
+  // photo exists to make a good poster; demanding one from a listing whose
+  // poster is already generated and approved would block every listing that
+  // predates this rule — including ones an admin has already reviewed — over a
+  // field that can no longer change the outcome. New listings hit the
+  // requirement before the poster is made, which is the point at which it
+  // matters.
+  const face = (parse<any>(l?.attrs, {}) || {}).face_photo;
+  const faceUrl = typeof face === "string" ? face : String(face?.url ?? "");
+  if (!hasUsablePoster && !/^https:\/\//i.test(faceUrl)) {
+    out.push({
+      code: "face_photo_required",
+      field: "face_photo",
+      message: "Upload a clear photo of your face — the poster is painted from it. It is not shown on your listing.",
+      legacy: {
+        status: 400,
+        body: {
+          error: "face_photo_required",
+          detail: "This listing needs a reference face photo before publishing.",
+        },
+      },
+    });
+  }
+
   if (kind === "live_event") {
     const start = Number(l?.starts_at), dur = Number(l?.duration_min);
     // Deliberately checked on KIND, not on schedule_mode. Branching on

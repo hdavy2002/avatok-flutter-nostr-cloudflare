@@ -16,7 +16,7 @@ const HANDLED_ATTR_KEYS = new Set([
   'vibe_tags', 'spoken_lang', 'credential',
   'price', 'billing_unit', 'free_entry', 'content_free_cap_tokens', 'max_per_booking', 'currency_display',
   'schedule_mode', 'starts_at', 'duration_min', 'recurrence_days', 'recurrence_time', 'timezone', 'capacity', 'response_time_min',
-  'cover_media', 'video_url',
+  'cover_media', 'video_url', 'face_photo', 'copy_original', 'copy_polish',
   'content_how_it_works', 'content_house_rules', 'content_house_rules_intro', 'content_what_you_get',
   'content_who_for', 'content_not_for', 'content_faq', 'content_sample_qa', 'content_sample_chat',
   'content_can_do', 'content_cant_do', 'join_requirements',
@@ -46,6 +46,11 @@ export default function SubmissionPanel({ listing, creator, category }: { listin
 
   const cover = Array.isArray(listing.cover_media) ? listing.cover_media : [];
   const videoUrl = p('video_url');
+  const faceUrl = (() => {
+    const f = (attrs as any)?.face_photo;
+    const u = typeof f === 'string' ? f : (f?.url ?? null);
+    return typeof u === 'string' && u.startsWith('https://') ? u : null;
+  })();
   const categoryLabel = category?.label ?? (p('category') as string | undefined);
 
   return (
@@ -127,6 +132,23 @@ export default function SubmissionPanel({ listing, creator, category }: { listin
         </Group>
 
         <Group title="Media">
+          {/* [FACE-PHOTO-1 2026-09-05] The reference face. Shown to the reviewer
+              because the poster is painted from it — if the poster looks like
+              the wrong person, this is where the answer is. Labelled as
+              private, since it is stored in attrs and deliberately never joins
+              cover_media, so nobody moves it into the gallery by mistake. */}
+          {faceUrl ? (
+            <div className="py-2">
+              <div className="mb-2 font-mono text-[12px] font-bold uppercase tracking-[0.04em] text-inkMute">
+                Reference face — not shown publicly
+              </div>
+              <a href={faceUrl} target="_blank" rel="noreferrer" className="block w-28 overflow-hidden rounded-zineField border-zine border-ink">
+                <img src={faceUrl} alt="Creator's reference photo" className="aspect-square w-full object-cover" />
+              </a>
+            </div>
+          ) : (
+            <Field label="Reference face" value={undefined} allowEmptyLabel="none — the poster used the profile photo or invented a person" />
+          )}
           {cover.length > 0 ? (
             <div className="py-2">
               <div className="mb-2 font-mono text-[12px] font-bold uppercase tracking-[0.04em] text-inkMute">Cover media ({cover.length})</div>
