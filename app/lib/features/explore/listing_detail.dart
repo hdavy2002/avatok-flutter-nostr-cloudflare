@@ -422,7 +422,12 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
       return AdButton(
         label: label,
         variant: isLive ? AdButtonVariant.danger : AdButtonVariant.primary,
-        fontSize: 18,
+        // [UI-SEAM-OFF-1 2026-09-05] 18 -> 16. This is not only a type change:
+        // AdButton switches its vertical padding at fontSize >= 17 (16 vs 12),
+        // so dropping below that line takes the pill from ~53dp to ~45dp — the
+        // "make the reserve button smaller" the owner asked for. 16 is still
+        // comfortably above the 44dp minimum touch target with the padding.
+        fontSize: 16,
         fullWidth: true,
         onPressed:
             booked ? () => _joinCommercial(l) : () => _commercialCheckout(l),
@@ -594,8 +599,13 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                     Border(top: BorderSide(color: AD.borderHairline, width: 1)),
               ),
               child: SafeArea(
+                // [UI-SEAM-OFF-1 2026-09-05] Tighter band. The seam that used
+                // to be stamped over this bar is gone (see shell_v2.dart), so
+                // the CTA no longer needs to sit clear of anything — 12/12 of
+                // padding on top of the device's own bottom inset was reading
+                // as a dead strip under the button.
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
                   child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -650,9 +660,12 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                             boxShadow: const [],
                             // Genuinely a round icon button (52x52) — pill is correct here.
                             radius: Msg.brPill,
+                            // [UI-SEAM-OFF-1] 52 -> 46 to stay square with the
+                            // shrunken CTA pill beside it; still above the 44dp
+                            // minimum touch target.
                             child: SizedBox(
-                                width: 52,
-                                height: 52,
+                                width: 46,
+                                height: 46,
                                 child: Center(
                                   child: PhosphorIcon(
                                       PhosphorIcons.chatCircle(

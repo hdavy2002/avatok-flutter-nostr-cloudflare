@@ -14,7 +14,6 @@ import '../core/config.dart';
 import '../core/profile_store.dart';
 import '../core/remote_config.dart';
 import '../core/ui/avatok_dark.dart';
-import '../core/ui/rajasthani_motifs.dart'; // [RAJ-INDIGO-1] app-wide footer seam
 import '../features/affiliate/affiliate_home.dart'; // [AFF-NAV-1] footer slot
 import '../features/askava/askava_screen.dart';
 import '../features/avadial/avadial_channel.dart';
@@ -719,29 +718,24 @@ class _ShellV2State extends State<ShellV2> {
               // (owned by a different agent) — it belongs at this shell-root
               // level so it overlays every app, not just one.
               const Positioned(top: 0, left: 0, right: 0, child: MiniAudioPlayerBar()),
-              // [RAJ-INDIGO-1] The app-wide FOOTER SEAM, moved here out of
-              // `AppSwitcherBar` (see the note there). Pinned to the bottom of
-              // the BODY, whose bottom edge is exactly the top edge of the
-              // bottomNavigationBar — so it stays flush with the bar even when
-              // the app menu expands.
+              // [UI-SEAM-OFF-1 2026-09-05] The app-wide bottom-pinned footer
+              // seam ([PillMorseFooter]) has been REMOVED at the owner's
+              // request. Do not put it back without asking him.
               //
-              // [UI-PILL-FOOTER-2026] Owner: every screen drops the flipped
-              // Double wave for the 2D Pill morse strip (patches.md §6 seam
-              // 2D) — dash-dot pills in the three accents on paper, closed by
-              // the hard 3px ink rule that is the flat edge onto the indigo
-              // switcher bar. Headers keep their wave; only footers changed.
-              // The strip is OPAQUE where the wave was half-transparent, which
-              // is the intended look: content scrolls behind the paper band
-              // rather than through scallops.
+              // History, so nobody "restores" it as a regression: [RAJ-INDIGO-1]
+              // moved the seam out of `AppSwitcherBar` to here, and
+              // [UI-PILL-FOOTER-2026] swapped the flipped DoubleWaveSeam for
+              // the 2D pill-morse strip (patches.md §6 seam 2D). Because it was
+              // a `Positioned(bottom: 0)` in this Stack it reserved NO layout
+              // space — it simply painted opaquely over the last ~27px of every
+              // screen in the app, pushed full-screen routes included. On the
+              // Live event page that clipped the bottom of the "Reserve free
+              // ticket" bar, which is what got it removed (owner, 2026-09-05):
+              // a decoration was eating a real, tappable primary CTA.
               //
-              // `IgnorePointer` matters here: this sits over the last ~30px of
-              // every screen in the app, including a chat list's newest row and
-              // any FAB parked in that corner.
-              if (!_askAvaOpen)
-                const Positioned(
-                  left: 0, right: 0, bottom: 0,
-                  child: IgnorePointer(child: PillMorseFooter()),
-                ),
+              // The widget itself is kept in `core/ui/rajasthani_motifs.dart`
+              // and is still used by AskAva and `shellNavBar()`, so this is a
+              // one-line restore if he changes his mind.
             ],
           ),
           // The app switcher is rendered ONCE here, at the shell level — so the
