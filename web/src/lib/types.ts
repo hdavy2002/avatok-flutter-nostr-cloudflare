@@ -53,6 +53,7 @@ export interface Card {
   currency_display?: string | null;
   currency?: string | null;
   category?: string | null;
+  category_label?: string | null;
   country?: string | null;
   location?: string | null;
   /** Worker sends `rating_avg` + `rating_count`; `rating` is the legacy alias. */
@@ -239,6 +240,9 @@ export interface CardView {
    *  cannot answer "should this card render poster-first?" — this can. */
   aiPoster: AiPoster | null;
   category: string | null;
+  /** [CARD-CAT-LABEL-1] The category's display name ("Cooking"), when the
+   *  server knows it. Null falls back to the id, which is ugly but honest. */
+  categoryLabel?: string | null;
   price: number | null;
   listPrice: number | null;
   promoPct: number;

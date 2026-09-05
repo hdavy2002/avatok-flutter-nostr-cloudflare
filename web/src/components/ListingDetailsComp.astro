@@ -204,6 +204,21 @@ const priceUnitLabel = listing.billing_unit === 'minute' ? '/ MIN' : listing.bil
 const priceLine = isFree ? 'FREE' : `${inrOrFree(priceTokens)} `;
 
 const hostInitials = (listing.creator?.name ?? listing.creator?.handle ?? '?').split(' ').map((w) => w[0]).filter(Boolean).join('').slice(0, 2).toUpperCase();
+// [HOST-FACE-1 2026-09-05] The host's actual photo, and a link to their page.
+//
+// Both were already on the wire and simply unused: shapeCard emits
+// `creator.avatar_url` and `creator.handle` (worker/src/routes/listings.ts), yet
+// the hostbar drew two initials in a circle and the host card drew a flat
+// coloured rectangle with the words "HOST PHOTO" printed on it. On a page whose
+// entire job is "should I trust this person with ₹100 and an hour", a
+// placeholder where the face goes is the wrong thing to ship.
+//
+// Initials remain the fallback for a creator who has not uploaded one — a
+// missing photo should degrade to their letters, never to the literal string
+// "HOST PHOTO".
+const hostAvatar = listing.creator?.avatar_url ?? null;
+const hostHandle = listing.creator?.handle ?? null;
+const hostHref = hostHandle ? `/c/${encodeURIComponent(hostHandle)}` : null;
 const hostSinceYear = listing.creator_trust_stats?.first_session_at
   ? new Date(listing.creator_trust_stats.first_session_at).getUTCFullYear()
   : null;
@@ -214,6 +229,11 @@ const aboutBio = creatorProfile?.bio ?? null;
 const howItWorks = listing.attrs?.content_how_it_works ?? [];
 
 const highlightUrl = listing.video_url ?? null;
+// [MEDIA-STRIP-1] The reel tile says WHEN, the way the hero countdown does, so a
+// visitor who clicks away to the video still leaves knowing the show is dated.
+const videoWhenLabel = !isLive && listing.starts_at
+  ? timePillLabel(listing.starts_at, { timeZone: listing.timezone || 'Asia/Kolkata' })
+  : (isLive ? 'LIVE NOW' : null);
 
 /* [POSTER-FIRST-1 2026-09-05] The hero, at the right shape for the viewport.
  *
@@ -244,7 +264,12 @@ const posterCopy = posterUsable ? (posterAttr.copy ?? null) : null;
  * cover_media array is the creator's own uploads (the poster sits at [0] and is
  * shown as the hero), so the gallery starts at 1 either way — but with a poster
  * present it is captioned as "more photos", not as the listing's face. */
-const stillUrls = [listing.cover_media?.[1]?.url, listing.cover_media?.[2]?.url, listing.cover_media?.[3]?.url];
+// [MEDIA-STRIP-1] Index 1 onwards: cover_media[0] is the generated poster and
+// is already the hero above. Compacted, so one uploaded photo renders one tile
+// rather than one tile and two empty boxes.
+const stills = ([1, 2, 3]
+  .map((i) => listing.cover_media?.[i]?.url)
+  .filter((u): u is string => typeof u === 'string' && u.length > 0));
 
 const breadcrumbId = `LISTING #${listing.id}`;
 
@@ -364,26 +389,37 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
           <div class="player-card__scallop"></div>
         </div>
         <div class="player-card__hostbar">
-          <span class="avatar-circle">{hostInitials}</span>
-          <span class="player-card__hostname">{hostName} {idVerified && '✓'}</span>
+          {hostAvatar
+            ? <img class="avatar-circle avatar-circle--photo" src={cfImage(hostAvatar, { width: 96 })} alt={hostName} loading="lazy" width="36" height="36" />
+            : <span class="avatar-circle">{hostInitials}</span>}
+          {hostHref
+            ? <a class="player-card__hostname player-card__hostname--link" href={hostHref}>{hostName} {idVerified && '✓'}</a>
+            : <span class="player-card__hostname">{hostName} {idVerified && '✓'}</span>}
           <span class="player-card__hostmeta">{hostSinceYear ? `HOST SINCE ${hostSinceYear} · ` : ''}REPLIES IN ~{repliesIn}</span>
           <span class="player-card__joinnote" id="join-note"></span>
         </div>
       </div>
 
-      <div class="thumb-grid">
-        {/* [POSTER-FIRST-1] Creator photos are SECONDARY to the poster and sit
-            below it. Routed through cfImage for the same reason the hero was:
-            these were raw full-size downloads for a 140px tile. */}
-        <div class="thumb-tile thumb-tile--butter" style={stillUrls[0] ? `background-image:url(${cfImage(stillUrls[0]!, { width: 420 })});background-size:cover;` : ''}>{!stillUrls[0] && <span>SHOW STILL</span>}</div>
-        <div class="thumb-tile thumb-tile--brick" style={stillUrls[1] ? `background-image:url(${cfImage(stillUrls[1]!, { width: 420 })});background-size:cover;` : ''}>{!stillUrls[1] && <span>SHOW STILL</span>}</div>
-        <div class="thumb-tile thumb-tile--oat" style={stillUrls[2] ? `background-image:url(${cfImage(stillUrls[2]!, { width: 420 })});background-size:cover;` : ''}>{!stillUrls[2] && <span>SHOW STILL</span>}</div>
-        {highlightUrl ? (
-          <a href={highlightUrl} target="_blank" rel="noopener" class="thumb-tile thumb-tile--teal"><span>HIGHLIGHT REEL</span></a>
-        ) : (
-          <div class="thumb-tile thumb-tile--teal"><span>HIGHLIGHT REEL</span></div>
-        )}
-      </div>
+      {/* [MEDIA-STRIP-1 2026-09-05] Only real media. The strip used to render
+          four coloured rectangles reading "SHOW STILL" and "HIGHLIGHT REEL"
+          whether or not anything existed behind them — so the common case (a
+          creator who uploaded nothing beyond the poster) showed a row of empty
+          boxes advertising content that is not there. Owner's call: if there is
+          nothing, show nothing. */}
+      {(stills.length > 0 || highlightUrl) && (
+        <div class="thumb-grid" data-count={String(stills.length + (highlightUrl ? 1 : 0))}>
+          {stills.map((u, i) => (
+            <div class={`thumb-tile thumb-tile--${['butter', 'brick', 'oat'][i % 3]}`}
+              style={`background-image:url(${cfImage(u, { width: 420 })});background-size:cover;background-position:center;`}></div>
+          ))}
+          {highlightUrl && (
+            <a href={highlightUrl} target="_blank" rel="noopener" class="thumb-tile thumb-tile--teal thumb-tile--reel">
+              <span class="thumb-tile__play">▶</span>
+              <span>{videoWhenLabel ? `HIGHLIGHT REEL · ${videoWhenLabel}` : 'HIGHLIGHT REEL'}</span>
+            </a>
+          )}
+        </div>
+      )}
 
       <div class="share-card">
         <div class="share-card__row">
@@ -546,12 +582,16 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
         <div class="divider"><TruckBorder kind="tassels" /></div>
         <div class="host-card">
           <div class="host-card__profile">
-            <div class="host-card__photo" style={`background:${cat.photo}`}>
-              <span class="host-card__photo-label">HOST PHOTO</span>
+            <div class="host-card__photo" style={hostAvatar
+              ? `background-image:url(${cfImage(hostAvatar, { width: 480 })});background-size:cover;background-position:center;`
+              : `background:${cat.photo}`}>
+              {!hostAvatar && <span class="host-card__photo-label">{hostInitials}</span>}
               {idVerified && <span class="host-card__verified">✓ ID VERIFIED</span>}
             </div>
             <div>
-              <div class="host-card__name">{hostName}</div>
+              <div class="host-card__name">
+                {hostHref ? <a class="host-card__namelink" href={hostHref}>{hostName}</a> : hostName}
+              </div>
               {hostSinceYear && <div class="host-card__meta">HOST SINCE {hostSinceYear}</div>}
             </div>
             <div class="host-card__chips">
@@ -1114,7 +1154,23 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
   .link-btn { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .06em; color: #d93825; background: none; border: none; text-decoration: underline; padding: 0; }
   .link-btn--light { color: #fdf1d3; margin-top: 12px; }
   .avatar-circle { width: 30px; height: 30px; flex: none; border-radius: 50%; border: 1.5px solid #161614; display: grid; place-items: center; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.75rem; }
+  /* [HOST-FACE-1] The photo variant. object-fit is the load-bearing bit: a
+     portrait avatar squashed into a circle is worse than initials. */
+  .avatar-circle--photo { object-fit: cover; background: #efdcc2; }
+  .player-card__hostname--link { color: inherit; text-decoration: none; border-bottom: 1.5px solid currentColor; }
+  .player-card__hostname--link:hover { color: #d93825; }
+  .host-card__namelink { color: inherit; text-decoration: none; border-bottom: 3px solid #d93825; }
+  .host-card__namelink:hover { color: #d93825; }
   .divider { border: 2.5px solid #161614; border-radius: 10px; overflow: hidden; margin: 14px 0 20px; }
+  /* [BOOKING-WIDTH-1] Above ~1400px there is room to give the panel its full
+     width without squeezing the reading column below a comfortable measure. */
+  @media (min-width: 1400px) {
+    .aside { max-width: 520px; flex: 1 1 460px; }
+  }
+  /* [MEDIA-STRIP-1] The strip is now variable-length — one to four tiles — so it
+     lays out from the count rather than assuming four. */
+  .thumb-tile--reel { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .thumb-tile__play { font-size: 1.25rem; line-height: 1; }
   .section-title { font-family: 'Anton', sans-serif; letter-spacing: .06em; font-size: clamp(28px, 2.6vw, 38px); text-transform: uppercase; margin: 0; word-spacing: .22em; }
   .section-title--sm { font-size: 1.5rem; }
   .section-title__accent { color: #d93825; }
@@ -1180,6 +1236,11 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
   .player-card__joinnote { margin-left: auto; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .08em; }
 
   .thumb-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-top: 14px; }
+  /* [MEDIA-STRIP-1] With one or two real tiles, `1fr` would stretch a thumbnail
+     into a full-width banner competing with the poster above it. Cap them
+     instead, so a listing with one extra photo shows one thumbnail. */
+  .thumb-grid[data-count="1"] { grid-template-columns: minmax(110px, 240px); }
+  .thumb-grid[data-count="2"] { grid-template-columns: repeat(2, minmax(110px, 240px)); }
   .thumb-tile { height: 76px; border: 2.5px solid #161614; border-radius: 14px; position: relative; overflow: hidden; }
   .thumb-tile::before { content: ''; position: absolute; inset: 0; }
   .thumb-tile span { position: absolute; inset: 0; display: grid; place-items: center; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.625rem; }
@@ -1236,7 +1297,13 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
   .aside { flex: 1 1 320px; min-width: min(100%, 290px); order: 1; position: static; max-width: 100%; }
   .main-col { flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 52px; order: 2; }
   @media (min-width: 1020px) {
-    .aside { order: 3; position: sticky; top: 16px; max-width: 400px; }
+    /* [BOOKING-WIDTH-1 2026-09-05] The booking panel was pinned at 400px while
+       `.main-col`'s `flex: 999 1 520px` soaked up every remaining pixel, so on a
+       wide screen the ticket column looked like a narrow afterthought beside a
+       1100px slab of content. Owner's request: give it more room horizontally
+       and let the left column tighten. Raised to 460px here and to 520px on a
+       genuinely large screen — it is the thing a visitor is trying to use. */
+    .aside { order: 3; position: sticky; top: 16px; max-width: 460px; flex: 1 1 400px; }
     .main-col { order: 2; }
   }
 

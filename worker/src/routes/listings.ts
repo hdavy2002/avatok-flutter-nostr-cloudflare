@@ -622,6 +622,12 @@ const CARD_SELECT = `
          l.timezone, l.billing_unit, l.free_entry, l.max_per_booking,
          l.response_time_min, l.vibe_tags, l.credential, l.media_mode,
          lc.price_semantics AS category_price_semantics,
+         -- [CARD-CAT-LABEL-1 2026-09-05] The human name for the category. The
+         -- card carried only the ID, so every surface that wanted to name a
+         -- category printed the raw value — the More info popup showed
+         -- "LIVE_COOKING" as its heading. The join was already here for
+         -- price_semantics; this is one more column off the same row.
+         lc.label AS category_label,
          cp.follower_count AS creator_follower_count
     FROM listings l LEFT JOIN users u ON u.uid = l.creator_id
          LEFT JOIN listing_categories lc ON lc.id = l.category
@@ -661,6 +667,9 @@ function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set
   return {
     id: r.id, creator_id: r.creator_id, kind: r.kind, title: r.title,
     one_liner: oneLiner, category: r.category,
+    // Null when the category row is gone (LEFT JOIN) — clients fall back to the
+    // id, which is ugly but true, rather than to an empty heading.
+    category_label: r.category_label ?? null,
     // [MARKET-SECTION-1] The bazaar section this card belongs to. Additive, so
     // every already-shipped client ignores it. Falls back rather than emitting
     // null: a card with no section would silently vanish from a grouped view.

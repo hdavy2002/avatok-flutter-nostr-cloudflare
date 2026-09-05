@@ -87,10 +87,15 @@ export function QuickInfo({ card: c, listing, lane, href, onClose, onBook }: Qui
   }, [c.id, c.kind, lane]);
 
   const attrs = (listing?.attrs ?? null) as Record<string, unknown> | null;
-  const rules = useMemo(() => {
-    const raw = attrs?.content_house_rules;
-    return Array.isArray(raw) ? raw.map((r) => String(r)).filter(Boolean).slice(0, 6) : [];
-  }, [attrs]);
+  // [QUICKINFO-RULES-1 2026-09-05] House rules are NOT shown in this popup.
+  //
+  // Owner decision: this is the quick look — price, when, how long, what you
+  // get — and the rules belong on the full listing page, which renders them
+  // properly. They were also rendering as four lines of "[object Object]",
+  // because `content_house_rules` is `{heading, body}[]` (types.ts) and this
+  // mapped it with `String(r)`. Removing the section fixes the bug and the
+  // clutter in the same move; the Astro page at ListingDetailsComp.astro reads
+  // the same data correctly and is where a buyer reads it.
   const expect = useMemo(() => {
     const raw = attrs?.content_what_you_get;
     return Array.isArray(raw) ? raw.map((r) => String(r)).filter(Boolean).slice(0, 5) : [];
@@ -116,7 +121,15 @@ export function QuickInfo({ card: c, listing, lane, href, onClose, onBook }: Qui
         <div style={{ padding: '22px 22px 18px' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <p style={{ ...labelStyle, color: RED }}>{c.category ?? c.kind ?? 'Listing'}</p>
+              {/* [CARD-CAT-LABEL-1 2026-09-05] The category's NAME. This printed
+                the raw id — "LIVE_COOKING" — as the popup's heading, because the
+                card only ever carried the id. The label lives on
+                listing_categories and the card query was already joining that
+                table for price_semantics, so it is now carried across. The id
+                remains the fallback: wrong-looking is better than blank. */}
+            <p style={{ ...labelStyle, color: RED }}>
+              {c.categoryLabel ?? c.category ?? c.kind ?? 'Listing'}
+            </p>
               <h2 style={{
                 fontFamily: 'Anton, Impact, sans-serif', fontWeight: 400, fontSize: '1.75rem',
                 lineHeight: 1.1, letterSpacing: '.055em', wordSpacing: '.1em',
@@ -158,16 +171,6 @@ export function QuickInfo({ card: c, listing, lane, href, onClose, onBook }: Qui
               <p style={labelStyle}>What to expect</p>
               <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
                 {expect.map((e, i) => <li key={i} style={{ ...bodyStyle, marginTop: 4 }}>{e}</li>)}
-              </ul>
-            </>
-          )}
-
-          {rules.length > 0 && (
-            <>
-              <div style={{ height: 1, background: RULE, margin: '18px 0' }} />
-              <p style={labelStyle}>Boundaries &amp; house rules</p>
-              <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
-                {rules.map((r, i) => <li key={i} style={{ ...bodyStyle, marginTop: 4 }}>{r}</li>)}
               </ul>
             </>
           )}

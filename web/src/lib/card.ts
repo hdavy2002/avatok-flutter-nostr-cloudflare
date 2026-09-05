@@ -120,6 +120,8 @@ export function toCardView(card: Card): CardView {
     poster: card.poster ?? firstCoverUrl(covers),
     aiPoster: aiPosterFrom(card),
     category: card.category ?? null,
+    // [CARD-CAT-LABEL-1] The human name, when the server knows it.
+    categoryLabel: card.category_label ?? null,
 
     price,
     // The list price, shown struck through only when a promo actually reduced it.
