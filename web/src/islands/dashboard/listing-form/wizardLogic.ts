@@ -185,11 +185,17 @@ export function validateStep(d: ListingDraft, step: StepIndex): FieldProblem | n
     case 2: // Money
       if (!d.free_entry) {
         const p = Number(d.price);
-        if (!Number.isFinite(p) || p < 0) return { field: 'price', message: 'Enter a whole number of tokens, or 0 for free.' };
-        // [PRICE-HOURLY-1] The ₹49/hour floor — below it the flat ₹25 fee
-        // leaves the creator with nothing, which is why the server refuses it
-        // too. Surface the reason here rather than let it round-trip as a 400.
-        if (p > 0 && p < PRICING.minPriceTokensPerHour) {
+        // [PRICE-HOURLY-1] "or 0 for free" is gone: a free show is the
+        // free_entry checkbox on step 1, not a price of zero, and this branch
+        // only runs when that box is UNCHECKED. Letting 0 past here meant a
+        // creator sailed through Money and first heard about it at step 8,
+        // where submit refuses an unpriced listing — five steps from the field
+        // they need to fix.
+        if (!Number.isFinite(p) || p <= 0) return { field: 'price', message: 'Set a price per hour, or mark this a free show back on step 1.' };
+        // The ₹49/hour floor — below it the flat ₹25 fee leaves the creator
+        // with nothing, which is why the server refuses it too. Surface the
+        // reason here rather than let it round-trip as a 400.
+        if (p < PRICING.minPriceTokensPerHour) {
           return { field: 'price', message: `The lowest price is ₹${PRICING.minPriceTokensPerHour}/hour — below that, avaTOK’s flat fee leaves you with nothing.` };
         }
       }

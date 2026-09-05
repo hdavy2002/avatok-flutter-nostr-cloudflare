@@ -1226,7 +1226,21 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
   // kinds this pricing model governs — sell/buy/social are AvaMarketplace
   // goods with their own price semantics, never hourly. A client check alone
   // is not a rule; this is the server recomputing and refusing, per spec §4.1.
-  if (!effectiveFreeEntryCreate && b.price !== undefined && (kind === "live_event" || kind === "consult")) {
+  //
+  // ⚠️ `b.price !== undefined` WAS NOT ENOUGH, and the bug it caused was
+  // reported from a phone on 2026-09-05: the wizard's bodyForSave ALWAYS sends
+  // `price` (0 until the creator reaches the Money step), so the draft created
+  // at the end of step 2 arrived with price=0, failed this floor, and the
+  // wizard snapped back to Pitch showing "Price must be at least 49
+  // tokens/hour" on a step that has no price field. The comment above used to
+  // claim a step-1 draft has no price yet; it does, and it is 0.
+  //
+  // A price of 0 means NOT PRICED YET, which is a legitimate state for a
+  // draft. The floor is about a price the creator actually chose, so it
+  // applies from 1 up. An unpriced draft is caught where it matters — at
+  // submitListingForApproval, which checks the stored row unconditionally and
+  // is the last gate before the review queue.
+  if (!effectiveFreeEntryCreate && Number(f.price) > 0 && (kind === "live_event" || kind === "consult")) {
     const priceErr = priceFloorError(f.price, false);
     if (priceErr) return json({ ok: false, error: "price_below_floor", message: priceErr, field: "price" }, 400);
   }
@@ -1408,7 +1422,11 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
   // doesn't touch price, which would turn "fix a typo in the title" into a
   // surprise 400 for a listing that predates this rule) and only for the two
   // session kinds this pricing model governs. `row.kind` — kind is not editable.
-  if (!effectiveFreeEntry && b.price !== undefined && (String(row.kind) === "live_event" || String(row.kind) === "consult")) {
+  // `Number(f.price) > 0`, not `b.price !== undefined` — same reason as
+  // createListing above: every wizard step PUTs the full accumulated body, so
+  // steps 3-7 all re-send price=0 on a draft the creator has not priced yet,
+  // and an `!== undefined` test rejects every one of them.
+  if (!effectiveFreeEntry && Number(f.price) > 0 && (String(row.kind) === "live_event" || String(row.kind) === "consult")) {
     const priceErr = priceFloorError(f.price, false);
     if (priceErr) return json({ ok: false, error: "price_below_floor", message: priceErr, field: "price" }, 400);
   }
