@@ -4486,5 +4486,68 @@
       }
     ],
     "_verified_at": "Read out of the emit sites, not from memory: listing_web_form_ready + listing_web_form_token + listing_web_form_submitted in app/lib/features/marketplace/listing_web_form.dart (_onHostMessage 'ready', _answerToken, _onSubmitted); flag declared in worker/src/routes/config.ts PlatformConfig and DEFAULTS (true) and read by RemoteConfig.listingWebFormEnabled in app/lib/core/remote_config.dart."
+  },
+  "POSTER-CHECKPOINT-1": {
+    "description": "[POSTER-CHECKPOINT-1] Auto poster generation ran entirely detached on ctx.waitUntil and wrote to D1 only ONCE, after every ratio was rendered. On 2026-09-05 listing 845567cb the portrait generated and PASSED verification 22s in (poster_verify ok=true, title_score 1.0) and was then thrown away: the isolate was killed during the tablet/wide reframe loop, no catch and no finally ran, and 18 minutes later reconcileListingPublicationEffects swept the row to 'Poster generation was interrupted. Regenerate to try again.' There was no worker $exception, which is the signature of an isolate kill rather than a thrown error. Fix: generateListingPoster now calls a new onPortrait hook the moment putPoster() has the portrait in R2 and BEFORE the variants loop; runAutoPosterGeneration persists it there via the extracted persistPosterAttempt(), so a death from that point on costs the tablet/wide variants instead of the whole poster. The final write reuses the same helper with acceptStatuses ['generating','draft'] so it may overwrite its own checkpoint but never an admin's approved/rejected. A checkpoint that throws is swallowed - losing the safety net must not lose the run.",
+    "shipped": "2026-09-05",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "posterAutoGenerateOnSubmit",
+      "posterVariantsEnabled",
+      "posterVerifyEnabled"
+    ],
+    "success": [
+      {
+        "event": "listing_poster_checkpoint",
+        "property": "ok",
+        "equals": true,
+        "min_events": 1,
+        "note": "THE assertion for this fix, and the one that did not exist before it. This event fires only after the portrait is in R2 and the D1 write for it returned changes>0, so ok=true means a usable poster is on the listing independently of anything that happens next. ok=false means the row moved on (an admin acted, or a newer attempt landed) - survivable. The event MISSING entirely, while listing_poster_generate exists, is the 2026-09-05 shape: killed before the portrait, which the checkpoint cannot help with and which needs a queue instead."
+      },
+      {
+        "event": "listing_poster_generate",
+        "property": "outcome",
+        "equals": "draft",
+        "min_events": 1,
+        "min_pass_rate": 0.8,
+        "note": "The whole run finishing, variants included. Deliberately NOT the only assertion: after this fix an outcome other than 'draft' on a run that carries checkpointed=true is a degraded success, not a user-visible failure, because the creator already has the portrait. Slack is wide for that reason."
+      },
+      {
+        "event": "listing_poster_generate",
+        "property": "checkpointed",
+        "equals": true,
+        "min_events": 1,
+        "note": "Proves the new hook is actually wired on the auto path rather than silently skipped - it is an optional callback, so an unwired caller would compile, run, and look identical in every other event."
+      }
+    ],
+    "_verified_at": "Read out of the emit sites, not from memory: listing_poster_checkpoint at worker/src/routes/listings.ts (the onPortrait callback in runAutoPosterGeneration); listing_poster_generate with the new checkpointed property in the same function's finally block; poster_checkpoint (failure-only) in worker/src/lib/listing_poster.ts. Flag values read from live prod /api/config on 2026-09-05, cache-busted, NOT from DEFAULTS in config.ts, which has all of these false."
+  },
+  "LIST-EDIT-EMBED-1": {
+    "description": "[LIST-EDIT-EMBED-1] My listings 'Edit' in the app opened EditListingScreen, the legacy marketplace-GOODS editor built on the flat kMarketCategories list, while creation had already moved to the web wizard ([LIST-EMBED-1]) which knows the [MKT-3GROUP-1] taxonomy. It was not a cosmetic mismatch: edit_listing_screen.dart falls back to kMarketCategories.first when the stored category is not in its list, so saving a live_cooking listing wrote category='Vehicles'; updateListing (worker/src/routes/listings.ts) does NOT validate category on edit and re-derives listings.section from it, so the listing would have left its group and the marketplace; it also forces price_currency='USD' over the INR-per-hour price. Fix: Edit now pushes ListingWebFormScreen(listingId:) - the wizard already supported ?id= hydration - behind the same RemoteConfig.listingWebFormEnabled every other entry point checks, with returnOnSubmit so it pops back instead of stacking a second My listings. The legacy screen stays for pre-wizard goods listings.",
+    "shipped": "2026-09-05",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "listingWebFormEnabled"
+    ],
+    "success": [
+      {
+        "event": "listing_edit_opened",
+        "property": "surface",
+        "equals": "web_form",
+        "min_events": 1,
+        "min_pass_rate": 0.95,
+        "note": "The success VALUE, not the arrival of the event: the event fires on both branches and carries which editor actually opened. surface='legacy_goods_editor' on a build that has this fix means listingWebFormEnabled was read false, i.e. the creator is still one Save away from having their category rewritten to Vehicles - that is the failure this assertion exists to catch, and it looks identical in an event-count check."
+      },
+      {
+        "event": "listing_web_form_submitted",
+        "property": "edited",
+        "equals": true,
+        "min_events": 1,
+        "note": "An edit actually completing through the wizard, end to end. The new 'edited' property distinguishes it from a fresh create, which emits the same event."
+      }
+    ],
+    "_verified_at": "Read out of the emit sites, not from memory: listing_edit_opened in _MyListingRow._edit (app/lib/features/marketplace/my_listings_screen.dart), both branches; listing_web_form_submitted with the new 'edited' property in _onSubmitted (app/lib/features/marketplace/listing_web_form.dart). Client-side only - inert until an APK ships."
   }
 }
