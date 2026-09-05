@@ -33,6 +33,10 @@ export default function AdminListings() {
   const [status, setStatus] = useState('all');
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // [POSTER-PROGRESS-1 2026-09-05] Which action produced `error`, so a poster
+  // failure can be shown ON the poster card instead of only in a banner at the
+  // top of a tall page the admin may have scrolled past.
+  const [errorAct, setErrorAct] = useState<string | null>(null);
 
   const [detail, setDetail] = useState<AdminListingDetailResponse | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -89,14 +93,23 @@ export default function AdminListings() {
     if (!token) return;
     setBusy(`${id}:${act}`);
     setError(null);
+    setErrorAct(null);
     try {
       await request(`/api/admin/listings/${encodeURIComponent(id)}`, { auth: token, method: 'POST', body: { action: act, ...payload } });
-      // Re-fetch detail (truth for this listing) and patch the queue row —
-      // spec item 7: keep status badges truthful after every action.
-      await loadDetail(token, id);
     } catch (e) {
       setError(e instanceof ApiError ? e.error : 'Action failed.');
+      setErrorAct(act);
     } finally {
+      // [POSTER-PROGRESS-1] Re-fetch on BOTH paths, not just success. Poster
+      // generation runs synchronously inside this request and takes ~40-60s, so
+      // the request can time out or be abandoned while the server goes on to
+      // finish and commit. Re-fetching only on success left the admin staring
+      // at the pre-action card — on 2026-09-05 a regenerate that had actually
+      // succeeded still read "FAILED / Poster generation was interrupted",
+      // which is worse than no feedback: it says the opposite of the truth.
+      try {
+        await loadDetail(token, id);
+      } catch { /* the banner above already carries the real failure */ }
       setBusy(null);
     }
   }
@@ -165,6 +178,17 @@ export default function AdminListings() {
                   poster={detail.poster}
                   listingTitle={detail.listing.title as string | undefined}
                   busy={isBusy}
+                  // [POSTER-PROGRESS-1] The poster job is the one action that
+                  // takes a minute, so the panel needs to know it is THIS
+                  // action running — a shared `busy` cannot tell an approve
+                  // click from a generation.
+                  running={
+                    busy === `${detail.listing.id}:generate_poster`
+                    || busy === `${detail.listing.id}:regenerate_poster`
+                  }
+                  actionError={
+                    errorAct === 'generate_poster' || errorAct === 'regenerate_poster' ? error : null
+                  }
                   onGenerate={() => void action(detail.listing.id, 'generate_poster')}
                   onRegenerate={() => void action(detail.listing.id, 'regenerate_poster')}
                   onApprove={() => void action(detail.listing.id, 'approve_poster')}

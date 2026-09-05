@@ -11,10 +11,33 @@ import { Spinner } from '../../components/Spinner';
 const POLL_MS = 4000;
 const POLL_MAX_ATTEMPTS = 30; // ~2 minutes
 
+// [POSTER-PROGRESS-1 2026-09-05] What the admin sees while the job runs. These
+// are HONEST stage labels in the order the pipeline actually executes
+// (worker/src/lib/listing_poster.ts): paint the portrait, read the lettering
+// back, then reframe to tablet and wide. They are timed, not reported — the
+// synchronous admin route returns nothing until it is finished — so they are
+// deliberately worded as "what it is doing now", never as a percentage or a
+// completed tick, which would be a fabricated claim about a job we cannot see
+// into. A real observed run took 41s end to end.
+const STAGES: { at: number; label: string }[] = [
+  { at: 0, label: 'Painting the poster…' },
+  { at: 12, label: 'Reading the lettering back…' },
+  { at: 25, label: 'Reframing for tablet and wide…' },
+  { at: 55, label: 'Still working — this one is taking longer than usual…' },
+];
+
+function stageFor(seconds: number): string {
+  let label = STAGES[0].label;
+  for (const s of STAGES) if (seconds >= s.at) label = s.label;
+  return label;
+}
+
 export default function PosterPanel({
   poster,
   listingTitle,
   busy,
+  running = false,
+  actionError = null,
   onGenerate,
   onRegenerate,
   onApprove,
@@ -24,6 +47,14 @@ export default function PosterPanel({
   poster: PosterInfo;
   listingTitle?: string | null;
   busy: boolean;
+  /** A poster generation is in flight from THIS panel right now. Distinct from
+   *  `status === 'generating'`: the admin regenerate route runs synchronously,
+   *  so it never writes a `generating` row — it goes straight from the old
+   *  state to the new one, ~40-60s later, with nothing in between. Without
+   *  this the card sat on "FAILED" for the whole minute. */
+  running?: boolean;
+  /** The last poster action's failure, shown on the card. */
+  actionError?: string | null;
   onGenerate: () => void;
   onRegenerate: () => void;
   onApprove: () => void;
@@ -33,6 +64,10 @@ export default function PosterPanel({
   const status = poster?.status;
   const attemptsRef = useRef(0);
   const [pollTimedOut, setPollTimedOut] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  // Either kind of in-flight: our own synchronous request, or a detached
+  // auto-generation that left the row on `generating`.
+  const inFlight = running || status === 'generating';
 
   useEffect(() => {
     attemptsRef.current = 0;
@@ -51,22 +86,89 @@ export default function PosterPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
+  // A ticking second count is the point: a spinner alone cannot distinguish
+  // "working" from "frozen", which is exactly the doubt this panel is fixing.
+  useEffect(() => {
+    if (!inFlight) { setElapsed(0); return; }
+    setElapsed(0);
+    const id = window.setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [inFlight]);
+
   return (
     <div className="rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-display text-[18px] font-semibold text-ink">Poster</h3>
-        {status && (
+        {inFlight ? (
+          // While a job is running the badge must NOT keep showing the previous
+          // terminal state. The stale "FAILED" chip sitting above a spinner is
+          // the exact thing that made a successful regenerate look dead.
+          <Badge tone="bg-lilac text-ink">generating</Badge>
+        ) : status ? (
           <Badge tone={
             status === 'approved' ? 'bg-mint text-mintInk'
               : status === 'rejected' || status === 'failed' ? 'bg-coral text-paper'
-              : status === 'generating' ? 'bg-lilac text-ink'
               : 'bg-paper2 text-inkSoft'
           }>{status}</Badge>
-        )}
+        ) : null}
       </div>
 
       <div className="mt-4">
-        {!poster || !status ? (
+        {inFlight ? (
+          <div className="flex flex-col items-start gap-3">
+            <div className="poster-working flex aspect-[3/4] w-full max-w-xs flex-col items-center justify-center gap-3 rounded-zineField border-zine border-ink">
+              <Spinner size={28} />
+              <span className="px-4 text-center font-body text-[14px] font-bold text-inkSoft">
+                {stageFor(elapsed)}
+              </span>
+              <span className="font-mono text-[12px] font-bold tracking-[0.08em] text-inkMute">
+                {elapsed}s
+              </span>
+            </div>
+            <p className="max-w-xs font-body text-[13px] font-bold text-inkSoft">
+              Usually about 40 seconds. Leave this page open — the panel refreshes itself
+              when the job lands, whether it worked or not.
+            </p>
+            {pollTimedOut && (
+              <p className="font-body text-[13px] font-bold text-coral">Still generating after ~2 minutes — hit Refresh to keep checking, or investigate the poster job.</p>
+            )}
+            <style>{`
+              /* A slow sweep across the empty frame, so the panel is visibly
+                 alive even at the moments the spinner is between frames.
+                 prefers-reduced-motion turns it into a flat field: the
+                 second counter above still carries the "it is working"
+                 signal, so nothing is lost by removing the movement. */
+              .poster-working {
+                background: linear-gradient(100deg,
+                  var(--zine-paper2, #EFDCC2) 30%,
+                  var(--zine-paper, #F6E4CD) 50%,
+                  var(--zine-paper2, #EFDCC2) 70%);
+                background-size: 300% 100%;
+                animation: posterSweep 2.4s ease-in-out infinite;
+              }
+              @keyframes posterSweep {
+                0% { background-position: 150% 0; }
+                100% { background-position: -50% 0; }
+              }
+              @media (prefers-reduced-motion: reduce) {
+                .poster-working { animation: none; background: var(--zine-paper2, #EFDCC2); }
+              }
+            `}</style>
+          </div>
+        ) : actionError ? (
+          <div className="flex flex-col items-start gap-3">
+            <div className="flex aspect-[3/4] w-full max-w-xs items-center justify-center rounded-zineField border-zine border-ink bg-paper2 px-4 text-center font-body text-[14px] font-bold text-coral">
+              {actionError}
+            </div>
+            <p className="max-w-xs font-body text-[13px] font-bold text-inkSoft">
+              The request failed. The state below is what the server actually holds — it was
+              re-read after the failure, so if the job finished anyway you are seeing that.
+            </p>
+            <button type="button" disabled={busy} onClick={onRegenerate} className="rounded-full border-zine border-ink bg-paper px-4 py-2 font-mono text-[13px] font-bold uppercase tracking-[0.06em] text-ink shadow-zine-xs disabled:opacity-50">
+              Try again
+            </button>
+          </div>
+        ) : !poster || !status ? (
           <div className="flex flex-col items-start gap-3">
             <div className="flex aspect-[3/4] w-full max-w-xs items-center justify-center rounded-zineField border-zine border-ink bg-paper2 font-body text-[14px] font-bold text-inkMute">
               No poster yet
@@ -74,16 +176,6 @@ export default function PosterPanel({
             <button type="button" disabled={busy} onClick={onGenerate} className="rounded-full border-zine border-ink bg-blue px-4 py-2 font-mono text-[13px] font-bold uppercase tracking-[0.06em] text-paper shadow-zine-xs disabled:opacity-50">
               Generate poster
             </button>
-          </div>
-        ) : status === 'generating' ? (
-          <div className="flex flex-col items-start gap-3">
-            <div className="flex aspect-[3/4] w-full max-w-xs flex-col items-center justify-center gap-3 rounded-zineField border-zine border-ink bg-paper2">
-              <Spinner size={28} />
-              <span className="font-body text-[14px] font-bold text-inkSoft">Generating…</span>
-            </div>
-            {pollTimedOut && (
-              <p className="font-body text-[13px] font-bold text-coral">Still generating after ~2 minutes — hit Refresh to keep checking, or investigate the poster job.</p>
-            )}
           </div>
         ) : (
           <div className="flex flex-col items-start gap-3">
