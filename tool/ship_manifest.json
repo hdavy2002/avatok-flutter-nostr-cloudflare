@@ -4685,5 +4685,48 @@
       }
     ],
     "_verified_at": "Read out of the emit site: capture('listing_review_run', {verdict, model, issues}) in runReview, web/src/islands/dashboard/listing-form/ListingWizard.tsx, on both the success and catch paths. Server verdict logic in worker/src/routes/listing_review.ts - verdict is 'fail' iff a deterministic blocker exists, and `model` is set to 'ok' only after the response parses AND passes the output guard."
+  },
+  "ADMIN-PURGE-1": {
+    "description": "[ADMIN-PURGE-1] The review queue filled with dead test listings and cancelling only changes a status, so they never left. Owner asked for a delete that 'permanently deletes it all'. It is not a one-line DELETE: listings.id is referenced by ~30 tables and NOT ONE declares a foreign key (checked across every file in worker/migrations), so SQLite cascades nothing and raises nothing - the existing creator-facing ?permanent=true path deletes the row and cleans exactly ONE table (mkt_negotiations), orphaning paid bookings, orders, receipts, entitlements, reviews and affiliate commissions. New DELETE /api/admin/listings/:id splits them: MONEY_TABLES (bookings, orders, direct_purchases, gateway_orders, commercial_entitlements/receipts/refund_receipts, listing_entitlements, affiliate_commissions, olx_purchases) REFUSE the purge with counts, because those are financial records and no amount of queue tidiness justifies destroying evidence of a transaction; CASCADE (21 derived/promotional/conversational tables) is cleared. A table that cannot be COUNTed also refuses - assuming zero is how a purge silently orphans paid rows. Every statement is individually try/caught and REPORTED as `skipped` rather than swallowed. The admin_audit row is written to DB_WALLET (a different database) with a snapshot BEFORE anything is deleted, because listing_approval_history is itself one of the deleted tables and the purge would otherwise erase its own evidence. Poster R2 objects are deleted by listing prefix; cover photos are NOT, because they are content-addressed and may be shared with another listing. Confirmation is typing the exact title, not an 'are you sure' - the queue shows near-identical rows and an id in a URL is not something a human proof-reads.",
+    "shipped": "2026-09-05",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "listing_purged",
+        "property": "tables_skipped",
+        "equals": 0,
+        "min_events": 1,
+        "min_pass_rate": 1.0,
+        "note": "THE assertion, and it is deliberately a value that should ALWAYS be zero rather than a count of deletions. tables_skipped > 0 means the listing row is gone but rows in some other table still point at it - the exact orphaning this route was written to avoid, and invisible in every other signal because the delete still returns ok:true. A single non-zero is a bug: it means a table was renamed, or its foreign column is not listing_id, and the CASCADE list needs correcting. Pass rate is 1.0 on purpose."
+      }
+    ],
+    "_verified_at": "Read out of the emit site: track('listing_purged', ...) in adminPurgeListing, worker/src/routes/admin_listing_purge.ts, fired only after the listings row DELETE reports changes. The MONEY/CASCADE table lists were built from a migration-wide search for tables carrying listing_id; every one of them is in DB_META (verified: bookings/orders via money_engine.ts metaDb, commercial_receipts via commercial_settlement.ts metaDb, affiliate_* via routes/affiliate.ts metaDb)."
+  },
+  "ADMIN-PLAIN-1": {
+    "description": "[ADMIN-PLAIN-1 / SESSION-MEDIA-1 / POSTER-VARIANTS-UI-1 / ADMIN-EDIT-2] Four owner complaints from one screen. (1) PLAIN ENGLISH: the queue showed a non-technical reviewer raw database values - pending_review, always_on, live_event, regenerate_poster, a 40-char clerk uid, and after an admin edit the raw JSON diff rendered as a paragraph. New web/src/islands/admin/labels.ts maps statuses, kinds, sections, schedule modes, media modes, actions, poster statuses and field names to sentences, with a humanise() fallback so a code nobody mapped reads as 'Always on' rather than always_on or blank. The detail endpoint now resolves history actor_ids to display names in one IN query. The admin_edit diff renders as 'Start time: empty -> 6 Sept 2026, 02:42'. A status that did not change is hidden, because 'approved -> approved' on every poster action was crowding out what actually happened. (2) MEDIA MODE: media_mode was collected by the wizard and stored, and displayed NOWHERE - not the admin panel, not the public page, not the app. Now on all three plus the admin editor. It is a promise, not a preference: audio_video means the creator may not turn video off mid-session. (3) POSTER VARIANTS: the tablet and wide crops were being generated, shipped to the client inside attrs.poster, and dropped because PosterInfo had no slot for them - while the public listing page uses them as its iPad and desktop heroes. A reviewer was approving two images sight unseen. Now rendered beside the portrait, with a missing variant stated rather than hidden. (4) CURRENCY: currency_display showed 'USD' on a listing priced in rupees. The web wizard never sets the column so every web-created listing carries the schema default; it is hidden for token-priced kinds and kept for the genuinely multi-currency marketplace ones. ADMIN-EDIT-2 also fixes a bug shipped an hour earlier: an admin edit changed REVIEW_MATERIAL_FIELDS and did not re-bind reviewed_content_hash, so the first admin edit made the listing unpublishable with review_stale. The edit now re-binds (owner decision: log it, keep approval), and a new reapprove_content action gives an admin a way back for a listing that went stale any other way - approved->approved is not a legal transition, so the only previous route was rejecting the listing and making the creator resubmit.",
+    "shipped": "2026-09-05",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "listing_admin_edit",
+        "property": "rebound",
+        "equals": true,
+        "min_events": 1,
+        "min_pass_rate": 0.9,
+        "note": "THE assertion for ADMIN-EDIT-2, and the reason it is a property and not the event: the event already fired before this fix, on edits that were quietly unpublishing the listing. rebound=true means the approval was carried across, so Publish will still work. rebound=false is correct and expected for a draft or pending_review listing (there is no binding to carry, and minting one would fabricate an approval nobody gave) - which is why the rate is 0.9 rather than 1.0. A collapse means admin edits are unpublishing listings again."
+      },
+      {
+        "event": "listing_review_binding_recorded",
+        "property": "hash_prefix",
+        "exists": true,
+        "min_events": 0,
+        "note": "Fires for both approve_listing and the new reapprove_content. Not a pass/fail gate - it is the audit trail that says a human re-bound an approval and which content they bound it to, which is what makes 'log it, keep approval' defensible rather than a hole."
+      }
+    ],
+    "_verified_at": "Read out of the emit sites: listing_admin_edit (with the new `rebound`) and listing_review_binding_recorded, both in worker/src/routes/admin_listings.ts. The label mapping and every render site were changed together in web/src/islands/admin/*; media_mode display verified present in SubmissionPanel, EditPanel, QuickInfo.tsx, ListingDetailsComp.astro and app/lib/features/explore/listing_detail.dart."
   }
 }
