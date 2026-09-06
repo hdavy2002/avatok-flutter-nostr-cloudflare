@@ -196,7 +196,25 @@ const scheduleLabel = isLive
 
 const lede = listing.description ?? listing.blurb ?? listing.one_liner ?? '';
 
-const bookedCount = listing.joined_count ?? 0;
+// [SEATS-COUNT-1 2026-09-05] Count the SEATS, not `joined_count`.
+//
+// There are two counters for one fact and this page read the stale one. A buyer
+// booked a seat, an order and a `commercial_entitlements` row were both written
+// — and the page still said "0 BOOKED", because `joined_count` is a column
+// bumped only by the LEGACY `bookListing` path (routes/listings.ts). The
+// commercial checkout that actually sells live-event tickets never touches it.
+//
+// `seats_taken` is the honest number: cardStatsFor() counts
+// `commercial_entitlements` in states reserved/held/active/consumed, and the
+// detail route already computes and ships it. The comment above cardStatsFor
+// warned about exactly this — "a counter that drifts from the entitlements it
+// counts is worse than no counter, because people book against it."
+//
+// `joined_count` stays as the fallback rather than being deleted: listings sold
+// through the old booking path have a real number there and a null
+// `seats_taken` (the commercial migrations may not be applied), so preferring
+// one and falling back to the other is the only way both eras read correctly.
+const bookedCount = listing.seats_taken ?? listing.joined_count ?? 0;
 const showsHosted = listing.creator_trust_stats?.shows_hosted ?? 0;
 const comebackPct = listing.creator_trust_stats?.comeback_pct != null ? `${Math.round(listing.creator_trust_stats.comeback_pct)}%` : '—';
 
@@ -307,7 +325,9 @@ const clientConfig = {
           // capacity null = the creator set no cap: unlimited, never HOUSEFULL.
           capacity: listing.capacity ?? 0,
           unlimited: listing.capacity == null,
-          taken: listing.capacity == null ? (listing.joined_count ?? 0) : Math.max(0, listing.capacity - (listing.seats_left ?? listing.capacity)),
+          // [SEATS-COUNT-1] Same source as bookedCount above — the countdown
+          // strip said "0 SEATS ALREADY BOOKED" under a card that had one.
+          taken: listing.capacity == null ? bookedCount : Math.max(0, listing.capacity - (listing.seats_left ?? listing.capacity)),
           status: soldOut ? 'full' : 'open',
         }]
       : [],
