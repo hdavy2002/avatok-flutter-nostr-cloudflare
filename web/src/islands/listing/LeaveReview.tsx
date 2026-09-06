@@ -157,12 +157,16 @@ export default function LeaveReview({ listingId, hostName }: LeaveReviewProps) {
 
   // ---- 3. Not allowed to write one. ---------------------------------------
   if (!elig.can_review) {
-    if (elig.reason === 'own_listing') return null; // the host; nothing to offer
     return (
       <div style={card} data-review-state={elig.reason ?? 'blocked'}>
         <p style={eyebrow}>Reviews</p>
         <p style={note}>
-          {elig.reason === 'signed_out'
+          {elig.reason === 'own_listing'
+            // The host, looking at their own show. Rendering NOTHING here reads
+            // as a broken page — especially to whoever is testing, who is
+            // usually signed in as the host. Say it plainly instead.
+            ? 'This is your show — reviews here come from the people who booked it.'
+            : elig.reason === 'signed_out'
             ? 'Reviews come from people who booked this show. Sign in with the account you booked with to leave one.'
             : 'Only people who booked and paid for this show can review it.'}
         </p>
