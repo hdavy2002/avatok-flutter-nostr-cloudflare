@@ -150,7 +150,7 @@ export default function LeaveReview({ listingId, hostName }: LeaveReviewProps) {
           Your review was not published{mine.moderation_reason ? `: ${mine.moderation_reason}` : '.'}
         </p>
         <button type="button" style={btn} onClick={() => setOpen(true)}>Write it again</button>
-        {open && <ReviewForm />}
+        {open && renderForm()}
       </div>
     );
   }
@@ -192,14 +192,27 @@ export default function LeaveReview({ listingId, hostName }: LeaveReviewProps) {
           </button>
         </>
       ) : (
-        <ReviewForm />
+        renderForm()
       )}
     </div>
   );
 
-  // Declared as an inner component so it can close over the form state without
-  // threading a dozen props; it is rendered from two places above.
-  function ReviewForm() {
+  // ⚠️ A FUNCTION THAT RETURNS JSX, CALLED AS `{renderForm()}` — deliberately NOT
+  // a component rendered as `<ReviewForm />`.
+  //
+  // It was the latter, and typing in the textarea threw the page to the bottom
+  // after every character. Declaring a component inside another component makes
+  // a NEW function identity on every render, and React compares element types by
+  // identity: same-looking tree, different type, so it unmounts the old subtree
+  // and mounts a fresh one. Each keystroke therefore destroyed and rebuilt the
+  // textarea — losing focus, and with it the caret and the scroll position.
+  //
+  // Calling it instead inlines the JSX into THIS component's tree, so the
+  // textarea is the same DOM node from the first keystroke to the last. Do not
+  // "tidy" this back into a nested component, and do not reach for autoFocus or
+  // a scroll-restore hack to paper over it — those treat the symptom of a
+  // remount that should not be happening at all.
+  function renderForm() {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <p style={eyebrow}>Your rating</p>
