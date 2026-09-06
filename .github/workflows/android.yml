@@ -218,7 +218,23 @@ jobs:
         working-directory: app
         run: |
           cat >> android/gradle.properties <<'EOF'
-          org.gradle.jvmargs=-Xmx5g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC -XX:+HeapDumpOnOutOfMemoryError
+          # [CI-R8-HEAP-1 2026-09-06] Was -Xmx5g / MaxMetaspaceSize=1g, which
+          # built fine until run #632 died after 38 minutes with
+          # "R8: java.lang.OutOfMemoryError: GC overhead limit exceeded" in
+          # :app:minifyReleaseWithR8. Nothing was wrong with the code — roughly
+          # 90 commits of marketplace, GetStream and listing work landed since
+          # the last green build (#630, 2026-09-03) and R8 simply has more to
+          # chew on. "GC overhead limit exceeded" is ParallelGC's way of saying
+          # the heap is too small, not that something leaked.
+          #
+          # ubuntu-latest is 4 vCPU / 16 GB, and this job runs with the daemon
+          # off, no parallelism and 2 workers, so the old 5g left most of the
+          # runner idle. 8g heap + 2g metaspace + the 2g Kotlin daemon is ~12g,
+          # leaving ~4g for the OS and the Flutter tooling. Raise further only
+          # with that arithmetic in mind: overcommitting gets the JVM killed by
+          # the OOM killer, which reads as a mysterious exit code rather than
+          # this clear error.
+          org.gradle.jvmargs=-Xmx8g -XX:MaxMetaspaceSize=2g -XX:+UseParallelGC -XX:+HeapDumpOnOutOfMemoryError
           org.gradle.daemon=false
           org.gradle.parallel=false
           org.gradle.workers.max=2
