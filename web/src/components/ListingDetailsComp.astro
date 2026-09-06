@@ -427,9 +427,20 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
               {(posterCopy?.tagline ?? listing.blurb) && (
                 <p class="player-card__lettering-tag">{posterCopy?.tagline ?? listing.blurb}</p>
               )}
+              {/* [POSTER-MARK-1 2026-09-06] On the overlay path the artwork was
+                  generated with NO text at all, so the painted avatok.ai mark
+                  does not exist — this draws it. On the normal path this whole
+                  block is not rendered and the mark is inside the image. */}
+              <span class="player-card__mark">avatok.ai</span>
             </div>
           )}
-          <div class="player-card__stripe"></div>
+          {/* [POSTER-CLEAN-1 2026-09-06] The diagonal-stripe scrim is GONE.
+              It was a texture from the design comp, laid over the whole hero —
+              fine over the flat placeholder blocks it was drawn for, but this
+              slot now holds a real generated poster, and the stripes read as a
+              rendering fault across someone's face. The other .thumb-tile /
+              .browse-card / .host-card stripes stay: those sit on solid colour
+              fills, not on artwork. */}
           <div class="player-card__badges">
             <span class="player-badge player-badge--live">
               <span class="player-badge__dot" class:list={[isLive && 'player-badge__dot--pulse']}></span>
@@ -1358,7 +1369,17 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
     font-size: clamp(.875rem, 1.5vw, 1.125rem); letter-spacing: .05em;
     color: #fdf1d3; text-shadow: 2px 2px 0 #161614;
   }
-  .player-card__stripe { position: absolute; inset: 0; background-image: repeating-linear-gradient(135deg, rgba(253, 241, 211, .13) 0 9px, transparent 9px 20px); }
+  /* [POSTER-MARK-1 2026-09-06] The avatok.ai mark, drawn only on the textless
+     artwork path. Small and quiet on purpose — it is a maker's mark, not a
+     badge, and the painted version inside a normal poster is the same idea. */
+  .player-card__mark {
+    display: block; margin-top: 14px; font-family: Nunito, system-ui, sans-serif;
+    font-weight: 900; font-size: .8rem; letter-spacing: .1em;
+    color: rgba(253, 241, 211, .82); text-shadow: 2px 2px 0 rgba(22, 22, 20, .75);
+  }
+  /* [POSTER-CLEAN-1 2026-09-06] .player-card__stripe is no longer rendered —
+     see the note at its old markup site. Rule removed with it so nobody
+     re-adds the div and finds it "already styled, so it must be wanted". */
   .player-card__badges { position: absolute; top: 14px; left: 14px; right: 14px; display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
   .player-badge { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.75rem; letter-spacing: .08em; border-radius: 100px; padding: 7px 13px; display: flex; align-items: center; gap: 7px; }
   .player-badge--live { background: #d93825; border: 1.5px solid #161614; color: #fdf1d3; }

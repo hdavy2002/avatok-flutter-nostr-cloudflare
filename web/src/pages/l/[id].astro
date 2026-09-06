@@ -11,7 +11,7 @@ export const prerender = false;
 import Base from '../../layouts/Base.astro';
 import ListingDetailsComp from '../../components/ListingDetailsComp.astro';
 import { getListing, getListingReviews, getListingSlots, getExplore, getCreator, ApiError } from '../../lib/apiClient';
-import { listingOg } from '../../lib/og';
+import { listingOg, listingJsonLd, listingBreadcrumbLd } from '../../lib/og';
 import { listingPath } from '../../lib/urls';
 import type { Listing, ReviewList, ListingSlot, Card, Creator } from '../../lib/types';
 
@@ -44,6 +44,14 @@ if (canonicalPath !== `/l/${encodeURIComponent(listing.id)}`) {
 
 Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
 const og = listingOg(listing);
+// [LISTING-SEO-1 2026-09-06] Event + breadcrumb structured data, so Google can
+// build a rich result and answer engines can state what this page IS rather
+// than guessing from the prose. Built from the SAME listing object the page
+// renders, so the markup and the visible page can never disagree — a mismatch
+// is what gets rich results suppressed.
+const pageUrl = new URL(Astro.url.pathname, Astro.site ?? 'https://avatok.ai').toString();
+const eventLd = listingJsonLd(listing, pageUrl);
+const crumbLd = listingBreadcrumbLd(listing, pageUrl);
 
 // [LISTING-DETAILS-COMP-1] Same fail-soft companion fetches ListingDetailView
 // already used — a 404/503/network error on any of these hides its section
@@ -71,6 +79,8 @@ const isOwner = Boolean(listing.viewer?.is_owner);
 <Base title={og.title} description={og.description} image={og.image}>
   <Fragment slot="head">
     {og.extra.map((m) => (m.property ? <meta property={m.property} content={m.content} /> : <meta name={m.name} content={m.content} />))}
+    <script type="application/ld+json" set:html={JSON.stringify(eventLd)} />
+    <script type="application/ld+json" set:html={JSON.stringify(crumbLd)} />
   </Fragment>
 
   {isOwner && (

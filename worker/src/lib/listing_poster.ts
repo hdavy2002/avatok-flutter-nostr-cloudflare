@@ -168,8 +168,23 @@ export type CoverMediaItem = {
 /** Bump when the prompt changes shape, so telemetry can separate style eras.
  *  3 = [POSTER-SUBJECT-1], which added the WHO block (creator likeness + gender).
  *  4 = [POSTER-FILMY-1], which deleted the dictated three-ink screen-print look
- *      and the blurb-as-tagline. */
-export const POSTER_STYLE_VERSION = 4;
+ *      and the blurb-as-tagline.
+ *  5 = [POSTER-MARK-1], which letters avatok.ai into the artwork. */
+export const POSTER_STYLE_VERSION = 5;
+
+/** [POSTER-MARK-1 2026-09-06] The mark painted into every poster.
+ *
+ *  Posters are the thing that travels — they are the share card, and they get
+ *  screenshotted and re-posted with no link attached. A mark inside the artwork
+ *  is the only part of the page that survives that trip.
+ *
+ *  It is a CONSTANT rather than a literal in the prompt because three places
+ *  have to agree on the exact string: the prompt that asks for it, the verifier
+ *  that must not report it as invented text (poster_verify.ts), and the
+ *  overlay-lettering fallback that draws it in HTML when the model refuses to
+ *  letter anything. If those three ever disagree, the watermark either goes
+ *  missing or fails every poster for "extra text". */
+export const POSTER_WATERMARK = "avatok.ai";
 
 export type PosterCopy = { title: string; tagline: string };
 
@@ -268,13 +283,23 @@ export function buildPosterPrompt(
       : "Scene: a lively creator at work, large in frame.",
     ...subjectDirection(subject),
     // --- the safety rules, which are NOT style and stay verbatim ---
-    "Render EXACTLY this text and NOTHING ELSE — no cast list, no studio name, no",
-    "credits, no price, no dates, no signature, no artist's mark, no printer's",
-    "marks, no watermark, no invented words, no filler lettering, and no text of",
-    "any kind in the margins:",
+    "Render EXACTLY these pieces of text and NOTHING ELSE — no cast list, no",
+    "studio name, no credits, no price, no dates, no signature, no artist's mark,",
+    "no printer's marks, no invented words, no filler lettering, and no other text",
+    "of any kind in the margins:",
     `  TITLE: "${title}"`,
     tagline ? `  TAGLINE: "${tagline}"` : "  (no tagline — render the title only)",
+    `  MARK: "${POSTER_WATERMARK}"`,
     "The title is the largest thing on the poster.",
+    // [POSTER-MARK-1] WHERE and HOW the mark sits is the model's call, in the
+    // same spirit as the rest of this prompt — it is asked for as a small
+    // painted mark, not placed on a grid, because a dictated corner produces the
+    // same sticker on every poster. Only two things are fixed: it is small, and
+    // it does not sit on a face.
+    `Paint "${POSTER_WATERMARK}" small and quiet somewhere in the artwork, the way a`,
+    "studio's own mark would sit on a hoarding — lettered in a style that belongs",
+    "to THIS poster, legible but never competing with the title, and never across",
+    "a face. Spell it exactly, in lowercase, as one word with the dot.",
     "CRISP AND NEW: no sepia, no foxing, no tears, no fading, no dust, no scratches.",
     "No real celebrity likenesses.",
   ];
@@ -307,6 +332,12 @@ export function buildPosterArtOnlyPrompt(
   const base = cut > 0 ? artwork.slice(0, cut) : artwork;
   return [
     base,
+    // [POSTER-MARK-1] The watermark is NOT asked for here, deliberately. This
+    // prompt is reached only after the model has repeatedly failed to letter
+    // text correctly, so asking it for one more string is asking the failure to
+    // repeat. The client draws the mark over the reserved band instead
+    // (ListingDetailsComp.astro's .player-card__lettering), which is the same
+    // place it already draws the title on this path.
     "ABSOLUTELY NO TEXT ANYWHERE IN THE IMAGE. No title, no tagline, no words,",
     "no letters, no numbers, no credits, no signature, no printer's marks, no",
     "watermark, no lettering of any kind.",

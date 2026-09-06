@@ -25,7 +25,7 @@
 // instead of looking like a clean pass.
 import type { Env } from "../types";
 import { generateContentVia } from "./vertex";
-import type { PosterCopy } from "./listing_poster";
+import { POSTER_WATERMARK, type PosterCopy } from "./listing_poster";
 
 const DEFAULT_VERIFY_MODEL = "gemini-3.7-flash";
 
@@ -95,6 +95,13 @@ function similarity(a: string, b: string): number {
 function isEchoOfCopy(fragment: string, copy: PosterCopy): boolean {
   const f = norm(fragment);
   if (!f) return true;
+  // [POSTER-MARK-1 2026-09-06] The watermark is REQUESTED text, so it is not
+  // invented — without this every poster would fail for "extra_text" and burn
+  // all its retries producing the mark it was told to paint. Matched loosely
+  // because norm() strips the dot ("avatok.ai" -> "avatok ai") and a painter
+  // may set it as one word or two.
+  const mark = norm(POSTER_WATERMARK);
+  if (mark && (f === mark || f.replace(/\s+/g, "") === mark.replace(/\s+/g, ""))) return true;
   const title = norm(copy.title);
   const tagline = norm(copy.tagline);
   if (!f) return true;
