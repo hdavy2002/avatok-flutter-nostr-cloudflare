@@ -3066,7 +3066,10 @@ export async function me(req: Request, env: Env): Promise<Response> {
     // [PROFILE-HARD-GATE-1] profile_vetted_at rides along so /api/me can tell the
     // client whether this account is admitted, with no extra query and no
     // classifier call on the launch path.
-    "SELECT display_name, first_name, last_name, avatar_url, birth_year, bio, gender, avatok_number, avatok_number_display, phone_discoverable, email_discoverable, who_can_add, share_token, profile_vetted_at, profile_vetted_reason FROM users WHERE uid=?1";
+    // [WEB-APP-ONBOARD-1] created_via + app_onboarded_at ride along too, so the
+    // client learns on the same launch query whether this account came from the
+    // website and still owes the app's onboarding.
+    "SELECT display_name, first_name, last_name, avatar_url, birth_year, bio, gender, avatok_number, avatok_number_display, phone_discoverable, email_discoverable, who_can_add, share_token, profile_vetted_at, profile_vetted_reason, created_via, app_onboarded_at FROM users WHERE uid=?1";
   // [ACCT-RELINK-1] Resolve to the canonical account first (handles a login whose
   // Clerk id previously changed and was already aliased).
   let uid = await resolveCanonicalUid(env, clerkRaw);
@@ -3142,6 +3145,23 @@ export async function me(req: Request, env: Env): Promise<Response> {
     profile_gate_enforced: await (async () => {
       try { return (await readConfig(env)).profileCompletionGate === true; } catch { return false; }
     })(),
+    // [WEB-APP-ONBOARD-1 2026-09-06] This account was created by the website —
+    // sign up and pay, nothing more — and has not been through the app's
+    // onboarding. The app must run terms + permissions before its shell opens,
+    // then POST /api/account/app-onboarded.
+    //
+    // Without this the app could not tell a web buyer from a returning user:
+    // /api/account/bootstrap creates a `users` row, so `found` is true, the
+    // restore path installs the device and marks onboarding done, and the terms
+    // and permission steps are silently skipped for everyone who arrives from
+    // the web.
+    //
+    // Computed here rather than on the client so the rule lives in one place,
+    // and it is `=== "web"` rather than "not null" so a future `created_via`
+    // value (an import, a partner signup) cannot accidentally gate people.
+    // Any account that predates the column has `created_via` NULL and is never
+    // gated — that is what makes this safe to deploy to live users.
+    needs_app_onboarding: prof.created_via === "web" && prof.app_onboarded_at == null,
   });
 }
 

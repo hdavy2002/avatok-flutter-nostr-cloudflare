@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/account_restore.dart';
 import '../../core/admin_tools.dart';
 import '../../core/analytics.dart';
 import '../../core/app_registry.dart';
@@ -230,6 +231,14 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     await _kindStore.set(kind);
     await _onb.setEnabledApps(_enabled);
     await _onb.setDone();
+    // [WEB-APP-ONBOARD-1 2026-09-06] Tell the server too. For an account created
+    // on the website this is what lifts `needs_app_onboarding` — without it the
+    // user would be walked through terms and permissions again on every fresh
+    // install. Harmless and idempotent for an app-born account, which has no
+    // gate to lift, so it is unconditional rather than a branch that could be
+    // wrong. Deliberately not awaited: the local flag is already set, so the
+    // user lands immediately and a slow network never holds up the app.
+    unawaited(AccountRestore.markOnboarded());
     PrefsSync.push(); // back up the new user's prefs to the cross-device vault
     final id = _id;
     if (id != null) {

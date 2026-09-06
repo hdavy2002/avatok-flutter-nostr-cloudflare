@@ -929,6 +929,14 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
           ContactsStore().pullAndMerge();
           await _landOrGate();
           return;
+        case RestoreOutcome.appOnboarding:
+          // [WEB-APP-ONBOARD-1] A real, paid-up account created on the website.
+          // The device is already installed; what is missing is terms and the
+          // permission grants, which the web cannot ask for. Onboarding ends in
+          // the shell, where the number and profile gates take over.
+          Analytics.capture('app_onboarding_required', const {'created_via': 'web'});
+          _to(_Stage.onboarding);
+          return;
         case RestoreOutcome.newUser:
           _to(_Stage.onboarding);
           return;
@@ -948,6 +956,14 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
       case RestoreOutcome.restored:
         ContactsStore().pullAndMerge(); // bring the user's contacts to this device
         await _landOrGate(); // [LIVE-GATE-4] gate a restored-but-unverified account too
+        return;
+      case RestoreOutcome.appOnboarding:
+        // [WEB-APP-ONBOARD-1] Web-born account, first time on the app. Same as
+        // above — this is the common case, since a web buyer's first app launch
+        // is a fresh install with no local identity.
+        ContactsStore().pullAndMerge();
+        Analytics.capture('app_onboarding_required', const {'created_via': 'web'});
+        _to(_Stage.onboarding);
         return;
       case RestoreOutcome.newUser:
         _to(_Stage.onboarding);

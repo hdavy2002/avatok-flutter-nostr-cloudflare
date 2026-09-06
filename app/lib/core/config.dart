@@ -89,6 +89,12 @@ const String kNotifyUrl = 'https://$kSignalingHost/api/notify';
 /// request 2026-06-27).
 const String kMeUrl = 'https://$kSignalingHost/api/me';
 
+/// [WEB-APP-ONBOARD-1 2026-09-06] POST once when the app's onboarding flow
+/// completes. Lifts `needs_app_onboarding` for an account that was created by
+/// the website (sign up + pay) and had therefore never seen terms or the
+/// permission prompts.
+const String kAppOnboardedUrl = 'https://$kSignalingHost/api/account/app-onboarded';
+
 /// Signaling host (no scheme). Baked at compile time; the staging APK flavor
 /// (--dart-define=AVATOK_ENV=staging, Phase 1 A1) talks to the staging worker.
 const String kSignalingHost =

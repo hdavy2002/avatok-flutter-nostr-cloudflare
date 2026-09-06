@@ -25,6 +25,13 @@ class MeResult {
   final String? handle;
   final String? displayName;
   final String? avatarUrl;
+
+  /// [WEB-APP-ONBOARD-1 2026-09-06] The account exists because someone signed
+  /// up and paid on avatok.ai, and has never been through the app's onboarding.
+  /// Decided by the server (`created_via='web' AND app_onboarded_at IS NULL`),
+  /// not inferred here.
+  final bool needsAppOnboarding;
+
   const MeResult({
     required this.found,
     required this.clerkEnabled,
@@ -32,6 +39,7 @@ class MeResult {
     this.handle,
     this.displayName,
     this.avatarUrl,
+    this.needsAppOnboarding = false,
   });
 }
 
@@ -42,7 +50,13 @@ class MeResult {
 ///                so an existing user can't accidentally fork their account.
 /// (needsRecovery is retired: signing in IS the recovery. Kept in the enum so
 /// old switch statements compile; it is never produced.)
-enum RestoreOutcome { restored, newUser, needsRecovery, unavailable }
+/// - appOnboarding: the account exists but was born on the website. The device
+///                  is set up exactly as for `restored` — identity, encryption
+///                  key, profile, prefs — but onboarding is NOT marked done, so
+///                  the user is routed through terms + permissions first. This
+///                  is a real account, never a fork: `_install()` has already
+///                  run by the time this is returned.
+enum RestoreOutcome { restored, newUser, needsRecovery, unavailable, appOnboarding }
 
 class RestoreState {
   final RestoreOutcome outcome;
@@ -72,6 +86,9 @@ class AccountRestore {
         handle: (j['handle'] ?? '').toString().isEmpty ? null : j['handle'].toString(),
         displayName: (j['display_name'] ?? '').toString().isEmpty ? null : j['display_name'].toString(),
         avatarUrl: (j['avatar_url'] ?? '').toString().isEmpty ? null : j['avatar_url'].toString(),
+        // Absent on an older worker → false → nobody is gated. The gate must
+        // never be something a missing field can switch ON.
+        needsAppOnboarding: j['needs_app_onboarding'] == true,
       );
     } catch (_) {
       return null; // offline → caller shows retry, never onboarding
@@ -91,14 +108,37 @@ class AccountRestore {
           ? const RestoreState(RestoreOutcome.newUser)
           : const RestoreState(RestoreOutcome.unavailable);
     }
-    await _install(handle: me.handle, displayName: me.displayName);
-    return RestoreState(RestoreOutcome.restored, handle: me.handle, displayName: me.displayName);
+    // [WEB-APP-ONBOARD-1] A web-born account: set the device up fully, but stop
+    // short of declaring onboarding done. `markOnboarded()` is what finishes the
+    // job, and only the onboarding flow calls it.
+    await _install(handle: me.handle, displayName: me.displayName,
+        markOnboardingDone: !me.needsAppOnboarding);
+    return RestoreState(
+      me.needsAppOnboarding ? RestoreOutcome.appOnboarding : RestoreOutcome.restored,
+      handle: me.handle,
+      displayName: me.displayName,
+    );
+  }
+
+  /// Tell the server this account has now completed the app's onboarding, which
+  /// is what lifts `needs_app_onboarding` for good.
+  ///
+  /// Best-effort by design. The local `OnboardingStore` flag is already set by
+  /// the time this runs, so a failure here does not trap the user on this
+  /// device — the worst case is that a reinstall shows terms and permissions
+  /// once more, which is a great deal better than a network blip locking
+  /// someone out of an app they have paid for.
+  static Future<void> markOnboarded() async {
+    try {
+      await ApiAuth.postJson(kAppOnboardedUrl, const <String, dynamic>{});
+    } catch (_) {/* the gate re-asks on reinstall; never block the user */}
   }
 
   /// Set the device up for this account: mint the internal signing key if none,
   /// refill the local profile, pull prefs (enabled apps, filters, settings…)
   /// from the server vault, and mark onboarding done → straight to dashboard.
-  static Future<void> _install({String? handle, String? displayName}) async {
+  static Future<void> _install({String? handle, String? displayName,
+      bool markOnboardingDone = true}) async {
     final store = IdentityStore();
     if (await store.load() == null) await store.createAndStore();
     // [RESTORE-FIX 2026-07-08] Restore the Account Encryption Key from server
@@ -113,6 +153,6 @@ class AccountRestore {
       handle: handle ?? cur.handle,
     ));
     await PrefsSync.pull();
-    await OnboardingStore().setDone();
+    if (markOnboardingDone) await OnboardingStore().setDone();
   }
 }

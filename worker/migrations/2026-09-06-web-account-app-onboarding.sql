@@ -1,0 +1,37 @@
+-- [WEB-APP-ONBOARD-1 2026-09-06] Where an account was born, and whether it has
+-- been through the app's onboarding yet.
+--
+-- WHY THIS EXISTS
+--
+-- Web signup and app signup produce very different accounts. The web is a fast
+-- lane for one job — sign up and pay — so it collects an email and a phone and
+-- nothing else. The app is the product: messaging a creator, joining a stream,
+-- taking a consultation. The owner's rule (2026-09-06) is that the app admits
+-- only fully onboarded people, so a buyer who arrives from the web must finish
+-- onboarding before the shell will open.
+--
+-- The app could not tell those two apart. `GET /api/me` answers `found:true` for
+-- any row, and `/api/account/bootstrap` creates one — so a web buyer came back
+-- looking exactly like a returning app user, `_install()` marked onboarding done
+-- and the terms and permissions steps were never shown. These two columns are
+-- what makes the difference visible.
+--
+--   created_via       'web' when POST /api/account/bootstrap created the row.
+--                     NULL for every account that already existed and for every
+--                     account the app itself creates — deliberately, so this
+--                     migration cannot retro-gate a live user. Only accounts
+--                     created from today's web signup onwards carry the mark.
+--
+--   app_onboarded_at  epoch ms, stamped once by POST /api/account/app-onboarded
+--                     when the app's onboarding flow completes. NULL means the
+--                     gate is still owed.
+--
+-- The gate is `created_via='web' AND app_onboarded_at IS NULL`, computed in
+-- api.ts `me()` and returned as `needs_app_onboarding`. Deriving it server-side
+-- keeps the rule in one place and stops a client talking itself out of it.
+--
+-- ALTER ... ADD COLUMN only, so scripts/d1_apply_alters.py applies this file.
+-- Both columns are nullable with no default: adding them cannot rewrite or lock
+-- the existing rows.
+ALTER TABLE users ADD COLUMN created_via TEXT;
+ALTER TABLE users ADD COLUMN app_onboarded_at INTEGER;

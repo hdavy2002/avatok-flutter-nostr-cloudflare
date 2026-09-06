@@ -4786,5 +4786,35 @@
       }
     ],
     "_verified_at": "Clerk instance read live, twice, with curl -s https://clerk.avatok.ai/v1/environment | .user_settings.attributes - before: email_address.first_factors [] / password enabled+required / first_name+last_name required; after: email_address.first_factors ['email_code'] / password enabled=false / names required=false. prepare_first_factor for hdavy2026@gmail.com returned first_factor_verification {strategy: email_code, status: unverified}, i.e. Clerk accepted the send. Emit sites: web/src/islands/auth/LoginIsland.tsx (auth_signin_result), web/src/islands/auth/EmailCodeSignIn.tsx (auth_signin_result surface=checkout, auth_code_sent), web/src/islands/auth/passwordless.ts (bootstrapAccount -> web_account_bootstrap_client; PasswordlessError reason no_email_code_factor), app/lib/auth/clerk_client.dart startEmailCode (_sx -> signup_step), app/lib/features/auth/sign_in_screen.dart _succeed (signup_succeeded)."
+  },
+  "WEB-APP-ONBOARD-1": {
+    "description": "[WEB-APP-ONBOARD-1] The website is a fast lane to sign up and pay; the app admits only fully onboarded people. Two new nullable users columns, created_via and app_onboarded_at (worker/migrations/2026-09-06-web-account-app-onboarding.sql), let /api/me return needs_app_onboarding = created_via='web' AND app_onboarded_at IS NULL (api.ts me(), PROF_COLS + response). webAccountBootstrap sets created_via='web' ONLY on the INSERT, never on the ON CONFLICT path, so no account that already exists can be retro-gated. It also NO LONGER calls autoAssignNumber: that set free_number_used=1, spending the buyer's one free AvaTOK number on a number they never saw and leaving hasNumber:true, which stood the app's number gate down forever. With the column NULL, GET /api/number/me returns number:null / can_generate:true and ava_shell.dart:210 fires the non-escapable gate. Client: MeResult.needsAppOnboarding, new RestoreOutcome.appOnboarding, and _install(markOnboardingDone:false) so a web-born account gets identity + AEK + profile + prefs but is NOT marked done — previously _install() called setDone() unconditionally, which is why terms and permissions were silently skipped for every web arrival. Both _route() switches in main.dart route it to _Stage.onboarding; onboarding_flow _finish() posts /api/account/app-onboarded (idempotent, COALESCE keeps the first stamp). Accepted trade-off (owner 2026-09-06): a web buyer is not findable by number in AvaTOK and cannot accept a team invite until they pass the gate. Nothing in web/ reads the buyer's own number and no checkout/order/booking/wallet path touches it.",
+    "shipped": "2026-09-06",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "web_account_bootstrap",
+        "property": "needs_app_onboarding",
+        "equals": true,
+        "min_events": 1,
+        "note": "A web signup now creates an account that OWES the app gate. false on a genuinely new signup means created_via did not stick — check the migration actually applied to prod meta D1, because ALTER ADD COLUMN failing leaves the INSERT silently dropping the column. Existing users buying on the web correctly report created_via:'existing' and false; those are not failures, so read this alongside created_via."
+      },
+      {
+        "event": "web_account_bootstrap",
+        "property": "has_number",
+        "equals": false,
+        "min_events": 1,
+        "note": "The number is no longer minted at signup. true here means autoAssignNumber is being called from somewhere again, which silently burns the user's free number and disarms the app's number gate — the exact bug this change exists to remove."
+      },
+      {
+        "event": "app_onboarding_completed",
+        "property": "first_time",
+        "equals": true,
+        "min_events": 1,
+        "note": "The gate actually lifting for a real person. If app_onboarding_required fires but this never does, users are reaching onboarding and not finishing it, or POST /api/account/app-onboarded is failing — in which case they will be walked through terms again on every reinstall."
+      }
+    ]
   }
 }

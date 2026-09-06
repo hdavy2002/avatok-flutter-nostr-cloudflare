@@ -44,7 +44,7 @@ import { deleteAccount, cancelDeletion, deletionStatus } from "./routes/account"
 import { adminDeleteUser } from "./routes/admin_delete_user"; // [ADMIN-DELETE-USER-1] admin immediate erasure of another user
 import { adminListings, adminListingAction, adminListingDetail, adminEditListing } from "./routes/admin_listings";
 import { listingReview } from "./routes/listing_review";
-import { webAccountBootstrap } from "./routes/web_account";
+import { webAccountBootstrap, webAccountAppOnboarded } from "./routes/web_account";
 import { adminPurgeListing } from "./routes/admin_listing_purge";
 // [AVADIAL-CALL-INTEL-1] Call-intelligence ingest. The ONLY place raw E.164 and the
 // HMAC secret meet — the device never holds the key. See routes/telemetry_calls.ts.
@@ -1262,9 +1262,14 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // --- AvaAdmin dashboard (Phase 6) — read-mostly aggregation + alerts/roles. requireAdmin enforced inside. ---
       if (p === "/api/admin/overview" && req.method === "GET") return await adminOverview(req, env);
       if (p === "/api/admin/listings" && req.method === "GET") return await adminListings(req, env);
-      // [WEB-ACCOUNT-1] The row a web signup never created — plus the phone and
-      // the auto-assigned AvaTOK number. Idempotent; safe to call repeatedly.
+      // [WEB-ACCOUNT-1] The row a web signup never created, plus the phone.
+      // Idempotent; safe to call repeatedly. [WEB-APP-ONBOARD-1] It no longer
+      // assigns an AvaTOK number — the app's gate does, so the free number
+      // survives for the user to actually choose.
       if (p === "/api/account/bootstrap" && req.method === "POST") return await webAccountBootstrap(req, env);
+      // [WEB-APP-ONBOARD-1] The app reporting that a web-born account has now
+      // been through onboarding. This is the only thing that lifts the gate.
+      if (p === "/api/account/app-onboarded" && req.method === "POST") return await webAccountAppOnboarded(req, env);
       { const m = p.match(/^\/api\/admin\/listings\/([A-Za-z0-9-]{1,64})$/); if (m && req.method === "GET") return await adminListingDetail(req, env, m[1]); if (m && req.method === "POST") return await adminListingAction(req, env, m[1]); if (m && req.method === "PUT") return await adminEditListing(req, env, m[1]); if (m && req.method === "DELETE") return await adminPurgeListing(req, env, m[1]); }
       // [REVIEW-MOD-1] Review moderation queue. Reviews land 'pending' and are
       // invisible to the public until approved here — see routes/admin_reviews.ts.
