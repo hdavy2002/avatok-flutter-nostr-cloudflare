@@ -17,9 +17,19 @@
  *    invisible challenge and can reject the attempt. The empty <div> near the
  *    submit button is that mount point — it is not dead markup, do not remove it.
  *
- * NAME: the instance requires first_name AND last_name (both required=true), so
- * per the owner's decision the single NAME box in the handoff is split into two
- * real fields rather than guessing a surname from one string.
+ * NAME: two real fields rather than guessing a surname from one string.
+ * [WEB-PWLESS-1 2026-09-06] They are no longer REQUIRED by Clerk — first/last
+ * name were `required=true` on the instance until then, which meant a sign-up
+ * carrying only an email (checkout does exactly that) came back
+ * `missing_requirements` and never minted a session. This form still asks for
+ * them, because a marketplace needs a name to show; checkout does not, and now
+ * doesn't have to.
+ *
+ * [WEB-PWLESS-1] NO PASSWORD. `password` is disabled instance-wide (owner
+ * decision 2026-09-06) — a password box here would fail at Clerk rather than in
+ * the browser, which reads as a broken site. Verification by emailed code IS the
+ * credential now, so the code step below is the whole of authentication rather
+ * than a confirmation on top of one.
  *
  * ROLE: stored as `unsafeMetadata.role`. "unsafe" is Clerk's name for
  * client-writable metadata, not a security warning about the value — it is the
@@ -29,19 +39,19 @@
  * determined client can set unsafeMetadata to anything.
  */
 import { useRef, useState } from 'react';
-import { useSignUp } from '@clerk/clerk-react';
+import { useSignIn, useSignUp } from '@clerk/clerk-react';
 import { ClerkIsland } from '../../lib/clerk';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/config';
 import { capture, withTrace } from '../../lib/analytics';
-// [WEB-ACCOUNT-1] The bootstrap call needs a token and the API client.
-import { getActiveTokenWaited as getActiveToken } from '../../lib/clerk';
-import { request } from '../../lib/apiClient';
 import {
-  Field, Button, CheckRow, Divider, SocialPair, SOCIAL_ENABLED, RolePicker, CodeStep,
-  validateEmail, validatePassword, validateRequired, clerkError,
+  Field, Button, CheckRow, Divider, GoogleButton, RolePicker, CodeStep,
+  validateEmail, validateRequired, clerkError,
   useClerkStalled, STALLED_MESSAGE,
   type FieldErrors, type Role,
 } from './AuthKit';
+// [WEB-ACCOUNT-1] The bootstrap call — now the shared one, so the users row is
+// materialised identically here, at checkout, and after a Google sign-up.
+import { bootstrapAccount, continueWithGoogle, pwlError, type PwlSignIn } from './passwordless';
 
 /** Creators go to the studio; friends go browsing. */
 function landingFor(role: Role): string {
@@ -50,13 +60,15 @@ function landingFor(role: Role): string {
 
 function Inner() {
   const { isLoaded, signUp, setActive } = useSignUp();
+  // Google lives on the sign-in resource even when the person has no account —
+  // Clerk creates one from the OAuth identity on the way through.
+  const { signIn } = useSignIn();
 
   const [stage, setStage] = useState<'form' | 'verify'>('form');
   const [role, setRole] = useState<Role>('friend'); // README: Friend preselected
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   // [WEB-ACCOUNT-1 2026-09-05] The phone. Collected here, at the one moment the
   // buyer is already filling in a form, rather than interrupting them later at
   // checkout. Stored server-side by /api/account/bootstrap — see that route's
@@ -93,31 +105,14 @@ function Inner() {
     return undefined;
   }
 
-  /** [WEB-ACCOUNT-1] Create the avaTOK-side account.
-   *
-   *  Until this existed, a web signup produced a Clerk account and NOTHING in
-   *  our own `users` table — no profile, no AvaTOK number, nothing to attach a
-   *  phone to. This is the call that makes a web buyer a real user.
-   *
-   *  Failures are swallowed on purpose. The Clerk session is already live at
-   *  this point, so throwing here would strand somebody who has successfully
-   *  signed up on an error screen. The route is idempotent, so the next page
-   *  that calls it finishes the job. */
-  async function bootstrapAccount() {
+  /** Hand off to Google. Same provider, same callback page, as /sign-in. */
+  async function google() {
+    if (!isLoaded || submitting) return;
+    setFormError(null);
     try {
-      const token = await getActiveToken();
-      if (!token) return;
-      await request('/api/account/bootstrap', {
-        method: 'POST', auth: token,
-        body: {
-          phone: phone.trim(),
-          country: 'IN',
-          display_name: `${firstName.trim()} ${lastName.trim()}`.trim(),
-        },
-      });
-      capture('web_account_bootstrap_client', { outcome: 'ok' });
-    } catch {
-      capture('web_account_bootstrap_client', { outcome: 'error' });
+      await continueWithGoogle(signIn as unknown as PwlSignIn, landingFor(role));
+    } catch (err) {
+      setFormError(pwlError(err, 'Couldn’t open Google sign-in. Please try again.').message);
     }
   }
 
@@ -129,7 +124,6 @@ function Inner() {
       firstName: validateRequired(firstName, 'First name'),
       lastName: validateRequired(lastName, 'Last name'),
       email: validateEmail(email),
-      password: validatePassword(password),
       phone: validatePhone(phone),
       // README: submit is blocked until the terms box is checked.
       terms: agreed ? undefined : 'Please accept the terms to continue.',
@@ -144,7 +138,6 @@ function Inner() {
       await withTrace(async () => {
         await signUp.create({
           emailAddress: email.trim(),
-          password,
           firstName: firstName.trim(),
           lastName: lastName.trim(),
           unsafeMetadata: { role, signedUpVia: 'web' },
@@ -176,7 +169,10 @@ function Inner() {
       if (res.status === 'complete') {
         await setActive({ session: res.createdSessionId });
         // AFTER setActive: bootstrap needs a live session to authenticate with.
-        await bootstrapAccount();
+        await bootstrapAccount({
+          phone: phone.trim(),
+          display_name: `${firstName.trim()} ${lastName.trim()}`.trim(),
+        });
         capture('auth_signup_result', {
           outcome: 'ok', ms: Date.now() - signupStartRef.current,
         });
@@ -259,11 +255,8 @@ function Inner() {
         autoComplete="email" placeholder="you@email.com"
         value={email} onChange={set(setEmail, 'email')} error={errors.email}
       />
-      <Field
-        label="Password · 8+ characters" name="password" type="password"
-        autoComplete="new-password" placeholder="Make it a good one"
-        value={password} onChange={set(setPassword, 'password')} error={errors.password}
-      />
+      {/* [WEB-PWLESS-1] There is no password field, and adding one back would
+          fail at Clerk — see the header. The emailed code IS the credential. */}
       <Field
         label="Phone · with country code" name="phone" type="tel" inputMode="numeric"
         autoComplete="tel" placeholder="+91 98765 43210"
@@ -291,8 +284,8 @@ function Inner() {
         Create my account
       </Button>
 
-      {SOCIAL_ENABLED && <Divider label="Ya phir" />}
-      <SocialPair />
+      <Divider label="Ya phir" />
+      <GoogleButton onClick={() => void google()} disabled={stalled || submitting} />
 
       <div className="auth-foot">
         <p className="auth-footline">

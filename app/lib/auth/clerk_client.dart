@@ -422,92 +422,99 @@ class ClerkClient {
   }
 
   // ── Email + password (RESTORED 2026-06-23) ────────────────────────────────
-  // Email/password sign-in & sign-up with an email-code fallback + password
-  // reset, alongside Google (signInWithGoogle). Facebook/LinkedIn were removed.
-  // Requires "Email address" enabled as an identifier in the Clerk Dashboard
-  // (the same setting Google needs). Flow uses Clerk FAPI: /client/sign_ins and
-  // /client/sign_ups. Each terminal state emits provider='password' telemetry.
+  // ── PASSWORDLESS EMAIL CODE — the only email door ─────────────────────────
+  //
+  // [AVA-PWLESS-1 2026-09-06] Owner decision: one box, one code, one account.
+  // The person types an email; an unknown address is SIGNED UP, a known one is
+  // SIGNED IN, and either way the same 6-digit code finishes it. Passwords are
+  // gone from the product — `password` is DISABLED on the Clerk instance, so a
+  // password field here would fail at Clerk rather than in the app, which reads
+  // as a broken app rather than a missing feature.
+  //
+  // WHAT THIS REPLACED, AND THE BUG UNDERNEATH IT
+  //
+  // `signIn(email, password, {emailCodeRequested})` and `signUp(...)` are gone,
+  // along with `startPasswordReset` / `resetPassword`. They were built around
+  // password-first sign-in with an opt-in code as the escape hatch — and that
+  // escape hatch could not work, because **"Sign-in with email → Email
+  // verification code" was switched OFF on the production Clerk instance**.
+  // `email_address.first_factors` was `[]` in /v1/environment, and an
+  // identifier-only `/client/sign_ins` for a real account came back offering
+  // only `reset_password_email_code`. So `_prepareSignInEmailCode` returned null
+  // and the app said "Sign-in is not available for this account" — which sounds
+  // like the account is broken and is really an instance setting. The same
+  // switch broke web checkout for every existing buyer. It is now ON.
+  //
+  // Requires "Email address" enabled as an identifier in the Clerk Dashboard —
+  // the same setting Google needs.
 
-  /// Sign in with email + password.
+  /// Email a 6-digit code to [email], creating the account if there isn't one.
   ///
-  /// [AVA-AUTH-OTP] Sending an email code is OPT-IN via [emailCodeRequested], passed
-  /// ONLY by the "Sign in with an email code instead" action. It used to be an implicit
-  /// fall-through: any password attempt that neither completed nor produced a tidy
-  /// "wrong password" error asked Clerk to email a 6-digit code, unprompted.
+  /// Returns a `needsCode` step whose `kind` is `'signup'` or `'signin'` —
+  /// [verifyCode] MUST be given that same kind, because the two verify against
+  /// different endpoints and posting one to the other's just fails.
   ///
-  /// Scope, honestly: this is hygiene, NOT a proven fix for the July 2026 OTP flood.
-  /// The old fall-through always DID show a code field afterwards (via _handleStep),
-  /// and email_otp_sent telemetry was near-zero for the affected account — so it very
-  /// likely wasn't the flood's source. What it did do was mail codes to people who
-  /// never asked (e.g. a blank password), which is worth closing regardless.
-  ///
-  /// The one case that MUST still send a code is Client Trust — see below. Gating that
-  /// by mistake would lock out every new-device password sign-in, since this instance
-  /// runs Client Trust with no MFA configured.
-  Future<ClerkStep> signIn(String email, String password,
-      {bool emailCodeRequested = false}) async {
-    _sx('started', provider: emailCodeRequested ? 'email_code' : 'password');
-    if (password.isEmpty && !emailCodeRequested) {
-      // Empty password on the PASSWORD form. Previously this fell straight through
-      // and emailed a code; now it asks, rather than mailing something unrequested.
-      _sx('failed', provider: 'password', reason: 'empty_password_no_fallback');
-      return ClerkStep.error(
-          'Enter your password — or use “Sign in with an email code instead”.');
+  /// We never ask the person whether they already have an account: asking is a
+  /// wasted step and an account-enumeration oracle. Try sign-up; when Clerk says
+  /// the identifier is taken, switch to sign-in.
+  Future<ClerkStep> startEmailCode(String email) async {
+    final addr = email.trim();
+    _sx('started', provider: 'email_code');
+    if (addr.isEmpty) {
+      _sx('failed', provider: 'email_code', reason: 'empty_email');
+      return ClerkStep.error('Enter your email address.');
     }
     await _send('/client', body: {});
-    if (password.isNotEmpty) {
-      final body = await _send('/client/sign_ins',
-          body: {'identifier': email.trim(), 'password': password});
-      final su = body['response'] as Map<String, dynamic>?;
-      if (su?['status'] == 'complete' || _activeUser(body['client']) != null) {
-        _sx('completed', provider: 'password');
+
+    // ── Try sign-up first ────────────────────────────────────────────────────
+    // No first/last name is sent. They were `required` on the instance until
+    // 2026-09-06, which would have made this come back `missing_requirements`
+    // and never mint a session; they are optional now and the name is collected
+    // in onboarding, after the account exists.
+    final up = await _send('/client/sign_ups', body: {'email_address': addr});
+    final upErr = _firstError(up);
+    final taken = _hasErrorCode(up, 'form_identifier_exists') ||
+        _hasErrorCode(up, 'identifier_already_signed_in');
+    if (!taken) {
+      if (upErr != null) {
+        _sx('failed', provider: 'email_code', reason: 'signup_rejected', detail: upErr);
+        return ClerkStep.error(upErr);
+      }
+      final su = up['response'] as Map<String, dynamic>?;
+      if (su?['status'] == 'complete' || _activeUser(up['client']) != null) {
+        _sx('completed', provider: 'email_code', reason: 'signup');
         await _attachIdentity();
         return ClerkStep.complete();
       }
-      // CLIENT TRUST — this instance has it ON with no MFA configured, so a correct
-      // password on an unrecognised device returns status `needs_client_trust` with
-      // email_code in `supported_second_factors`. The password WAS accepted; Clerk
-      // just wants to verify the device, and it does NOT send the code itself — we
-      // must prepare_second_factor. This is exempt from the emailCodeRequested gate:
-      // the user's own password attempt asked for it, and we put a code field on
-      // screen immediately. (The old identifier-only fall-through was accidentally
-      // covering this case by sending a FIRST-factor code instead — which worked,
-      // but sent a second, unnecessary email.)
-      if (su?['status'] == 'needs_client_trust') {
-        final trust = await _prepareClientTrustEmailCode(su);
-        if (trust != null) {
-          _sx('needs_client_trust', provider: 'password');
-          return trust;
-        }
+      final id = su?['id']?.toString();
+      if (id == null) {
+        _sx('failed', provider: 'email_code', reason: 'signup_no_id');
+        return ClerkStep.error('Sign-up could not start. Please try again.');
       }
-      final err = _firstError(body);
-      if (err != null &&
-          err.toLowerCase().contains('password') &&
-          !err.toLowerCase().contains('strategy')) {
-        _sx('failed', provider: 'password', reason: 'wrong_password', detail: err);
-        return ClerkStep.error(err); // genuinely wrong password
-      }
-      if (!emailCodeRequested) {
-        // The account has no usable password factor (typically: it was created via
-        // Google). Tell the user which door to use instead of quietly mailing a code.
-        _sx('failed',
-            provider: 'password', reason: 'no_password_factor_no_fallback', detail: err);
-        return ClerkStep.error(err ??
-            'That didn’t work. Try “Continue with Google”, or use “Sign in with an '
-            'email code instead”.');
-      }
+      await _send('/client/sign_ups/$id/prepare_verification',
+          body: {'strategy': 'email_code'});
+      _sx('needs_email_code', provider: 'email_code', reason: 'signup');
+      return ClerkStep.needsCode('signup', id);
     }
-    // Identifier-only sign-in → discover email_code factor → email a code.
-    // Only reachable when the user explicitly chose the email-code route.
-    final body2 = await _send('/client/sign_ins', body: {'identifier': email.trim()});
+
+    // ── Existing account: sign in with the same code ─────────────────────────
+    final body2 = await _send('/client/sign_ins', body: {'identifier': addr});
     final step = await _prepareSignInEmailCode(body2['response'] as Map<String, dynamic>?);
     if (step != null) {
       _sx('needs_email_code', provider: 'email_code', reason: 'signin');
       return step;
     }
-    final err2 = _firstError(body2) ?? 'Sign-in is not available for this account';
-    _sx('failed', provider: 'email_code', reason: 'signin_unavailable', detail: err2);
-    return ClerkStep.error(err2);
+    // [AVA-PWLESS-1] If this fires, suspect the INSTANCE, not the account. Check
+    //   curl -s https://clerk.avatok.ai/v1/environment \
+    //     | jq '.user_settings.attributes.email_address.first_factors'
+    // An empty array means no sign-in strategy is enabled at all and NOBODY with
+    // an existing account can get in by any route. Saying "not available for
+    // this account" sent everyone hunting for a per-user problem last time.
+    _sx('failed', provider: 'email_code', reason: 'no_email_code_factor',
+        detail: _firstError(body2));
+    return ClerkStep.error(
+        'We can’t send a sign-in code to this account right now. This is a '
+        'setting on our side, not a problem with your email — please contact support.');
   }
 
   /// Client Trust device check: prepare the SECOND-factor email code for a sign-in
@@ -552,49 +559,25 @@ class ClerkClient {
     return ClerkStep.needsCode('signin', id);
   }
 
-  /// Sign up with email + password; returns a code step if verification needed.
-  /// [firstName]/[lastName] are sent when provided — the Clerk instance requires
-  /// them at sign-up (User model → "Require first and last name").
-  Future<ClerkStep> signUp(String email, String password,
-      {String? firstName, String? lastName}) async {
-    _sx('started', provider: 'password');
-    await _send('/client', body: {});
-    final body = await _send('/client/sign_ups', body: {
-      'email_address': email.trim(),
-      'password': password,
-      if (firstName != null && firstName.trim().isNotEmpty) 'first_name': firstName.trim(),
-      if (lastName != null && lastName.trim().isNotEmpty) 'last_name': lastName.trim(),
-    });
-    final err = _firstError(body);
-    if (err != null) {
-      _sx('failed', provider: 'password', reason: 'signup_rejected', detail: err);
-      return ClerkStep.error(err);
-    }
-    final su = body['response'] as Map<String, dynamic>?;
-    if (su?['status'] == 'complete' || _activeUser(body['client']) != null) {
-      _sx('completed', provider: 'password');
-      await _attachIdentity();
-      return ClerkStep.complete();
-    }
-    final id = su?['id']?.toString();
-    if (id == null) {
-      _sx('failed', provider: 'password', reason: 'signup_no_id');
-      return ClerkStep.error('Sign-up could not start');
-    }
-    await _send('/client/sign_ups/$id/prepare_verification', body: {'strategy': 'email_code'});
-    _sx('needs_email_code', provider: 'password', reason: 'signup');
-    return ClerkStep.needsCode('signup', id);
-  }
-
-  /// Verify an emailed code. Null on success.
+  /// Verify an emailed code.
   ///
   /// [kind] selects the endpoint — they are NOT interchangeable, and posting a
   /// Client Trust code to attempt_first_factor just fails:
   ///   'signup'       → sign_ups/{id}/attempt_verification
-  ///   'client_trust' → sign_ins/{id}/attempt_second_factor  (device check after a
-  ///                    valid password; see [_prepareClientTrustEmailCode])
+  ///   'client_trust' → sign_ins/{id}/attempt_second_factor  (device check; see
+  ///                    [_prepareClientTrustEmailCode])
   ///   'signin'       → sign_ins/{id}/attempt_first_factor   (passwordless email code)
-  Future<String?> verifyCode(String kind, String id, String code) async {
+  ///
+  /// [AVA-PWLESS-1 2026-09-06] Returns a ClerkStep rather than an error string,
+  /// because a correct code does not always mean "done": with Device Trust on,
+  /// Clerk answers a valid first factor with `needs_second_factor` and expects a
+  /// SECOND emailed code. Device Trust is currently OFF for this instance
+  /// (Dashboard → Password → "Device Trust is disabled"), so this branch is
+  /// dormant — but the old String? signature had nowhere to put "ask for another
+  /// code", so switching Device Trust on would have turned every sign-in into
+  /// the dead end "Verification incomplete". Returning a step means the caller's
+  /// existing needsCode handling just works.
+  Future<ClerkStep> verifyCode(String kind, String id, String code) async {
     final path = switch (kind) {
       'signup' => '/client/sign_ups/$id/attempt_verification',
       'client_trust' => '/client/sign_ins/$id/attempt_second_factor',
@@ -603,56 +586,32 @@ class ClerkClient {
     final body = await _send(path, body: {'strategy': 'email_code', 'code': code.trim()});
     final err = _firstError(body);
     if (err != null) {
-      _sx('email_code_failed', provider: 'password', reason: kind, detail: err);
-      return err;
+      _sx('email_code_failed', provider: 'email_code', reason: kind, detail: err);
+      return ClerkStep.error(err);
     }
     final r = body['response'] as Map<String, dynamic>?;
     if (r?['status'] == 'complete' || _activeUser(body['client']) != null) {
-      _sx('completed', provider: 'password', reason: 'email_code_$kind');
+      _sx('completed', provider: 'email_code', reason: 'email_code_$kind');
       await _attachIdentity();
-      return null;
+      return ClerkStep.complete();
     }
-    return 'Verification incomplete';
+    if (r?['status'] == 'needs_second_factor' || r?['status'] == 'needs_client_trust') {
+      final trust = await _prepareClientTrustEmailCode(r);
+      if (trust != null) {
+        _sx('needs_client_trust', provider: 'email_code');
+        return trust;
+      }
+    }
+    _sx('email_code_failed', provider: 'email_code', reason: kind,
+        detail: 'status=${r?['status']}');
+    return ClerkStep.error('Verification didn’t complete. Please try again.');
   }
 
-  /// Begin a password reset: emails a reset code to [email]. Returns a
-  /// needsCode('reset', id) step, or an error.
-  Future<ClerkStep> startPasswordReset(String email) async {
-    await _send('/client', body: {});
-    final body = await _send('/client/sign_ins', body: {'identifier': email.trim()});
-    final su = body['response'] as Map<String, dynamic>?;
-    final id = su?['id']?.toString();
-    final factors = (su?['supported_first_factors'] as List?) ?? const [];
-    Map<String, dynamic>? reset;
-    for (final f in factors) {
-      if ((f as Map)['strategy'] == 'reset_password_email_code') { reset = f.cast<String, dynamic>(); break; }
-    }
-    if (id == null || reset == null) {
-      return ClerkStep.error(_firstError(body) ?? 'Password reset is not available for this account');
-    }
-    await _send('/client/sign_ins/$id/prepare_first_factor', body: {
-      'strategy': 'reset_password_email_code',
-      if (reset['email_address_id'] != null) 'email_address_id': reset['email_address_id'].toString(),
-    });
-    return ClerkStep.needsCode('reset', id);
-  }
-
-  /// Complete a password reset with the emailed [code] + a [newPassword].
-  /// Null on success (the user is signed in), else an error message.
-  Future<String?> resetPassword(String id, String code, String newPassword) async {
-    final body = await _send('/client/sign_ins/$id/attempt_first_factor',
-        body: {'strategy': 'reset_password_email_code', 'code': code.trim(), 'password': newPassword});
-    final err = _firstError(body);
-    if (err != null) return err;
-    final r = body['response'] as Map<String, dynamic>?;
-    final status = r?['status'];
-    if (status == 'complete' || status == 'needs_second_factor' || _activeUser(body['client']) != null) {
-      _sx('completed', provider: 'password', reason: 'password_reset');
-      await _attachIdentity();
-      return null;
-    }
-    return 'Could not reset password';
-  }
+  // [AVA-PWLESS-1 2026-09-06] `startPasswordReset` / `resetPassword` are GONE.
+  // There is no password to reset: `password` is disabled on the Clerk instance
+  // and `reset_password_email_code` is no longer offered as a first factor for
+  // any account, so both calls would now fail at Clerk. Somebody who cannot get
+  // in uses the same door as everybody else — [startEmailCode].
 
   /// Attach the signed-in account's email + Clerk uid to telemetry so every
   /// subsequent event carries them. Shared by the Google and password flows.
@@ -710,6 +669,19 @@ class ClerkClient {
     if (errors == null || errors.isEmpty) return null;
     final e = errors.first as Map<String, dynamic>;
     return (e['long_message'] ?? e['message'] ?? 'Authentication failed').toString();
+  }
+
+  /// [AVA-PWLESS-1] Does the response carry this Clerk error CODE, anywhere in
+  /// the list? Codes are the only stable thing Clerk returns — the human message
+  /// is localised and reworded between versions, so matching on text ("already
+  /// exists") is how a flow silently stops branching after an upgrade.
+  bool _hasErrorCode(Map<String, dynamic> body, String code) {
+    final errors = body['errors'] as List?;
+    if (errors == null) return false;
+    for (final e in errors) {
+      if ((e as Map)['code']?.toString() == code) return true;
+    }
+    return false;
   }
 }
 

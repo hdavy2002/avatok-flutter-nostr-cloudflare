@@ -974,7 +974,8 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
     // is left intact (device-owned) so the next account reuses it.
     try { await AccountSwitcher.switchTo(null); } catch (_) {/* clear locally regardless */}
     try { await _clerk.signOut(); } catch (_) {/* clear locally regardless */}
-    AuthSession.lastPassword = null;
+    // [AVA-PWLESS-1] No `AuthSession.lastPassword = null` here any more — there
+    // is no password anywhere in the app to clear.
     _to(_Stage.signIn);
   }
 

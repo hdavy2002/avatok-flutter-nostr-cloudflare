@@ -6,7 +6,6 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../auth/clerk_client.dart';
-import '../../core/account_restore.dart';
 import '../../core/affiliate_bind_service.dart';
 import '../../core/analytics.dart';
 import '../../core/ui/illustrations.dart';
@@ -19,17 +18,38 @@ import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/rajasthani_motifs.dart';
 import '../../core/ui/zine_widgets.dart';
 
-/// Auth sub-modes within the screen.
-enum _Mode { signIn, signUp, verify, reset, resetCode }
+/// Auth sub-modes within the screen. Two, now: ask for the email, then the code.
+enum _Mode { email, verify }
 
-/// Entry mode — kept for call-site compatibility (AccountGate / RootFlow).
+/// Entry mode — kept for call-site compatibility (AccountGate / RootFlow). It no
+/// longer changes the FLOW, only the words: sign-in and sign-up are the same act
+/// here, so this just decides whether the screen greets you as a returning
+/// person or a new one.
 enum SignInMode { signIn, signUp }
 
-/// Email + password auth (sign in / sign up / email-code verify / password
-/// reset) PLUS one-tap "Continue with Google". Facebook & LinkedIn removed
-/// 2026-06-23. Both methods key off email; requires "Email address" enabled as
-/// a Clerk identifier (Dashboard → User & Authentication → Email, Phone,
-/// Username) — the same setting Google needs.
+/// [AVA-PWLESS-1 2026-09-06] PASSWORDLESS. Type an email, get a 6-digit code,
+/// you're in — whether or not you already had an account. Or one-tap
+/// "Continue with Google".
+///
+/// WHAT WENT AWAY: the password field, the separate sign-up form (name +
+/// password), "forgot password?", the reset-code screen, and the
+/// "Sign in with an email code instead" link that was the only way to reach the
+/// flow that is now the whole screen. Five sub-modes became two.
+///
+/// WHY: owner decision 2026-09-06 — passwords are disabled on the Clerk
+/// instance. Keeping a password box would not degrade gracefully; it would fail
+/// at Clerk, which reads as a broken app rather than a removed feature. The
+/// email-code path was ALSO broken until that day, for a reason no client code
+/// could fix: "Sign-in with email → Email verification code" was switched off in
+/// the Clerk dashboard, so `supported_first_factors` never contained
+/// `email_code` and this screen told existing users "Sign-in is not available
+/// for this account". See ClerkClient.startEmailCode.
+///
+/// Name and profile are collected in onboarding, AFTER the account exists —
+/// Clerk no longer requires first/last name at sign-up.
+///
+/// Requires "Email address" enabled as a Clerk identifier (Dashboard → User &
+/// Authentication → Email) — the same setting Google needs.
 class SignInScreen extends StatefulWidget {
   final ClerkClient clerk;
   final VoidCallback onSignedIn;
@@ -52,17 +72,12 @@ class SignInScreen extends StatefulWidget {
 class _SignInScreenState extends State<SignInScreen> {
   static const _appLogoAsset = 'assets/illustrations/app-logo.png';
 
-  final _name = TextEditingController();
   final _email = TextEditingController();
-  final _pass = TextEditingController();
   final _code = TextEditingController();
-  final _newPass = TextEditingController();
-  late _Mode _mode =
-      widget.initialMode == SignInMode.signUp ? _Mode.signUp : _Mode.signIn;
+  _Mode _mode = _Mode.email;
   String? _pendingId;
   String? _pendingKind;
-  String _provider = 'password'; // which method the in-flight attempt used
-  bool _obscure = true;
+  String _provider = 'email_code'; // which method the in-flight attempt used
   bool _busy = false;
   bool _done = false;
   String? _error;
@@ -85,11 +100,8 @@ class _SignInScreenState extends State<SignInScreen> {
 
   @override
   void dispose() {
-    _name.dispose();
     _email.dispose();
-    _pass.dispose();
     _code.dispose();
-    _newPass.dispose();
     super.dispose();
   }
 
@@ -105,32 +117,13 @@ class _SignInScreenState extends State<SignInScreen> {
     _handleStep(await widget.clerk.signInWithGoogle());
   }
 
-  // ── Passwordless: email me a sign-in code ────────────────────────────────────
-  // Owner decision 2026-06-27: email + email-OTP is the primary sign-in/recovery
-  // path (no phone). This is the ONLY caller that passes emailCodeRequested:true —
-  // i.e. the only path in the app that can cause Clerk to email a code
-  // ([AVA-AUTH-OTP]). It is a deliberate user tap, and it lands on _Mode.verify,
-  // so a code is never sent without a code field on screen to receive it.
-  Future<void> _emailCode() async {
-    if (_busy) return;
-    if (_email.text.trim().isEmpty) {
-      setState(() => _error = 'Enter your email');
-      return;
-    }
-    if (!_allowOtpRequest()) return;
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    _provider = 'email_code';
-    unawaited(Analytics.capture('email_otp_requested', {'mode': 'signin'}));
-    unawaited(Analytics.capture(
-        'signup_attempt', {'provider': 'email_code', 'mode': 'signin'}));
-    _handleStep(
-        await widget.clerk.signIn(_email.text, '', emailCodeRequested: true));
-  }
-
-  // ── Email + password ─────────────────────────────────────────────────────────
+  // ── Email → code ─────────────────────────────────────────────────────────────
+  // [AVA-PWLESS-1] Every code this app sends is sent from here, on a deliberate
+  // tap, and lands on _Mode.verify — so a code is never mailed without a code
+  // field already on screen to receive it. That rule predates passwordless
+  // ([AVA-AUTH-OTP], after an OTP flood) and is worth keeping now that this is
+  // the ONLY door: a resend button on a one-field screen is easy to lean on.
+  // _allowOtpRequest() is the 60-second throttle.
   Future<void> _submit() async {
     // onSubmitted (keyboard Enter) bypasses the button's disabled state. This
     // guard prevents duplicate Clerk requests, especially duplicate OTP/reset
@@ -141,7 +134,7 @@ class _SignInScreenState extends State<SignInScreen> {
       _error = null;
     });
     switch (_mode) {
-      case _Mode.signIn:
+      case _Mode.email:
         if (_email.text.trim().isEmpty) {
           setState(() {
             _busy = false;
@@ -149,50 +142,17 @@ class _SignInScreenState extends State<SignInScreen> {
           });
           return;
         }
-        // [AVA-AUTH-OTP] Guard here too, so an empty password never even reaches
-        // Clerk. Tapping "Log in" with a blank password used to silently email a
-        // code; the email-code route is now the explicit link below the field.
-        if (_pass.text.isEmpty) {
-          setState(() {
-            _busy = false;
-            _error =
-                'Enter your password — or use “Sign in with an email code instead”.';
-          });
+        if (!_allowOtpRequest()) {
+          setState(() => _busy = false);
           return;
         }
-        _provider = 'password';
+        _provider = 'email_code';
+        unawaited(Analytics.capture('email_otp_requested', {'mode': 'auto'}));
         unawaited(Analytics.capture(
-            'signup_attempt', {'provider': 'password', 'mode': 'signin'}));
-        AuthSession.lastPassword = _pass.text;
-        _handleStep(await widget.clerk.signIn(_email.text, _pass.text));
-        return;
-      case _Mode.signUp:
-        if (_name.text.trim().isEmpty) {
-          setState(() {
-            _busy = false;
-            _error = 'Enter your name';
-          });
-          return;
-        }
-        if (_email.text.trim().isEmpty || _pass.text.length < 8) {
-          setState(() {
-            _busy = false;
-            _error = 'Enter an email and a password (8+ characters)';
-          });
-          return;
-        }
-        _provider = 'password';
-        unawaited(Analytics.capture(
-            'signup_attempt', {'provider': 'password', 'mode': 'signup'}));
-        AuthSession.lastPassword = _pass.text;
-        // Clerk requires both first AND last name. Split the single name field;
-        // fall back to reusing the one token so last_name is never empty.
-        final parts = _name.text.trim().split(RegExp(r'\s+'));
-        final first = parts.first;
-        final last =
-            parts.length > 1 ? parts.sublist(1).join(' ') : parts.first;
-        _handleStep(await widget.clerk
-            .signUp(_email.text, _pass.text, firstName: first, lastName: last));
+            'signup_attempt', {'provider': 'email_code', 'mode': 'auto'}));
+        // startEmailCode decides sign-up vs sign-in from Clerk's answer — the
+        // person is never asked whether they already have an account.
+        _handleStep(await widget.clerk.startEmailCode(_email.text));
         return;
       case _Mode.verify:
         if (_code.text.trim().isEmpty) {
@@ -202,76 +162,48 @@ class _SignInScreenState extends State<SignInScreen> {
           });
           return;
         }
-        final err = await widget.clerk
-            .verifyCode(_pendingKind!, _pendingId!, _code.text);
-        if (err == null) {
+        final step =
+            await widget.clerk.verifyCode(_pendingKind!, _pendingId!, _code.text);
+        if (!mounted) return;
+        if (step.isComplete) {
           unawaited(Analytics.capture(
               'email_otp_verify_succeeded', {'kind': _pendingKind ?? ''}));
           _succeed();
           return;
         }
-        if (mounted) {
-          setState(() {
-            _busy = false;
-            _error = err;
-          });
-          unawaited(Analytics.capture('email_otp_verify_failed',
-              {'kind': _pendingKind ?? '', 'shown_error': err}));
-          unawaited(Analytics.capture(
-              'signup_failed', {'provider': 'password', 'shown_error': err}));
-        }
-        return;
-      case _Mode.reset:
-        if (_email.text.trim().isEmpty) {
-          setState(() {
-            _busy = false;
-            _error = 'Enter your email to reset your password';
-          });
-          return;
-        }
-        if (!_allowOtpRequest()) {
-          setState(() => _busy = false);
-          return;
-        }
-        unawaited(Analytics.capture('password_reset_requested', const {}));
-        final step = await widget.clerk.startPasswordReset(_email.text);
-        if (!mounted) return;
         if (step.needsCode) {
-          setState(() {
-            _busy = false;
-            _pendingId = step.id;
-            _mode = _Mode.resetCode;
-            _error = null;
-          });
-        } else {
-          setState(() {
-            _busy = false;
-            _error = step.error ?? 'Could not start password reset';
-          });
-        }
-        return;
-      case _Mode.resetCode:
-        if (_code.text.trim().isEmpty || _newPass.text.length < 8) {
-          setState(() {
-            _busy = false;
-            _error = 'Enter the code and a new password (8+ characters)';
-          });
+          // Device Trust wants a second code. _handleStep puts the code field
+          // back with the new kind; clear the old code so it isn't resubmitted.
+          _code.clear();
+          _handleStep(step);
           return;
         }
-        final rErr = await widget.clerk
-            .resetPassword(_pendingId!, _code.text, _newPass.text);
-        if (rErr == null) {
-          AuthSession.lastPassword = _newPass.text;
-          _succeed();
-          return;
-        }
-        if (mounted)
-          setState(() {
-            _busy = false;
-            _error = rErr;
-          });
+        final err = step.error ?? 'Verification failed';
+        setState(() {
+          _busy = false;
+          _error = err;
+        });
+        unawaited(Analytics.capture('email_otp_verify_failed',
+            {'kind': _pendingKind ?? '', 'shown_error': err}));
+        unawaited(Analytics.capture(
+            'signup_failed', {'provider': 'email_code', 'shown_error': err}));
         return;
     }
+  }
+
+  /// Resend the code for the address already on screen. Same throttle, same
+  /// call — a resend is just the first request again, and `startEmailCode` is
+  /// idempotent enough for that (a second sign-up attempt on a now-existing
+  /// address falls through to the sign-in branch by design).
+  Future<void> _resend() async {
+    if (_busy) return;
+    if (!_allowOtpRequest()) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    unawaited(Analytics.capture('email_otp_requested', {'mode': 'resend'}));
+    _handleStep(await widget.clerk.startEmailCode(_email.text));
   }
 
   void _handleStep(ClerkStep r) {
@@ -439,25 +371,23 @@ class _SignInScreenState extends State<SignInScreen> {
       );
     }
 
-    final signUpSub = widget.gateReason != null
-        ? 'Create your account to ${widget.gateReason}'
-        : 'Join AvaTOK — it takes a minute.';
+    // [AVA-PWLESS-1] `initialMode` no longer picks a different FORM — there is
+    // only one — so it picks the greeting. A gate that pushed this screen to
+    // make someone sign up still says "join"; the root flow still says
+    // "welcome back". Both then do exactly the same thing.
+    final joining = widget.initialMode == SignInMode.signUp;
+    final emailSub = widget.gateReason != null
+        ? '${joining ? 'Create your account' : 'Sign in'} to ${widget.gateReason}. '
+            'We’ll email you a 6-digit code — no password.'
+        : 'Enter your email and we’ll send a 6-digit code. '
+            'New here or not, this is the way in — no password.';
     final (titlePre, titleMark, sub, cta, tag) = switch (_mode) {
-      _Mode.signIn => (
-          'Sign in ',
-          'or up',
-          widget.gateReason != null
-              ? 'Sign in to ${widget.gateReason}'
-              : 'Log in to your AvaTOK account — or create one below.',
-          'Log in',
-          'Log in'
-        ),
-      _Mode.signUp => (
-          'Create ',
-          'account',
-          signUpSub,
-          'Create account',
-          'Sign up'
+      _Mode.email => (
+          joining ? 'Join ' : 'Sign in ',
+          joining ? 'AvaTOK' : 'or up',
+          emailSub,
+          'Email me a code',
+          joining ? 'Sign up' : 'Log in'
         ),
       _Mode.verify => (
           'Verify ',
@@ -466,22 +396,8 @@ class _SignInScreenState extends State<SignInScreen> {
           'Verify',
           'Verify'
         ),
-      _Mode.reset => (
-          'Reset ',
-          'password',
-          "We'll email you a reset code.",
-          'Send code',
-          'Reset'
-        ),
-      _Mode.resetCode => (
-          'New ',
-          'password',
-          'Enter the code we emailed + your new password.',
-          'Reset password',
-          'Reset'
-        ),
     };
-    final showGoogle = _mode == _Mode.signIn || _mode == _Mode.signUp;
+    final showGoogle = _mode == _Mode.email;
     final canPop = Navigator.of(context).canPop();
 
     // RESPUI-2/3: the whole body (incl. the CTA/Google/footer, previously
@@ -669,10 +585,13 @@ class _SignInScreenState extends State<SignInScreen> {
         const Expanded(child: Divider(color: AD.borderHairline, thickness: 1)),
       ]);
 
+  // [AVA-PWLESS-1] Two fields exist in this whole screen now: an email, then a
+  // code. No password box, no name box, no reveal-eye toggle. Do not add a
+  // password field back — `password` is disabled on the Clerk instance, so it
+  // would fail server-side and look like a bug rather than a removed feature.
   List<Widget> _fields() {
     return [
-      // CODE (email verify or password-reset)
-      if (_mode == _Mode.verify || _mode == _Mode.resetCode) ...[
+      if (_mode == _Mode.verify) ...[
         ZineField(
           controller: _code,
           label: 'code',
@@ -683,42 +602,13 @@ class _SignInScreenState extends State<SignInScreen> {
           error: _error != null,
           onSubmitted: (_) => _submit(),
         ),
-        const SizedBox(height: Msg.s4),
-      ],
-      // NEW PASSWORD (reset)
-      if (_mode == _Mode.resetCode) ...[
-        ZineField(
-          controller: _newPass,
-          label: 'new password',
-          labelIcon: PhosphorIcons.lockKey(PhosphorIconsStyle.bold),
-          leadIcon: PhosphorIcons.asterisk(PhosphorIconsStyle.bold),
-          hint: '••••••••',
-          obscureText: _obscure,
-          error: _error != null,
-          trailing: _eyeToggle(),
-          onSubmitted: (_) => _submit(),
+        const SizedBox(height: Msg.s3),
+        Center(
+          child: ZineLink('Resend code', fontSize: 14, onTap: () => _resend()),
         ),
         const SizedBox(height: Msg.s4),
       ],
-      // NAME (sign up only — Clerk requires first + last name)
-      if (_mode == _Mode.signUp) ...[
-        ZineField(
-          controller: _name,
-          label: 'name',
-          labelIcon: PhosphorIcons.user(PhosphorIconsStyle.bold),
-          leadIcon: PhosphorIcons.user(PhosphorIconsStyle.bold),
-          hint: 'Jane Doe',
-          keyboardType: TextInputType.name,
-          textCapitalization: TextCapitalization.words,
-          error: _error != null && _name.text.trim().isEmpty,
-          onSubmitted: (_) => _submit(),
-        ),
-        const SizedBox(height: Msg.s4),
-      ],
-      // EMAIL (sign in / sign up / reset request)
-      if (_mode == _Mode.signIn ||
-          _mode == _Mode.signUp ||
-          _mode == _Mode.reset) ...[
+      if (_mode == _Mode.email) ...[
         ZineField(
           controller: _email,
           label: 'email',
@@ -727,58 +617,12 @@ class _SignInScreenState extends State<SignInScreen> {
           hint: 'you@example.com',
           keyboardType: TextInputType.emailAddress,
           error: _error != null && _email.text.trim().isEmpty,
-          onSubmitted: (_) {
-            if (_mode == _Mode.reset) _submit();
-          },
+          onSubmitted: (_) => _submit(),
         ),
         const SizedBox(height: Msg.s4),
       ],
-      // PASSWORD (sign in / sign up)
-      if (_mode == _Mode.signIn || _mode == _Mode.signUp) ...[
-        ZineField(
-          controller: _pass,
-          label: 'password',
-          labelIcon: PhosphorIcons.lockKey(PhosphorIconsStyle.bold),
-          leadIcon: PhosphorIcons.asterisk(PhosphorIconsStyle.bold),
-          hint: '••••••••',
-          obscureText: _obscure,
-          error: _error != null && _mode == _Mode.signIn && _pass.text.isEmpty,
-          trailing: _eyeToggle(),
-          onSubmitted: (_) => _submit(),
-        ),
-        if (_mode == _Mode.signIn)
-          Padding(
-            padding: const EdgeInsets.only(top: Msg.s3),
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: ZineLink('forgot password?',
-                  onTap: () => _switch(_Mode.reset)),
-            ),
-          ),
-        // Passwordless: sign in with just an email code (no password / no phone).
-        if (_mode == _Mode.signIn)
-          Padding(
-            padding: const EdgeInsets.only(top: Msg.s4),
-            child: Center(
-              child: ZineLink('Sign in with an email code instead',
-                  fontSize: 14, onTap: () => _emailCode()),
-            ),
-          ),
-      ],
     ];
   }
-
-  Widget _eyeToggle() => GestureDetector(
-        onTap: () => setState(() => _obscure = !_obscure),
-        behavior: HitTestBehavior.opaque,
-        child: PhosphorIcon(
-          _obscure
-              ? PhosphorIcons.eye(PhosphorIconsStyle.bold)
-              : PhosphorIcons.eyeSlash(PhosphorIconsStyle.bold),
-          size: 20,
-          color: AD.textSecondary,
-        ),
-      );
 
   Widget _footerLink() {
     // RESPUI-5: was a Row(mainAxisSize: min) with two unconstrained Text/
@@ -788,37 +632,20 @@ class _SignInScreenState extends State<SignInScreen> {
     // horizontally (393px @ 320x568/2.0x). Wrap lets the pieces flow onto a
     // second line instead of forcing one row wider than the screen.
     switch (_mode) {
-      case _Mode.signIn:
-        return Wrap(
-            alignment: WrapAlignment.center,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Text('New here? ',
-                  style: ADText.preview().copyWith(fontSize: 14)),
-              ZineLink('create account',
-                  underline: AD.danger,
-                  fontSize: 14,
-                  onTap: () => _switch(_Mode.signUp)),
-            ]);
-      case _Mode.signUp:
-        return Wrap(
-            alignment: WrapAlignment.center,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Text('Have an account? ',
-                  style: ADText.preview().copyWith(fontSize: 14)),
-              ZineLink('log in',
-                  fontSize: 14, onTap: () => _switch(_Mode.signIn)),
-            ]);
+      // [AVA-PWLESS-1] There is no "create account" link any more, because
+      // there is nothing to switch to: this one box signs you up if we don't
+      // know the address and signs you in if we do. The old pair of links asked
+      // people to answer a question ("do I have an account?") that they often
+      // could not, and that we never needed them to answer.
+      case _Mode.email:
+        return Text('New or returning — same box.',
+            style: ADText.preview().copyWith(fontSize: 14),
+            textAlign: TextAlign.center);
       case _Mode.verify:
-        return ZineLink('back',
-            fontSize: 14,
-            onTap: () => _switch(
-                _pendingKind == 'signup' ? _Mode.signUp : _Mode.signIn));
-      case _Mode.reset:
-      case _Mode.resetCode:
-        return ZineLink('back to log in',
-            fontSize: 14, onTap: () => _switch(_Mode.signIn));
+        return ZineLink('use a different email', fontSize: 14, onTap: () {
+          _code.clear();
+          _switch(_Mode.email);
+        });
     }
   }
 }

@@ -1,42 +1,46 @@
-/* [BUY-OTP-1] Sign in with an email and a 6-digit code. No password field, ever.
+/* [BUY-OTP-1] Sign in with an email and a 6-digit code, inside checkout.
+ * No password field, ever.
  *
- * ── THE BUG THIS REPLACES ─────────────────────────────────────────────────────────
- * `GuestGate` in lib/clerk.tsx is broken, and has been since it was written. Its own
- * header states the contract it relies on:
+ * ── THE BUG THIS REPLACED ─────────────────────────────────────────────────────
+ * `GuestGate` in lib/clerk.tsx was broken from the day it was written. Its header
+ * claimed "requireGuestAuth() resolves the guest_token (a valid `requireUser`
+ * JWT)". It does not: `guestCreate` (worker/src/routes/ladder.ts) mints
+ * `g1.<uid>.<exp>.<hmac>`, an HMAC handle-reservation token whose own file header
+ * says "Guests NEVER pass requireUser". So the guest token was posted to routes
+ * that call `requireUser` and every one returned 401. Buyers got a real account
+ * via email OTP instead — owner decision 2026-08-29.
  *
- *     "requireGuestAuth() resolves the guest_token (a valid `requireUser` JWT)."
+ * ── AND THE BUG *THAT* HID ────────────────────────────────────────────────────
+ * [WEB-PWLESS-1 2026-09-06] The OTP replacement then failed for anybody who
+ * ALREADY had an account. Reproduced on the live page: `POST /v1/client/sign_ups`
+ * → 422 `form_identifier_exists`, so the flow fell back to sign-in;
+ * `POST /v1/client/sign_ins` → 200 but `supported_first_factors` was only
+ * `["reset_password_email_code"]`. No `email_code`. The fallback threw a bare
+ * `Error`, which carries no `errors[]`, so the UI printed its generic fallback:
  *
- * It is not. `guestCreate` (worker/src/routes/ladder.ts) mints `g1.<uid>.<exp>.<hmac>`,
- * an HMAC handle-reservation token whose own file header says "Guests NEVER pass
- * requireUser". `requireUser` (worker/src/authz.ts) calls `verifyClerk`, which only
- * accepts a Clerk RS256 JWT — grep `auth.ts` for "guest" or "g1." and there are ZERO
- * hits. So `GuestGate` posts that token to `/api/id/email/start` and
- * `/api/id/email/verify`, both of which call `requireUser`, and both return 401.
+ *     "Could not send the code. Check the address and try again."
  *
- * `BookingFlow.tsx` awaits `requireGuestAuth()` before its pay step. **Web checkout
- * cannot complete for a new visitor today** — with or without Cashfree, and regardless
- * of anything else in this project.
+ * The address was never the problem. **"Sign-in with email → Email verification
+ * code" was switched OFF on the Clerk instance** — `first_factors: []` in
+ * /v1/environment — and no client code could have fixed it. A new email sailed
+ * through (sign-up verification was enabled), so the failure looked
+ * account-specific and random. It is now on, and the whole flow lives in
+ * ./passwordless.ts, shared with /sign-in so the two cannot drift again.
  *
- * ── WHY CLERK'S OWN FLOW, NOT A FIXED GUEST TOKEN ─────────────────────────────────
- * Owner decision 2026-08-29: buyers get a real account via email OTP. avaTOK's auth IS
- * Clerk; Clerk owns credentials. The alternative — teaching `requireUser` to accept a
- * second token type — means a second identity in the paid lane and four more places to
- * get authorization wrong (see the deleted issues in the Phase 4 spec).
- *
- * NO PASSWORD FIELD. The owner's first instinct was username + password; hand-rolling
- * credential storage would be a serious security regression, and one fewer field at the
- * moment someone is deciding whether to pay is worth real money in completed checkouts.
- *
- * ── SIGN-UP vs SIGN-IN ────────────────────────────────────────────────────────────
- * We cannot know in advance whether an email already has an account, and asking is both
- * a wasted step and an account-enumeration oracle. So: try sign-UP first; when Clerk
- * says the identifier is taken, silently switch to sign-IN. The person types their email
- * once and gets one code either way.
+ * ── SIGN-UP vs SIGN-IN ────────────────────────────────────────────────────────
+ * We never ask whether the email has an account: asking is a wasted step at the
+ * exact moment someone is deciding whether to pay, and an account-enumeration
+ * oracle. Try sign-up, fall back to sign-in. One email box, one code, either way.
  */
 import { useState } from 'react';
 import { useSignIn, useSignUp } from '@clerk/clerk-react';
+import { capture } from '../../lib/analytics';
 import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
+import {
+  sendPasswordlessCode, verifyPasswordlessCode, pwlError,
+  type PwlMode, type PwlSignIn, type PwlSignUp,
+} from './passwordless';
 
 export interface EmailCodeSignInProps {
   /** Called once a real Clerk session is active. */
@@ -46,35 +50,12 @@ export interface EmailCodeSignInProps {
   reason?: string;
 }
 
-type Mode = 'signUp' | 'signIn';
-
-/** Clerk errors arrive as { errors: [{ code, message, longMessage }] }. */
-function clerkErrors(e: unknown): { code: string; message: string }[] {
-  const raw = (e as { errors?: unknown } | null)?.errors;
-  if (!Array.isArray(raw)) return [];
-  return raw.map((x) => {
-    const r = (x ?? {}) as Record<string, unknown>;
-    return { code: String(r.code ?? ''), message: String(r.longMessage ?? r.message ?? '') };
-  });
-}
-
-function firstMessage(e: unknown, fallback: string): string {
-  const msg = clerkErrors(e)[0]?.message;
-  return msg && msg.trim() ? msg : fallback;
-}
-
-/** "This email already has an account" — the signal to switch to sign-in. */
-function isAlreadyExists(e: unknown): boolean {
-  return clerkErrors(e).some((x) =>
-    x.code === 'form_identifier_exists' || x.code === 'identifier_already_signed_in');
-}
-
 export function EmailCodeSignIn({ onAuthed, onCancel, reason }: EmailCodeSignInProps) {
-  const { isLoaded: signUpLoaded, signUp, setActive: setActiveSignUp } = useSignUp();
-  const { isLoaded: signInLoaded, signIn, setActive: setActiveSignIn } = useSignIn();
+  const { isLoaded: signUpLoaded, signUp } = useSignUp();
+  const { isLoaded: signInLoaded, signIn, setActive } = useSignIn();
 
   const [step, setStep] = useState<'email' | 'code'>('email');
-  const [mode, setMode] = useState<Mode>('signUp');
+  const [mode, setMode] = useState<PwlMode>('signUp');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -83,36 +64,30 @@ export function EmailCodeSignIn({ onAuthed, onCancel, reason }: EmailCodeSignInP
   const ready = signUpLoaded && signInLoaded;
   const emailValid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
 
-  /** Start the sign-IN factor. Also the fallback when sign-up says the email exists. */
-  async function startSignIn(addr: string) {
-    if (!signIn) throw new Error('sign-in unavailable');
-    const attempt = await signIn.create({ identifier: addr });
-    const factor = attempt.supportedFirstFactors?.find(
-      (f) => f.strategy === 'email_code',
-    ) as { strategy: 'email_code'; emailAddressId: string } | undefined;
-    if (!factor) throw new Error('email code not available for this account');
-    await signIn.prepareFirstFactor({ strategy: 'email_code', emailAddressId: factor.emailAddressId });
-    setMode('signIn');
-  }
+  const resources = () => ({
+    signUp: signUp as unknown as PwlSignUp,
+    signIn: signIn as unknown as PwlSignIn,
+  });
 
   async function submitEmail() {
     if (!ready || busy || !emailValid) return;
     setBusy(true); setError(null);
-    const addr = email.trim().toLowerCase();
     try {
-      try {
-        if (!signUp) throw new Error('sign-up unavailable');
-        await signUp.create({ emailAddress: addr });
-        await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
-        setMode('signUp');
-      } catch (e) {
-        // Existing account: not an error, just the other half of the same flow.
-        if (!isAlreadyExists(e)) throw e;
-        await startSignIn(addr);
-      }
+      const m = await sendPasswordlessCode({
+        ...resources(),
+        email,
+        extra: { unsafeMetadata: { signedUpVia: 'web_checkout' } },
+      });
+      setMode(m);
       setStep('code');
+      capture('auth_code_sent', { surface: 'checkout', mode: m });
     } catch (e) {
-      setError(firstMessage(e, 'Could not send the code. Check the address and try again.'));
+      // [WEB-PWLESS-1] The failure now says what it is. The old generic line sent
+      // the owner looking at an email address that was never wrong, and cost a
+      // debugging session before anybody looked at the instance settings.
+      const { message, reason: why } = pwlError(e, 'We couldn’t email a code just now. Please try again.');
+      setError(message);
+      capture('auth_code_sent', { surface: 'checkout', outcome: 'error', reason: why });
     } finally { setBusy(false); }
   }
 
@@ -120,26 +95,25 @@ export function EmailCodeSignIn({ onAuthed, onCancel, reason }: EmailCodeSignInP
     if (!ready || busy || code.trim().length < 4) return;
     setBusy(true); setError(null);
     try {
-      if (mode === 'signUp') {
-        if (!signUp) throw new Error('sign-up unavailable');
-        const res = await signUp.attemptEmailAddressVerification({ code: code.trim() });
-        if (res.status !== 'complete' || !res.createdSessionId) {
-          throw new Error('That code did not complete sign-up.');
-        }
-        await setActiveSignUp({ session: res.createdSessionId });
-      } else {
-        if (!signIn) throw new Error('sign-in unavailable');
-        const res = await signIn.attemptFirstFactor({ strategy: 'email_code', code: code.trim() });
-        if (res.status !== 'complete' || !res.createdSessionId) {
-          throw new Error('That code did not complete sign-in.');
-        }
-        await setActiveSignIn({ session: res.createdSessionId });
-      }
+      await verifyPasswordlessCode({
+        mode,
+        ...resources(),
+        setActive: setActive as unknown as (p: { session: string }) => Promise<unknown>,
+        code,
+      });
       // A real Clerk session now exists, so getActiveToken() returns a JWT that
-      // requireUser accepts — which is the entire point of this component.
+      // requireUser accepts — which is the entire point of this component. And
+      // for a new buyer the avaTOK `users` row and AvaTOK number now exist too
+      // (verifyPasswordlessCode bootstraps), so the same person can sign in to
+      // the app later and find their booking.
+      capture('auth_signin_result', { method: 'email_code', surface: 'checkout', outcome: 'ok' });
       onAuthed();
     } catch (e) {
-      setError(firstMessage(e, 'That code did not work. Check it and try again.'));
+      const { message, reason: why } = pwlError(e, 'That code didn’t work. Check it and try again.');
+      setError(message);
+      capture('auth_signin_result', {
+        method: 'email_code', surface: 'checkout', outcome: 'error', reason: why,
+      });
     } finally { setBusy(false); }
   }
 
@@ -147,13 +121,9 @@ export function EmailCodeSignIn({ onAuthed, onCancel, reason }: EmailCodeSignInP
     if (!ready || busy) return;
     setBusy(true); setError(null);
     try {
-      if (mode === 'signUp' && signUp) {
-        await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
-      } else {
-        await startSignIn(email.trim().toLowerCase());
-      }
+      setMode(await sendPasswordlessCode({ ...resources(), email }));
     } catch (e) {
-      setError(firstMessage(e, 'Could not resend the code.'));
+      setError(pwlError(e, 'Could not resend the code.').message);
     } finally { setBusy(false); }
   }
 
@@ -179,6 +149,10 @@ export function EmailCodeSignIn({ onAuthed, onCancel, reason }: EmailCodeSignInP
             onChange={(e) => setEmail(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') void submitEmail(); }} />
           {error && <p className="font-body font-bold text-[14px] text-coral">⚠ {error}</p>}
+          {/* Clerk smart-CAPTCHA mount point — `captcha_enabled` is on and this
+              form can create an account. Without id="clerk-captcha" Clerk falls
+              back to an invisible challenge and can reject the attempt. */}
+          <div id="clerk-captcha" />
           <Button variant="lime" label="Send code" loading={busy} disabled={!emailValid} onClick={submitEmail} />
         </>
       ) : (

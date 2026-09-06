@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
-import '../../core/account_restore.dart';
 import '../../core/admin_tools.dart';
 import '../../core/analytics.dart';
 import '../../core/app_registry.dart';

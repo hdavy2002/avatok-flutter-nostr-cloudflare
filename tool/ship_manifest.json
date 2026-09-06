@@ -4728,5 +4728,63 @@
       }
     ],
     "_verified_at": "Read out of the emit sites: listing_admin_edit (with the new `rebound`) and listing_review_binding_recorded, both in worker/src/routes/admin_listings.ts. The label mapping and every render site were changed together in web/src/islands/admin/*; media_mode display verified present in SubmissionPanel, EditPanel, QuickInfo.tsx, ListingDetailsComp.astro and app/lib/features/explore/listing_detail.dart."
+  },
+  "AVA-PWLESS-1": {
+    "description": "[AVA-PWLESS-1] Passwordless everywhere. ROOT CAUSE, and it was not in this repo: \"Sign-in with email -> Email verification code\" was switched OFF on the production Clerk instance. /v1/environment returned email_address.first_factors: [] and password.first_factors: [], i.e. NO sign-in first factor was enabled at all; an identifier-only POST /v1/client/sign_ins for hdavy2005@ and hdavy2026@ offered only reset_password_email_code. So every EXISTING account was locked out of web checkout (EmailCodeSignIn threw a bare Error, which carries no errors[], so the UI printed its fallback 'Could not send the code. Check the address and try again.' - the address was never the problem) and out of the Flutter email-code path ('Sign-in is not available for this account'). A brand-new address worked, because sign-UP verification WAS enabled, which made the failure look account-specific and random. Fixed in the Clerk dashboard on 2026-09-06: email_code enabled as a sign-in factor, password DISABLED instance-wide, first/last name made OPTIONAL (they were required, so a signup carrying only an email came back missing_requirements and would have broken the new-user half of checkout the moment the old half was fixed). Code: one shared web/src/islands/auth/passwordless.ts drives checkout, /sign-in and /sign-up; ClerkClient.signIn/signUp/startPasswordReset/resetPassword collapse into startEmailCode(); sign_in_screen goes from five sub-modes to two; every account-creating path now calls /api/account/bootstrap, which only /sign-up did before (so a buyer created at checkout had no users row, no AvaTOK number, and nothing to find when they later opened the app); Google is wired on the web with a new /sso-callback page; /forgot-password 302s to /sign-in.",
+    "shipped": "2026-09-06",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "auth_signin_result",
+        "property": "outcome",
+        "equals": "ok",
+        "where": {
+          "method": "email_code"
+        },
+        "min_events": 1,
+        "note": "WEB. The whole point: a code accepted and a session created. Emitted from LoginIsland.onSubmitCode and EmailCodeSignIn.submitCode (surface=checkout distinguishes them)."
+      },
+      {
+        "event": "auth_signin_result",
+        "property": "reason",
+        "where": {
+          "outcome": "error"
+        },
+        "min_pass_rate": 1,
+        "note": "WEB, THE REGRESSION CANARY. reason=no_email_code_factor is passwordless.ts saying Clerk offered no email_code first factor - i.e. the dashboard toggle is off again and NOBODY with an existing account can sign in. A single one of these means the instance regressed, not that one person mistyped, so there is no slack: min_pass_rate 1.",
+        "not_in": [
+          "no_email_code_factor"
+        ]
+      },
+      {
+        "event": "signup_step",
+        "property": "reason",
+        "where": {
+          "step": "failed"
+        },
+        "min_pass_rate": 1,
+        "note": "APP, the same canary on the Flutter side. ClerkClient.startEmailCode emits _sx('failed', reason: 'no_email_code_factor') on exactly the condition above.",
+        "not_in": [
+          "no_email_code_factor"
+        ]
+      },
+      {
+        "event": "signup_succeeded",
+        "property": "provider",
+        "equals": "email_code",
+        "min_events": 1,
+        "note": "APP. A completed passwordless sign-in from SignInScreen._succeed. provider is set to email_code for the OTP path and google for the one-tap path; password is no longer a possible value anywhere."
+      },
+      {
+        "event": "web_account_bootstrap_client",
+        "property": "outcome",
+        "equals": "ok",
+        "min_events": 1,
+        "note": "Every newly created account now materialises its avaTOK users row + AvaTOK number, including one created at checkout. Before this, only /sign-up called it, so a checkout buyer existed to Clerk and was invisible to avaTOK. outcome=error here means the row was NOT created and that person cannot be found by another user or sign in to the app meaningfully."
+      }
+    ],
+    "_verified_at": "Clerk instance read live, twice, with curl -s https://clerk.avatok.ai/v1/environment | .user_settings.attributes - before: email_address.first_factors [] / password enabled+required / first_name+last_name required; after: email_address.first_factors ['email_code'] / password enabled=false / names required=false. prepare_first_factor for hdavy2026@gmail.com returned first_factor_verification {strategy: email_code, status: unverified}, i.e. Clerk accepted the send. Emit sites: web/src/islands/auth/LoginIsland.tsx (auth_signin_result), web/src/islands/auth/EmailCodeSignIn.tsx (auth_signin_result surface=checkout, auth_code_sent), web/src/islands/auth/passwordless.ts (bootstrapAccount -> web_account_bootstrap_client; PasswordlessError reason no_email_code_factor), app/lib/auth/clerk_client.dart startEmailCode (_sx -> signup_step), app/lib/features/auth/sign_in_screen.dart _succeed (signup_succeeded)."
   }
 }

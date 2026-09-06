@@ -1,0 +1,34 @@
+---
+// avatok.ai — OAuth return leg.
+//
+// [WEB-PWLESS-1 2026-09-06] Google redirects here after "Continue with Google".
+// The island completes Clerk's handshake and then navigates on. Nothing about
+// this page is decorative: remove it and every Google sign-in silently fails.
+//
+// noindex + no-store: it is a transient step with a one-time code in the query
+// string and must never be cached or crawled.
+export const prerender = false;
+
+import Base from '../layouts/Base.astro';
+import SsoCallbackIsland from '../islands/auth/SsoCallbackIsland.tsx';
+import '../styles/auth.css';
+
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+---
+
+<Base title="Signing you in · avaTOK" description="Completing sign-in." chrome={false} noindex={true}>
+  <div class="auth">
+    <div class="auth-shell">
+      <main class="auth-main">
+        <div class="auth-card">
+          <header class="auth-head">
+            <a class="auth-wordmark" href="/" aria-label="avaTOK home">
+              <span class="wm-ava">ava</span><span class="wm-tok">TOK</span>
+            </a>
+          </header>
+          <SsoCallbackIsland client:load />
+        </div>
+      </main>
+    </div>
+  </div>
+</Base>

@@ -225,27 +225,28 @@ export function Divider({ label }: { label: string }) {
 /* ── Social buttons ───────────────────────────────────────────────────── */
 /*
  * [Owner decision 2026-08-26] Apple is REMOVED (it was never enabled on the
- * Clerk instance and would have failed on click); Facebook replaces it. Neither
- * provider is wired yet — the owner's instruction was to get email + password
- * working first — so this renders nothing while SOCIAL_ENABLED is false.
+ * Clerk instance and would have failed on click); Facebook was to replace it.
  *
- * A visibly dead button on a live login page is worse than no button, which is
- * why this is a hard `null` and not a `disabled` state.
+ * [WEB-PWLESS-1 2026-09-06] GOOGLE IS NOW LIVE; FACEBOOK IS STILL NOT.
+ * `oauth_google` is the only provider enabled on the instance — verified against
+ * https://clerk.avatok.ai/v1/environment (`user_settings.social`). Rendering a
+ * Facebook button would produce a visibly dead control that fails at Clerk on
+ * click, which is worse than no button; that is why this is one button and not a
+ * pair, and why `SOCIAL_ENABLED` is gone rather than flipped (a single boolean
+ * for "social" hid the fact that the two providers were in different states).
  *
- * TO TURN ON: enable google + facebook in the Clerk dashboard, flip this to
- * true, and pass an `onProvider` handler that calls
- * `signIn.authenticateWithRedirect({ strategy, redirectUrl, redirectUrlComplete })`.
- * Note the live instance currently has ONLY oauth_google enabled — verified via
- * the public Clerk environment endpoint — so Facebook needs setting up too.
+ * TO ADD FACEBOOK: enable it in the Clerk dashboard first, then add it here.
  */
-export const SOCIAL_ENABLED = false;
-
-export function SocialPair({ onProvider }: { onProvider?: (p: 'google' | 'facebook') => void }) {
-  if (!SOCIAL_ENABLED) return null;
+export function GoogleButton({
+  onClick, disabled, label = 'Continue with Google',
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  label?: string;
+}) {
   return (
     <div className="auth-social">
-      <Button variant="ghost" onClick={() => onProvider?.('google')}>Google</Button>
-      <Button variant="ink" onClick={() => onProvider?.('facebook')}>Facebook</Button>
+      <Button variant="ghost" onClick={onClick} disabled={disabled}>{label}</Button>
     </div>
   );
 }
@@ -335,13 +336,11 @@ export function validateEmail(v: string): string | undefined {
   return undefined;
 }
 
-export function validatePassword(v: string, min = 8): string | undefined {
-  if (!v) return 'Password is required.';
-  // The design promises "8+ characters". Clerk's own minimum is currently 0
-  // (verified on the live instance), so this floor is enforced here or nowhere.
-  if (v.length < min) return `Use at least ${min} characters.`;
-  return undefined;
-}
+/* [WEB-PWLESS-1 2026-09-06] `validatePassword` is GONE, along with every password
+ * field on the site. `password` is disabled on the Clerk instance (owner
+ * decision), so a password box would fail at Clerk rather than in the browser —
+ * it would read as a broken site, not a missing feature. Sign-in and sign-up are
+ * an emailed 6-digit code or Google. Do not add one back here. */
 
 export function validateRequired(v: string, field: string): string | undefined {
   return v.trim() ? undefined : `${field} is required.`;

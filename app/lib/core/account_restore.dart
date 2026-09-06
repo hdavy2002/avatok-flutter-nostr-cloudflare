@@ -8,12 +8,13 @@ import 'prefs_sync.dart';
 import 'profile_store.dart';
 import '../identity/identity.dart';
 
-/// Transient holder for the password typed at sign-in / sign-up. Kept only
-/// because the sign-in screen sets it; the restore flow no longer needs it —
-/// the Clerk session IS the account credential (Cloudflare-native pivot).
-class AuthSession {
-  static String? lastPassword;
-}
+// [AVA-PWLESS-1 2026-09-06] `AuthSession.lastPassword` is GONE. It was a
+// transient holder for the password typed at sign-in, already vestigial (the
+// restore flow stopped needing it at the Cloudflare-native pivot — the Clerk
+// session IS the account credential). Now nothing types a password at all:
+// sign-in is an emailed 6-digit code or Google, and `password` is disabled on
+// the Clerk instance. Holding a user's password in a static field for the life
+// of the process was never something to keep for sentiment.
 
 /// What the server knows about the signed-in Clerk account (GET /api/me).
 /// Post-pivot the account IS the Clerk uid — there are no key backups.
