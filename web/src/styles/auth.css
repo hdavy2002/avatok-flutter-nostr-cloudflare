@@ -160,6 +160,14 @@
 .auth-show:focus-visible { outline: 3px solid var(--signal); outline-offset: 2px; border-radius: 4px; }
 
 .auth-err { font-size: 13px; color: var(--error); margin: 0; }
+/* [WEB-ACCOUNT-1] The line under the phone field explaining why we ask. */
+.auth-hint {
+  margin: -6px 0 2px;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: #5a5a54;
+}
+
 .auth-formerr {
   font-size: 13px;
   color: var(--error);

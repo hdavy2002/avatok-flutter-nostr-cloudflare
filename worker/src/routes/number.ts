@@ -131,6 +131,83 @@ export async function available(req: Request, env: Env): Promise<Response> {
   return json({ country: plan.iso2, entitled: paid(tier), tier, numbers: out, vanityPriceTokens: cfg.avatokVanityNumberTokens });
 }
 
+/**
+ * [WEB-ACCOUNT-1 2026-09-05] Give this account a number WITHOUT asking them to
+ * pick one.
+ *
+ * Every existing binding path requires the client to choose: `assign` takes a
+ * `{country, nsn}` the user picked off the browse list, `assign-own` takes one
+ * they typed. That is right for the app, where choosing your number is a nice
+ * moment. It is wrong for a web buyer who came to pay for a ticket — the owner's
+ * words, "this will be auto assigned to save sign up time".
+ *
+ * Idempotent by design: an account that already holds an active number gets it
+ * back untouched. This runs on a signup path that can be retried, double-fired
+ * by a double-click, or re-entered after a network blip, and minting a second
+ * number each time would burn the pool and orphan the first.
+ *
+ * Returns null when no free candidate could be found — the CALLER decides what
+ * that means. It must never be fatal to signup: an account with no number is
+ * recoverable (they can pick one in the app), an account that could not be
+ * created is not.
+ */
+export async function autoAssignNumber(
+  env: Env,
+  uid: string,
+  countryIso2 = "IN",
+): Promise<{ number: string; display: string; already: boolean } | null> {
+  const db = metaSession(env);
+
+  // Already has one? Hand it back. See the idempotency note above.
+  try {
+    const existing = await env.DB_META
+      .prepare("SELECT number, display FROM avatok_numbers WHERE uid=?1 AND status='active'")
+      .bind(uid).first<{ number: string; display: string }>();
+    if (existing?.number) {
+      return { number: existing.number, display: existing.display ?? existing.number, already: true };
+    }
+  } catch { /* fall through and try to mint */ }
+
+  const plan = planFor(countryIso2) ?? planFor("IN");
+  if (!plan) return null;
+
+  // `generate()` de-dupes only within its own batch and makes no global
+  // uniqueness promise (lib/numbering.ts), so every candidate is checked and the
+  // batch is oversized on purpose: at scale most candidates will be taken, and
+  // returning null because we asked for too few would look like pool exhaustion.
+  const now = Date.now();
+  for (const nsn of generate(plan, 40)) {
+    const number = canonical(plan, nsn);
+    if (await isTaken(db, number, uid)) continue;
+    const disp = display(plan, nsn);
+    try {
+      await env.DB_META.batch([
+        env.DB_META.prepare(
+          "INSERT INTO users (uid, created_at, updated_at) VALUES (?1,?2,?2) ON CONFLICT(uid) DO NOTHING",
+        ).bind(uid, now),
+        env.DB_META.prepare(
+          `INSERT INTO avatok_numbers (number, country, uid, display, status, claimed_at, updated_at)
+           VALUES (?1,?2,?3,?4,'active',?5,?5)
+           ON CONFLICT(number) DO UPDATE SET uid=?3, country=?2, display=?4, status='active', claimed_at=?5, released_at=NULL, updated_at=?5`,
+        ).bind(number, plan.iso2, uid, disp, now),
+        // source='generated', same as `assign` — this IS an AvaTOK-minted
+        // identity and is safe to resolve publicly by digits, unlike the
+        // unverified 'own' bindings addResolve() refuses.
+        env.DB_META.prepare(
+          "UPDATE users SET avatok_number=?2, avatok_number_display=?3, number_norm=substr(?2,-10), phone_discoverable=0, free_number_used=1, share_token=COALESCE(share_token,?4), avatok_number_source='generated', updated_at=?5 WHERE uid=?1",
+        ).bind(uid, number, disp, crypto.randomUUID().replace(/-/g, ""), now),
+      ]);
+      return { number, display: disp, already: false };
+    } catch {
+      // Lost a race on the `number` primary key or the unique active-uid index.
+      // Try the next candidate rather than failing: two people signing up in the
+      // same second is the expected case, not an error.
+      continue;
+    }
+  }
+  return null;
+}
+
 function resolveInput(req: Request, body: { country?: string; nsn?: string; number?: string }): { plan: CountryPlan; nsn: string; number: string } | null {
   const plan = planFor(body.country || "");
   if (!plan) return null;

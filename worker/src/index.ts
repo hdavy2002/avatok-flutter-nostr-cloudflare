@@ -44,6 +44,7 @@ import { deleteAccount, cancelDeletion, deletionStatus } from "./routes/account"
 import { adminDeleteUser } from "./routes/admin_delete_user"; // [ADMIN-DELETE-USER-1] admin immediate erasure of another user
 import { adminListings, adminListingAction, adminListingDetail, adminEditListing } from "./routes/admin_listings";
 import { listingReview } from "./routes/listing_review";
+import { webAccountBootstrap } from "./routes/web_account";
 import { adminPurgeListing } from "./routes/admin_listing_purge";
 // [AVADIAL-CALL-INTEL-1] Call-intelligence ingest. The ONLY place raw E.164 and the
 // HMAC secret meet — the device never holds the key. See routes/telemetry_calls.ts.
@@ -1255,6 +1256,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // --- AvaAdmin dashboard (Phase 6) — read-mostly aggregation + alerts/roles. requireAdmin enforced inside. ---
       if (p === "/api/admin/overview" && req.method === "GET") return await adminOverview(req, env);
       if (p === "/api/admin/listings" && req.method === "GET") return await adminListings(req, env);
+      // [WEB-ACCOUNT-1] The row a web signup never created — plus the phone and
+      // the auto-assigned AvaTOK number. Idempotent; safe to call repeatedly.
+      if (p === "/api/account/bootstrap" && req.method === "POST") return await webAccountBootstrap(req, env);
       { const m = p.match(/^\/api\/admin\/listings\/([A-Za-z0-9-]{1,64})$/); if (m && req.method === "GET") return await adminListingDetail(req, env, m[1]); if (m && req.method === "POST") return await adminListingAction(req, env, m[1]); if (m && req.method === "PUT") return await adminEditListing(req, env, m[1]); if (m && req.method === "DELETE") return await adminPurgeListing(req, env, m[1]); }
       if (p === "/api/admin/live" && req.method === "GET") return await adminLive(req, env);
       if (p === "/api/admin/agents" && req.method === "GET") return await adminAgents(req, env);

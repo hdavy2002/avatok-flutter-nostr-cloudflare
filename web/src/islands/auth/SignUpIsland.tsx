@@ -33,6 +33,9 @@ import { useSignUp } from '@clerk/clerk-react';
 import { ClerkIsland } from '../../lib/clerk';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/config';
 import { capture, withTrace } from '../../lib/analytics';
+// [WEB-ACCOUNT-1] The bootstrap call needs a token and the API client.
+import { getActiveTokenWaited as getActiveToken } from '../../lib/clerk';
+import { request } from '../../lib/apiClient';
 import {
   Field, Button, CheckRow, Divider, SocialPair, SOCIAL_ENABLED, RolePicker, CodeStep,
   validateEmail, validatePassword, validateRequired, clerkError,
@@ -54,6 +57,11 @@ function Inner() {
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  // [WEB-ACCOUNT-1 2026-09-05] The phone. Collected here, at the one moment the
+  // buyer is already filling in a form, rather than interrupting them later at
+  // checkout. Stored server-side by /api/account/bootstrap — see that route's
+  // header for how, and for the owner's decision to keep it readable.
+  const [phone, setPhone] = useState('+91 ');
   const [agreed, setAgreed] = useState(false);
   const [code, setCode] = useState('');
 
@@ -72,6 +80,47 @@ function Inner() {
     };
   }
 
+  // [WEB-ACCOUNT-1] Deliberately permissive: a leading + and 8-15 digits, no
+  // per-country rules. This is a global marketplace, and a strict plan here
+  // would reject valid numbers from countries nobody has listed yet. The server
+  // applies the same shape, so the two ends agree.
+  function validatePhone(v: string): string | undefined {
+    const digits = v.replace(/[^0-9+]/g, '');
+    if (!digits || digits === '+') return 'Enter your phone number.';
+    if (!/^\+[1-9]\d{7,14}$/.test(digits.startsWith('+') ? digits : `+${digits}`)) {
+      return 'Include the country code, like +91 98765 43210.';
+    }
+    return undefined;
+  }
+
+  /** [WEB-ACCOUNT-1] Create the avaTOK-side account.
+   *
+   *  Until this existed, a web signup produced a Clerk account and NOTHING in
+   *  our own `users` table — no profile, no AvaTOK number, nothing to attach a
+   *  phone to. This is the call that makes a web buyer a real user.
+   *
+   *  Failures are swallowed on purpose. The Clerk session is already live at
+   *  this point, so throwing here would strand somebody who has successfully
+   *  signed up on an error screen. The route is idempotent, so the next page
+   *  that calls it finishes the job. */
+  async function bootstrapAccount() {
+    try {
+      const token = await getActiveToken();
+      if (!token) return;
+      await request('/api/account/bootstrap', {
+        method: 'POST', auth: token,
+        body: {
+          phone: phone.trim(),
+          country: 'IN',
+          display_name: `${firstName.trim()} ${lastName.trim()}`.trim(),
+        },
+      });
+      capture('web_account_bootstrap_client', { outcome: 'ok' });
+    } catch {
+      capture('web_account_bootstrap_client', { outcome: 'error' });
+    }
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!isLoaded || submitting) return;
@@ -81,6 +130,7 @@ function Inner() {
       lastName: validateRequired(lastName, 'Last name'),
       email: validateEmail(email),
       password: validatePassword(password),
+      phone: validatePhone(phone),
       // README: submit is blocked until the terms box is checked.
       terms: agreed ? undefined : 'Please accept the terms to continue.',
     };
@@ -125,6 +175,8 @@ function Inner() {
       const res = await withTrace(() => signUp.attemptEmailAddressVerification({ code: code.trim() }));
       if (res.status === 'complete') {
         await setActive({ session: res.createdSessionId });
+        // AFTER setActive: bootstrap needs a live session to authenticate with.
+        await bootstrapAccount();
         capture('auth_signup_result', {
           outcome: 'ok', ms: Date.now() - signupStartRef.current,
         });
@@ -212,6 +264,15 @@ function Inner() {
         autoComplete="new-password" placeholder="Make it a good one"
         value={password} onChange={set(setPassword, 'password')} error={errors.password}
       />
+      <Field
+        label="Phone · with country code" name="phone" type="tel" inputMode="numeric"
+        autoComplete="tel" placeholder="+91 98765 43210"
+        value={phone} onChange={set(setPhone, 'phone')} error={errors.phone}
+      />
+      <p className="auth-hint">
+        We use this to reach you about a booking. Your AvaTOK number is created for you — it is
+        what other people see, so your real number stays private.
+      </p>
 
       <CheckRow
         className="auth-terms" large checked={agreed}
