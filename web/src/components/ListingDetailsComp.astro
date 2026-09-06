@@ -1086,11 +1086,45 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
     if (favCountEl) favCountEl.textContent = String(favCount);
   }
   paintFav();
+
+  // [FAV-TRUTH-1 2026-09-06] Ask the server what is actually true, on load.
+  //
+  // THE BUG: this page is public and edge-cached, so it is server-rendered with
+  // NO session. `CONFIG.favorited` was therefore false for everyone — including
+  // someone who had already hearted it. Refresh and the heart came back empty;
+  // click it and the code below "added" a favourite that already existed and
+  // incremented a count that was already counting it. One favourite, displayed
+  // as two, and the row in D1 never changed. The API was idempotent the whole
+  // time — the arithmetic on this side was the bug.
+  //
+  // So the count is no longer computed here at all. It is READ, on load and
+  // after every write, from a server that counts rows. Same lesson as the seat
+  // counter: one source of truth, and it is not the browser.
+  async function syncFavFromServer() {
+    try {
+      const token = window.__avatokToken ? await window.__avatokToken() : null;
+      const res = await fetch(
+        CONFIG.apiBase + '/api/marketplace/favorites/state?listing_id=' + encodeURIComponent(CONFIG.listingId),
+        { headers: token ? { authorization: 'Bearer ' + token } : {} },
+      );
+      if (!res.ok) return;                 // leave the SSR values; not worth a visible error
+      const d = await res.json();
+      state.fav = d.favorited === true;
+      if (typeof d.favorites_count === 'number') favCount = d.favorites_count;
+      paintFav();
+    } catch (err) { /* offline or signed out — the SSR values stand */ }
+  }
+  syncFavFromServer();
+
   favBtn.onclick = async () => {
     if (favBusy) return;
     favBusy = true;
     document.dispatchEvent(new CustomEvent('ld:cta', { detail: { cta: 'fav' } }));
     const was = state.fav;
+    const wasCount = favCount;
+    // Still optimistic for the icon, because a heart that waits on a round trip
+    // feels broken — but the number is RECONCILED from the response below, so a
+    // wrong guess here cannot survive.
     state.fav = !was;
     favCount = Math.max(0, favCount + (state.fav ? 1 : -1));
     paintFav();
@@ -1105,9 +1139,17 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
         body: state.fav ? JSON.stringify({ listing_id: CONFIG.listingId }) : undefined,
       });
       if (!res.ok) throw new Error('http_' + res.status);
+      const d = await res.json().catch(() => null);
+      if (d) {
+        state.fav = d.favorited === true;
+        if (typeof d.favorites_count === 'number') favCount = d.favorites_count;
+        paintFav();
+      }
     } catch (err) {
+      // Roll back to the EXACT previous number, not by subtracting one — the
+      // count may have been re-synced from the server in between.
       state.fav = was;
-      favCount = Math.max(0, favCount + (was ? 1 : -1));
+      favCount = wasCount;
       paintFav();
       if (String(err && err.message) === 'signed_out') {
         location.href = '/sign-in?next=' + encodeURIComponent(location.pathname);

@@ -264,7 +264,7 @@ import { unfurl } from "./routes/unfurl";                                       
 import { gifSearch, gifTrending } from "./routes/gif";                                               // STREAM E
 import { aiCatchup, aiSmartReplies, aiTranslate, aiGroupTranslate, safetyScore, aiBio, aiGender } from "./routes/ai_chat"; // STREAM G + bio writer + gender infer
 import { forwardMsg } from "./routes/messaging";                                                     // STREAM I
-import { addFavorite, removeFavorite, listFavorites } from "./routes/listings";                       // STREAM K
+import { addFavorite, removeFavorite, listFavorites, favoriteState } from "./routes/listings";         // STREAM K
 import { listSlots as listListingSlots, createSlot as createListingSlot, patchSlot as patchListingSlot, deleteSlot as deleteListingSlot } from "./routes/listing_slots"; // [LIST-SLOTS-1]
 import { listingCopyReview } from "./routes/listing_copy_review";                                    // [CARD-AI-REVIEW-1]
 
@@ -751,6 +751,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/marketplace/favorites" && req.method === "POST") return await addFavorite(req, env);
       if (p === "/api/marketplace/favorites" && req.method === "DELETE") return await removeFavorite(req, env);
       if (p === "/api/marketplace/favorites" && req.method === "GET") return await listFavorites(req, env);
+      // [FAV-TRUTH-1] "Have I hearted this, and how many others have?" — the one
+      // authenticated read the public, edge-cached listing page cannot do for
+      // itself at render time. Optional auth: a guest gets the count, not a 401.
+      if (p === "/api/marketplace/favorites/state" && req.method === "GET") return await favoriteState(req, env);
       // STREAM C: server-side link unfurl (zero recipient-side fetch)
       if (p === "/api/unfurl" && req.method === "GET") return await unfurl(req, env);
       // STREAM E: Tenor GIF proxy (key stays server-side)

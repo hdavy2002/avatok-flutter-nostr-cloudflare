@@ -3840,6 +3840,25 @@ export async function report(req: Request, env: Env): Promise<Response> {
 // so the client can render the heart state without a per-card round-trip.
 // ---------------------------------------------------------------------------
 
+/** [FAV-TRUTH-1 2026-09-06] How many people have hearted this listing, counted
+ *  from the rows — never from a stored counter.
+ *
+ *  Every favourite response now carries this, because the page was doing its own
+ *  arithmetic instead: it rendered the count from an unauthenticated SSR fetch
+ *  (so `favorited` was always false), then added one on click. Refresh, click,
+ *  and a listing with ONE favourite showed two, while the table still held one
+ *  row. Same failure as the seat counter — two sources of truth for one number —
+ *  and the same fix: derive it, return it, and let the client paint what the
+ *  server says rather than what it guessed. */
+async function favoriteCountOf(env: Env, listingId: string): Promise<number> {
+  try {
+    const r = await metaDb(env).prepare(
+      "SELECT COUNT(*) n FROM listing_favorites WHERE listing_id=?1",
+    ).bind(listingId).first<any>();
+    return Number(r?.n ?? 0);
+  } catch { return 0; }
+}
+
 /** POST /api/marketplace/favorites {listing_id} — heart a listing (idempotent). */
 export async function addFavorite(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
@@ -3854,7 +3873,28 @@ export async function addFavorite(req: Request, env: Env): Promise<Response> {
     "INSERT OR IGNORE INTO listing_favorites (uid, listing_id, created_at) VALUES (?1,?2,?3)",
   ).bind(ctx.uid, listingId, Date.now()).run();
   track(env, ctx.uid, "listing_favorited", APP, { listing_id: listingId });
-  return json({ ok: true, favorited: true });
+  return json({ ok: true, favorited: true, favorites_count: await favoriteCountOf(env, listingId) });
+}
+
+/** GET /api/marketplace/favorites/state?listing_id=… — "have I hearted this, and
+ *  how many others have?"
+ *
+ *  [FAV-TRUTH-1] The listing page is server-rendered WITHOUT the visitor's
+ *  session (it is a public, edge-cached page), so its HTML cannot know whether
+ *  this visitor hearted it — and it was rendering an empty heart for everyone,
+ *  including people who had. This is the one small authenticated read that fills
+ *  that gap after hydration. Optional auth: a guest gets favorited:false and the
+ *  public count, not a 401, so the count is still correct on a shared link. */
+export async function favoriteState(req: Request, env: Env): Promise<Response> {
+  const listingId = (new URL(req.url).searchParams.get("listing_id") || "").trim();
+  if (!listingId) return json({ error: "listing_id required" }, 400);
+  const uid = await maybeUid(req, env);
+  let favorited = false;
+  if (uid) {
+    const set = await favoritesFor(env, uid, [listingId]);
+    favorited = set.has(listingId);
+  }
+  return json({ favorited, favorites_count: await favoriteCountOf(env, listingId) });
 }
 
 /** DELETE /api/marketplace/favorites?listing_id=… — un-heart. */
@@ -3868,7 +3908,7 @@ export async function removeFavorite(req: Request, env: Env): Promise<Response> 
   if (!listingId) return json({ error: "listing_id required" }, 400);
   await metaDb(env).prepare("DELETE FROM listing_favorites WHERE uid=?1 AND listing_id=?2").bind(ctx.uid, listingId).run();
   track(env, ctx.uid, "listing_unfavorited", APP, { listing_id: listingId });
-  return json({ ok: true, favorited: false });
+  return json({ ok: true, favorited: false, favorites_count: await favoriteCountOf(env, listingId) });
 }
 
 /** GET /api/marketplace/favorites — the user's favorited listings as full cards

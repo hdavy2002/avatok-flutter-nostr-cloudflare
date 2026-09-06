@@ -34,6 +34,8 @@ const I = {
   list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
   // [REVIEW-MOD-1] Review moderation queue.
   star: '<path d="M12 3l2.6 5.6 6.1.8-4.4 4.3 1.1 6.1L12 17l-5.4 2.8 1.1-6.1L3.3 9.4l6.1-.8z"/>',
+  // [FAV-LIST-1] Saved shows.
+  heart: '<path d="M12 20s-7-4.4-9-8.3C1.4 8.5 3 5 6.3 5 8.3 5 9.7 6.1 12 8.4 14.3 6.1 15.7 5 17.7 5 21 5 22.6 8.5 21 11.7 19 15.6 12 20 12 20z"/>',
   check: '<path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>',
   broadcast: '<polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/>',
   calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
@@ -59,6 +61,10 @@ const groups: { title: string; items: Item[] }[] = [
   { title: 'Featured', items: [
     { key: 'overview', label: 'Dashboard', icon: I.grid, href: '/dashboard', tone: 'bg-lilac' },
     { key: 'library', label: 'Library', icon: I.folder, href: '/dashboard/library', tone: 'bg-mint' },
+    // [FAV-LIST-1 2026-09-06] The shows this person hearted. In Featured rather
+    // than Studio because saving is something a BUYER does, and Studio is the
+    // creator's half of the rail.
+    { key: 'saved', label: 'Saved', icon: I.heart, href: '/dashboard/saved', tone: 'bg-coral' },
   ]},
   { title: 'Studio', items: [
     { key: 'listings', label: 'My listings', icon: I.list, href: '/dashboard/listings', tone: 'bg-lime' },

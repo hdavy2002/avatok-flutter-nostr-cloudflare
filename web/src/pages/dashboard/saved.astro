@@ -1,0 +1,18 @@
+---
+// [FAV-LIST-1 2026-09-06] /dashboard/saved — the shows this person hearted.
+export const prerender = false;
+
+import Dashboard from '../../layouts/Dashboard.astro';
+import MyFavourites from '../../islands/dashboard/MyFavourites.tsx';
+---
+
+<Dashboard title="Saved · avatok.ai" active="saved">
+  <header class="mb-6">
+    <span class="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">Dashboard</span>
+    <h1 class="mt-2 font-display font-semibold text-[30px] leading-tight text-ink">Saved</h1>
+    <p class="mt-2 font-body text-[15px] font-bold text-inkSoft">
+      Every show you tapped the heart on. Tap it again here to remove one.
+    </p>
+  </header>
+  <MyFavourites client:load />
+</Dashboard>
