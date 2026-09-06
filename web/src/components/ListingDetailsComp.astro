@@ -750,7 +750,15 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
           <div class="rules-card">
             {rulesIntro && (
               <div class="rules-card__quote">
-                <span class="avatar-circle">{hostInitials}</span>
+                {/* [HOST-FACE-2 2026-09-05] The creator's photo, not their
+                    initials. This line is the host speaking in their own words,
+                    so a grey "HD" disc was the one place on the page still
+                    showing a placeholder where a face belongs — the hostbar and
+                    the host card were fixed under [HOST-FACE-1] and this was
+                    missed. Same fallback: initials only when there is no photo. */}
+                {hostAvatar
+                  ? <img class="avatar-circle avatar-circle--photo" src={cfImage(hostAvatar, { width: 96 })} alt={hostName} loading="lazy" width="30" height="30" />
+                  : <span class="avatar-circle">{hostInitials}</span>}
                 <p>{rulesIntro}</p>
               </div>
             )}
