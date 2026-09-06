@@ -180,6 +180,13 @@ const ratingBadge = listing.rating_avg != null ? `★ ${listing.rating_avg.toFix
 const regularsCount = listing.creator?.follower_count ?? listing.joined_count ?? null;
 // [STATS-REAL-1] "REGULARS" renamed and re-sourced — it was the creator's
 // follower count wearing a label about this show.
+//
+// Declared HERE, above its first use. It was originally further down the file
+// next to the other stat consts, which is a temporal dead zone: Astro frontmatter
+// is a module body, so reading a `const` declared 56 lines later throws at render
+// and the whole page 500s. Caught before anyone saw it, by fetching the live page
+// instead of trusting the build.
+const favouritesCount = listing.favorites_count ?? 0;
 const regularsBadge = `♡ ${favouritesCount} FAVOURITE${favouritesCount === 1 ? '' : 'S'}`;
 const durLangBadge = [durationLabel(listing.duration_min ?? null), languageLabel(listing.spoken_lang ?? null)].filter(Boolean).join(' · ') || null;
 const humanBadge = listing.kind === 'agent' ? '⚙ AI VOICE AGENT · CLEARLY LABELLED' : '✓ 100% REAL HUMAN · NO AI';
@@ -236,7 +243,6 @@ const showsHosted = listing.creator_trust_stats?.shows_hosted ?? 0;
 // happened is not a hosted one. Counting what he HAS done (published a show) is
 // both true and non-zero, so the strip stops reading as all-zeros on a brand-new
 // listing without the page telling a buyer something untrue.
-const favouritesCount = listing.favorites_count ?? 0;
 // This listing plus the creator's other live ones. `hostListings` is already
 // derived above for the "more from this host" rail, so this is the same fact
 // counted once rather than a new query.
