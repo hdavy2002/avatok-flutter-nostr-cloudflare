@@ -30,16 +30,57 @@
 // `RemoteConfig.start`/`refresh`), so every test used to read the FALSE
 // default and `acceptRingingCall` refused before CallScreen was ever
 // requested — silently exercising the "feature off" branch instead of the
-// accept-flash ordering contract these tests exist to pin. `setUp` now turns
-// the flag ON via `RemoteConfig.debugSetConfigForTest` so the ordering
-// contract is genuinely exercised again, and a new test below pins the
+// accept-flash ordering contract these tests exist to pin. `setUp` turns the
+// flag ON via `RemoteConfig.debugSetConfigForTest`, and a test below pins the
 // opposite: with the flag OFF, CallScreen must never be requested at all.
+//
+// [LAUNCH-DARK-1 follow-up 2026-09-06] THAT `setUp` NO LONGER WORKS, AND THAT
+// IS CORRECT. `[LAUNCH-DARK-1]` (e8c69a1b) made the getter
+//
+//     static bool get messengerCallingEnabled =>
+//         kMessengerCallsEnabled && _b('messengerCallingEnabled', false);
+//
+// where `kMessengerCallsEnabled` is a compile-time `const bool = false`
+// (core/feature_flags.dart). The AND is deliberate: no runtime value — a stale
+// KV blob, a mistyped flag write, a server that fails open — can put the
+// half-killed Messenger calling surface back in front of a user. It also means
+// no test seam can force the flag on, so `_openCall` returns at its
+// `messengerCallingEnabled` guard (push_service.dart:6736) before ever reaching
+// `debugOnCallScreenOpenAttempt` (push_service.dart:6952).
+//
+// The two ordering tests are therefore SKIPPED while the const is false — the
+// path they pin is unreachable in this release, not broken. The FLASH-1
+// ordering code itself (`await _openCall(..., claimPending: true)` then
+// `unawaited(_trackClaimAfterOpen(...))`, push_service.dart:6560-6561, and the
+// `claimPending ? null : await _claimHumanAccept(room)` at :6783) is unchanged
+// and was verified byte-identical to the last green build.
+//
+// The skip is keyed to the SAME const that makes the path unreachable, so the
+// day someone sets `kMessengerCallsEnabled = true` — the release in which this
+// ordering can regress in front of a user again — both tests un-skip in that
+// same commit and must pass before it ships. Do NOT instead add a runtime
+// override for `kMessengerCallsEnabled`: that re-opens the exact hole
+// [LAUNCH-DARK-1] was written to close.
+//
+// Paid sessions are NOT affected by any of this and never were: Stream pushes
+// return before CallKit (push_service.dart:755, :768, :5098) and the paid lane
+// mounts its own screens in features/commercial_getstream/, never CallScreen.
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:avatok_call/core/feature_flags.dart';
 import 'package:avatok_call/core/remote_config.dart';
 import 'package:avatok_call/push/push_service.dart';
+
+/// Why the two ordering tests below cannot run while Messenger calling is
+/// compile-time dark. `false` (i.e. do not skip) the moment the const flips.
+const Object? _kMessengerDarkSkip = kMessengerCallsEnabled
+    ? false
+    : '[LAUNCH-DARK-1] Messenger 1:1 A/V is compile-time dark '
+        '(kMessengerCallsEnabled=false), so _openCall refuses at the '
+        'messengerCallingEnabled guard before reaching the ordering seam. '
+        'Re-arms automatically when the const flips back.';
 
 void main() {
   setUp(() {
@@ -107,7 +148,7 @@ void main() {
     // `_trackClaimAfterOpen` future and this test both finish.
     claimCompleter.complete(null);
     await accepted;
-  });
+  }, skip: _kMessengerDarkSkip);
 
   test(
       'a losing/late claim after CallScreen was already requested is still '
@@ -137,7 +178,23 @@ void main() {
     // `_trackClaimAfterOpen`, which must not surface as an unhandled
     // rejection in this test's zone.
     await Future<void>.delayed(const Duration(milliseconds: 10));
-  });
+  }, skip: _kMessengerDarkSkip);
+
+  // [LAUNCH-DARK-1 follow-up] This one does NOT skip — with the const false it
+  // is the only test in the file still exercising real behaviour, and it is now
+  // the launch gate's pin rather than merely the flag's.
+  test(
+      '[LAUNCH-DARK-1] the compile-time const wins over any runtime flag value: '
+      'messengerCallingEnabled stays false even when config says true', () {
+    RemoteConfig.debugSetConfigForTest({'messengerCallingEnabled': true});
+    expect(RemoteConfig.messengerCallingEnabled, isFalse,
+        reason: 'kMessengerCallsEnabled is a compile-time const AND-ed into the '
+            'getter precisely so no server value can re-enable a killed '
+            'surface. If this fails, a stale KV blob or a mistyped flag write '
+            'can put Messenger calling back in front of users.');
+  }, skip: kMessengerCallsEnabled
+      ? 'Messenger calling is compiled in again; the const no longer forces false.'
+      : false);
 
   test(
       '[PIVOT-MSGR-CALL-OFF-1] with messengerCallingEnabled false, '

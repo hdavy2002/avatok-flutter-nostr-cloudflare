@@ -13,21 +13,34 @@ void main() {
   // that was deliberately removed.
   //
   // Following this file's own convention (see the [RESP-SMALL-1] note below),
-  // the contract is RESTATED rather than deleted. What still matters is that
-  // the band keeps its 40px height — the RAJ-INDIGO-1 footer seam in
-  // shell_v2.dart pins itself to this bar's top edge, so silently losing the
-  // height would move the seam across every screen in the app.
-  test('app menu affordance is static — no swipe pill, band height preserved', () {
+  // the contract is RESTATED rather than deleted.
+  //
+  // [UI-SEAM-OFF-1 2026-09-05] The 40px height this test used to pin is GONE,
+  // deliberately. With the icon row unreachable and the swipe pill deleted, the
+  // height was holding a 40dp EMPTY strip across the bottom of every screen —
+  // and the RAJ-INDIGO-1 footer seam that was positioned against it was removed
+  // in the same commit, so nothing is pinned to that edge any more. Demanding
+  // `height: 40` here was demanding the empty strip back.
+  //
+  // What still matters, and is what this now pins: the bar stays STATIC (no
+  // swipe pill, in either direction) and the icon row stays compiled but
+  // unreachable. If someone flips `_kShowAppSwitcherIcons` back on, the band
+  // needs a height again — app_switcher_bar.dart says so at its own call site —
+  // and that pairing is what the last assertion guards.
+  test('app menu affordance is static — no swipe pill, no empty band', () {
     final switcher = File('lib/shell/v2/app_switcher_bar.dart').readAsStringSync();
-    expect(switcher, contains('height: 40'),
-        reason: 'the footer band must keep its 40px height — the app-wide '
-            'footer seam is positioned against this bar');
     expect(switcher, isNot(contains("'Swipe up'")),
         reason: 'the bar is static; the swipe pill was removed on purpose');
     expect(switcher, isNot(contains("'Swipe down'")),
         reason: 'the bar is static; the swipe pill was removed on purpose');
     expect(switcher, contains('_kShowAppSwitcherIcons = false'),
         reason: 'the app-switcher icon row stays compiled but unreachable');
+    // The pairing: an unreachable icon row must not leave a sized empty band.
+    expect(switcher, isNot(contains('height: 40')),
+        reason: 'with the icon row off there is nothing to give the band '
+            'height — a 40dp empty strip across every screen is exactly what '
+            '[UI-SEAM-OFF-1] removed. Restore this only together with '
+            '_kShowAppSwitcherIcons = true.');
   });
 
   // [RESP-SMALL-1 2026-08-21] This test previously pinned the exact source line
