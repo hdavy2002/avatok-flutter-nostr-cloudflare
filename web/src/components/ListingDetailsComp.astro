@@ -15,8 +15,11 @@ import TruckBorder from './TruckBorder.astro';
 // [WEB-MSG-HANDOFF-1 2026-09-05] The ask-the-host FORM is gone — the web does
 // not send messages. See MessageHost for why, and for where a buyer goes instead.
 import MessageHostIsland from '../islands/listing/MessageHost';
+// [FAV-WIRE-1] Installs window.__avatokToken so the inline script below can
+// authenticate the heart. Renders nothing — see the island's own header.
+import AuthBridgeIsland from '../islands/auth/AuthBridge';
 import { inrOrFree } from '../lib/money';
-import { cfImage } from '../lib/config';
+import { API_BASE, cfImage } from '../lib/config';
 import { durationLabel, languageLabel, recurrenceLabel, timePillLabel } from '../lib/card';
 import type { Listing, ReviewList, ListingSlot, Card, Creator } from '../lib/types';
 
@@ -175,7 +178,9 @@ const titleAccent = titleWords.length > 1 ? `${titleWords[titleWords.length - 1]
 
 const ratingBadge = listing.rating_avg != null ? `★ ${listing.rating_avg.toFixed(1)} · ${listing.rating_count ?? 0} RATINGS` : null;
 const regularsCount = listing.creator?.follower_count ?? listing.joined_count ?? null;
-const regularsBadge = regularsCount != null ? `♡ ${regularsCount} REGULARS` : null;
+// [STATS-REAL-1] "REGULARS" renamed and re-sourced — it was the creator's
+// follower count wearing a label about this show.
+const regularsBadge = `♡ ${favouritesCount} FAVOURITE${favouritesCount === 1 ? '' : 'S'}`;
 const durLangBadge = [durationLabel(listing.duration_min ?? null), languageLabel(listing.spoken_lang ?? null)].filter(Boolean).join(' · ') || null;
 const humanBadge = listing.kind === 'agent' ? '⚙ AI VOICE AGENT · CLEARLY LABELLED' : '✓ 100% REAL HUMAN · NO AI';
 // [SESSION-MEDIA-1 2026-09-05] Whether the creator will be on camera.
@@ -216,6 +221,26 @@ const lede = listing.description ?? listing.blurb ?? listing.one_liner ?? '';
 // one and falling back to the other is the only way both eras read correctly.
 const bookedCount = listing.seats_taken ?? listing.joined_count ?? 0;
 const showsHosted = listing.creator_trust_stats?.shows_hosted ?? 0;
+// [STATS-REAL-1 2026-09-05] Two of the four numbers in the strip were about the
+// wrong thing, and the fix is different for each.
+//
+// FAVOURITES: the heart on the card and the hero already wrote a
+// `listing_favorites` row — the COUNT simply had no reader, so this slot showed
+// the creator's `follower_count` under the label "REGULARS", a different number
+// about a different person. `favorites_count` is now computed alongside
+// seats_taken and is the honest answer to "how many people saved this show".
+//
+// SHOWS LISTED, not hosted: the owner wanted this to read 1 for his first show.
+// It cannot say "hosted" — the panel right beside it promises "we show real
+// history only" and "past sessions shown unedited", and a show that has not
+// happened is not a hosted one. Counting what he HAS done (published a show) is
+// both true and non-zero, so the strip stops reading as all-zeros on a brand-new
+// listing without the page telling a buyer something untrue.
+const favouritesCount = listing.favorites_count ?? 0;
+// This listing plus the creator's other live ones. `hostListings` is already
+// derived above for the "more from this host" rail, so this is the same fact
+// counted once rather than a new query.
+const showsListed = hostListings.length + 1;
 const comebackPct = listing.creator_trust_stats?.comeback_pct != null ? `${Math.round(listing.creator_trust_stats.comeback_pct)}%` : '—';
 
 const priceTokens = listing.price ?? 0;
@@ -314,6 +339,11 @@ const clientConfig = {
   timezone,
   startsAt: listing.starts_at ?? null,
   bookHref: `/book/${listing.id}`,
+  // [FAV-WIRE-1 2026-09-05] The heart persists now — see the handler below.
+  listingId: listing.id,
+  apiBase: API_BASE,
+  favorited: listing.favorited === true,
+  favouritesCount,
   slots: (slots ?? []).length > 0
     ? (slots ?? []).map((s) => ({ id: s.id, startsAt: s.starts_at, endsAt: s.ends_at, label: s.label ?? '', capacity: s.capacity, taken: s.booked_count, status: s.status }))
     : listing.starts_at
@@ -413,16 +443,18 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
               <span class="countdown__unit"><span id="cd-s">00</span><em>SEC</em></span>
             </div>
           )}
-          <div class="player-card__scallop"></div>
-        </div>
-        <div class="player-card__hostbar">
-          {hostAvatar
-            ? <img class="avatar-circle avatar-circle--photo" src={cfImage(hostAvatar, { width: 96 })} alt={hostName} loading="lazy" width="36" height="36" />
-            : <span class="avatar-circle">{hostInitials}</span>}
-          {hostHref
-            ? <a class="player-card__hostname player-card__hostname--link" href={hostHref}>{hostName} {idVerified && '✓'}</a>
-            : <span class="player-card__hostname">{hostName} {idVerified && '✓'}</span>}
-          <span class="player-card__hostmeta">{hostSinceYear ? `HOST SINCE ${hostSinceYear} · ` : ''}REPLIES IN ~{repliesIn}</span>
+          {/* [POSTER-FULL-1 2026-09-05] The host bar under the poster is gone, and
+              the scallop with it.
+
+              It repeated what the MEET THE HOST card already says in full a
+              screen below — same photo, same name, same reply time — and it was
+              costing the poster ~50px of a card whose entire job is to show the
+              poster. Owner: "remove this whole section and so the image will
+              become bigger."
+
+              `#join-note` lived here and is written to by the countdown script;
+              it moves into the hero rather than being deleted, or that script
+              throws on a null element and takes the countdown down with it. */}
           <span class="player-card__joinnote" id="join-note"></span>
         </div>
       </div>
@@ -479,6 +511,8 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
       </div>
     </div>
 
+    <AuthBridgeIsland client:load />
+
     <div class="hero__meta">
       <div class="eyebrow">{cat.eyebrow}</div>
       <h1 class="title">{titleMain} <span class="title__accent">{titleAccent}</span></h1>
@@ -492,9 +526,17 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
       {lede && <p class="lede">{lede}</p>}
       <div class="stat-card">
         <span><strong id="stat-booked-value">{bookedCount}</strong><em>✓ BOOKED THIS SHOW</em></span>
-        <span><strong>{watchStat}</strong><em>{watchStatLabel}</em></span>
-        <span><strong>{showsHosted}</strong><em>SHOWS HOSTED</em></span>
-        <span><strong>{comebackPct}</strong><em>♡ COME BACK AGAIN</em></span>
+        {/* [STATS-REAL-1] The favourite slot replaces "FOLLOW THIS SHOW", which
+            had no button anywhere on the site to drive it — the heart is the
+            control, so the heart is what this counts. Live shows still show the
+            watching count, which is a real, different number. */}
+        {isLive
+          ? <span><strong>{watchStat}</strong><em>{watchStatLabel}</em></span>
+          : <span><strong id="stat-fav-value">{favouritesCount}</strong><em>♡ FAVOURITES</em></span>}
+        <span><strong>{showsListed}</strong><em>SHOWS LISTED</em></span>
+        {showsHosted > 0
+          ? <span><strong>{showsHosted}</strong><em>SHOWS HOSTED</em></span>
+          : <span><strong>{comebackPct}</strong><em>♡ COME BACK AGAIN</em></span>}
       </div>
       <div class="price-line">
         <span class="price-line__amount">{priceLine}{!isFree && <small>{priceUnitLabel}</small>}</span>
@@ -986,12 +1028,55 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
     btn.addEventListener('click', () => { state.joined = state.booked ? 2 : 1; renderJoinNote(); });
   });
 
+  // [FAV-WIRE-1 2026-09-05] The heart writes to the server.
+  //
+  // It was pure local state: it flipped a character and forgot. So the count it
+  // is supposed to drive could never move, and refreshing the page lost the
+  // favourite entirely — the owner clicked it and nothing anywhere changed.
+  //
+  // Optimistic: the icon and the number move immediately and are ROLLED BACK if
+  // the request fails, rather than left showing a favourite that was never
+  // saved. A signed-out visitor gets a 401, which rolls back and sends them to
+  // sign in — a heart that silently does nothing is the bug being fixed, so it
+  // must not be replaced by a heart that silently does nothing for guests.
   const favBtn = document.getElementById('fav-btn');
-  favBtn.onclick = () => {
-    document.dispatchEvent(new CustomEvent('ld:cta', { detail: { cta: 'fav' } }));
-    state.fav = !state.fav;
+  const favCountEl = document.getElementById('stat-fav-value');
+  state.fav = CONFIG.favorited === true;
+  let favCount = Number(CONFIG.favouritesCount || 0);
+  let favBusy = false;
+  function paintFav() {
     favBtn.classList.toggle('is-active', state.fav);
     favBtn.textContent = state.fav ? '♥' : '♡';
+    if (favCountEl) favCountEl.textContent = String(favCount);
+  }
+  paintFav();
+  favBtn.onclick = async () => {
+    if (favBusy) return;
+    favBusy = true;
+    document.dispatchEvent(new CustomEvent('ld:cta', { detail: { cta: 'fav' } }));
+    const was = state.fav;
+    state.fav = !was;
+    favCount = Math.max(0, favCount + (state.fav ? 1 : -1));
+    paintFav();
+    try {
+      const token = window.__avatokToken ? await window.__avatokToken() : null;
+      if (!token) throw new Error('signed_out');
+      const url = CONFIG.apiBase + '/api/marketplace/favorites'
+        + (state.fav ? '' : '?listing_id=' + encodeURIComponent(CONFIG.listingId));
+      const res = await fetch(url, {
+        method: state.fav ? 'POST' : 'DELETE',
+        headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' },
+        body: state.fav ? JSON.stringify({ listing_id: CONFIG.listingId }) : undefined,
+      });
+      if (!res.ok) throw new Error('http_' + res.status);
+    } catch (err) {
+      state.fav = was;
+      favCount = Math.max(0, favCount + (was ? 1 : -1));
+      paintFav();
+      if (String(err && err.message) === 'signed_out') {
+        location.href = '/sign-in?next=' + encodeURIComponent(location.pathname);
+      }
+    } finally { favBusy = false; }
   };
 
   document.getElementById('copy-link-btn').onclick = async (e) => {
@@ -1222,12 +1307,18 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
   @media (max-width: 560px) { .nazar__img { height: 22px; } .nazar__text { font-size: 0.5625rem; } }
 
   .player-card { border: 3px solid #161614; border-radius: 26px; overflow: hidden; background: #fdf1d3; box-shadow: 7px 8px 0 #161614; }
-  .player-card__screen { height: clamp(300px, 40vw, 540px); position: relative; overflow: hidden; }
+  /* [POSTER-FULL-1] Taller, and the poster is no longer cropped.
+     `object-fit: cover` filled the frame by cutting the poster's top and bottom
+     off — on a 2:3 poster in a 40vw-tall box that is a lot of painting nobody
+     sees, and the owner asked for "the entire image ... nothing cuts out".
+     `contain` shows all of it; the frame keeps the card's own paper behind the
+     letterboxing so it reads as a mounted print rather than a gap. */
+  .player-card__screen { height: clamp(420px, 62vw, 760px); position: relative; overflow: hidden; background: #1c1a17; }
   /* [POSTER-FIRST-1] The poster fills the hero as a real <img> so it can carry
      srcset. object-fit:cover keeps the painted lettering centred instead of
      squashing a 2:3 poster into a 16:9 frame. */
   .player-card__poster { position: absolute; inset: 0; display: block; }
-  .player-card__poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .player-card__poster img { width: 100%; height: 100%; object-fit: contain; display: block; }
   /* Only rendered when the artwork is deliberately textless — see
      worker/src/lib/listing_poster.ts buildPosterArtOnlyPrompt. */
   .player-card__lettering { position: absolute; top: 18px; left: 20px; right: 20px; z-index: 2; pointer-events: none; }
@@ -1257,7 +1348,11 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
   .countdown__unit span { display: block; font-family: 'Anton', sans-serif; letter-spacing: .06em; font-size: 1.375rem; line-height: 1; word-spacing: .22em; }
   .countdown__unit em { display: block; font-style: normal; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.5625rem; letter-spacing: .1em; margin-top: 4px; }
   .player-card__scallop { position: absolute; left: 0; right: 0; bottom: -1px; height: 18px; background: radial-gradient(circle at 11px 15px, #fdf1d3 11px, transparent 12px) 0 0/22px 18px repeat-x; }
-  .player-card__hostbar { padding: 13px 18px 15px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  /* [POSTER-FULL-1] The host bar is gone; the join note it contained now floats
+     at the foot of the hero instead. */
+  .player-card__joinnote { position: absolute; left: 14px; right: 14px; bottom: 12px; z-index: 3;
+    font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .08em;
+    color: #fdf1d3; text-shadow: 0 1px 3px rgba(0,0,0,.7); pointer-events: none; }
   .player-card__hostname { font-size: 0.875rem; font-weight: 600; }
   .player-card__hostmeta { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .08em; color: #8c6a52; }
   .player-card__joinnote { margin-left: auto; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .08em; }

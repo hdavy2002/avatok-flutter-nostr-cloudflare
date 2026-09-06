@@ -82,6 +82,9 @@ export interface Card {
   /** [CARD-SCHEMA-1] Derived server-side, never stored. `null` means "could not count",
    *  which is deliberately different from 0. */
   seats_taken?: number | null;
+  /** [FAVOURITES-COUNT-1] Hearts on THIS listing. Not the creator's followers —
+   *  that is `creator.follower_count`, a different number about a person. */
+  favorites_count?: number | null;
   seats_left?: number | null;
   watching?: number | null;
   created_at?: number | null;

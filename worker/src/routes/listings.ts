@@ -660,7 +660,7 @@ function activePromoPct(promos: any[], now: number, code?: string | null): { pct
   return best ? { pct: Math.min(100, Math.max(0, Number(best.pct_off))), promo: best } : { pct: 0, promo: null };
 }
 
-function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set<string>, stats?: Map<string, { seats_taken: number; watching: number }>) {
+function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set<string>, stats?: Map<string, { seats_taken: number; watching: number; favorites: number }>) {
   const now = Date.now();
   const promos = promosByListing?.get(r.id) ?? [];
   const { pct } = activePromoPct(promos.filter((p) => p.kind === "early_bird"), now);
@@ -725,6 +725,8 @@ function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set
     // [CARD-SCHEMA-1] Derived, and null (not 0) when unknown, so a card can tell
     // "nobody has booked" apart from "we could not count".
     seats_taken: stats?.get(String(r.id))?.seats_taken ?? null,
+    // [FAVOURITES-COUNT-1] Hearts on THIS listing — not the creator's followers.
+    favorites_count: stats?.get(String(r.id))?.favorites ?? null,
     seats_left: r.capacity != null && stats?.get(String(r.id))
       ? Math.max(0, Number(r.capacity) - Number(stats.get(String(r.id))!.seats_taken))
       : null,
@@ -786,8 +788,66 @@ function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set
  *
  * One IN query each, no N+1 — same shape as promosFor above.
  */
-async function cardStatsFor(env: Env, ids: string[]): Promise<Map<string, { seats_taken: number; watching: number }>> {
-  const map = new Map<string, { seats_taken: number; watching: number }>();
+/**
+ * [SEATS-COUNT-2 2026-09-05] The "popular" sort, counting the tickets that were
+ * actually sold.
+ *
+ * THE BUG THIS ENDS
+ *
+ * `listings.joined_count` is a counter bumped in exactly one place — the LEGACY
+ * `bookListing` path below. The commercial checkout that sells every live-event
+ * ticket today writes a `commercial_entitlements` row and never touches it. So
+ * "popular" ranked by a number that ignores every real sale, the same stale
+ * column that made a booked listing render "0 BOOKED" on the detail page.
+ *
+ * WHY THIS SHAPE, AND NOT THE TWO OBVIOUS ALTERNATIVES
+ *
+ * Bumping `joined_count` from the commercial path as well would have been one
+ * line, and it is the wrong fix: entitlements change state in SIX different
+ * files (checkout, stream sessions, lifecycle, settlement, the refund rail),
+ * every one of those would need to remember to adjust the counter, and the
+ * seventh site somebody adds next month silently re-opens this exact bug. A
+ * cached counter with many writers is what we already had.
+ *
+ * A projection table refreshed by a cron would work, but it is a second store to
+ * keep honest for a number we can simply derive.
+ *
+ * So: DERIVE IT. The count is never stored, so it cannot drift — and it is not
+ * expensive, because `idx_commercial_entitlement_listing (listing_id, state)`
+ * already exists and is exactly the index this correlated count wants.
+ *
+ * `joined_count` is ADDED rather than replaced: listings sold through the old
+ * booking path carry a real number there and have no entitlements, so summing
+ * is what makes both eras rank correctly. Nothing is sold through both paths —
+ * a listing uses one or the other — so this cannot double-count.
+ */
+const POPULARITY_SEATS = `(
+  COALESCE((SELECT COUNT(*) FROM commercial_entitlements ce
+             WHERE ce.listing_id = l.id
+               AND ce.role IN ('viewer','buyer')
+               AND ce.state IN ('reserved','held','active','consumed')), 0)
+  + COALESCE(l.joined_count, 0)
+)`;
+
+/** Is the commercial schema present? The commercial migrations are NOT
+ *  auto-applied (see cardStatsFor's own note), so on a database without them
+ *  the subquery above is a hard SQL error — and unlike cardStatsFor, an ORDER BY
+ *  cannot fail soft: it would take the whole browse page down rather than drop a
+ *  stat. Checked once per isolate and cached. */
+let _hasEntitlements: boolean | null = null;
+async function popularityOrder(env: Env): Promise<string> {
+  if (_hasEntitlements === null) {
+    try {
+      await metaSession(env)
+        .prepare("SELECT 1 FROM commercial_entitlements LIMIT 1").first();
+      _hasEntitlements = true;
+    } catch { _hasEntitlements = false; }
+  }
+  return _hasEntitlements ? `${POPULARITY_SEATS} DESC` : "l.joined_count DESC";
+}
+
+async function cardStatsFor(env: Env, ids: string[]): Promise<Map<string, { seats_taken: number; watching: number; favorites: number }>> {
+  const map = new Map<string, { seats_taken: number; watching: number; favorites: number }>();
   if (!ids.length) return map;
   const placeholders = ids.map((_, i) => `?${i + 1}`).join(",");
   try {
@@ -799,7 +859,7 @@ async function cardStatsFor(env: Env, ids: string[]): Promise<Map<string, { seat
         GROUP BY listing_id`,
     ).bind(...ids).all();
     for (const r of (seats.results ?? []) as any[]) {
-      map.set(String(r.listing_id), { seats_taken: Number(r.n ?? 0), watching: 0 });
+      map.set(String(r.listing_id), { seats_taken: Number(r.n ?? 0), watching: 0, favorites: 0 });
     }
   } catch { /* migration not applied — no seat counts, not an error */ }
   try {
@@ -813,10 +873,28 @@ async function cardStatsFor(env: Env, ids: string[]): Promise<Map<string, { seat
     ).bind(...ids).all();
     for (const r of (live.results ?? []) as any[]) {
       const key = String(r.listing_id);
-      const prev = map.get(key) ?? { seats_taken: 0, watching: 0 };
+      const prev = map.get(key) ?? { seats_taken: 0, watching: 0, favorites: 0 };
       map.set(key, { ...prev, watching: Number(r.n ?? 0) });
     }
   } catch { /* same */ }
+  // [FAVOURITES-COUNT-1 2026-09-05] How many people hearted this listing.
+  //
+  // The favourite already existed and already wrote a row — it was the count
+  // that had no reader, so the page filled that slot with the CREATOR's
+  // follower_count under the label "REGULARS", which is a different number
+  // about a different thing. Same shape as the two queries above: one IN query,
+  // fails soft, no N+1.
+  try {
+    const favs = await metaSession(env).prepare(
+      `SELECT listing_id, COUNT(*) n FROM listing_favorites
+        WHERE listing_id IN (${placeholders}) GROUP BY listing_id`,
+    ).bind(...ids).all();
+    for (const r of (favs.results ?? []) as any[]) {
+      const key = String(r.listing_id);
+      const prev = map.get(key) ?? { seats_taken: 0, watching: 0, favorites: 0 };
+      map.set(key, { ...prev, favorites: Number(r.n ?? 0) });
+    }
+  } catch { /* table may not be migrated — no count, not an error */ }
   return map;
 }
 
@@ -3205,8 +3283,10 @@ export async function exploreBrowse(req: Request, env: Env): Promise<Response> {
   // the two endpoints don't disagree about what "cheapest" means. The default is
   // unchanged (live first, then soonest), so existing callers see today's order.
   const sort = u.get("sort") || "";
+  // [SEATS-COUNT-2] "popular" counts real tickets — see popularityOrder.
+  const popular = await popularityOrder(env);
   const order = sort === "cheapest" ? "l.price ASC"
-    : sort === "popular" ? "l.joined_count DESC"
+    : sort === "popular" ? popular
     : sort === "rating" ? "COALESCE(l.rating_avg,0) DESC, l.rating_count DESC"
     : sort === "newest" ? "l.created_at DESC"
     : "(l.status='live') DESC, COALESCE(l.starts_at, 4102444800000) ASC";
@@ -3288,8 +3368,9 @@ export async function exploreLiveNow(req: Request, env: Env): Promise<Response> 
   // the one that renders unbidden at the top of the shell. Defaults to commerce.
   const vertical = verticalFilter(req, binds, where);
   blockFilter(uid, binds, where);
+  // [SEATS-COUNT-2] This shelf IS the popular shelf — same ranking as the sort.
   const rs = await metaSession(env).prepare(
-    `${CARD_SELECT} WHERE ${where.join(" AND ")} ORDER BY l.joined_count DESC LIMIT 25`,
+    `${CARD_SELECT} WHERE ${where.join(" AND ")} ORDER BY ${await popularityOrder(env)} LIMIT 25`,
   ).bind(...binds).all();
   const rows = (rs.results ?? []) as any[];
   const promos = await promosFor(env, rows.map((r) => r.id));
@@ -3380,8 +3461,10 @@ export async function exploreSearch(req: Request, env: Env): Promise<Response> {
   blockFilter(uid, binds, where);
 
   const sort = u.get("sort") || "soonest";
+  // [SEATS-COUNT-2] Same ranking everywhere "popular" appears.
+  const popularOrder = await popularityOrder(env);
   const order = sort === "cheapest" ? "l.price ASC"
-    : sort === "popular" ? "l.joined_count DESC"
+    : sort === "popular" ? popularOrder
     : sort === "rating" ? "COALESCE(l.rating_avg,0) DESC, l.rating_count DESC"
     : "COALESCE(l.starts_at, 4102444800000) ASC";
   const limit = Math.min(50, Math.max(1, Number(u.get("limit") || 20)));
