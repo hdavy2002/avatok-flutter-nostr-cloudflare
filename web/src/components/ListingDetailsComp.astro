@@ -12,7 +12,9 @@
 // only — the export's <Layout>/<SiteHeader/>/<SiteFooter/> are not repeated
 // here (see CLAUDE.md task note on this file for why that's intentional).
 import TruckBorder from './TruckBorder.astro';
-import AskHostIsland from '../islands/listing/AskHost';
+// [WEB-MSG-HANDOFF-1 2026-09-05] The ask-the-host FORM is gone — the web does
+// not send messages. See MessageHost for why, and for where a buyer goes instead.
+import MessageHostIsland from '../islands/listing/MessageHost';
 import { inrOrFree } from '../lib/money';
 import { cfImage } from '../lib/config';
 import { durationLabel, languageLabel, recurrenceLabel, timePillLabel } from '../lib/card';
@@ -219,6 +221,11 @@ const hostInitials = (listing.creator?.name ?? listing.creator?.handle ?? '?').s
 const hostAvatar = listing.creator?.avatar_url ?? null;
 const hostHandle = listing.creator?.handle ?? null;
 const hostHref = hostHandle ? `/c/${encodeURIComponent(hostHandle)}` : null;
+// [WEB-MSG-HANDOFF-1] The creator's AvaTOK number — their public identity, and
+// the whole point of the messaging handoff. Already on the wire since
+// [PIVOT-NUMBER-PRIVACY-1]; `shapeCard` emits it as `creator.avatok_number`.
+// Their REAL phone number is never here and never should be.
+const hostNumber = listing.creator?.avatok_number ?? null;
 const hostSinceYear = listing.creator_trust_stats?.first_session_at
   ? new Date(listing.creator_trust_stats.first_session_at).getUTCFullYear()
   : null;
@@ -600,9 +607,9 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
               <span class="chip">~{repliesIn} REPLY</span>
             </div>
             <button type="button" id="msg-host-btn" class="btn btn--cta" style={`background:${ctaColor}`}>✉ Message {hostName.split(' ')[0]}</button>
-            <span class="host-card__privacy">MESSAGES STAY ON AVATOK · NO PHONE NUMBERS SHARED</span>
+            <span class="host-card__privacy">MESSAGES HAPPEN IN THE AVATOK APP · NO PHONE NUMBERS SHARED</span>
             <div id="ask-host-panel" style="display:none;">
-              <AskHostIsland client:visible listingId={listing.id} hostName={hostName} />
+              <MessageHostIsland client:visible listingId={listing.id} hostName={hostName} hostNumber={hostNumber} />
             </div>
           </div>
           <div class="host-card__details">
