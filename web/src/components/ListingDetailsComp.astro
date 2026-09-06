@@ -177,17 +177,17 @@ const titleMain = titleWords.length > 1 ? titleWords.slice(0, -1).join(' ') : li
 const titleAccent = titleWords.length > 1 ? `${titleWords[titleWords.length - 1]}.` : '';
 
 const ratingBadge = listing.rating_avg != null ? `★ ${listing.rating_avg.toFixed(1)} · ${listing.rating_count ?? 0} RATINGS` : null;
-const regularsCount = listing.creator?.follower_count ?? listing.joined_count ?? null;
-// [STATS-REAL-1] "REGULARS" renamed and re-sourced — it was the creator's
-// follower count wearing a label about this show.
+// [FAV-BADGE-OFF-1 2026-09-05] The favourites CHIP is gone from the title row.
 //
-// Declared HERE, above its first use. It was originally further down the file
-// next to the other stat consts, which is a temporal dead zone: Astro frontmatter
-// is a module body, so reading a `const` declared 56 lines later throws at render
-// and the whole page 500s. Caught before anyone saw it, by fetching the live page
-// instead of trusting the build.
+// It was the old "REGULARS" badge, which I re-sourced to favourites rather than
+// deleting. The owner's call: the same number already sits in the stats strip a
+// few lines below, so the chip was saying it twice — and "♡ 0 FAVOURITES" beside
+// the title of a brand-new show is a worse first impression than saying nothing.
+//
+// The COUNT stays (stats strip) and the heart stays; only the duplicate chip
+// goes. `regularsCount` went with it — it read the creator's follower_count,
+// which was never about this show and now has no reader at all.
 const favouritesCount = listing.favorites_count ?? 0;
-const regularsBadge = `♡ ${favouritesCount} FAVOURITE${favouritesCount === 1 ? '' : 'S'}`;
 const durLangBadge = [durationLabel(listing.duration_min ?? null), languageLabel(listing.spoken_lang ?? null)].filter(Boolean).join(' · ') || null;
 const humanBadge = listing.kind === 'agent' ? '⚙ AI VOICE AGENT · CLEARLY LABELLED' : '✓ 100% REAL HUMAN · NO AI';
 // [SESSION-MEDIA-1 2026-09-05] Whether the creator will be on camera.
@@ -524,7 +524,6 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
       <h1 class="title">{titleMain} <span class="title__accent">{titleAccent}</span></h1>
       <div class="badge-row">
         {ratingBadge && <span class="badge">{ratingBadge}</span>}
-        {regularsBadge && <span class="badge">{regularsBadge}</span>}
         {durLangBadge && <span class="badge">{durLangBadge}</span>}
         {mediaBadge && <span class="badge">{mediaBadge}</span>}
         <span class="badge badge--teal">{humanBadge}</span>
