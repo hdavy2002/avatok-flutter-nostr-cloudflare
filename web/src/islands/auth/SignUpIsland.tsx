@@ -46,7 +46,7 @@ import { capture, withTrace } from '../../lib/analytics';
 import {
   Field, Button, CheckRow, Divider, GoogleButton, RolePicker, CodeStep,
   validateEmail, validateRequired, clerkError,
-  useClerkStalled, STALLED_MESSAGE,
+  useClerkStalled, useRedirectIfSignedIn, STALLED_MESSAGE,
   type FieldErrors, type Role,
 } from './AuthKit';
 // [WEB-ACCOUNT-1] The bootstrap call — now the shared one, so the users row is
@@ -82,6 +82,9 @@ function Inner() {
   const [submitting, setSubmitting] = useState(false);
   const [resent, setResent] = useState(false);
   const stalled = useClerkStalled(isLoaded);
+  // Already signed in? `signUp.create` would only answer
+  // `identifier_already_signed_in`, so send them on instead.
+  const leaving = useRedirectIfSignedIn(() => landingFor(role));
   // §2.2 auth_signup_result — startRef anchors the `ms` on the eventual result.
   const signupStartRef = useRef<number>(0);
 
@@ -201,6 +204,10 @@ function Inner() {
     } catch (err) {
       setFormError(clerkError(err));
     }
+  }
+
+  if (leaving) {
+    return <p className="auth-footline">You’re already signed in — taking you through…</p>;
   }
 
   /* ── Step 2: email code ─────────────────────────────────────────────── */

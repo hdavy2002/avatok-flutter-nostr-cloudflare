@@ -14,6 +14,7 @@
  */
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { useAuth } from '@clerk/clerk-react';
 
 export type FieldErrors = Record<string, string | undefined>;
 
@@ -37,6 +38,31 @@ export function useClerkStalled(isLoaded: boolean, ms = 8000): boolean {
     return () => clearTimeout(t);
   }, [isLoaded, ms]);
   return stalled && !isLoaded;
+}
+
+/**
+ * Send an already-signed-in visitor onward instead of letting them fill in a
+ * form that cannot succeed.
+ *
+ * [WEB-PWLESS-1 2026-09-06] Caught on the live site: with a session already
+ * active, typing an email into /sign-in and submitting produced Clerk's raw
+ * "You're already signed in." — `signUp.create` fails with
+ * `identifier_already_signed_in` and so does the sign-in fallback, so BOTH
+ * halves of the passwordless flow are dead ends for this one visitor. There is
+ * nothing they can type to fix it, which is the definition of a screen with no
+ * next action.
+ *
+ * Returns true while the redirect is pending, so the caller can render nothing
+ * rather than flashing a login form at someone who is already logged in.
+ */
+export function useRedirectIfSignedIn(to: () => string): boolean {
+  const { isLoaded, isSignedIn } = useAuth();
+  useEffect(() => {
+    if (isLoaded && isSignedIn) location.href = to();
+    // `to` is a fresh closure each render; the auth state is the real trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, isSignedIn]);
+  return Boolean(isLoaded && isSignedIn);
 }
 
 export const STALLED_MESSAGE =

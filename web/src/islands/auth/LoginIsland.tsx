@@ -38,7 +38,8 @@ import { CLERK_PUBLISHABLE_KEY } from '../../lib/config';
 import { capture, withTrace } from '../../lib/analytics';
 import {
   Field, Button, Divider, GoogleButton, CodeStep,
-  validateEmail, useClerkStalled, STALLED_MESSAGE, type FieldErrors,
+  validateEmail, useClerkStalled, useRedirectIfSignedIn, STALLED_MESSAGE,
+  type FieldErrors,
 } from './AuthKit';
 import {
   sendPasswordlessCode, verifyPasswordlessCode, continueWithGoogle, pwlError,
@@ -74,6 +75,9 @@ function Inner() {
 
   const isLoaded = signInLoaded && signUpLoaded;
   const stalled = useClerkStalled(isLoaded);
+  // Already signed in? Go where they were headed. Nothing on this form can
+  // succeed for them — see useRedirectIfSignedIn.
+  const leaving = useRedirectIfSignedIn(nextUrl);
   // §2.2 auth_signin_start/_result — startRef anchors the `ms` on the result.
   const startRef = useRef<number>(0);
 
@@ -182,6 +186,10 @@ function Inner() {
     } catch (err) {
       setFormError(pwlError(err, 'Couldn’t open Google sign-in. Please try again.').message);
     }
+  }
+
+  if (leaving) {
+    return <p className="auth-footline">You’re already signed in — taking you through…</p>;
   }
 
   if (stage === 'code') {
