@@ -1,0 +1,15 @@
+---
+// [REVIEW-MOD-1 2026-09-06] Where a buyer's review waits for a human.
+export const prerender = false;
+import Dashboard from '../../layouts/Dashboard.astro';
+import AdminReviews from '../../islands/admin/AdminReviews.tsx';
+---
+
+<Dashboard
+  title="Reviews · avatok.ai"
+  heading="Reviews"
+  subtitle="Every review a buyer writes waits here. Nothing appears on a listing page, or counts towards a rating, until it is approved."
+  active="admin-reviews"
+>
+  <AdminReviews client:load />
+</Dashboard>

@@ -128,7 +128,10 @@ export async function verseSummary(req: Request, env: Env): Promise<Response> {
     `SELECT r.id, r.listing_id, r.author_id, r.rating, r.body, r.created_at, l.title AS listing_title,
             u.display_name AS author_name, u.avatar_url AS author_avatar
        FROM reviews r JOIN listings l ON l.id=r.listing_id LEFT JOIN users u ON u.uid=r.author_id
-      WHERE r.creator_id=?1 AND r.reply IS NULL ORDER BY r.created_at DESC LIMIT 10`,
+      WHERE r.creator_id=?1 AND r.reply IS NULL
+        AND r.status='approved' -- [REVIEW-MOD-1 2026-09-06] don't ask a creator to
+                                -- reply to a review the public cannot see yet
+      ORDER BY r.created_at DESC LIMIT 10`,
   ).bind(uid).all();
 
   // ---- reach + A1 announce quota + auto-suggest nudges ----

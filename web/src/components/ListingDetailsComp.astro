@@ -18,6 +18,10 @@ import MessageHostIsland from '../islands/listing/MessageHost';
 // [FAV-WIRE-1] Installs window.__avatokToken so the inline script below can
 // authenticate the heart. Renders nothing — see the island's own header.
 import AuthBridgeIsland from '../islands/auth/AuthBridge';
+// [REVIEW-MOD-1 2026-09-06] The "leave a review" flow — button, form and every
+// outcome, entirely inside the reviews section. See the island for why the
+// eligibility check is the server's and not this page's.
+import LeaveReviewIsland from '../islands/listing/LeaveReview';
 import { inrOrFree } from '../lib/money';
 import { API_BASE, cfImage } from '../lib/config';
 import { durationLabel, languageLabel, recurrenceLabel, timePillLabel } from '../lib/card';
@@ -805,6 +809,14 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
             {masala && <img src="/assets/baccha-uncle.png" alt="Baccha hai tu mera, tension kyu leta hai" class="reviews-summary__sticker" />}
           </div>
           <div class="reviews-list-wrap">
+            {/* [REVIEW-MOD-1 2026-09-06] The empty middle the owner pointed at.
+                #reviews-list below is filled by the inline script from the API;
+                with no reviews yet it renders nothing at all, which left this
+                whole column blank between the histogram and the pager.
+                client:load rather than client:visible — this section is far down
+                a long page, and a button that only exists once you have scrolled
+                to it reads as a button that is missing. */}
+            <LeaveReviewIsland client:load listingId={listing.id} hostName={hostName} />
             <div id="reviews-list" class="reviews-list"></div>
             <div class="pager">
               <button type="button" id="reviews-prev" class="pager__btn">‹ PREV</button>

@@ -199,7 +199,9 @@ import { marketplaceStub } from "./routes/stubs";
 import { verseSummary, verseAnnounce, verseStatement } from "./routes/verse";
 // [LIST-CONTENT-2] replaces routes/listings.ts's old createReview and routes/verse.ts's
 // old reviewReply — see worker/src/routes/reviews.ts header for the migration context.
-import { createReview, replyReview, helpfulReview, listReviews } from "./routes/reviews";
+import { createReview, replyReview, helpfulReview, listReviews, reviewEligibility } from "./routes/reviews";
+// [REVIEW-MOD-1] Reviews are held for admin approval before they are published.
+import { adminReviews, adminReviewAction } from "./routes/admin_reviews";
 // [LIST-ASK-1] "Ask the host" — see worker/src/routes/listing_questions.ts header.
 import { askQuestion, answerQuestion, listMyQuestions, listCreatorQuestions, promoteToFaq } from "./routes/listing_questions";
 import {
@@ -1260,6 +1262,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // the auto-assigned AvaTOK number. Idempotent; safe to call repeatedly.
       if (p === "/api/account/bootstrap" && req.method === "POST") return await webAccountBootstrap(req, env);
       { const m = p.match(/^\/api\/admin\/listings\/([A-Za-z0-9-]{1,64})$/); if (m && req.method === "GET") return await adminListingDetail(req, env, m[1]); if (m && req.method === "POST") return await adminListingAction(req, env, m[1]); if (m && req.method === "PUT") return await adminEditListing(req, env, m[1]); if (m && req.method === "DELETE") return await adminPurgeListing(req, env, m[1]); }
+      // [REVIEW-MOD-1] Review moderation queue. Reviews land 'pending' and are
+      // invisible to the public until approved here — see routes/admin_reviews.ts.
+      if (p === "/api/admin/reviews" && req.method === "GET") return await adminReviews(req, env);
+      { const rm = p.match(/^\/api\/admin\/reviews\/([A-Za-z0-9-]{1,64})$/); if (rm && req.method === "POST") return await adminReviewAction(req, env, rm[1]); }
       if (p === "/api/admin/live" && req.method === "GET") return await adminLive(req, env);
       if (p === "/api/admin/agents" && req.method === "GET") return await adminAgents(req, env);
       if (p === "/api/admin/health" && req.method === "GET") return await adminHealth(req, env);
@@ -1754,10 +1760,16 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
           // see routes/reviews.ts); listReviews (GET) is new, paginated, §4.6-aware.
           if (act === "reviews" && req.method === "POST") return await createReview(req, env, lid);
           if (act === "reviews" && req.method === "GET") return await listReviews(req, env, lid);
+          // NOTE: /reviews/eligibility is TWO segments and cannot ride this
+          // single-segment `la` matcher — it is routed separately just below.
           if (act === "promotions" && (req.method === "GET" || req.method === "POST")) return await listingPromotions(req, env, lid);
           // [LIST-ASK-1] "Ask the host" — one question per user per listing.
           if (act === "questions" && req.method === "POST") return await askQuestion(req, env, lid);
         }
+        // [REVIEW-MOD-1] "May I review this, and what did I already write?" —
+        // optional auth (a guest gets reason:'signed_out', not a 401).
+        const rel = p.match(/^\/api\/listings\/([A-Za-z0-9-]{1,64})\/reviews\/eligibility$/);
+        if (rel && req.method === "GET") return await reviewEligibility(req, env, rel[1]);
         const lpd = p.match(/^\/api\/listings\/([A-Za-z0-9-]{1,64})\/promotions\/([A-Za-z0-9-]{1,64})$/);
         if (lpd && req.method === "DELETE") return await deletePromotion(req, env, lpd[1], lpd[2]);
         // [LIST-SLOTS-1] C.3 calendar-1:1 booking slots — dark behind listingSlotsEnabled.

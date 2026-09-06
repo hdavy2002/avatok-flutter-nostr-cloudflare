@@ -84,6 +84,10 @@ import { checkTransition } from "../lib/listing_transitions";
 import { freeEntryAllowed } from "../lib/free_entry_gate";
 // [PRICE-HOURLY-1]
 import { priceFloorError } from "../lib/session_pricing";
+// [REVIEW-MOD-1 2026-09-06] One implementation of "recompute ratings from
+// APPROVED reviews only", shared with routes/reviews.ts. reviews.ts does not
+// import from this file, so this direction is not a cycle.
+import { recomputeReviewAggregates } from "./reviews";
 
 const APP = "avaexplore";
 // live_event/consult = creator services; sell/buy/social = AvaMarketplace listings.
@@ -609,7 +613,10 @@ const CARD_SELECT = `
          l.rating_avg, l.rating_count, l.created_at, l.content_version,
          l.vertical, l.section, l.attrs, l.video_url, l.proposed_category,
          l.cat_version, l.playbook_version, l.template_version,
-         (SELECT COUNT(*) FROM reviews rv WHERE rv.listing_id = l.id) AS review_count,
+         -- [REVIEW-MOD-1 2026-09-06] Approved only. Every public reader of the
+         -- reviews table carries this filter; see routes/reviews.ts.
+         -- (No backticks in here: this SQL is a JS template literal.)
+         (SELECT COUNT(*) FROM reviews rv WHERE rv.listing_id = l.id AND rv.status='approved') AS review_count,
          (SELECT COUNT(*) FROM listing_views lv WHERE lv.subject_kind='listing' AND lv.subject_id = l.id) AS view_count,
          u.handle AS creator_handle, u.display_name AS creator_name, u.avatar_url AS creator_avatar,
          u.avatok_number_display AS creator_number,
@@ -3510,7 +3517,9 @@ export async function getListing(req: Request, env: Env, id: string): Promise<Re
   const card = shapeCard(r, promos, favs, cardStats);
   const reviews = await metaSession(env).prepare(
     `SELECT rv.id, rv.author_id, rv.rating, rv.body, rv.reply, rv.reply_at, rv.created_at, u.display_name AS author_name, u.avatar_url AS author_avatar
-       FROM reviews rv LEFT JOIN users u ON u.uid=rv.author_id WHERE rv.listing_id=?1 ORDER BY rv.created_at DESC LIMIT 20`,
+       FROM reviews rv LEFT JOIN users u ON u.uid=rv.author_id
+      WHERE rv.listing_id=?1 AND rv.status='approved' -- [REVIEW-MOD-1] moderated: see routes/reviews.ts
+      ORDER BY rv.created_at DESC LIMIT 20`,
   ).bind(id).all();
   const prof = await metaSession(env).prepare(
     "SELECT rating_avg, rating_count, follower_count FROM creator_profiles WHERE user_id=?1",
@@ -3671,7 +3680,9 @@ export async function getCreator(req: Request, env: Env, id: string): Promise<Re
   const favs = await favoritesFor(env, uid, lrows.map((r) => String(r.id))); // [UI-MKT-3]
   const reviews = await metaSession(env).prepare(
     `SELECT rv.id, rv.listing_id, rv.author_id, rv.rating, rv.body, rv.reply, rv.reply_at, rv.created_at, u.display_name AS author_name, u.avatar_url AS author_avatar
-       FROM reviews rv LEFT JOIN users u ON u.uid=rv.author_id WHERE rv.creator_id=?1 ORDER BY rv.created_at DESC LIMIT 50`,
+       FROM reviews rv LEFT JOIN users u ON u.uid=rv.author_id
+      WHERE rv.creator_id=?1 AND rv.status='approved' -- [REVIEW-MOD-1] moderated: see routes/reviews.ts
+      ORDER BY rv.created_at DESC LIMIT 50`,
   ).bind(id).all();
   let following = false, notify = true;
   if (uid) {
@@ -4068,6 +4079,16 @@ export async function bookListing(req: Request, env: Env, id: string): Promise<R
 }
 
 // POST /api/listings/:id/reviews { rating 1–5, body? } — attendees only.
+//
+// ⚠️ DEAD SINCE [LIST-CONTENT-2]: index.ts routes that path to routes/reviews.ts's
+// createReview instead, and nothing else calls this one. It is kept only because
+// deleting an exported function in a tree several agents share is a merge hazard.
+//
+// [REVIEW-MOD-1 2026-09-06] It is nevertheless brought in line with moderation —
+// it inserts 'pending' and averages only approved rows. If it were left as it
+// was, re-routing this name (a one-word edit in index.ts, easy to do by accident)
+// would silently publish unmoderated reviews and inflate every rating. A dead
+// function that still works the old way is a trap, not a spare.
 export async function createReview(req: Request, env: Env, id: string): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
@@ -4087,27 +4108,14 @@ export async function createReview(req: Request, env: Env, id: string): Promise<
 
   const now = Date.now();
   await db.prepare(
-    `INSERT INTO reviews (id, listing_id, creator_id, author_id, rating, body, created_at)
-     VALUES (?1,?2,?3,?4,?5,?6,?7)
-     ON CONFLICT(listing_id, author_id) DO UPDATE SET rating=?5, body=?6, created_at=?7`,
+    `INSERT INTO reviews (id, listing_id, creator_id, author_id, rating, body, created_at, status)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,'pending')
+     ON CONFLICT(listing_id, author_id) DO UPDATE SET rating=?5, body=?6, created_at=?7, status='pending'`,
   ).bind(crypto.randomUUID(), id, l.creator_id, ctx.uid, rating, b.body ? String(b.body).slice(0, 2000) : null, now).run();
 
-  // Averages update on the card AND the channel (acceptance criterion).
-  await db.batch([
-    db.prepare(
-      `UPDATE listings SET
-         rating_avg=(SELECT AVG(rating) FROM reviews WHERE listing_id=?1),
-         rating_count=(SELECT COUNT(*) FROM reviews WHERE listing_id=?1), updated_at=?2 WHERE id=?1`,
-    ).bind(id, now),
-    db.prepare(
-      `INSERT INTO creator_profiles (user_id, rating_avg, rating_count, updated_at)
-       VALUES (?1, (SELECT AVG(rating) FROM reviews WHERE creator_id=?1), (SELECT COUNT(*) FROM reviews WHERE creator_id=?1), ?2)
-       ON CONFLICT(user_id) DO UPDATE SET
-         rating_avg=(SELECT AVG(rating) FROM reviews WHERE creator_id=?1),
-         rating_count=(SELECT COUNT(*) FROM reviews WHERE creator_id=?1), updated_at=?2`,
-    ).bind(l.creator_id, now),
-  ]);
-  try { await notifyUser(env, l.creator_id, { type: "social", title: `New ${rating}★ review`, body: b.body ? String(b.body).slice(0, 80) : undefined, data: { deeplink: `/explore/listing/${id}` } }); } catch { /* best-effort */ }
+  // Averages update on the card AND the channel (acceptance criterion) — approved
+  // rows only, same rule as routes/reviews.ts.
+  await recomputeReviewAggregates(db, id, String(l.creator_id), now);
   void brainIngest(env, { uid: ctx.uid, domain: "listings", kind: "review_left", sourceId: `${ctx.uid}:${id}`, text: `Left a ${rating}★ review`, meta: { rating } });
   track(env, ctx.uid, "review_created", APP, { rating });
   return json({ ok: true });

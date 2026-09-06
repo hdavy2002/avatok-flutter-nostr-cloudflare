@@ -7,7 +7,7 @@
 // Do NOT add a helper for an endpoint that isn't in §4.
 
 import { API_BASE } from './config';
-import type { Card, CardPage, Creator, CreatorStats, CreatorTrustStats, Listing, ListingSlot, Review, ReviewList } from './types';
+import type { Card, CardPage, Creator, CreatorStats, CreatorTrustStats, Listing, ListingSlot, Review, ReviewEligibility, ReviewList } from './types';
 import { apiError, captureException } from './analytics';
 
 // [WEB-POSTHOG-1] Strip ids out of a path so `/api/listings/9f2c...` and
@@ -279,6 +279,34 @@ export async function getListingSlots(id: string, signal?: AbortSignal): Promise
 /** POST /api/listings/:id/questions — "Ask the host" (worker/src/routes/listing_questions.ts). */
 export function askListingQuestion(id: string, question: string, auth?: string | null): Promise<{ id: string }> {
   return request<{ id: string }>(`/api/listings/${encodeURIComponent(id)}/questions`, { method: 'POST', body: { question }, auth });
+}
+
+/**
+ * [REVIEW-MOD-1] GET /api/listings/:id/reviews/eligibility — may the caller
+ * write a review here, and what did they already write?
+ *
+ * Optional auth: a signed-out visitor gets `reason: 'signed_out'` with a 200,
+ * NOT a 401 — so this is safe to call on first paint before any token exists.
+ * `mine` carries the caller's own review including a 'pending' or 'rejected'
+ * one, which is the only place those are ever readable (the public list route
+ * returns approved rows only).
+ */
+export function getReviewEligibility(
+  id: string, auth?: string | null, signal?: AbortSignal,
+): Promise<ReviewEligibility> {
+  return request<ReviewEligibility>(`/api/listings/${encodeURIComponent(id)}/reviews/eligibility`, { auth, signal });
+}
+
+/**
+ * [REVIEW-MOD-1] POST /api/listings/:id/reviews — write (or rewrite) the
+ * caller's review. It lands `status: 'pending'`; an admin approves it before
+ * anyone else can see it, so callers must NOT optimistically render it into the
+ * public list.
+ */
+export function createListingReview(
+  id: string, input: { rating: number; body?: string }, auth?: string | null,
+): Promise<{ ok: boolean; status: string; verified_attendee: boolean }> {
+  return request(`/api/listings/${encodeURIComponent(id)}/reviews`, { method: 'POST', body: input, auth });
 }
 
 /** POST /api/reviews/:id/helpful — toggle "helpful" for the caller (worker/src/routes/reviews.ts). */

@@ -32,6 +32,8 @@ const I = {
   store: '<path d="M3 9l1.5-5h15L21 9M4 9v10a1 1 0 001 1h14a1 1 0 001-1V9M4 9h16"/>',
   folder: '<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>',
   list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+  // [REVIEW-MOD-1] Review moderation queue.
+  star: '<path d="M12 3l2.6 5.6 6.1.8-4.4 4.3 1.1 6.1L12 17l-5.4 2.8 1.1-6.1L3.3 9.4l6.1-.8z"/>',
   check: '<path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>',
   broadcast: '<polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/>',
   calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
@@ -86,6 +88,9 @@ if (Astro.url.pathname.startsWith('/admin')) {
     items: [
       { key: 'admin-overview', label: 'Overview', icon: I.grid, href: '/admin', tone: 'bg-lilac' },
       { key: 'admin-listings', label: 'Listings & Posters', icon: I.list, href: '/admin/listings', tone: 'bg-coral' },
+      // [REVIEW-MOD-1 2026-09-06] Buyer reviews wait here for approval before
+      // they appear on a listing page.
+      { key: 'admin-reviews', label: 'Reviews', icon: I.star, href: '/admin/reviews', tone: 'bg-lime' },
     ],
   });
 }

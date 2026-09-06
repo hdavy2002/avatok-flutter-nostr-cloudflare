@@ -399,6 +399,33 @@ export interface Review {
  * [LIST-REVIEW-2] Paginated review list envelope, e.g. from
  * /api/listings/:id/reviews.
  */
+/**
+ * [REVIEW-MOD-1 2026-09-06] The answer to "can this person leave a review here?"
+ * — worker/src/routes/reviews.ts reviewEligibility().
+ *
+ * `reason` is why not, when `can_review` is false:
+ *   'signed_out'   — no session; offer sign-in.
+ *   'own_listing'  — the host cannot review their own show.
+ *   'not_attendee' — no paid ticket for this listing.
+ */
+export interface ReviewEligibility {
+  can_review: boolean;
+  reason: 'signed_out' | 'own_listing' | 'not_attendee' | null;
+  /** True only once the session actually ran (entitlement 'consumed') — the
+   *  "verified attendee" badge, which is a stricter bar than being allowed to write. */
+  verified_attendee?: boolean;
+  /** The caller's own review, at any status. The only way to read a pending or
+   *  rejected review — the public list returns approved rows only. */
+  mine: {
+    id: string;
+    rating: number;
+    body: string;
+    status: 'pending' | 'approved' | 'rejected' | string;
+    moderation_reason: string | null;
+    created_at: number;
+  } | null;
+}
+
 export interface ReviewList {
   items: Review[];
   histogram: Record<'1' | '2' | '3' | '4' | '5', number>;

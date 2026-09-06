@@ -47,6 +47,81 @@ async function maybeUid(req: Request, env: Env): Promise<string | null> {
 // restricted to the two that ever produce an entitlement.
 const PAID_SESSION_KINDS = new Set(["live_event", "consult"]);
 
+// [REVIEW-MOD-1 2026-09-06] Two DIFFERENT bars, deliberately.
+//
+// ELIGIBLE_STATES — "has this person registered for the show and paid up?"
+// (owner's words, 2026-09-06). That is what earns the right to write a review,
+// and it is true the moment checkout completes: `reserved`/`held`/`active` are
+// all paid states in the commercial_entitlements lifecycle
+// (commercial_checkout.ts), `consumed` is the same seat after the session ran.
+//
+// VERIFIED_STATE — the "verified attendee" BADGE still means they actually
+// turned up, i.e. `consumed` alone. Widening the write gate must not quietly
+// widen the badge; the badge is the whole reason a buyer trusts the review
+// (SPEC-2026-09-02-LISTING-TRUST-AND-VIBE.md §1 row 5).
+//
+// Before this change the write gate WAS `consumed` only, so a buyer could not
+// review until the show had finished and been marked consumed — which made the
+// feature untestable on a listing whose session has not run yet.
+const ELIGIBLE_STATES = ["reserved", "held", "active", "consumed"] as const;
+const VERIFIED_STATE = "consumed";
+
+/** Recompute the listing's and creator's rating from APPROVED reviews only.
+ *  [REVIEW-MOD-1] A pending review must not move a public average — and a review
+ *  that was approved and is then EDITED goes back to pending, so this has to run
+ *  on write as well as on approval, to take the old value back out. */
+export async function recomputeReviewAggregates(
+  db: D1Database, listingId: string, creatorId: string, now: number,
+): Promise<void> {
+  await db.batch([
+    db.prepare(
+      `UPDATE listings SET
+         rating_avg=(SELECT AVG(rating) FROM reviews WHERE listing_id=?1 AND status='approved'),
+         rating_count=(SELECT COUNT(*) FROM reviews WHERE listing_id=?1 AND status='approved'), updated_at=?2 WHERE id=?1`,
+    ).bind(listingId, now),
+    db.prepare(
+      `INSERT INTO creator_profiles (user_id, rating_avg, rating_count, updated_at)
+       VALUES (?1, (SELECT AVG(rating) FROM reviews WHERE creator_id=?1 AND status='approved'), (SELECT COUNT(*) FROM reviews WHERE creator_id=?1 AND status='approved'), ?2)
+       ON CONFLICT(user_id) DO UPDATE SET
+         rating_avg=(SELECT AVG(rating) FROM reviews WHERE creator_id=?1 AND status='approved'),
+         rating_count=(SELECT COUNT(*) FROM reviews WHERE creator_id=?1 AND status='approved'), updated_at=?2`,
+    ).bind(creatorId, now),
+  ]);
+}
+
+/** Does this uid hold a paid entitlement (or, for legacy kinds, a finished
+ *  booking) for this listing? Returns the reason it does not, when it does not.
+ *  ONE implementation, shared by createReview and reviewEligibility — the whole
+ *  point is that the button the buyer sees and the gate the server enforces can
+ *  never disagree. */
+async function attendanceFor(
+  db: D1Database, listingId: string, kind: string, uid: string,
+): Promise<{ ok: true; verified: boolean } | { ok: false; error: string; status: number }> {
+  if (PAID_SESSION_KINDS.has(kind)) {
+    const entKind = entitlementKindFor(kind);
+    let row: any = null;
+    try {
+      row = await db.prepare(
+        `SELECT state FROM commercial_entitlements
+          WHERE kind=?1 AND listing_id=?2 AND account_id=?3
+            AND state IN (${ELIGIBLE_STATES.map((_, i) => `?${i + 4}`).join(",")})
+          ORDER BY CASE state WHEN 'consumed' THEN 0 ELSE 1 END LIMIT 1`,
+      ).bind(entKind, listingId, uid, ...ELIGIBLE_STATES).first<any>();
+    } catch {
+      // Pre-migration: commercial_entitlements absent — fail closed.
+    }
+    if (!row) return { ok: false, error: "not_attendee", status: 403 };
+    return { ok: true, verified: String(row.state) === VERIFIED_STATE };
+  }
+  // Older listing kinds (sell/buy/social) — unchanged pre-existing gate: a
+  // confirmed/completed booking whose window has passed. Never verified.
+  const bk = await db.prepare(
+    "SELECT 1 FROM bookings WHERE listing_id=?1 AND buyer_id=?2 AND status IN ('confirmed','completed') AND ends_at <= ?3",
+  ).bind(listingId, uid, Date.now()).first();
+  if (!bk) return { ok: false, error: "only attendees can review (after the session ends)", status: 403 };
+  return { ok: true, verified: false };
+}
+
 /** listings.kind -> commercial_entitlements.kind (CheckoutKind in commercial_checkout.ts). */
 function entitlementKindFor(listingKind: string): "live_event" | "consult_1to1" {
   return listingKind === "live_event" ? "live_event" : "consult_1to1";
@@ -91,67 +166,76 @@ export async function createReview(req: Request, env: Env, id: string): Promise<
   if (l.creator_id === ctx.uid) return json({ error: "cannot review your own listing" }, 400);
 
   const kind = String(l.kind ?? "");
-  let verifiedAttendee = 0;
-
-  if (PAID_SESSION_KINDS.has(kind)) {
-    const entKind = entitlementKindFor(kind);
-    let entConsumed: unknown = null;
-    try {
-      entConsumed = await db.prepare(
-        "SELECT 1 FROM commercial_entitlements WHERE kind=?1 AND listing_id=?2 AND account_id=?3 AND state='consumed' LIMIT 1",
-      ).bind(entKind, id, ctx.uid).first();
-    } catch {
-      // Pre-migration: commercial_entitlements absent — fail closed (no entitlement).
-    }
-    if (!entConsumed) return json({ error: "not_attendee" }, 403);
-    verifiedAttendee = 1;
-  } else {
-    // Older listing kinds (sell/buy/social) — unchanged pre-existing gate: a
-    // confirmed/completed booking whose window has passed. Never verified.
-    const bk = await db.prepare(
-      "SELECT 1 FROM bookings WHERE listing_id=?1 AND buyer_id=?2 AND status IN ('confirmed','completed') AND ends_at <= ?3",
-    ).bind(id, ctx.uid, Date.now()).first();
-    if (!bk) return json({ error: "only attendees can review (after the session ends)" }, 403);
-  }
+  const att = await attendanceFor(db, id, kind, ctx.uid);
+  if (!att.ok) return json({ error: att.error }, att.status);
+  const verifiedAttendee = att.verified ? 1 : 0;
 
   const now = Date.now();
+  const reviewId = crypto.randomUUID();
+  // [REVIEW-MOD-1] Lands as 'pending' — nothing a buyer writes is public until an
+  // admin approves it. Note the ON CONFLICT arm also resets status to 'pending':
+  // editing an already-approved review re-opens it for moderation, which is the
+  // point (otherwise an approved 5★ could be rewritten into anything at all and
+  // stay published on the strength of the old approval).
   await db.prepare(
-    `INSERT INTO reviews (id, listing_id, creator_id, author_id, rating, body, created_at, verified_attendee, photo_keys)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)
-     ON CONFLICT(listing_id, author_id) DO UPDATE SET rating=?5, body=?6, created_at=?7, verified_attendee=?8, photo_keys=?9`,
+    `INSERT INTO reviews (id, listing_id, creator_id, author_id, rating, body, created_at, verified_attendee, photo_keys, status)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'pending')
+     ON CONFLICT(listing_id, author_id) DO UPDATE SET
+       rating=?5, body=?6, created_at=?7, verified_attendee=?8, photo_keys=?9,
+       status='pending', moderated_by=NULL, moderated_at=NULL, moderation_reason=NULL`,
   ).bind(
-    crypto.randomUUID(), id, l.creator_id, ctx.uid, rating,
+    reviewId, id, l.creator_id, ctx.uid, rating,
     b.body ? String(b.body).slice(0, 2000) : null, now, verifiedAttendee, photoKeysJson,
   ).run();
 
-  // Averages update on the card AND the channel (acceptance criterion) — unchanged
-  // from the prior createReview.
-  await db.batch([
-    db.prepare(
-      `UPDATE listings SET
-         rating_avg=(SELECT AVG(rating) FROM reviews WHERE listing_id=?1),
-         rating_count=(SELECT COUNT(*) FROM reviews WHERE listing_id=?1), updated_at=?2 WHERE id=?1`,
-    ).bind(id, now),
-    db.prepare(
-      `INSERT INTO creator_profiles (user_id, rating_avg, rating_count, updated_at)
-       VALUES (?1, (SELECT AVG(rating) FROM reviews WHERE creator_id=?1), (SELECT COUNT(*) FROM reviews WHERE creator_id=?1), ?2)
-       ON CONFLICT(user_id) DO UPDATE SET
-         rating_avg=(SELECT AVG(rating) FROM reviews WHERE creator_id=?1),
-         rating_count=(SELECT COUNT(*) FROM reviews WHERE creator_id=?1), updated_at=?2`,
-    ).bind(l.creator_id, now),
-  ]);
-  try {
-    await notifyUser(env, l.creator_id, {
-      type: "social", title: `New ${rating}★ review`, body: b.body ? String(b.body).slice(0, 80) : undefined,
-      data: { deeplink: `/explore/listing/${id}` },
-    });
-  } catch { /* best-effort */ }
+  // Averages count APPROVED reviews only, so this write can only ever REMOVE a
+  // previously-approved review of this author's from the average — never add one.
+  await recomputeReviewAggregates(db, id, String(l.creator_id), now);
+
+  // The creator is NOT notified here any more. They used to hear about a review
+  // the instant it was written; now the review may never be published, and
+  // telling a creator about a review nobody will ever see is worse than silence.
+  // The approval path (admin_reviews.ts) sends that notification instead.
   void brainIngest(env, {
     uid: ctx.uid, domain: "listings", kind: "review_left", sourceId: `${ctx.uid}:${id}`,
     text: `Left a ${rating}★ review`, meta: { rating, verified_attendee: verifiedAttendee },
   });
-  track(env, ctx.uid, "review_created", APP, { rating, verified_attendee: verifiedAttendee, listing_kind: kind });
-  return json({ ok: true, verified_attendee: !!verifiedAttendee });
+  track(env, ctx.uid, "review_created", APP, {
+    rating, verified_attendee: verifiedAttendee, listing_kind: kind, status: "pending", listing_id: id,
+  });
+  return json({ ok: true, status: "pending", verified_attendee: !!verifiedAttendee });
+}
+
+// GET /api/listings/:id/reviews/eligibility — may the caller write a review here,
+// and what did they already write?
+//
+// [REVIEW-MOD-1] Exists so the page can show the RIGHT thing before anyone types:
+// a sign-in prompt, a "you need a ticket" note, the form, or their pending
+// review. It runs exactly the same attendanceFor() gate the POST enforces, so
+// the button never promises something the write will refuse.
+export async function reviewEligibility(req: Request, env: Env, id: string): Promise<Response> {
+  const uid = await maybeUid(req, env);
+  const db = metaDb(env);
+  const l = await db.prepare("SELECT creator_id, kind FROM listings WHERE id=?1").bind(id).first<any>();
+  if (!l) return json({ error: "not found" }, 404);
+
+  if (!uid) return json({ can_review: false, reason: "signed_out", mine: null });
+  if (l.creator_id === uid) return json({ can_review: false, reason: "own_listing", mine: null });
+
+  const mineRow = await db.prepare(
+    "SELECT id, rating, body, status, moderation_reason, created_at FROM reviews WHERE listing_id=?1 AND author_id=?2",
+  ).bind(id, uid).first<any>();
+  const mine = mineRow
+    ? {
+        id: String(mineRow.id), rating: Number(mineRow.rating), body: mineRow.body ?? "",
+        status: String(mineRow.status ?? "approved"),
+        moderation_reason: mineRow.moderation_reason ?? null, created_at: mineRow.created_at,
+      }
+    : null;
+
+  const att = await attendanceFor(db, id, String(l.kind ?? ""), uid);
+  if (!att.ok) return json({ can_review: false, reason: "not_attendee", mine });
+  return json({ can_review: true, reason: null, verified_attendee: att.verified, mine });
 }
 
 // POST /api/reviews/:id/reply {reply} — creator of the listing only.
@@ -232,7 +316,12 @@ export async function listReviews(req: Request, env: Env, listingId: string): Pr
   const cursor = Number.isFinite(cursorRaw) && cursorRaw > 0 ? cursorRaw : null;
 
   const db = metaSession(env);
-  const where = ["rv.listing_id=?1"];
+  // [REVIEW-MOD-1] Approved only, everywhere on this route — the item page, the
+  // histogram and verified_count below all carry the same filter. A pending or
+  // rejected review is invisible to the public; the author sees their own via
+  // the `mine` field of /reviews/eligibility, which is a different request with
+  // a different (authenticated) answer.
+  const where = ["rv.listing_id=?1", "rv.status='approved'"];
   const binds: unknown[] = [listingId];
   let n = 2;
   if (verifiedOnly) where.push("rv.verified_attendee=1");
@@ -282,7 +371,7 @@ export async function listReviews(req: Request, env: Env, listingId: string): Pr
   // listing (not the current ?verified filter) so the UI's rating breakdown
   // stays stable regardless of which page/filter the caller is viewing.
   const histRows = await db.prepare(
-    "SELECT rating, COUNT(*) n FROM reviews WHERE listing_id=?1 GROUP BY rating",
+    "SELECT rating, COUNT(*) n FROM reviews WHERE listing_id=?1 AND status='approved' GROUP BY rating",
   ).bind(listingId).all();
   const histogram: Record<string, number> = { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0 };
   let total = 0;
@@ -292,7 +381,7 @@ export async function listReviews(req: Request, env: Env, listingId: string): Pr
     total += Number(h.n);
   }
   const verifiedCountRow = await db.prepare(
-    "SELECT COUNT(*) n FROM reviews WHERE listing_id=?1 AND verified_attendee=1",
+    "SELECT COUNT(*) n FROM reviews WHERE listing_id=?1 AND verified_attendee=1 AND status='approved'",
   ).bind(listingId).first<any>();
   const verifiedCount = Number(verifiedCountRow?.n ?? 0);
 
