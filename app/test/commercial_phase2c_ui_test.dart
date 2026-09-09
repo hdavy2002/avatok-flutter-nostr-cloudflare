@@ -1,8 +1,9 @@
-import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 import 'package:avatok_call/core/commercial_checkout_api.dart';
 import 'package:avatok_call/core/commercial_calendar_api.dart';
@@ -11,6 +12,8 @@ import 'package:avatok_call/core/commercial_sessions_api.dart';
 import 'package:avatok_call/features/booking/commercial_customer_screens.dart';
 import 'package:avatok_call/features/explore/commercial_checkout_sheets.dart';
 import 'package:avatok_call/core/listings_api.dart';
+import 'package:avatok_call/core/remote_config.dart';
+import 'package:avatok_call/core/ui/zine_widgets.dart';
 
 void main() {
   test('checkout response retains server amount, insufficient balance and replay', () {
@@ -132,15 +135,68 @@ void main() {
     );
   });
 
-  testWidgets('customer recovery stays available while join flags remain gated', (tester) async {
+  testWidgets('customer recovery stays available while join flags remain gated',
+      (tester) async {
     // Retrieval is intentionally independent from discovery/purchase flags, so
-    // existing tickets remain recoverable after a capability is paused. Join
-    // admission still checks the per-kind kill switches before opening a room.
-    final source = File('lib/features/booking/commercial_customer_screens.dart').readAsStringSync();
-    expect(source, contains('bool get _enabled => true;'));
-    expect(source, contains("CommercialSessionsApi.mineAll(role: 'customer')"));
-    expect(source, contains('RemoteConfig.commercialLiveJoinEnabled'));
-    expect(source, contains('RemoteConfig.commercialConsultJoinEnabled'));
+    // an already purchased ticket remains visible after a capability is paused.
+    // The active fixture also exercises the per-kind join kill switch: the
+    // affordance stays on-screen, but tapping it must not open a room.
+    RemoteConfig.debugSetConfigForTest({
+      'commercialLiveListingsEnabled': false,
+      'commercialLiveCheckoutEnabled': false,
+      'commercialLiveJoinEnabled': false,
+      'commercialConsultListingsEnabled': false,
+      'commercialConsultCheckoutEnabled': false,
+      'commercialConsultJoinEnabled': false,
+    });
+    addTearDown(RemoteConfig.debugResetConfigForTest);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final client = MockClient((request) async {
+      expect(request.url.path, '/api/commercial/sessions/mine');
+      return http.Response(
+        jsonEncode({
+          'ok': true,
+          'server_now': now,
+          'sessions': [
+            {
+              'entitlement_id': 'ent-recovery-1',
+              'kind': 'live_event',
+              'listing_id': 'listing-recovery-1',
+              'title': 'Recovery event',
+              'starts_at': now - 1000,
+              'ends_at': now + 600000,
+              'opens_at': now - 60000,
+              'closes_at': now + 600000,
+              'session_state': 'live',
+              'entitlement_state': 'active',
+              'order_status': 'paid',
+            },
+          ],
+        }),
+        200,
+      );
+    });
+
+    await http.runWithClient(() async {
+      await tester.pumpWidget(const MaterialApp(home: MySessionsScreen()));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.byType(ZineAppBar), findsOneWidget);
+      expect(find.text('Upcoming'), findsOneWidget);
+      expect(find.text('Live now'), findsOneWidget);
+
+      await tester.tap(find.text('Live now'));
+      await tester.pumpAndSettle();
+      expect(find.text('Recovery event'), findsOneWidget);
+      final joinButton = find.widgetWithText(FilledButton, 'Join');
+      expect(joinButton, findsOneWidget);
+      await tester.tap(joinButton);
+      await tester.pump();
+      expect(find.text('Joining is not available yet.'), findsOneWidget);
+    }, () => client);
+    await tester.pumpWidget(const SizedBox.shrink());
+    client.close();
   });
 
   testWidgets('booking success shows account-bound receipt reference and calendar action', (tester) async {
