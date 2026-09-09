@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/listings_api.dart';
+import '../../core/ui/avatok_dark.dart';
 import 'native_listing_detail_v2.dart';
 
 /// Single native entry point for every listing route in the app.
@@ -34,7 +35,7 @@ class ReviewTile extends StatelessWidget {
   Widget build(BuildContext context) => ListTile(
         dense: true,
         leading: Text('★' * review.rating,
-            style: const TextStyle(color: Colors.orange)),
+            style: const TextStyle(color: AD.haldi)),
         title: Text(review.body.isEmpty ? 'Verified booking' : review.body),
         subtitle: Text(review.authorName ?? 'AvaTOK member'),
       );

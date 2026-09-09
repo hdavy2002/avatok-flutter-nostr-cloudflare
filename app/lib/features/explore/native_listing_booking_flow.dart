@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/account_gate.dart';
 import '../../core/analytics.dart';
 import '../../core/commercial_checkout_api.dart';
 import '../../core/listings_api.dart';
 import '../../core/money_api.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../wallet/wallet_screen.dart';
 
 /// A self-contained native replacement for the browser booking island.
@@ -178,10 +180,10 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: const Color(0xfff7f4ed),
+        backgroundColor: AD.bg,
         appBar: AppBar(
             title: const Text('Book your spot'),
-            backgroundColor: const Color(0xfff7f4ed)),
+            backgroundColor: AD.bg),
         body: SafeArea(child: LayoutBuilder(builder: (context, constraints) {
           final content = ListView(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
@@ -203,7 +205,7 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
             style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w900)),
         const SizedBox(height: 6),
         Text(widget.listing.oneLiner,
-            style: const TextStyle(color: Colors.black54)),
+            style: const TextStyle(color: AD.textSecondary)),
         const SizedBox(height: 18),
         Row(children: [
           for (final s in _BookingStep.values) Expanded(child: _dot(s))
@@ -215,7 +217,7 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
     return Column(children: [
       CircleAvatar(
           radius: 16,
-          backgroundColor: active ? const Color(0xffb7ec64) : Colors.black12,
+          backgroundColor: active ? AD.haldi : AD.borderDivider,
           child: Text('${s.index + 1}')),
       const SizedBox(height: 5),
       Text(['Choose', 'You', 'Pay', 'Done'][s.index],
@@ -257,7 +259,7 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
                         _loadSlots();
                       }
                     },
-              icon: const Icon(Icons.calendar_month),
+              icon: PhosphorIcon(PhosphorIcons.calendar(PhosphorIconsStyle.bold)),
               label: Text(_ymd)),
           const SizedBox(height: 14),
           if (_loadingSlots)
@@ -301,7 +303,7 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
             : 'Wallet price · $_price ${widget.listing.currency}'),
         if (_balance != null)
           Text('Wallet balance: $_balance ${widget.listing.currency}',
-              style: const TextStyle(color: Colors.black54)),
+              style: const TextStyle(color: AD.textSecondary)),
         const SizedBox(height: 14),
         Text(_isConsult
             ? 'Cancel according to the creator policy before your selected time. No-shows may not be refunded.'
@@ -313,7 +315,7 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
             title: const Text('I accept the cancellation policy')),
         if (!_free && _balance != null && _balance! < _price) ...[
           const Text('Your wallet is short for this booking.',
-              style: TextStyle(color: Colors.deepOrange)),
+              style: const TextStyle(color: AD.terracotta)),
           const SizedBox(height: 8),
           OutlinedButton.icon(
               onPressed: _busy
@@ -325,7 +327,7 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
                               builder: (_) => const WalletScreen()));
                       if (mounted) _loadBalance();
                     },
-              icon: const Icon(Icons.add_circle_outline),
+              icon: PhosphorIcon(PhosphorIcons.plusCircle(PhosphorIconsStyle.bold)),
               label: const Text('Add Tokens')),
         ],
         if (_error != null) _errorText(),
@@ -338,7 +340,8 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
 
   Widget _done() =>
       _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Icon(Icons.check_circle, color: Colors.green, size: 52),
+        PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
+            color: AD.online, size: 52),
         const SizedBox(height: 10),
         const Text('You’re booked',
             style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
@@ -352,23 +355,23 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
 
   Widget _card(Widget child) => Card(
       elevation: 0,
-      color: Colors.white,
+      color: AD.card,
       shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(22),
-          side: const BorderSide(color: Colors.black12)),
+          side: const BorderSide(color: AD.borderDivider)),
       child: Padding(padding: const EdgeInsets.all(20), child: child));
   Widget _primary(String label, VoidCallback? onPressed) => SizedBox(
       width: double.infinity,
       child: FilledButton(
           onPressed: onPressed,
           style: FilledButton.styleFrom(
-              backgroundColor: Colors.black,
-              foregroundColor: Colors.white,
+              backgroundColor: AD.textPrimary,
+              foregroundColor: AD.bg,
               padding: const EdgeInsets.symmetric(vertical: 16)),
           child: Text(label)));
   Widget _errorText() => Padding(
       padding: const EdgeInsets.only(top: 12),
       child: Text(_error!,
           style:
-              const TextStyle(color: Colors.red, fontWeight: FontWeight.w600)));
+              const TextStyle(color: AD.danger, fontWeight: FontWeight.w600)));
 }
