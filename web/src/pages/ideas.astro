@@ -1,0 +1,65 @@
+---
+export const prerender = true;
+import Base from '../layouts/Base.astro';
+import TruckBorder from '../components/TruckBorder.astro';
+import { creatorIdeas, topics, formats } from '../lib/creatorIdeas';
+import '../styles/creator-ideas.css';
+const artStyle = (art: number) => 'left:' + (-(art % 4) * 100) + '%;top:' + (-([10,343,684][Math.floor(art / 4)] / 320) * 100) + '%;';
+---
+<Base title="Creator Ideas — Apna Idea, Apna Adda · avaTOK" description="Explore ideas for Indian creators: live streams, private 1:1 conversations, group sessions and daily-life vlogs. Find something you can offer from home or out in the world.">
+  <main class="idea-page" id="main-content">
+    <section class="idea-hero idea-shell" aria-labelledby="idea-title">
+      <div class="idea-hero-copy">
+        <p class="idea-kicker">India ka idea adda</p>
+        <h1 id="idea-title">Apna idea.<br /><span>Apna adda.</span></h1>
+        <p>Ghar ki rasoi. Ladakh ki ride. Dil ki baat.<br />There’s more than one way to be a creator.</p>
+        <a class="idea-button" href="#idea-catalogue">Find your idea <span aria-hidden="true">↓</span></a>
+        <p class="idea-handwritten">Tumhari duniya.<br />Kisi ka favourite corner.</p>
+      </div>
+      <div class="idea-hero-art" aria-hidden="true">
+        <div class="idea-postcard"><div class="idea-picture"><img src="/assets/ideas/creator-atlas.jpg" width="1536" height="1024" style={artStyle(1)} alt="" fetchpriority="high" /></div><span>Pahadon se, live.</span></div>
+        <div class="idea-postcard"><div class="idea-picture"><img src="/assets/ideas/creator-atlas.jpg" width="1536" height="1024" style={artStyle(3)} alt="" /></div><span>Ghar se, dil se.</span></div>
+        <div class="idea-stamp">Desi ideas.<br />Endless possibilities.</div>
+      </div>
+    </section>
+    <TruckBorder kind="lotus" />
+    <section class="idea-shell idea-intro" aria-label="Ways to create">
+      <div><span class="idea-format live">Live stream</span><p>Show a place, a performance, or your everyday life. Let people join your world.</p></div>
+      <div><span class="idea-format private">1:1 session</span><p>Give one person your time, a useful skill, or a good conversation.</p></div>
+      <div><span class="idea-format group">Group session</span><p>Bring a small group together to learn, practise, make, or simply connect.</p></div>
+    </section>
+    <section class="idea-shell idea-daily" aria-labelledby="daily-title">
+      <span class="idea-daily-label">Daily Life Live</span>
+      <div><h2 id="daily-title">Koi show nahi. Bas tumhara din.</h2><p>Your village morning, study desk, shop, kitchen or balcony garden. An idea for an open-ended live vlog where viewers drop in, spend a little time, and come and go.</p></div>
+      <a href="#idea-catalogue" data-daily-link>See daily-life ideas <span aria-hidden="true">↗</span></a>
+    </section>
+    <section class="idea-shell idea-catalogue" id="idea-catalogue" aria-labelledby="catalogue-title">
+      <div class="idea-section-heading"><div><p class="idea-kicker">Socho. Chuno. Shuru karo.</p><h2 id="catalogue-title">What could your adda be?</h2></div><p>{creatorIdeas.length} ideas to make your own.<br />Inspiration for your next listing.</p></div>
+      <div class="idea-controls" data-idea-controls hidden>
+        <div class="idea-format-filters" role="group" aria-label="Filter by session format">
+          <button type="button" data-format="all" aria-pressed="true">All ideas</button>
+          {Object.entries(formats).map(([key,label]) => <button type="button" data-format={key} aria-pressed="false">{label}</button>)}
+        </div>
+        <div class="idea-search-row">
+          <label class="idea-search">Find your thing<input id="idea-search" type="search" placeholder="Try puja, Ladakh, cooking, English…" autocomplete="off" /></label>
+          <label>Pick a topic<select id="idea-topic"><option value="all">All topics</option>{Object.entries(topics).map(([key,topic]) => <option value={key}>{topic.label}</option>)}</select></label>
+          <label class="idea-home-toggle"><input type="checkbox" id="idea-home" /> From home</label>
+        </div>
+        <p class="idea-result-count" id="idea-results" aria-live="polite"></p>
+      </div>
+      <div class="idea-grid">
+        {creatorIdeas.map((idea) => <article class="idea-card" id={idea.id} data-idea-card data-format={idea.format} data-topic={idea.topic} data-setting={idea.setting}>
+          <div class="idea-picture" aria-hidden="true"><img src="/assets/ideas/creator-atlas.jpg" alt="" width="1536" height="1024" style={artStyle(topics[idea.topic].art)} loading="lazy" decoding="async" />{idea.badge && <span class="idea-editorial-badge">{idea.badge}</span>}</div>
+          <div class="idea-card-copy"><div class="idea-chips"><span class:list={['idea-format',idea.format]}>{formats[idea.format]}</span><span>{topics[idea.topic].label}</span>{idea.setting === 'home' && <span>From home</span>}</div><h3>{idea.title}</h3><p>{idea.description}</p></div>
+        </article>)}
+      </div>
+      <div class="idea-empty" hidden><h3>No ideas match just yet.</h3><p>Try another word or explore a different topic.</p><button type="button" id="idea-reset">Show all ideas</button></div>
+      <div class="idea-more-row"><button class="idea-button idea-more" type="button" hidden>Show more ideas</button></div>
+      <noscript><p class="idea-result-count">All {creatorIdeas.length} ideas are shown. Browser JavaScript enables search and filters.</p></noscript>
+    </section>
+    <section class="idea-shell idea-closing"><p class="idea-handwritten">Chhoti shuruaat. Apni pehchaan.</p><h2>Found your kind of adda?</h2><p>Give it your own voice, language and story.</p><div><a class="idea-button" href="/sign-up" data-ideas-cta="start">Start creating</a><a class="idea-market-link" href="/marketplace" data-ideas-cta="marketplace">Explore the marketplace ↗</a></div></section>
+  </main>
+  <script>
+    import '../lib/creatorIdeasPage';
+  </script>
+</Base>
