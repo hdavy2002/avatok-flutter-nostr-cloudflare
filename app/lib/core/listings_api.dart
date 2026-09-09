@@ -804,9 +804,356 @@ class ExploreCategory {
   String? get resolvedGroupId => groupId ?? listingGroupForCategory(id);
 }
 
+/// A non-throwing, typed result for the native listing wizard contract.
+///
+/// [ApiAuth] still throws for transport failures and records HTTP failures in
+/// its central telemetry path. HTTP error responses are returned here so the
+/// wizard can surface the server's `error`, `message`, and `field` without
+/// losing the status code (notably 403 identity gates and 503 slot support).
+class ListingApiError {
+  final int statusCode;
+  final String code;
+  final String? message;
+  final String? field;
+  final String? detail;
+  final Map<String, dynamic> body;
+
+  const ListingApiError({
+    required this.statusCode,
+    required this.code,
+    this.message,
+    this.field,
+    this.detail,
+    this.body = const <String, dynamic>{},
+  });
+
+  factory ListingApiError.fromResponse(int statusCode, String rawBody) {
+    Map<String, dynamic> body;
+    try {
+      final decoded = jsonDecode(rawBody);
+      body = decoded is Map
+          ? decoded.cast<String, dynamic>()
+          : <String, dynamic>{};
+    } catch (_) {
+      body = <String, dynamic>{};
+    }
+    final code = (body['code'] ?? body['reason'] ?? body['error'] ?? 'request_failed').toString();
+    final message = body['message']?.toString();
+    final detail = body['detail']?.toString();
+    final field = body['field']?.toString();
+    return ListingApiError(
+      statusCode: statusCode,
+      code: code,
+      message: message,
+      field: field,
+      detail: detail,
+      body: body,
+    );
+  }
+
+  String get userMessage => message ?? detail ?? code;
+}
+
+class ListingApiResult<T> {
+  final int statusCode;
+  final T? data;
+  final ListingApiError? error;
+
+  const ListingApiResult({required this.statusCode, this.data, this.error});
+
+  bool get ok => error == null && statusCode >= 200 && statusCode < 300;
+}
+
+/// Raw listing payload used by the wizard. Keeping the complete wire object in
+/// [json] lets the UI hydrate every current and future attrs field without a
+/// lossy client-side schema translation.
+class ListingWizardListing {
+  final Map<String, dynamic> json;
+  final Map<String, dynamic> attrs;
+
+  ListingWizardListing.fromJson(Map<String, dynamic> value)
+      : json = Map<String, dynamic>.unmodifiable(value),
+        attrs = value['attrs'] is Map
+            ? Map<String, dynamic>.unmodifiable(
+                (value['attrs'] as Map).cast<String, dynamic>())
+            : const <String, dynamic>{};
+
+  String get id => (json['id'] ?? '').toString();
+  String get status => (json['status'] ?? '').toString();
+  String get kind => (json['kind'] ?? '').toString();
+  String get title => (json['title'] ?? '').toString();
+  List<dynamic> get coverMedia =>
+      json['cover_media'] is List ? List<dynamic>.unmodifiable(json['cover_media'] as List) : const [];
+}
+
+class ListingDraftCreated {
+  final String listingId;
+  const ListingDraftCreated(this.listingId);
+}
+
+class ListingWizardConfig {
+  final Map<String, dynamic> values;
+  const ListingWizardConfig(this.values);
+
+  bool get conferenceEnabled => values['conferenceEnabled'] == true;
+}
+
+class ListingPromotion {
+  final Map<String, dynamic> json;
+  ListingPromotion.fromJson(Map<String, dynamic> value)
+      : json = Map<String, dynamic>.unmodifiable(value);
+  String get id => (json['id'] ?? '').toString();
+  String get kind => (json['kind'] ?? '').toString();
+  int get pctOff => (json['pct_off'] as num?)?.toInt() ?? 0;
+}
+
+class ListingSlot {
+  final Map<String, dynamic> json;
+  ListingSlot.fromJson(Map<String, dynamic> value)
+      : json = Map<String, dynamic>.unmodifiable(value);
+  String get id => (json['id'] ?? '').toString();
+  int get startsAt => (json['starts_at'] as num?)?.toInt() ?? 0;
+  int get durationMin => (json['duration_min'] as num?)?.toInt() ?? 0;
+  String get label => (json['label'] ?? '').toString();
+  int get capacity => (json['capacity'] as num?)?.toInt() ?? 0;
+}
+
+class ListingReviewIssue {
+  final String severity;
+  final String? field;
+  final String message;
+  final String source;
+
+  const ListingReviewIssue({
+    required this.severity,
+    required this.message,
+    required this.source,
+    this.field,
+  });
+
+  factory ListingReviewIssue.fromJson(Map<String, dynamic> value) => ListingReviewIssue(
+        severity: (value['severity'] ?? 'warn').toString(),
+        field: value['field']?.toString(),
+        message: (value['message'] ?? '').toString(),
+        source: (value['source'] ?? 'rules').toString(),
+      );
+}
+
+class ListingReviewResult {
+  final String verdict;
+  final String model;
+  final List<ListingReviewIssue> issues;
+
+  const ListingReviewResult({required this.verdict, required this.model, required this.issues});
+
+  factory ListingReviewResult.fromJson(Map<String, dynamic> value) => ListingReviewResult(
+        verdict: (value['verdict'] ?? 'fail').toString(),
+        model: (value['model'] ?? 'unavailable').toString(),
+        issues: ((value['issues'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((row) => ListingReviewIssue.fromJson(row.cast<String, dynamic>()))
+            .toList(growable: false),
+      );
+}
+
+class ListingSubmitResult {
+  final String? status;
+  const ListingSubmitResult({this.status});
+}
+
+class ListingRepeatResult {
+  final List<String> listingIds;
+  const ListingRepeatResult(this.listingIds);
+}
+
+class PublicImageUpload {
+  final String url;
+  final Map<String, dynamic> json;
+  PublicImageUpload.fromJson(Map<String, dynamic> value)
+      : url = (value['url'] ?? '').toString(),
+        json = Map<String, dynamic>.unmodifiable(value);
+}
+
 class ListingsApi {
   static Map<String, dynamic> _j(String body) {
     try { return jsonDecode(body) as Map<String, dynamic>; } catch (_) { return {}; }
+  }
+
+  static ListingApiResult<T> _result<T>(
+    dynamic response,
+    T Function(Map<String, dynamic>) parse,
+  ) {
+    final status = response.statusCode as int;
+    if (status < 200 || status >= 300) {
+      return ListingApiResult<T>(
+        statusCode: status,
+        error: ListingApiError.fromResponse(status, response.body as String),
+      );
+    }
+    final body = _j(response.body as String);
+    try {
+      return ListingApiResult<T>(statusCode: status, data: parse(body));
+    } catch (_) {
+      return ListingApiResult<T>(
+        statusCode: status,
+        error: ListingApiError(
+          statusCode: status,
+          code: 'invalid_response',
+          message: 'The server returned an invalid listing response.',
+          body: body,
+        ),
+      );
+    }
+  }
+
+  static String _listingPath(String id, [String suffix = '']) =>
+      '$_base/listings/${Uri.encodeComponent(id)}$suffix';
+
+  // ── native listing wizard contract ──────────────────────────────────────
+  static Future<ListingApiResult<ListingWizardListing>> getWizardListing(String id) async {
+    final r = await ApiAuth.getSigned(_listingPath(id));
+    return _result(r, (body) {
+      final listing = body['listing'];
+      if (listing is Map) return ListingWizardListing.fromJson(listing.cast<String, dynamic>());
+      return ListingWizardListing.fromJson(body);
+    });
+  }
+
+  static Future<ListingApiResult<ListingDraftCreated>> createListingDraft({
+    required String kind,
+    required Map<String, dynamic> fields,
+  }) async {
+    final r = await ApiAuth.postJson('$_base/listings', {'kind': kind, ...fields});
+    return _result(r, (body) {
+      final id = body['listing_id']?.toString() ?? '';
+      if (id.isEmpty) throw const FormatException('missing listing_id');
+      return ListingDraftCreated(id);
+    });
+  }
+
+  static Future<ListingApiResult<bool>> updateCumulativeDraft(
+    String id,
+    Map<String, dynamic> fields,
+  ) async {
+    final r = await ApiAuth.putJson(_listingPath(id), fields);
+    return _result(r, (_) => true);
+  }
+
+  /// Returns the public categories plus the per-account free-entry gate when
+  /// available from `/api/listings/mine`. The category endpoint itself is
+  /// public; callers can use [categories] for the legacy list-only API.
+  static Future<ListingApiResult<List<ExploreCategory>>> getWizardCategories() async {
+    final r = await ApiAuth.getSigned('$_base/explore/categories');
+    return _result(r, (body) => ((body['categories'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((row) => ExploreCategory.fromJson(row.cast<String, dynamic>()))
+        .toList(growable: false));
+  }
+
+  static Future<ListingApiResult<ListingWizardConfig>> getListingConfig() async {
+    final r = await ApiAuth.getSigned('$_base/config');
+    return _result(r, (body) {
+      final config = body['config'];
+      return ListingWizardConfig(
+        (config is Map ? config : body).cast<String, dynamic>(),
+      );
+    });
+  }
+
+  static Future<ListingApiResult<ListingPromotion>> createListingPromotion(
+    String id, {
+    required String kind,
+    required int pctOff,
+    String? code,
+    int? maxUses,
+    int? endsAt,
+  }) async {
+    final r = await ApiAuth.postJson(_listingPath(id, '/promotions'), {
+      'kind': kind,
+      'pct_off': pctOff,
+      if (code != null && code.isNotEmpty) 'code': code,
+      if (maxUses != null) 'max_uses': maxUses,
+      if (endsAt != null) 'ends_at': endsAt,
+    });
+    return _result(r, (body) {
+      final promotion = body['promotion'];
+      final value = (promotion is Map ? promotion : body).cast<String, dynamic>();
+      if (value['id'] == null && body['promotion_id'] != null) {
+        value['id'] = body['promotion_id'];
+      }
+      return ListingPromotion.fromJson(value);
+    });
+  }
+
+  static Future<ListingApiResult<ListingSlot>> addListingSlot(
+    String id, {
+    required int startsAt,
+    required int durationMin,
+    required int capacity,
+    String? label,
+  }) async {
+    final r = await ApiAuth.postJson(_listingPath(id, '/slots'), {
+      'starts_at': startsAt,
+      'duration_min': durationMin,
+      'capacity': capacity,
+      if (label != null && label.isNotEmpty) 'label': label,
+    });
+    return _result(r, (body) {
+      final slot = body['slot'];
+      if (slot is! Map) throw const FormatException('missing slot');
+      return ListingSlot.fromJson(slot.cast<String, dynamic>());
+    });
+  }
+
+  static Future<ListingApiResult<bool>> removeListingSlot(String slotId) async {
+    final r = await ApiAuth.deleteSigned(
+      '$_base/slots/${Uri.encodeComponent(slotId)}',
+    );
+    return _result(r, (_) => true);
+  }
+
+  static Future<ListingApiResult<ListingReviewResult>> reviewListing(String id) async {
+    final r = await ApiAuth.postJson(_listingPath(id, '/review'), {});
+    return _result(r, (body) => ListingReviewResult.fromJson(body));
+  }
+
+  static Future<ListingApiResult<ListingSubmitResult>> submitListingForReview(String id) async {
+    final r = await ApiAuth.postJson(_listingPath(id, '/submit'), {});
+    return _result(r, (body) => ListingSubmitResult(status: body['status']?.toString()));
+  }
+
+  static Future<ListingApiResult<ListingRepeatResult>> repeatListing(
+    String id, {
+    required int weeks,
+  }) async {
+    final r = await ApiAuth.postJson(_listingPath(id, '/repeat'), {'weeks': weeks});
+    return _result(r, (body) => ListingRepeatResult(
+          ((body['listing_ids'] as List?) ?? const [])
+              .map((value) => value.toString())
+              .toList(growable: false),
+        ));
+  }
+
+  static Future<ListingApiResult<PublicImageUpload>> uploadPublicListingImage(
+    List<int> bytes, {
+    required String contentType,
+    String? fileName,
+  }) async {
+    final r = await ApiAuth.postBytes(
+      kUploadPublicUrl,
+      bytes,
+      extraHeaders: {
+        'x-content-type': contentType,
+        'x-app': 'avatok',
+        if (fileName != null && fileName.isNotEmpty) 'x-file-name': fileName,
+      },
+      timeout: const Duration(seconds: 60),
+    );
+    return _result(r, (body) {
+      final upload = PublicImageUpload.fromJson(body);
+      if (upload.url.isEmpty) throw const FormatException('missing upload url');
+      return upload;
+    });
   }
 
   static List<ListingCard> _cards(Map<String, dynamic> j) =>
@@ -1083,6 +1430,55 @@ class ListingsApi {
     final r = await ApiAuth.postJson('$_base/listings', {'kind': kind, ...fields});
     final j = _j(r.body);
     return r.statusCode == 200 ? j['listing_id']?.toString() : null;
+  }
+
+  /// Native eight-step wizard contract. These methods intentionally return the
+  /// server JSON so the Flutter wizard can surface field-level errors without
+  /// recreating worker validation rules locally.
+  static Future<Map<String, dynamic>> wizardGet(String id) async {
+    final r = await ApiAuth.getSigned('$_base/listings/${Uri.encodeComponent(id)}');
+    return {..._j(r.body), 'status': r.statusCode, 'ok': r.statusCode >= 200 && r.statusCode < 300};
+  }
+
+  static Future<Map<String, dynamic>> wizardCreate(String kind, Map<String, dynamic> body) async {
+    final r = await ApiAuth.postJson('$_base/listings', {'kind': kind, ...body});
+    return {..._j(r.body), 'status': r.statusCode, 'ok': r.statusCode >= 200 && r.statusCode < 300};
+  }
+
+  static Future<Map<String, dynamic>> wizardUpdate(String id, Map<String, dynamic> body) async {
+    final r = await ApiAuth.putJson('$_base/listings/${Uri.encodeComponent(id)}', body);
+    return {..._j(r.body), 'status': r.statusCode, 'ok': r.statusCode >= 200 && r.statusCode < 300};
+  }
+
+  static Future<Map<String, dynamic>> wizardReview(String id) async {
+    final r = await ApiAuth.postJson('$_base/listings/${Uri.encodeComponent(id)}/review', {});
+    return {..._j(r.body), 'status': r.statusCode, 'ok': r.statusCode >= 200 && r.statusCode < 300};
+  }
+
+  static Future<Map<String, dynamic>> wizardSubmit(String id) async {
+    final r = await ApiAuth.postJson('$_base/listings/${Uri.encodeComponent(id)}/submit', {});
+    return {..._j(r.body), 'status': r.statusCode, 'ok': r.statusCode >= 200 && r.statusCode < 300};
+  }
+
+  static Future<Map<String, dynamic>> wizardRepeat(String id, int weeks) async {
+    final r = await ApiAuth.postJson('$_base/listings/${Uri.encodeComponent(id)}/repeat', {'weeks': weeks});
+    return {..._j(r.body), 'status': r.statusCode, 'ok': r.statusCode >= 200 && r.statusCode < 300};
+  }
+
+  static Future<Map<String, dynamic>> wizardAddSlot(String id, Map<String, dynamic> slot) async {
+    final r = await ApiAuth.postJson('$_base/listings/${Uri.encodeComponent(id)}/slots', slot);
+    return {..._j(r.body), 'status': r.statusCode, 'ok': r.statusCode >= 200 && r.statusCode < 300};
+  }
+
+  static Future<Map<String, dynamic>> wizardRemoveSlot(String slotId) async {
+    final r = await ApiAuth.deleteSigned('$_base/slots/${Uri.encodeComponent(slotId)}');
+    return {..._j(r.body), 'status': r.statusCode, 'ok': r.statusCode >= 200 && r.statusCode < 300};
+  }
+
+  static Future<Map<String, dynamic>> wizardUpload(List<int> bytes, {required String mime, String? fileName}) async {
+    final r = await ApiAuth.postBytes('https://$kSignalingHost/upload/public', bytes,
+        extraHeaders: {'x-content-type': mime, if (fileName != null) 'x-file-name': fileName, 'x-app': 'avatok'});
+    return {..._j(r.body), 'status': r.statusCode, 'ok': r.statusCode >= 200 && r.statusCode < 300};
   }
 
   static Future<bool> update(String id, Map<String, dynamic> fields) async =>

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/app_registry.dart';
-import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../features/avaapps/avaapps_screen.dart';
 import '../../features/identity/identity_screen.dart';
@@ -12,9 +11,7 @@ import '../../features/marketplace/archived_screen.dart';
 import '../../features/marketplace/marketplace_hub.dart';
 import '../../features/marketplace/marketplace_browse.dart';
 import '../../features/marketplace/my_listings_screen.dart';
-import '../../features/marketplace/sell_listing_flow.dart';
-import '../../features/marketplace/compose_chat.dart';
-import '../../features/marketplace/listing_web_form.dart';
+import '../../features/marketplace/native_listing/native_listing_wizard_screen.dart';
 import '../../features/booking/commercial_customer_screens.dart';
 import '../../features/booking/creator_schedule_screen.dart';
 import '../../features/calendar/avacalendar_screen.dart';
@@ -121,15 +118,7 @@ void openShellDestination(BuildContext context, String dest) {
       // form for the app and the site. Checked first, so the AI compose chat is
       // unreachable while this is on. Mirrors ava_shell.dart; keep the two in
       // step, they are the same menu action reached through two shells.
-      if (RemoteConfig.listingWebFormEnabled) {
-        push(const ListingWebFormScreen(source: 'shell_v2_menu'));
-        return;
-      }
-      // [MKT2] AI compose chat when enabled (it runs the liveness gate in-chat,
-      // §3.1), else the old form. Mirrors ava_shell.dart.
-      push(RemoteConfig.aiComposeEnabled
-          ? const ComposeChatScreen()
-          : const SellListingFlow());
+      push(const NativeListingWizardScreen(source: 'shell_v2_menu'));
       return;
     case 'about':
       push(const AboutScreen());

@@ -4,11 +4,9 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
 import '../../core/cached_image.dart';
 import '../../core/listings_api.dart';
-import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
-import 'edit_listing_screen.dart';
-import 'listing_web_form.dart';
+import 'native_listing/native_listing_wizard_screen.dart';
 
 /// Friendly status label (the raw 'published' shows as 'live' to owners).
 ///
@@ -176,29 +174,18 @@ class _MyListingRow extends StatelessWidget {
     // this is a route change, not new edit code. The legacy screen stays for the
     // old goods listings that predate the wizard, behind the same flag every other
     // entry point uses.
-    if (RemoteConfig.listingWebFormEnabled) {
-      Analytics.capture('listing_edit_opened', {
-        'listing_id': card.id,
-        'surface': 'web_form',
-      });
-      await Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => ListingWebFormScreen(
-          listingId: card.id,
-          source: 'my_listings_edit',
-          returnOnSubmit: true,
-        ),
-      ));
-      onChanged();
-      return;
-    }
     Analytics.capture('listing_edit_opened', {
       'listing_id': card.id,
-      'surface': 'legacy_goods_editor',
+      'surface': 'native_wizard',
     });
     // Full Zine-themed editor (pic 5). Editing bumps the listing's content
     // version server-side, reopening the talk-once-per-version gate (Specs §3 B).
     final saved = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => EditListingScreen(listingId: card.id)),
+      MaterialPageRoute(builder: (_) => NativeListingWizardScreen(
+        listingId: card.id,
+        source: 'my_listings_edit',
+        returnOnSubmit: true,
+      )),
     );
     if (saved == true) onChanged();
   }

@@ -2,24 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
-import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avavoice/avavoice_home.dart';
 import '../avavision/avavision_home.dart';
-import '../identity/listing_liveness_gate.dart';
 import '../explore/explore_home.dart';
 import 'marketplace_browse.dart' show marketplaceTitle;
-import 'listing_web_form.dart';
+import 'native_listing/native_listing_wizard_screen.dart';
 import 'my_listings_screen.dart';
-import 'sell_listing_flow.dart';
 
-/// P4 / 2026-07-03: before opening the listing composer, an unverified seller
-/// must pass the one-time liveness "human check" when [RemoteConfig.listingLivenessGate]
-/// is ON. Browsing stays free; only creating a listing needs it. The server route
-/// is the real gate (403 liveness_required) — this is the friendly UX that runs
-/// the check first so a verified user goes straight in and never sees a raw error.
+/// Opens the single native listing wizard. The Worker remains the liveness and
+/// eligibility authority when the creator submits.
 Future<void> _openListingComposer(BuildContext context) async {
   Analytics.capture('listing_pipeline_opened', {'via': 'hub'});
   // [LIST-EMBED-1 2026-09-05] The hub's "Create Listing" tile opens the same
@@ -32,24 +26,10 @@ Future<void> _openListingComposer(BuildContext context) async {
   // hit it, and the Worker is the real gate either way. Showing a camera check
   // before the creator has seen the form is the drop-off the compose branch in
   // ava_shell.dart already avoids.
-  if (RemoteConfig.listingWebFormEnabled) {
-    if (!context.mounted) return;
-    await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => const ListingWebFormScreen(source: 'marketplace_hub'),
-    ));
-    return;
-  }
-  if (RemoteConfig.listingLivenessGate) {
-    final ok = await ensureListingLiveness(context);
-    if (!context.mounted) return;
-    if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Verify you\'re a real person to start selling.')));
-      return;
-    }
-  }
   if (!context.mounted) return;
-  Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SellListingFlow()));
+  await Navigator.of(context).push(MaterialPageRoute(
+    builder: (_) => const NativeListingWizardScreen(source: 'marketplace_hub'),
+  ));
 }
 
 /// AvaMarketplace P1 — the hub the sidebar "Marketplace" entry opens.

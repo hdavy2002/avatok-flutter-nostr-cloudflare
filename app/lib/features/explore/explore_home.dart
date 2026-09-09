@@ -6,7 +6,7 @@ import '../../core/listings_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
-import '../listings/create_listing_flow.dart';
+import '../marketplace/native_listing/native_listing_wizard_screen.dart';
 import '../listings/my_listings_screen.dart';
 import 'explore_search.dart';
 import 'listing_detail.dart';
@@ -283,7 +283,7 @@ class _ExploreHomeState extends State<ExploreHome> {
               label: 'Create a listing',
               fontSize: 17,
               onPressed: () => Navigator.push(
-                  context, MaterialPageRoute(builder: (_) => const CreateListingFlow())),
+                  context, MaterialPageRoute(builder: (_) => const NativeListingWizardScreen(source: 'explore_home'))),
             ),
           ]),
         ),

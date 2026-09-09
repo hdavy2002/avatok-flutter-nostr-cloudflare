@@ -5,7 +5,7 @@ import '../../core/analytics.dart';
 import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
-import '../listings/create_listing_flow.dart';
+import 'native_listing/native_listing_wizard_screen.dart';
 
 /// Opens the Phase 2 creator-service chooser and then the existing hardened
 /// listing wizard with the selected commercial kind locked. GetStream is named
@@ -22,7 +22,10 @@ Future<bool?> openCreateServiceChoice(BuildContext context) async {
   if (kind == null || !context.mounted) return null;
   Analytics.capture('commercial_service_kind_selected', {'kind': kind});
   return Navigator.of(context).push<bool>(MaterialPageRoute(
-    builder: (_) => CreateListingFlow(initialKind: kind),
+    builder: (_) => NativeListingWizardScreen(
+      initialKind: kind,
+      source: 'service_choice',
+    ),
   ));
 }
 

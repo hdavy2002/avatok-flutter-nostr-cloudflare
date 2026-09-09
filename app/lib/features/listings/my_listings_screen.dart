@@ -11,7 +11,7 @@ import '../explore/listing_detail.dart';
 import '../explore/widgets.dart';
 import '../calendar/avacalendar_screen.dart';
 import '../marketplace/create_service_choice_sheet.dart';
-import 'create_listing_flow.dart';
+import '../marketplace/native_listing/native_listing_wizard_screen.dart';
 import 'commercial_service_policy_screen.dart';
 import 'creator_insights_screen.dart';
 import 'creator_receipt_summary_screen.dart';
@@ -54,7 +54,7 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
     final created = commercial
         ? await openCreateServiceChoice(context)
         : await Navigator.push<bool>(context,
-            MaterialPageRoute(builder: (_) => const CreateListingFlow()));
+            MaterialPageRoute(builder: (_) => const NativeListingWizardScreen(source: 'listings_screen')));
     if (created == true) _load();
   }
 

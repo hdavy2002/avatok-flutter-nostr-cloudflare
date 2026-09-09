@@ -41,9 +41,8 @@ import '../features/calendar/avacalendar_screen.dart';
 import '../features/library/avalibrary_screen.dart';
 import '../features/library/avastorage_screen.dart';
 import '../features/marketplace/my_listings_screen.dart';
-import '../features/marketplace/sell_listing_flow.dart';
+import '../features/marketplace/native_listing/native_listing_wizard_screen.dart';
 import '../features/marketplace/compose_chat.dart';
-import '../features/marketplace/listing_web_form.dart';
 import '../features/marketplace/archived_screen.dart';
 import '../features/marketplace/marketplace_hub.dart';
 import '../features/marketplace/marketplace_browse.dart';
@@ -400,36 +399,7 @@ class _AvaShellState extends State<AvaShell> {
         // "Verify now" on a 403 from the create/submit routes), and sending
         // someone to a camera screen before they have seen the form is the
         // drop-off cliff. The Worker is the real gate.
-        if (RemoteConfig.listingWebFormEnabled) {
-          _push(const ListingWebFormScreen(source: 'shell_menu'));
-          return;
-        }
-        // [MKT2] When aiComposeEnabled is ON, "Create listing" opens the AI compose
-        // chat, which runs the liveness gate CONVERSATIONALLY (§3.1) — so we push it
-        // directly, NOT behind the pre-gate (sending the user away first is the
-        // drop-off cliff the design avoids). The old form stays as the fallback.
-        if (RemoteConfig.aiComposeEnabled) {
-          _push(const ComposeChatScreen());
-          return;
-        }
-        // First-time liveness gate (owner 2026-07-03): an unverified user must
-        // pass the one-time human check before the sell flow opens. Verified
-        // users go straight in (no extra screen). Only enforced when the flag is
-        // ON; the Worker is the real gate (403 liveness_required).
-        if (RemoteConfig.listingLivenessGate) {
-          ensureListingLiveness(context).then((ok) {
-            if (!mounted) return;
-            if (ok) {
-              _push(const SellListingFlow());
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                  content:
-                      Text('Verify you\'re a real person to start selling.')));
-            }
-          });
-        } else {
-          _push(const SellListingFlow());
-        }
+        _push(const NativeListingWizardScreen(source: 'shell_menu'));
         return;
       case 'mylistings':
         _push(const MyListingsScreen());
