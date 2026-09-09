@@ -21,8 +21,8 @@ import '../../core/ui/illustrations.dart'; // [RAJ-SEAMS-1]
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/rajasthani_motifs.dart';
 import 'package:flutter_svg/flutter_svg.dart'; // [RAJ-SEAMS-1]
+import '../../shell/ava_sidebar.dart' show AvaSidebarForShell; // [SIDEBAR-UNIFY-1]
 import '../../shell/shell_v2.dart' show ShellScope;
-import '../../shell/v2/shell_chrome.dart' show ShellSidebar;
 import '../payout/payout_screen.dart';
 import 'admin_money_screen.dart';
 import 'wallet_balance_chip.dart' show WalletBalanceStore;
@@ -997,7 +997,9 @@ class _WalletScreenState extends State<WalletScreen> {
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: AW.bg,
-      drawer: shellScope == null ? null : ShellSidebar(current: shellScope.activeRoot),
+      // [SIDEBAR-UNIFY-1] AvaSidebar is now the only sidebar (owner decision
+      // 2026-08-28) — was `ShellSidebar(current: shellScope.activeRoot)`.
+      drawer: shellScope == null ? null : const AvaSidebarForShell(),
       appBar: _darkHeader(
         context,
         title: 'AvaWallet',

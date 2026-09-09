@@ -31,6 +31,7 @@ import '../../features/avatok/invite_screen.dart';
 import '../../features/avatok/place_1to1_call.dart';
 import '../../core/ui/rajasthani_motifs.dart';
 import '../../core/ui/illustrations.dart';
+import '../ava_sidebar.dart'; // [SIDEBAR-UNIFY-1] AvaSidebarForShell
 import '../shell_v2.dart';
 import 'shell_chrome.dart';
 
@@ -132,7 +133,9 @@ class _AvaDialRootState extends State<AvaDialRoot> {
       // The Calls app is dark end-to-end (owner request 2026-07-12) — see
       // avadial_theme.dart, which mirrors AvaPhone's existing dark palette.
       backgroundColor: AvaDialTheme.bg,
-      drawer: const ShellSidebar(current: RootId.avaDial),
+      // [SIDEBAR-UNIFY-1] AvaSidebar is now the only sidebar (owner decision
+      // 2026-08-28) — was `ShellSidebar(current: RootId.avaDial)`.
+      drawer: const AvaSidebarForShell(),
       // [UI-HEADER-2026] The hand-rolled AppBar is gone — this root now wears
       // the SHARED header ([AvaTokHeader]) like every other root, so it carries
       // the wallet chip, profile avatar and notification bell it was missing,

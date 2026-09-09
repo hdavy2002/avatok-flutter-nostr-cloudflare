@@ -4,6 +4,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/remote_config.dart';
 import '../../features/marketplace/marketplace_browse.dart';
+import '../ava_sidebar.dart'; // [SIDEBAR-UNIFY-1] AvaSidebarForShell
 import '../shell_v2.dart';
 import 'shell_chrome.dart';
 import 'shell_destinations.dart';
@@ -25,74 +26,15 @@ class ServicesRoot extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AD.bg,
-      drawer: ShellSidebar(
-        current: RootId.services,
-        extra: [
-          if (RemoteConfig.marketplaceVisible) Padding(
-            padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s2, Msg.s1),
-            child: Text('MARKETPLACE', style: ADText.sectionLabel()),
-          ),
-          if (RemoteConfig.marketplaceVisible) ShellMenuRow(
-            icon: PhosphorIcons.storefront(PhosphorIconsStyle.bold),
-            color: AD.danger,
-            title: 'Browse',
-            onTap: () {
-              Navigator.of(context).maybePop();
-              openShellDestination(context, 'marketplace');
-            },
-          ),
-          if (RemoteConfig.marketplaceVisible) ShellMenuRow(
-            icon: PhosphorIcons.tag(PhosphorIconsStyle.bold),
-            color: AD.iconSearch,
-            title: 'My listings',
-            onTap: () {
-              Navigator.of(context).maybePop();
-              openShellDestination(context, 'mylistings');
-            },
-          ),
-          if (RemoteConfig.marketplaceVisible) ShellMenuRow(
-            icon: PhosphorIcons.plusCircle(PhosphorIconsStyle.bold),
-            color: AD.primaryBadge,
-            title: 'Sell',
-            onTap: () {
-              Navigator.of(context).maybePop();
-              openShellDestination(context, 'createlisting');
-            },
-          ),
-          if (RemoteConfig.marketplaceVisible) ShellMenuRow(
-            icon: PhosphorIcons.archive(PhosphorIconsStyle.bold),
-            color: AD.iconVideo,
-            title: 'Archived',
-            onTap: () {
-              Navigator.of(context).maybePop();
-              openShellDestination(context, 'archived');
-            },
-          ),
-          const SizedBox(height: Msg.s1),
-          if (walletEntryVisible)
-            ShellMenuRow(
-              icon: PhosphorIcons.wallet(PhosphorIconsStyle.bold),
-              color: AD.online,
-              title: 'Wallet',
-              subtitle: 'Balance & Tokens',
-              onTap: () {
-                Navigator.of(context).maybePop();
-                openShellDestination(context, 'wallet');
-              },
-            ),
-          if (payoutEntryVisible)
-            ShellMenuRow(
-              icon: PhosphorIcons.bank(PhosphorIconsStyle.bold),
-              color: AD.iconSearch,
-              title: 'Payout',
-              subtitle: 'Cash out earnings',
-              onTap: () {
-                Navigator.of(context).maybePop();
-                openShellDestination(context, 'payout');
-              },
-            ),
-        ],
-      ),
+      // [SIDEBAR-UNIFY-1] AvaSidebar is now the only sidebar (owner decision
+      // 2026-08-28) — was `ShellSidebar(current: RootId.services, extra: [...])`
+      // carrying Marketplace/Wallet/Payout rows. AvaSidebar already has its own
+      // Marketplace group (Browse/Create/My listings/Archived, gated on
+      // `RemoteConfig.marketplaceVisible`, same as here) and its own Wallet row;
+      // Payout had no AvaSidebar equivalent, so a matching row (gated on
+      // `RemoteConfig.billingEnabled`, same as `payoutEntryVisible` below) was
+      // added to `AvaSidebar` itself rather than dropped. See ava_sidebar.dart.
+      drawer: const AvaSidebarForShell(),
       // [UI-HEADER-2026] Was a hand-rolled `AppBar` whose leading icon and title
       // were drawn in `AD.textPrimary` — INK on the indigo band, i.e. very
       // nearly invisible since [RAJ-INDIGO-1] flipped `headerFooter` from
