@@ -1,0 +1,126 @@
+/* [WEB-RAILWAY-1] Approved railway hero + six-idea homepage. */
+.rail-home { --rail-paper: #f7ead5; --rail-ink: #101e31; --rail-red: #d93825; background: var(--rail-paper); color: var(--rail-ink); font-family: 'Instrument Sans', Arial, sans-serif; overflow: clip; }
+.rail-home *, .rail-home *::before, .rail-home *::after { box-sizing: border-box; }
+.rail-home h1, .rail-home h2, .rail-home h3, .rail-home p { margin: 0; }
+.rail-home h1, .rail-home h2, .rail-home h3 { font-family: 'Anton', Impact, sans-serif; font-weight: 400; text-transform: uppercase; }
+.rail-home a { color: inherit; text-decoration: none; }
+.rail-home button { font: inherit; cursor: pointer; }
+.rail-home a:focus-visible, .rail-home button:focus-visible { outline: 3px solid #17609b; outline-offset: 5px; }
+.rail-home [id] { scroll-margin-top: 24px; }
+.rail-home img { display: block; }
+.rail-skip { position: absolute; z-index: 100; left: 1rem; top: -6rem; background: #fff; color: #111; padding: 12px 20px; }
+.rail-skip:focus { top: 1rem; }
+.rail-wrap { width: min(1280px, 92%); margin-inline: auto; }
+.rail-hero { position: relative; padding-top: 24px; isolation: isolate; }
+.rail-intro { position: relative; z-index: 2; text-align: center; padding: 8px 20px 10px; }
+.rail-eyebrow { font-size: 0.875rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.rail-route { display: flex; align-items: center; justify-content: center; gap: 20px; }
+.rail-route::before, .rail-route::after { content: ''; width: 60px; height: 2px; background: currentColor; }
+.rail-route span { font-size: 1.8rem; line-height: 1; }
+.rail-home h1 { font-size: clamp(3.5rem, 7.1vw, 7.7rem); line-height: 1.06; letter-spacing: -.035em; margin: 18px 0 20px; }
+.rail-home h1 span, .rail-ideas h2 span { color: var(--rail-red); }
+.rail-intro-copy { font-size: clamp(1rem, 1.6vw, 1.35rem); line-height: 1.5; }
+.rail-actions { margin-top: 22px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.rail-home .rail-button { display: inline-flex; justify-content: center; align-items: center; gap: 28px; border-radius: 999px; background: var(--rail-red); color: #fff; font-family: 'Anton', Impact, sans-serif; font-size: 1.0625rem; text-transform: uppercase; padding: 13px 32px; min-height: 48px; border: 2px solid transparent; transition: background .2s, transform .2s; }
+.rail-home .rail-button:hover { background: #b82718; transform: translateY(-2px); }
+.rail-home .rail-text-link { font-size: .9375rem; font-weight: 700; text-decoration: underline; text-underline-offset: 5px; padding: 3px 8px; }
+.rail-side { position: absolute; top: 0; width: 28%; height: min(27vw, 470px); background-image: url('/assets/railway/approved-hero.jpg'); background-repeat: no-repeat; background-size: 100vw auto; z-index: -1; pointer-events: none; }
+.rail-side--left { left: 0; background-position: left -2vw; }
+.rail-side--right { right: 0; width: 22%; background-position: right -2vw; }
+.rail-scene { position: relative; width: 100%; margin: -14px auto 0; }
+.rail-train-arrival { animation: rail-arrive 1.5s cubic-bezier(.2,.7,.2,1) both; }
+.rail-train { position: relative; width: 104%; margin-left: -2%; transform: translateX(var(--rail-shift, 0px)); }
+.rail-train > img { width: 100%; height: auto; max-width: none; mix-blend-mode: multiply; }
+.rail-window { position: absolute; top: 26.4%; height: 32%; width: 20.3%; border: 2px solid transparent; border-radius: 7%; pointer-events: none; transition: border-color .4s, box-shadow .4s; }
+.rail-window--0 { left: 15.8%; }.rail-window--1 { left: 39.9%; }.rail-window--2 { left: 63.4%; }
+.rail-window.is-active { border-color: #ffcf66; box-shadow: 0 0 22px #ffd17366, inset 0 0 16px #ffcf6622; }
+.rail-steam { position: absolute; top: 36%; left: 26%; color: #fff9e6; font-size: clamp(18px,3vw,44px); opacity: 0; animation: rail-steam 3.2s ease-out infinite; pointer-events: none; }
+.rail-steam--two { left: 27%; animation-delay: 1.6s; }
+.rail-motion-row { width: 92%; margin: -2.5vw auto 16px; position: relative; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.rail-script { font-family: 'Kalam', cursive; font-size: 1.15rem; line-height: 1.25; transform: rotate(-3deg); }
+.rail-motion { border: 1px solid #8a806f; border-radius: 30px; padding: 9px 14px; background: #f7ead5; color: #26364a; font-size: .8125rem !important; min-height: 40px; }
+.rail-motion[hidden] { display: none; }
+.rail-stops { width: min(1100px, 90%); margin: 24px auto 0; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 36px; }
+.rail-stop { padding-top: 16px; border-top: 2px solid #c5baaa; transition: border-color .3s; }
+.rail-stop.is-active { border-color: var(--rail-red); }
+.rail-stop button { padding: 0; display: flex; gap: 12px; align-items: center; background: transparent; border: 0; color: var(--rail-ink); text-align: left; font-family: 'Anton', Impact, sans-serif; text-transform: uppercase; font-size: 1.125rem; }
+.rail-stop-number { display: inline-grid; place-items: center; width: 28px; height: 28px; border: 1px solid #a59a89; border-radius: 50%; font-family: 'Instrument Sans',Arial,sans-serif; font-size: .75rem; transition: background .3s; }
+.rail-stop.is-active .rail-stop-number { background: var(--rail-red); border-color: var(--rail-red); color: white; }
+.rail-stop p { font-size: .9375rem; line-height: 1.5; margin: 10px 0 8px; max-width: 34ch; }
+.rail-stop a { font-size: .875rem; color: #b62b1d; font-weight: 700; display: inline-block; padding-block: 6px; }
+.rail-home .rail-next { display: flex; align-items: center; justify-content: center; gap: 20px; padding: 24px; margin-top: 16px; text-transform: uppercase; font-family: 'Anton',Impact,sans-serif; font-size: .875rem; letter-spacing: .04em; border-bottom: 1px solid #ddcfb8; }
+.rail-next span { animation: rail-nudge 2s ease-in-out infinite; }
+.rail-ideas { padding-top: 58px; text-align: center; }
+.rail-flowered { display: flex; align-items: center; justify-content: center; gap: 18px; }
+.rail-flowered img { object-fit: contain; flex-shrink: 0; }
+.rail-ideas .rail-eyebrow { color: #b52a1c; margin-bottom: 14px; }
+.rail-ideas h2 { font-size: clamp(2rem, 3.4vw, 3.25rem); line-height: 1.2; }
+.rail-section-copy { margin-top: 14px !important; font-size: 1rem; line-height: 1.5; }
+.rail-idea-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 24px; margin-top: 32px; text-align: left; }
+.rail-idea { min-width: 0; border: 1px solid #d8c8b1; border-radius: 12px; overflow: hidden; background: #fcf1de; transition: transform .2s, box-shadow .2s; }
+.rail-idea:hover { transform: translateY(-5px); box-shadow: 0 10px 20px #34281110; }
+.rail-idea-art { aspect-ratio: 254/140; overflow: hidden; position: relative; background: #e4c6a2; }
+.rail-idea-art img { position: absolute; width: 340.551181%; height: auto; max-width: none; }
+.rail-idea-copy { padding: 18px; }
+.rail-idea h3 { font-size: clamp(1.05rem,1.7vw,1.45rem); line-height: 1.3; margin-bottom: 8px; }
+.rail-idea p { font-size: 1rem; line-height: 1.45; min-height: 2.9em; }
+.rail-card-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; }
+.rail-badge { border-radius: 999px; display: inline-block; padding: 6px 14px; font-family: 'Anton',Impact,sans-serif; font-size: .8125rem; letter-spacing: .035em; text-transform: uppercase; }
+.rail-badge--pink { background: #f88b9a; color: #39151b; }.rail-badge--yellow { background: #ffcb64; color: #222018; }.rail-badge--blue { background: #a7c8e8; color: #122f4c; }
+.rail-card-arrow { font-size: 1.4rem; color: #ae2b1b; }
+.rail-home .rail-explore { display: inline-block; color: #b92f20; font-size: 1rem; font-weight: 700; margin-top: 24px; padding: 10px; }
+.rail-note { font-size: .8125rem; line-height: 1.5; color: #625a4e; margin-top: 6px !important; }
+.rail-formats { padding-block: 48px 38px; }
+.rail-formats h2 { font-size: clamp(1.6rem,2.8vw,2.6rem); line-height: 1.25; text-align: center; }
+.rail-format-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); margin-top: 28px; }
+.rail-format-grid > a { display: flex; align-items: center; gap: 14px; padding: 8px 22px; }
+.rail-format-grid > a + a { border-left: 1px solid #cfbfa8; }
+.rail-format-grid > a > span:last-child { margin-left: auto; }
+.rail-format-icon { flex-shrink: 0; width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; }
+.rail-format-icon svg { width: 27px; height: 27px; }
+.rail-format-grid h3 { font-family: 'Instrument Sans',Arial,sans-serif; font-size: 1.0625rem; font-weight: 700; text-transform: none; }
+.rail-format-grid p { font-size: .875rem; line-height: 1.4; margin-top: 5px; }
+.rail-onboarding { padding-bottom: 48px; }
+.rail-ticket { display: flex; background: #ffce67; color: #18212b; padding: 24px 0; border-radius: 16px; position: relative; }
+.rail-ticket::before,.rail-ticket::after { content:''; position:absolute; top:16px; bottom:16px; width:14px; background: radial-gradient(circle at center, var(--rail-paper) 6px, transparent 6.5px) 0 0/14px 27px repeat-y; }
+.rail-ticket::before { left: -7px; }.rail-ticket::after { right:-7px; }
+.rail-ticket-stub { width: 15%; padding-inline: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; border-right: 2px dashed #b18030; font-family:'Anton',Impact,sans-serif; font-size:.875rem; text-align:center; }
+.rail-ticket-stub > span:last-child { font-size: .75rem; font-family:'Space Mono',monospace; letter-spacing:.07em; }
+.rail-ticket-main { flex: 1; min-width:0; text-align:center; padding-inline: 20px; }
+.rail-ticket h2 { font-size: clamp(1.4rem,2.5vw,2.2rem); line-height:1.25; }
+.rail-ticket-main > p { font-size:.8125rem; text-transform:uppercase; letter-spacing:.04em; margin-top:8px; }
+.rail-ticket ol { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); list-style:none; margin:24px 0 0; padding:0; gap:14px; }
+.rail-ticket li { display:flex; flex-direction:column; align-items:center; gap:9px; font-size:.875rem; font-weight:700; position:relative; }
+.rail-ticket li > span { width:26px; height:26px; border-radius:50%; display:grid; place-items:center; color:#ffcf69; background:#162235; }
+.rail-ticket li:not(:last-child)::after { content:'→'; position:absolute; right:-14px; top:1px; }
+.rail-ticket-end { width:15%; border-left:2px dashed #b18030; padding-inline:20px; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:12px; font-family:'Anton',Impact,sans-serif; font-size:.8125rem; line-height:1.5; text-transform:uppercase; text-align:center; letter-spacing:.05em; }
+.rail-ticket-end > span:last-child { color:#c52c1b; font-size:1.6rem; }
+.rail-last-cta { display:flex; justify-content:center; align-items:center; gap:40px; margin-top:28px; }
+.rail-home .rail-button--ink { border-color:#161614; box-shadow:3px 4px 0 #161614; }
+.rail-home[data-motion-paused] .rail-train { transform:none !important; }
+.rail-home[data-motion-paused] *, .rail-home[data-offscreen] * { animation-play-state:paused !important; }
+@keyframes rail-arrive { from { transform:translateX(7%); opacity:.3; } to { transform:translateX(0); opacity:1; } }
+@keyframes rail-steam { 0% { transform:translateY(8px) scale(.8); opacity:0; } 30% { opacity:.75; } 100% { transform:translateY(-28px) scale(1.25); opacity:0; } }
+@keyframes rail-nudge { 0%,100% { transform:translateY(0); } 50% { transform:translateY(4px); } }
+@media (prefers-reduced-motion:reduce) { .rail-home *, .rail-home *::before, .rail-home *::after { animation:none !important; transition:none !important; } .rail-train { transform:none !important; } }
+@media (min-width:1700px) { .rail-side { background-size:1700px auto; } .rail-hero { max-width:1700px; margin:auto; } }
+@media (max-width:1000px) { .rail-side { opacity:.45; width:22%; }.rail-side--right { width:18%; }.rail-idea-grid { gap:16px; }.rail-format-grid > a { padding-inline:12px; gap:10px; }.rail-format-icon { width:44px; height:44px; }.rail-format-grid > a > span:last-child { display:none; } }
+@media (max-width:700px) {
+  .rail-hero { padding-top:22px; }.rail-intro { padding-inline:20px; }.rail-side { display:none; }
+  .rail-home h1 { font-size:clamp(3.3rem,12vw,5rem); margin:16px 0; }.rail-eyebrow { font-size:.75rem; }
+  .rail-route { gap:12px; }.rail-route::before,.rail-route::after { width:24px; }
+  .rail-intro-copy { font-size:1rem; }.rail-actions { gap:12px; margin-top:18px; }
+  .rail-scene { margin-top:2px; }.rail-train { width:130%; margin-left:-15%; }
+  .rail-motion-row { margin:2px auto 0; }.rail-motion-row .rail-script { font-size:.875rem; max-width:145px; }.rail-motion { font-size:.75rem !important; padding:7px 10px; }
+  .rail-stops { gap:12px; width:92%; margin-top:18px; }.rail-stop { padding-top:12px; }.rail-stop button { flex-direction:column; align-items:flex-start; gap:8px; font-size:.9375rem; }.rail-stop p { font-size:.8125rem; line-height:1.4; }.rail-stop a { font-size:.8125rem; }
+  .rail-next { font-size:.75rem !important; padding:20px 12px !important; }
+  .rail-ideas { padding-top:34px; }.rail-ideas h2 { font-size:clamp(1.8rem,6.8vw,2.6rem); }.rail-ideas h2 span { display:block; }
+  .rail-section-copy { font-size:.9375rem; }.rail-idea-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin-top:24px; }
+  .rail-idea-copy { padding:13px; }.rail-idea h3 { font-size:1rem; }.rail-idea p { font-size:.875rem; min-height:4.35em; }.rail-badge { font-size:.6875rem; padding:5px 10px; }.rail-card-bottom { margin-top:12px; }
+  .rail-note { font-size:.75rem; }.rail-formats { padding-top:32px; }.rail-formats h2 { font-size:1.55rem; gap:10px; }.rail-formats h2 img { width:23px; height:23px; }
+  .rail-format-grid { grid-template-columns:1fr; margin-top:20px; }.rail-format-grid > a { padding:16px 4px; }.rail-format-grid > a + a { border-left:0; border-top:1px solid #d8c8b1; }.rail-format-grid > a > span:last-child { display:block; }
+  .rail-ticket { padding:24px 12px; }.rail-ticket-stub,.rail-ticket-end { display:none; }.rail-ticket-main { padding:0 8px; }.rail-ticket ol { grid-template-columns:repeat(2,minmax(0,1fr)); row-gap:24px; }.rail-ticket li:nth-child(2)::after { content:none; }.rail-ticket h2 { font-size:1.55rem; }
+  .rail-last-cta { gap:16px; flex-direction:column; }.rail-last-cta .rail-script { text-align:center; font-size:1rem; }.rail-onboarding { padding-bottom:32px; }
+}
+@media (max-width:380px) { .rail-idea-grid { grid-template-columns:1fr; }.rail-idea h3 { font-size:1.25rem; }.rail-idea p { min-height:0; font-size:1rem; }.rail-badge { font-size:.8125rem; }.rail-home .rail-button { font-size:.9375rem; padding-inline:22px; } }
+

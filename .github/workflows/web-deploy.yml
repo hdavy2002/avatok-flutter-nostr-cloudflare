@@ -92,6 +92,10 @@ jobs:
           PUBLIC_RELEASE_SHA: ${{ github.sha }}
         run: npm run build      # runs prebuild (zine tokens) + astro build
 
+      - name: Check homepage links and archive
+        working-directory: web
+        run: node scripts/check-homepage.mjs
+
       - name: Deploy to Cloudflare Pages (avatok-app)
         uses: cloudflare/wrangler-action@v3
         with:

@@ -1,0 +1,61 @@
+---
+// avatok.ai home — India-first Gen Z creator experience marketplace.
+// The current design is a self-contained static document. Previous and rejected
+// homepage directions remain archived under src/landing/archive/ and are not shipped.
+//
+// We strip the document's own leading <!DOCTYPE html> and let Astro emit one,
+// then drop the whole document in via set:html (opaque to the Astro compiler,
+// so its {{ }} bindings and CSS braces pass through untouched). The page stays
+// prerendered; the only dynamic part is one client-hydrated island (below).
+export const prerender = true;
+
+import landingRaw from '../landing/avatok-desi-editorial-marketplace.html?raw';
+import catalogueRaw from '../landing/avatok-listings-catalogue.html?raw';
+// [WEB-SEO-1 2026-08-27] Crawlable "How avaTOK works" band. The desktop hero is
+// a poster IMAGE, so without this the home page has almost no text for search
+// engines or answer engines (ChatGPT/Perplexity/AI Overviews) to quote. It
+// mirrors the FAQPage + HowTo JSON-LD in the landing document's <head>.
+import seoBandRaw from '../landing/avatok-seo-explainer.html?raw';
+import SiteHeader from '../components/SiteHeader.astro';
+import SiteFooter from '../components/SiteFooter.astro';
+
+const landingHtml = landingRaw.replace(/^﻿?\s*<!doctype html>/i, '');
+const LEGACY_LOWER_MARK = '<!--\n  AvaTOK lower-page draft';
+const [heroHtml, legacyLower = ''] = landingHtml.split(LEGACY_LOWER_MARK);
+if (!legacyLower) {
+  throw new Error('index.astro: expected legacy lower-page marker is missing');
+}
+// [WEB-HEADER-1] The document is split into three so the real <SiteHeader> can
+// be injected between <body> and <main>, where the painted-on nav used to be.
+// The poster artwork is now `hero-poster-nonav.png` — the same image with its
+// top nav strip cropped off — so the header lands in exactly the space the
+// pixels used to occupy and the seam is invisible.
+//
+// HomeAccountChip is gone: it existed only because the static poster could not
+// show a signed-in state. The header does that properly now.
+const BODY_MARK = '<body>';
+const bodyAt = heroHtml.indexOf(BODY_MARK);
+if (bodyAt === -1) {
+  throw new Error('index.astro: expected <body> in the landing document');
+}
+const headHtml = heroHtml.slice(0, bodyAt + BODY_MARK.length);
+const restHtml = heroHtml.slice(bodyAt + BODY_MARK.length);
+// [WEB-FOOTER-3] The closing tags are split out so <SiteFooter /> can render
+// INSIDE the document. The home page emits its own raw markup, so appending the
+// component after the fragment would have put the footer past </html>.
+const pageHtml = `${restHtml}${catalogueRaw}${seoBandRaw}`;
+const closeHtml = '\n</main>\n</body>\n</html>';
+
+---
+
+<Fragment set:html={headHtml} />
+{/* [WEB-POSTHOG-1] This page emits its own document and never touches
+    Base.astro, so it loads the PostHog core separately. */}
+<script>
+  import { initAnalytics } from '../lib/analytics';
+  initAnalytics();
+</script>
+<SiteHeader sticky={false} />
+<Fragment set:html={pageHtml} />
+<SiteFooter />
+<Fragment set:html={closeHtml} />
