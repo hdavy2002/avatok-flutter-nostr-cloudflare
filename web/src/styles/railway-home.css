@@ -201,7 +201,7 @@
 .rail-format-grid { margin-top:22px; }
 .rail-format-grid > a > span:last-child { display:none; }
 .rail-ticket { padding:20px 0; border-radius:12px; min-height:180px; }
-.rail-ticket-art { position:absolute; left:4%; top:18px; width:15%; aspect-ratio:120/58; overflow:hidden; mix-blend-mode:multiply; }
+.rail-ticket-art { position:absolute; left:4%; top:18px; width:15%; aspect-ratio:120/58; overflow:hidden; mix-blend-mode:darken; }
 .rail-ticket-art img { position:absolute; width:720.833333%; height:auto; max-width:none; left:-66.666667%; top:-2331.034483%; }
 .rail-ticket-main { padding:0 24px; }
 .rail-ticket-main h2,.rail-ticket-main > p { margin-left:17%; }
