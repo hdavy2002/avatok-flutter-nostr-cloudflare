@@ -38,6 +38,9 @@ describe("commercial notification contracts", () => {
   it("keeps scheduled commercial reminders on stable ids without join credentials", () => {
     expect(consumerCalendar).toContain("commercial_join_window");
     expect(consumerCalendar).toContain("commercial-notification:");
-    expect(consumerCalendar).toContain("signed join URL and must not be used for this lane");
+    expect(consumerCalendar).toContain("outboxKey");
+    expect(consumerCalendar).toContain("messageVersion");
+    expect(consumerCalendar).not.toContain("provider_token");
+    expect(consumerCalendar).not.toContain("provider_call_id");
   });
 });

@@ -18,7 +18,7 @@ describe("Phase 2C customer session projection", () => {
     expect(routes).toContain("commercial_receipts");
     expect(routes).toContain("commercial_refund_receipts");
     expect(routes).toContain("refund_receipt_id");
-    expect(routes).toContain("OR rr.refund_receipt_id IS NOT NULL");
+    expect(routes).toContain("EXISTS (SELECT 1 FROM commercial_refund_receipts rr WHERE rr.order_id=e.order_id)");
     expect(routes).toContain("server_now");
     expect(routes).toContain("opens_at");
     expect(routes).toContain("closes_at");
@@ -57,7 +57,7 @@ describe("Phase 2C customer session projection", () => {
     expect(router).toContain('req.method === "POST"');
     // Session projections are non-secret signed reads; only the dedicated
     // admission endpoints return provider credentials and must remain POST.
-    expect(appSessionsApi).toContain("ApiAuth.getSigned(_url)");
+    expect(appSessionsApi).toContain("ApiAuth.getSigned(uri.toString())");
     expect(appSessionsApi).toContain("ApiAuth.postJson(");
     expect(appSessionsApi).toContain("/commercial/live/");
     expect(appSessionsApi).toContain("/commercial/consult/");

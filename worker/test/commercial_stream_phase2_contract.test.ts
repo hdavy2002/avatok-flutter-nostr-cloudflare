@@ -178,7 +178,8 @@ describe("Phase 2 commercial lane contracts", () => {
     expect(routes).toContain("session_ended");
     expect(routes).toContain("min_connected_ms");
     expect(routes).toContain("connected_ms");
-    expect(reviews).toContain("state='consumed' LIMIT 1");
+    expect(reviews).toContain("state IN (");
+    expect(reviews).toContain("ORDER BY CASE state WHEN 'consumed' THEN 0 ELSE 1 END LIMIT 1");
     expect(reviews).not.toContain("SELECT 1 FROM commercial_entitlements WHERE kind=?1 AND listing_id=?2 AND account_id=?3 LIMIT 1");
   });
 
@@ -229,10 +230,10 @@ describe("Phase 2 commercial lane contracts", () => {
     // asserting the actual POST-only route contract.
     const normalizedRouter = router.replaceAll("\\/", "/");
     expect(normalizedRouter).toContain(
-      'if (/^/api/commercial/consult/[A-Za-z0-9-]{1,64}/extend/quote$/.test(p) && req.method === "POST")',
+      'commercialRoutePattern("consult", "extend/quote").test(p) && req.method === "POST"',
     );
     expect(normalizedRouter).toContain(
-      'if (/^/api/commercial/consult/[A-Za-z0-9-]{1,64}/extend/confirm$/.test(p) && req.method === "POST")',
+      'commercialRoutePattern("consult", "extend/confirm").test(p) && req.method === "POST"',
     );
   });
 

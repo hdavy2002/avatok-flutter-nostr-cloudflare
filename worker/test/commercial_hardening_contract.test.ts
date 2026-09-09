@@ -28,6 +28,11 @@ describe("Phase 2F commercial hardening contracts", () => {
     expect(diagnostics).toContain("settlement_review_pending");
     expect(diagnostics).toContain("settlement_processing_stale");
     expect(diagnostics).toContain("provider_event_unbound");
+    expect(diagnostics).toContain("email_outbox");
+    expect(diagnostics).toContain("delivery_status");
+    expect(diagnostics).toContain("provider_message_id");
+    expect(diagnostics).toContain("attempts");
+    expect(diagnostics).not.toContain("recipient_email");
     expect(diagnostics).not.toContain("payload_json");
     expect(diagnostics).not.toContain("provider_call_id");
     expect(diagnostics).not.toContain("STREAM_VIDEO_API_SECRET");

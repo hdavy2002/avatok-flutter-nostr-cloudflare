@@ -35,7 +35,7 @@ CREATE TABLE listings (
 );
 CREATE TABLE bookings (
   id TEXT PRIMARY KEY, listing_id TEXT NOT NULL, creator_id TEXT NOT NULL, buyer_id TEXT NOT NULL,
-  kind TEXT NOT NULL, status TEXT NOT NULL, starts_at INTEGER, ends_at INTEGER, order_id TEXT
+  kind TEXT NOT NULL, status TEXT NOT NULL, starts_at INTEGER, ends_at INTEGER, price INTEGER, order_id TEXT
 );
 CREATE TABLE orders (id TEXT PRIMARY KEY, status TEXT);
 CREATE TABLE commercial_entitlements (
@@ -120,9 +120,9 @@ listing("foreign-event", creator="creator-b", start=NOW + 4_000_000)
 listing("creator-consult", creator=CREATOR, kind="consult_1to1", start=NOW + 5_000_000)
 listing("foreign-consult", creator="creator-b", kind="consult_1to1", start=NOW + 5_000_000)
 order("order-creator-consult")
-db.execute("INSERT INTO bookings (id,listing_id,creator_id,buyer_id,kind,status,starts_at,ends_at,order_id) VALUES (?,?,?,?,?,?,?,?,?)", ("booking-creator", "creator-consult", CREATOR, BUYER, "consult_1to1", "confirmed", NOW + 5_000_000, NOW + 8_600_000, "order-creator-consult"))
+db.execute("INSERT INTO bookings (id,listing_id,creator_id,buyer_id,kind,status,starts_at,ends_at,price,order_id) VALUES (?,?,?,?,?,?,?,?,?,?)", ("booking-creator", "creator-consult", CREATOR, BUYER, "consult_1to1", "confirmed", NOW + 5_000_000, NOW + 8_600_000, 100, "order-creator-consult"))
 order("order-foreign-consult")
-db.execute("INSERT INTO bookings (id,listing_id,creator_id,buyer_id,kind,status,starts_at,ends_at,order_id) VALUES (?,?,?,?,?,?,?,?,?)", ("booking-foreign", "foreign-consult", "creator-b", BUYER, "consult_1to1", "confirmed", NOW + 5_000_000, NOW + 8_600_000, "order-foreign-consult"))
+db.execute("INSERT INTO bookings (id,listing_id,creator_id,buyer_id,kind,status,starts_at,ends_at,price,order_id) VALUES (?,?,?,?,?,?,?,?,?,?)", ("booking-foreign", "foreign-consult", "creator-b", BUYER, "consult_1to1", "confirmed", NOW + 5_000_000, NOW + 8_600_000, 100, "order-foreign-consult"))
 
 def page(sql, account, filter_sql, limit=50):
     cursor = (None, None, None)
@@ -190,17 +190,17 @@ describe("commercial schedule projection SQL", () => {
     expect(result.customer_keys.length).toBeGreaterThan(125);
     expect(result.customer_unique).toBe(result.customer_keys.length);
     expect(result.customer_keys).not.toContain("live_event:other-account");
-    expect(result.customer_keys.every((key) => key.includes("page-") || key === "live_event:live-ticket" || key.startsWith("live_event:terminal-"))).toBe(true);
+    expect(result.customer_keys.every((key) => key.includes("page-") || key === "live_event:live-ticket:" || key.startsWith("live_event:terminal-"))).toBe(true);
   });
 
   it("groups canceled and refunded spellings into the terminal view", () => {
     const result = runSqlHarness();
     expect(result.cancelled_keys).toEqual(expect.arrayContaining([
-      "live_event:terminal-0",
-      "live_event:terminal-1",
-      "live_event:terminal-2",
-      "live_event:terminal-3",
-      "live_event:terminal-4",
+      "live_event:terminal-0:",
+      "live_event:terminal-1:",
+      "live_event:terminal-2:",
+      "live_event:terminal-3:",
+      "live_event:terminal-4:",
     ]));
   });
 });
