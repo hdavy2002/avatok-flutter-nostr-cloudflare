@@ -21,7 +21,7 @@ const ideas = [
     <link rel="preload" as="image" href="/assets/railway/approved-ideas.jpg" />
   </Fragment>
   <a class="rail-skip" href="#marketplace-catalogue">Skip to earning ideas</a>
-  <SiteHeader sticky={false} />
+  <SiteHeader sticky={false} responsiveHome={true} />
   <main class="rail-home" data-design="station-static-2026-09" id="main-content">
     <section class="station-hero" aria-labelledby="rail-title">
       <div class="station-frame">
@@ -73,7 +73,7 @@ const ideas = [
 
     <section class="rail-onboarding rail-wrap" aria-labelledby="ticket-title" id="how-avatok-works" data-home-section="start">
       <div class="rail-ticket">
-        <div class="rail-ticket-stub"><span>AVATOK EXPRESS</span><span aria-hidden="true">GHAR SE<br />DUNIYA TAK</span></div>
+        <div class="rail-ticket-art" aria-hidden="true"><img src="/assets/railway/approved-ideas.jpg" alt="" width="865" height="1819" loading="lazy" /></div>
         <div class="rail-ticket-main">
           <h2 id="ticket-title">Your first booking express</h2>
           <p>Four simple steps to get on board</p>
@@ -89,7 +89,7 @@ const ideas = [
       <div class="rail-last-cta"><a class="rail-button rail-button--ink" href="/sign-up" data-home-cta="footer-create">Create your free listing <span aria-hidden="true">↗</span></a><p class="rail-script">Chhoti shuruaat,<br />badi kahani.</p></div>
     </section>
   </main>
-  <SiteFooter />
+  <div class="station-footer"><SiteFooter /></div>
   <script>
     import '../lib/railwayHome';
   </script>

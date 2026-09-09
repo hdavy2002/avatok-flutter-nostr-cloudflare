@@ -35,6 +35,8 @@ import TruckBorder from './TruckBorder.astro';
 export interface HeaderLink { href: string; label: string }
 
 interface Props {
+  /** Homepage-only phone and tablet navigation layouts. */
+  responsiveHome?: boolean;
   /** Override the menu for a single page. Omit to use the site default. */
   links?: HeaderLink[];
   /** Sticky by default; the home page pins it over the poster. */
@@ -69,7 +71,7 @@ const DEFAULT_LINKS: HeaderLink[] = [
 ];
 
 // `auth` is destructured and ignored on purpose — see the deprecation note above.
-const { links = DEFAULT_LINKS, sticky = true } = Astro.props;
+const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false } = Astro.props;
 ---
 
 {/* [WEB-THEME-1] The five brand faces. Loaded by the component rather than
@@ -105,7 +107,7 @@ const { links = DEFAULT_LINKS, sticky = true } = Astro.props;
   })();
 </script>
 
-<header class:list={['avh', sticky && 'avh--sticky']}>
+<header class:list={['avh', sticky && 'avh--sticky', responsiveHome && 'avh--home']}>
   <TruckBorder kind="jhalar" count={60} class="avh-band" />
   <div class="avh-bar">
   <a class="avh-logo" href="/" aria-label="avaTOK home">
@@ -145,7 +147,7 @@ const { links = DEFAULT_LINKS, sticky = true } = Astro.props;
   </div>
 </header>
 
-<nav class="avh-mobile" id="avh-mobile" aria-label="Main (mobile)" hidden>
+<nav class:list={['avh-mobile', responsiveHome && 'avh-mobile--home']} id="avh-mobile" aria-label="Main (mobile)" hidden>
   {links.map((l) => <a href={l.href}>{l.label}</a>)}
   {/* [WEB-HEADER-10] Auth moves OUT of the bar and in here below 1100px.
       [WEB-AUTH-STATE-1 2026-08-28] These used to be signed-OUT links on every
@@ -170,6 +172,13 @@ const { links = DEFAULT_LINKS, sticky = true } = Astro.props;
     const open = burger.getAttribute('aria-expanded') === 'true';
     burger.setAttribute('aria-expanded', String(!open));
     if (panel) panel.hidden = open;
+  });
+
+  panel?.addEventListener('click', (event) => {
+    if ((event.target as Element).closest('a')) {
+      panel.hidden = true;
+      burger?.setAttribute('aria-expanded', 'false');
+    }
   });
 
   // [WEB-POSTHOG-1] §2.9 nav_click{item}. Contract:
