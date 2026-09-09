@@ -11,6 +11,8 @@ import '../sync/sync_hub.dart';
 import 'analytics.dart';
 import 'ava_log.dart';
 import 'db.dart';
+import 'listings_api.dart' show ListingsCache;
+import '../features/marketplace/marketplace_browse.dart' show resetMarketplaceWarmSnapshot;
 import 'disk_cache.dart';
 import 'remote_config.dart';
 import 'calls/rtc/stream_call_api.dart';
@@ -178,6 +180,18 @@ class AccountSwitcher {
       ContactBackupRoles.I.onAccountSwitched();
     } catch (e) {
       failed.add('cbrole:$e');
+    }
+
+    // 5d. [MKT-CACHE-1 2026-09-09] Drop the in-memory marketplace cache. The
+    //     DISK half is already per-account (DiskCache scopes by AccountScope),
+    //     but the memory map lives for the life of the process, so without this
+    //     the arriving account would render the departing account's marketplace
+    //     cards for up to the TTL before its own fetch landed.
+    try {
+      ListingsCache.clearMemory();
+      resetMarketplaceWarmSnapshot();
+    } catch (e) {
+      failed.add('mktcache:$e');
     }
 
     // 6. Persist / clear the cold-boot pointer.

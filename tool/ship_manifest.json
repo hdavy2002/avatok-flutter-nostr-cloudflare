@@ -4866,5 +4866,33 @@
       }
     ],
     "_verified_at": "settings_screen.dart:~300 and avalibrary_screen.dart:~541 both read `drawer: shellScope == null ? null : const AvaSidebarForShell()` with showBack keyed off the same null check; avalibrary_screen.dart's _darkHeader now accepts and renders `leading`; flutter analyze on lib/features/settings + lib/features/library reports 0 errors."
+  },
+  "MKT-CACHE-1": {
+    "description": "[MKT-CACHE-1] The Marketplace re-fetched and re-spun on EVERY entry. Two causes. (1) The creator-services shelf (marketplace_browse.dart _CommercialServicesShelfState) had no cache at all: each mount fired four uncached requests - explore/live-now, explore?kind=live_event, explore?kind=consult and explore/categories - before it could draw anything, which is the upper spinner in the owner's screenshot. (2) The listings grid DID have a cache, but disk-only: readFresh awaited getApplicationSupportDirectory + a file read, so the FutureBuilder sat in ConnectionState.waiting and painted a spinner even on a cache hit - the lower spinner. Fix: _MarketCache becomes ListingsCache, a two-layer cache with a SYNCHRONOUS in-memory peek (keyed by AccountScope.id per the CLAUDE.md scoping rule) over the existing per-account DiskCache file. explore(), liveNow() and categories() gain opt-in cache:true (never for a creator= query, which is the 'did my listing publish?' path) with 5min / 2min / 6h TTLs. Both the grid and the shelf seed their first frame from the warm cache and revalidate behind the user; a failed revalidate keeps the cached cards rather than blanking the screen. Pull-to-refresh forces past every layer via a refreshToken forwarded to the shelf. AccountSwitcher clears the memory map and the shelf snapshot, since neither is account-scoped by construction.",
+    "shipped": "2026-09-09",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "commercialLiveListingsEnabled",
+      "commercialConsultListingsEnabled",
+      "marketplaceEnabled"
+    ],
+    "success": [
+      {
+        "event": "mkt_shelf_mounted",
+        "property": "warm_cache",
+        "equals": true,
+        "min_events": 1,
+        "note": "THE assertion for this fix. A repeat entry into Marketplace within the TTL must mount the shelf warm. All-false means the snapshot is being dropped every visit (a fresh widget tree per entry, or an account switch firing when it should not) and the four-request spinner is back. Presence of the event with warm_cache=false ONLY is a failure, not a pass - see ship-gate rule 3."
+      },
+      {
+        "event": "marketplace_opened",
+        "property": "warm_cache",
+        "equals": true,
+        "min_events": 1,
+        "note": "Same assertion for the listings grid, which caches separately (ListingsApi.marketBrowsePeek). Grid warm + shelf cold, or the reverse, localises which of the two layers regressed."
+      }
+    ],
+    "_verified_at": "flutter analyze on lib/core/listings_api.dart, lib/core/account_switcher.dart and lib/features/marketplace/marketplace_browse.dart reports 0 errors (6 pre-existing prefer_const infos); full `flutter analyze lib` reports 0 errors. Prod config confirmed live on api.avatok.ai: shellV2=true, marketplaceEnabled=true, commercialLive/ConsultListingsEnabled=true, conferenceEnabled=false - read from the cache-busted /api/config, not from DEFAULTS."
   }
 }

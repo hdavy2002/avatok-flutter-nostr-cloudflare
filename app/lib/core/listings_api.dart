@@ -3,13 +3,49 @@ import 'dart:convert';
 import 'api_auth.dart';
 import 'config.dart';
 import 'disk_cache.dart';
+import '../identity/identity.dart' show AccountScope;
 import 'listing_groups.dart' show listingGroupForCategory;
 
-/// Tiny disk cache for marketplace browse results so the grid shows instantly
-/// on reopen instead of reloading blank every time. Entries expire after a TTL
-/// (pic 3); pull-to-refresh forces a fresh fetch.
-class _MarketCache {
+/// [MKT-CACHE-1 2026-09-09] Two-layer cache for marketplace reads so the
+/// Marketplace does NOT re-fetch and re-spin every single time it is opened.
+///
+/// Layer 1 is an IN-MEMORY map, which is the whole point of this change: the
+/// old cache was disk-only, so every re-entry still had to await a
+/// platform-channel directory lookup + a file read before the FutureBuilder
+/// could leave `ConnectionState.waiting` — i.e. a spinner on every visit even
+/// on a cache hit. `peek` is synchronous, so a warm screen renders its cards in
+/// the FIRST frame with no spinner at all.
+///
+/// Layer 2 is the existing [DiskCache] file, which survives a process restart
+/// and is what makes a cold start show cards instead of a blank grid.
+///
+/// PER-ACCOUNT SCOPING (CLAUDE.md rule 1): [DiskCache] is already scoped, but
+/// the memory map is process-wide, so it is keyed by [AccountScope.id] here.
+/// Without that, a parent and child sharing one phone would see each other's
+/// marketplace results after an account switch.
+class _CacheEntry {
+  final List<dynamic> items;
+  final DateTime savedAt;
+  const _CacheEntry(this.items, this.savedAt);
+}
+
+class ListingsCache {
+  static final Map<String, _CacheEntry> _mem = <String, _CacheEntry>{};
+
+  static String _memKey(String key) => '${AccountScope.id ?? 'default'}::$key';
+
+  /// Synchronous memory-only read. Returns null when nothing fresh is held —
+  /// callers then fall back to [readFresh] (disk) or the network.
+  static List<dynamic>? peek(String key, Duration ttl) {
+    final e = _mem[_memKey(key)];
+    if (e == null) return null;
+    if (DateTime.now().difference(e.savedAt) > ttl) return null;
+    return e.items;
+  }
+
   static Future<List<dynamic>?> readFresh(String key, Duration ttl) async {
+    final warm = peek(key, ttl);
+    if (warm != null) return warm;
     try {
       final raw = await DiskCache.read('marketplace_browse_$key');
       if (raw == null) return null;
@@ -20,16 +56,25 @@ class _MarketCache {
           DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(savedAt)) > ttl) {
         return null;
       }
-      return envelope['items'] as List<dynamic>?;
+      final items = envelope['items'] as List<dynamic>?;
+      if (items == null) return null;
+      // Promote the disk hit into memory so the NEXT visit is spinner-free.
+      _mem[_memKey(key)] = _CacheEntry(items, DateTime.fromMillisecondsSinceEpoch(savedAt));
+      return items;
     } catch (_) { return null; }
   }
 
   static Future<void> write(String key, List<dynamic> raw) async {
+    _mem[_memKey(key)] = _CacheEntry(raw, DateTime.now());
     await DiskCache.write('marketplace_browse_$key', jsonEncode({
       'saved_at': DateTime.now().millisecondsSinceEpoch,
       'items': raw,
     }));
   }
+
+  /// Drop every in-memory entry. Called on sign-out / account switch so a new
+  /// account never renders the previous one's cards before its own fetch lands.
+  static void clearMemory() => _mem.clear();
 }
 
 /// Fee metadata returned by the listing quote endpoint. Pricing remains
@@ -454,7 +499,7 @@ class ListingCard {
         promoPct = (j['promo_pct'] as num?)?.toInt() ?? 0,
         joinedCount = (j['joined_count'] as num?)?.toInt() ?? 0,
         ratingCount = (j['rating_count'] as num?)?.toInt() ?? 0,
-        currency = (j['currency_display'] ?? 'USD').toString(),
+        currency = (j['currency_display'] ?? 'INR').toString(),
         country = j['country']?.toString(),
         adultsOnly = j['adults_only'] == true,
         badges = (j['badges'] as List?) ?? const [],
@@ -770,14 +815,66 @@ class ListingsApi {
           .toList();
 
   // ── marketplace reads (public) ────────────────────────────────────────────
-  static Future<List<ExploreCategory>> categories() async {
+  /// [MKT-CACHE-1] Category labels change about as often as a D1 migration, so
+  /// they hold for 6 hours. `forceFresh` (pull-to-refresh) still bypasses it.
+  static const Duration _categoriesTtl = Duration(hours: 6);
+  static const String _categoriesKey = 'explore_categories';
+
+  /// Synchronous warm-cache read for the shelf's first frame. Null = nothing in
+  /// memory; the caller must await [categories].
+  static List<ExploreCategory>? categoriesPeek() =>
+      _categoriesFrom(ListingsCache.peek(_categoriesKey, _categoriesTtl));
+
+  static List<ExploreCategory>? _categoriesFrom(List<dynamic>? raw) => raw
+      ?.map((c) => ExploreCategory.fromJson((c as Map).cast<String, dynamic>()))
+      .toList();
+
+  static Future<List<ExploreCategory>> categories({bool forceFresh = false}) async {
+    if (!forceFresh) {
+      final cached = _categoriesFrom(
+          await ListingsCache.readFresh(_categoriesKey, _categoriesTtl));
+      if (cached != null && cached.isNotEmpty) return cached;
+    }
     final r = await ApiAuth.getSigned('$_base/explore/categories');
-    return ((_j(r.body)['categories'] as List?) ?? const [])
+    final list = (_j(r.body)['categories'] as List?) ?? const [];
+    if (list.isNotEmpty) await ListingsCache.write(_categoriesKey, list);
+    return list
         .map((c) => ExploreCategory.fromJson((c as Map).cast<String, dynamic>()))
         .toList();
   }
 
-  static Future<List<ListingCard>> explore({String? kind, String? category, String? country, String? creator}) async {
+  /// [MKT-CACHE-1] Shelf TTL. Short enough that a newly published session shows
+  /// up on the next visit, long enough that walking Marketplace → a listing →
+  /// back does not re-hit the network three times.
+  static const Duration _shelfTtl = Duration(minutes: 5);
+
+  static String _exploreKey({String? kind, String? category, String? country}) =>
+      'explore_${kind ?? ''}_${category ?? ''}_${country ?? ''}';
+
+  /// Synchronous warm-cache read — see [categoriesPeek].
+  static List<ListingCard>? explorePeek({String? kind, String? category, String? country}) =>
+      _cardsFrom(ListingsCache.peek(
+          _exploreKey(kind: kind, category: category, country: country), _shelfTtl));
+
+  static List<ListingCard>? _cardsFrom(List<dynamic>? raw) => raw
+      ?.map((r) => ListingCard.fromJson((r as Map).cast<String, dynamic>()))
+      .toList();
+
+  /// [MKT-CACHE-1] `cache: true` opts a call into the two-layer cache. It is
+  /// OPT-IN, not the default, because several callers (a creator's own listing
+  /// list, post-publish refreshes) must see their own write immediately — a
+  /// stale read there looks like the publish silently failed.
+  static Future<List<ListingCard>> explore({
+    String? kind, String? category, String? country, String? creator,
+    bool cache = false, bool forceFresh = false,
+  }) async {
+    // Never cache a per-creator query — it is the "did my listing appear?" path.
+    final cacheable = cache && creator == null;
+    final key = _exploreKey(kind: kind, category: category, country: country);
+    if (cacheable && !forceFresh) {
+      final cached = _cardsFrom(await ListingsCache.readFresh(key, _shelfTtl));
+      if (cached != null) return cached;
+    }
     final q = <String>[
       if (kind != null) 'kind=$kind',
       if (category != null && category.isNotEmpty) 'category=$category',
@@ -786,12 +883,26 @@ class ListingsApi {
       'limit=40',
     ].join('&');
     final r = await ApiAuth.getSigned('$_base/explore?$q');
-    return _cards(_j(r.body));
+    final list = (_j(r.body)['listings'] as List?) ?? const [];
+    if (cacheable) await ListingsCache.write(key, list);
+    return list.map((x) => ListingCard.fromJson((x as Map).cast<String, dynamic>())).toList();
   }
 
   /// AvaMarketplace browse — buy/sell/social only. Country-filtered by default
   /// (the user's detected country); pass country='' for all countries. A query
   /// routes through search (FTS/AI), filtered to marketplace listings.
+  static const Duration _marketTtl = Duration(minutes: 10);
+
+  static String _marketKey({String? country, String? category}) =>
+      'market_${country ?? ''}_${category ?? ''}';
+
+  /// Synchronous warm-cache read for the grid's first frame — see
+  /// [categoriesPeek]. Only valid for the unsearched grid; a query is never
+  /// cached.
+  static List<ListingCard>? marketBrowsePeek({String? country, String? category}) =>
+      _cardsFrom(ListingsCache.peek(
+          _marketKey(country: country, category: category), _marketTtl));
+
   static Future<List<ListingCard>> marketBrowse({String? country, String? category, String? q, bool forceFresh = false}) async {
     if (q != null && q.trim().isNotEmpty) {
       // Search is never cached (results depend on the live query).
@@ -808,18 +919,18 @@ class ListingsApi {
       if (country != null && country.isNotEmpty) 'country=$country',
       if (category != null && category.isNotEmpty) 'category=${Uri.encodeQueryComponent(category)}',
     ].join('&');
-    final cacheKey = 'market_${country ?? ''}_${category ?? ''}';
+    final cacheKey = _marketKey(country: country, category: category);
     // Stale-while-revalidate: serve a fresh-enough cache instantly unless the
     // caller forced a refresh (pull-to-refresh).
     if (!forceFresh) {
-      final cached = await _MarketCache.readFresh(cacheKey, const Duration(minutes: 10));
+      final cached = await ListingsCache.readFresh(cacheKey, _marketTtl);
       if (cached != null) {
         return cached.map((r) => ListingCard.fromJson((r as Map).cast<String, dynamic>())).toList();
       }
     }
     final r = await ApiAuth.getSigned('$_base/explore?$params');
     final list = (_j(r.body)['listings'] as List?) ?? const [];
-    await _MarketCache.write(cacheKey, list);
+    await ListingsCache.write(cacheKey, list);
     return list.map((x) => ListingCard.fromJson((x as Map).cast<String, dynamic>())).toList();
   }
 
@@ -841,9 +952,25 @@ class ListingsApi {
     }
   }
 
-  static Future<List<ListingCard>> liveNow() async {
+  static const String _liveNowKey = 'explore_live_now';
+
+  /// Synchronous warm-cache read — see [categoriesPeek].
+  static List<ListingCard>? liveNowPeek() =>
+      _cardsFrom(ListingsCache.peek(_liveNowKey, _liveNowTtl));
+
+  /// A shorter TTL than the rest of the shelf: "live now" is the one row where
+  /// a 5-minute-old answer is actively wrong.
+  static const Duration _liveNowTtl = Duration(minutes: 2);
+
+  static Future<List<ListingCard>> liveNow({bool cache = false, bool forceFresh = false}) async {
+    if (cache && !forceFresh) {
+      final cached = _cardsFrom(await ListingsCache.readFresh(_liveNowKey, _liveNowTtl));
+      if (cached != null) return cached;
+    }
     final r = await ApiAuth.getSigned('$_base/explore/live-now');
-    return _cards(_j(r.body));
+    final list = (_j(r.body)['listings'] as List?) ?? const [];
+    if (cache) await ListingsCache.write(_liveNowKey, list);
+    return list.map((x) => ListingCard.fromJson((x as Map).cast<String, dynamic>())).toList();
   }
 
   static Future<List<ListingCard>> search({

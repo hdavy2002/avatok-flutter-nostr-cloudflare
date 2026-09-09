@@ -25,6 +25,14 @@ void _fireImpression(String listingId) {
   Analytics.capture('mkt_card_impression', {'listing_id': listingId});
 }
 
+/// [MKT-CACHE-1 2026-09-09] Drop every process-wide marketplace snapshot.
+/// Called from `AccountSwitcher` alongside `ListingsCache.clearMemory()` — the
+/// memory caches are not account-scoped by construction, so an account switch
+/// must clear them or the arriving user briefly sees the departing user's
+/// marketplace.
+void resetMarketplaceWarmSnapshot() =>
+    _CommercialServicesShelfState.resetWarmSnapshot();
+
 /// AvaMarketplace landing — the real buy/sell/social browse (replaces AvaExplore
 /// as the marketplace home). Cards show photo, title, price (multi-currency) and
 /// the seller's country flag. Defaults to the user's detected country; a toggle
@@ -62,13 +70,56 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
   String _commercialQuery = '';
   late Future<List<ListingCard>> _future;
 
+  /// [MKT-CACHE-1 2026-09-09] True when this mount painted its cards from the
+  /// warm cache without ever showing a spinner. Reported to PostHog so the
+  /// "it reloads every time" complaint is answerable from telemetry instead of
+  /// by eye.
+  bool _servedWarm = false;
+
+  /// Bumped on pull-to-refresh; forwarded to the shelf so it refetches too.
+  int _refreshToken = 0;
+
   @override
   void initState() {
     super.initState();
     _country = WidgetsBinding.instance.platformDispatcher.locale.countryCode ?? '';
     if (_country.isEmpty) _myCountryOnly = false;
-    Analytics.capture('marketplace_opened', {'country': _country});
-    _load();
+    // [MKT-CACHE-1] Seed the grid SYNCHRONOUSLY from the in-memory cache before
+    // the first frame. The disk cache alone could not do this: awaiting a file
+    // read leaves the FutureBuilder in `waiting`, which is why the marketplace
+    // flashed a spinner on every single entry even when the data was cached and
+    // unchanged. A warm hit renders the same cards the user just left.
+    final warm = ListingsApi.marketBrowsePeek(
+      country: _myCountryOnly && _country.isNotEmpty ? _country : '',
+      category: _category,
+    );
+    if (warm != null && warm.isNotEmpty) {
+      _servedWarm = true;
+      _future = Future<List<ListingCard>>.value(warm);
+      // Stale-while-revalidate: the user is already looking at cards, so the
+      // refetch happens quietly behind them and only swaps the list in if it
+      // actually differs.
+      _revalidate();
+    } else {
+      _load();
+    }
+    Analytics.capture('marketplace_opened', {
+      'country': _country,
+      'warm_cache': _servedWarm,
+    });
+  }
+
+  /// Background refresh for a warm mount. Never shows a spinner and never
+  /// blanks the grid on failure — the cached cards stay put.
+  Future<void> _revalidate() async {
+    try {
+      final fresh = await _fetch(fresh: true);
+      if (!mounted) return;
+      setState(() => _future = Future<List<ListingCard>>.value(fresh));
+    } catch (_) {
+      // Offline or a 5xx: keep showing the cache. This is the whole point of
+      // caching — a failed refresh must not cost the user the screen.
+    }
   }
 
   void _load({bool fresh = false}) {
@@ -124,7 +175,13 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
       // now: the header, the shelves and the grid scroll as one surface, which
       // is what makes "scroll down for more categories" possible at all.
       body: RefreshIndicator(
-        onRefresh: () async => _load(fresh: true),
+        onRefresh: () async {
+          // [MKT-CACHE-1] Pull-to-refresh is the explicit "ignore the cache"
+          // gesture: it forces BOTH the grid and the creator shelves past every
+          // cache layer.
+          setState(() => _refreshToken++);
+          _load(fresh: true);
+        },
         // [UI-SEAM-OFF-1 2026-09-05] `removeBottom` so this scroll view runs
         // flush to the bottom of the shell body. Nested inside the shell's
         // Scaffold, the MediaQuery reaching this screen can still carry the
@@ -197,6 +254,7 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
                 liveEnabled: commercialLive,
                 consultEnabled: commercialConsult,
                 query: _commercialQuery,
+                refreshToken: _refreshToken,
               ),
           ])),
           FutureBuilder<List<ListingCard>>(
@@ -434,10 +492,16 @@ class _CommercialServicesShelf extends StatefulWidget {
   final bool liveEnabled, consultEnabled;
   final String query;
 
+  /// [MKT-CACHE-1] Bumped by the page's pull-to-refresh. Without it the shelf
+  /// kept its cached rows through a deliberate refresh — the one gesture that
+  /// must always hit the network.
+  final int refreshToken;
+
   const _CommercialServicesShelf({
     required this.liveEnabled,
     required this.consultEnabled,
     required this.query,
+    required this.refreshToken,
   });
 
   @override
@@ -461,30 +525,102 @@ class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
   /// groupId -> selected category id, or absent/null for "all" in that group.
   final Map<String, String?> _selectedCategory = {};
 
+  /// [MKT-CACHE-1 2026-09-09] Last successfully composed shelf, held for the
+  /// life of the process and keyed by the query it answers. This shelf was the
+  /// WORST offender in the "Marketplace reloads every time" report: each mount
+  /// fired four uncached requests (live-now, explore?kind=live_event,
+  /// explore?kind=consult and explore/categories) before it could draw
+  /// anything, so the top of the page span on every entry.
+  ///
+  /// Cleared on account switch via [ListingsCache.clearMemory]'s sibling below —
+  /// see [resetWarmSnapshot], called from the same place.
+  static _GroupedListings? _warmGrouped;
+  static List<ExploreCategory>? _warmCategories;
+  static String? _warmQuery;
+
+  /// Drop the process-wide snapshot (account switch / sign-out).
+  static void resetWarmSnapshot() {
+    _warmGrouped = null;
+    _warmCategories = null;
+    _warmQuery = null;
+  }
+
   @override
   void initState() {
     super.initState();
-    _reload();
+    // Warm path: the same query we already answered → paint it in the first
+    // frame and revalidate behind the user. A different query has no valid
+    // snapshot, so it takes the normal spinner path.
+    final warm = _warmGrouped != null && _warmQuery == widget.query;
+    if (warm) {
+      _all = Future<_GroupedListings>.value(_warmGrouped);
+      _categories = Future<List<ExploreCategory>>.value(
+          _warmCategories ?? const <ExploreCategory>[]);
+      _revalidate();
+    } else {
+      _reload();
+    }
+    // [MKT-CACHE-1] Success value for the ship gate: on a REPEAT entry this
+    // must read warm_cache=true. `false` on every mount means the snapshot is
+    // being dropped (a new widget tree per visit, or an account switch firing
+    // when it should not) and the spinner is back.
+    Analytics.capture('mkt_shelf_mounted', {
+      'warm_cache': warm,
+      'has_query': widget.query.isNotEmpty,
+    });
   }
 
   @override
   void didUpdateWidget(covariant _CommercialServicesShelf oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshToken != widget.refreshToken) {
+      setState(() {
+        _all = _loadAll(forceFresh: true).then(_remember);
+        _categories = _loadCategories(forceFresh: true).then(_rememberCategories);
+      });
+      return;
+    }
     if (oldWidget.query != widget.query ||
         oldWidget.liveEnabled != widget.liveEnabled ||
         oldWidget.consultEnabled != widget.consultEnabled) {
-      _reload();
+      setState(_reload);
     }
   }
 
   void _reload() {
-    _all = _loadAll();
-    _categories = _loadCategories();
+    _all = _loadAll().then(_remember);
+    _categories = _loadCategories().then(_rememberCategories);
   }
 
-  Future<List<ExploreCategory>> _loadCategories() async {
+  /// Refresh a warm shelf silently. A failure keeps the cached rows on screen
+  /// rather than replacing them with the "Creator services are unavailable"
+  /// state — the user has working cards in front of them.
+  Future<void> _revalidate() async {
     try {
-      final fetched = await ListingsApi.categories();
+      final grouped = _remember(await _loadAll(forceFresh: true));
+      final cats = _rememberCategories(await _loadCategories(forceFresh: true));
+      if (!mounted) return;
+      setState(() {
+        _all = Future<_GroupedListings>.value(grouped);
+        _categories = Future<List<ExploreCategory>>.value(cats);
+      });
+    } catch (_) {/* keep the warm snapshot */}
+  }
+
+  _GroupedListings _remember(_GroupedListings g) {
+    _warmGrouped = g;
+    _warmQuery = widget.query;
+    return g;
+  }
+
+  List<ExploreCategory> _rememberCategories(List<ExploreCategory> c) {
+    if (c.isNotEmpty) _warmCategories = c;
+    return c;
+  }
+
+  Future<List<ExploreCategory>> _loadCategories({bool forceFresh = false}) async {
+    try {
+      final fetched = await ListingsApi.categories(forceFresh: forceFresh);
       if (fetched.isNotEmpty) return fetched;
     } catch (_) {
       // fall through to the offline mirror below
@@ -502,13 +638,15 @@ class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
         .toList();
   }
 
-  Future<_GroupedListings> _loadAll() async {
+  Future<_GroupedListings> _loadAll({bool forceFresh = false}) async {
     final live = widget.liveEnabled
-        ? await _loadLive()
+        ? await _loadLive(forceFresh: forceFresh)
         : const <ListingCard>[];
     final consult = widget.consultEnabled
         ? await (widget.query.isEmpty
-            ? ListingsApi.explore(kind: 'consult')
+            // [MKT-CACHE-1] `cache: true` — this is a browse read, not a
+            // "did my listing publish?" read.
+            ? ListingsApi.explore(kind: 'consult', cache: true, forceFresh: forceFresh)
             : ListingsApi.search(q: widget.query, kind: 'consult'))
         : const <ListingCard>[];
     // De-dupe across lanes — a listing that answers both queries must not
@@ -536,11 +674,11 @@ class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
     });
   }
 
-  Future<List<ListingCard>> _loadLive() async {
+  Future<List<ListingCard>> _loadLive({bool forceFresh = false}) async {
     final results = widget.query.isEmpty
         ? await Future.wait([
-            ListingsApi.liveNow(),
-            ListingsApi.explore(kind: 'live_event'),
+            ListingsApi.liveNow(cache: true, forceFresh: forceFresh),
+            ListingsApi.explore(kind: 'live_event', cache: true, forceFresh: forceFresh),
           ])
         : <List<ListingCard>>[
             await ListingsApi.search(q: widget.query, kind: 'live_event'),
