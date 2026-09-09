@@ -269,3 +269,5 @@ clip-path:polygon(34.8% 0,100% 0,100% 100%,15.5% 100%,16.4% 96%,17.8% 95%,17% 92
 .station-art { clip-path:none; mask-image:url('/assets/railway/torn-station-mask.svg'); mask-size:100% 100%; mask-repeat:no-repeat; }
 .rail-ticket-art { mask-image:linear-gradient(to right,transparent,#000 12%,#000 88%,transparent); }
 @media(max-width:699px) { .station-art { mask-image:url('/assets/railway/torn-mobile-mask.svg'); } }
+
+.rail-ticket-art { filter:grayscale(1) contrast(2); mix-blend-mode:multiply; }
