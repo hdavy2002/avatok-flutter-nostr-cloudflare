@@ -4894,5 +4894,22 @@
       }
     ],
     "_verified_at": "flutter analyze on lib/core/listings_api.dart, lib/core/account_switcher.dart and lib/features/marketplace/marketplace_browse.dart reports 0 errors (6 pre-existing prefer_const infos); full `flutter analyze lib` reports 0 errors. Prod config confirmed live on api.avatok.ai: shellV2=true, marketplaceEnabled=true, commercialLive/ConsultListingsEnabled=true, conferenceEnabled=false - read from the cache-busted /api/config, not from DEFAULTS."
+  },
+  "TOKENS-INR-DISPLAY-1": {
+    "description": "[TOKENS-INR-DISPLAY-1] Every remaining USD/$ display surface becomes rupees. Play top-up tiers (app/lib/features/wallet/wallet_screen.dart _playTopupFlow) and subscription plan cards (features/subscribe/subscribe_screen.dart) now render Play's OWN localised price from ProductDetails.price via the new core/play_prices.dart, instead of the hardcoded TopupTier.usd / plan.priceUsd figures — Play bills an Indian buyer in INR, so the old '$5 · 500 Tokens' label named a currency the user is never charged in. Wallet ledger detail replaces _usdFromCents (hardcoded '$') with _moneyFromMinor(minor, currency), reading meta.currency which routes/wallet.ts creditTopup has written since [TOKENS-INR-RAIL-1]; worker wallet_statement.ts formatMoney defaults a null currency to INR, not USD. Marketplace app defaults (kMarketCurrencies head, intent_theme missing-currency fallback) move to INR, matching LISTING_DEFAULT_CURRENCY on the worker. Deliberately untouched: micro_usd cost accounting, TOKENS_PER_USD, the legacy usd_cents body branch, the multi-currency listing symbol map.",
+    "shipped": "2026-09-09",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "wallet_topup_tier_selected",
+        "property": "play_price_known",
+        "equals": true,
+        "min_events": 1,
+        "note": "The button the user tapped carried a price string that came FROM PLAY. play_price_known:false means queryProductDetails returned nothing for that product, so the tier rendered as a bare token count with no money on it — not a crash, but the price surface is not doing its job and the Play Console product is probably not live in the buyer's country. The companion property play_price carries the exact string shown; it must start with the rupee sign for an Indian tester, and anything starting with '$' on an Indian account means the Play Console product still has no INR price."
+      }
+    ],
+    "_verified_at": "app/lib/core/play_prices.dart PlayPrices.fetch -> InAppPurchase.queryProductDetails ProductDetails.price; wallet_screen.dart _playTopupFlow emits wallet_topup_tier_selected with play_price/play_price_known; worker/src/routes/wallet.ts creditTopup meta.currency; worker/src/routes/wallet_statement.ts formatMoney fallback INR"
   }
 }
