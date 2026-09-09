@@ -223,6 +223,14 @@ class _ListingWebDetailScreenState extends State<ListingWebDetailScreen> {
     }
     switch (msg['type']) {
       case 'ready':
+        // Deduped. `ready` is sent by an inline script in Base.astro's <head>,
+        // so it arrives once per DOCUMENT — and this WebView navigates
+        // (/l/<id> -> /book/<id> -> back). Only the first one is the number we
+        // care about: time from screen open to a page the buyer can read.
+        // Counting the rest would quietly turn `bridge_ms` into "how long the
+        // last hop took" and make the median look better the more the buyer
+        // clicked.
+        if (_bridgeReady) break;
         _bridgeWatchdog?.cancel();
         // [SHIP-GATE-1] The success value for this screen, not the arrival of
         // an event: this fires only when OUR page's bridge handshakes, so it

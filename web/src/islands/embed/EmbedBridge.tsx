@@ -1,31 +1,27 @@
-/* [LIST-DETAIL-EMBED-1 2026-09-09] The host bridge, on every page the app's
- * WebView opens.
+/* [LIST-DETAIL-EMBED-1 2026-09-09] NOT MOUNTED ANYWHERE — kept on disk on
+ * purpose, like Nav.astro and BetaBanner.astro before it.
  *
- * WHY IT LIVES IN THE LAYOUT AND NOT ON A PAGE. [LIST-EMBED-1] installed the
- * bridge from the one island that owned the one embedded route
- * (islands/dashboard/EmbeddedCreateListing.tsx → /embed/listing). The listing
- * DETAILS page is not one route: the app opens `/l/<id>`, the site 301s it to
- * `/<handle>/<slug>`, the buyer taps Book and lands on `/book/<id>`, and
- * checkout hands off and comes back to `/pay/return`. Wiring four pages by hand
- * would leave the fifth one — the one added next month — silently signed out.
- * Base.astro mounts this whenever the request carries the app's UA marker, so
- * "embedded" is a property of the WebView, not of a URL list.
+ * This was the first shape of the app-WebView bridge: an island in Base.astro,
+ * mounted when the request's user agent carried the app marker. Two things
+ * killed it, and both are worth remembering before anyone re-mounts it.
  *
- * WHAT IT RENDERS: nothing. It exists for two side effects — installing the
- * token provider `lib/clerk.tsx:getActiveToken()` prefers, and sending the one
- * `ready` message the host's watchdog waits for.
+ *   1. Deciding ANYTHING server-side from the user agent poisoned the edge
+ *      cache. `/l/<id>` is cached for 60s and Cloudflare's cache key ignores
+ *      the UA, so whichever client missed the cache first decided what
+ *      everyone got. Base.astro now ships one identical document to every
+ *      client and hides the chrome in CSS — see its <head> for the full note.
  *
- * NO CLERK PROVIDER HERE, deliberately. This mounts on pages that already own
- * their own Clerk island, and a second <ClerkProvider> throws (see
- * CreateListing.tsx). There is no session to provide inside the WebView anyway
- * — that is the whole point of the bridge.
+ *   2. Once nothing was conditional server-side, the island had no job left.
+ *      Auth does not need it: lib/clerk.tsx:getActiveToken installs the token
+ *      bridge on demand, which also removes the hydration race this island was
+ *      trying to win. The host's `ready` handshake is a two-line inline script
+ *      in Base.astro's <head>, which is strictly more reliable — it is the
+ *      proof that the page loaded at all, and making that proof depend on
+ *      React hydration puts it out of reach exactly when something is wrong.
  *
- * `useState(initialiser)` and not `useEffect`: the initialiser runs during
- * render, so a sibling island's first fetch is more likely to find the provider
- * already there. It is not a guarantee — islands hydrate independently — which
- * is why getActiveToken() also self-installs. Both, because neither alone is
- * enough: this gets `ready` out promptly on a page that never needs a token,
- * and that covers the island that asks for one first.
+ * Re-mount it only if a page needs the bridge installed BEFORE its own islands
+ * run for a reason `getActiveToken` cannot cover — and if you do, mount it from
+ * the page, not from the layout, and do not reintroduce a server-side UA check.
  */
 import { useState } from 'react';
 import { installEmbedBridge } from '../../lib/embed';
@@ -37,7 +33,7 @@ export default function EmbedBridge() {
       const provider = installEmbedBridge();
       if (provider) setHostTokenProvider(provider);
     } catch {
-      /* not embedded after all (a crawler faking the UA, no window) — no-op */
+      /* not embedded (no window, or a crawler faking the UA) — no-op */
     }
     return null;
   });

@@ -10,7 +10,6 @@ import '../styles/global.css';
 // old zine chrome back; delete it once that's ruled out.
 import SiteHeader from '../components/SiteHeader.astro';
 import SiteFooter from '../components/SiteFooter.astro';
-import EmbedBridge from '../islands/embed/EmbedBridge.tsx';
 import { EMBED_UA_MARKER } from '../lib/embed';
 
 export interface Props {
@@ -64,35 +63,6 @@ const {
   keywords = 'avaTOK, work from home India, earn money online from home, get paid to listen, online friend, talk to someone online, paid chat, live streaming platform India, creator marketplace India, side income from home',
 } = Astro.props;
 
-// [LIST-DETAIL-EMBED-1 2026-09-09] Is this request the app's in-app WebView?
-//
-// The app appends `EMBED_UA_MARKER` to the WebView's user agent
-// (`kEmbedUserAgentMarker`, app/lib/core/config.dart) and shows the website's
-// own listing page inside a native screen that already has a title bar and a
-// back arrow. A second header inside the WebView is the tell that gives away
-// that a native screen is a web page — so the site's own header and footer come
-// off for these requests, on EVERY page, without each page opting in.
-//
-// It is the UA and not `?embed=1` because the buyer navigates: `/l/<id>` 301s to
-// `/<handle>/<slug>` (a redirect drops the query string), Book goes to
-// `/book/<id>`, and checkout returns to `/pay/return`. A param would have
-// dressed the first page and left the rest wearing a web header.
-//
-// Reading a header makes a page dynamic, so this is wrapped: on a prerendered
-// page there is no request to read and `embedded` is simply false — correct,
-// because the app only ever opens SSR routes (`prerender = false`).
-let embedded = false;
-try {
-  embedded = (Astro.request.headers.get('user-agent') ?? '').includes(EMBED_UA_MARKER);
-} catch {
-  embedded = false;
-}
-// Chrome off, and out of the index: the same listing is already indexed at its
-// public URL, and a UA-conditional variant of it is the kind of thing that gets
-// read as cloaking.
-const showChrome = chrome && !embedded;
-const isNoindex = noindex || embedded;
-
 const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://avatok.ai').toString();
 // og:image must be an ABSOLUTE url — Facebook, WhatsApp, LinkedIn and Slack all
 // drop a relative path, which is why shared links used to render with no card.
@@ -141,7 +111,7 @@ const orgLd = {
     <link rel="icon" href="/app-logo2.png" type="image/png" />
     <link rel="canonical" href={canonical} />
     <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
-    {isNoindex
+    {noindex
       ? <meta name="robots" content="noindex, nofollow" />
       : <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />}
     <title>{title}</title>
@@ -164,7 +134,7 @@ const orgLd = {
     <meta name="twitter:image" content={ogImage} />
 
     {/* [WEB-SEO-1] Organization + WebSite structured data on every page. */}
-    {!isNoindex && <script type="application/ld+json" set:html={JSON.stringify(orgLd)} />}
+    {!noindex && <script type="application/ld+json" set:html={JSON.stringify(orgLd)} />}
 
     {/* [WEB-THEME-1] The Fredoka + Nunito preloads that were here are gone:
         those faces are no longer referenced by any token, so preloading them
@@ -185,18 +155,61 @@ const orgLd = {
       import { initAnalytics } from '../lib/analytics';
       initAnalytics();
     </script>
+    {/* [LIST-DETAIL-EMBED-1 2026-09-09] Hide the site's header and footer inside
+        the app's WebView — CLIENT-SIDE, on purpose.
+
+        The app shows the website's listing page inside a native screen that
+        already has a title bar and a back arrow, and a second header is the
+        tell that gives away that a native screen is a web page.
+
+        WHY NOT SERVER-SIDE. The first cut of this read the user agent in this
+        frontmatter and rendered a different document. It worked — and it was a
+        cache-poisoning bug. `/l/<id>` ships
+        `Cache-Control: public, max-age=60, stale-while-revalidate=300` and
+        Cloudflare's cache key does NOT include the user agent, so whichever
+        client missed the cache first decided what everyone got for the next
+        minute: a browser could be served the chrome-less document (a public
+        page with no navigation and no footer) or the app could be served the
+        full one. `Vary: User-Agent` is not a fix — it is ignored for cache-key
+        purposes on this plan, and would wreck the hit rate if it weren't.
+
+        So the DOCUMENT is identical for every client and stays fully
+        cacheable; only the local rendering differs. That also means no
+        UA-conditional HTML for a crawler to read as cloaking, and the page
+        keeps its ordinary robots tag.
+
+        `is:inline` and in <head>: it must run before first paint, or the
+        header paints and then vanishes. The attribute lands on <html>, which
+        exists by the time this script runs.
+
+        The `ready` ping lives here too, rather than in a React island. It is
+        the host's proof that the WebView loaded OUR page (see
+        listing_web_detail.dart), and an island would make that proof depend on
+        Astro hydration — which is exactly the thing most likely to be missing
+        when something has gone wrong. Auth needs no island either:
+        lib/clerk.tsx:getActiveToken installs the token bridge on demand. */}
+    <script is:inline define:vars={{ marker: EMBED_UA_MARKER }}>
+      try {
+        if (navigator.userAgent.indexOf(marker) !== -1) {
+          document.documentElement.setAttribute('data-avatok-embed', '');
+          if (window.AvatokHost && window.AvatokHost.postMessage) {
+            window.AvatokHost.postMessage(JSON.stringify({ type: 'ready' }));
+          }
+        }
+      } catch (e) { /* no navigator, or the host is gone — the page still renders */ }
+    </script>
+    <style is:global>
+      html[data-avatok-embed] header.avh,
+      html[data-avatok-embed] footer.bazaar-footer { display: none !important; }
+      /* The app's WebView is a phone screen with no browser chrome to absorb an
+         overscroll, and a horizontal one there reads as a broken page. */
+      html[data-avatok-embed], html[data-avatok-embed] body { overscroll-behavior-x: none; }
+    </style>
     <slot name="head" />
   </head>
   <body class="min-h-screen bg-paper text-ink font-body">
-    {/* [LIST-DETAIL-EMBED-1] Renders nothing — installs the host token bridge
-        so the buyer is the signed-in app user on every page the WebView
-        reaches, not an anonymous visitor asked for an email code at checkout.
-        First in the body so it hydrates ahead of the page's own islands where
-        Astro's ordering allows; getActiveToken() self-installs for when it
-        does not. */}
-    {embedded && <EmbedBridge client:load />}
-    {showChrome && <SiteHeader auth={headerAuth} />}
+    {chrome && <SiteHeader auth={headerAuth} />}
     <slot />
-    {showChrome && <SiteFooter />}
+    {chrome && <SiteFooter />}
   </body>
 </html>
