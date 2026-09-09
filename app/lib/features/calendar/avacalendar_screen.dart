@@ -348,13 +348,18 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: const ZineAppBar(
-        title: 'Settings',
-        markWord: 'Settings',
+        title: 'Availability',
+        markWord: 'Availability',
         tag: 'AvaCalendar',
       ),
       body: ListView(
         padding: const EdgeInsets.all(Msg.s4),
         children: [
+          Text(
+            'Create your appointment service under Marketplace → Create listing, then set the times customers can book below.',
+            style: _sub(14),
+          ),
+          const SizedBox(height: Msg.s4),
           // --- Google Calendar -------------------------------------------------
           ZineCard(
             radius: Msg.rLg,

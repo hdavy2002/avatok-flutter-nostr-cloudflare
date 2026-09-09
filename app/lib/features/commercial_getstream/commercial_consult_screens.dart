@@ -14,6 +14,8 @@ import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import 'commercial_getstream_handoff.dart';
 import 'commercial_live_gateway.dart';
+import 'commercial_device_check.dart';
+import 'commercial_speaker_test.dart';
 
 class CommercialConsultationPrejoinFlow extends StatefulWidget {
   const CommercialConsultationPrejoinFlow({
@@ -37,22 +39,32 @@ class CommercialConsultationPrejoinFlow extends StatefulWidget {
   State<CommercialConsultationPrejoinFlow> createState() => _CommercialConsultationPrejoinFlowState();
 }
 
-class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultationPrejoinFlow> {
+class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultationPrejoinFlow> with WidgetsBindingObserver {
   PermissionStatus? _camera, _microphone;
   NetProbe? _network;
   bool _cameraOn = true, _microphoneOn = true, _checking = true, _joining = false;
   String? _error;
+  late final CommercialDeviceCheckController _deviceController;
+  final _speaker = CommercialSpeakerTestController();
+  bool _devicesReady = false;
 
   bool get _enabled => (widget.flags ?? CommercialGetStreamJoinFlags.fromRemoteConfig()).consultationJoinEnabled;
-  bool get _ready => _enabled && (!_cameraOn || _camera?.isGranted == true) &&
-      (!_microphoneOn || _microphone?.isGranted == true) && _network?.verdict != 'red';
+  bool get _ready => _devicesReady && commercialDeviceCheckReady(
+        enabled: _enabled,
+        checking: _checking,
+        cameraOn: _cameraOn,
+        microphoneOn: _microphoneOn,
+        cameraGranted: _camera?.isGranted == true,
+        microphoneGranted: _microphone?.isGranted == true,
+        networkVerdict: _network?.verdict,
+      );
 
   @override
-  void initState() { super.initState(); _check(); }
+  void initState() { super.initState(); WidgetsBinding.instance.addObserver(this); _deviceController = CommercialDeviceCheckController(); _check(); }
 
   Future<void> _check() async {
     if (!_enabled) { if (mounted) setState(() => _checking = false); return; }
-    setState(() { _checking = true; _error = null; });
+    setState(() { _checking = true; _network = null; _devicesReady = false; _error = null; });
     try {
       final p = await [Permission.camera, Permission.microphone].request();
       final n = await SessionApi.probe();
@@ -62,13 +74,19 @@ class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultati
 
   Future<void> _join() async {
     if (!_ready || _joining) return;
-    setState(() { _joining = true; _error = null; });
+    setState(() { _joining = true; _devicesReady = false; _error = null; });
     try {
+      // Preview capture is local-only. Release every native track before the
+      // gateway or SDK is touched so the join cannot race the preview.
+      await _deviceController.release();
+      await _speaker.stop();
+      if (!mounted) return;
       final handoff = await widget.gateway.authorize(CommercialGetStreamJoinRequest(
         listingId: widget.listingId,
         product: CommercialGetStreamProduct.consultation,
         bookingId: widget.bookingId,
       ));
+      if (!mounted) return;
       final expected = widget.isCreator ? CommercialGetStreamRole.creator : CommercialGetStreamRole.buyer;
       if (handoff.role != expected) throw const FormatException('Server role does not match this booking');
       final session = widget.connector is CommercialGetStreamMediaConnector
@@ -83,8 +101,28 @@ class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultati
           cameraEnabled: _cameraOn, microphoneEnabled: _microphoneOn, isCreator: widget.isCreator,
         ),
       ));
-    } catch (e) { if (mounted) setState(() => _error = e.toString().replaceFirst('FormatException: ', '')); }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _error = e.toString().replaceFirst('FormatException: ', ''));
+        // A failed authorization/join leaves the user on this screen. Restore
+        // the requested local devices so retry does not silently lose preview.
+        // The panel resumes capture when _joining becomes false below.
+      }
+    }
     finally { if (mounted) setState(() => _joining = false); }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(_deviceController.dispose());
+    unawaited(_speaker.dispose());
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) unawaited(_speaker.stop());
   }
 
   Future<void> _cancelBooking() async {
@@ -105,7 +143,7 @@ class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultati
     body: ListView(padding: const EdgeInsets.all(Msg.s5), children: [
       Text(widget.title, style: ADText.appTitle()),
       const SizedBox(height: Msg.s2),
-      Text('Private GetStream session · ${widget.isCreator ? 'Creator' : 'Customer'}', style: ADText.preview()),
+      Text('Private appointment · ${widget.isCreator ? 'Creator' : 'Customer'}', style: ADText.preview()),
       const SizedBox(height: Msg.s4),
       _Check(label: 'Camera permission', value: _camera?.isGranted == true),
       _Check(label: 'Microphone permission', value: _microphone?.isGranted == true),
@@ -113,15 +151,25 @@ class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultati
       const SizedBox(height: Msg.s3),
       // A denied permission can still be an intentional receive-only choice;
       // allow the user to turn that device off rather than blocking the room.
-      SwitchListTile(title: const Text('Camera on when I join'), value: _cameraOn, onChanged: (v) => setState(() => _cameraOn = v)),
-      SwitchListTile(title: const Text('Microphone on when I join'), value: _microphoneOn, onChanged: (v) => setState(() => _microphoneOn = v)),
+      CommercialDeviceCheckPanel(
+        controller: _deviceController,
+        captureEnabled: _enabled && !_checking && !_joining,
+        cameraGranted: _camera?.isGranted == true,
+        microphoneGranted: _microphone?.isGranted == true,
+        onReadyChanged: (ready) { if (mounted && ready != _devicesReady) setState(() => _devicesReady = ready); },
+        speakerControl: CommercialSpeakerTestButton(controller: _speaker, enabled: !_joining),
+        cameraEnabled: _cameraOn,
+        microphoneEnabled: _microphoneOn,
+        onCameraChanged: (v) => setState(() { _cameraOn = v; _devicesReady = false; }),
+        onMicrophoneChanged: (v) => setState(() { _microphoneOn = v; _devicesReady = false; }),
+      ),
       if (!_enabled) const _Notice(text: 'Consultation joining is not enabled yet.'),
       if (_checking) const Center(child: CircularProgressIndicator()),
       if (_error != null) Text(_error!, style: ADText.preview(c: AD.danger)),
       const SizedBox(height: Msg.s3),
       FilledButton.icon(onPressed: _ready && !_joining ? _join : null, icon: _joining ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)) : Icon(PhosphorIcons.arrowRight(PhosphorIconsStyle.bold)), label: Text(_joining ? 'Joining securely…' : 'Join consultation')),
-      TextButton(onPressed: _cancelBooking, child: const Text('Cancel booking')),
-      TextButton.icon(onPressed: _checking ? null : _check, icon: Icon(PhosphorIcons.arrowClockwise(PhosphorIconsStyle.regular)), label: const Text('Run checks again')),
+      TextButton(onPressed: _joining ? null : _cancelBooking, child: const Text('Cancel booking')),
+      TextButton.icon(onPressed: _checking || _joining ? null : _check, icon: Icon(PhosphorIcons.arrowClockwise(PhosphorIconsStyle.regular)), label: const Text('Run checks again')),
     ]),
   );
 }

@@ -17,6 +17,7 @@ import {
   type Call,
 } from '@stream-io/video-react-sdk';
 import { Button, Spinner } from '../../components';
+import { DeviceChecks } from '../../components/DeviceChecks';
 import { ClerkIsland, getActiveToken, requireGuestAuth } from '../../lib/clerk';
 import { IslandBoundary } from '../../components/IslandBoundary';
 import { capture, captureException } from '../../lib/analytics';
@@ -77,6 +78,7 @@ function HostPreview({
   const [camId, setCamId] = useState('');
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(true);
+  const [previewStream, setPreviewStream] = useState<MediaStream | null>(null);
 
   const refreshDevices = useCallback(async () => {
     try {
@@ -103,6 +105,7 @@ function HostPreview({
       }
       stopTracks(streamRef.current);
       streamRef.current = stream;
+      setPreviewStream(stream);
       stream.getAudioTracks().forEach((track) => (track.enabled = micOn));
       stream.getVideoTracks().forEach((track) => (track.enabled = camOn));
       if (videoRef.current) {
@@ -183,6 +186,7 @@ function HostPreview({
 
         <div className="flex flex-col gap-3 rounded-zine border-zine border-ink bg-card p-4 shadow-zine-sm">
           <h2 className="font-display text-[19px] font-semibold text-ink">Devices</h2>
+          <DeviceChecks stream={previewStream} micOn={micOn} />
           <label className="font-mono text-[11px] font-bold uppercase tracking-[0.08em] text-inkMute" htmlFor="host-mic">Microphone</label>
           <div className="flex gap-2">
             <select id="host-mic" aria-label="Microphone" className={selectClass} value={micId} onChange={(e) => setMicId(e.target.value)} disabled={permission !== 'granted'}>

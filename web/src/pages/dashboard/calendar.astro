@@ -4,5 +4,6 @@ import Dashboard from '../../layouts/Dashboard.astro';
 import CalendarPanel from '../../islands/dashboard/CalendarPanel.tsx';
 ---
 <Dashboard title="Availability · avatok.ai" heading="Availability" subtitle="Set the times customers can book with you." active="calendar">
+  <p class="mb-4 text-inkSoft">First <a href="/dashboard/listings/new" class="font-bold underline">create your appointment service</a>, then set the times customers can book below.</p>
   <CalendarPanel client:load />
 </Dashboard>

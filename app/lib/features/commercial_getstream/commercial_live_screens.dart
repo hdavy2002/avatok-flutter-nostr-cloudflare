@@ -20,6 +20,7 @@ import '../../core/ui/messenger_theme.dart';
 import 'commercial_getstream_handoff.dart';
 import 'commercial_getstream_screens.dart';
 import 'commercial_live_gateway.dart';
+import 'commercial_speaker_test.dart';
 
 class LiveReadinessScreen extends StatefulWidget {
   const LiveReadinessScreen({
@@ -231,13 +232,91 @@ class LiveBackstageScreen extends StatefulWidget {
   State<LiveBackstageScreen> createState() => _LiveBackstageScreenState();
 }
 
-class _LiveBackstageScreenState extends State<LiveBackstageScreen> {
+class _LiveBackstageScreenState extends State<LiveBackstageScreen> with WidgetsBindingObserver {
+  StreamSubscription<CallState>? _callState;
   bool _starting = false;
+  bool _mediaBusy = false;
   bool _sessionHandedOff = false;
+  final _speaker = CommercialSpeakerTestController();
   String? _error;
 
+  Call get _call => widget.session.call;
+
+  CallParticipantState? get _local => _call.state.value.localParticipant;
+
+  bool get _cameraEnabled =>
+      _local?.publishedTracks.containsKey(SfuTrackType.video) == true;
+
+  bool get _microphoneEnabled =>
+      _local?.publishedTracks.containsKey(SfuTrackType.audio) == true;
+
+  double get _audioLevel =>
+      (_local?.audioLevel ?? 0).clamp(0.0, 1.0).toDouble();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _callState = _call.state.valueStream.listen((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  Future<void> _toggleMicrophone() async {
+    if (_mediaBusy) return;
+    setState(() => _mediaBusy = true);
+    try {
+      final result = await _call.setMicrophoneEnabled(enabled: !_microphoneEnabled);
+      if (!mounted) return;
+      setState(() => _error = result.isSuccess
+          ? null
+          : 'Could not change microphone. Check permissions and try again.');
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Could not change microphone. Check permissions and try again.');
+    } finally {
+      if (mounted) setState(() => _mediaBusy = false);
+    }
+  }
+
+  Future<void> _toggleCamera() async {
+    if (_mediaBusy) return;
+    setState(() => _mediaBusy = true);
+    try {
+      final result = await _call.setCameraEnabled(enabled: !_cameraEnabled);
+      if (!mounted) return;
+      setState(() => _error = result.isSuccess
+          ? null
+          : 'Could not change camera. Check permissions and try again.');
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Could not change camera. Check permissions and try again.');
+    } finally {
+      if (mounted) setState(() => _mediaBusy = false);
+    }
+  }
+
+  Future<void> _flipCamera() async {
+    if (_mediaBusy) return;
+    setState(() => _mediaBusy = true);
+    try {
+      final result = await _call.flipCamera();
+      if (!mounted) return;
+      setState(() => _error = result.isSuccess
+          ? null
+          : 'Could not switch camera. Try again.');
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Could not switch camera. Try again.');
+    } finally {
+      if (mounted) setState(() => _mediaBusy = false);
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) unawaited(_speaker.stop());
+  }
+
   Future<void> _start() async {
-    if (_starting) return;
+    if (_starting || _mediaBusy) return;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -256,7 +335,9 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> {
         ],
       ),
     );
-    if (confirm != true) return;
+    if (confirm != true || !mounted) return;
+    await _speaker.stop();
+    if (!mounted) return;
     setState(() {
       _starting = true;
       _error = null;
@@ -287,6 +368,9 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> {
 
   @override
   void dispose() {
+    _callState?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(_speaker.dispose());
     if (!_sessionHandedOff) unawaited(widget.session.leave());
     super.dispose();
   }
@@ -299,10 +383,15 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> {
           foregroundColor: AD.onBand(AD.headerFooter),
           title: const Text('Backstage'),
         ),
-        body: Padding(
-          padding: const EdgeInsets.all(Msg.s5),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        body: LayoutBuilder(builder: (context, constraints) {
+          final compact = constraints.maxWidth < 600 || constraints.maxHeight < 520;
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(Msg.s5),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: (constraints.maxHeight - Msg.s5 * 2).clamp(0.0, double.infinity).toDouble(),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             const _LiveStatusBadge(label: 'NOT LIVE', color: AD.danger),
             const SizedBox(height: Msg.s4),
             Text(widget.title, style: ADText.appTitle()),
@@ -311,7 +400,8 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> {
               'This is private backstage. Ticket holders cannot watch until you confirm Start live.',
             ),
             const SizedBox(height: Msg.s5),
-            Expanded(
+            SizedBox(
+              height: compact ? 220 : 340,
               child: Container(
                 decoration: BoxDecoration(
                   color: Colors.black,
@@ -319,8 +409,7 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> {
                 ),
                 child: Center(
                   child: Builder(builder: (_) {
-                    final local =
-                        widget.session.call.state.value.localParticipant;
+                    final local = _local;
                     if (local == null) {
                       return Text(
                         'Camera is initializing\nBackstage only',
@@ -338,13 +427,23 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> {
               ),
             ),
             const SizedBox(height: Msg.s4),
+            _BackstageDeviceControls(
+              cameraEnabled: _cameraEnabled,
+              microphoneEnabled: _microphoneEnabled,
+              audioLevel: _audioLevel,
+              speaker: _speaker,
+              onToggleCamera: _toggleCamera,
+              onToggleMicrophone: _toggleMicrophone,
+              onFlipCamera: _flipCamera,
+            ),
+            const SizedBox(height: Msg.s4),
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: Msg.s3),
                 child: Text(_error!, style: ADText.preview(c: AD.danger)),
               ),
             FilledButton.icon(
-              onPressed: _starting ? null : _start,
+              onPressed: _starting || _mediaBusy ? null : _start,
               icon: _starting
                   ? const SizedBox.square(
                       dimension: 18,
@@ -354,7 +453,101 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> {
               label: Text(_starting ? 'Starting…' : 'Start live'),
             ),
           ]),
+            ),
+          );
+        }),
+      );
+}
+
+class _BackstageDeviceControls extends StatelessWidget {
+  const _BackstageDeviceControls({
+    required this.cameraEnabled,
+    required this.microphoneEnabled,
+    required this.audioLevel,
+    required this.speaker,
+    required this.onToggleCamera,
+    required this.onToggleMicrophone,
+    required this.onFlipCamera,
+  });
+
+  final bool cameraEnabled;
+  final bool microphoneEnabled;
+  final double audioLevel;
+  final CommercialSpeakerTestController speaker;
+  final Future<void> Function() onToggleCamera;
+  final Future<void> Function() onToggleMicrophone;
+  final Future<void> Function() onFlipCamera;
+
+  @override
+  Widget build(BuildContext context) => Card(
+        color: AD.card,
+        child: Padding(
+          padding: const EdgeInsets.all(Msg.s3),
+          child: Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: Msg.s3,
+            runSpacing: Msg.s2,
+            children: [
+              _BackstageControl(
+                icon: cameraEnabled
+                    ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)
+                    : PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold),
+                label: cameraEnabled ? 'Camera on' : 'Camera off',
+                onPressed: onToggleCamera,
+              ),
+              _BackstageControl(
+                icon: microphoneEnabled
+                    ? PhosphorIcons.microphone(PhosphorIconsStyle.bold)
+                    : PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold),
+                label: microphoneEnabled ? 'Mic on' : 'Mic off',
+                onPressed: onToggleMicrophone,
+              ),
+              _BackstageControl(
+                icon: PhosphorIcons.cameraRotate(PhosphorIconsStyle.bold),
+                label: 'Flip camera',
+                onPressed: onFlipCamera,
+              ),
+              CommercialSpeakerTestButton(controller: speaker),
+              SizedBox(
+                width: 150,
+                child: Semantics(
+                  label: 'Microphone input level ${(audioLevel * 100).round()} percent',
+                  child: LinearProgressIndicator(
+                    value: microphoneEnabled ? audioLevel : 0,
+                    minHeight: 8,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+              Text(
+                microphoneEnabled
+                    ? 'Speak to test your microphone'
+                    : 'Microphone is off',
+                style: ADText.navLabel(c: AD.textSecondary),
+              ),
+            ],
+          ),
         ),
+      );
+}
+
+class _BackstageControl extends StatelessWidget {
+  const _BackstageControl({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final Future<void> Function() onPressed;
+
+  @override
+  Widget build(BuildContext context) => OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon),
+        label: Text(label),
       );
 }
 

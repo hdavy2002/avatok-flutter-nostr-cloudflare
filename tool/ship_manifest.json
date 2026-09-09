@@ -4945,5 +4945,29 @@
    }
   ],
   "_verified_at": "Read out of the emit sites, not from memory: listing_web_detail_opened/_ready/_token/_bridge_missing/_error/_nav_blocked/_ua_failed/_page_log/_shared/_closed in app/lib/features/marketplace/listing_web_detail.dart; flag declared in worker/src/routes/config.ts PlatformConfig and DEFAULTS (true) and read by RemoteConfig.listingWebDetailEnabled in app/lib/core/remote_config.dart; UA marker defined once per side (kEmbedUserAgentMarker in app/lib/core/config.dart, EMBED_UA_MARKER in web/src/lib/embed.ts) and consumed in web/src/layouts/Base.astro."
+ },
+ "SESSION-PREFLIGHT-1": {
+  "description": "Private app appointment camera preview and PCM microphone meter, app backstage controls, app/web local speaker tests, browser microphone meter, strict completed connection checks and Availability guidance.",
+  "shipped": "2026-09-09",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [],
+  "success": [
+   {
+    "event": "commercial_device_check",
+    "property": "result",
+    "equals": "ready",
+    "min_events": 1,
+    "note": "Local media preparation only. Does not establish two-party sound/video or successful booking admission."
+   },
+   {
+    "event": "commercial_speaker_test",
+    "property": "result",
+    "equals": "stopped",
+    "min_events": 1,
+    "note": "Test playback lifecycle completed or user stopped it; audible confirmation still requires the user."
+   }
+  ],
+  "_verified_at": "app/lib/features/commercial_getstream/commercial_device_check.dart; commercial_speaker_test.dart; web/src/components/DeviceChecks.tsx. Live two-account acceptance remains distinct."
  }
 }

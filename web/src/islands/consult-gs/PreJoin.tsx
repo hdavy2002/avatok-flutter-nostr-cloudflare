@@ -18,6 +18,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Spinner } from '../../components';
+import { DeviceChecks } from '../../components/DeviceChecks';
 
 export interface PreJoinProps {
   title?: string;
@@ -47,9 +48,11 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
   const [camId, setCamId] = useState<string>('');
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(true);
+  const [previewStream, setPreviewStream] = useState<MediaStream | null>(null);
 
   const attach = (stream: MediaStream) => {
     streamRef.current = stream;
+    setPreviewStream(stream);
     if (videoRef.current) {
       videoRef.current.srcObject = stream;
       void videoRef.current.play().catch(() => {});
@@ -150,6 +153,7 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
     // The parent takes ownership for the async join attempt. Clearing our
     // reference prevents a later retry from handing it a stopped stream.
     streamRef.current = null;
+    setPreviewStream(null);
     if (videoRef.current) videoRef.current.srcObject = null;
     onReady(stream, micOn, camOn, micId, camId);
   };
@@ -197,6 +201,8 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
           </div>
         )}
       </div>
+
+      <DeviceChecks stream={previewStream} micOn={micOn} />
 
       {/* device pickers + quick toggles */}
       <div className="flex flex-col gap-2.5">

@@ -175,3 +175,19 @@ jobs:
       - name: Flutter unit tests
         working-directory: app
         run: flutter test
+
+  commercial-web-preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npx tsc --noEmit
+        working-directory: web
+      - run: node --experimental-strip-types --test test/device_checks.test.ts
+        working-directory: web
