@@ -24,13 +24,15 @@
 .rail-home .rail-button { display: inline-flex; justify-content: center; align-items: center; gap: 28px; border-radius: 999px; background: var(--rail-red); color: #fff; font-family: 'Anton', Impact, sans-serif; font-size: 1.0625rem; text-transform: uppercase; padding: 13px 32px; min-height: 48px; border: 2px solid transparent; transition: background .2s, transform .2s; }
 .rail-home .rail-button:hover { background: #b82718; transform: translateY(-2px); }
 .rail-home .rail-text-link { font-size: .9375rem; font-weight: 700; text-decoration: underline; text-underline-offset: 5px; padding: 3px 8px; }
-.rail-side { position: absolute; top: 0; width: 28%; height: min(27vw, 470px); background-image: url('/assets/railway/approved-hero.jpg'); background-repeat: no-repeat; background-size: 100vw auto; z-index: -1; pointer-events: none; }
-.rail-side--left { left: 0; background-position: left -2vw; }
-.rail-side--right { right: 0; width: 22%; background-position: right -2vw; }
+.rail-side { position: absolute; top: 0; width: 28%; height: min(24vw, 408px); background-image: url('/assets/railway/approved-hero.jpg'); background-repeat: no-repeat; background-size: 100vw auto; z-index: -1; pointer-events: none; }
+.rail-side { mask-image: linear-gradient(to bottom, #000 65%, transparent 100%); }
+.rail-side--left { left: 0; background-position: left -2vw; mask-image: linear-gradient(to right, #000 60%, transparent), linear-gradient(to bottom, #000 65%, transparent); mask-composite: intersect; }
+.rail-side--right { right: 0; width: 22%; background-position: right -2vw; mask-image: linear-gradient(to left, #000 65%, transparent), linear-gradient(to bottom, #000 65%, transparent); mask-composite: intersect; }
 .rail-scene { position: relative; width: 100%; margin: -14px auto 0; }
 .rail-train-arrival { animation: rail-arrive 1.5s cubic-bezier(.2,.7,.2,1) both; }
 .rail-train { position: relative; width: 104%; margin-left: -2%; transform: translateX(var(--rail-shift, 0px)); }
-.rail-train > img { width: 100%; height: auto; max-width: none; mix-blend-mode: multiply; }
+.rail-train > img { width: 100%; height: auto; max-width: none; mix-blend-mode: multiply; mask-image: linear-gradient(to bottom, transparent, #000 14%, #000 87%, transparent); }
+.rail-train-arrival { margin-block: -2vw; }
 .rail-window { position: absolute; top: 26.4%; height: 32%; width: 20.3%; border: 2px solid transparent; border-radius: 7%; pointer-events: none; transition: border-color .4s, box-shadow .4s; }
 .rail-window--0 { left: 15.8%; }.rail-window--1 { left: 39.9%; }.rail-window--2 { left: 63.4%; }
 .rail-window.is-active { border-color: #ffcf66; box-shadow: 0 0 22px #ffd17366, inset 0 0 16px #ffcf6622; }
