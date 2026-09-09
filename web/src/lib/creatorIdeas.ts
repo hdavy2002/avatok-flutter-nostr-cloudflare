@@ -133,7 +133,8 @@ const featured = new Set(['Mandir Se Live Darshan', 'Guruji Ka Private Satsang',
 const easy = new Set(['Chai Pe Apni Bhasha Mein', 'Quiet Study Companion', 'Shaam Ka Adda', 'Study With Me Club', 'Family History Interview']);
 export const creatorIdeas = rows.split('\n').map((row, index) => {
  const [format, topic, title, description, setting] = row.trim().split('|');
- return { id: 'idea-' + (index + 1), format: format as keyof typeof formats, topic: topic as keyof typeof topics, title, description, setting, badge: featured.has(title) ? 'Featured idea' : easy.has(title) ? 'Easy to start' : '' };
+ const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+ return { id: 'idea-' + (index + 1), slug, cardImage: '/assets/ideas/guides/' + slug + '-card.jpg', image: '/assets/ideas/guides/' + slug + '.jpg', href: '/blog/creator-ideas/' + slug + '/', format: format as keyof typeof formats, topic: topic as keyof typeof topics, title, description, setting, badge: featured.has(title) ? 'Featured idea' : easy.has(title) ? 'Easy to start' : '' };
 });
 
 // Open with a mix of formats and subjects, then preserve the full editorial list.

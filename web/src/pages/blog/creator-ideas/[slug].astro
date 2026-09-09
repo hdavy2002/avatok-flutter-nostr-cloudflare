@@ -1,0 +1,68 @@
+---
+export const prerender = true;
+import Base from '../../../layouts/Base.astro';
+import TruckBorder from '../../../components/TruckBorder.astro';
+import { creatorIdeas, topics, formats } from '../../../lib/creatorIdeas';
+import { creatorGuides } from '../../../lib/creatorGuides';
+import '../../../styles/creator-ideas.css';
+import '../../../styles/creator-guide.css';
+export function getStaticPaths() {
+  return creatorIdeas.map(idea => ({ params: { slug: idea.slug }, props: { idea } }));
+}
+const { idea } = Astro.props;
+const guide = creatorGuides[idea.id];
+if (!guide) throw new Error('Missing creator guide: ' + idea.id);
+const related = creatorIdeas.filter(item => item.id !== idea.id && item.topic === idea.topic).slice(0,3);
+const duration = idea.format === 'private' ? '30–45 minutes' : idea.topic === 'daily' ? 'A planned live window' : '45–60 minutes';
+const sessionAdvice = idea.format === 'private'
+  ? 'One booking reserves time for one person. Price the preparation and follow-up as well as the call. Start with a clearly described appointment you can deliver reliably.'
+  : idea.format === 'group'
+  ? 'Offer a limited number of places that leaves everyone time to participate. Choose the group size from the activity and the time you can give each person, not just the number of people interested.'
+  : idea.topic === 'daily'
+  ? 'Describe the viewing window and what people will see. A drop-in diary needs a clear start, occasional context for newcomers and an honest description of how access is charged in the listing.'
+  : 'Sell access to a planned live event with a named theme, start time and duration. Build the experience around what viewers can see, hear or ask during that session.';
+const jsonLd = { '@context':'https://schema.org', '@type':'BlogPosting', headline:idea.title, description:idea.description, image:'https://avatok.ai'+idea.image, author:{'@type':'Organization',name:'avaTOK'}, publisher:{'@id':'https://avatok.ai/#organization'}, mainEntityOfPage:'https://avatok.ai'+idea.href, inLanguage:'en-IN' };
+---
+<Base title={idea.title + ' — How to turn this idea into a paid session · avaTOK'} description={idea.description + ' A practical creator guide with a session plan, equipment advice and ways to bring viewers back.'} image={idea.image}>
+  <script slot="head" type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <main class="idea-page creator-guide" id="main-content" data-creator-guide={idea.id}>
+    <div class="guide-shell">
+      <nav class="guide-breadcrumb" aria-label="Breadcrumb"><a href="/ideas">All creator ideas</a><span aria-hidden="true">/</span><span>{topics[idea.topic].label}</span></nav>
+      <header class="guide-heading">
+        <p class="idea-kicker">Idea se apni kamaai tak</p>
+        <div class="idea-chips"><span class:list={['idea-format',idea.format]}>{formats[idea.format]}</span><span>{topics[idea.topic].label}</span>{idea.setting === 'home' && <span>From home</span>}</div>
+        <h1>{idea.title}</h1>
+        <p class="guide-lead">{idea.description}</p>
+        <p class="guide-byline">The avaTOK creator guide · Practical ideas, your own style</p>
+      </header>
+      <figure class="guide-hero"><img src={idea.image} srcset={idea.cardImage + " 768w, " + idea.image + " 1536w"} sizes="(max-width:699px) 90vw, (max-width:1440px) 92vw, 1320px" alt={'Illustration of ' + idea.title + ': ' + idea.description} width="1536" height="1024" fetchpriority="high" /><figcaption>Illustrated idea · Make the session your own.</figcaption></figure>
+      <div class="guide-layout">
+        <aside class="guide-sidebar" aria-label="Guide navigation">
+          <p class="idea-kicker">Your route map</p>
+          <nav><a href="#offer">What you can offer</a><a href="#plan">Plan your first session</a><a href="#equipment">What you need</a><a href="#return">Why people come back</a><a href="#earnings">The earning idea</a><a href="#start">Find your first audience</a></nav>
+          <p class="guide-note">Pehle ek achha session.<br />Phir apna regular adda.</p>
+        </aside>
+        <div class="guide-body">
+          <section id="offer"><p class="idea-kicker">01 · The idea</p><h2>What are people paying for?</h2><p>{guide.offer}</p><div class="guide-audience"><strong>Who this could suit</strong><p>{guide.audience}.</p></div><p>{sessionAdvice}</p></section>
+          <section id="plan"><p class="idea-kicker">02 · Pehli baar</p><h2>Plan your first session</h2><p class="guide-duration">A starting format: <strong>{duration}</strong>. Adjust this to the activity and explain it before anyone books.</p><ol class="guide-steps">{guide.steps.map(step => <li>{step}.</li>)}</ol><p>Try a short rehearsal before opening bookings. Check what the camera shows, whether your voice is clear, and whether the plan fits the time you are offering.</p></section>
+          <section id="equipment"><p class="idea-kicker">03 · Phone se shuru</p><h2>What equipment do you need?</h2><p>{guide.equipment}</p><p>Start with what you already have. Test the internet connection, charge the device and choose a camera angle that shows the activity clearly. Upgrade only when you know what would improve the experience.</p></section>
+          <section id="return"><p class="idea-kicker">04 · Phir milenge</p><h2>Why would followers come back?</h2><p>{guide.returnReason}</p><p>Tell people what the next session will offer and invite them to follow your calendar. Share your next available date so they can choose another booking. Make each return visit worth their time.</p></section>
+          <section id="earnings"><p class="idea-kicker">05 · Kamaai ka idea</p><h2>Earn from a booking, not just a view</h2><p>Your social posts can help people discover you. A paid session gives interested people a specific experience to book: your time, teaching, hosting or performance.</p><p>A small paying audience can be a useful place to start. Income depends on people choosing to book, the experience you deliver and the costs of running it. Use each session to learn what your audience values.</p><p>For pricing information, visit <a href="/pricing">Pricing &amp; Fees</a> and review the details shown before you publish your listing.</p></section>
+          <section id="start"><p class="idea-kicker">06 · Apna audience</p><h2>Find your first audience</h2><p>{guide.promotion}</p><p>Start with a specific invitation: who the session is for, what will happen, the language, duration and date. After hosting, ask for feedback and use it to improve the next session.</p></section>
+          <div class="guide-ticket"><p class="guide-note">Tumhara idea. Tumhari pehchaan.</p><h2>Make your first listing clear.</h2><p>Choose one promise you can keep, set your availability and give people a reason to join.</p><a class="idea-button" href="/sign-up" data-guide-cta={idea.id}>Start creating ↗</a><a class="guide-back" href="/ideas">Keep exploring ideas</a></div>
+        </div>
+      </div>
+    </div>
+    <TruckBorder kind="lotus" />
+    <section class="guide-shell guide-related" aria-labelledby="related-title"><p class="idea-kicker">Agla stop</p><h2 id="related-title">More ideas in your corner</h2><div class="idea-grid">{related.map(item => <article class="idea-card"><a class="idea-card-link" href={item.href}><div class="idea-picture"><img src={item.cardImage} width="1536" height="1024" alt="" loading="lazy" decoding="async" /></div><div class="idea-card-copy"><span class:list={['idea-format',item.format]}>{formats[item.format]}</span><h3>{item.title}</h3><p>{item.description}</p><span class="idea-read-guide">Read the guide ↗</span></div></a></article>)}</div></section>
+  </main>
+  <script>
+    import { capture } from '../../../lib/analytics';
+    const guide = document.querySelector<HTMLElement>('[data-creator-guide]');
+    if (guide) {
+      capture('creator_guide_view', { idea_id: guide.dataset.creatorGuide });
+      guide.querySelector('[data-guide-cta]')?.addEventListener('click', () => capture('creator_guide_start', { idea_id: guide.dataset.creatorGuide }));
+    }
+  </script>
+</Base>
+

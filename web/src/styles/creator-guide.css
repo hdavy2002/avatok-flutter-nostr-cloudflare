@@ -1,0 +1,35 @@
+/* Individual creator articles share marketplace chrome and brand typography. */
+.creator-guide { overflow:clip; }
+.guide-shell { width:min(1320px,92%); margin-inline:auto; }
+.guide-breadcrumb { display:flex; gap:12px; flex-wrap:wrap; padding-top:28px; font-size:16px; color:#67533d; }
+.guide-breadcrumb a { text-underline-offset:4px; }
+.guide-heading { max-width:1000px; margin:38px auto 30px; text-align:center; }
+.guide-heading .idea-chips { justify-content:center; }
+.guide-heading h1 { font-size:clamp(44px,6.5vw,86px); margin:22px 0; text-wrap:balance; }
+.guide-lead { font-size:22px; line-height:1.5; max-width:70ch; margin-inline:auto !important; }
+.guide-byline { margin-top:18px !important; font-size:16px; color:#69563f; }
+.guide-hero { margin:0; padding:12px; background:#fff9ed; border:1px solid #ccb89a; box-shadow:4px 6px 0 #43311b15; }
+.guide-hero img { display:block; width:100%; height:auto; aspect-ratio:3/2; object-fit:cover; }
+.guide-hero figcaption { text-align:center; font-family:'Kalam',cursive; font-size:18px; padding:12px 0 2px; }
+.guide-layout { display:grid; grid-template-columns:230px minmax(0,760px); justify-content:center; gap:64px; padding:58px 0 64px; }
+.guide-sidebar { align-self:start; position:sticky; top:130px; font-size:17px; }
+.guide-sidebar nav { display:grid; gap:14px; border-left:2px solid #dfbc73; padding-left:18px; }
+.guide-sidebar a { text-decoration:none; line-height:1.4; }.guide-sidebar a:hover { text-decoration:underline; text-underline-offset:4px; }
+.guide-note { font-family:'Kalam',cursive; font-size:25px; line-height:1.35; color:#b63224; margin-top:26px !important; }
+.guide-body { font-size:20px; line-height:1.7; min-width:0; }
+.guide-body section + section { margin-top:48px; padding-top:32px; border-top:1px solid #d7c5a9; }
+.guide-body h2 { font-size:clamp(29px,3vw,38px); margin-bottom:20px; }
+.guide-body p + p { margin-top:18px; }
+.guide-audience { background:#e9eddb; padding:22px 24px; border-left:4px solid #346045; margin:24px 0; }
+.guide-audience strong { font-size:16px; text-transform:uppercase; letter-spacing:.035em; }.guide-audience p { margin-top:6px; }
+.guide-steps { list-style:none; counter-reset:steps; padding:0; display:grid; gap:20px; margin:26px 0; }
+.guide-steps li { counter-increment:steps; padding-left:55px; position:relative; min-height:36px; }
+.guide-steps li::before { content:counter(steps); position:absolute; left:0; top:0; width:36px; height:36px; display:grid; place-items:center; background:#edbd40; border:1px solid #876822; border-radius:50%; font-family:'Anton',Impact,sans-serif; }
+.guide-ticket { background:#f7ca51; border:2px dashed #9c7424; padding:30px; margin-top:46px; border-radius:14px; }
+.guide-ticket .guide-note { margin:0 0 16px !important; color:#4c321c; }.guide-ticket .idea-button { margin-top:24px; }.guide-back { display:block; margin-top:20px; font-size:17px; text-underline-offset:4px; }
+.guide-related { padding-block:40px 60px; }.guide-related > h2 { font-size:38px; margin-bottom:28px; }
+.guide-maths { background:#fff8e8; border:1px solid #c9b58f; border-radius:12px; padding:24px; margin-block:24px; }.guide-maths h3 { font-size:25px; margin-bottom:16px; }
+.guide-maths dl { margin:0; }.guide-maths dl > div { display:flex; justify-content:space-between; gap:18px; padding:10px 0; border-bottom:1px solid #dfcfb2; }.guide-maths dd { margin:0; font-weight:700; white-space:nowrap; }.guide-maths .creator-total { color:#185637; font-weight:700; border-bottom:0; }.guide-maths small { display:block; font-size:16px; line-height:1.6; margin-top:18px; }
+@media(max-width:1100px) { .guide-layout { grid-template-columns:1fr; gap:30px; padding-top:32px; max-width:800px; margin-inline:auto; }.guide-sidebar { position:static; }.guide-sidebar nav { display:flex; flex-wrap:wrap; gap:12px 22px; }.guide-sidebar .guide-note { display:none; }.guide-lead { font-size:21px; }.guide-related > h2 { font-size:34px; } }
+@media(max-width:699px) { .guide-shell { width:90%; }.guide-heading { margin-top:28px; text-align:left; }.guide-heading .idea-chips { justify-content:start; }.guide-heading h1 { font-size:clamp(40px,11vw,64px); overflow-wrap:anywhere; }.guide-lead { font-size:20px; }.guide-hero { padding:7px; }.guide-hero figcaption { font-size:16px; }.guide-body { font-size:18px; line-height:1.7; }.guide-body h2 { font-size:30px; }.guide-sidebar nav { display:grid; grid-template-columns:1fr 1fr; font-size:16px; }.guide-body section + section { margin-top:34px; padding-top:28px; }.guide-ticket { padding:24px 20px; }.guide-ticket .idea-button { font-size:17px; padding-inline:18px; }.guide-maths { padding:20px 16px; }.guide-maths dl > div { gap:12px; font-size:17px; }.guide-maths small { font-size:16px; }.guide-related .idea-grid { grid-template-columns:1fr; } }
+

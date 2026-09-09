@@ -31,5 +31,6 @@ if (root) {
  root.querySelector('#idea-reset')?.addEventListener('click',()=>{format='all';topic.value='all';home.checked=false;search.value='';limit=12;update();search.focus();});
  root.querySelector('[data-daily-link]')?.addEventListener('click',()=>{format='live';topic.value='daily';home.checked=false;search.value='';limit=12;update();track();});
  root.querySelectorAll<HTMLAnchorElement>('[data-ideas-cta]').forEach(a=>a.addEventListener('click',()=>capture('creator_ideas_cta',{cta:a.dataset.ideasCta})));
+ root.querySelectorAll<HTMLAnchorElement>('[data-idea-guide]').forEach(a=>a.addEventListener('click',()=>capture('creator_idea_guide_open',{idea_id:a.dataset.ideaGuide})));
  update();
 }

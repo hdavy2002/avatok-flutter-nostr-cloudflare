@@ -19,7 +19,12 @@
 .idea-postcard + .idea-postcard { transform:rotate(7deg); margin-left:-10%; margin-top:80px; }
 .idea-postcard > span { display:block; font-family:'Kalam',cursive; text-align:center; font-size:21px; margin-top:12px; }
 .idea-picture { position:relative; aspect-ratio:384/320; overflow:hidden; background:#e8cd9f; }
-.idea-picture img { position:absolute; width:400%; height:auto; max-width:none; display:block; }
+.idea-picture img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
+.idea-card .idea-picture { aspect-ratio:3/2; }
+.idea-card-link { display:block; height:100%; text-decoration:none; }
+.idea-card-link:hover .idea-read-guide { text-decoration:underline; text-underline-offset:4px; }
+.idea-read-guide { display:inline-block; margin-top:20px; color:#ba3022; font-weight:700; }
+.idea-card:focus-within { outline:3px solid #156491; outline-offset:4px; }
 .idea-stamp { position:absolute; bottom:-20px; left:12%; background:#f8c843; border:2px dashed #9c3424; border-radius:50%; padding:20px 28px; font-family:'Anton',Impact,sans-serif; font-size:20px; text-transform:uppercase; text-align:center; line-height:1.3; transform:rotate(-9deg); }
 .idea-intro { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); padding-block:32px; gap:32px; }.idea-intro > div + div { border-left:1px solid #d5c6ae; padding-left:32px; }.idea-intro p { margin-top:12px; }
 .idea-format { display:inline-block; font-family:'Anton',Impact,sans-serif; font-size:15px; line-height:1.4; border-radius:999px; padding:5px 13px; text-transform:uppercase; }

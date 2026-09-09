@@ -4,7 +4,8 @@ import Base from '../layouts/Base.astro';
 import TruckBorder from '../components/TruckBorder.astro';
 import { creatorIdeas, topics, formats } from '../lib/creatorIdeas';
 import '../styles/creator-ideas.css';
-const artStyle = (art: number) => 'left:' + (-(art % 4) * 100) + '%;top:' + (-([10,343,684][Math.floor(art / 4)] / 320) * 100) + '%;';
+const travelArt = creatorIdeas.find(idea => idea.id === 'idea-8')!;
+const kitchenArt = creatorIdeas.find(idea => idea.id === 'idea-19')!;
 ---
 <Base title="Creator Ideas — Apna Idea, Apna Adda · avaTOK" description="Explore ideas for Indian creators: live streams, private 1:1 conversations, group sessions and daily-life vlogs. Find something you can offer from home or out in the world.">
   <main class="idea-page" id="main-content">
@@ -17,8 +18,8 @@ const artStyle = (art: number) => 'left:' + (-(art % 4) * 100) + '%;top:' + (-([
         <p class="idea-handwritten">Tumhari duniya.<br />Kisi ka favourite corner.</p>
       </div>
       <div class="idea-hero-art" aria-hidden="true">
-        <div class="idea-postcard"><div class="idea-picture"><img src="/assets/ideas/creator-atlas.jpg" width="1536" height="1024" style={artStyle(1)} alt="" fetchpriority="high" /></div><span>Pahadon se, live.</span></div>
-        <div class="idea-postcard"><div class="idea-picture"><img src="/assets/ideas/creator-atlas.jpg" width="1536" height="1024" style={artStyle(3)} alt="" /></div><span>Ghar se, dil se.</span></div>
+        <div class="idea-postcard"><div class="idea-picture"><img src={travelArt.cardImage} width="1536" height="1024" alt="" fetchpriority="high" /></div><span>Pahadon se, live.</span></div>
+        <div class="idea-postcard"><div class="idea-picture"><img src={kitchenArt.cardImage} width="1536" height="1024" alt="" /></div><span>Ghar se, dil se.</span></div>
         <div class="idea-stamp">Desi ideas.<br />Endless possibilities.</div>
       </div>
     </section>
@@ -49,8 +50,8 @@ const artStyle = (art: number) => 'left:' + (-(art % 4) * 100) + '%;top:' + (-([
       </div>
       <div class="idea-grid">
         {creatorIdeas.map((idea) => <article class="idea-card" id={idea.id} data-idea-card data-format={idea.format} data-topic={idea.topic} data-setting={idea.setting}>
-          <div class="idea-picture" aria-hidden="true"><img src="/assets/ideas/creator-atlas.jpg" alt="" width="1536" height="1024" style={artStyle(topics[idea.topic].art)} loading="lazy" decoding="async" />{idea.badge && <span class="idea-editorial-badge">{idea.badge}</span>}</div>
-          <div class="idea-card-copy"><div class="idea-chips"><span class:list={['idea-format',idea.format]}>{formats[idea.format]}</span><span>{topics[idea.topic].label}</span>{idea.setting === 'home' && <span>From home</span>}</div><h3>{idea.title}</h3><p>{idea.description}</p></div>
+          <a class="idea-card-link" href={idea.href} aria-labelledby={`${idea.id}-title`} data-idea-guide={idea.id}><div class="idea-picture" aria-hidden="true"><img src={idea.cardImage} srcset={idea.cardImage + " 768w, " + idea.image + " 1536w"} sizes="(max-width:699px) 90vw, (max-width:1100px) 44vw, 29vw" alt="" width="1536" height="1024" loading="lazy" decoding="async" />{idea.badge && <span class="idea-editorial-badge">{idea.badge}</span>}</div>
+          <div class="idea-card-copy"><div class="idea-chips"><span class:list={['idea-format',idea.format]}>{formats[idea.format]}</span><span>{topics[idea.topic].label}</span>{idea.setting === 'home' && <span>From home</span>}</div><h3 id={`${idea.id}-title`}>{idea.title}</h3><p>{idea.description}</p><span class="idea-read-guide">Read the guide <span aria-hidden="true">↗</span></span></div></a>
         </article>)}
       </div>
       <div class="idea-empty" hidden><h3>No ideas match just yet.</h3><p>Try another word or explore a different topic.</p><button type="button" id="idea-reset">Show all ideas</button></div>

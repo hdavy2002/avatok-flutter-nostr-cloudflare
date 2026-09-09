@@ -19,6 +19,7 @@
 //
 // Keep in sync with src/pages/ when a public page is added.
 import type { APIRoute } from 'astro';
+import { creatorIdeas } from '../lib/creatorIdeas';
 
 export const prerender = true;
 
@@ -32,6 +33,8 @@ const ROUTES: Array<[string, string, string]> = [
   ['/sign-up', 'monthly', '0.9'],
   ['/about', 'monthly', '0.7'],
   ['/blog', 'weekly', '0.7'],
+  ['/ideas', 'weekly', '0.8'],
+  ...creatorIdeas.map(idea => [idea.href, 'monthly', '0.6'] as [string, string, string]),
   ['/blog/earn-from-day-one', 'monthly', '0.7'],
   ['/blog/real-people-safety', 'monthly', '0.6'],
   ['/blog/ai-in-every-chat', 'monthly', '0.6'],
