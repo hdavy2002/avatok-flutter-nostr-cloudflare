@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../../core/ui/avatok_dark.dart';
 import 'step_widgets.dart';
@@ -248,7 +249,7 @@ class _PickerField extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         NativeStepLabel(label), const SizedBox(height: 8),
-        InkWell(onTap: onTap, borderRadius: BorderRadius.circular(AD.rInput), child: Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: AD.inputField, borderRadius: BorderRadius.circular(AD.rInput), border: Border.all(color: AD.borderControl, width: AD.wBorder)), child: Row(children: [Expanded(child: Text(value, style: ADText.preview(c: AD.textPrimary))), const Icon(Icons.calendar_today_outlined)]))),
+        InkWell(onTap: onTap, borderRadius: BorderRadius.circular(AD.rInput), child: Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: AD.inputField, borderRadius: BorderRadius.circular(AD.rInput), border: Border.all(color: AD.borderControl, width: AD.wBorder)), child: Row(children: [Expanded(child: Text(value, style: ADText.preview(c: AD.textPrimary))), Icon(PhosphorIcons.calendarBlank(PhosphorIconsStyle.regular))]))),
         NativeErrorText(message: error),
       ]);
 }

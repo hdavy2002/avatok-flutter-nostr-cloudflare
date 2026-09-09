@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+import '../../../../core/ui/avatok_dark.dart';
 import 'shared_widgets.dart';
+import '../../../../core/ui/zine_widgets.dart';
 
 class ListingReadinessCheck {
   final String label;
@@ -69,17 +72,17 @@ class ListingStep8Preview extends StatelessWidget {
                               width: 18,
                               height: 18,
                               child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.refresh))
+                          : Icon(PhosphorIcons.arrowClockwise(PhosphorIconsStyle.regular)))
                 ]),
                 const SizedBox(height: 8),
                 ...checks.map((check) => ListTile(
                     contentPadding: EdgeInsets.zero,
                     dense: true,
                     leading: Icon(
-                        check.ok ? Icons.check_circle : Icons.error_outline,
+                        check.ok ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill) : PhosphorIcons.warningCircle(PhosphorIconsStyle.regular),
                         color: check.ok
-                            ? Colors.green
-                            : (check.blocking ? Colors.red : Colors.orange)),
+                            ? AD.online
+                            : (check.blocking ? AD.danger : AD.primaryBadge)),
                     title: Text(check.label),
                     subtitle:
                         check.detail == null ? null : Text(check.detail!))),
@@ -234,7 +237,7 @@ class ListingStep8Preview extends StatelessWidget {
   }
 
   Widget _posterPlaceholder(String message) => Container(
-      color: Colors.black12,
+      color: AD.inputField,
       alignment: Alignment.center,
       padding: const EdgeInsets.all(20),
       child: Text(message, textAlign: TextAlign.center));

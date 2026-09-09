@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../../core/ui/avatok_dark.dart';
 import '../../../../core/ui/messenger_theme.dart';
@@ -220,12 +221,12 @@ class StringListEditor extends StatelessWidget {
                       ..removeAt(entry.key);
                     onChanged(next);
                   },
-                  icon: Icon(Icons.close, color: AD.danger)),
+                  icon: Icon(PhosphorIcons.x(PhosphorIconsStyle.bold), color: AD.danger)),
             ]))),
         if (values.length < max)
           TextButton.icon(
               onPressed: () => onChanged([...values.map(textValue), '']),
-              icon: const Icon(Icons.add),
+              icon: Icon(PhosphorIcons.plus(PhosphorIconsStyle.bold)),
               label: Text('Add item', style: ADText.rowName())),
         Text('${values.length}/$max',
             style: ADText.statCaption(c: AD.textTertiary)),
@@ -279,7 +280,7 @@ class PairListEditor extends StatelessWidget {
                           ..removeAt(entry.key);
                         onChanged(next);
                       },
-                      icon: Icon(Icons.close, color: AD.danger))
+                      icon: Icon(PhosphorIcons.x(PhosphorIconsStyle.bold), color: AD.danger))
                 ]),
                 ListingField(
                     label: firstLabel,
@@ -301,7 +302,7 @@ class PairListEditor extends StatelessWidget {
                     ...values.map((v) => draftMap(v)),
                     {firstKey: '', secondKey: ''}
                   ]),
-              icon: const Icon(Icons.add),
+              icon: Icon(PhosphorIcons.plus(PhosphorIconsStyle.bold)),
               label: Text('Add', style: ADText.rowName())),
         Text('${values.length}/$max',
             style: ADText.statCaption(c: AD.textTertiary)),
@@ -326,7 +327,7 @@ Widget fullWidthButton(
 Widget statusMessage(String message, {bool error = false}) => ListingCard(
     color: error ? AD.destructiveBg : AD.cardHover,
     child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Icon(error ? Icons.error_outline : Icons.info_outline,
+      Icon(error ? PhosphorIcons.warningCircle(PhosphorIconsStyle.regular) : PhosphorIcons.info(PhosphorIconsStyle.regular),
           color: error ? AD.danger : AD.textSecondary),
       const SizedBox(width: Msg.s2),
       Expanded(

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+
+import '../../../../core/ui/avatok_dark.dart';
 
 import 'shared_widgets.dart';
 
@@ -116,7 +119,7 @@ class _ListingStep7PhotosPolicyState extends State<ListingStep7PhotosPolicy> {
                                           ? null
                                           : () => _pick(face: false),
                                       icon: const Icon(
-                                          Icons.add_photo_alternate_outlined),
+                                          PhosphorIcons.imageSquare(PhosphorIconsStyle.regular)),
                                       label: const Text('Add photo'))
                               ]),
                               const SizedBox(height: 16),
@@ -199,7 +202,7 @@ class _ListingStep7PhotosPolicyState extends State<ListingStep7PhotosPolicy> {
       width: 96,
       height: 96,
       decoration: BoxDecoration(
-          color: Colors.black12,
+          color: AD.inputField,
           border: Border.all(color: Colors.black),
           borderRadius: BorderRadius.circular(10)),
       child: url.isEmpty
@@ -209,7 +212,7 @@ class _ListingStep7PhotosPolicyState extends State<ListingStep7PhotosPolicy> {
               child: Image.network(url,
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) =>
-                      const Icon(Icons.broken_image_outlined))));
+                      Icon(PhosphorIcons.imageSquare(PhosphorIconsStyle.regular))));
   Widget _cover(String url, VoidCallback remove) => Stack(children: [
         _thumb(url, 'No image'),
         Positioned(
@@ -218,6 +221,6 @@ class _ListingStep7PhotosPolicyState extends State<ListingStep7PhotosPolicy> {
             child: IconButton(
                 onPressed: remove,
                 icon: const CircleAvatar(
-                    radius: 12, child: Icon(Icons.close, size: 14))))
+                    radius: 12, child: Icon(PhosphorIcons.x(PhosphorIconsStyle.bold), size: 14))))
       ]);
 }

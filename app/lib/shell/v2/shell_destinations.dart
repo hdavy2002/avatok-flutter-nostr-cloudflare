@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/app_registry.dart';
+import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../features/avaapps/avaapps_screen.dart';
 import '../../features/identity/identity_screen.dart';

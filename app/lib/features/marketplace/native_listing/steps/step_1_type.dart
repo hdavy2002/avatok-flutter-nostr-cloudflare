@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../../core/ui/avatok_dark.dart';
 import 'step_widgets.dart';
@@ -70,7 +71,7 @@ class Step1Type extends StatelessWidget {
                           Text(item.$3, style: ADText.preview(c: AD.textSecondary)),
                         ],
                       )),
-                      if (kind == item.$1) const Icon(Icons.check, color: AD.primaryBadge),
+                      if (kind == item.$1) Icon(PhosphorIcons.check(PhosphorIconsStyle.bold), color: AD.primaryBadge),
                     ]),
                   ),
                 ),
@@ -106,7 +107,7 @@ class Step1Type extends StatelessWidget {
                   Text(item.$2, style: ADText.threadName(c: AD.textPrimary)),
                   Text(item.$3, style: ADText.preview(c: AD.textSecondary)),
                 ])),
-                if (schedule == item.$1) const Icon(Icons.check, color: AD.primaryBadge),
+                if (schedule == item.$1) Icon(PhosphorIcons.check(PhosphorIconsStyle.bold), color: AD.primaryBadge),
               ]),
             ),
           ),

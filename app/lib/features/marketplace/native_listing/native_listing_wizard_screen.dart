@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
 import '../../../core/cached_image.dart';
@@ -10,6 +11,7 @@ import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/messenger_theme.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../identity/listing_liveness_gate.dart';
+import '../../identity/public_action_gate.dart' show isIdentityRequired;
 
 /// The app-native counterpart of the web listing wizard.
 ///
@@ -202,7 +204,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
       _id ??= result['listing_id']?.toString();
       if (_id == null) throw StateError('The server did not return a listing id.');
       _dirty = false;
-      Analytics.capture('listing_native_wizard_saved', {'listing_id': _id, 'step': _step});
+      Analytics.capture('listing_native_wizard_saved', {'listing_id': _id!, 'step': _step});
       return true;
     } catch (e) {
       _error = e.toString().replaceFirst('Bad state: ', '');
@@ -262,7 +264,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
         result = await ListingsApi.wizardSubmit(_id!);
       }
       if (result['ok'] != true) throw StateError(_serverMessage(result));
-      Analytics.capture('listing_native_wizard_submitted', {'listing_id': _id, 'source': widget.source});
+      Analytics.capture('listing_native_wizard_submitted', {'listing_id': _id!, 'source': widget.source});
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Listing submitted for review.')));
       Navigator.of(context).pop(true);
@@ -323,14 +325,24 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Cover photos (${_coverUrls.length}/5)', style: ADText.rowName()),
           const SizedBox(height: Msg.s2),
-          Wrap(spacing: Msg.s2, runSpacing: Msg.s2, children: [for (var i = 0; i < _coverUrls.length; i++) Stack(children: [CachedImage(_coverUrls[i], width: 84, height: 84, radius: Msg.brMd), Positioned(right: 0, child: IconButton(icon: const Icon(Icons.close), onPressed: () => setState(() => _coverUrls.removeAt(i)))])]),
+          Wrap(
+            spacing: Msg.s2,
+            runSpacing: Msg.s2,
+            children: [
+              for (var i = 0; i < _coverUrls.length; i++)
+                Stack(children: [
+                  CachedImage(_coverUrls[i], width: 84, height: 84, radius: Msg.brMd),
+                  Positioned(right: 0, child: IconButton(icon: Icon(PhosphorIcons.x(PhosphorIconsStyle.bold)), onPressed: () => setState(() => _coverUrls.removeAt(i)))),
+                ]),
+            ],
+          ),
           const SizedBox(height: Msg.s3),
-          OutlinedButton.icon(onPressed: _saving ? null : () => _upload(), icon: const Icon(Icons.add_photo_alternate_outlined), label: const Text('Add photos')),
+          OutlinedButton.icon(onPressed: _saving ? null : () => _upload(), icon: Icon(PhosphorIcons.imageSquare(PhosphorIconsStyle.regular)), label: const Text('Add photos')),
           const SizedBox(height: Msg.s3),
           Text('Private face photo', style: ADText.rowName()),
           Text('Used for identity-safe poster generation and never shown publicly.', style: ADText.preview()),
           if (_faceUrl != null) Padding(padding: const EdgeInsets.only(top: 8), child: CachedImage(_faceUrl!, width: 84, height: 84, radius: Msg.brMd)),
-          OutlinedButton.icon(onPressed: _saving ? null : () => _upload(face: true), icon: const Icon(Icons.face_outlined), label: const Text('Choose face photo')),
+          OutlinedButton.icon(onPressed: _saving ? null : () => _upload(face: true), icon: Icon(PhosphorIcons.smiley(PhosphorIconsStyle.regular)), label: const Text('Choose face photo')),
           _field('Video URL', _videoUrl),
         ]);
       default:
@@ -345,7 +357,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
             final result = await ListingsApi.wizardRepeat(_id!, 4);
             if (!mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result['ok'] == true ? 'Four draft copies created.' : _serverMessage(result))));
-          }, icon: const Icon(Icons.repeat), label: const Text('Repeat this listing for four weeks')),
+          }, icon: Icon(PhosphorIcons.repeat(PhosphorIconsStyle.regular)), label: const Text('Repeat this listing for four weeks')),
         ]);
     }
   }
