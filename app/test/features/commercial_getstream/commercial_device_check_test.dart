@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
 import 'package:stream_video_flutter/stream_video_flutter.dart';
 
 import 'package:avatok_call/features/commercial_getstream/commercial_device_check.dart';
@@ -37,6 +38,24 @@ class _PendingCameraFactory implements CommercialDeviceTrackFactory {
 }
 
 void main() {
+  testWidgets('device checks fit a small screen and never animate a missing level', (tester) async {
+    tester.view.physicalSize = const Size(320, 480);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final controller = CommercialDeviceCheckController();
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
+      child: CommercialDeviceCheckPanel(controller: controller, cameraEnabled: false,
+        microphoneEnabled: false, onCameraChanged: (_) {}, onMicrophoneChanged: (_) {}),
+    ))));
+    await tester.pump();
+    expect(find.text('Camera on when I join'), findsOneWidget);
+    expect(tester.widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator)).value, 0);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await controller.dispose();
+  });
+
   test('late camera acquisition is stopped after disposal and cannot resume', () async {
     final factory = _PendingCameraFactory(); final camera = _FakeCamera();
     final controller = CommercialDeviceCheckController(trackFactory: factory);
@@ -83,6 +102,7 @@ void main() {
           );
 
       expect(ready(null), isFalse);
+      expect(ready('unknown'), isFalse);
       expect(ready('red'), isFalse);
       expect(ready('yellow'), isTrue);
       expect(ready('green'), isTrue);
@@ -136,7 +156,7 @@ void main() {
   test('release waits for pending mic startup and blocks late reacquisition', () async {
     final started = Completer<Stream<Uint8List>>();
     final recorder = _FakeRecorder(pending: started);
-    final controller = CommercialDeviceCheckController(recorderFactory: _FakeRecordFactory(recorder));
+    final controller = CommercialDeviceCheckController(recorderFactory: _FakeRecordFactory([recorder]));
     final enabling = controller.setMicrophoneEnabled(true);
     await Future<void>.delayed(Duration.zero);
     final releasing = controller.release();

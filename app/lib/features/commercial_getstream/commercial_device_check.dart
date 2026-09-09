@@ -95,7 +95,7 @@ class CommercialDeviceCheckController {
         await _audioSubscription?.cancel();
         _audioSubscription = stream.listen((bytes) {
           _level = commercialPcm16Rms(bytes);
-        }, onError: (_, __) { _level = null; });
+        }, onError: (_, __) { _level = null; }, onDone: () { _level = null; });
         _microphoneEnabled = true;
       } else {
         await _stopRecorder();

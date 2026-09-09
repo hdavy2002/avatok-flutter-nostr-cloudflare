@@ -23,11 +23,18 @@ export class SpeakerTone {
   private generation = 0;
   private closed = false;
   private active = false;
+  private readonly createContext: () => AudioContext;
+  private readonly update: (state: SpeakerState) => void;
+  private readonly event: (result: string) => void;
   constructor(
-    private readonly createContext: () => AudioContext,
-    private readonly update: (state: SpeakerState) => void,
-    private readonly event: (result: string) => void = () => {},
-  ) {}
+    createContext: () => AudioContext,
+    update: (state: SpeakerState) => void,
+    event: (result: string) => void = () => {},
+  ) {
+    this.createContext = createContext;
+    this.update = update;
+    this.event = (result) => { try { event(result); } catch { /* diagnostics cannot block playback */ } };
+  }
 
   start(): void {
     if (this.closed || this.active) return;
