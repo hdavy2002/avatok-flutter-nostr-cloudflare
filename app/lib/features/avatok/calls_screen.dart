@@ -8,6 +8,7 @@ import '../../core/avatar.dart';
 import '../../core/call_log_store.dart';
 import '../../core/calls/call_room_id.dart'; // [CALL-ROOM-ID-1]
 import '../../core/ice_cache.dart';
+import '../../core/remote_config.dart';
 import '../../core/ui/call_failure_copy.dart'; // [CALL-HONEST-FAIL-1] shared copy
 import '../../core/ui/call_log_format.dart'; // [CALL-LOG-TIME-1] shared subtitle
 import '../../core/ui/zine_widgets.dart';
@@ -18,7 +19,7 @@ import '../../core/ui/rajasthani_motifs.dart';
 import 'call_screen.dart';
 import 'contacts.dart';
 import 'place_1to1_call.dart'
-    show routeToStreamCallIfEnabled; // [STREAM-ROUTE-1]
+    show place1to1Call, routeToStreamCallIfEnabled; // [STREAM-ROUTE-1]
 
 /// AvaTok Calls tab — real 1:1 call history; tap to call back.
 class CallsScreen extends StatefulWidget {
@@ -108,6 +109,18 @@ class _CallsScreenState extends State<CallsScreen> {
   }
 
   Future<void> _callBack(CallEntry c) async {
+    if (RemoteConfig.messengerCallBillingEnabled && !c.video &&
+        c.seed.startsWith('user_')) {
+      await place1to1Call(
+        context,
+        uid: c.seed,
+        name: c.name,
+        avatarUrl: _avatars[c.seed] ?? '',
+        video: false,
+      );
+      await _load();
+      return;
+    }
     // [STREAM-ROUTE-1 2026-08-21] Stream is the only 1:1 call path; the legacy
     // Cloudflare CallScreen below stays compiled as the emergency backup but is
     // unreachable while `streamCallsEnabled` is on. A phone-only Recents row
@@ -367,24 +380,28 @@ class _CallsScreenState extends State<CallsScreen> {
             ]),
           ),
           const SizedBox(width: 8),
-          ZinePressable(
-            onTap: () => _callBack(c),
-            color: AD.card,
-            pressedColor: AD.primaryBadge,
-            radius: Msg.brPill,
-            boxShadow: const [],
-            child: SizedBox(
-              width: 40,
-              height: 40,
-              child: Center(
-                  child: PhosphorIcon(
-                      c.video
-                          ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)
-                          : PhosphorIcons.phone(PhosphorIconsStyle.bold),
-                      size: 19,
-                      color: c.video ? AD.iconVideo : AD.iconPhone)),
+          // [AVATALK-CHAT-ONLY-2] Messenger 1:1 calling is being killed — hide
+          // this dial-back button while RemoteConfig.messengerCallingEnabled
+          // is off, matching contact_detail_screen.dart / contact_row_menu.dart.
+          if (RemoteConfig.messengerCallingEnabled)
+            ZinePressable(
+              onTap: () => _callBack(c),
+              color: AD.card,
+              pressedColor: AD.primaryBadge,
+              radius: Msg.brPill,
+              boxShadow: const [],
+              child: SizedBox(
+                width: 40,
+                height: 40,
+                child: Center(
+                    child: PhosphorIcon(
+                        c.video
+                            ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)
+                            : PhosphorIcons.phone(PhosphorIconsStyle.bold),
+                        size: 19,
+                        color: c.video ? AD.iconVideo : AD.iconPhone)),
+              ),
             ),
-          ),
         ]),
       ),
     );

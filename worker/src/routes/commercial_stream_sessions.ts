@@ -11,6 +11,7 @@ import {
   commercialProviderIdentity,
   type CommercialSessionKind,
 } from "../lib/commercial_stream_sessions";
+import { commercialIdFromPath } from "../lib/commercial_ids";
 import { commercialEvent } from "../lib/commercial_telemetry";
 // [LIST-APPROVAL-AUTH-1] Read-only import of the system-actor listing transition
 // landed in fa44bc21. This file only CALLS it from the provider-confirmed webhook
@@ -172,16 +173,22 @@ function providerUrl(env: Env, callType: string, callId: string, suffix = ""): s
   return `https://video.stream-io-api.com/api/v2/video/call/${encodeURIComponent(callType)}/${encodeURIComponent(callId)}${suffix}?api_key=${encodeURIComponent(env.STREAM_VIDEO_API_KEY ?? "")}`;
 }
 
-function commercialChatChannel(args: {
+async function commercialChatChannel(args: {
   kind: CommercialSessionKind;
   listingId: string;
   bookingId?: string | null;
   sessionId: string;
   role: "host" | "viewer" | "creator" | "buyer";
-}): { channel_type: string; channel_id: string; permissions: string[] } {
-  const channelId = args.kind === "live_event"
-    ? `commercial-live:${args.listingId}`
-    : `commercial-consult:${args.bookingId}`;
+}): Promise<{ channel_type: string; channel_id: string; permissions: string[] }> {
+  const prefix = args.kind === "live_event" ? "commercial-live:" : "commercial-consult:";
+  const rawChannelId = `${prefix}${args.kind === "live_event" ? args.listingId : args.bookingId}`;
+  // Stream Chat channel ids are limited to 64 characters. Existing short ids
+  // remain unchanged so already-created channels keep working. Long booking
+  // ids (including the 83-character checkout id) use a deterministic compact
+  // suffix while the durable booking id remains the source of truth.
+  const channelId = rawChannelId.length <= 64
+    ? rawChannelId
+    : `${prefix}${(await sha256Hex(rawChannelId)).slice(0, 64 - prefix.length)}`;
   const moderator = args.role === "host" || args.role === "creator";
   return {
     channel_type: "livestream",
@@ -299,10 +306,7 @@ async function booking(env: Env, bookingId: string): Promise<BookingRow | null> 
 }
 
 function idFrom(req: Request, kind: "live" | "consult"): string | null {
-  const expression = kind === "live"
-    ? /^\/api\/commercial\/live\/([A-Za-z0-9-]{1,64})\//
-    : /^\/api\/commercial\/consult\/([A-Za-z0-9-]{1,64})\//;
-  return new URL(req.url).pathname.match(expression)?.[1] ?? null;
+  return commercialIdFromPath(new URL(req.url).pathname, kind);
 }
 
 function joinWindow(config: PlatformConfig, kind: CommercialSessionKind, startsAt: number, endsAt: number): {
@@ -538,7 +542,7 @@ async function authorizeProviderJoin(args: {
     return refused("membership_authority_mismatch", { error: "commercial membership authority mismatch" }, 409);
   }
 
-  const chat = commercialChatChannel({
+  const chat = await commercialChatChannel({
     kind: args.kind,
     listingId: args.listingId,
     bookingId: args.bookingId ?? null,
@@ -689,12 +693,35 @@ export async function commercialConsultPrejoin(req: Request, env: Env): Promise<
   if (auth.uid !== row.creator_id && auth.uid !== row.buyer_id) return json({ error: "not your booking" }, 403);
   if (!["confirmed", "completed"].includes(row.status)) return json({ error: "booking unavailable" }, 409);
   const window = joinWindow(config, "consult_1to1", Number(row.starts_at), Number(row.ends_at));
+  const [creator, buyer] = await Promise.all([
+    metaDb(env).prepare("SELECT display_name,handle,avatar_url FROM users WHERE uid=?1 LIMIT 1")
+      .bind(row.creator_id).first<{ display_name: string | null; handle: string | null; avatar_url: string | null }>(),
+    metaDb(env).prepare("SELECT display_name,handle,avatar_url FROM users WHERE uid=?1 LIMIT 1")
+      .bind(row.buyer_id).first<{ display_name: string | null; handle: string | null; avatar_url: string | null }>(),
+  ]);
+  const creatorName = creator?.display_name ?? creator?.handle ?? null;
+  const buyerName = buyer?.display_name ?? buyer?.handle ?? null;
+  const isCreator = auth.uid === row.creator_id;
+  const counterparty = isCreator
+    ? { id: row.buyer_id, name: buyerName, avatar_url: buyer?.avatar_url ?? null }
+    : { id: row.creator_id, name: creatorName, avatar_url: creator?.avatar_url ?? null };
   return json({
     ok: true, lane: "commercial", kind: "consult_1to1", booking_id: row.id,
     listing_id: row.listing_id, title: row.title, starts_at: Number(row.starts_at),
     ends_at: Number(row.ends_at), opens_at: window.opensAt, closes_at: window.closesAt,
+    // Canonical names used by both browser and app prejoin surfaces. The
+    // aliases preserve the existing opens_at/closes_at contract for clients
+    // that have already shipped.
+    join_opens_at: window.opensAt, join_closes_at: window.closesAt,
+    server_now: Date.now(), listing_title: row.title,
+    creator_name: creatorName,
+    buyer_name: isCreator ? buyerName : null,
+    counterparty_id: counterparty.id,
+    counterparty_name: counterparty.name,
+    counterparty_avatar_url: counterparty.avatar_url,
+    counterparty: counterparty,
     join_enabled: config.commercialConsultJoinEnabled === true,
-    role: auth.uid === row.creator_id ? "creator" : "buyer",
+    role: isCreator ? "creator" : "buyer",
   });
 }
 
@@ -1432,64 +1459,248 @@ export async function commercialRefundReceipt(req: Request, env: Env): Promise<R
 }
 
 /**
- * Customer-owned commercial sessions for My Sessions.
+ * Account-owned commercial schedule for My Sessions and creator operations.
  *
- * This is a read-only projection over account-bound entitlements, bookings,
- * orders and provider-backed session state. It intentionally returns no join
- * credential; admission still goes through the dedicated join endpoints.
+ * This is a read-only projection over account-bound entitlements, listings,
+ * bookings, orders and provider-backed session state. It intentionally returns
+ * no join credential; admission still goes through the dedicated join endpoints.
  */
 export async function commercialSessionsMine(req: Request, env: Env): Promise<Response> {
   const auth = await requireUser(req, env);
   if (isFail(auth)) return json({ error: auth.error }, auth.status);
   try {
     const config = await readConfig(env);
-    const rows = await metaDb(env).prepare(
-      `SELECT e.entitlement_id,e.kind,e.listing_id,e.booking_id,e.order_id,e.state entitlement_state,
-          e.starts_at entitlement_starts_at,e.ends_at entitlement_ends_at,
-          l.title,l.creator_id,l.price,l.currency_display,l.duration_min,
-          b.starts_at booking_starts_at,b.ends_at booking_ends_at,b.status booking_status,
-          o.status order_status,
-          s.commercial_session_id,s.state session_state,s.settlement_state session_settlement_state,
-          r.receipt_id,r.settlement_state receipt_settlement_state,r.issued_at receipt_issued_at,
-          rr.refund_receipt_id,rr.settlement_state refund_settlement_state,
-          rr.refunded_amount,rr.remaining_amount,rr.reason refund_reason,rr.issued_at refund_issued_at
-       FROM commercial_entitlements e
-       JOIN listings l ON l.id=e.listing_id
-       LEFT JOIN bookings b ON b.id=e.booking_id
-       LEFT JOIN orders o ON o.id=e.order_id
-       LEFT JOIN commercial_sessions s ON s.commercial_session_id=(
-         SELECT s2.commercial_session_id FROM commercial_sessions s2
-          WHERE s2.kind=e.kind AND s2.listing_id=e.listing_id
-            AND COALESCE(s2.booking_id,'')=COALESCE(e.booking_id,'')
-          ORDER BY s2.session_version DESC,s2.updated_at DESC LIMIT 1
-       )
-       LEFT JOIN commercial_receipts r
-         ON r.commercial_session_id=s.commercial_session_id AND r.order_id=e.order_id
-       LEFT JOIN commercial_refund_receipts rr
-         ON rr.order_id=e.order_id
-       WHERE e.account_id=?1 AND e.role IN ('viewer','buyer')
-         AND (e.state IN ('reserved','held','active','consumed') OR rr.refund_receipt_id IS NOT NULL)
-       ORDER BY COALESCE(b.starts_at,e.starts_at) DESC LIMIT 200`,
-    ).bind(auth.uid).all<Record<string, unknown>>();
     const now = Date.now();
-    const sessions = (rows.results ?? []).map((row) => {
-      const startsAt = Number(row.booking_starts_at ?? row.entitlement_starts_at ?? 0);
-      const rawEndsAt = Number(row.booking_ends_at ?? row.entitlement_ends_at ?? 0);
-      const endsAt = rawEndsAt || startsAt + Math.max(1, Number(row.duration_min ?? 60)) * 60_000;
-      const window = joinWindow(
-        config,
-        row.kind === "live_event" ? "live_event" : "consult_1to1",
-        startsAt,
-        endsAt,
-      );
-      return { ...row, starts_at: startsAt, ends_at: endsAt, opens_at: window.opensAt, closes_at: window.closesAt };
+    const url = new URL(req.url);
+    const roleParam = (url.searchParams.get("role") ?? "customer").trim().toLowerCase();
+    // viewer/buyer were never accepted as query roles, but accepting them as
+    // aliases keeps callers that copied a row role from breaking.
+    const role = roleParam === "creator" ? "creator" : roleParam === "customer" || roleParam === "viewer" || roleParam === "buyer" ? "customer" : null;
+    if (!role) return json({ error: "role must be customer or creator" }, 400);
+    const requestedFilter = (url.searchParams.get("filter") ?? url.searchParams.get("view") ?? url.searchParams.get("status") ?? "all").trim().toLowerCase();
+    const filter = requestedFilter === "upcoming" || requestedFilter === "live"
+      || requestedFilter === "past" || requestedFilter === "cancelled" || requestedFilter === "all"
+      ? requestedFilter
+      : null;
+    if (!filter) return json({ error: "filter must be upcoming, live, past, cancelled or all" }, 400);
+    const parsedLimit = Number(url.searchParams.get("limit") ?? 50);
+    const limit = Number.isFinite(parsedLimit) ? Math.min(100, Math.max(1, Math.trunc(parsedLimit))) : 50;
+    const cursor = decodeCommercialScheduleCursor(url.searchParams.get("cursor"));
+    if (url.searchParams.get("cursor") && !cursor) return json({ error: "invalid cursor" }, 400);
+
+    const filterSql = filter === "upcoming"
+      ? "sort_rank=1 AND cancelled_flag=0"
+      : filter === "live"
+        ? "sort_rank=0 AND cancelled_flag=0"
+        : filter === "past"
+          ? "sort_rank=2 AND cancelled_flag=0"
+          : filter === "cancelled" ? "cancelled_flag=1" : "1=1";
+    const cursorSql = `(?3 IS NULL OR sort_rank > ?3
+      OR (sort_rank = ?3 AND (sort_start > ?4
+        OR (sort_start = ?4 AND product_key > ?5))))`;
+    const db = metaDb(env);
+    let rows: D1Result<Record<string, unknown>>;
+    if (role === "customer") {
+      rows = await db.prepare(
+        `SELECT * FROM (
+           SELECT e.entitlement_id,e.kind,e.listing_id,e.booking_id,e.order_id,
+             e.state entitlement_state,e.starts_at entitlement_starts_at,e.ends_at entitlement_ends_at,
+             l.title,l.status listing_status,l.creator_id,NULL counterparty_id,l.price,l.currency_display,l.duration_min,
+             b.starts_at booking_starts_at,b.ends_at booking_ends_at,b.status booking_status,
+             o.status order_status,u.display_name counterparty_name,u.handle counterparty_handle,
+             u.avatar_url counterparty_avatar_url,
+             s.commercial_session_id,s.state session_state,s.settlement_state session_settlement_state,
+             (SELECT r.receipt_id FROM commercial_receipts r
+                WHERE r.commercial_session_id=s.commercial_session_id AND r.order_id=e.order_id
+                ORDER BY r.issued_at DESC LIMIT 1) receipt_id,
+             (SELECT r.settlement_state FROM commercial_receipts r
+                WHERE r.commercial_session_id=s.commercial_session_id AND r.order_id=e.order_id
+                ORDER BY r.issued_at DESC LIMIT 1) receipt_settlement_state,
+             (SELECT rr.refund_receipt_id FROM commercial_refund_receipts rr
+                WHERE rr.order_id=e.order_id ORDER BY rr.issued_at DESC LIMIT 1) refund_receipt_id,
+             (SELECT rr.settlement_state FROM commercial_refund_receipts rr
+                WHERE rr.order_id=e.order_id ORDER BY rr.issued_at DESC LIMIT 1) refund_settlement_state,
+             (SELECT rr.refunded_amount FROM commercial_refund_receipts rr
+                WHERE rr.order_id=e.order_id ORDER BY rr.issued_at DESC LIMIT 1) refunded_amount,
+             (SELECT rr.remaining_amount FROM commercial_refund_receipts rr
+                WHERE rr.order_id=e.order_id ORDER BY rr.issued_at DESC LIMIT 1) remaining_amount,
+             (SELECT rr.reason FROM commercial_refund_receipts rr
+                WHERE rr.order_id=e.order_id ORDER BY rr.issued_at DESC LIMIT 1) refund_reason,
+             e.kind || ':' || e.listing_id || ':' || COALESCE(e.booking_id,'') product_key,
+             CASE WHEN COALESCE(s.state,'') IN ('live','backstage','ending') OR l.status='live' THEN 0
+                  WHEN COALESCE(b.ends_at,e.ends_at,
+                    CASE WHEN l.starts_at IS NOT NULL THEN l.starts_at + COALESCE(l.duration_min,60)*60000 END,0) >= ?2 THEN 1
+                  ELSE 2 END sort_rank,
+             COALESCE(b.starts_at,e.starts_at,l.starts_at,0) sort_start,
+             CASE WHEN e.state IN ('refunded','revoked') OR o.status IN ('refunded','cancelled','canceled','canceled_user','canceled_creator','cancelled_user','cancelled_creator','no_show_user','no_show_creator')
+                    OR b.status IN ('cancelled','canceled','canceled_user','canceled_creator','cancelled_user','cancelled_creator','no_show_user','no_show_creator','refunded') OR l.status='cancelled'
+                    OR COALESCE(s.state,'')='cancelled'
+                    OR (SELECT 1 FROM commercial_refund_receipts rr WHERE rr.order_id=e.order_id LIMIT 1) IS NOT NULL
+                  THEN 1 ELSE 0 END cancelled_flag
+           FROM commercial_entitlements e
+           JOIN listings l ON l.id=e.listing_id
+           LEFT JOIN bookings b ON b.id=e.booking_id
+           LEFT JOIN orders o ON o.id=e.order_id
+           LEFT JOIN users u ON u.uid=l.creator_id
+           LEFT JOIN commercial_sessions s ON s.commercial_session_id=(
+             SELECT s2.commercial_session_id FROM commercial_sessions s2
+              WHERE s2.kind=e.kind AND s2.listing_id=e.listing_id
+                AND COALESCE(s2.booking_id,'')=COALESCE(e.booking_id,'')
+              ORDER BY s2.session_version DESC,s2.updated_at DESC LIMIT 1)
+           WHERE e.account_id=?1 AND e.role IN ('viewer','buyer')
+             AND (e.state IN ('reserved','held','active','consumed','revoked','refunded')
+               OR EXISTS (SELECT 1 FROM commercial_refund_receipts rr WHERE rr.order_id=e.order_id))
+         ) WHERE ${filterSql} AND ${cursorSql}
+         ORDER BY sort_rank,sort_start,product_key LIMIT ?6`,
+      ).bind(auth.uid, now, cursor?.rank ?? null, cursor?.start ?? null, cursor?.key ?? null, limit + 1)
+        .all<Record<string, unknown>>();
+    } else {
+      rows = await db.prepare(
+        `SELECT * FROM (
+           SELECT NULL entitlement_id,'live_event' kind,l.id listing_id,NULL booking_id,NULL order_id,
+             NULL entitlement_state,l.starts_at entitlement_starts_at,
+             CASE WHEN l.starts_at IS NOT NULL THEN l.starts_at + COALESCE(l.duration_min,60)*60000 END entitlement_ends_at,
+             l.title,l.status listing_status,l.creator_id,l.creator_id counterparty_id,l.price,l.currency_display,l.duration_min,
+             l.starts_at booking_starts_at,
+             CASE WHEN l.starts_at IS NOT NULL THEN l.starts_at + COALESCE(l.duration_min,60)*60000 END booking_ends_at,
+             NULL booking_status,NULL order_status,NULL counterparty_name,NULL counterparty_handle,
+             NULL counterparty_avatar_url,s.commercial_session_id,s.state session_state,
+             s.settlement_state session_settlement_state,NULL receipt_id,NULL receipt_settlement_state,
+             NULL refund_receipt_id,NULL refund_settlement_state,NULL refunded_amount,NULL remaining_amount,
+             NULL refund_reason,'live_event:' || l.id product_key,
+             CASE WHEN COALESCE(s.state,'') IN ('live','backstage','ending') OR l.status='live' THEN 0
+                  WHEN COALESCE(l.starts_at,0) + COALESCE(l.duration_min,60)*60000 >= ?2 THEN 1 ELSE 2 END sort_rank,
+             COALESCE(l.starts_at,0) sort_start,
+             CASE WHEN l.status='cancelled' OR COALESCE(s.state,'')='cancelled' THEN 1 ELSE 0 END cancelled_flag
+           FROM listings l
+           LEFT JOIN commercial_sessions s ON s.commercial_session_id=(
+             SELECT s2.commercial_session_id FROM commercial_sessions s2
+              WHERE s2.kind='live_event' AND s2.listing_id=l.id AND s2.booking_id IS NULL
+              ORDER BY s2.session_version DESC,s2.updated_at DESC LIMIT 1)
+           WHERE l.creator_id=?1 AND l.kind='live_event' AND l.status <> 'draft'
+           UNION ALL
+           SELECT NULL entitlement_id,'consult_1to1' kind,l.id listing_id,b.id booking_id,b.order_id,
+             NULL entitlement_state,b.starts_at entitlement_starts_at,b.ends_at entitlement_ends_at,
+             l.title,l.status listing_status,l.creator_id,b.buyer_id counterparty_id,b.price,l.currency_display,l.duration_min,
+             b.starts_at booking_starts_at,b.ends_at booking_ends_at,b.status booking_status,
+             o.status order_status,u.display_name counterparty_name,u.handle counterparty_handle,
+             u.avatar_url counterparty_avatar_url,s.commercial_session_id,s.state session_state,
+             s.settlement_state session_settlement_state,NULL receipt_id,NULL receipt_settlement_state,
+             NULL refund_receipt_id,NULL refund_settlement_state,NULL refunded_amount,NULL remaining_amount,
+             NULL refund_reason,'consult_1to1:' || b.id product_key,
+             CASE WHEN COALESCE(s.state,'') IN ('live','backstage','ending') THEN 0
+                  WHEN b.ends_at >= ?2 THEN 1 ELSE 2 END sort_rank,
+             b.starts_at sort_start,
+             CASE WHEN b.status IN ('cancelled','canceled','canceled_user','canceled_creator','cancelled_user','cancelled_creator','no_show_user','no_show_creator','refunded') OR o.status IN ('refunded','cancelled','canceled','canceled_user','canceled_creator','cancelled_user','cancelled_creator','no_show_user','no_show_creator')
+                    OR l.status='cancelled' OR COALESCE(s.state,'')='cancelled' THEN 1 ELSE 0 END cancelled_flag
+           FROM bookings b
+           JOIN listings l ON l.id=b.listing_id
+           LEFT JOIN orders o ON o.id=b.order_id
+           LEFT JOIN users u ON u.uid=b.buyer_id
+           LEFT JOIN commercial_sessions s ON s.commercial_session_id=(
+             SELECT s2.commercial_session_id FROM commercial_sessions s2
+              WHERE s2.kind='consult_1to1' AND s2.listing_id=b.listing_id AND s2.booking_id=b.id
+              ORDER BY s2.session_version DESC,s2.updated_at DESC LIMIT 1)
+           WHERE b.creator_id=?1 AND b.kind='consult_1to1'
+         ) WHERE ${filterSql} AND ${cursorSql}
+         ORDER BY sort_rank,sort_start,product_key LIMIT ?6`,
+      ).bind(auth.uid, now, cursor?.rank ?? null, cursor?.start ?? null, cursor?.key ?? null, limit + 1)
+        .all<Record<string, unknown>>();
+    }
+
+    const fetched = rows.results ?? [];
+    const hasMore = fetched.length > limit;
+    const visible = fetched.slice(0, limit);
+    const sessions = visible.map((row) => commercialScheduleRow(row, config, now, role));
+    const last = sessions[sessions.length - 1];
+    return json({
+      ok: true, role, server_now: now, sessions,
+      next_cursor: hasMore && last ? encodeCommercialScheduleCursor(last.sort_rank, last.sort_start, last.product_key) : null,
     });
-    return json({ ok: true, server_now: now, sessions });
   } catch (_) {
     // The additive Phase 2 schema may not be installed on an older environment.
     // An unavailable projection is safer than presenting invented bookings.
     return json({ error: "commercial sessions unavailable" }, 503);
   }
+}
+
+type CommercialScheduleCursor = { rank: number; start: number; key: string };
+
+function encodeCommercialScheduleCursor(rank: number, start: number, key: string): string {
+  return b64url(JSON.stringify({ v: 1, rank, start, key }));
+}
+
+function decodeCommercialScheduleCursor(value: string | null): CommercialScheduleCursor | null {
+  if (!value) return null;
+  try {
+    const decoded = atob(value.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - value.length % 4) % 4));
+    const parsed = JSON.parse(decoded) as { v?: unknown; rank?: unknown; start?: unknown; key?: unknown };
+    if (parsed.v !== 1 || !Number.isInteger(parsed.rank) || !Number.isFinite(parsed.start)
+      || typeof parsed.key !== "string" || parsed.key.length === 0 || parsed.key.length > 512) return null;
+    return { rank: Number(parsed.rank), start: Number(parsed.start), key: parsed.key };
+  } catch { return null; }
+}
+
+function commercialScheduleRow(
+  row: Record<string, unknown>,
+  config: PlatformConfig,
+  now: number,
+  requestedRole: "customer" | "creator",
+): Record<string, unknown> & { sort_rank: number; sort_start: number; product_key: string } {
+  const kind = String(row.kind ?? "");
+  const startsAt = Number(row.booking_starts_at ?? row.entitlement_starts_at ?? 0);
+  const rawEndsAt = Number(row.booking_ends_at ?? row.entitlement_ends_at ?? 0);
+  const endsAt = rawEndsAt || startsAt + Math.max(1, Number(row.duration_min ?? 60)) * 60_000;
+  const window = joinWindow(config, kind === "live_event" ? "live_event" : "consult_1to1", startsAt, endsAt);
+  const sessionState = row.session_state == null ? null : String(row.session_state);
+  const entitlementState = row.entitlement_state == null ? null : String(row.entitlement_state);
+  const bookingStatus = row.booking_status == null ? null : String(row.booking_status);
+  const orderStatus = row.order_status == null ? null : String(row.order_status);
+  const cancelled = Number(row.cancelled_flag) === 1;
+  // Admission remains valid through the configured late/grace window. Ending
+  // the card at ends_at would make a late reconnect appear ended while the
+  // authoritative join endpoint still correctly permits it.
+  const terminal = cancelled || sessionState === "ended" || now > window.closesAt || bookingStatus === "completed" || row.listing_status === "completed";
+  const inWindow = now >= window.opensAt && now <= window.closesAt;
+  const live = !terminal && !cancelled && (sessionState === "live" || sessionState === "backstage" || sessionState === "ending" || (kind === "live_event" && row.listing_status === "live"));
+  let action: string | null = null;
+  if (terminal) action = "ended";
+  else if (requestedRole === "creator") {
+    if (live) action = "join";
+    else if (inWindow) action = now >= startsAt ? "join" : "start";
+  } else if (inWindow || live) action = kind === "live_event" ? "watch" : "join";
+  const laneEnabled = kind === "live_event" ? config.commercialLiveJoinEnabled : config.commercialConsultJoinEnabled;
+  if (!laneEnabled && action !== "ended") action = null;
+  const actions = action ? [action] : [];
+  const counterpartyId = requestedRole === "creator" && kind === "consult_1to1"
+    ? String(row.counterparty_id ?? row.counterparty_uid ?? "") || null
+    : requestedRole === "customer" ? String(row.creator_id ?? "") || null : null;
+  const counterpartyName = row.counterparty_name == null ? null : String(row.counterparty_name);
+  const creatorName = requestedRole === "customer" && counterpartyName ? counterpartyName : null;
+  const productKey = String(row.product_key ?? `${kind}:${String(row.listing_id ?? "")}:${String(row.booking_id ?? "")}`);
+  return {
+    ...row,
+    product_id: kind === "live_event" ? row.listing_id : row.booking_id,
+    session_id: row.commercial_session_id ?? null,
+    starts_at: startsAt,
+    ends_at: endsAt,
+    opens_at: window.opensAt,
+    closes_at: window.closesAt,
+    join_opens_at: window.opensAt,
+    join_closes_at: window.closesAt,
+    role: requestedRole === "creator" ? (kind === "live_event" ? "host" : "creator") : row.role ?? (kind === "live_event" ? "viewer" : "buyer"),
+    action,
+    actions,
+    allowed_actions: actions,
+    counterparty_id: counterpartyId,
+    counterparty_name: counterpartyName,
+    counterparty_avatar_url: row.counterparty_avatar_url ?? null,
+    creator_name: creatorName,
+    server_now: now,
+    sort_rank: Number(row.sort_rank),
+    sort_start: Number(row.sort_start),
+    product_key: productKey,
+  };
 }
 
 type CommercialWebhookInput = {

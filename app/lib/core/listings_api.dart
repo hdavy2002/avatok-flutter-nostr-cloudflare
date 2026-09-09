@@ -1056,7 +1056,9 @@ class ListingsApi {
   /// does not infer any money from booking price or count.
   static Future<List<String>> commercialConsultSessionIds(String listingId) async {
     final ids = <String>{};
-    for (final when in const ['past', 'upcoming']) {
+    // Current/upcoming bookings precede history. Session actions now use the
+    // creator schedule projection; this helper remains receipt-summary only.
+    for (final when in const ['upcoming', 'past']) {
       dynamic r;
       try {
         r = await ApiAuth.getSigned('$_base/booking/list?role=creator&when=$when');

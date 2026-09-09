@@ -18,6 +18,7 @@ import 'creator_receipt_summary_screen.dart';
 import 'share_live_event_sheet.dart';
 import '../commercial_getstream/commercial_live_screens.dart';
 import '../commercial_getstream/commercial_getstream_screens.dart';
+import '../booking/creator_schedule_screen.dart';
 
 /// "My listings" — the creator's pipeline home: drafts, published, live.
 /// Overflow per listing: publish, go live / end, duplicate (A6), cancel.
@@ -121,28 +122,6 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
     );
   }
 
-  Future<void> _openCommercialConsultCreator(ListingCard l) async {
-    final ids = await ListingsApi.commercialConsultSessionIds(l.id);
-    final sessionId =
-        ids.firstWhere((id) => id.startsWith('consult_'), orElse: () => '');
-    if (!mounted) return;
-    if (sessionId.isEmpty) {
-      _notice('No booked consultation session is ready yet.');
-      return;
-    }
-    final bookingId = sessionId.substring('consult_'.length);
-    Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => CommercialConsultationPrejoinScreen(
-            listingId: l.id,
-            bookingId: bookingId,
-            title: l.title,
-            isCreator: true,
-          ),
-        ));
-  }
-
   void _menu(ListingCard l) {
     final commercialLive = _commercialLive(l);
     final commercialConsult = _commercialConsult(l);
@@ -236,9 +215,15 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
                           builder: (_) => const AvaCalendarScreen()));
                 }),
                 item(PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
-                    'Open creator session', () {
+                    'View customer appointments', () {
                   Navigator.pop(s);
-                  _openCommercialConsultCreator(l);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          CreatorAppointmentsScreen(focusListingId: l.id),
+                    ),
+                  );
                 }),
                 item(PhosphorIcons.pauseCircle(PhosphorIconsStyle.bold),
                     'Pause bookings', () {

@@ -112,8 +112,8 @@ export function Step1Type({ draft, patch, err, freeEntryLocked }: {
               className={['flex flex-col items-start gap-1 rounded-zine border-zine border-ink p-2.5 text-left shadow-zine-xs transition-transform duration-zine',
                 k.disabled ? 'opacity-40' : '', draft.kind === k.key ? 'bg-lime' : 'bg-card'].join(' ')}>
               <span className="text-[18px]">{k.chip}</span>
-              <span className="font-display font-semibold text-[13px] text-ink">{k.label}</span>
-              <span className="font-body font-bold text-[11px] text-inkSoft">{k.sub}</span>
+              <span className="font-display font-semibold text-[16px] text-ink">{k.label}</span>
+              <span className="font-body font-bold text-[14px] leading-snug text-inkSoft">{k.sub}</span>
             </button>
           ))}
         </div>
@@ -144,8 +144,8 @@ export function Step1Type({ draft, patch, err, freeEntryLocked }: {
               className={['flex items-center justify-between rounded-zine border-zine border-ink p-3 text-left shadow-zine-xs',
                 draft.schedule_mode === o.key ? 'bg-lime' : 'bg-card'].join(' ')}>
               <span>
-                <span className="block font-display font-semibold text-[14px] text-ink">{o.label}</span>
-                <span className="block font-body font-bold text-[12px] text-inkSoft">{o.sub}</span>
+                <span className="block font-display font-semibold text-[16px] text-ink">{o.label}</span>
+                <span className="block font-body font-bold text-[14px] leading-snug text-inkSoft">{o.sub}</span>
               </span>
               {draft.schedule_mode === o.key && <span className="text-[18px]">✓</span>}
             </button>

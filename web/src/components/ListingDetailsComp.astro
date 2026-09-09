@@ -416,6 +416,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
         <div class="player-card__screen" style={heroBase ? undefined : `background:${cat.photo}`}>
           {heroBase && (
             <picture class="player-card__poster">
+              {heroPortrait && <source media="(max-width: 639px)" srcset={cfImage(heroPortrait, { width: 720, fit: 'cover' })} />}
               {heroWide && <source media="(min-width: 1024px)" srcset={cfImage(heroWide, { width: 1600, fit: 'cover' })} />}
               {heroTablet && <source media="(min-width: 640px)" srcset={cfImage(heroTablet, { width: 1100, fit: 'cover' })} />}
               <img src={cfImage(heroPortrait, { width: 900, fit: 'cover' })} alt={`${listing.title} — poster`} />
@@ -1397,6 +1398,13 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
      squashing a 2:3 poster into a 16:9 frame. */
   .player-card__poster { position: absolute; inset: 0; display: block; }
   .player-card__poster img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  /* [MOBILE-POSTER-1] The generated phone poster is 2:3. Match the mobile
+     frame to that ratio so the portrait asset fills the card instead of being
+     mounted inside a wide black letterbox. */
+  @media (max-width: 639px) {
+    .player-card__screen { height: auto; aspect-ratio: 2 / 3; }
+    .player-card__poster img { object-fit: cover; }
+  }
   /* Only rendered when the artwork is deliberately textless — see
      worker/src/lib/listing_poster.ts buildPosterArtOnlyPrompt. */
   .player-card__lettering { position: absolute; top: 18px; left: 20px; right: 20px; z-index: 2; pointer-events: none; }
@@ -1728,4 +1736,18 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
   .browse-card__dur { margin-left: auto; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .08em; color: #5a3d33; }
   .browse-card--teal .browse-card__dur, .browse-card--brick .browse-card__dur { color: #d6ecee; }
   .browse-card--brick .browse-card__dur { color: #fbe4df; }
+
+  /* [MOBILE-TYPE-1] The embedded detail page is read at arm's length on a
+     phone. Promote metadata and body copy so the page keeps the same visual
+     hierarchy without relying on browser zoom. */
+  @media (max-width: 639px) {
+    .breadcrumb__inner { font-size: 0.875rem; gap: 8px; }
+    .ticker__lead, .ticker__sub { font-size: 0.875rem; line-height: 1.35; }
+    .eyebrow { font-size: 0.9375rem; }
+    .badge, .player-badge { font-size: 0.8125rem; }
+    .lede, .body-text, .browse-card__blurb { font-size: 1rem; }
+    .section-head__note, .label-heading, .share-card__label { font-size: 0.8125rem; }
+    .stat-card em, .price-line__note { font-size: 0.75rem; }
+    .share-card__buttons .chip-btn { font-size: 0.8125rem; }
+  }
 </style>

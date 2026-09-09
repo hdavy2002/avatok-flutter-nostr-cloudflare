@@ -144,6 +144,7 @@ export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
       });
       await relayRingAck(env, msg.callId, false);
     }
+    if (msg.requireDelivery) throw new Error(`push delivery unavailable for ${uid}: no_device`);
     return;
   }
 
@@ -235,6 +236,17 @@ export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
     ...resolutionProps, // [CALL-TELEMETRY-1]
     ...notifIdentityProps, // [AVANOTIF-VM-2]
   });
+  // Cron reminders opt into this strict path. A queue message that reached the
+  // consumer but was rejected by every provider must be retried so its cadence
+  // marker is not treated as complete.
+  if (msg.requireDelivery && !anyOk) {
+    // Permanent failures (stale tokens, invalid payload/config, or an absent
+    // provider credential) are equivalent to no device for reminder purposes:
+    // an email-capable attendee must not be blocked forever by push. Retry only
+    // provider throttling/5xx; network exceptions already throw from sendFcm.
+    const retryable = lastErr === "http_429" || /^http_5\d\d$/.test(lastErr);
+    throw new Error(`push delivery ${retryable ? "failed" : "unavailable"} for ${uid}: ${lastErr || "no_device"}`);
+  }
   // [MULTIACCT-1] If we entered with tokens but NONE delivered AND every failure
   // was a prune (all tokens were dead — the stale-token-after-relogin case), this
   // callee is effectively device-less right now. Emit push_no_device so it looks
@@ -799,13 +811,18 @@ export function buildPayload(msg: PushMsg, now = Date.now()): PushPayload {
         const value = notifyData[key];
         return typeof value === "string" && /^[A-Za-z0-9_.:-]{1,160}$/.test(value) ? value : null;
       };
+      const deeplink = typeof notifyData.deeplink === "string" &&
+        /^(?:\/(?:live|session|j)\/[A-Za-z0-9_.~:%/?=&-]{1,280}|https:\/\/(?:www\.)?avatok\.ai\/(?:live|session|j)\/[A-Za-z0-9_.~:%/?=&-]{1,280}|avatok:\/\/(?:live|session)\?[^#\s]{1,280})$/.test(notifyData.deeplink)
+        ? notifyData.deeplink : null;
       return { highPriority: true, data: {
+        ...(notifyData.kind === "commercial" ? { kind: "commercial" } : {}),
         type: commercialType,
         title: String(msg.title ?? msg.fromName ?? "AvaTOK").slice(0, 120),
         body: String(msg.body ?? "").slice(0, 500),
         ...(stable("listing_id") ? { listing_id: stable("listing_id")! } : {}),
         ...(stable("booking_id") ? { booking_id: stable("booking_id")! } : {}),
         ...(stable("session_id") ? { session_id: stable("session_id")! } : {}),
+        ...(deeplink ? { deeplink } : {}),
       } };
     }
     const isRecept = notifyData.type === "receptionist";

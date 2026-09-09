@@ -16,6 +16,7 @@ import '../features/marketplace/marketplace_browse.dart' show resetMarketplaceWa
 import 'disk_cache.dart';
 import 'remote_config.dart';
 import 'calls/rtc/stream_call_api.dart';
+import '../features/commercial_getstream/commercial_getstream_handoff.dart';
 
 /// [MULTIACCT-3] Single, idempotent orchestrator for changing the ACTIVE account
 /// on a shared device (parent + kids log out/in constantly). EVERY login /
@@ -85,6 +86,17 @@ class AccountSwitcher {
           reason: to == null ? 'logout' : 'account_switch');
     } catch (e) {
       failed.add('stream:$e');
+    }
+    // Commercial GetStream sessions use their own short-lived client and are
+    // not part of StreamCallApi. Close the departing account's rooms before
+    // changing AccountScope so camera/microphone tracks and provider tokens do
+    // not survive a shared-device account switch.
+    if (from != null && from.isNotEmpty) {
+      try {
+        await CommercialGetStreamSession.closeForAccount(from);
+      } catch (e) {
+        failed.add('commercial:$e');
+      }
     }
     try {
       await clearCallState();

@@ -1,0 +1,698 @@
+<meta charset="utf-8">
+<title>avaTOK Launch Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Nunito:wght@700;800;900&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+
+<style>
+  /* ── Tokens ────────────────────────────────────────────────────────────────
+     Palette and type taken from the repo's own zine system (CLAUDE.md type
+     rules + core/ui tokens), not invented here: ink borders, hard offset
+     shadows, warm paper ground, lime CTA. */
+  :root {
+    --ink: #17130D;
+    --ink-soft: #4A4237;
+    --ink-mute: #7C7263;
+    --paper: #F6F0E2;
+    --paper-2: #EFE7D4;
+    --card: #FFFCF3;
+    --edge: #17130D;
+
+    --lime: #C9EF35;
+    --blue: #2E48D6;
+    --blue-ink: #2E48D6;
+    --coral: #F04A2E;
+    --mint: #63D9A6;
+    --amber: #E9A227;
+
+    --shadow: 3px 3px 0 var(--edge);
+    --shadow-sm: 2px 2px 0 var(--edge);
+    --border: 2px solid var(--edge);
+    --radius: 14px;
+    --radius-pill: 999px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink: #F4EEDE;
+      --ink-soft: #C3B9A4;
+      --ink-mute: #8E8574;
+      --paper: #14120E;
+      --paper-2: #1D1A14;
+      --card: #221E17;
+      --edge: #000000;
+
+      --lime: #C9EF35;
+      --blue: #7E92F5;
+      --blue-ink: #9AABFF;
+      --coral: #FF7256;
+      --mint: #63D9A6;
+      --amber: #F0B849;
+
+      --shadow: 3px 3px 0 #000000;
+      --shadow-sm: 2px 2px 0 #000000;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ink: #F4EEDE;
+    --ink-soft: #C3B9A4;
+    --ink-mute: #8E8574;
+    --paper: #14120E;
+    --paper-2: #1D1A14;
+    --card: #221E17;
+    --edge: #000000;
+
+    --lime: #C9EF35;
+    --blue: #7E92F5;
+    --blue-ink: #9AABFF;
+    --coral: #FF7256;
+    --mint: #63D9A6;
+    --amber: #F0B849;
+
+    --shadow: 3px 3px 0 #000000;
+    --shadow-sm: 2px 2px 0 #000000;
+  }
+
+  /* CLAUDE.md type rule: Anton and Impact ship ONE weight. h1–h6 default to
+     bold, so the browser fabricates a bold and smears the glyphs together.
+     font-synthesis:none + explicit weight 400 is the fix, and it must stay. */
+  *, *::before, *::after { font-synthesis: none; box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Instrument Sans", system-ui, -apple-system, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 860px; margin: 0 auto; padding: 40px 20px 96px; }
+
+  h1, h2, h3, h4 { font-weight: 400; margin: 0; text-wrap: balance; }
+
+  /* Never negative tracking on display type — CLAUDE.md standing rule. */
+  .display {
+    font-family: Anton, Impact, "Arial Narrow Bold", sans-serif;
+    font-weight: 400;
+    letter-spacing: 0.055em;
+    word-spacing: 0.2em;
+    line-height: 1.04;
+    text-transform: uppercase;
+  }
+
+  .eyebrow {
+    font-family: Nunito, system-ui, sans-serif;
+    font-weight: 900;
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+  }
+
+  .label {
+    font-family: Nunito, system-ui, sans-serif;
+    font-weight: 800;
+    font-size: 13px;
+    letter-spacing: 0.05em;
+  }
+
+  /* ── Masthead ─────────────────────────────────────────────────────────── */
+  header.masthead { margin-bottom: 40px; }
+  header.masthead h1 { font-size: clamp(38px, 8vw, 66px); margin: 10px 0 0; }
+  .standfirst {
+    margin: 18px 0 0;
+    font-size: 18px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+    max-width: 60ch;
+  }
+  .standfirst strong { color: var(--ink); font-weight: 600; }
+
+  /* ── Verdict panel ────────────────────────────────────────────────────── */
+  .verdict {
+    margin-top: 28px;
+    border: var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    background: var(--card);
+    overflow: hidden;
+  }
+  .verdict-top {
+    background: var(--amber);
+    color: #17130D;
+    padding: 16px 22px;
+    border-bottom: var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 12px;
+  }
+  .verdict-top .display { font-size: clamp(20px, 4vw, 27px); }
+  .verdict-top .note {
+    font-family: Nunito, system-ui, sans-serif;
+    font-weight: 800;
+    font-size: 13px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .verdict-body { padding: 20px 22px; }
+  .verdict-body p { margin: 0 0 12px; color: var(--ink-soft); }
+  .verdict-body p:last-child { margin-bottom: 0; }
+  .verdict-body strong { color: var(--ink); font-weight: 600; }
+
+  /* ── Counters ─────────────────────────────────────────────────────────── */
+  .counts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .count {
+    border: var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    background: var(--card);
+    padding: 14px 16px;
+  }
+  .count .n {
+    font-family: Anton, Impact, sans-serif;
+    font-weight: 400;
+    font-size: 34px;
+    letter-spacing: 0.03em;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    display: block;
+  }
+  .count .k {
+    font-family: Nunito, system-ui, sans-serif;
+    font-weight: 800;
+    font-size: 11px;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+    margin-top: 6px;
+    display: block;
+  }
+  .count.is-block .n { color: var(--coral); }
+  .count.is-you .n { color: var(--amber); }
+  .count.is-done .n { color: var(--mint); }
+  .count.is-dark .n { color: var(--ink-mute); }
+
+  /* ── Sections ─────────────────────────────────────────────────────────── */
+  section { margin-top: 52px; }
+  section > h2 { font-size: clamp(23px, 4.4vw, 31px); }
+  .sec-intro {
+    margin: 12px 0 22px;
+    color: var(--ink-soft);
+    max-width: 62ch;
+  }
+
+  /* ── Item cards ───────────────────────────────────────────────────────── */
+  .items { display: flex; flex-direction: column; gap: 14px; }
+  .item {
+    border: var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    background: var(--card);
+    padding: 16px 18px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 6px 14px;
+    align-items: start;
+  }
+  .item h3 {
+    font-family: "Instrument Sans", system-ui, sans-serif;
+    font-weight: 600;
+    font-size: 17px;
+    line-height: 1.35;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  .item p {
+    grid-column: 1 / -1;
+    margin: 2px 0 0;
+    color: var(--ink-soft);
+    font-size: 15px;
+  }
+  .item p + p { margin-top: 8px; }
+  .item .why {
+    grid-column: 1 / -1;
+    margin-top: 10px;
+    padding-left: 14px;
+    border-left: 3px solid var(--ink-mute);
+    color: var(--ink-mute);
+    font-size: 14px;
+    font-style: italic;
+  }
+
+  /* State is carried by a coloured stripe as well as the pill, so the list
+     scans without reading a word of it. */
+  .item.blocked { border-left-width: 8px; border-left-color: var(--coral); }
+  .item.you { border-left-width: 8px; border-left-color: var(--amber); }
+  .item.done { border-left-width: 8px; border-left-color: var(--mint); }
+  .item.dark { border-left-width: 8px; border-left-color: var(--ink-mute); }
+
+  .pill {
+    font-family: Nunito, system-ui, sans-serif;
+    font-weight: 900;
+    font-size: 10.5px;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    border: var(--border);
+    border-radius: var(--radius-pill);
+    padding: 4px 11px;
+    white-space: nowrap;
+    background: var(--paper-2);
+    color: var(--ink);
+  }
+  .pill.blocked { background: var(--coral); color: #FFF6F3; }
+  .pill.you { background: var(--amber); color: #17130D; }
+  .pill.done { background: var(--mint); color: #0B2A1E; }
+  .pill.dark { background: var(--paper-2); color: var(--ink-mute); }
+
+  /* ── Ordered launch sequence — numbered because it IS a sequence ──────── */
+  ol.steps { list-style: none; margin: 0; padding: 0; counter-reset: step; display: flex; flex-direction: column; gap: 14px; }
+  ol.steps > li {
+    counter-increment: step;
+    border: var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    background: var(--card);
+    padding: 16px 18px 16px 62px;
+    position: relative;
+  }
+  ol.steps > li::before {
+    content: counter(step);
+    position: absolute;
+    left: 14px;
+    top: 14px;
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border: var(--border);
+    border-radius: 50%;
+    background: var(--lime);
+    color: #17130D;
+    font-family: Anton, Impact, sans-serif;
+    font-size: 17px;
+    letter-spacing: 0.02em;
+  }
+  ol.steps h3 {
+    font-family: "Instrument Sans", system-ui, sans-serif;
+    font-weight: 600;
+    font-size: 17px;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  ol.steps p { margin: 4px 0 0; color: var(--ink-soft); font-size: 15px; }
+  ol.steps .gate {
+    display: inline-block;
+    margin-top: 10px;
+    font-family: Nunito, system-ui, sans-serif;
+    font-weight: 800;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    color: var(--ink);
+    background: var(--paper-2);
+    border: var(--border);
+    border-radius: var(--radius-pill);
+    padding: 3px 11px;
+  }
+
+  code {
+    font-family: "Instrument Sans", system-ui, sans-serif;
+    font-weight: 600;
+    background: var(--paper-2);
+    border: 1px solid var(--ink-mute);
+    border-radius: 5px;
+    padding: 0 5px;
+    font-size: 0.92em;
+    overflow-wrap: anywhere;
+  }
+
+  .callout {
+    border: var(--border);
+    border-left-width: 8px;
+    border-left-color: var(--coral);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    background: var(--card);
+    padding: 18px 20px;
+    margin-top: 20px;
+  }
+  .callout h3 {
+    font-family: "Instrument Sans", system-ui, sans-serif;
+    font-weight: 600; font-size: 17px; letter-spacing: 0; text-transform: none;
+  }
+  .callout p { margin: 8px 0 0; color: var(--ink-soft); font-size: 15px; }
+
+  footer {
+    margin-top: 64px;
+    padding-top: 22px;
+    border-top: var(--border);
+    color: var(--ink-mute);
+    font-size: 14px;
+  }
+
+  a { color: var(--blue-ink); }
+  a:focus-visible, li:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
+
+  @media (max-width: 560px) {
+    .item { grid-template-columns: 1fr; }
+    .item .pill { justify-self: start; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">avaTOK · paid sessions · 29 Aug 2026</p>
+    <h1 class="display">Launch Board</h1>
+    <p class="standfirst">
+      Everything below is built and committed. <strong>None of it is deployed</strong>, so
+      none of it is helping you or your users yet. This is what stands between here and
+      taking a paying customer.
+    </p>
+
+    <div class="verdict">
+      <div class="verdict-top">
+        <span class="display">Not live yet</span>
+        <span class="note">1 root cause · 6 steps · 2 need you</span>
+      </div>
+      <div class="verdict-body">
+        <p>
+          <strong>You can be usefully live in three steps</strong> — a deploy, six database
+          migrations, and two switches. That unblocks creating listings, which is the thing
+          everything else is waiting on, and fixes the sign-in bug that is turning away
+          logged-out visitors today.
+        </p>
+        <p>
+          <strong>Taking money by UPI needs a Cashfree account</strong>, which you don't have.
+          That half stays switched off, and everything behind it is finished and waiting.
+        </p>
+      </div>
+    </div>
+
+    <div class="counts">
+      <div class="count is-block"><span class="n">3</span><span class="k">Live &amp; hitting users</span></div>
+      <div class="count is-you"><span class="n">2</span><span class="k">Need an account or advice</span></div>
+      <div class="count is-done"><span class="n">6</span><span class="k">Steps to live</span></div>
+      <div class="count is-dark"><span class="n">2</span><span class="k">Deliberately dark</span></div>
+    </div>
+  </header>
+
+  <section>
+    <h2 class="display">The five, and the one that causes them</h2>
+    <p class="sec-intro">
+      All five are fixed in code and none is deployed. But they are not five separate
+      problems — <strong>one of them causes the shape of the other four</strong>, which
+      decides the order they get fixed in.
+    </p>
+
+    <div class="callout" style="border-left-color: var(--amber); margin-bottom: 22px;">
+      <h3>Production has zero listings. That is the root of it.</h3>
+      <p>
+        I checked <code>/api/explore</code> today: <code>"listings":[]</code>. Nobody can
+        create a listing, so there are none; with none, the marketplace has nothing real to
+        show, which is why it serves a mockup; and the card bugs cannot be seen because
+        there are no cards. <strong>Fix creation first and the rest fall into place.</strong>
+      </p>
+    </div>
+
+    <div class="items">
+      <div class="item blocked">
+        <h3>You can't create a listing</h3>
+        <span class="pill blocked">Live · the root cause</span>
+        <p>
+          The face-scan check blocks you at the first step, and a second identity check
+          blocks publishing after it. Both fixed, both behind switches in the new code.
+        </p>
+        <p class="why">Fixed by steps 1–3. Everything below depends on this one.</p>
+      </div>
+
+      <div class="item blocked">
+        <h3>Nobody without an account can do anything</h3>
+        <span class="pill blocked">Live · hitting users now</span>
+        <p>
+          Booking, joining a live stream, entering a consult room, agent calls — all of it
+          errors for a logged-out visitor. Six separate screens, one root cause. This one is
+          genuinely being hit today, independent of everything else.
+        </p>
+        <p class="why">Fixed by step 1 alone.</p>
+      </div>
+
+      <div class="item blocked">
+        <h3>/marketplace serves a mockup</h3>
+        <span class="pill blocked">Live · visitors see it</span>
+        <p>
+          Real visitors see the hardcoded design comp, and every card links to the same demo
+          listing. Swapping it back to the real grid <em>today</em> would show “Nothing here
+          yet” — which is worse, not better.
+        </p>
+        <p class="why">Fixed by step 5, and only after real listings exist.</p>
+      </div>
+
+      <div class="item you">
+        <h3>Listing cards render an empty grey box</h3>
+        <span class="pill you">Real, but not yet visible</span>
+        <p>
+          The website reads three fields the server has never sent, so no poster and no
+          rating would ever appear. Nobody is seeing this right now — there are no listings
+          to render. It would bite the moment you publish your first one.
+        </p>
+        <p class="why">Fixed by step 1, before it ever gets the chance to show.</p>
+      </div>
+
+      <div class="item you">
+        <h3>Prices show in dollars, divided by 100</h3>
+        <span class="pill you">Real, but not yet visible</span>
+        <p>
+          A ₹1,500 listing would display as “$15”. Same story: no listings, so nobody has
+          seen it yet.
+        </p>
+        <p class="why">Fixed by step 1.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="display">The go-live sequence</h2>
+    <p class="sec-intro">
+      In order. Each step is safe to stop at — you're never left half-migrated or
+      half-switched-on.
+    </p>
+    <ol class="steps">
+      <li>
+        <h3>Deploy the worker to production</h3>
+        <p>
+          One command. Ships all 22 commits: the money fixes, the listing pipeline, the card
+          fixes, the sign-in fix. Changes no behaviour on its own — everything new is behind
+          a switch.
+        </p>
+        <span class="gate">I run it · you approve</span>
+      </li>
+      <li>
+        <h3>Run six database migrations</h3>
+        <p>
+          None run automatically, by design. Four are new; two have been sitting unapplied
+          since the paid-sessions work started in August. Without them the paid lane refuses
+          to start rather than misbehaving.
+        </p>
+        <span class="gate">I run them · you approve each</span>
+      </li>
+      <li>
+        <h3>Switch off the two identity gates</h3>
+        <p>
+          <code>identityGateContentActionsEnabled</code> and
+          <code>listingPublishKycRequired</code>, both to false. You can create and publish
+          listings. Stranger-messaging protection stays on.
+        </p>
+        <span class="gate">Must be reversed before real money</span>
+      </li>
+      <li>
+        <h3>Make one listing yourself, end to end</h3>
+        <p>
+          Create it, add a photo, publish it, and look at the card. This is the real test —
+          not a green build. If the card shows a poster and a rupee price, the whole front
+          half works, and two of the five bugs are proven fixed rather than assumed.
+        </p>
+        <span class="gate">You · 10 minutes</span>
+      </li>
+      <li>
+        <h3>Put a handful of real listings up, then switch /marketplace to real data</h3>
+        <p>
+          Roughly six to ten, enough that a grid looks like a marketplace rather than an
+          accident. Then the page swaps from the mockup to the live grid — one line, and the
+          old page was never deleted. Doing this before there are listings just replaces a
+          fake page with an empty one.
+        </p>
+        <span class="gate">You fill it · I flip it</span>
+      </li>
+      <li>
+        <h3>Turn the paid lane on — four flags together</h3>
+        <p>
+          The two listings flags and the two checkout flags, in one go. Half-flipping them is
+          now refused loudly instead of quietly opening two ways to charge for one seat.
+        </p>
+        <span class="gate">Only after step 4 passes</span>
+      </li>
+      <li>
+        <h3>Sell one ticket to a second person</h3>
+        <p>
+          Two real people, two phones. A paid live event with more than one buyer is the only
+          way to prove the fix that let just one person through the door. One is not a test.
+        </p>
+        <span class="gate">You + one other person</span>
+      </li>
+    </ol>
+  </section>
+
+  <section>
+    <h2 class="display">Needs you, not code</h2>
+    <p class="sec-intro">Nobody can write these. They're accounts, decisions and advice.</p>
+    <div class="items">
+      <div class="item you">
+        <h3>A Cashfree merchant account</h3>
+        <span class="pill you">Blocks UPI</span>
+        <p>
+          Everything behind the Pay button is built: order creation, the signed webhook,
+          escrow funding, ticket issue, refunds to the payer's UPI handle, affiliate payouts.
+          The button itself needs their JavaScript kit, which needs an account.
+        </p>
+        <p class="why">
+          Not Stripe: Stripe India needs a registered company, and avaTOK is an unregistered
+          business. Cashfree onboards unregistered merchants.
+        </p>
+      </div>
+      <div class="item you">
+        <h3>An accountant, before you collect GST</h3>
+        <span class="pill you">Blocks charging tax</span>
+        <p>
+          Listings now show <strong>18% GST and the total</strong>, which is what you asked
+          for. Nothing collects it — you have no GSTIN, and charging a tax you can't remit is
+          much harder to unwind than not charging it.
+        </p>
+        <p class="why">
+          Ask them: the rate, how it works across Indian states, and what a valid invoice must
+          say. There's also an unresolved TDS question on creator payouts — settle both
+          together or the books won't agree.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="display">Deliberately dark</h2>
+    <p class="sec-intro">
+      Built, switched off, and safe to leave that way. Nothing here degrades — each one
+      refuses cleanly rather than half-working.
+    </p>
+    <div class="items">
+      <div class="item dark">
+        <h3>Cashfree UPI checkout</h3>
+        <span class="pill dark">Off</span>
+        <p>
+          Two flags off, and no credentials configured, so the routes return “unavailable”
+          rather than attempting a payment.
+        </p>
+        <p class="why">
+          Never run against a gateway — not even a sandbox. Every field in it comes from
+          Cashfree's documentation, not a response anyone has seen. It needs a full sandbox
+          run before a single rupee moves.
+        </p>
+      </div>
+      <div class="item dark">
+        <h3>GST collection</h3>
+        <span class="pill dark">Shown, not charged</span>
+        <p>
+          The tax engine runs on every purchase and stores zeros while it's off, so the code
+          path is exercised long before it touches anyone's money.
+        </p>
+        <p class="why">
+          The important part: tax sits on top of the price, goes to its own account, and never
+          enters the pot that gets split. Your creators earn exactly the same with tax on or
+          off.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="display">Built and waiting</h2>
+    <p class="sec-intro">Done, committed, typechecked — and inert until you deploy.</p>
+    <div class="items">
+      <div class="item done">
+        <h3>The three money bugs</h3>
+        <span class="pill done">Done</span>
+        <p>
+          Paid consults couldn't run at all — the expert was locked out of their own session.
+          Paid live events let exactly one ticket holder in while the creator still got paid.
+          Cancellations froze money with no screen to unfreeze it. All three fixed, plus an
+          admin screen behind the frozen ones.
+        </p>
+      </div>
+      <div class="item done">
+        <h3>The listing pipeline, on the web</h3>
+        <span class="pill done">Done</span>
+        <p>
+          Missing form fields, photo upload, a publish screen with a checklist, and error
+          messages that say what to do instead of printing a code. Plus “repeat weekly”, which
+          makes four separate events sharing one group.
+        </p>
+      </div>
+      <div class="item done">
+        <h3>Cards match your designs</h3>
+        <span class="pill done">Done</span>
+        <p>
+          Posters, ratings, duration, language, location, verified ticks, seats-left and live
+          watcher counts — most of it was already on the wire and being thrown away.
+        </p>
+      </div>
+      <div class="item done">
+        <h3>No-shows resolve themselves</h3>
+        <span class="pill done">Done</span>
+        <p>
+          A creator who doesn't turn up refunds the buyer automatically. A buyer who doesn't
+          turn up still pays the creator. These used to be treated identically, which was
+          theft from one side or the other.
+        </p>
+      </div>
+      <div class="item done">
+        <h3>Affiliates get paid again</h3>
+        <span class="pill done">Done</span>
+        <p>
+          The old payout code was an empty function — it would have shipped green and paid
+          nobody. Replaced with a one-off bounty on a referred buyer's first purchase, funded
+          from your 20% and never the creator's 80%.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="display">Worth a look</h2>
+    <div class="callout">
+      <h3><code>shellV2</code> is switched on in production</h3>
+      <p>
+        Your own notes say this was meant to stay off, and warn that turning it on ships the
+        AskAva feature with no way to switch it off. It's on right now. Someone should check
+        whether AskAva is reachable to users — this sits outside the paid-sessions work, so I
+        haven't touched it.
+      </p>
+    </div>
+  </section>
+
+  <footer>
+    <p>
+      22 commits on <code>main</code>. Worker and web both typecheck clean; the app analyses
+      clean. Full detail in
+      <code>Specs/SPEC-2026-08-29-PAID-SESSIONS-FIX-AND-GUEST-PAY.md</code> and
+      <code>Specs/AUDIT-2026-08-29-create-listing-pipeline-and-guest-pay.md</code>.
+    </p>
+  </footer>
+
+</div>

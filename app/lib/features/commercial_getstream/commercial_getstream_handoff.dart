@@ -275,31 +275,74 @@ class CommercialGetStreamMediaPlan {
 }
 
 class CommercialGetStreamSession {
-  const CommercialGetStreamSession({
+  CommercialGetStreamSession({
     required this.client,
     required this.call,
     this.chatClient,
     this.chatChannel,
-  });
+  }) : accountId = AccountScope.id ?? '' {
+    _active.add(this);
+  }
+
+  static final Set<CommercialGetStreamSession> _active =
+      <CommercialGetStreamSession>{};
+
+  /// Called by the account switch/logout coordinator before it flips
+  /// [AccountScope.id]. This closes only sessions owned by the departing
+  /// account, so a shared phone can never leave its camera or microphone live.
+  static Future<void> closeForAccount(String accountId) async {
+    if (accountId.isEmpty) return;
+    await Future.wait([
+      for (final session in List<CommercialGetStreamSession>.of(_active)
+          .where((session) => session.accountId == accountId))
+        session.leave(),
+    ]);
+  }
 
   final video.StreamVideo client;
   final video.Call call;
   final chat.StreamChatClient? chatClient;
   final chat.Channel? chatChannel;
+  final String accountId;
 
-  Future<void> leave() async {
+  Future<void>? _leaveFuture;
+
+  /// Idempotent media teardown for every exit path, including a failed join,
+  /// route pop, reconnect, and account switch. Disabling tracks first releases
+  /// the OS camera/microphone even when the provider has already lost the room.
+  Future<void> leave() {
+    final existing = _leaveFuture;
+    if (existing != null) return existing;
+    final future = _leaveInternal();
+    _leaveFuture = future;
+    return future;
+  }
+
+  Future<void> _leaveInternal() async {
     try {
-      await call.leave().timeout(const Duration(seconds: 3));
-    } catch (_) {}
-    try {
-      if (chatClient != null) {
-        await chatClient!.disconnectUser().timeout(const Duration(seconds: 3));
-      }
-    } catch (_) {}
-    try {
-      await client.disconnect().timeout(const Duration(seconds: 3));
-    } catch (_) {}
-    await client.dispose();
+      try {
+        await call.setCameraEnabled(enabled: false).timeout(const Duration(seconds: 2));
+      } catch (_) {}
+      try {
+        await call.setMicrophoneEnabled(enabled: false).timeout(const Duration(seconds: 2));
+      } catch (_) {}
+      try {
+        await call.leave().timeout(const Duration(seconds: 3));
+      } catch (_) {}
+      try {
+        if (chatClient != null) {
+          await chatClient!.disconnectUser().timeout(const Duration(seconds: 3));
+        }
+      } catch (_) {}
+      try {
+        await client.disconnect().timeout(const Duration(seconds: 3));
+      } catch (_) {}
+      try {
+        await client.dispose();
+      } catch (_) {}
+    } finally {
+      _active.remove(this);
+    }
   }
 }
 
@@ -351,6 +394,8 @@ class ServerAuthorizedCommercialGetStreamConnector
       user: video.User.regular(userId: handoff.userId, name: 'AvaTOK'),
       userToken: handoff.userToken,
     );
+    video.Call? call;
+    chat.StreamChatClient? chatClient;
     try {
       final connected = await client.connect();
       if (connected.isFailure) {
@@ -373,7 +418,7 @@ class ServerAuthorizedCommercialGetStreamConnector
           chatToken.isExpired) {
         throw StateError('Commercial chat credentials unavailable');
       }
-      final chatClient = await StreamChatCommercialClient.connect(chatToken);
+      chatClient = await StreamChatCommercialClient.connect(chatToken);
       if (chatClient == null) {
         throw StateError('Commercial chat client unavailable');
       }
@@ -381,7 +426,7 @@ class ServerAuthorizedCommercialGetStreamConnector
         channelId: handoff.chatChannelId!,
         type: handoff.chatChannelType!,
       );
-      final call = client.makeCall(
+      call = client.makeCall(
         callType: video.StreamCallType.fromString(handoff.callType),
         id: handoff.callId,
       );
@@ -404,9 +449,23 @@ class ServerAuthorizedCommercialGetStreamConnector
         chatChannel: chatChannel,
       );
     } catch (_) {
-      await client.disconnect();
-      await client.dispose();
-      await StreamChatCommercialClient.disconnect();
+      // A Call object can exist even when join() rejects. Leave it before
+      // disconnecting the client so native capture tracks cannot remain held.
+      try {
+        await call?.setCameraEnabled(enabled: false).timeout(const Duration(seconds: 2));
+      } catch (_) {}
+      try {
+        await call?.setMicrophoneEnabled(enabled: false).timeout(const Duration(seconds: 2));
+      } catch (_) {}
+      try {
+        await call?.leave().timeout(const Duration(seconds: 3));
+      } catch (_) {}
+      try {
+        await chatClient?.disconnectUser().timeout(const Duration(seconds: 3));
+      } catch (_) {}
+      try { await client.disconnect(); } catch (_) {}
+      try { await client.dispose(); } catch (_) {}
+      try { await StreamChatCommercialClient.disconnect(); } catch (_) {}
       rethrow;
     }
   }

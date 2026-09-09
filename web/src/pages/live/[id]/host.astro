@@ -1,0 +1,42 @@
+// Browser creator console for the commercial live-event lane. The sibling
+// /live/:id route remains the receive-only viewer surface.
+export const prerender = false;
+
+import Base from '../../../layouts/Base.astro';
+import LiveGsHost from '../../../islands/live-gs/LiveGsHost.tsx';
+import { getListing, ApiError } from '../../../lib/apiClient';
+import type { Listing } from '../../../lib/types';
+
+const { id } = Astro.params;
+if (!id) return new Response('Listing required', { status: 400 });
+
+let listing: Listing | null = null;
+try {
+  listing = await getListing(id);
+} catch (e) {
+  if (!(e instanceof ApiError)) throw e;
+}
+
+const title = listing?.title ?? 'Live event';
+const startsAt = listing?.starts_at ?? null;
+const endsAt = startsAt && listing?.duration_min ? startsAt + listing.duration_min * 60_000 : null;
+
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+---
+
+<Base
+  headerAuth="static"
+  navStatic={true}
+  noindex={true}
+  title={`Host ${title} · avaTOK`}
+  description="Prepare and host your avaTOK live event from the browser."
+>
+  <main class="min-h-[calc(100dvh-5rem)] bg-paper">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+      <a href={`/live/${encodeURIComponent(id)}`} class="font-mono text-[13px] font-bold uppercase tracking-[0.06em] text-blueInk no-underline">← View event</a>
+      <span class="font-mono text-[12px] font-bold uppercase tracking-[0.08em] text-inkMute">Creator tools</span>
+    </div>
+    <LiveGsHost client:load listingId={id} title={title} startsAt={startsAt} endsAt={endsAt} />
+  </main>
+</Base>
+

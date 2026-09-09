@@ -2,15 +2,15 @@
  *
  * Shows the confirmed booking and a deep link to the RIGHT viewer (owned by
  * other phases — we only render an <a>, never build the target):
- *   live    → /watch/<listingId>      (Phase C)
- *   consult → /consult/<bookingId>    (Phase D)
+ *   live    → /live/<listingId>       (commercial viewer)
+ *   consult → /session/<bookingId>    (commercial consult room)
  *   agent   → /agent/<listingId>      (Phase E)
  *   event   → /dashboard              (this phase)
  * Also offers the quiet, optional "save a password" upgrade (§4b) — never blocks.
  */
 import { useState } from 'react';
 import type { Listing } from '../../lib/types';
-import { livePath } from '../../lib/urls';
+import { livePath, sessionPath } from '../../lib/urls';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { Pill } from '../../components/Pill';
@@ -55,8 +55,8 @@ export function Confirmation({ listing, selection, result }: ConfirmationProps) 
   if (kind === 'agent') {
     viewerHref = `/agent/${encodeURIComponent(listing.id)}`;
     viewerLabel = 'Open the agent';
-  } else if (kind === 'consult') {
-    viewerHref = `/consult/${encodeURIComponent(bookingId)}`;
+  } else if (kind === 'consult' || kind === 'consult_1to1') {
+    viewerHref = sessionPath(bookingId);
     viewerLabel = 'Go to your consult room';
   } else if (kind === 'live' || kind === 'live_event') {
     // [WEB-COMM-PAY-1] Listings of this kind are stored as `live_event`
@@ -106,7 +106,7 @@ export function Confirmation({ listing, selection, result }: ConfirmationProps) 
             <p className="mt-1 font-body font-bold text-[14px] text-ink/70">{freeBox.hostPays}</p>
           ) : (
             <p className="mt-1 font-body font-bold text-[14px] text-ink/70">
-              We emailed your confirmation and reminders.
+              Your booking is saved. You can find it anytime in All my bookings.
             </p>
           )}
         </div>

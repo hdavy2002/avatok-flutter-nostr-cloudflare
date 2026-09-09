@@ -245,8 +245,24 @@ class CommercialLiveGatewayError implements Exception {
 }
 
 /// Production authenticated gateway for the Worker commercial live routes.
-class AuthenticatedCommercialLiveGateway implements CommercialLiveGateway {
+class AuthenticatedCommercialLiveGateway
+    implements CommercialLiveGateway, CommercialGetStreamJoinGateway {
   const AuthenticatedCommercialLiveGateway();
+
+  /// Adapter for the shared commercial entry screen used by canonical live
+  /// links. The live viewer route is always receive-only; host access goes
+  /// through [prepareHost] in the link resolver and readiness screen.
+  @override
+  Future<CommercialGetStreamJoinHandoff> authorize(
+    CommercialGetStreamJoinRequest request,
+  ) async {
+    if (request.product != CommercialGetStreamProduct.liveEvent ||
+        request.listingId.trim().isEmpty) {
+      throw const FormatException('Live listing id required');
+    }
+    final grant = await joinViewer(request.listingId);
+    return grant.handoff;
+  }
 
   String _url(String action, String listingId) =>
       '$kApiBase/commercial/live/${Uri.encodeComponent(listingId)}/$action';

@@ -1,0 +1,36 @@
+---
+// Editorial arithmetic only; this component does not set checkout prices or fees.
+interface Props { format: string; topic: string; id: string; }
+const { format, topic, id } = Astro.props;
+const price = id === 'idea-4' ? 300 : 200;
+const flatFee = 25;
+const remainder = price - flatFee;
+const commission = remainder * 0.20;
+const creator = remainder - commission;
+const count = format === 'private' ? 1 : format === 'group' ? 8 : 20;
+const inr = (amount: number) => new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:0}).format(amount);
+---
+<div class="guide-maths" data-earnings-example>
+  <h3>A worked example: {inr(price)} per participant</h3>
+  <p>For illustration, this example uses a ₹25 flat platform fee per participant, followed by 20% of the amount remaining.</p>
+  <dl>
+    <div><dt>Participant pays</dt><dd>{inr(price)}</dd></div>
+    <div><dt>Flat platform fee</dt><dd>− ₹25</dd></div>
+    <div><dt>Amount remaining</dt><dd>{inr(remainder)}</dd></div>
+    <div><dt>20% of {inr(remainder)}</dt><dd>− {inr(commission)}</dd></div>
+    <div class="creator-total"><dt>Creator receives after these fees</dt><dd>{inr(creator)}</dd></div>
+  </dl>
+  {format === 'private'
+    ? <p>That is <strong>{inr(creator)} for one booked appointment</strong> under this model. Four separately booked appointments would total {inr(creator * 4)} after these fees; they also require four appointments’ worth of time.</p>
+    : <p>If <strong>{count} people each book at {inr(price)}</strong>, ticket sales total {inr(price * count)}. After these example platform fees, the creator’s share is <strong>{inr(creator * count)}</strong>.</p>}
+  {topic === 'daily' && <p>This is a fixed-price viewing-session illustration. It does not calculate open-ended, credit-metered watch time; use the access and charging method actually shown on your listing.</p>}
+  <small>Illustrative arithmetic, not an income forecast or a checkout quote. These figures are before taxes, any other applicable charges, refunds, materials, travel, preparation and other expenses. Actual bookings may be lower or zero. Check your listing’s current fee and payout terms.</small>
+</div>
+{id === 'idea-4' && <div class="guide-maths">
+  <h3>What if 10,000 people booked at ₹300?</h3>
+  <p>Imagine an authorised event with a well-known teacher and an audience willing to buy 10,000 tickets. Under the same example fee model:</p>
+  <dl><div><dt>10,000 × ₹300 in ticket sales</dt><dd>₹30,00,000</dd></div><div><dt>10,000 × ₹80 in platform fees</dt><dd>₹8,00,000</dd></div><div class="creator-total"><dt>After those platform fees</dt><dd>₹22,00,000</dd></div></dl>
+  <small>This is a mathematical scenario, not a typical result, attendance forecast or promise of supported event capacity. Confirm capacity and event arrangements before offering that many places. Teacher fees, production, promotion, taxes, refunds and other costs would reduce what remains. A one-hour broadcast may take much longer to organise.</small>
+</div>}
+<p>Under this example model, the creator’s share is <strong>80% × (ticket price − ₹25)</strong>. A price above ₹25 leaves a positive amount before other costs; the actual minimum price and supported increments are set by the listing’s current rules.</p>
+

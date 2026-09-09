@@ -6,9 +6,11 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
+import '../../core/avacalls_api.dart';
 import '../../core/call_log_store.dart';
 import '../../core/calls/call_room_id.dart'; // [CALL-ROOM-ID-1]
 import '../../core/ice_cache.dart';
+import '../../core/remote_config.dart';
 import '../../core/team_api.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../avatok/place_1to1_call.dart';
@@ -86,7 +88,8 @@ class _AvaPhoneScreenState extends State<AvaPhoneScreen> {
           data: NavigationBarThemeData(
             backgroundColor: PhoneTheme.surface,
             indicatorColor: PhoneTheme.accent.withValues(alpha: 0.22),
-            labelTextStyle: WidgetStatePropertyAll(PhoneTheme.tag(size: 11, color: PhoneTheme.textSoft)),
+            labelTextStyle: WidgetStatePropertyAll(
+                PhoneTheme.tag(size: 11, color: PhoneTheme.textSoft)),
           ),
           child: NavigationBar(
             height: 64,
@@ -95,27 +98,44 @@ class _AvaPhoneScreenState extends State<AvaPhoneScreen> {
             // real tabs, so the selected index is offset by 2.
             selectedIndex: _tab + 2,
             onDestinationSelected: (i) {
-              if (i == 0) { Navigator.of(context).maybePop(); return; } // Home → Messenger
-              if (i == 1) { _openDialpad(); return; }                  // Dialpad → sheet
+              if (i == 0) {
+                Navigator.of(context).maybePop();
+                return;
+              } // Home → Messenger
+              if (i == 1) {
+                _openDialpad();
+                return;
+              } // Dialpad → sheet
               setState(() => _tab = i - 2); // 2 → Calls (0), 3 → Contacts (1)
             },
             backgroundColor: PhoneTheme.surface,
             surfaceTintColor: Colors.transparent,
             destinations: [
               NavigationDestination(
-                  icon: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.bold), color: PhoneTheme.textSoft),
-                  selectedIcon: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.fill), color: PhoneTheme.accent),
+                  icon: PhosphorIcon(
+                      PhosphorIcons.house(PhosphorIconsStyle.bold),
+                      color: PhoneTheme.textSoft),
+                  selectedIcon: PhosphorIcon(
+                      PhosphorIcons.house(PhosphorIconsStyle.fill),
+                      color: PhoneTheme.accent),
                   label: 'Home'),
               const NavigationDestination(
-                  icon: _DialpadNavIcon(),
-                  label: 'Dialpad'),
+                  icon: _DialpadNavIcon(), label: 'Dialpad'),
               NavigationDestination(
-                  icon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold), color: PhoneTheme.textSoft),
-                  selectedIcon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.fill), color: PhoneTheme.accent),
+                  icon: PhosphorIcon(
+                      PhosphorIcons.phone(PhosphorIconsStyle.bold),
+                      color: PhoneTheme.textSoft),
+                  selectedIcon: PhosphorIcon(
+                      PhosphorIcons.phone(PhosphorIconsStyle.fill),
+                      color: PhoneTheme.accent),
                   label: 'Calls'),
               NavigationDestination(
-                  icon: PhosphorIcon(PhosphorIcons.addressBook(PhosphorIconsStyle.bold), color: PhoneTheme.textSoft),
-                  selectedIcon: PhosphorIcon(PhosphorIcons.addressBook(PhosphorIconsStyle.fill), color: PhoneTheme.accent),
+                  icon: PhosphorIcon(
+                      PhosphorIcons.addressBook(PhosphorIconsStyle.bold),
+                      color: PhoneTheme.textSoft),
+                  selectedIcon: PhosphorIcon(
+                      PhosphorIcons.addressBook(PhosphorIconsStyle.fill),
+                      color: PhoneTheme.accent),
                   label: 'Contacts'),
             ],
           ),
@@ -144,7 +164,8 @@ class _DialpadNavIcon extends StatelessWidget {
         border: Border.all(color: PhoneTheme.border, width: 1.5),
       ),
       alignment: Alignment.center,
-      child: PhosphorIcon(PhosphorIcons.gridFour(PhosphorIconsStyle.bold), size: 18, color: _kInk),
+      child: PhosphorIcon(PhosphorIcons.gridFour(PhosphorIconsStyle.bold),
+          size: 18, color: _kInk),
     );
   }
 }
@@ -211,16 +232,22 @@ class _CallsTabState extends State<_CallsTab> {
 
   void _call(CallEntry c) {
     IceCache.prefetch();
-    Analytics.capture('avaphone_call_back', {'dir': c.dir.name, 'video': c.video});
+    Analytics.capture(
+        'avaphone_call_back', {'dir': c.dir.name, 'video': c.video});
     // [AVA-IDGATE-1] Route through /api/call (gate + real ring) instead of opening
     // CallScreen directly. c.seed IS the peer uid (CallEntry.seed == uid).
-    place1to1Call(context, uid: c.seed, name: c.name.isNotEmpty ? c.name : c.seed,
-        avatarUrl: _avatarFor(c.seed) ?? '', dialer: true).then((_) => _load());
+    place1to1Call(context,
+            uid: c.seed,
+            name: c.name.isNotEmpty ? c.name : c.seed,
+            avatarUrl: _avatarFor(c.seed) ?? '',
+            dialer: true)
+        .then((_) => _load());
   }
 
   /// All log entries for a person (newest first) — drives the "called N times" count.
   List<CallEntry> _historyFor(String seed) =>
-      (_calls.where((e) => e.seed == seed).toList()..sort((a, b) => b.ts.compareTo(a.ts)));
+      (_calls.where((e) => e.seed == seed).toList()
+        ..sort((a, b) => b.ts.compareTo(a.ts)));
 
   /// Per-row options (tap or long-press) — NO accidental dialling.
   void _options(CallEntry c) {
@@ -230,50 +257,93 @@ class _CallsTabState extends State<_CallsTab> {
       context: context,
       backgroundColor: PhoneTheme.surface,
       shape: const RoundedRectangleBorder(
-        side: BorderSide(color: PhoneTheme.border, width: 1.5),
-        borderRadius: Msg.brSheetTop),
-      builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          side: BorderSide(color: PhoneTheme.border, width: 1.5),
+          borderRadius: Msg.brSheetTop),
+      builder: (ctx) => SafeArea(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
         const SizedBox(height: Msg.s2),
         ListTile(
-          leading: PhoneTheme.ring(Avatar(seed: c.seed, name: c.name, size: 44, avatarUrl: _avatarFor(c.seed))),
-          title: Text(c.name.isNotEmpty ? c.name : c.seed, style: PhoneTheme.value(size: 15)),
-          subtitle: Text('Called ${history.length} time${history.length == 1 ? '' : 's'}', style: PhoneTheme.sub(size: 12)),
+          leading: PhoneTheme.ring(Avatar(
+              seed: c.seed,
+              name: c.name,
+              size: 44,
+              avatarUrl: _avatarFor(c.seed))),
+          title: Text(c.name.isNotEmpty ? c.name : c.seed,
+              style: PhoneTheme.value(size: 15)),
+          subtitle: Text(
+              'Called ${history.length} time${history.length == 1 ? '' : 's'}',
+              style: PhoneTheme.sub(size: 12)),
         ),
         const Divider(color: PhoneTheme.border, height: 1),
+        // [AVATALK-CHAT-ONLY-2] Messenger 1:1 calling is being killed — hide
+        // this affordance while RemoteConfig.messengerCallingEnabled is off,
+        // matching contact_detail_screen.dart / contact_row_menu.dart.
+        if (RemoteConfig.messengerCallingEnabled)
+          ListTile(
+              leading: Icon(PhosphorIcons.phone(PhosphorIconsStyle.regular),
+                  color: PhoneTheme.callGreen),
+              title: Text('Call', style: PhoneTheme.value(size: 15)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _call(c);
+              }),
         ListTile(
-          leading: Icon(PhosphorIcons.phone(PhosphorIconsStyle.regular), color: PhoneTheme.callGreen),
-          title: Text('Call', style: PhoneTheme.value(size: 15)),
-          onTap: () { Navigator.pop(ctx); _call(c); }),
+            leading: PhosphorIcon(
+                PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.bold),
+                color: PhoneTheme.teal),
+            title: Text('Call history (${history.length})',
+                style: PhoneTheme.value(size: 15)),
+            onTap: () {
+              Navigator.pop(ctx);
+              _showHistory(c, history);
+            }),
         ListTile(
-          leading: PhosphorIcon(PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.bold), color: PhoneTheme.teal),
-          title: Text('Call history (${history.length})', style: PhoneTheme.value(size: 15)),
-          onTap: () { Navigator.pop(ctx); _showHistory(c, history); }),
-        ListTile(
-          leading: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold), color: PhoneTheme.lilac),
-          title: Text(isContact ? 'View contact' : 'Add to contacts', style: PhoneTheme.value(size: 15)),
-          onTap: () { Navigator.pop(ctx); _viewContact(c); }),
+            leading: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold),
+                color: PhoneTheme.lilac),
+            title: Text(isContact ? 'View contact' : 'Add to contacts',
+                style: PhoneTheme.value(size: 15)),
+            onTap: () {
+              Navigator.pop(ctx);
+              _viewContact(c);
+            }),
         // [FIX-CONTACT-1] Copy / Share vCard / Forward — shared contact actions.
         ListTile(
-          leading: PhosphorIcon(PhosphorIcons.copy(PhosphorIconsStyle.bold), color: PhoneTheme.lilac),
-          title: Text('Copy contact', style: PhoneTheme.value(size: 15)),
-          onTap: () { Navigator.pop(ctx); ContactActions.copy(context, _contactOf(c)); }),
+            leading: PhosphorIcon(PhosphorIcons.copy(PhosphorIconsStyle.bold),
+                color: PhoneTheme.lilac),
+            title: Text('Copy contact', style: PhoneTheme.value(size: 15)),
+            onTap: () {
+              Navigator.pop(ctx);
+              ContactActions.copy(context, _contactOf(c));
+            }),
         ListTile(
-          leading: PhosphorIcon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), color: PhoneTheme.accent),
-          title: Text('Share contact', style: PhoneTheme.value(size: 15)),
-          onTap: () { Navigator.pop(ctx); ContactActions.share(context, _contactOf(c)); }),
+            leading: PhosphorIcon(
+                PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold),
+                color: PhoneTheme.accent),
+            title: Text('Share contact', style: PhoneTheme.value(size: 15)),
+            onTap: () {
+              Navigator.pop(ctx);
+              ContactActions.share(context, _contactOf(c));
+            }),
         ListTile(
-          leading: PhosphorIcon(PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), color: PhoneTheme.teal),
-          title: Text('Forward contact', style: PhoneTheme.value(size: 15)),
-          onTap: () { Navigator.pop(ctx); ContactActions.forward(context, _contactOf(c)); }),
+            leading: PhosphorIcon(
+                PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold),
+                color: PhoneTheme.teal),
+            title: Text('Forward contact', style: PhoneTheme.value(size: 15)),
+            onTap: () {
+              Navigator.pop(ctx);
+              ContactActions.forward(context, _contactOf(c));
+            }),
         ListTile(
-          leading: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold), color: PhoneTheme.danger),
-          title: Text('Delete this log', style: PhoneTheme.value(size: 15, color: PhoneTheme.danger)),
-          onTap: () async {
-            Navigator.pop(ctx);
-            if (c.id.isNotEmpty) await _store.removeById(c.id);
-            Analytics.capture('avaphone_calllog_delete', const {});
-            _load();
-          }),
+            leading: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold),
+                color: PhoneTheme.danger),
+            title: Text('Delete this log',
+                style: PhoneTheme.value(size: 15, color: PhoneTheme.danger)),
+            onTap: () async {
+              Navigator.pop(ctx);
+              if (c.id.isNotEmpty) await _store.removeById(c.id);
+              Analytics.capture('avaphone_calllog_delete', const {});
+              _load();
+            }),
         const SizedBox(height: 8),
       ])),
     );
@@ -281,47 +351,67 @@ class _CallsTabState extends State<_CallsTab> {
 
   void _showHistory(CallEntry c, List<CallEntry> history) {
     ({IconData icon, Color color}) dir(CallDir d) => switch (d) {
-          CallDir.incoming => (icon: PhosphorIcons.phoneIncoming(PhosphorIconsStyle.regular), color: PhoneTheme.callGreen),
-          CallDir.outgoing => (icon: PhosphorIcons.phoneOutgoing(PhosphorIconsStyle.regular), color: PhoneTheme.teal),
-          CallDir.missed => (icon: PhosphorIcons.phoneX(PhosphorIconsStyle.regular), color: PhoneTheme.danger),
+          CallDir.incoming => (
+              icon: PhosphorIcons.phoneIncoming(PhosphorIconsStyle.regular),
+              color: PhoneTheme.callGreen
+            ),
+          CallDir.outgoing => (
+              icon: PhosphorIcons.phoneOutgoing(PhosphorIconsStyle.regular),
+              color: PhoneTheme.teal
+            ),
+          CallDir.missed => (
+              icon: PhosphorIcons.phoneX(PhosphorIconsStyle.regular),
+              color: PhoneTheme.danger
+            ),
         };
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: PhoneTheme.surface,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        side: BorderSide(color: PhoneTheme.border, width: 1.5),
-        borderRadius: Msg.brSheetTop),
-      builder: (_) => SafeArea(child: Padding(
+          side: BorderSide(color: PhoneTheme.border, width: 1.5),
+          borderRadius: Msg.brSheetTop),
+      builder: (_) => SafeArea(
+          child: Padding(
         padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s5),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('${c.name.isNotEmpty ? c.name : c.seed} — ${history.length} call${history.length == 1 ? '' : 's'}',
-              style: PhoneTheme.title(size: 17)),
-          const SizedBox(height: Msg.s2),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 360),
-            child: ListView(shrinkWrap: true, children: [
-              for (final e in history)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Row(children: [
-                    Icon(dir(e.dir).icon, size: 16, color: dir(e.dir).color),
-                    const SizedBox(width: Msg.s2),
-                    Text(e.dir.name[0].toUpperCase() + e.dir.name.substring(1), style: PhoneTheme.value(size: 14)),
-                    const Spacer(),
-                    Text(e.timeLabel, style: PhoneTheme.sub(size: 12)),
-                  ]),
-                ),
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                  '${c.name.isNotEmpty ? c.name : c.seed} — ${history.length} call${history.length == 1 ? '' : 's'}',
+                  style: PhoneTheme.title(size: 17)),
+              const SizedBox(height: Msg.s2),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 360),
+                child: ListView(shrinkWrap: true, children: [
+                  for (final e in history)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(children: [
+                        Icon(dir(e.dir).icon,
+                            size: 16, color: dir(e.dir).color),
+                        const SizedBox(width: Msg.s2),
+                        Text(
+                            e.dir.name[0].toUpperCase() +
+                                e.dir.name.substring(1),
+                            style: PhoneTheme.value(size: 14)),
+                        const Spacer(),
+                        Text(e.timeLabel, style: PhoneTheme.sub(size: 12)),
+                      ]),
+                    ),
+                ]),
+              ),
             ]),
-          ),
-        ]),
       )),
     );
   }
 
   void _viewContact(CallEntry c) {
-    Navigator.push(context, MaterialPageRoute(
-      builder: (_) => ContactProfileScreen(name: c.name, uid: c.seed)));
+    Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (_) => ContactProfileScreen(name: c.name, uid: c.seed)));
   }
 
   /// [FIX-CONTACT-1] Resolve the saved [Contact] behind a call-log/favourite row
@@ -338,15 +428,18 @@ class _CallsTabState extends State<_CallsTab> {
       children: [
         _SearchHeader(onDialpad: () {
           showModalBottomSheet<void>(
-            context: context, isScrollControlled: true,
-            backgroundColor: Colors.transparent, builder: (_) => const _DialpadSheet());
+              context: context,
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+              builder: (_) => const _DialpadSheet());
         }),
         // (kept as the plain, unfilled dialpad — pre-fill only applies via
         // AvaPhoneScreen.initialDialNumber / openDialpadWithNumber)
         const _NetworkBanner(),
         Expanded(
           child: !_loaded
-              ? const Center(child: CircularProgressIndicator(color: PhoneTheme.accent))
+              ? const Center(
+                  child: CircularProgressIndicator(color: PhoneTheme.accent))
               : (_calls.isEmpty
                   ? _empty()
                   : ListView(
@@ -354,16 +447,21 @@ class _CallsTabState extends State<_CallsTab> {
                       children: [
                         if (favs.isNotEmpty) _favRow(favs),
                         Padding(
-                          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s2),
-                          child: Text('Recent', style: PhoneTheme.tag(size: 11, color: PhoneTheme.textMute)),
+                          padding: const EdgeInsets.fromLTRB(
+                              Msg.s4, Msg.s4, Msg.s4, Msg.s2),
+                          child: Text('Recent',
+                              style: PhoneTheme.tag(
+                                  size: 11, color: PhoneTheme.textMute)),
                         ),
-                        for (final c in _calls) _CallRow(
-                          entry: c,
-                          avatarUrl: _avatarFor(c.seed),
-                          isAvatok: _byNpub.containsKey(c.seed),
-                          onTap: () => _options(c),   // tap → options (no accidental dial)
-                          onCall: () => _call(c),     // green phone icon → dial
-                        ),
+                        for (final c in _calls)
+                          _CallRow(
+                            entry: c,
+                            avatarUrl: _avatarFor(c.seed),
+                            isAvatok: _byNpub.containsKey(c.seed),
+                            onTap: () => _options(
+                                c), // tap → options (no accidental dial)
+                            onCall: () => _call(c), // green phone icon → dial
+                          ),
                       ],
                     )),
         ),
@@ -375,12 +473,15 @@ class _CallsTabState extends State<_CallsTab> {
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            PhosphorIcon(PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), size: 46, color: PhoneTheme.textMute),
+            PhosphorIcon(PhosphorIcons.phoneCall(PhosphorIconsStyle.bold),
+                size: 46, color: PhoneTheme.textMute),
             const SizedBox(height: Msg.s3),
             Text('No calls yet', style: PhoneTheme.title(size: 17)),
             const SizedBox(height: Msg.s1),
-            Text('Tap the keypad to dial an AvaTOK number — no need to save a contact first.',
-                textAlign: TextAlign.center, style: PhoneTheme.sub(size: 13)),
+            Text(
+                'Tap the keypad to dial an AvaTOK number — no need to save a contact first.',
+                textAlign: TextAlign.center,
+                style: PhoneTheme.sub(size: 13)),
           ]),
         ),
       );
@@ -395,28 +496,44 @@ class _CallsTabState extends State<_CallsTab> {
           itemBuilder: (_, i) {
             final c = favs[i];
             return GestureDetector(
-              onTap: () => _call(c),
+              // [AVATALK-CHAT-ONLY-2] Messenger 1:1 calling is being killed —
+              // disable the tap-to-call gesture on the favourite avatar while
+              // RemoteConfig.messengerCallingEnabled is off, matching the
+              // null-onTap pattern in contact_detail_screen.dart.
+              onTap: RemoteConfig.messengerCallingEnabled ? () => _call(c) : null,
               child: SizedBox(
                 width: 64,
                 child: Column(children: [
                   Stack(children: [
                     PhoneTheme.ring(Avatar(
-                        seed: c.seed, name: c.name, size: 58,
+                        seed: c.seed,
+                        name: c.name,
+                        size: 58,
                         avatarUrl: _avatarFor(c.seed))),
-                    Positioned(
-                      right: 0, bottom: 0,
-                      child: Container(
-                        width: 20, height: 20,
-                        decoration: BoxDecoration(
-                          color: PhoneTheme.accent, shape: BoxShape.circle,
-                          border: Border.all(color: PhoneTheme.bg, width: 2)),
-                        child: Icon(PhosphorIcons.phone(PhosphorIconsStyle.bold), size: 11, color: _kInk),
+                    // Call badge implies the tap-to-call affordance above — hide
+                    // it together with that gesture.
+                    if (RemoteConfig.messengerCallingEnabled)
+                      Positioned(
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          width: 20,
+                          height: 20,
+                          decoration: BoxDecoration(
+                              color: PhoneTheme.accent,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: PhoneTheme.bg, width: 2)),
+                          child: Icon(
+                              PhosphorIcons.phone(PhosphorIconsStyle.bold),
+                              size: 11,
+                              color: _kInk),
+                        ),
                       ),
-                    ),
                   ]),
                   const SizedBox(height: Msg.s1),
                   Text(c.name.isNotEmpty ? c.name.split(' ').first : 'Unknown',
-                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: PhoneTheme.sub(size: 11, color: PhoneTheme.text)),
                 ]),
               ),
@@ -446,9 +563,13 @@ class _SearchHeader extends StatelessWidget {
               border: Border.all(color: PhoneTheme.border, width: 1.5),
             ),
             child: Row(children: [
-              PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), size: 18, color: PhoneTheme.textSoft),
+              PhosphorIcon(
+                  PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
+                  size: 18,
+                  color: PhoneTheme.textSoft),
               const SizedBox(width: Msg.s2),
-              Text('Search AvaTOK numbers & names', style: PhoneTheme.sub(size: 13)),
+              Text('Search AvaTOK numbers & names',
+                  style: PhoneTheme.sub(size: 13)),
             ]),
           ),
         ),
@@ -456,13 +577,15 @@ class _SearchHeader extends StatelessWidget {
         GestureDetector(
           onTap: onDialpad,
           child: Container(
-            width: 46, height: 46,
+            width: 46,
+            height: 46,
             decoration: BoxDecoration(
               color: PhoneTheme.teal,
               borderRadius: BorderRadius.circular(Msg.rMd),
               border: Border.all(color: PhoneTheme.border, width: 1.5),
             ),
-            child: PhosphorIcon(PhosphorIcons.gridFour(PhosphorIconsStyle.bold), size: 22, color: _kInk),
+            child: PhosphorIcon(PhosphorIcons.gridFour(PhosphorIconsStyle.bold),
+                size: 22, color: _kInk),
           ),
         ),
       ]),
@@ -482,13 +605,16 @@ class _NetworkBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: PhoneTheme.teal.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(Msg.rMd),
-        border: Border.all(color: PhoneTheme.teal.withValues(alpha: 0.35), width: 1),
+        border: Border.all(
+            color: PhoneTheme.teal.withValues(alpha: 0.35), width: 1),
       ),
       child: Row(children: [
-        PhosphorIcon(PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill), size: 15, color: PhoneTheme.teal),
+        PhosphorIcon(PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill),
+            size: 15, color: PhoneTheme.teal),
         const SizedBox(width: 8),
         Expanded(
-          child: Text('Everything here is on the AvaTOK network — not your phone contacts.',
+          child: Text(
+              'Everything here is on the AvaTOK network — not your phone contacts.',
               style: PhoneTheme.sub(size: 11, color: PhoneTheme.textSoft)),
         ),
       ]),
@@ -502,14 +628,31 @@ class _CallRow extends StatelessWidget {
   final CallEntry entry;
   final String? avatarUrl;
   final bool isAvatok;
-  final VoidCallback onTap;  // row tap / long-press → options sheet
+  final VoidCallback onTap; // row tap / long-press → options sheet
   final VoidCallback onCall; // green phone icon → dial
-  const _CallRow({required this.entry, required this.onTap, required this.onCall, this.avatarUrl, this.isAvatok = false});
+  const _CallRow(
+      {required this.entry,
+      required this.onTap,
+      required this.onCall,
+      this.avatarUrl,
+      this.isAvatok = false});
 
   ({IconData icon, Color color, String label}) get _dir => switch (entry.dir) {
-        CallDir.incoming => (icon: PhosphorIcons.phoneIncoming(PhosphorIconsStyle.regular), color: PhoneTheme.callGreen, label: 'Incoming'),
-        CallDir.outgoing => (icon: PhosphorIcons.phoneOutgoing(PhosphorIconsStyle.regular), color: PhoneTheme.teal, label: 'Outgoing'),
-        CallDir.missed => (icon: PhosphorIcons.phoneX(PhosphorIconsStyle.regular), color: PhoneTheme.danger, label: 'Missed'),
+        CallDir.incoming => (
+            icon: PhosphorIcons.phoneIncoming(PhosphorIconsStyle.regular),
+            color: PhoneTheme.callGreen,
+            label: 'Incoming'
+          ),
+        CallDir.outgoing => (
+            icon: PhosphorIcons.phoneOutgoing(PhosphorIconsStyle.regular),
+            color: PhoneTheme.teal,
+            label: 'Outgoing'
+          ),
+        CallDir.missed => (
+            icon: PhosphorIcons.phoneX(PhosphorIconsStyle.regular),
+            color: PhoneTheme.danger,
+            label: 'Missed'
+          ),
       };
 
   @override
@@ -519,16 +662,26 @@ class _CallRow extends StatelessWidget {
       onTap: onTap,
       onLongPress: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
+        padding:
+            const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
         child: Row(children: [
-          PhoneTheme.ring(Avatar(seed: entry.seed, name: entry.name, size: 46, avatarUrl: avatarUrl)),
+          PhoneTheme.ring(Avatar(
+              seed: entry.seed,
+              name: entry.name,
+              size: 46,
+              avatarUrl: avatarUrl)),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(entry.name.isNotEmpty ? entry.name : entry.seed,
-                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: PhoneTheme.value(
-                      size: 15, color: entry.dir == CallDir.missed ? PhoneTheme.danger : PhoneTheme.text)),
+                      size: 15,
+                      color: entry.dir == CallDir.missed
+                          ? PhoneTheme.danger
+                          : PhoneTheme.text)),
               const SizedBox(height: Msg.s1),
               Row(children: [
                 Icon(d.icon, size: 13, color: d.color),
@@ -536,15 +689,23 @@ class _CallRow extends StatelessWidget {
                 Text(entry.timeLabel, style: PhoneTheme.sub(size: 12)),
                 if (entry.video) ...[
                   const SizedBox(width: Msg.s1),
-                  PhosphorIcon(PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), size: 12, color: PhoneTheme.textMute),
+                  PhosphorIcon(
+                      PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
+                      size: 12,
+                      color: PhoneTheme.textMute),
                 ],
               ]),
             ]),
           ),
-          IconButton(
-            onPressed: onCall,
-            icon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold), size: 20, color: PhoneTheme.accent),
-          ),
+          // [AVATALK-CHAT-ONLY-2] Messenger 1:1 calling is being killed — hide
+          // this row's dial button while RemoteConfig.messengerCallingEnabled
+          // is off, matching contact_detail_screen.dart / contact_row_menu.dart.
+          if (RemoteConfig.messengerCallingEnabled)
+            IconButton(
+              onPressed: onCall,
+              icon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold),
+                  size: 20, color: PhoneTheme.accent),
+            ),
         ]),
       ),
     );
@@ -562,19 +723,31 @@ class _DialpadSheet extends StatefulWidget {
   State<_DialpadSheet> createState() => _DialpadSheetState();
 }
 
-class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserver {
+class _DialpadSheetState extends State<_DialpadSheet>
+    with WidgetsBindingObserver {
   late String _digits = widget.initialNumber;
   bool _dialing = false;
   String? _status;
+  AvaCallsDestination? _destination;
+  Timer? _resolveTimer;
+  int _resolveGeneration = 0;
   // Whether the OS clipboard currently holds number-like text — drives the small
   // paste icon beside the number display. Refreshed on init + app resume.
   bool _clipboardHasNumber = false;
 
   static const _keys = <(String, String)>[
-    ('1', '⌷'), ('2', 'ABC'), ('3', 'DEF'),
-    ('4', 'GHI'), ('5', 'JKL'), ('6', 'MNO'),
-    ('7', 'PQRS'), ('8', 'TUV'), ('9', 'WXYZ'),
-    ('*', ''), ('0', '+'), ('#', ''),
+    ('1', '⌷'),
+    ('2', 'ABC'),
+    ('3', 'DEF'),
+    ('4', 'GHI'),
+    ('5', 'JKL'),
+    ('6', 'MNO'),
+    ('7', 'PQRS'),
+    ('8', 'TUV'),
+    ('9', 'WXYZ'),
+    ('*', ''),
+    ('0', '+'),
+    ('#', ''),
   ];
 
   @override
@@ -582,10 +755,12 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _refreshClipboardHint();
+    if (_digits.trim().isNotEmpty) _scheduleResolve();
   }
 
   @override
   void dispose() {
+    _resolveTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -611,6 +786,54 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
     }
     if (digits.length < 4) return null;
     return hasPlus ? '+$digits' : digits;
+  }
+
+  void _scheduleResolve() {
+    _resolveTimer?.cancel();
+    final q = _digits.trim();
+    if (q.replaceAll(RegExp(r'[^\d]'), '').length < 4) {
+      if (mounted) setState(() => _destination = null);
+      return;
+    }
+    final generation = ++_resolveGeneration;
+    setState(() => _destination = AvaCallsDestination(
+          state: AvaCallsDestinationState.resolving,
+          kind: null,
+          rawInput: q,
+          canonicalNumber: '',
+        ));
+    _resolveTimer = Timer(const Duration(milliseconds: 350), () async {
+      final result = await AvaCallsApi.resolve(q);
+      if (!mounted || generation != _resolveGeneration || _digits.trim() != q)
+        return;
+      var resolved = result;
+      if (result.kind == AvaCallsNumberKind.pstn &&
+          result.state == AvaCallsDestinationState.pstn &&
+          result.outgoingLine == null) {
+        try {
+          final line = await AvaCallsOutgoingLineStore.instance
+              .select(await AvaCallsApi.listLines());
+          if (!mounted ||
+              generation != _resolveGeneration ||
+              _digits.trim() != q) return;
+          resolved = result.copyWith(
+            state: line == null
+                ? AvaCallsDestinationState.noDid
+                : AvaCallsDestinationState.pstn,
+            outgoingLine: line,
+            message: line == null
+                ? 'Get a Virtual Number to call PSTN destinations'
+                : 'PSTN · ${result.pstnTokensPerMinute.toStringAsFixed(2)} tokens/minute',
+          );
+        } catch (_) {/* call admission remains authoritative */}
+      }
+      setState(() => _destination = resolved);
+      Analytics.capture('avacalls_destination_resolved', {
+        'kind': resolved.kind?.name ?? 'unsupported',
+        'state': resolved.state.name,
+        'country': resolved.countryIso2,
+      });
+    });
   }
 
   /// Peek the clipboard and toggle the paste hint if it holds a number.
@@ -650,33 +873,52 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
       'digits_len': num.replaceAll(RegExp(r'[^\d]'), '').length,
       'had_plus': num.startsWith('+'),
     });
-    setState(() { _digits = num; _status = null; });
+    setState(() {
+      _digits = num;
+      _status = null;
+    });
+    _scheduleResolve();
   }
 
   void _press(String k) {
     HapticFeedback.lightImpact();
-    setState(() { _digits += k; _status = null; });
+    setState(() {
+      _digits += k;
+      _status = null;
+    });
+    _scheduleResolve();
   }
 
   void _press0Long() {
     HapticFeedback.mediumImpact();
-    setState(() { _digits += '+'; _status = null; });
+    setState(() {
+      _digits += '+';
+      _status = null;
+    });
+    _scheduleResolve();
   }
 
   void _backspace() {
     if (_digits.isEmpty) return;
     HapticFeedback.selectionClick();
-    setState(() => _digits = _digits.substring(0, _digits.length - 1));
+    setState(() {
+      _digits = _digits.substring(0, _digits.length - 1);
+      _destination = null;
+    });
+    _scheduleResolve();
   }
 
   Future<void> _dial() async {
     final q = _digits.trim();
     if (q.replaceAll(RegExp(r'[^\d]'), '').length < 4) {
-      setState(() => _status = 'Enter a full AvaTOK number');
+      setState(() => _status = 'Enter a full national or international number');
       return;
     }
-    setState(() { _dialing = true; _status = null; });
-    Analytics.capture('avaphone_dial', {'len': q.length});
+    setState(() {
+      _dialing = true;
+      _status = null;
+    });
+    Analytics.capture('avacalls_route_selected', {'input_length': q.length});
     // [DIALPAD-DISMISS-FIX] Grab the ROOT navigator's own BuildContext now, while
     // the sheet is still mounted. `context` here belongs to this bottom sheet's
     // element, which starts unmounting the instant we Navigator.pop it below —
@@ -687,38 +929,112 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
     // Push follow-up routes through this persisted navContext instead of the
     // soon-to-be-disposed sheet context.
     final navContext = Navigator.of(context, rootNavigator: true).context;
-    // Team auto-attendant: if the dialed number runs a team IVR, open the spoken
-    // menu (Ava greets + caller punches a digit + warm transfer) instead of a
-    // direct 1:1 call. Spec: Specs/TEAM-RECEPTIONIST-IVR-SPEC.md §1b.
     final qDigits = q.replaceAll(RegExp(r'[^\d]'), '');
+    var destination = _destination;
+    if (destination == null ||
+        destination.state == AvaCallsDestinationState.resolving ||
+        destination.canonicalNumber.isEmpty) {
+      destination = await AvaCallsApi.resolve(q);
+      if (!mounted) return;
+      if (destination.kind == AvaCallsNumberKind.pstn &&
+          destination.outgoingLine == null &&
+          destination.state == AvaCallsDestinationState.pstn) {
+        try {
+          final line = await AvaCallsOutgoingLineStore.instance
+              .select(await AvaCallsApi.listLines());
+          destination = destination.copyWith(
+            state: line == null
+                ? AvaCallsDestinationState.noDid
+                : AvaCallsDestinationState.pstn,
+            outgoingLine: line,
+          );
+        } catch (_) {/* call admission remains the final authority */}
+      }
+    }
+    if (!mounted) return;
+    if (destination == null) {
+      setState(() {
+        _dialing = false;
+        _status = 'This destination is not supported';
+      });
+      return;
+    }
+    final resolved = destination;
+    if (resolved.kind == AvaCallsNumberKind.pstn) {
+      if (resolved.state == AvaCallsDestinationState.noDid ||
+          resolved.outgoingLine == null) {
+        setState(() {
+          _dialing = false;
+          _destination = resolved;
+          _status = 'Get a Virtual Number to call PSTN destinations';
+        });
+        return;
+      }
+      if (resolved.state != AvaCallsDestinationState.pstn) {
+        setState(() {
+          _dialing = false;
+          _destination = resolved;
+          _status = resolved.message ?? 'This destination cannot be called';
+        });
+        return;
+      }
+      try {
+        await AvaCallsApi.preparePstn(
+            number: resolved.canonicalNumber,
+            lineId: resolved.outgoingLine!.id);
+        await AvaCallsApi.placePstn(
+            number: resolved.canonicalNumber,
+            lineId: resolved.outgoingLine!.id,
+            attemptId: CallRoomId.newRoomId());
+        if (!mounted) return;
+        setState(() => _dialing = false);
+        Navigator.pop(context);
+        ScaffoldMessenger.maybeOf(navContext)?.showSnackBar(SnackBar(
+            content: Text(
+                'Calling ${resolved.countryName.isEmpty ? resolved.canonicalNumber : resolved.countryName} from ${resolved.outgoingLine!.displayNumber} · 0.50 tokens/minute')));
+      } on AvaCallsApiException catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _dialing = false;
+          _status = e.message;
+        });
+      } catch (_) {
+        if (!mounted) return;
+        setState(() {
+          _dialing = false;
+          _status = 'Could not start the PSTN call. Try again.';
+        });
+      }
+      return;
+    }
+    if (resolved.kind != AvaCallsNumberKind.avatok ||
+        resolved.contact == null ||
+        resolved.contact!.uid.isEmpty) {
+      setState(() {
+        _dialing = false;
+        _destination = resolved;
+        _status = resolved.message ?? 'This destination is not supported';
+      });
+      return;
+    }
+    // Preserve the existing team auto-attendant path for resolved AvaTOK lines.
     final ivr = await TeamApi.ivrMenu(qDigits);
     if (!mounted) return;
     if (ivr != null) {
       Analytics.capture('avaphone_dial_team_ivr', const {});
       setState(() => _dialing = false);
-      Navigator.pop(context); // close the dialpad
-      Navigator.push(navContext, MaterialPageRoute(builder: (_) => TeamIvrScreen(teamNumber: qDigits)));
-      return;
-    }
-    Contact? hit;
-    try { hit = await Directory.resolve(q); } catch (_) { hit = null; }
-    if (!mounted) return;
-    if (hit == null || hit.uid.isEmpty) {
-      // [AVADIAL-AVATOK-ONLY-1] AvaTOK-only dialer (owner pivot 2026-07-16). A
-      // number with no AvaTOK account dead-ends here with a clear message. The
-      // former CARRIER/PSTN fallback — AvaDialChannel.placeCall via TelecomManager
-      // when the flag was on and the default-dialer role was held — is REMOVED:
-      // the in-app dialer NEVER places a carrier/PSTN call, so an off-network
-      // number is simply "not on AvaTOK" rather than routed to the system dialer.
-      Analytics.capture('avaphone_dial_not_on_avatok', {'len': q.length});
-      setState(() { _dialing = false; _status = 'This number isn\'t on AvaTOK'; });
+      Navigator.pop(context);
+      Navigator.push(
+          navContext,
+          MaterialPageRoute(
+              builder: (_) => TeamIvrScreen(teamNumber: qDigits)));
       return;
     }
     // [CALL-ROOM-ID-1] Every free human call still gets a fresh opaque room id.
     final dialRoom = CallRoomId.newRoomId();
     Analytics.capture('avaphone_dial_connect', const {});
     IceCache.prefetch();
-    final c = hit; // non-null local for the closure below
+    final c = resolved.contact!;
     Navigator.pop(context); // close the dialpad
     // [AVA-IDGATE-1] Dialing a resolved number now goes through /api/call so the
     // liveness gate applies (first call to a stranger) and the callee is actually
@@ -727,9 +1043,11 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
     // NOT the sheet's own `context` — since place1to1Call awaits a network call
     // and pushes CallScreen/the busy card afterwards; by then the sheet's
     // context would already be unmounted and every push would silently no-op.
-    await place1to1Call(navContext, uid: c.uid,
+    await place1to1Call(navContext,
+        uid: c.uid,
         name: c.name.isNotEmpty ? c.name : (c.number.isNotEmpty ? c.number : q),
-        avatarUrl: c.avatarUrl, dialer: true,
+        avatarUrl: c.avatarUrl,
+        dialer: true,
         roomOverride: dialRoom);
   }
 
@@ -749,8 +1067,11 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
       padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, 16 + bottom),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Container(
-          width: 44, height: 5, margin: const EdgeInsets.only(bottom: 16),
-          decoration: BoxDecoration(color: PhoneTheme.border, borderRadius: Msg.brPill),
+          width: 44,
+          height: 5,
+          margin: const EdgeInsets.only(bottom: 16),
+          decoration:
+              BoxDecoration(color: PhoneTheme.border, borderRadius: Msg.brPill),
         ),
         // Entered number. Long-press pastes a sanitized number from the
         // clipboard; a small paste icon appears when the clipboard holds one.
@@ -763,10 +1084,14 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
                 behavior: HitTestBehavior.opaque,
                 onLongPress: _pasteFromClipboard,
                 child: Center(
-                  child: Text(_digits.isEmpty ? 'AvaTOK number' : _digits,
-                      maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: PhoneTheme.title(size: 30,
-                          color: _digits.isEmpty ? PhoneTheme.textMute : PhoneTheme.text)),
+                  child: Text(_digits.isEmpty ? 'Number to call' : _digits,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: PhoneTheme.title(
+                          size: 30,
+                          color: _digits.isEmpty
+                              ? PhoneTheme.textMute
+                              : PhoneTheme.text)),
                 ),
               ),
             ),
@@ -778,17 +1103,22 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
                       visualDensity: VisualDensity.compact,
                       tooltip: 'Paste number',
                       onPressed: _pasteFromClipboard,
-                      icon: PhosphorIcon(PhosphorIcons.clipboard(PhosphorIconsStyle.bold),
-                          size: 22, color: PhoneTheme.teal),
+                      icon: PhosphorIcon(
+                          PhosphorIcons.clipboard(PhosphorIconsStyle.bold),
+                          size: 22,
+                          color: PhoneTheme.teal),
                     )
                   : null,
             ),
           ]),
         ),
+        if (_destination != null && _digits.trim().isNotEmpty)
+          _destinationBlip(_destination!),
         if (_status != null)
           Padding(
             padding: const EdgeInsets.only(top: 2, bottom: 4),
-            child: Text(_status!, style: PhoneTheme.sub(size: 12, color: PhoneTheme.danger)),
+            child: Text(_status!,
+                style: PhoneTheme.sub(size: 12, color: PhoneTheme.danger)),
           ),
         const SizedBox(height: 8),
         // Keypad grid.
@@ -817,16 +1147,22 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
           GestureDetector(
             onTap: _dialing ? null : _dial,
             child: Container(
-              width: 66, height: 66,
+              width: 66,
+              height: 66,
               decoration: BoxDecoration(
-                color: _dialing ? PhoneTheme.callGreen.withValues(alpha: 0.5) : PhoneTheme.callGreen,
+                color: _dialing
+                    ? PhoneTheme.callGreen.withValues(alpha: 0.5)
+                    : PhoneTheme.callGreen,
                 shape: BoxShape.circle,
                 border: Border.all(color: PhoneTheme.border, width: 2),
               ),
               child: _dialing
-                  ? const Padding(padding: EdgeInsets.all(20),
-                      child: CircularProgressIndicator(strokeWidth: 2.6, color: _kInk))
-                  : Icon(PhosphorIcons.phone(PhosphorIconsStyle.bold), size: 30, color: _kInk),
+                  ? const Padding(
+                      padding: EdgeInsets.all(20),
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2.6, color: _kInk))
+                  : Icon(PhosphorIcons.phone(PhosphorIconsStyle.bold),
+                      size: 30, color: _kInk),
             ),
           ),
           const Spacer(),
@@ -836,11 +1172,72 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
                 ? null
                 : IconButton(
                     onPressed: _backspace,
-                    icon: PhosphorIcon(PhosphorIcons.backspace(PhosphorIconsStyle.bold),
-                        size: 26, color: PhoneTheme.textSoft),
+                    icon: PhosphorIcon(
+                        PhosphorIcons.backspace(PhosphorIconsStyle.bold),
+                        size: 26,
+                        color: PhoneTheme.textSoft),
                   ),
           ),
         ]),
+      ]),
+    );
+  }
+
+  Widget _destinationBlip(AvaCallsDestination destination) {
+    final (Color color, IconData icon, String label) =
+        switch (destination.state) {
+      AvaCallsDestinationState.resolving => (
+          PhoneTheme.textMute,
+          PhosphorIcons.dotsThree(PhosphorIconsStyle.regular),
+          'Checking number…'
+        ),
+      AvaCallsDestinationState.avatok => (
+          PhoneTheme.teal,
+          PhosphorIcons.sealCheck(PhosphorIconsStyle.regular),
+          'AvaTOK number · free in-network call'
+        ),
+      AvaCallsDestinationState.pstn => (
+          PhoneTheme.callGreen,
+          PhosphorIcons.globe(PhosphorIconsStyle.regular),
+          '${destination.countryName.isEmpty ? destination.countryIso2 : destination.countryName} · 0.50 tokens/minute'
+        ),
+      AvaCallsDestinationState.noDid => (
+          PhoneTheme.danger,
+          PhosphorIcons.phonePlus(PhosphorIconsStyle.regular),
+          'Get a Virtual Number to call PSTN'
+        ),
+      AvaCallsDestinationState.insufficientWallet => (
+          PhoneTheme.danger,
+          PhosphorIcons.wallet(PhosphorIconsStyle.regular),
+          'Add wallet tokens to call'
+        ),
+      AvaCallsDestinationState.offline => (
+          PhoneTheme.danger,
+          PhosphorIcons.cloudSlash(PhosphorIconsStyle.regular),
+          'Offline · tap Call to retry'
+        ),
+      AvaCallsDestinationState.unsupported => (
+          PhoneTheme.danger,
+          PhosphorIcons.prohibit(PhosphorIconsStyle.regular),
+          destination.message ?? 'Unsupported number'
+        ),
+      AvaCallsDestinationState.empty => (
+          PhoneTheme.textMute,
+          PhosphorIcons.phone(PhosphorIconsStyle.regular),
+          ''
+        ),
+    };
+    if (label.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, bottom: 4),
+      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 5),
+        Flexible(
+            child: Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: PhoneTheme.sub(size: 12, color: color))),
       ]),
     );
   }
@@ -851,7 +1248,11 @@ class _Key extends StatelessWidget {
   final String sub;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
-  const _Key({required this.digit, required this.sub, required this.onTap, this.onLongPress});
+  const _Key(
+      {required this.digit,
+      required this.sub,
+      required this.onTap,
+      this.onLongPress});
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -867,7 +1268,8 @@ class _Key extends StatelessWidget {
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
           Text(digit, style: PhoneTheme.title(size: 26)),
           if (sub.isNotEmpty)
-            Text(sub, style: PhoneTheme.tag(size: 9, color: PhoneTheme.textMute)),
+            Text(sub,
+                style: PhoneTheme.tag(size: 9, color: PhoneTheme.textMute)),
         ]),
       ),
     );

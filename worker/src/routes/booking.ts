@@ -215,13 +215,33 @@ export async function joinInfo(req: Request, env: Env, token: string): Promise<R
   const bookingId = await verifyJoinToken(env, token);
   if (!bookingId) return json({ error: "invalid or expired link" }, 404);
   const bk = await metaDb(env).prepare(
-    "SELECT id, creator_id, starts_at, ends_at, status FROM bookings WHERE id=?1",
+    "SELECT id, creator_id, buyer_id, listing_id, kind, starts_at, ends_at, status FROM bookings WHERE id=?1",
   ).bind(bookingId).first<any>();
   if (!bk) return json({ error: "not found" }, 404);
   const title = (await metaDb(env).prepare("SELECT title FROM calendar_events WHERE booking_id=?1 LIMIT 1").bind(bookingId).first<any>())?.title ?? "AvaTOK session";
+  // A booking id alone does not tell a browser which transport owns the room.
+  // Resolve the listing when present: commercial live events use the listing
+  // viewer, commercial 1:1 consults use /session, and older calendar bookings
+  // retain the native /consult room. The fields are additive so old clients
+  // that only read `deeplink` continue to receive a valid response.
+  const listing = bk.listing_id
+    ? await metaDb(env).prepare("SELECT id, kind FROM listings WHERE id=?1 LIMIT 1").bind(bk.listing_id).first<{ id: string; kind: string }>()
+    : null;
+  const isLive = listing?.kind === "live_event" || bk.kind === "live_event";
+  const commercialGrant = await metaDb(env).prepare(
+    "SELECT 1 AS present FROM commercial_entitlements WHERE booking_id=?1 AND kind='consult_1to1' LIMIT 1",
+  ).bind(bk.id).first<{ present: number }>();
+  const isCommercialConsult = String(bk.id).startsWith("commercial-booking-") || Boolean(commercialGrant);
+  const destination = isLive && bk.listing_id
+    ? { kind: "live", listing_id: bk.listing_id, booking_id: bk.id, path: `/live/${encodeURIComponent(bk.listing_id)}` }
+    : isCommercialConsult
+      ? { kind: "consult", listing_id: bk.listing_id ?? null, booking_id: bk.id, path: `/session/${encodeURIComponent(bk.id)}` }
+      : { kind: "legacy_consult", listing_id: bk.listing_id ?? null, booking_id: bk.id, path: `/consult/${encodeURIComponent(bk.id)}` };
   return json({
+    booking_id: bk.id, listing_id: bk.listing_id ?? null, kind: bk.kind,
     title, starts_at: bk.starts_at, ends_at: bk.ends_at, status: bk.status,
     creator_name: await nameOf(env, bk.creator_id),
     deeplink: `avatok://booking/${bookingId}`,
-  }, 200, { "cache-control": "public, max-age=60" });
+    destination,
+  }, 200, { "cache-control": "no-store" });
 }

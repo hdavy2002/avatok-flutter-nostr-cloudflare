@@ -21,7 +21,7 @@
  * the legacy Cloudflare/WebRTC room — that would be an unmetered session.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ClerkIsland, requireGuestAuth } from '../../lib/clerk';
+import { ClerkIsland, getActiveToken, requireGuestAuth } from '../../lib/clerk';
 import { IslandBoundary } from '../../components/IslandBoundary';
 import { Button, Spinner } from '../../components';
 import { PreJoin } from './PreJoin';
@@ -70,24 +70,41 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
   const jwtRef = useRef<string | null>(null);
   const prefsRef = useRef<JoinPrefs | null>(null);
   const previewStreamRef = useRef<MediaStream | null>(null);
+  const callRef = useRef<Call | null>(null);
+  const mountedRef = useRef(true);
+  const operationGenerationRef = useRef(0);
   const leavingRef = useRef(false);
   // [WEB-POSTHOG-1] §2.6 consult_end `billed_min` — set the moment the call
   // is actually joined.
   const joinedAtRef = useRef<number | null>(null);
 
   const teardownCall = useCallback(() => {
-    const c = call;
+    previewStreamRef.current?.getTracks().forEach((track) => track.stop());
+    previewStreamRef.current = null;
+    const c = callRef.current;
+    callRef.current = null;
     setCall(null);
     if (c) {
-      try {
-        void c.leave();
-      } catch {
-        /* already gone */
-      }
+      void c.camera.disable().catch(() => {});
+      void c.microphone.disable().catch(() => {});
+      void c.leave().catch(() => {});
     }
-  }, [call]);
+  }, []);
 
-  useEffect(() => () => teardownCall(), []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      operationGenerationRef.current += 1;
+      teardownCall();
+    };
+  }, [teardownCall]);
+
+  const freshAppJwt = useCallback(async (): Promise<string> => {
+    const fresh = await getActiveToken({ skipCache: true });
+    if (fresh) return fresh;
+    return requireGuestAuth();
+  }, []);
 
   const showRefusal = (r: JoinRefusal) => {
     setRefusal(r);
@@ -96,18 +113,29 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
 
   // ── bootstrap: auth → prejoin ──────────────────────────────────────────
   const bootstrap = useCallback(async () => {
+    const generation = ++operationGenerationRef.current;
     setPhase('loading');
     setJoinErr(null);
     let jwt: string;
     try {
-      jwt = await requireGuestAuth();
+      jwt = await freshAppJwt();
     } catch {
+      if (!mountedRef.current || generation !== operationGenerationRef.current) return;
       showRefusal({ ok: false, reason: 'unavailable', status: 0, detail: 'sign-in was cancelled' });
       return;
     }
+    if (!mountedRef.current || generation !== operationGenerationRef.current) return;
     jwtRef.current = jwt;
     setJwt(jwt);
-    const res = await consultPrejoin(booking, jwt);
+    let res: ConsultPrejoin | JoinRefusal;
+    try {
+      res = await consultPrejoin(booking, jwt);
+    } catch {
+      if (!mountedRef.current || generation !== operationGenerationRef.current) return;
+      showRefusal({ ok: false, reason: 'unavailable', status: 0, detail: 'could not reach avaTOK' });
+      return;
+    }
+    if (!mountedRef.current || generation !== operationGenerationRef.current) return;
     if ('reason' in res) {
       try {
         capture('consult_prejoin', { booking_id: booking, outcome: 'refused' });
@@ -124,8 +152,7 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
     }
     setPrejoin(res);
     setPhase('prejoin');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [booking]);
+  }, [booking, freshAppJwt]);
 
   useEffect(() => {
     void bootstrap();
@@ -145,7 +172,13 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
       setPhase('joining');
       const joinStart = Date.now();
 
-      const res = await joinCommercialSession('consult', booking, jwt);
+      const generation = ++operationGenerationRef.current;
+      const fresh = await freshAppJwt().catch(() => null);
+      if (!fresh || !mountedRef.current || generation !== operationGenerationRef.current) return;
+      jwtRef.current = fresh;
+      setJwt(fresh);
+      const res = await joinCommercialSession('consult', booking, fresh);
+      if (!mountedRef.current || generation !== operationGenerationRef.current) return;
       if (!res.ok) {
         try {
           capture('consult_join_result', { outcome: 'refused', reason: res.reason, status: res.status, ms: Date.now() - joinStart });
@@ -158,7 +191,14 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
       setCreds(res);
 
       try {
-        const rawClient = await streamClientFor(res);
+        const rawClient = await streamClientFor(res, async () => {
+          const token = await freshAppJwt();
+          const refreshed = await joinCommercialSession('consult', booking, token);
+          if (!refreshed.ok) throw new Error('session credentials expired');
+          jwtRef.current = token;
+          if (mountedRef.current) setJwt(token);
+          return refreshed;
+        });
         const client = rawClient as unknown as StreamVideoClient;
         // [WEB-POSTHOG-1] gs_sdk_error is wired once, client-wide, in
         // lib/getstream.ts's `streamClientFor` — no per-call hook needed here.
@@ -172,20 +212,33 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
         if (!prefs.micOn) await c.microphone.disable().catch(() => {});
         if (!prefs.camOn) await c.camera.disable().catch(() => {});
 
+        // Keep a ref before any await so a failed join can always release the
+        // SDK-owned devices, even when React has not rendered the Call yet.
+        callRef.current = c;
         await c.join();
+        if (!mountedRef.current || generation !== operationGenerationRef.current) {
+          await c.leave().catch(() => {});
+          return;
+        }
         setCall(c);
 
         // Refresh the authoritative end time at the moment of joining — time
         // may have passed (or a prior extension landed) since the initial
         // /prejoin fetch that seeded the green room.
         try {
-          const state = await commercialSessionState('consult', booking, jwt);
+          const stateJwt = await freshAppJwt();
+          if (mountedRef.current) {
+            jwtRef.current = stateJwt;
+            setJwt(stateJwt);
+          }
+          const state = await commercialSessionState('consult', booking, stateJwt);
           if (state.ends_at) setEndsAt(state.ends_at);
           else if (prejoin) setEndsAt(prejoin.ends_at);
         } catch {
           if (prejoin) setEndsAt(prejoin.ends_at);
         }
 
+        if (!mountedRef.current || generation !== operationGenerationRef.current) return;
         setPhase('live');
         joinedAtRef.current = Date.now();
         try {
@@ -194,6 +247,8 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
           /* best-effort */
         }
       } catch (e) {
+        if (!mountedRef.current || generation !== operationGenerationRef.current) return;
+        teardownCall();
         setJoinErr('Could not start your video. Check your connection and try again.');
         setPhase('prejoin');
         try {
@@ -205,7 +260,7 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
         }
       }
     },
-    [booking, bootstrap, prejoin],
+    [booking, bootstrap, freshAppJwt, prejoin, teardownCall],
   );
 
   // ── green room handoff ─────────────────────────────────────────────────
@@ -235,9 +290,34 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
       }
       teardownCall();
       setPhase('ended');
-    },
+  },
     [teardownCall],
   );
+
+  // Provider connection state is transport-only. Poll the Worker while in the
+  // room so a server-side end/cancellation is reflected even when the SDK
+  // websocket remains connected.
+  useEffect(() => {
+    if (phase !== 'live') return;
+    let disposed = false;
+    const sync = async () => {
+      try {
+        const token = await freshAppJwt();
+        const state = await commercialSessionState('consult', booking, token);
+        if (!disposed && (state.state === 'ended' || state.state === 'cancelled')) {
+          endSession(state.state === 'cancelled' ? 'This booking was cancelled.' : 'The session has ended.');
+        }
+      } catch {
+        // A transient poll failure must not tear down a healthy media call.
+      }
+    };
+    void sync();
+    const timer = window.setInterval(() => void sync(), 3000);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [booking, endSession, freshAppJwt, phase]);
 
   // phase === 'ended' -----------------------------------------------------
   if (phase === 'ended') {

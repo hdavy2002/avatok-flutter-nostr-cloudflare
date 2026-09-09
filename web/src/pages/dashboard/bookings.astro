@@ -1,15 +1,11 @@
 ---
-// /dashboard/bookings — my upcoming & past bookings/tickets (app: AvaCalendar).
+// /dashboard/bookings — purchased tickets and appointments for this account.
 export const prerender = false;
 
 import Dashboard from '../../layouts/Dashboard.astro';
 import MyBookings from '../../islands/dashboard/MyBookings.tsx';
 ---
 
-<Dashboard title="Bookings · avatok.ai" active="bookings">
-  <header class="mb-6">
-    <span class="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">Dashboard</span>
-    <h1 class="mt-2 font-display font-semibold text-[30px] leading-tight text-ink">Bookings</h1>
-  </header>
+<Dashboard title="My Tickets & Appointments · avatok.ai" active="bookings">
   <MyBookings client:load />
 </Dashboard>

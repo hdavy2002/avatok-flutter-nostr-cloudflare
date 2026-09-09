@@ -480,7 +480,7 @@ class _CompanionHomeState extends State<CompanionHome> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AD.bg,
-      floatingActionButton: _showArchived
+      floatingActionButton: _showArchived || _sessions.isEmpty
           ? null
           : FloatingActionButton.extended(
               onPressed: _newChat,

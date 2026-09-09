@@ -37,6 +37,8 @@ interface Dev {
 export function PreJoin({ title, peerName, joining = false, error, onReady }: PreJoinProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const mountedRef = useRef(true);
+  const acquireGenerationRef = useRef(0);
   const [perm, setPerm] = useState<'idle' | 'asking' | 'granted' | 'denied'>('idle');
   const [permErr, setPermErr] = useState<string | null>(null);
   const [mics, setMics] = useState<Dev[]>([]);
@@ -61,6 +63,7 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
         deviceId: d.deviceId,
         label: d.label || fallback,
       });
+      if (!mountedRef.current) return;
       setMics(list.filter((d) => d.kind === 'audioinput').map((d, i) => toDev(d, `Microphone ${i + 1}`)));
       setCams(list.filter((d) => d.kind === 'videoinput').map((d, i) => toDev(d, `Camera ${i + 1}`)));
     } catch {
@@ -70,6 +73,7 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
 
   const acquire = useCallback(
     async (constraints?: MediaStreamConstraints) => {
+      const generation = ++acquireGenerationRef.current;
       setPerm('asking');
       setPermErr(null);
       try {
@@ -79,6 +83,10 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
             video: camId ? { deviceId: { exact: camId } } : { facingMode: 'user' },
           },
         );
+        if (!mountedRef.current || generation !== acquireGenerationRef.current) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
         // Stop a prior stream before swapping (device change).
         streamRef.current?.getTracks().forEach((t) => t.stop());
         attach(stream);
@@ -87,6 +95,7 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
         setPerm('granted');
         await refreshDevices();
       } catch (e) {
+        if (!mountedRef.current || generation !== acquireGenerationRef.current) return;
         setPerm('denied');
         const name = (e as DOMException)?.name;
         setPermErr(
@@ -103,10 +112,17 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
 
   // Pre-warm on mount.
   useEffect(() => {
+    mountedRef.current = true;
     void acquire();
     return () => {
-      // Only stop here if the parent never took ownership of the stream.
-      if (perm !== 'granted') streamRef.current?.getTracks().forEach((t) => t.stop());
+      mountedRef.current = false;
+      acquireGenerationRef.current += 1;
+      // A failed join can return to this green room while the component stays
+      // mounted, and a route transition can unmount it after permission was
+      // granted. Always release the preview stream at either boundary.
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+      if (videoRef.current) videoRef.current.srcObject = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -131,6 +147,10 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
   const join = () => {
     const stream = streamRef.current;
     if (!stream) return;
+    // The parent takes ownership for the async join attempt. Clearing our
+    // reference prevents a later retry from handing it a stopped stream.
+    streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
     onReady(stream, micOn, camOn, micId, camId);
   };
 

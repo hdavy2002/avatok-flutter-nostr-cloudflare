@@ -743,11 +743,15 @@ class _ContactsTabState extends State<_ContactsTab> {
           subtitle: Text(c.number, style: ADText.preview(c: AvaDialTheme.textSoft)),
         ),
         const Divider(color: AvaDialTheme.border, height: 1),
-        ListTile(
-          leading: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold), color: AD.incomingCall),
-          title: Text('Call on AvaTOK', style: ADText.rowName(c: AvaDialTheme.text)),
-          onTap: () { Navigator.pop(ctx); _call(c); },
-        ),
+        // [AVATALK-CHAT-ONLY-2] Messenger 1:1 calling is being killed — hide
+        // this row while RemoteConfig.messengerCallingEnabled is off, matching
+        // contact_detail_screen.dart / contact_row_menu.dart.
+        if (RemoteConfig.messengerCallingEnabled)
+          ListTile(
+            leading: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold), color: AD.incomingCall),
+            title: Text('Call on AvaTOK', style: ADText.rowName(c: AvaDialTheme.text)),
+            onTap: () { Navigator.pop(ctx); _call(c); },
+          ),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold), color: AD.iconSearch),
           title: Text('View profile', style: ADText.rowName(c: AvaDialTheme.text)),
@@ -866,7 +870,9 @@ class _ContactsTabState extends State<_ContactsTab> {
       ]),
       Positioned(
         right: 18,
-        bottom: 18,
+        // Stay above the persistent footer/switcher seam; otherwise the plus
+        // button is visually cut by the footer decoration on short phones.
+        bottom: 78,
         child: FloatingActionButton(
           heroTag: 'avadial_add_contact',
           backgroundColor: AD.iconSearch,
@@ -913,11 +919,15 @@ class _ContactsTabState extends State<_ContactsTab> {
                   ]),
                 ]),
               ),
-              IconButton(
-                onPressed: () => _call(c),
-                icon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold),
-                    color: AD.incomingCall),
-              ),
+              // [AVATALK-CHAT-ONLY-2] Messenger 1:1 calling is being killed —
+              // hide this dial icon while RemoteConfig.messengerCallingEnabled
+              // is off, matching contact_detail_screen.dart / contact_row_menu.dart.
+              if (RemoteConfig.messengerCallingEnabled)
+                IconButton(
+                  onPressed: () => _call(c),
+                  icon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold),
+                      color: AD.incomingCall),
+                ),
               IconButton(
                 icon: PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.regular),
                     color: AvaDialTheme.textSoft),
@@ -1023,13 +1033,17 @@ class _ContactsTabState extends State<_ContactsTab> {
                     style: ADText.preview(c: AD.online)),
               ]),
             ),
-            IconButton(
-              tooltip: 'Call on AvaTOK',
-              onPressed: () => place1to1Call(context, uid: c.uid,
-                  name: c.name.isNotEmpty ? c.name : c.number, avatarUrl: c.avatarUrl, dialer: true),
-              icon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold),
-                  color: AD.incomingCall),
-            ),
+            // [AVATALK-CHAT-ONLY-2] Messenger 1:1 calling is being killed —
+            // hide this dial icon while RemoteConfig.messengerCallingEnabled
+            // is off, matching contact_detail_screen.dart / contact_row_menu.dart.
+            if (RemoteConfig.messengerCallingEnabled)
+              IconButton(
+                tooltip: 'Call on AvaTOK',
+                onPressed: () => place1to1Call(context, uid: c.uid,
+                    name: c.name.isNotEmpty ? c.name : c.number, avatarUrl: c.avatarUrl, dialer: true),
+                icon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold),
+                    color: AD.incomingCall),
+              ),
             IconButton(
               tooltip: 'Add contact',
               onPressed: () => _saveServerHit(c),
@@ -1047,7 +1061,13 @@ class _ContactsTabState extends State<_ContactsTab> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: GestureDetector(
-        onTap: on ? () => _callDevice(c) : () => _inviteDevice(c),
+        // [AVATALK-CHAT-ONLY-2] Messenger 1:1 calling is being killed — an
+        // on-AvaTOK device contact falls back to no-op tap (never the invite
+        // flow, which is only for off-network contacts) while
+        // RemoteConfig.messengerCallingEnabled is off.
+        onTap: on
+            ? (RemoteConfig.messengerCallingEnabled ? () => _callDevice(c) : null)
+            : () => _inviteDevice(c),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
           decoration: BoxDecoration(
@@ -1074,7 +1094,11 @@ class _ContactsTabState extends State<_ContactsTab> {
                     style: ADText.preview(c: on ? _kAvatokOrange : AvaDialTheme.textSoft)),
               ]),
             ),
-            if (on)
+            // [AVATALK-CHAT-ONLY-2] Messenger 1:1 calling is being killed —
+            // hide the call badge while RemoteConfig.messengerCallingEnabled
+            // is off (the row still shows "On AvaTOK" via its orange tint,
+            // just with no dial affordance).
+            if (on && RemoteConfig.messengerCallingEnabled)
               IconButton(
                 tooltip: 'On AvaTOK — call',
                 onPressed: () => _callDevice(c),
@@ -1085,7 +1109,7 @@ class _ContactsTabState extends State<_ContactsTab> {
                       size: 18, color: Colors.white),
                 ),
               )
-            else
+            else if (!on)
               IconButton(
                 tooltip: 'Invite to AvaTOK',
                 onPressed: () => _inviteDevice(c),
@@ -1546,11 +1570,15 @@ class _LogsTabState extends State<_LogsTab> {
           title: Text(displayName.isNotEmpty ? displayName : c.seed, style: ADText.rowName(c: AvaDialTheme.text)),
         ),
         const Divider(color: AvaDialTheme.border, height: 1),
-        ListTile(
-          leading: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold), color: AD.incomingCall),
-          title: Text('Call on AvaTOK', style: ADText.rowName(c: AvaDialTheme.text)),
-          onTap: () { Navigator.pop(ctx); _call(c); },
-        ),
+        // [AVATALK-CHAT-ONLY-2] Messenger 1:1 calling is being killed — hide
+        // this row while RemoteConfig.messengerCallingEnabled is off, matching
+        // contact_detail_screen.dart / contact_row_menu.dart.
+        if (RemoteConfig.messengerCallingEnabled)
+          ListTile(
+            leading: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold), color: AD.incomingCall),
+            title: Text('Call on AvaTOK', style: ADText.rowName(c: AvaDialTheme.text)),
+            onTap: () { Navigator.pop(ctx); _call(c); },
+          ),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold), color: AD.iconSearch),
           title: Text('View profile', style: ADText.rowName(c: AvaDialTheme.text)),
@@ -1717,11 +1745,16 @@ class _LogsTabState extends State<_LogsTab> {
                               style: ADText.preview(c: AvaDialTheme.textSoft)),
                       ]),
                     ),
-                    IconButton(
-                      icon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold),
-                          color: AD.incomingCall),
-                      onPressed: () => _call(e),
-                    ),
+                    // [AVATALK-CHAT-ONLY-2] Messenger 1:1 calling is being
+                    // killed — hide this dial icon while
+                    // RemoteConfig.messengerCallingEnabled is off, matching
+                    // contact_detail_screen.dart / contact_row_menu.dart.
+                    if (RemoteConfig.messengerCallingEnabled)
+                      IconButton(
+                        icon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold),
+                            color: AD.incomingCall),
+                        onPressed: () => _call(e),
+                      ),
                     IconButton(
                       icon: PhosphorIcon(
                           PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.regular),

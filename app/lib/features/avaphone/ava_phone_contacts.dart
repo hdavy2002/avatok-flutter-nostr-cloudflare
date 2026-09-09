@@ -6,6 +6,7 @@ import '../../core/avatar.dart';
 import '../../core/chat_state.dart';
 import '../../core/ice_cache.dart';
 import '../../core/device_contacts.dart';
+import '../../core/remote_config.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../avatok/add_by_link_sheet.dart';
 import '../avatok/place_1to1_call.dart';
@@ -127,10 +128,14 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
           leading: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold), color: PhoneTheme.lilac),
           title: Text('View contact', style: PhoneTheme.value(size: 15)),
           onTap: () { Navigator.pop(ctx); _viewContact(c); }),
-        ListTile(
-          leading: Icon(PhosphorIcons.phone(PhosphorIconsStyle.regular), color: PhoneTheme.callGreen),
-          title: Text('Dial', style: PhoneTheme.value(size: 15)),
-          onTap: () { Navigator.pop(ctx); _call(c); }),
+        // [AVATALK-CHAT-ONLY-2] Messenger 1:1 calling is being killed — hide this
+        // affordance while RemoteConfig.messengerCallingEnabled is off, matching
+        // contact_detail_screen.dart / contact_row_menu.dart.
+        if (RemoteConfig.messengerCallingEnabled)
+          ListTile(
+            leading: Icon(PhosphorIcons.phone(PhosphorIconsStyle.regular), color: PhoneTheme.callGreen),
+            title: Text('Dial', style: PhoneTheme.value(size: 15)),
+            onTap: () { Navigator.pop(ctx); _call(c); }),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.chatText(PhosphorIconsStyle.bold), color: PhoneTheme.teal),
           title: Text('Message', style: PhoneTheme.value(size: 15)),
@@ -282,7 +287,10 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
         onTap: () => _actions(c),
         onLongPress: () => _actions(c), // long-press → view/dial/share/block/delete
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
+          // Keep the row compact on narrow phones and with enlarged system
+          // text; the list remains readable without forcing the subtitle below
+          // its parent and triggering Flutter's overflow stripe.
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
           child: Row(children: [
             PhoneTheme.ring(Avatar(seed: c.uid, name: c.name, size: 46,
                 avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl)),
@@ -298,9 +306,11 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
                 ]),
               ]),
             ),
-            IconButton(
-              onPressed: () => _call(c),
-              icon: Icon(PhosphorIcons.phone(PhosphorIconsStyle.bold), size: 20, color: PhoneTheme.callGreen)),
+            // [AVATALK-CHAT-ONLY-2] Same guard as the "Dial" action above.
+            if (RemoteConfig.messengerCallingEnabled)
+              IconButton(
+                onPressed: () => _call(c),
+                icon: Icon(PhosphorIcons.phone(PhosphorIconsStyle.bold), size: 20, color: PhoneTheme.callGreen)),
           ]),
         ),
       );

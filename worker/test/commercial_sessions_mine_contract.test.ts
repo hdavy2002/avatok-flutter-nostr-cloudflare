@@ -32,6 +32,26 @@ describe("Phase 2C customer session projection", () => {
     expect(router).toContain('req.method === "GET"');
   });
 
+  it("supports account-scoped creator schedules and cursor paging", () => {
+    expect(routes).toContain('roleParam === "creator"');
+    expect(routes).toContain("FROM listings l");
+    expect(routes).toContain("l.status <> 'draft'");
+    expect(routes).toContain("FROM bookings b");
+    expect(routes).toContain("next_cursor");
+    expect(routes).toContain("decodeCommercialScheduleCursor");
+    expect(routes).toContain("actions");
+    expect(routes).toContain("counterparty_name");
+    expect(routes).toContain("join_opens_at");
+  });
+
+  it("aligns consultation prejoin names and join window aliases", () => {
+    expect(routes).toContain("counterparty_avatar_url");
+    expect(routes).toContain("buyer_name");
+    expect(routes).toContain("creator_name");
+    expect(routes).toContain("join_closes_at");
+    expect(routes).toContain("server_now: Date.now()");
+  });
+
   it("uses POST for token-bearing admission while allowing signed GET reads", () => {
     expect(routes).toContain("export async function commercialLiveJoin");
     expect(router).toContain('req.method === "POST"');

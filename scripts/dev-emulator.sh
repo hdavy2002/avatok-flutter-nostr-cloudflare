@@ -18,14 +18,42 @@ AVATOK_DEFINE=""
 _sha=$(git -C "$(dirname "$0")/.." rev-parse --short HEAD 2>/dev/null)
 git -C "$(dirname "$0")/.." diff --quiet 2>/dev/null || _sha="${_sha}-dirty"
 GIT_DEFINE="--dart-define=GIT_SHA=${_sha:-unknown}"
-[ "$AVATOK_BACKEND" = "staging" ] && AVATOK_DEFINE="--dart-define=AVATOK_ENV=staging"
+if [ "$AVATOK_BACKEND" = "staging" ]; then
+  AVATOK_DEFINE="--dart-define=AVATOK_ENV=staging"
+  # Gradle reads the environment variable (not the Dart define) to add the
+  # `.staging` applicationId suffix. Export both halves so a physical-device
+  # debug run installs beside production instead of replacing it.
+  export AVATOK_ENV=staging
+fi
 LOG=/tmp/flutter_run.log
-tool_pid() { pgrep -f "dart-sdk/bin/dart.*flutter_tools.snapshot run" | head -1; }
+tool_pids() { pgrep -f "dart-sdk/bin/dart.*flutter_tools.snapshot run"; }
 
 case "$1" in
-  reload)  p=$(tool_pid); [ -n "$p" ] && kill -SIGUSR1 "$p" && echo "hot reload sent"  || echo "app not running";;
-  restart) p=$(tool_pid); [ -n "$p" ] && kill -SIGUSR2 "$p" && echo "hot restart sent" || echo "app not running";;
-  stop)    p=$(tool_pid); [ -n "$p" ] && kill "$p" && echo stopped || echo "not running";;
+  reload)  p=$(tool_pids); [ -n "$p" ] && { echo "$p" | xargs kill -SIGUSR1; echo "hot reload sent to all sessions"; } || echo "app not running";;
+  restart) p=$(tool_pids); [ -n "$p" ] && { echo "$p" | xargs kill -SIGUSR2; echo "hot restart sent to all sessions"; } || echo "app not running";;
+  stop)    p=$(tool_pids); [ -n "$p" ] && { echo "$p" | xargs kill; echo stopped; } || echo "not running";;
+  phones)
+    cd "$APP" || exit 1
+    devices=$(adb devices | awk 'NR>1 && $2 == "device" && $1 !~ /^emulator-/ { print $1 }')
+    [ -n "$devices" ] || { echo "no physical phones attached"; exit 1; }
+    for device in $devices; do
+      log="/tmp/flutter_run_${device}.log"
+      echo "starting hot-reload session on $device"
+      nohup flutter run -d "$device" --debug $AVATOK_DEFINE $GIT_DEFINE > "$log" 2>&1 &
+      echo "logs: $log"
+    done
+    ;;
+  phone)
+    [ -n "$2" ] || { echo "usage: $0 phone <device-serial>"; exit 1; }
+    cd "$APP" || exit 1
+    exec flutter run -d "$2" --debug $AVATOK_DEFINE $GIT_DEFINE
+    ;;
+  attach)
+    [ -n "$2" ] || { echo "usage: $0 attach <device-serial>"; exit 1; }
+    adb -s "$2" shell am start -n ai.avatok.avatok_call/.MainActivity >/dev/null
+    cd "$APP" || exit 1
+    exec flutter attach -d "$2"
+    ;;
   log)     tr '\r' '\n' < "$LOG" | grep -v "^[[:space:]]*$" | tail -40;;
   *)
     # [CALL-MIC-OBS-1] `-allow-host-audio` is MANDATORY for any call testing.

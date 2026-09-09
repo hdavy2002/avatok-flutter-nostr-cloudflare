@@ -2148,6 +2148,678 @@ class InviteSendsCompanion extends UpdateCompanion<InviteSend> {
   }
 }
 
+class $CallRecordingsTable extends CallRecordings
+    with TableInfo<$CallRecordingsTable, CallRecordingRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CallRecordingsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _callIdMeta = const VerificationMeta('callId');
+  @override
+  late final GeneratedColumn<String> callId = GeneratedColumn<String>(
+      'call_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _convKeyMeta =
+      const VerificationMeta('convKey');
+  @override
+  late final GeneratedColumn<String> convKey = GeneratedColumn<String>(
+      'conv_key', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(''));
+  static const VerificationMeta _peerUidMeta =
+      const VerificationMeta('peerUid');
+  @override
+  late final GeneratedColumn<String> peerUid = GeneratedColumn<String>(
+      'peer_uid', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(''));
+  static const VerificationMeta _peerNameMeta =
+      const VerificationMeta('peerName');
+  @override
+  late final GeneratedColumn<String> peerName = GeneratedColumn<String>(
+      'peer_name', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(''));
+  static const VerificationMeta _peerAvatarMeta =
+      const VerificationMeta('peerAvatar');
+  @override
+  late final GeneratedColumn<String> peerAvatar = GeneratedColumn<String>(
+      'peer_avatar', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(''));
+  static const VerificationMeta _directionMeta =
+      const VerificationMeta('direction');
+  @override
+  late final GeneratedColumn<String> direction = GeneratedColumn<String>(
+      'direction', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(''));
+  static const VerificationMeta _startedAtMeta =
+      const VerificationMeta('startedAt');
+  @override
+  late final GeneratedColumn<int> startedAt = GeneratedColumn<int>(
+      'started_at', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _durationSMeta =
+      const VerificationMeta('durationS');
+  @override
+  late final GeneratedColumn<int> durationS = GeneratedColumn<int>(
+      'duration_s', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _bytesMeta = const VerificationMeta('bytes');
+  @override
+  late final GeneratedColumn<int> bytes = GeneratedColumn<int>(
+      'bytes', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+      'title', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(''));
+  static const VerificationMeta _descriptionMeta =
+      const VerificationMeta('description');
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+      'description', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(''));
+  static const VerificationMeta _blobKeyMeta =
+      const VerificationMeta('blobKey');
+  @override
+  late final GeneratedColumn<String> blobKey = GeneratedColumn<String>(
+      'blob_key', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _mediaIdMeta =
+      const VerificationMeta('mediaId');
+  @override
+  late final GeneratedColumn<String> mediaId = GeneratedColumn<String>(
+      'media_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _uploadedAtMeta =
+      const VerificationMeta('uploadedAt');
+  @override
+  late final GeneratedColumn<int> uploadedAt = GeneratedColumn<int>(
+      'uploaded_at', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  @override
+  List<GeneratedColumn> get $columns => [
+        callId,
+        convKey,
+        peerUid,
+        peerName,
+        peerAvatar,
+        direction,
+        startedAt,
+        durationS,
+        bytes,
+        title,
+        description,
+        blobKey,
+        mediaId,
+        uploadedAt
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'call_recordings';
+  @override
+  VerificationContext validateIntegrity(Insertable<CallRecordingRow> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('call_id')) {
+      context.handle(_callIdMeta,
+          callId.isAcceptableOrUnknown(data['call_id']!, _callIdMeta));
+    } else if (isInserting) {
+      context.missing(_callIdMeta);
+    }
+    if (data.containsKey('conv_key')) {
+      context.handle(_convKeyMeta,
+          convKey.isAcceptableOrUnknown(data['conv_key']!, _convKeyMeta));
+    }
+    if (data.containsKey('peer_uid')) {
+      context.handle(_peerUidMeta,
+          peerUid.isAcceptableOrUnknown(data['peer_uid']!, _peerUidMeta));
+    }
+    if (data.containsKey('peer_name')) {
+      context.handle(_peerNameMeta,
+          peerName.isAcceptableOrUnknown(data['peer_name']!, _peerNameMeta));
+    }
+    if (data.containsKey('peer_avatar')) {
+      context.handle(
+          _peerAvatarMeta,
+          peerAvatar.isAcceptableOrUnknown(
+              data['peer_avatar']!, _peerAvatarMeta));
+    }
+    if (data.containsKey('direction')) {
+      context.handle(_directionMeta,
+          direction.isAcceptableOrUnknown(data['direction']!, _directionMeta));
+    }
+    if (data.containsKey('started_at')) {
+      context.handle(_startedAtMeta,
+          startedAt.isAcceptableOrUnknown(data['started_at']!, _startedAtMeta));
+    }
+    if (data.containsKey('duration_s')) {
+      context.handle(_durationSMeta,
+          durationS.isAcceptableOrUnknown(data['duration_s']!, _durationSMeta));
+    }
+    if (data.containsKey('bytes')) {
+      context.handle(
+          _bytesMeta, bytes.isAcceptableOrUnknown(data['bytes']!, _bytesMeta));
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+          _titleMeta, title.isAcceptableOrUnknown(data['title']!, _titleMeta));
+    }
+    if (data.containsKey('description')) {
+      context.handle(
+          _descriptionMeta,
+          description.isAcceptableOrUnknown(
+              data['description']!, _descriptionMeta));
+    }
+    if (data.containsKey('blob_key')) {
+      context.handle(_blobKeyMeta,
+          blobKey.isAcceptableOrUnknown(data['blob_key']!, _blobKeyMeta));
+    }
+    if (data.containsKey('media_id')) {
+      context.handle(_mediaIdMeta,
+          mediaId.isAcceptableOrUnknown(data['media_id']!, _mediaIdMeta));
+    }
+    if (data.containsKey('uploaded_at')) {
+      context.handle(
+          _uploadedAtMeta,
+          uploadedAt.isAcceptableOrUnknown(
+              data['uploaded_at']!, _uploadedAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {callId};
+  @override
+  CallRecordingRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CallRecordingRow(
+      callId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}call_id'])!,
+      convKey: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}conv_key'])!,
+      peerUid: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}peer_uid'])!,
+      peerName: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}peer_name'])!,
+      peerAvatar: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}peer_avatar'])!,
+      direction: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}direction'])!,
+      startedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}started_at'])!,
+      durationS: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}duration_s'])!,
+      bytes: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}bytes'])!,
+      title: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}title'])!,
+      description: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}description'])!,
+      blobKey: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}blob_key']),
+      mediaId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}media_id']),
+      uploadedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}uploaded_at']),
+    );
+  }
+
+  @override
+  $CallRecordingsTable createAlias(String alias) {
+    return $CallRecordingsTable(attachedDatabase, alias);
+  }
+}
+
+class CallRecordingRow extends DataClass
+    implements Insertable<CallRecordingRow> {
+  final String callId;
+  final String convKey;
+  final String peerUid;
+  final String peerName;
+  final String peerAvatar;
+  final String direction;
+  final int startedAt;
+  final int durationS;
+  final int bytes;
+  final String title;
+  final String description;
+  final String? blobKey;
+  final String? mediaId;
+  final int? uploadedAt;
+  const CallRecordingRow(
+      {required this.callId,
+      required this.convKey,
+      required this.peerUid,
+      required this.peerName,
+      required this.peerAvatar,
+      required this.direction,
+      required this.startedAt,
+      required this.durationS,
+      required this.bytes,
+      required this.title,
+      required this.description,
+      this.blobKey,
+      this.mediaId,
+      this.uploadedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['call_id'] = Variable<String>(callId);
+    map['conv_key'] = Variable<String>(convKey);
+    map['peer_uid'] = Variable<String>(peerUid);
+    map['peer_name'] = Variable<String>(peerName);
+    map['peer_avatar'] = Variable<String>(peerAvatar);
+    map['direction'] = Variable<String>(direction);
+    map['started_at'] = Variable<int>(startedAt);
+    map['duration_s'] = Variable<int>(durationS);
+    map['bytes'] = Variable<int>(bytes);
+    map['title'] = Variable<String>(title);
+    map['description'] = Variable<String>(description);
+    if (!nullToAbsent || blobKey != null) {
+      map['blob_key'] = Variable<String>(blobKey);
+    }
+    if (!nullToAbsent || mediaId != null) {
+      map['media_id'] = Variable<String>(mediaId);
+    }
+    if (!nullToAbsent || uploadedAt != null) {
+      map['uploaded_at'] = Variable<int>(uploadedAt);
+    }
+    return map;
+  }
+
+  CallRecordingsCompanion toCompanion(bool nullToAbsent) {
+    return CallRecordingsCompanion(
+      callId: Value(callId),
+      convKey: Value(convKey),
+      peerUid: Value(peerUid),
+      peerName: Value(peerName),
+      peerAvatar: Value(peerAvatar),
+      direction: Value(direction),
+      startedAt: Value(startedAt),
+      durationS: Value(durationS),
+      bytes: Value(bytes),
+      title: Value(title),
+      description: Value(description),
+      blobKey: blobKey == null && nullToAbsent
+          ? const Value.absent()
+          : Value(blobKey),
+      mediaId: mediaId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(mediaId),
+      uploadedAt: uploadedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(uploadedAt),
+    );
+  }
+
+  factory CallRecordingRow.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CallRecordingRow(
+      callId: serializer.fromJson<String>(json['callId']),
+      convKey: serializer.fromJson<String>(json['convKey']),
+      peerUid: serializer.fromJson<String>(json['peerUid']),
+      peerName: serializer.fromJson<String>(json['peerName']),
+      peerAvatar: serializer.fromJson<String>(json['peerAvatar']),
+      direction: serializer.fromJson<String>(json['direction']),
+      startedAt: serializer.fromJson<int>(json['startedAt']),
+      durationS: serializer.fromJson<int>(json['durationS']),
+      bytes: serializer.fromJson<int>(json['bytes']),
+      title: serializer.fromJson<String>(json['title']),
+      description: serializer.fromJson<String>(json['description']),
+      blobKey: serializer.fromJson<String?>(json['blobKey']),
+      mediaId: serializer.fromJson<String?>(json['mediaId']),
+      uploadedAt: serializer.fromJson<int?>(json['uploadedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'callId': serializer.toJson<String>(callId),
+      'convKey': serializer.toJson<String>(convKey),
+      'peerUid': serializer.toJson<String>(peerUid),
+      'peerName': serializer.toJson<String>(peerName),
+      'peerAvatar': serializer.toJson<String>(peerAvatar),
+      'direction': serializer.toJson<String>(direction),
+      'startedAt': serializer.toJson<int>(startedAt),
+      'durationS': serializer.toJson<int>(durationS),
+      'bytes': serializer.toJson<int>(bytes),
+      'title': serializer.toJson<String>(title),
+      'description': serializer.toJson<String>(description),
+      'blobKey': serializer.toJson<String?>(blobKey),
+      'mediaId': serializer.toJson<String?>(mediaId),
+      'uploadedAt': serializer.toJson<int?>(uploadedAt),
+    };
+  }
+
+  CallRecordingRow copyWith(
+          {String? callId,
+          String? convKey,
+          String? peerUid,
+          String? peerName,
+          String? peerAvatar,
+          String? direction,
+          int? startedAt,
+          int? durationS,
+          int? bytes,
+          String? title,
+          String? description,
+          Value<String?> blobKey = const Value.absent(),
+          Value<String?> mediaId = const Value.absent(),
+          Value<int?> uploadedAt = const Value.absent()}) =>
+      CallRecordingRow(
+        callId: callId ?? this.callId,
+        convKey: convKey ?? this.convKey,
+        peerUid: peerUid ?? this.peerUid,
+        peerName: peerName ?? this.peerName,
+        peerAvatar: peerAvatar ?? this.peerAvatar,
+        direction: direction ?? this.direction,
+        startedAt: startedAt ?? this.startedAt,
+        durationS: durationS ?? this.durationS,
+        bytes: bytes ?? this.bytes,
+        title: title ?? this.title,
+        description: description ?? this.description,
+        blobKey: blobKey.present ? blobKey.value : this.blobKey,
+        mediaId: mediaId.present ? mediaId.value : this.mediaId,
+        uploadedAt: uploadedAt.present ? uploadedAt.value : this.uploadedAt,
+      );
+  CallRecordingRow copyWithCompanion(CallRecordingsCompanion data) {
+    return CallRecordingRow(
+      callId: data.callId.present ? data.callId.value : this.callId,
+      convKey: data.convKey.present ? data.convKey.value : this.convKey,
+      peerUid: data.peerUid.present ? data.peerUid.value : this.peerUid,
+      peerName: data.peerName.present ? data.peerName.value : this.peerName,
+      peerAvatar:
+          data.peerAvatar.present ? data.peerAvatar.value : this.peerAvatar,
+      direction: data.direction.present ? data.direction.value : this.direction,
+      startedAt: data.startedAt.present ? data.startedAt.value : this.startedAt,
+      durationS: data.durationS.present ? data.durationS.value : this.durationS,
+      bytes: data.bytes.present ? data.bytes.value : this.bytes,
+      title: data.title.present ? data.title.value : this.title,
+      description:
+          data.description.present ? data.description.value : this.description,
+      blobKey: data.blobKey.present ? data.blobKey.value : this.blobKey,
+      mediaId: data.mediaId.present ? data.mediaId.value : this.mediaId,
+      uploadedAt:
+          data.uploadedAt.present ? data.uploadedAt.value : this.uploadedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CallRecordingRow(')
+          ..write('callId: $callId, ')
+          ..write('convKey: $convKey, ')
+          ..write('peerUid: $peerUid, ')
+          ..write('peerName: $peerName, ')
+          ..write('peerAvatar: $peerAvatar, ')
+          ..write('direction: $direction, ')
+          ..write('startedAt: $startedAt, ')
+          ..write('durationS: $durationS, ')
+          ..write('bytes: $bytes, ')
+          ..write('title: $title, ')
+          ..write('description: $description, ')
+          ..write('blobKey: $blobKey, ')
+          ..write('mediaId: $mediaId, ')
+          ..write('uploadedAt: $uploadedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      callId,
+      convKey,
+      peerUid,
+      peerName,
+      peerAvatar,
+      direction,
+      startedAt,
+      durationS,
+      bytes,
+      title,
+      description,
+      blobKey,
+      mediaId,
+      uploadedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CallRecordingRow &&
+          other.callId == this.callId &&
+          other.convKey == this.convKey &&
+          other.peerUid == this.peerUid &&
+          other.peerName == this.peerName &&
+          other.peerAvatar == this.peerAvatar &&
+          other.direction == this.direction &&
+          other.startedAt == this.startedAt &&
+          other.durationS == this.durationS &&
+          other.bytes == this.bytes &&
+          other.title == this.title &&
+          other.description == this.description &&
+          other.blobKey == this.blobKey &&
+          other.mediaId == this.mediaId &&
+          other.uploadedAt == this.uploadedAt);
+}
+
+class CallRecordingsCompanion extends UpdateCompanion<CallRecordingRow> {
+  final Value<String> callId;
+  final Value<String> convKey;
+  final Value<String> peerUid;
+  final Value<String> peerName;
+  final Value<String> peerAvatar;
+  final Value<String> direction;
+  final Value<int> startedAt;
+  final Value<int> durationS;
+  final Value<int> bytes;
+  final Value<String> title;
+  final Value<String> description;
+  final Value<String?> blobKey;
+  final Value<String?> mediaId;
+  final Value<int?> uploadedAt;
+  final Value<int> rowid;
+  const CallRecordingsCompanion({
+    this.callId = const Value.absent(),
+    this.convKey = const Value.absent(),
+    this.peerUid = const Value.absent(),
+    this.peerName = const Value.absent(),
+    this.peerAvatar = const Value.absent(),
+    this.direction = const Value.absent(),
+    this.startedAt = const Value.absent(),
+    this.durationS = const Value.absent(),
+    this.bytes = const Value.absent(),
+    this.title = const Value.absent(),
+    this.description = const Value.absent(),
+    this.blobKey = const Value.absent(),
+    this.mediaId = const Value.absent(),
+    this.uploadedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CallRecordingsCompanion.insert({
+    required String callId,
+    this.convKey = const Value.absent(),
+    this.peerUid = const Value.absent(),
+    this.peerName = const Value.absent(),
+    this.peerAvatar = const Value.absent(),
+    this.direction = const Value.absent(),
+    this.startedAt = const Value.absent(),
+    this.durationS = const Value.absent(),
+    this.bytes = const Value.absent(),
+    this.title = const Value.absent(),
+    this.description = const Value.absent(),
+    this.blobKey = const Value.absent(),
+    this.mediaId = const Value.absent(),
+    this.uploadedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : callId = Value(callId);
+  static Insertable<CallRecordingRow> custom({
+    Expression<String>? callId,
+    Expression<String>? convKey,
+    Expression<String>? peerUid,
+    Expression<String>? peerName,
+    Expression<String>? peerAvatar,
+    Expression<String>? direction,
+    Expression<int>? startedAt,
+    Expression<int>? durationS,
+    Expression<int>? bytes,
+    Expression<String>? title,
+    Expression<String>? description,
+    Expression<String>? blobKey,
+    Expression<String>? mediaId,
+    Expression<int>? uploadedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (callId != null) 'call_id': callId,
+      if (convKey != null) 'conv_key': convKey,
+      if (peerUid != null) 'peer_uid': peerUid,
+      if (peerName != null) 'peer_name': peerName,
+      if (peerAvatar != null) 'peer_avatar': peerAvatar,
+      if (direction != null) 'direction': direction,
+      if (startedAt != null) 'started_at': startedAt,
+      if (durationS != null) 'duration_s': durationS,
+      if (bytes != null) 'bytes': bytes,
+      if (title != null) 'title': title,
+      if (description != null) 'description': description,
+      if (blobKey != null) 'blob_key': blobKey,
+      if (mediaId != null) 'media_id': mediaId,
+      if (uploadedAt != null) 'uploaded_at': uploadedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CallRecordingsCompanion copyWith(
+      {Value<String>? callId,
+      Value<String>? convKey,
+      Value<String>? peerUid,
+      Value<String>? peerName,
+      Value<String>? peerAvatar,
+      Value<String>? direction,
+      Value<int>? startedAt,
+      Value<int>? durationS,
+      Value<int>? bytes,
+      Value<String>? title,
+      Value<String>? description,
+      Value<String?>? blobKey,
+      Value<String?>? mediaId,
+      Value<int?>? uploadedAt,
+      Value<int>? rowid}) {
+    return CallRecordingsCompanion(
+      callId: callId ?? this.callId,
+      convKey: convKey ?? this.convKey,
+      peerUid: peerUid ?? this.peerUid,
+      peerName: peerName ?? this.peerName,
+      peerAvatar: peerAvatar ?? this.peerAvatar,
+      direction: direction ?? this.direction,
+      startedAt: startedAt ?? this.startedAt,
+      durationS: durationS ?? this.durationS,
+      bytes: bytes ?? this.bytes,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      blobKey: blobKey ?? this.blobKey,
+      mediaId: mediaId ?? this.mediaId,
+      uploadedAt: uploadedAt ?? this.uploadedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (callId.present) {
+      map['call_id'] = Variable<String>(callId.value);
+    }
+    if (convKey.present) {
+      map['conv_key'] = Variable<String>(convKey.value);
+    }
+    if (peerUid.present) {
+      map['peer_uid'] = Variable<String>(peerUid.value);
+    }
+    if (peerName.present) {
+      map['peer_name'] = Variable<String>(peerName.value);
+    }
+    if (peerAvatar.present) {
+      map['peer_avatar'] = Variable<String>(peerAvatar.value);
+    }
+    if (direction.present) {
+      map['direction'] = Variable<String>(direction.value);
+    }
+    if (startedAt.present) {
+      map['started_at'] = Variable<int>(startedAt.value);
+    }
+    if (durationS.present) {
+      map['duration_s'] = Variable<int>(durationS.value);
+    }
+    if (bytes.present) {
+      map['bytes'] = Variable<int>(bytes.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
+    }
+    if (blobKey.present) {
+      map['blob_key'] = Variable<String>(blobKey.value);
+    }
+    if (mediaId.present) {
+      map['media_id'] = Variable<String>(mediaId.value);
+    }
+    if (uploadedAt.present) {
+      map['uploaded_at'] = Variable<int>(uploadedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CallRecordingsCompanion(')
+          ..write('callId: $callId, ')
+          ..write('convKey: $convKey, ')
+          ..write('peerUid: $peerUid, ')
+          ..write('peerName: $peerName, ')
+          ..write('peerAvatar: $peerAvatar, ')
+          ..write('direction: $direction, ')
+          ..write('startedAt: $startedAt, ')
+          ..write('durationS: $durationS, ')
+          ..write('bytes: $bytes, ')
+          ..write('title: $title, ')
+          ..write('description: $description, ')
+          ..write('blobKey: $blobKey, ')
+          ..write('mediaId: $mediaId, ')
+          ..write('uploadedAt: $uploadedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDb extends GeneratedDatabase {
   _$AppDb(QueryExecutor e) : super(e);
   $AppDbManager get managers => $AppDbManager(this);
@@ -2159,6 +2831,7 @@ abstract class _$AppDb extends GeneratedDatabase {
   late final $DeviceContactsCacheTable deviceContactsCache =
       $DeviceContactsCacheTable(this);
   late final $InviteSendsTable inviteSends = $InviteSendsTable(this);
+  late final $CallRecordingsTable callRecordings = $CallRecordingsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -2169,7 +2842,8 @@ abstract class _$AppDb extends GeneratedDatabase {
         chats,
         walletLedgerCache,
         deviceContactsCache,
-        inviteSends
+        inviteSends,
+        callRecordings
       ];
 }
 
@@ -3288,6 +3962,314 @@ typedef $$InviteSendsTableProcessedTableManager = ProcessedTableManager<
     (InviteSend, BaseReferences<_$AppDb, $InviteSendsTable, InviteSend>),
     InviteSend,
     PrefetchHooks Function()>;
+typedef $$CallRecordingsTableCreateCompanionBuilder = CallRecordingsCompanion
+    Function({
+  required String callId,
+  Value<String> convKey,
+  Value<String> peerUid,
+  Value<String> peerName,
+  Value<String> peerAvatar,
+  Value<String> direction,
+  Value<int> startedAt,
+  Value<int> durationS,
+  Value<int> bytes,
+  Value<String> title,
+  Value<String> description,
+  Value<String?> blobKey,
+  Value<String?> mediaId,
+  Value<int?> uploadedAt,
+  Value<int> rowid,
+});
+typedef $$CallRecordingsTableUpdateCompanionBuilder = CallRecordingsCompanion
+    Function({
+  Value<String> callId,
+  Value<String> convKey,
+  Value<String> peerUid,
+  Value<String> peerName,
+  Value<String> peerAvatar,
+  Value<String> direction,
+  Value<int> startedAt,
+  Value<int> durationS,
+  Value<int> bytes,
+  Value<String> title,
+  Value<String> description,
+  Value<String?> blobKey,
+  Value<String?> mediaId,
+  Value<int?> uploadedAt,
+  Value<int> rowid,
+});
+
+class $$CallRecordingsTableFilterComposer
+    extends Composer<_$AppDb, $CallRecordingsTable> {
+  $$CallRecordingsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get callId => $composableBuilder(
+      column: $table.callId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get convKey => $composableBuilder(
+      column: $table.convKey, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get peerUid => $composableBuilder(
+      column: $table.peerUid, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get peerName => $composableBuilder(
+      column: $table.peerName, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get peerAvatar => $composableBuilder(
+      column: $table.peerAvatar, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get direction => $composableBuilder(
+      column: $table.direction, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get startedAt => $composableBuilder(
+      column: $table.startedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get durationS => $composableBuilder(
+      column: $table.durationS, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get bytes => $composableBuilder(
+      column: $table.bytes, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get title => $composableBuilder(
+      column: $table.title, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get description => $composableBuilder(
+      column: $table.description, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get blobKey => $composableBuilder(
+      column: $table.blobKey, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get mediaId => $composableBuilder(
+      column: $table.mediaId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get uploadedAt => $composableBuilder(
+      column: $table.uploadedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$CallRecordingsTableOrderingComposer
+    extends Composer<_$AppDb, $CallRecordingsTable> {
+  $$CallRecordingsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get callId => $composableBuilder(
+      column: $table.callId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get convKey => $composableBuilder(
+      column: $table.convKey, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get peerUid => $composableBuilder(
+      column: $table.peerUid, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get peerName => $composableBuilder(
+      column: $table.peerName, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get peerAvatar => $composableBuilder(
+      column: $table.peerAvatar, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get direction => $composableBuilder(
+      column: $table.direction, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get startedAt => $composableBuilder(
+      column: $table.startedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get durationS => $composableBuilder(
+      column: $table.durationS, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get bytes => $composableBuilder(
+      column: $table.bytes, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get title => $composableBuilder(
+      column: $table.title, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get description => $composableBuilder(
+      column: $table.description, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get blobKey => $composableBuilder(
+      column: $table.blobKey, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get mediaId => $composableBuilder(
+      column: $table.mediaId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get uploadedAt => $composableBuilder(
+      column: $table.uploadedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$CallRecordingsTableAnnotationComposer
+    extends Composer<_$AppDb, $CallRecordingsTable> {
+  $$CallRecordingsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get callId =>
+      $composableBuilder(column: $table.callId, builder: (column) => column);
+
+  GeneratedColumn<String> get convKey =>
+      $composableBuilder(column: $table.convKey, builder: (column) => column);
+
+  GeneratedColumn<String> get peerUid =>
+      $composableBuilder(column: $table.peerUid, builder: (column) => column);
+
+  GeneratedColumn<String> get peerName =>
+      $composableBuilder(column: $table.peerName, builder: (column) => column);
+
+  GeneratedColumn<String> get peerAvatar => $composableBuilder(
+      column: $table.peerAvatar, builder: (column) => column);
+
+  GeneratedColumn<String> get direction =>
+      $composableBuilder(column: $table.direction, builder: (column) => column);
+
+  GeneratedColumn<int> get startedAt =>
+      $composableBuilder(column: $table.startedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get durationS =>
+      $composableBuilder(column: $table.durationS, builder: (column) => column);
+
+  GeneratedColumn<int> get bytes =>
+      $composableBuilder(column: $table.bytes, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get description => $composableBuilder(
+      column: $table.description, builder: (column) => column);
+
+  GeneratedColumn<String> get blobKey =>
+      $composableBuilder(column: $table.blobKey, builder: (column) => column);
+
+  GeneratedColumn<String> get mediaId =>
+      $composableBuilder(column: $table.mediaId, builder: (column) => column);
+
+  GeneratedColumn<int> get uploadedAt => $composableBuilder(
+      column: $table.uploadedAt, builder: (column) => column);
+}
+
+class $$CallRecordingsTableTableManager extends RootTableManager<
+    _$AppDb,
+    $CallRecordingsTable,
+    CallRecordingRow,
+    $$CallRecordingsTableFilterComposer,
+    $$CallRecordingsTableOrderingComposer,
+    $$CallRecordingsTableAnnotationComposer,
+    $$CallRecordingsTableCreateCompanionBuilder,
+    $$CallRecordingsTableUpdateCompanionBuilder,
+    (
+      CallRecordingRow,
+      BaseReferences<_$AppDb, $CallRecordingsTable, CallRecordingRow>
+    ),
+    CallRecordingRow,
+    PrefetchHooks Function()> {
+  $$CallRecordingsTableTableManager(_$AppDb db, $CallRecordingsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CallRecordingsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CallRecordingsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CallRecordingsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> callId = const Value.absent(),
+            Value<String> convKey = const Value.absent(),
+            Value<String> peerUid = const Value.absent(),
+            Value<String> peerName = const Value.absent(),
+            Value<String> peerAvatar = const Value.absent(),
+            Value<String> direction = const Value.absent(),
+            Value<int> startedAt = const Value.absent(),
+            Value<int> durationS = const Value.absent(),
+            Value<int> bytes = const Value.absent(),
+            Value<String> title = const Value.absent(),
+            Value<String> description = const Value.absent(),
+            Value<String?> blobKey = const Value.absent(),
+            Value<String?> mediaId = const Value.absent(),
+            Value<int?> uploadedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              CallRecordingsCompanion(
+            callId: callId,
+            convKey: convKey,
+            peerUid: peerUid,
+            peerName: peerName,
+            peerAvatar: peerAvatar,
+            direction: direction,
+            startedAt: startedAt,
+            durationS: durationS,
+            bytes: bytes,
+            title: title,
+            description: description,
+            blobKey: blobKey,
+            mediaId: mediaId,
+            uploadedAt: uploadedAt,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String callId,
+            Value<String> convKey = const Value.absent(),
+            Value<String> peerUid = const Value.absent(),
+            Value<String> peerName = const Value.absent(),
+            Value<String> peerAvatar = const Value.absent(),
+            Value<String> direction = const Value.absent(),
+            Value<int> startedAt = const Value.absent(),
+            Value<int> durationS = const Value.absent(),
+            Value<int> bytes = const Value.absent(),
+            Value<String> title = const Value.absent(),
+            Value<String> description = const Value.absent(),
+            Value<String?> blobKey = const Value.absent(),
+            Value<String?> mediaId = const Value.absent(),
+            Value<int?> uploadedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              CallRecordingsCompanion.insert(
+            callId: callId,
+            convKey: convKey,
+            peerUid: peerUid,
+            peerName: peerName,
+            peerAvatar: peerAvatar,
+            direction: direction,
+            startedAt: startedAt,
+            durationS: durationS,
+            bytes: bytes,
+            title: title,
+            description: description,
+            blobKey: blobKey,
+            mediaId: mediaId,
+            uploadedAt: uploadedAt,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$CallRecordingsTableProcessedTableManager = ProcessedTableManager<
+    _$AppDb,
+    $CallRecordingsTable,
+    CallRecordingRow,
+    $$CallRecordingsTableFilterComposer,
+    $$CallRecordingsTableOrderingComposer,
+    $$CallRecordingsTableAnnotationComposer,
+    $$CallRecordingsTableCreateCompanionBuilder,
+    $$CallRecordingsTableUpdateCompanionBuilder,
+    (
+      CallRecordingRow,
+      BaseReferences<_$AppDb, $CallRecordingsTable, CallRecordingRow>
+    ),
+    CallRecordingRow,
+    PrefetchHooks Function()>;
 
 class $AppDbManager {
   final _$AppDb _db;
@@ -3304,4 +4286,6 @@ class $AppDbManager {
       $$DeviceContactsCacheTableTableManager(_db, _db.deviceContactsCache);
   $$InviteSendsTableTableManager get inviteSends =>
       $$InviteSendsTableTableManager(_db, _db.inviteSends);
+  $$CallRecordingsTableTableManager get callRecordings =>
+      $$CallRecordingsTableTableManager(_db, _db.callRecordings);
 }

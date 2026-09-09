@@ -24,6 +24,17 @@ type Alarm = {
 
 type StateRow = { state: string; count: number; oldest_at: number | null };
 
+type EmailAttemptRef = {
+  outbox_key: string;
+  order_id: string | null;
+  delivery_status: string;
+  attempts: number;
+  max_attempts: number;
+  provider_message_id: string | null;
+  queue_accepted: boolean;
+  updated_at: number | null;
+};
+
 async function states(sql: string, env: Env): Promise<StateRow[]> {
   try {
     const rows = await metaDb(env).prepare(sql).all<StateRow>();
@@ -46,7 +57,48 @@ export type CommercialHealthSummary = {
     settlement_jobs: StateRow[];
     provider_events: StateRow[];
   };
+  email_outbox: {
+    states: StateRow[];
+    attempts: EmailAttemptRef[];
+  };
 };
+
+async function emailDiagnostics(env: Env): Promise<CommercialHealthSummary["email_outbox"]> {
+  try {
+    const [stateRows, attemptRows] = await Promise.all([
+      metaDb(env).prepare(
+        "SELECT delivery_status state,COUNT(*) count,MIN(updated_at) oldest_at FROM email_outbox GROUP BY delivery_status",
+      ).all<StateRow>(),
+      // This is a bounded support view. It deliberately omits recipient addresses,
+      // payloads and provider credentials while retaining stable refs for a retry.
+      metaDb(env).prepare(
+        `SELECT outbox_key,order_id,delivery_status,attempts,max_attempts,provider_message_id,
+           CASE WHEN queue_accepted_at IS NULL THEN 0 ELSE 1 END queue_accepted,updated_at
+         FROM email_outbox
+         ORDER BY updated_at DESC LIMIT 100`,
+      ).all<EmailAttemptRef>(),
+    ]);
+    return {
+      states: (stateRows.results ?? []).map((row) => ({
+        state: String(row.state), count: Number(row.count ?? 0),
+        oldest_at: row.oldest_at == null ? null : Number(row.oldest_at),
+      })),
+      attempts: (attemptRows.results ?? []).map((row) => ({
+        outbox_key: String(row.outbox_key),
+        order_id: row.order_id == null ? null : String(row.order_id),
+        delivery_status: String(row.delivery_status),
+        attempts: Math.max(0, Number(row.attempts ?? 0)),
+        max_attempts: Math.max(0, Number(row.max_attempts ?? 0)),
+        provider_message_id: row.provider_message_id == null ? null : String(row.provider_message_id),
+        queue_accepted: Number(row.queue_accepted ?? 0) === 1,
+        updated_at: row.updated_at == null ? null : Number(row.updated_at),
+      })),
+    };
+  } catch {
+    // The email migration is additive and may lag the worker revision.
+    return { states: [], attempts: [] };
+  }
+}
 
 /** Bounded maintenance scan. It emits only alarm dimensions, never row data. */
 export async function scanCommercialHealth(env: Env, now = Date.now()): Promise<CommercialHealthSummary> {
@@ -64,6 +116,7 @@ export async function scanCommercialHealth(env: Env, now = Date.now()): Promise<
     return {
       available: false, checked_at: now, alarms: [],
       states: { checkout_operations: [], sessions: [], settlement_jobs: [], provider_events: [] },
+      email_outbox: { states: [], attempts: [] },
     };
   }
   const queries: AlarmQuery[] = [
@@ -90,6 +143,7 @@ export async function scanCommercialHealth(env: Env, now = Date.now()): Promise<
       settlement_jobs: await states("SELECT state,COUNT(*) count,MIN(updated_at) oldest_at FROM commercial_settlement_jobs GROUP BY state", env),
       provider_events: await states("SELECT processing_state state,COUNT(*) count,MIN(received_at) oldest_at FROM commercial_provider_events GROUP BY processing_state", env),
     },
+    email_outbox: await emailDiagnostics(env),
   };
   for (const item of alarms) {
     if (item.state === "warning") {

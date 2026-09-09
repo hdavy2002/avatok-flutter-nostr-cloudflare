@@ -190,6 +190,9 @@ export interface WalletTxMsg {
 export interface ModerationMsg { type: "image" | "stream_recording"; hash: string; uid: string; media_id: string; r2_key: string; }
 export interface PushMsg {
   kind: "call" | "call-prewarm" | "notify" | "call-status" | "relay-event" | "fanout" | "del" | "hide" | "call_del" | "call_clear" | "group_invite" | "app_update_broadcast" | "reaction" | "notif_clear" | "thread_clear";
+  // Feed category copied by Worker notifyUser. Commercial event details remain
+  // in data.type and the other allowlisted data keys for the FCM contract.
+  type?: string;
   // [DELETE-CHAT-XDEV-1] kind === "thread_clear": a conversation was cleared
   // on one of MY devices. Self-addressed, silent, data-only. `cursor_mid` is
   // the canonical-message-id high-water mark; everything at or below it is
@@ -331,6 +334,10 @@ export interface PushMsg {
   // "call_clear" (whole history cleared) — silent wake so an asleep device applies it.
   entry_id?: string;
   title?: string | null; body?: string | null; data?: Record<string, unknown> | null;
+  // Reminder producers may require an actual device hand-off. The queue
+  // consumer throws when no registered token accepts the message so a cron
+  // reminder is retried instead of marking its cadence complete.
+  requireDelivery?: boolean;
   event_kind?: number; event_id?: string; ts?: number;
   // kind === "fanout" (large-group delivery; router never loops >25 sync DO calls):
   recipients?: string[]; payload?: Record<string, unknown>;
@@ -355,7 +362,23 @@ export interface PushMsg {
   cursor?: number;
 }
 // attachments: Brevo transactional attachment shape — content is base64 (Phase 5 ICS).
-export interface EmailMsg { to: string; subject: string; html: string; from?: string; replyTo?: { email: string; name?: string }; attachments?: { name: string; content: string }[]; }
+// The identity fields are optional for legacy producers; commercial mail always
+// supplies order/recipient/version so retries never depend on rendered HTML.
+export interface EmailMsg {
+  to: string;
+  subject: string;
+  html: string;
+  outboxKey?: string;
+  kind?: string;
+  orderId?: string | null;
+  recipientId?: string | null;
+  messageVersion?: string;
+  /** Explicit authenticated resend; only producers may set this. */
+  force?: boolean;
+  from?: string;
+  replyTo?: { email: string; name?: string };
+  attachments?: { name: string; content: string }[];
+}
 export interface AnalyticsMsg { event: string; uid?: string; props?: Record<string, unknown>; ts?: number; }
 
 // Chat archive message (producer: avatok-api /api/msg/send). The consumer writes

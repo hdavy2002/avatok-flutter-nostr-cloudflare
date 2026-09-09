@@ -15,7 +15,6 @@ import 'dart:async';
 import 'dart:convert';
 
 import '../../sync/party/party_hub.dart';
-import '../marketplace/listing_web_detail.dart';
 import '../marketplace/intent_theme.dart';
 import '../marketplace/call_agent_sheet.dart';
 import '../../core/marketplace_api.dart';
@@ -40,28 +39,21 @@ import '../commercial_getstream/commercial_live_gateway.dart';
 import '../commercial_getstream/commercial_live_screens.dart' as commercial;
 import 'widgets.dart';
 
-/// [LIST-DETAIL-EMBED-1 2026-09-09, owner decision] The one door to a listing's
-/// details, and the only place that decides which side of it opens.
+/// [LIST-DETAIL-NATIVE-1 2026-09-09] The one native door to a listing's details.
 ///
 /// Every entry point in the app pushes this — explore, search, marketplace
 /// browse, my listings, creator channel, avalive discovery, `core/deep_links.dart`
-/// and `push/push_service.dart` — so the swap to the web page happens once, here,
-/// and no caller needs to know. ON (the default) opens the website's own
-/// `/l/<id>` in an in-app WebView; OFF restores [NativeListingDetailScreen]
-/// below.
+/// and `push/push_service.dart` — so the details-to-booking journey has one
+/// native entry seam. Keeping the dispatch here means callers do not need to
+/// know whether the listing is commercial, live, or a regular marketplace item.
 ///
-/// ⚠️ OFF is a ROLLBACK, not a preference: the native screen's bottom bar runs
-/// the native CheckoutSheet, and the marketplace pivot says payments are web
-/// only (Specs/PIVOT-2026-08-27-MARKETPLACE-FIRST-PAID-SESSIONS.md).
-///
-/// Read at push time rather than watched: a listing already on screen must not
-/// swap itself for a different UI under the buyer's thumb because a remote flag
-/// refreshed mid-session.
+/// Commercial checkout and wallet payment are deliberately handled by the
+/// native flow below. Server-priced checkout, idempotency, entitlement, and
+/// join-window checks remain in their existing API/session layers.
 class ListingDetailScreen extends StatelessWidget {
   final String listingId;
 
-  /// Where the buyer came from. Forwarded to the WebView screen's telemetry so
-  /// a drop-off is attributable to an entry point rather than to "the page".
+  /// Where the buyer came from, retained for entry-point analytics.
   final String source;
 
   const ListingDetailScreen({
@@ -72,23 +64,24 @@ class ListingDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (RemoteConfig.listingWebDetailEnabled) {
-      return ListingWebDetailScreen(listingId: listingId, source: source);
-    }
-    return NativeListingDetailScreen(listingId: listingId);
+    return NativeListingDetailScreen(listingId: listingId, source: source);
   }
 }
 
 /// Listing details page (Phase 6): media carousel, title, description, icon
 /// row, Book/Join CTA, reviews, creator mini-card → channel.
 ///
-/// [LIST-DETAIL-EMBED-1] Kept, and reachable only through
-/// `ListingDetailScreen` with `listingWebDetailEnabled` off. Do not push it
-/// directly — a direct push is a checkout the pivot does not allow, and it
-/// bypasses the kill switch that is supposed to govern this screen.
+/// Every listing entry point reaches this screen through [ListingDetailScreen].
+/// Commercial checkout and wallet payment stay native and continue to use the
+/// server-priced, idempotent APIs below.
 class NativeListingDetailScreen extends StatefulWidget {
   final String listingId;
-  const NativeListingDetailScreen({super.key, required this.listingId});
+  final String source;
+  const NativeListingDetailScreen({
+    super.key,
+    required this.listingId,
+    this.source = 'unknown',
+  });
   @override
   State<NativeListingDetailScreen> createState() => _ListingDetailScreenState();
 }
@@ -108,8 +101,11 @@ class _ListingDetailScreenState extends State<NativeListingDetailScreen> {
     super.initState();
     _load();
     _joinListingParty();
-    Analytics.capture(
-        'listing_detail_viewed', {'listing_id': widget.listingId});
+    Analytics.capture('listing_detail_viewed', {
+      'listing_id': widget.listingId,
+      'render_mode': 'native',
+      'source': widget.source,
+    });
   }
 
   /// Join this listing's party room so we get a LIVE viewer count (#7) and pull a

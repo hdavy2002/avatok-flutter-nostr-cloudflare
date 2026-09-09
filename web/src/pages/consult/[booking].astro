@@ -7,11 +7,20 @@ export const prerender = false;
 
 import Base from '../../layouts/Base.astro';
 import ConsultRoom from '../../islands/consult/ConsultRoom.tsx';
+import { sessionPath } from '../../lib/urls';
 
 const { booking } = Astro.params;
 
 if (!booking) {
   return new Response('Booking required', { status: 400 });
+}
+
+// Commercial checkout bookings have a stable prefix. Older emails and
+// calendar bookings use UUIDs and continue through the genuine native-WebRTC
+// compatibility room below. This redirect lets pre-canonical commercial URLs
+// converge on the GetStream destination without stealing legacy bookings.
+if (booking.startsWith('commercial-booking-')) {
+  return Astro.redirect(`${sessionPath(booking)}${Astro.url.search}`, 301);
 }
 
 // Never cache or index a private room.

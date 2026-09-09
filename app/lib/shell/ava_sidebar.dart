@@ -25,7 +25,8 @@ import '../core/ui/messenger_theme.dart';
 
 /// The AvaTOK sidebar drawer. `onSelect` receives a destination key:
 /// 'explore' | 'verse' | 'library' | 'settings' | 'wallet' | 'profile' |
-/// 'billing' | 'payout' | 'invite' | or an app key.
+/// 'billing' | 'payout' | 'invite' | 'myticketsappointments' |
+/// 'myliveevents' | 'customerappointments' | 'availability' | or an app key.
 class AvaSidebar extends StatefulWidget {
   final Set<String> enabledApps;
   final AccountKind accountKind;
@@ -307,7 +308,8 @@ class _AvaSidebarState extends State<AvaSidebar> {
               // now is: the place a follower talks to a creator. Keep this
               // order (Marketplace, Messenger, Library, Wallet) unless the
               // owner changes the product.
-              if (RemoteConfig.marketplaceVisible) _marketplaceSection(),
+              // Keep purchased sessions recoverable when discovery is paused.
+              _marketplaceSection(),
               // Messenger is TEXT ONLY at launch — no audio, no video, no AI.
               // The subtitle used to say "Messages & calls", which promised a
               // feature that is deliberately dark; see [LAUNCH-DARK-1] in
@@ -511,30 +513,62 @@ class _AvaSidebarState extends State<AvaSidebar> {
           borderWidth: 1,
           radius: BorderRadius.circular(AD.rListCard),
           boxShadow: const [],
-          padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
+          padding:
+              const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
           child: Row(children: [
-            ZineIconBadge(icon: PhosphorIcons.storefront(PhosphorIconsStyle.bold), color: AD.danger),
+            ZineIconBadge(
+                icon: PhosphorIcons.storefront(PhosphorIconsStyle.bold),
+                color: AD.danger),
             const SizedBox(width: 12),
             Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Marketplace', style: ADText.rowName(c: headerActive ? Colors.white : AD.textPrimary)),
-                const SizedBox(height: 1),
-                Text('Buy, sell & social', style: ADText.statCaption(c: headerActive ? Colors.white70 : AD.textSecondary)),
-              ]),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Marketplace',
+                        style: ADText.rowName(
+                            c: headerActive ? Colors.white : AD.textPrimary)),
+                    const SizedBox(height: 1),
+                    Text('Buy, sell & social',
+                        style: ADText.statCaption(
+                            c: headerActive
+                                ? Colors.white70
+                                : AD.textSecondary)),
+                  ]),
             ),
             PhosphorIcon(
                 _marketplaceOpen
                     ? PhosphorIcons.caretUp(PhosphorIconsStyle.bold)
                     : PhosphorIcons.caretDown(PhosphorIconsStyle.bold),
-                size: 14, color: AD.textSecondary),
+                size: 14,
+                color: AD.textSecondary),
           ]),
         ),
         if (_marketplaceOpen) ...[
           const SizedBox(height: 4),
-          _subRow('marketplace', 'Browse', PhosphorIcons.storefront(PhosphorIconsStyle.bold)),
-          _subRow('createlisting', 'Create listing', PhosphorIcons.plusCircle(PhosphorIconsStyle.bold)),
-          _subRow('mylistings', 'My listings', PhosphorIcons.tag(PhosphorIconsStyle.bold)),
-          _subRow('archived', 'Archived', PhosphorIcons.archive(PhosphorIconsStyle.bold)),
+          // Browse is the marketplace catalogue, not the marketplace hub.
+          _subRow('marketplacebrowse', 'Browse',
+              PhosphorIcons.storefront(PhosphorIconsStyle.bold)),
+          _subRow('myticketsappointments', 'My Tickets & Appointments',
+              PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s2, Msg.s1),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text('CREATOR TOOLS', style: ADText.sectionLabel()),
+            ),
+          ),
+          _subRow('createlisting', 'Create listing',
+              PhosphorIcons.plusCircle(PhosphorIconsStyle.bold)),
+          _subRow('mylistings', 'My listings',
+              PhosphorIcons.tag(PhosphorIconsStyle.bold)),
+          _subRow('myliveevents', 'My Live Events',
+              PhosphorIcons.broadcast(PhosphorIconsStyle.bold)),
+          _subRow('customerappointments', 'Customer Appointments',
+              PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)),
+          _subRow('availability', 'Availability',
+              PhosphorIcons.clock(PhosphorIconsStyle.bold)),
+          _subRow('archived', 'Archived',
+              PhosphorIcons.archive(PhosphorIconsStyle.bold)),
         ],
       ]),
     );

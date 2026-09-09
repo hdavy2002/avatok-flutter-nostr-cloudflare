@@ -9,17 +9,26 @@ export const prerender = false;
 import { API_BASE } from '../../lib/config';
 import { sessionPath } from '../../lib/urls';
 
+Astro.response.headers.set('Cache-Control', 'no-store');
 const { token } = Astro.params;
 const joinInfoUrl = `${API_BASE}/api/join-info/${encodeURIComponent(token!)}`;
 
 let bookingId: string | null = null;
+let destinationPath: string | null = null;
 let error = false;
 try {
   const res = await fetch(joinInfoUrl, { headers: { accept: 'application/json' } });
   if (res.ok) {
-    const data = await res.json() as { booking_id?: string; error?: string };
+    const data = await res.json() as {
+      booking_id?: string;
+      destination?: { path?: string } | null;
+      error?: string;
+    };
     if (typeof data.booking_id === 'string' && data.booking_id) bookingId = data.booking_id;
     else error = true;
+    if (typeof data.destination?.path === 'string' && /^\/(?:live|session|consult)\/[^/?#]+$/.test(data.destination.path)) {
+      destinationPath = data.destination.path;
+    }
   } else {
     error = true;
   }
@@ -28,7 +37,11 @@ try {
 }
 
 if (bookingId) {
-  return Astro.redirect(`${sessionPath(bookingId)}${Astro.url.search}`, 301);
+  // New Worker responses identify the exact commercial or legacy room. Keep
+  // the session fallback for an older deployment that only returned
+  // `booking_id`, while preserving query parameters used by app-link recovery.
+  const path = destinationPath ?? sessionPath(bookingId);
+  return Astro.redirect(`${path}${Astro.url.search}`, 302);
 }
 
 Astro.response.status = 404;

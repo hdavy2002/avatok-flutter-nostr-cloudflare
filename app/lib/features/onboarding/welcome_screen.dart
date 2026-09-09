@@ -19,10 +19,16 @@ class WelcomeScreen extends StatelessWidget {
       body: Container(
         color: AD.bg,
         child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              const Spacer(flex: 2),
+          child: LayoutBuilder(builder: (context, constraints) {
+            // Small phones (and large accessibility text) cannot fit the full
+            // editorial hero and CTA in one viewport. Let the page scroll
+            // instead of painting Flutter's overflow diagnostics over the CTA.
+            return SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight - 36),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              const SizedBox(height: 16),
               // [RAJ-SEAMS-1] Hero illustration — 01-onboarding-illo-1.svg
               // (390x316), the designer's single hero art for this screen.
               // Decorative: the "Meet Ava." headline + subtitle beside it
@@ -91,7 +97,7 @@ class WelcomeScreen extends StatelessWidget {
                   icon: PhosphorIcons.chatsCircle(PhosphorIconsStyle.fill),
                 ),
               ),
-              const Spacer(flex: 2),
+              const SizedBox(height: 24),
               AdButton(
                 label: "Let's go",
                 icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
@@ -104,8 +110,10 @@ class WelcomeScreen extends StatelessWidget {
                 child: Text('by continuing you agree to our terms & privacy',
                     style: ADText.sectionLabel(c: AD.textTertiary), textAlign: TextAlign.center),
               ),
-            ]),
-          ),
+                ]),
+              ),
+            );
+          }),
         ),
       ),
     );

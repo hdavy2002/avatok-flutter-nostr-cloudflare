@@ -13,7 +13,7 @@ export interface Notice {
 }
 
 export async function notifyUser(
-  env: Env, uid: string, n: Notice, opts?: { push?: boolean; id?: string },
+  env: Env, uid: string, n: Notice, opts?: { push?: boolean; id?: string; requirePush?: boolean },
 ): Promise<string> {
   // Commercial events pass a deterministic id so queue retries cannot create a
   // second feed row (or a second push). Legacy callers keep UUID semantics.
@@ -23,9 +23,14 @@ export async function notifyUser(
     "INSERT OR IGNORE INTO notifications (id, uid, type, title, body, data, read, created_at) VALUES (?1,?2,?3,?4,?5,?6,0,?7)",
   ).bind(id, uid, n.type, n.title, n.body ?? null, n.data ? JSON.stringify(n.data) : null, now).run();
 
-  // INSERT OR IGNORE reports zero changes for a replay. Do not enqueue another
-  // FCM wake for an already persisted event.
-  if (Number(inserted.meta?.changes ?? 1) === 0) return id;
+  // INSERT OR IGNORE reports zero changes for a replay. Normal callers do not
+  // enqueue another wake for an already persisted event; durable callers may
+  // retry a failed queue hand-off against the same feed id.
+  const duplicate = Number(inserted.meta?.changes ?? 1) === 0;
+  // A durable caller may have persisted the feed row before the queue hand-off
+  // failed. It must be allowed to retry the push without creating a second feed
+  // entry. Legacy best-effort callers retain the old duplicate short-circuit.
+  if (duplicate && !opts?.requirePush) return id;
 
   // The in-app feed (D1, above) always records the alert. The FCM WAKE is
   // OPTIONAL: agent↔agent (marketplace) results are delivered over the live
@@ -33,7 +38,18 @@ export async function notifyUser(
   // so those callers pass {push:false} to keep the bell entry WITHOUT a push.
   // That stray notify was also what kept re-triggering the marketplace crash.
   if (opts?.push !== false) {
-    try { await env.Q_PUSH.send({ kind: "notify", to: uid, fromName: n.title }); } catch { /* best-effort */ }
+    try {
+      await env.Q_PUSH.send({
+        kind: "notify", type: n.type, to: uid, fromName: n.title,
+        // Keep the complete user-facing envelope on the queue. Commercial
+        // callers pass an allowlisted data object; no provider credential is
+        // synthesized or added here.
+        title: n.title, body: n.body, data: n.data,
+      });
+    } catch (error) {
+      if (opts?.requirePush) throw error;
+      /* legacy notifications remain best-effort */
+    }
   }
 
   return id;

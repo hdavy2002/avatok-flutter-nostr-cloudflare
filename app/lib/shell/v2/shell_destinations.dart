@@ -10,10 +10,14 @@ import '../../features/library/avalibrary_screen.dart';
 import '../../features/library/avastorage_screen.dart';
 import '../../features/marketplace/archived_screen.dart';
 import '../../features/marketplace/marketplace_hub.dart';
+import '../../features/marketplace/marketplace_browse.dart';
 import '../../features/marketplace/my_listings_screen.dart';
 import '../../features/marketplace/sell_listing_flow.dart';
 import '../../features/marketplace/compose_chat.dart';
 import '../../features/marketplace/listing_web_form.dart';
+import '../../features/booking/commercial_customer_screens.dart';
+import '../../features/booking/creator_schedule_screen.dart';
+import '../../features/calendar/avacalendar_screen.dart';
 import '../../features/payout/payout_screen.dart';
 import '../../features/profile/profile_screen.dart';
 import '../../features/settings/about_screen.dart';
@@ -89,6 +93,22 @@ void openShellDestination(BuildContext context, String dest) {
       return;
     case 'marketplace':
       push(const MarketplaceHub());
+      return;
+    case 'marketplacebrowse':
+      push(const MarketplaceBrowse());
+      return;
+    case 'myticketsappointments':
+    case 'mysessions':
+      push(const MySessionsScreen());
+      return;
+    case 'myliveevents':
+      push(const CreatorLiveEventsScreen());
+      return;
+    case 'customerappointments':
+      push(const CreatorAppointmentsScreen());
+      return;
+    case 'availability':
+      push(const CalendarSettingsScreen());
       return;
     case 'mylistings':
       push(const MyListingsScreen());

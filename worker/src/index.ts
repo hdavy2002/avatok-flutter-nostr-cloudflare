@@ -30,8 +30,10 @@ import {
   commercialSessionsMine,
   reconcileCommercialSessions,
 } from "./routes/commercial_stream_sessions";
-import { commercialCheckout } from "./routes/commercial_checkout";
+import { commercialCheckout, resendCommercialConfirmation } from "./routes/commercial_checkout";
+import { recoverEmailOutbox } from "./lib/email_outbox";
 import { commercialLifecycle } from "./routes/commercial_lifecycle";
+import { commercialRoutePattern } from "./lib/commercial_ids";
 import { commercialDiagnostics, scanCommercialHealth } from "./routes/commercial_diagnostics";
 import { runCommercialSettlements, runCommercialHostNoShowSweep } from "./commercial_settlement";
 import { refreshStaleCreatorStats } from "./lib/creator_stats"; // [LIST-STATS-1]
@@ -421,6 +423,8 @@ export default {
         reconcileListingPublicationEffects(env)
           .then((r) => { if (r.scanned) console.log("[listing-publication-reconciliation]", JSON.stringify(r)); })
           .catch((e) => { console.error("[listing-publication-reconciliation] failed:", String(e)); }),
+        recoverEmailOutbox(env)
+          .catch(() => { console.error("[commercial-email-recovery] failed"); }),
         runCommercialHostNoShowSweep(env)
           .then((r) => { if (r.scanned) console.log("[commercial-host-no-show-sweep]", JSON.stringify(r)); })
           .catch((e) => { console.error("[commercial-host-no-show-sweep] failed:", String(e)); }),
@@ -1485,6 +1489,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/stream-calls/cancel" && req.method === "POST") return await streamCallCancel(req, env);
 
       // --- Phase 2 commercial GetStream lane (independent, all flags dark) ---
+      if (/^\/api\/commercial\/orders\/[A-Za-z0-9-]{1,160}\/resend-confirmation$/.test(p)
+          && (req.method === "POST" || req.method === "GET")) {
+        return await resendCommercialConfirmation(req, env);
+      }
       if (/^\/api\/commercial\/(live|consult)\/[A-Za-z0-9-]{1,64}\/checkout$/.test(p) && req.method === "POST") {
         return await commercialCheckout(req, env);
       }
@@ -1493,37 +1501,37 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       }
       // Commercial live admission returns short-lived GetStream credentials;
       // POST-only keeps provider tokens out of cacheable GET semantics.
-      if (/^\/api\/commercial\/live\/[A-Za-z0-9-]{1,64}\/join$/.test(p) && req.method === "POST") {
+      if (commercialRoutePattern("live", "join").test(p) && req.method === "POST") {
         return await commercialLiveJoin(req, env);
       }
-      if (/^\/api\/commercial\/live\/[A-Za-z0-9-]{1,64}\/prepare-host$/.test(p) && req.method === "POST") {
+      if (commercialRoutePattern("live", "prepare-host").test(p) && req.method === "POST") {
         return await commercialLivePrepareHost(req, env);
       }
-      if (/^\/api\/commercial\/live\/[A-Za-z0-9-]{1,64}\/go-live$/.test(p) && req.method === "POST") {
+      if (commercialRoutePattern("live", "go-live").test(p) && req.method === "POST") {
         return await commercialLiveGoLive(req, env);
       }
-      if (/^\/api\/commercial\/live\/[A-Za-z0-9-]{1,64}\/end$/.test(p) && req.method === "POST") {
+      if (commercialRoutePattern("live", "end").test(p) && req.method === "POST") {
         return await commercialLiveEnd(req, env);
       }
-      if (/^\/api\/commercial\/live\/[A-Za-z0-9-]{1,64}\/state$/.test(p) && req.method === "GET") {
+      if (commercialRoutePattern("live", "state").test(p) && req.method === "GET") {
         return await commercialLiveState(req, env);
       }
-      if (/^\/api\/commercial\/consult\/[A-Za-z0-9-]{1,64}\/prejoin$/.test(p) && req.method === "GET") {
+      if (commercialRoutePattern("consult", "prejoin").test(p) && req.method === "GET") {
         return await commercialConsultPrejoin(req, env);
       }
-      if (/^\/api\/commercial\/consult\/[A-Za-z0-9-]{1,64}\/join$/.test(p) && req.method === "POST") {
+      if (commercialRoutePattern("consult", "join").test(p) && req.method === "POST") {
         return await commercialConsultJoin(req, env);
       }
-      if (/^\/api\/commercial\/consult\/[A-Za-z0-9-]{1,64}\/end$/.test(p) && req.method === "POST") {
+      if (commercialRoutePattern("consult", "end").test(p) && req.method === "POST") {
         return await commercialConsultEnd(req, env);
       }
-      if (/^\/api\/commercial\/consult\/[A-Za-z0-9-]{1,64}\/state$/.test(p) && req.method === "GET") {
+      if (commercialRoutePattern("consult", "state").test(p) && req.method === "GET") {
         return await commercialConsultState(req, env);
       }
-      if (/^\/api\/commercial\/consult\/[A-Za-z0-9-]{1,64}\/extend\/quote$/.test(p) && req.method === "POST") {
+      if (commercialRoutePattern("consult", "extend/quote").test(p) && req.method === "POST") {
         return await commercialConsultExtensionQuote(req, env);
       }
-      if (/^\/api\/commercial\/consult\/[A-Za-z0-9-]{1,64}\/extend\/confirm$/.test(p) && req.method === "POST") {
+      if (commercialRoutePattern("consult", "extend/confirm").test(p) && req.method === "POST") {
         return await commercialConsultExtensionConfirm(req, env);
       }
       if (/^\/api\/commercial\/session\/[A-Za-z0-9_:-]{1,160}\/receipt$/.test(p) && req.method === "GET") {

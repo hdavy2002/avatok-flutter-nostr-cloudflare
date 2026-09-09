@@ -9,7 +9,7 @@ export async function notifyUser(
   env: Env,
   uid: string,
   n: { type: string; title: string; body?: string; data?: Record<string, unknown> },
-  opts?: { id?: string; push?: boolean },
+  opts?: { id?: string; push?: boolean; requirePush?: boolean },
 ): Promise<void> {
   let inserted = true;
   try {
@@ -18,7 +18,16 @@ export async function notifyUser(
     ).bind(opts?.id ?? crypto.randomUUID(), uid, n.type, n.title, n.body ?? null, n.data ? JSON.stringify(n.data) : null, Date.now()).run();
     inserted = Number(result.meta?.changes ?? 1) !== 0;
   } catch { /* feed best-effort */ }
-  if (inserted && opts?.push !== false) {
-    try { await handlePush({ kind: "notify", to_uid: uid, fromName: n.title, title: n.title, body: n.body, data: n.data }, env); } catch { /* push best-effort */ }
+  if ((inserted || opts?.requirePush) && opts?.push !== false) {
+    try {
+      await handlePush({
+        kind: "notify", to_uid: uid, fromName: n.title,
+        title: n.title, body: n.body, data: n.data,
+        requireDelivery: opts?.requirePush === true,
+      }, env);
+    } catch (error) {
+      if (opts?.requirePush) throw error;
+      /* push remains best-effort for legacy notifications */
+    }
   }
 }

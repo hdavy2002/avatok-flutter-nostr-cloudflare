@@ -2383,8 +2383,9 @@ const DEFAULTS: PlatformConfig = {
   // ON by default — it is the shipped flow, and the flag is the brake, not the
   // switch that turns the feature on.
   listingWebFormEnabled: true,
-  // [LIST-DETAIL-EMBED-1] See the interface note — ON is the shipped flow.
-  listingWebDetailEnabled: true,
+  // [LIST-DETAIL-EMBED-1] Native detail is the safe default during migration;
+  // enable the web detail explicitly through the flag when ready.
+  listingWebDetailEnabled: false,
   // Per-listing billing — DARK. While off, publishes are free and entitlements are
   // still recorded so the 5-free quota is accurate when this flips on (staging first).
   listingFeeEnabled: false,

@@ -35,6 +35,8 @@ import '../features/avatok/invite_screen.dart';
 import '../features/avatok/number_settings_screen.dart';
 import '../features/ava_backup/backup_service.dart';
 import '../features/booking/avabooking_screen.dart';
+import '../features/booking/commercial_customer_screens.dart';
+import '../features/booking/creator_schedule_screen.dart';
 import '../features/calendar/avacalendar_screen.dart';
 import '../features/library/avalibrary_screen.dart';
 import '../features/library/avastorage_screen.dart';
@@ -44,6 +46,7 @@ import '../features/marketplace/compose_chat.dart';
 import '../features/marketplace/listing_web_form.dart';
 import '../features/marketplace/archived_screen.dart';
 import '../features/marketplace/marketplace_hub.dart';
+import '../features/marketplace/marketplace_browse.dart';
 import '../features/explore/explore_home.dart';
 import '../features/identity/identity_screen.dart';
 import '../features/identity/listing_liveness_gate.dart';
@@ -365,6 +368,22 @@ class _AvaShellState extends State<AvaShell> {
         // Marketplace now lands on the richer hub so browse/create/listings
         // live behind one creator-facing entry point.
         _push(const MarketplaceHub());
+        return;
+      case 'marketplacebrowse':
+        _push(const MarketplaceBrowse());
+        return;
+      case 'myticketsappointments':
+      case 'mysessions':
+        _push(const MySessionsScreen());
+        return;
+      case 'myliveevents':
+        _push(const CreatorLiveEventsScreen());
+        return;
+      case 'customerappointments':
+        _push(const CreatorAppointmentsScreen());
+        return;
+      case 'availability':
+        _push(const CalendarSettingsScreen());
         return;
       case 'explore':
         // Legacy AvaExplore creator grid (events/consults) — kept for deep links.

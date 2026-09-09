@@ -1011,7 +1011,9 @@ class ZineAppBar extends StatelessWidget implements PreferredSizeWidget {
       child: Container(
       decoration: const BoxDecoration(
         color: AD.headerFooter,
-        border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
+        // Header colour should flow directly into the seam; a dark hairline
+        // becomes a distracting divider when the indigo treatment is active.
+        border: Border(bottom: BorderSide(color: Colors.transparent, width: 0)),
       ),
       child: SafeArea(
         bottom: false,

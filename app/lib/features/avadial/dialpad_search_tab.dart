@@ -4,12 +4,14 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
+import '../../core/avacalls_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/illustrations.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avatok/contacts.dart';
 import '../avatok/invite_screen.dart';
 import '../avatok/place_1to1_call.dart';
+import '../../core/remote_config.dart';
 import 'avadial_theme.dart';
 import '../../core/ui/messenger_theme.dart';
 
@@ -37,16 +39,25 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
   bool _dialing = false;
   bool _searching = false;
   String? _status;
+  AvaCallsDestination? _destination;
   // 0 or 1 result: AvaTOK directory lookups are exact-key (email or number), so
   // there is never a fuzzy list here — see Directory.search's doc comment.
   Contact? _searchHit;
   bool _searchedNoHit = false;
 
   static const _keys = <(String, String)>[
-    ('1', ''), ('2', 'ABC'), ('3', 'DEF'),
-    ('4', 'GHI'), ('5', 'JKL'), ('6', 'MNO'),
-    ('7', 'PQRS'), ('8', 'TUV'), ('9', 'WXYZ'),
-    ('*', ''), ('0', '+'), ('#', ''),
+    ('1', ''),
+    ('2', 'ABC'),
+    ('3', 'DEF'),
+    ('4', 'GHI'),
+    ('5', 'JKL'),
+    ('6', 'MNO'),
+    ('7', 'PQRS'),
+    ('8', 'TUV'),
+    ('9', 'WXYZ'),
+    ('*', ''),
+    ('0', '+'),
+    ('#', ''),
   ];
 
   @override
@@ -84,45 +95,123 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
 
   void _press(String k) {
     HapticFeedback.lightImpact();
-    setState(() { _digits += k; _status = null; });
+    setState(() {
+      _digits += k;
+      _status = null;
+      _destination = null;
+    });
   }
 
   void _press0Long() {
     HapticFeedback.mediumImpact();
-    setState(() { _digits += '+'; _status = null; });
+    setState(() {
+      _digits += '+';
+      _status = null;
+      _destination = null;
+    });
   }
 
   void _backspace() {
     if (_digits.isEmpty) return;
     HapticFeedback.selectionClick();
-    setState(() => _digits = _digits.substring(0, _digits.length - 1));
+    setState(() {
+      _digits = _digits.substring(0, _digits.length - 1);
+      _destination = null;
+    });
   }
 
   Future<void> _callContact(Contact c) async {
     Analytics.capture('avadial_dialpad_call', {'via': 'search'});
-    await place1to1Call(context, uid: c.uid, name: c.name.isNotEmpty ? c.name : c.number,
-        avatarUrl: c.avatarUrl, dialer: true);
+    await place1to1Call(context,
+        uid: c.uid,
+        name: c.name.isNotEmpty ? c.name : c.number,
+        avatarUrl: c.avatarUrl,
+        dialer: true);
   }
 
   Future<void> _dial(String number) async {
     final n = number.trim();
     if (n.replaceAll(RegExp(r'[^\d]'), '').length < 3) {
-      setState(() => _status = 'Enter an AvaTOK number to call');
+      setState(() => _status = 'Enter a full national or international number');
       return;
     }
-    setState(() { _dialing = true; _status = null; });
-    Analytics.capture('avadial_dialpad_dial', {'len': n.length});
-    Contact? hit;
-    try { hit = await Directory.resolve(n); } catch (_) { hit = null; }
+    setState(() {
+      _dialing = true;
+      _status = null;
+    });
+    Analytics.capture('avacalls_route_selected', {'input_length': n.length});
+    var destination = await AvaCallsApi.resolve(n);
     if (!mounted) return;
-    setState(() => _dialing = false);
-    if (hit == null || hit.uid.isEmpty) {
-      Analytics.capture('avadial_dialpad_not_on_avatok', {'len': n.length});
-      await _showNotOnAvaTok(n);
+    if (destination.kind == AvaCallsNumberKind.pstn &&
+        destination.state == AvaCallsDestinationState.pstn &&
+        destination.outgoingLine == null) {
+      try {
+        final line = await AvaCallsOutgoingLineStore.instance
+            .select(await AvaCallsApi.listLines());
+        destination = destination.copyWith(
+            state: line == null
+                ? AvaCallsDestinationState.noDid
+                : AvaCallsDestinationState.pstn,
+            outgoingLine: line);
+      } catch (_) {/* admission remains authoritative */}
+    }
+    if (!mounted) return;
+    setState(() => _destination = destination);
+    if (destination.kind == AvaCallsNumberKind.pstn) {
+      if (destination.state != AvaCallsDestinationState.pstn ||
+          destination.outgoingLine == null) {
+        setState(() {
+          _dialing = false;
+          _status = destination.message ??
+              'Get a Virtual Number to call PSTN destinations';
+        });
+        return;
+      }
+      try {
+        await AvaCallsApi.preparePstn(
+            number: destination.canonicalNumber,
+            lineId: destination.outgoingLine!.id);
+        await AvaCallsApi.placePstn(
+            number: destination.canonicalNumber,
+            lineId: destination.outgoingLine!.id,
+            attemptId: DateTime.now().microsecondsSinceEpoch.toString());
+        if (mounted)
+          setState(() {
+            _dialing = false;
+            _status =
+                'Calling from ${destination.outgoingLine!.displayNumber} · 0.50 tokens/minute';
+          });
+      } on AvaCallsApiException catch (e) {
+        if (mounted)
+          setState(() {
+            _dialing = false;
+            _status = e.message;
+          });
+      } catch (_) {
+        if (mounted)
+          setState(() {
+            _dialing = false;
+            _status = 'Could not start the PSTN call. Try again.';
+          });
+      }
       return;
     }
-    await place1to1Call(context, uid: hit.uid, name: hit.name.isNotEmpty ? hit.name : hit.number,
-        avatarUrl: hit.avatarUrl, dialer: true);
+    final hit = destination.contact;
+    if (destination.kind != AvaCallsNumberKind.avatok ||
+        hit == null ||
+        hit.uid.isEmpty) {
+      setState(() {
+        _dialing = false;
+        _status = destination.message ?? 'This destination is not supported';
+      });
+      return;
+    }
+    await place1to1Call(context,
+        uid: hit.uid,
+        name: hit.name.isNotEmpty ? hit.name : hit.number,
+        avatarUrl: hit.avatarUrl,
+        dialer: true);
+    if (mounted) setState(() => _dialing = false);
   }
 
   Future<void> _showNotOnAvaTok(String number) async {
@@ -135,7 +224,8 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
           side: const BorderSide(color: AvaDialTheme.border, width: 1),
           borderRadius: BorderRadius.circular(AD.rDialog),
         ),
-        title: Text('Not on AvaTOK', style: ADText.threadName(c: AvaDialTheme.text)),
+        title: Text('Not on AvaTOK',
+            style: ADText.threadName(c: AvaDialTheme.text)),
         content: Text(
           '$number isn’t an AvaTOK number yet. AvaDial only calls other AvaTOK '
           'users — invite them to join.',
@@ -145,13 +235,15 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogCtx),
-            child: Text('Cancel', style: ADText.rowName(c: AvaDialTheme.textSoft)),
+            child:
+                Text('Cancel', style: ADText.rowName(c: AvaDialTheme.textSoft)),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(dialogCtx);
               Navigator.of(context, rootNavigator: true).push(
-                MaterialPageRoute<void>(builder: (_) => const InviteScreen()));
+                  MaterialPageRoute<void>(
+                      builder: (_) => const InviteScreen()));
             },
             child: Text('Invite', style: ADText.rowName(c: AD.online)),
           ),
@@ -178,12 +270,16 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
           style: AvaDialTheme.value(size: 15, color: AvaDialTheme.searchText),
           decoration: InputDecoration(
             hintText: 'Search by AvaTOK number or email…',
-            hintStyle: AvaDialTheme.sub(size: 14, color: AvaDialTheme.searchHint),
-            prefixIcon: Icon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.regular), color: AvaDialTheme.searchHint),
+            hintStyle:
+                AvaDialTheme.sub(size: 14, color: AvaDialTheme.searchHint),
+            prefixIcon: Icon(
+                PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.regular),
+                color: AvaDialTheme.searchHint),
             suffixIcon: _searchCtrl.text.isEmpty
                 ? null
                 : IconButton(
-                    icon: Icon(PhosphorIcons.x(PhosphorIconsStyle.regular), color: AvaDialTheme.searchHint),
+                    icon: Icon(PhosphorIcons.x(PhosphorIconsStyle.regular),
+                        color: AvaDialTheme.searchHint),
                     onPressed: () {
                       _searchCtrl.clear();
                       _onSearchChanged('');
@@ -194,34 +290,40 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
             contentPadding: const EdgeInsets.symmetric(vertical: Msg.s3),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(AD.rInput),
-              borderSide: const BorderSide(color: AvaDialTheme.border, width: 1),
+              borderSide:
+                  const BorderSide(color: AvaDialTheme.border, width: 1),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(AD.rInput),
-              borderSide: const BorderSide(color: AvaDialTheme.border, width: 1),
+              borderSide:
+                  const BorderSide(color: AvaDialTheme.border, width: 1),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(AD.rInput),
-              borderSide: const BorderSide(color: AvaDialTheme.accent, width: 1),
+              borderSide:
+                  const BorderSide(color: AvaDialTheme.accent, width: 1),
             ),
           ),
         ),
       ),
       Expanded(
-        child: _searchCtrl.text.trim().length >= 3 ? _searchResults() : _keypad(),
+        child:
+            _searchCtrl.text.trim().length >= 3 ? _searchResults() : _keypad(),
       ),
     ]);
   }
 
   Widget _searchResults() {
     if (_searching) {
-      return const Center(child: CircularProgressIndicator(color: AvaDialTheme.accent));
+      return const Center(
+          child: CircularProgressIndicator(color: AvaDialTheme.accent));
     }
     final hit = _searchHit;
     if (hit == null) {
       if (!_searchedNoHit) {
         return Center(
-          child: Text('No matches yet', style: AvaDialTheme.sub(size: 14, color: AvaDialTheme.textSoft)),
+          child: Text('No matches yet',
+              style: AvaDialTheme.sub(size: 14, color: AvaDialTheme.textSoft)),
         );
       }
       return Center(
@@ -231,10 +333,13 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
             SvgPicture.asset(Illustrations.dialerNotOnAvatok,
                 height: 120, fit: BoxFit.contain, excludeFromSemantics: true),
             const SizedBox(height: Msg.s3),
-            Text('Not on AvaTOK', style: AvaDialTheme.title(size: 16, color: AvaDialTheme.text)),
+            Text('Not on AvaTOK',
+                style: AvaDialTheme.title(size: 16, color: AvaDialTheme.text)),
             const SizedBox(height: Msg.s1),
             Text('No AvaTOK account matches that number or email.',
-                textAlign: TextAlign.center, style: AvaDialTheme.sub(size: 13, color: AvaDialTheme.textSoft)),
+                textAlign: TextAlign.center,
+                style:
+                    AvaDialTheme.sub(size: 13, color: AvaDialTheme.textSoft)),
             const SizedBox(height: Msg.s3),
             AdButton(
               label: 'Invite',
@@ -242,7 +347,8 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
               fontSize: 14,
               trailingIcon: false,
               onPressed: () => Navigator.of(context, rootNavigator: true).push(
-                  MaterialPageRoute<void>(builder: (_) => const InviteScreen())),
+                  MaterialPageRoute<void>(
+                      builder: (_) => const InviteScreen())),
             ),
           ]),
         ),
@@ -253,22 +359,38 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
       children: [
         AdCard(
           color: AvaDialTheme.surface2,
-          padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
+          padding:
+              const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
           child: Row(children: [
-            ZineIconBadge(icon: PhosphorIcons.user(PhosphorIconsStyle.bold), color: AD.primaryBadge),
+            ZineIconBadge(
+                icon: PhosphorIcons.user(PhosphorIconsStyle.bold),
+                color: AD.primaryBadge),
             const SizedBox(width: 12),
             Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(hit.name.isNotEmpty ? hit.name : hit.number,
-                    style: AvaDialTheme.title(size: 15, color: AvaDialTheme.text)),
-                if (hit.number.isNotEmpty)
-                  Text(hit.number, style: AvaDialTheme.sub(size: 12, color: AvaDialTheme.textSoft)),
-              ]),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(hit.name.isNotEmpty ? hit.name : hit.number,
+                        style: AvaDialTheme.title(
+                            size: 15, color: AvaDialTheme.text)),
+                    if (hit.number.isNotEmpty)
+                      Text(hit.number,
+                          style: AvaDialTheme.sub(
+                              size: 12, color: AvaDialTheme.textSoft)),
+                  ]),
             ),
-            IconButton(
-              onPressed: () => _callContact(hit),
-              icon: Icon(PhosphorIcons.phone(PhosphorIconsStyle.bold), color: AD.incomingCall),
-            ),
+            // [AVATALK-CHAT-ONLY-2] Messenger 1:1 calling is being killed —
+            // hide this dial icon while RemoteConfig.messengerCallingEnabled
+            // is off, matching contact_detail_screen.dart / contact_row_menu.dart.
+            // (This is the AvaTOK-to-AvaTOK call path via place1to1Call —
+            // distinct from the shared keypad dial button below, which also
+            // carries paid PSTN/Virtual-Number calls unrelated to this flag.)
+            if (RemoteConfig.messengerCallingEnabled)
+              IconButton(
+                onPressed: () => _callContact(hit),
+                icon: Icon(PhosphorIcons.phone(PhosphorIconsStyle.bold),
+                    color: AD.incomingCall),
+              ),
           ]),
         ),
       ],
@@ -282,18 +404,40 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
         height: 44,
         child: Center(
           child: Text(
-            _digits.isEmpty ? 'Enter an AvaTOK number' : _digits,
+            _digits.isEmpty ? 'Enter a number' : _digits,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: AvaDialTheme.title(
-                size: 26, color: _digits.isEmpty ? AvaDialTheme.textMute : AvaDialTheme.text),
+                size: 26,
+                color: _digits.isEmpty
+                    ? AvaDialTheme.textMute
+                    : AvaDialTheme.text),
           ),
         ),
       ),
+      if (_destination != null && _digits.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text(
+            _destination!.state == AvaCallsDestinationState.avatok
+                ? 'AvaTOK number · free in-network call'
+                : _destination!.state == AvaCallsDestinationState.pstn
+                    ? '${_destination!.countryName.isEmpty ? _destination!.countryIso2 : _destination!.countryName} · 0.50 tokens/minute'
+                    : (_destination!.message ?? 'Checking number…'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AvaDialTheme.sub(
+                size: 12,
+                color: _destination!.state == AvaCallsDestinationState.avatok
+                    ? AD.online
+                    : AD.incomingCall),
+          ),
+        ),
       if (_status != null)
         Padding(
           padding: const EdgeInsets.only(bottom: 4),
-          child: Text(_status!, style: AvaDialTheme.sub(size: 12, color: AD.danger)),
+          child: Text(_status!,
+              style: AvaDialTheme.sub(size: 12, color: AD.danger)),
         ),
       const SizedBox(height: 8),
       Padding(
@@ -323,17 +467,23 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
         GestureDetector(
           onTap: _dialing ? null : () => _dial(_digits),
           child: Container(
-            width: 62, height: 62,
+            width: 62,
+            height: 62,
             decoration: BoxDecoration(
-              color: _dialing ? AD.incomingCall.withValues(alpha: 0.5) : AD.incomingCall,
+              color: _dialing
+                  ? AD.incomingCall.withValues(alpha: 0.5)
+                  : AD.incomingCall,
               shape: BoxShape.circle,
               border: Border.all(color: AvaDialTheme.border, width: 1),
               boxShadow: const [],
             ),
             child: _dialing
-                ? const Padding(padding: EdgeInsets.all(18),
-                    child: CircularProgressIndicator(strokeWidth: 2.6, color: Colors.white))
-                : Icon(PhosphorIcons.phone(PhosphorIconsStyle.bold), size: 28, color: Colors.white),
+                ? const Padding(
+                    padding: EdgeInsets.all(18),
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2.6, color: Colors.white))
+                : Icon(PhosphorIcons.phone(PhosphorIconsStyle.bold),
+                    size: 28, color: Colors.white),
           ),
         ),
         const Spacer(),
@@ -343,7 +493,9 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
               ? null
               : IconButton(
                   onPressed: _backspace,
-                  icon: Icon(PhosphorIcons.backspace(PhosphorIconsStyle.regular), color: AvaDialTheme.textSoft),
+                  icon: Icon(
+                      PhosphorIcons.backspace(PhosphorIconsStyle.regular),
+                      color: AvaDialTheme.textSoft),
                 ),
         ),
       ]),
@@ -357,7 +509,11 @@ class _DialKey extends StatelessWidget {
   final String sub;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
-  const _DialKey({required this.digit, required this.sub, required this.onTap, this.onLongPress});
+  const _DialKey(
+      {required this.digit,
+      required this.sub,
+      required this.onTap,
+      this.onLongPress});
 
   @override
   Widget build(BuildContext context) {
@@ -373,9 +529,11 @@ class _DialKey extends StatelessWidget {
           boxShadow: const [],
         ),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Text(digit, style: AvaDialTheme.title(size: 22, color: AvaDialTheme.text)),
+          Text(digit,
+              style: AvaDialTheme.title(size: 22, color: AvaDialTheme.text)),
           if (sub.isNotEmpty)
-            Text(sub, style: AvaDialTheme.tag(size: 9, color: AvaDialTheme.textMute)),
+            Text(sub,
+                style: AvaDialTheme.tag(size: 9, color: AvaDialTheme.textMute)),
         ]),
       ),
     );

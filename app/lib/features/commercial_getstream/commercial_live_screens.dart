@@ -233,6 +233,7 @@ class LiveBackstageScreen extends StatefulWidget {
 
 class _LiveBackstageScreenState extends State<LiveBackstageScreen> {
   bool _starting = false;
+  bool _sessionHandedOff = false;
   String? _error;
 
   Future<void> _start() async {
@@ -263,6 +264,10 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> {
     try {
       await widget.gateway.start(widget.listingId);
       if (!mounted) return;
+      // Broadcast owns this same server room. Mark the handoff before the
+      // replacement route disposes this state, otherwise dispose() would
+      // release the camera/mic while the broadcast screen is opening.
+      _sessionHandedOff = true;
       await Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
         builder: (_) => LiveBroadcastScreen(
           listingId: widget.listingId,
@@ -278,6 +283,12 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> {
     } finally {
       if (mounted) setState(() => _starting = false);
     }
+  }
+
+  @override
+  void dispose() {
+    if (!_sessionHandedOff) unawaited(widget.session.leave());
+    super.dispose();
   }
 
   @override

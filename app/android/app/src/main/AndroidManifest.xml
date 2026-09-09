@@ -224,6 +224,16 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="https" android:host="avatok.ai" android:pathPrefix="/session"/>
             </intent-filter>
+            <!-- [CREATOR-SESSION-JOURNEY-1] Canonical paid live event links.
+                 DeepLinks resolves /live/:listingId and asks the server whether
+                 this account is the host before exposing creator readiness;
+                 ticket holders are routed to a receive-only viewer. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="avatok.ai" android:pathPrefix="/live/"/>
+            </intent-filter>
             <!-- App Link — https://avatok.ai/add?t=<token> opens the app to the
                  "add contact" card (AvaTOK Number QR share). Same host as /j/, so
                  the existing /.well-known/assetlinks.json verifies it too. -->

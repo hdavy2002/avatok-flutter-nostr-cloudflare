@@ -11,6 +11,9 @@ import 'config.dart';
 class CommercialSessionRecord {
   final String entitlementId, kind, listingId, title;
   final String? bookingId, orderId, sessionId, receiptId;
+  final String? role, counterpartyName;
+  final List<String> allowedActions;
+  final String? listingStatus, action;
   final String? chatChannelId, chatChannelType;
   final List<String> chatPermissions;
   final String entitlementState, bookingStatus, orderStatus;
@@ -46,6 +49,11 @@ class CommercialSessionRecord {
     this.orderId,
     this.sessionId,
     this.receiptId,
+    this.role,
+    this.counterpartyName,
+    this.allowedActions = const [],
+    this.listingStatus,
+    this.action,
     this.sessionState,
     this.settlementState,
     this.receiptSettlementState,
@@ -72,8 +80,21 @@ class CommercialSessionRecord {
       title: (json['title'] ?? 'Session').toString(),
       bookingId: json['booking_id']?.toString(),
       orderId: json['order_id']?.toString(),
-      sessionId: json['commercial_session_id']?.toString(),
+      sessionId:
+          (json['commercial_session_id'] ?? json['session_id'])?.toString(),
       receiptId: json['receipt_id']?.toString(),
+      role: (json['role'] ?? json['viewer_role'])?.toString(),
+      counterpartyName: (json['counterparty_name'] ??
+              json['customer_name'] ??
+              json['buyer_name'] ??
+              json['creator_name'])
+          ?.toString(),
+      allowedActions: ((json['allowed_actions'] ?? json['actions']) as List?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const [],
+      listingStatus: json['listing_status']?.toString(),
+      action: json['action']?.toString(),
       entitlementState: (json['entitlement_state'] ?? '').toString(),
       bookingStatus: (json['booking_status'] ?? '').toString(),
       orderStatus: (json['order_status'] ?? '').toString(),
@@ -114,20 +135,42 @@ class CommercialSessionRecord {
   bool get isRefunded =>
       entitlementState == 'refunded' ||
       orderStatus == 'refunded' ||
-      bookingStatus == 'cancelled' ||
-      bookingStatus == 'canceled' ||
       receiptSettlementState == 'refunded' ||
       receiptSettlementState == 'partial_refund' ||
       refundSettlementState == 'refunded' ||
       refundSettlementState == 'partial_refund';
+  bool get isCancelled =>
+      entitlementState == 'revoked' ||
+      orderStatus == 'cancelled' ||
+      orderStatus == 'canceled' ||
+      bookingStatus == 'cancelled' ||
+      bookingStatus == 'canceled' ||
+      bookingStatus == 'cancelled_user' ||
+      bookingStatus == 'cancelled_creator' ||
+      bookingStatus == 'no_show_user' ||
+      bookingStatus == 'no_show_creator' ||
+      bookingStatus == 'refunded' ||
+      sessionState == 'cancelled' ||
+      sessionState == 'canceled' ||
+      listingStatus == 'cancelled' ||
+      listingStatus == 'canceled';
   bool get isCompleted =>
-      !isRefunded &&
+      !isRefunded && !isCancelled &&
       (bookingStatus == 'completed' ||
           sessionState == 'ended' ||
-          (endsAt > 0 && estimatedServerNow >= endsAt));
-  bool get isLiveNow => !isRefunded && !isCompleted && sessionState == 'live';
+          listingStatus == 'completed' ||
+          ((closesAt > 0 ? closesAt : endsAt) > 0 &&
+              estimatedServerNow > (closesAt > 0 ? closesAt : endsAt)));
+  bool get isLiveNow =>
+      !isRefunded &&
+      !isCancelled &&
+      !isCompleted &&
+      (sessionState == 'live' ||
+          sessionState == 'backstage' ||
+          listingStatus == 'live');
   bool get isJoinWindowOpen =>
       !isRefunded &&
+      !isCancelled &&
       !isCompleted &&
       opensAt > 0 &&
       closesAt > 0 &&
@@ -139,6 +182,7 @@ class CommercialSessionRecord {
 
   String get joinLabel {
     if (isRefunded) return 'Refunded';
+    if (isCancelled) return 'Cancelled';
     if (isCompleted) return 'Completed';
     if (isJoinWindowOpen) return 'Join';
     if (opensAt > estimatedServerNow)
@@ -155,7 +199,7 @@ class CommercialSessionRecord {
   }
 
   CommercialSessionBucket get bucket {
-    if (isRefunded) return CommercialSessionBucket.cancelledRefunded;
+    if (isRefunded || isCancelled) return CommercialSessionBucket.cancelledRefunded;
     if (isCompleted) return CommercialSessionBucket.completed;
     if (isLiveNow) return CommercialSessionBucket.liveNow;
     return CommercialSessionBucket.upcoming;
@@ -167,9 +211,14 @@ enum CommercialSessionBucket { upcoming, liveNow, completed, cancelledRefunded }
 class CommercialSessionsResponse {
   final int serverNow;
   final List<CommercialSessionRecord> sessions;
+  final String? nextCursor;
+  final bool hasMore;
 
   const CommercialSessionsResponse(
-      {required this.serverNow, required this.sessions});
+      {required this.serverNow,
+      required this.sessions,
+      this.nextCursor,
+      this.hasMore = false});
 
   factory CommercialSessionsResponse.fromJson(Map<String, dynamic> json) {
     final serverNow = CommercialSessionRecord._int(json['server_now']);
@@ -184,19 +233,38 @@ class CommercialSessionsResponse {
               serverNow: serverNow,
               fetchedAt: fetchedAt,
             ))
-        .where(
-            (row) => row.entitlementId.isNotEmpty && row.listingId.isNotEmpty)
+        // Creator events may not have a host entitlement before admission.
+        .where((row) => row.listingId.isNotEmpty)
         .toList();
-    return CommercialSessionsResponse(serverNow: serverNow, sessions: rows);
+    final next = (json['next_cursor'] ?? json['nextCursor'])?.toString();
+    return CommercialSessionsResponse(
+      serverNow: serverNow,
+      sessions: rows,
+      nextCursor: next?.isEmpty == true ? null : next,
+      hasMore: next?.isNotEmpty == true || json['has_more'] == true,
+    );
   }
 }
 
 class CommercialSessionsApi {
   static const _url = 'https://$kSignalingHost/api/commercial/sessions/mine';
 
-  static Future<CommercialSessionsResponse?> mine() async {
+  static Future<CommercialSessionsResponse?> mine({
+    String role = 'customer',
+    String view = 'all',
+    String? cursor,
+    int limit = 50,
+  }) async {
     try {
-      final response = await ApiAuth.getSigned(_url);
+      final uri = Uri.parse(_url).replace(queryParameters: {
+        'role': role,
+        'view': view,
+        // Current workers call this filter (status is an accepted alias).
+        'filter': view,
+        'limit': '$limit',
+        if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
+      });
+      final response = await ApiAuth.getSigned(uri.toString());
       if (response.statusCode != 200) return null;
       final decoded = jsonDecode(response.body);
       if (decoded is! Map) return null;
@@ -205,6 +273,54 @@ class CommercialSessionsApi {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Drains the cursor so schedule screens never silently truncate sessions.
+  static Future<CommercialSessionsResponse?> mineAll({
+    String role = 'customer',
+    String view = 'all',
+    int limit = 50,
+  }) async {
+    final requestUid = ApiAuth.identity?.uid;
+    final all = <CommercialSessionRecord>[];
+    String? cursor;
+    int? serverNow;
+    final seenCursors = <String>{};
+    while (true) {
+      final response = await mine(
+          role: role, view: view, cursor: cursor, limit: limit);
+      if (requestUid != ApiAuth.identity?.uid || response == null) return null;
+      serverNow = response.serverNow;
+      all.addAll(response.sessions);
+      final next = response.nextCursor;
+      if (!response.hasMore || next == null || next.isEmpty || next == cursor) {
+        break;
+      }
+      if (!seenCursors.add(next)) return null;
+      cursor = next;
+    }
+    final deduped = <String, CommercialSessionRecord>{};
+    for (final session in all) {
+      final key = session.bookingId?.isNotEmpty == true
+          ? 'booking:${session.bookingId}'
+          : session.sessionId?.isNotEmpty == true
+              ? 'session:${session.sessionId}'
+              : 'listing:${session.listingId}:${session.startsAt}:${session.kind}';
+      deduped[key] = session;
+    }
+    return CommercialSessionsResponse(
+        serverNow: serverNow, sessions: deduped.values.toList());
+  }
+
+  static Future<String> resendConfirmation(String orderId) async {
+    final response = await ApiAuth.postJson(
+      'https://$kSignalingHost/api/commercial/orders/${Uri.encodeComponent(orderId)}/resend-confirmation',
+      const {},
+    );
+    if (response.statusCode == 429) return 'rate_limited';
+    if (response.statusCode != 200) return 'unavailable';
+    final body = jsonDecode(response.body);
+    return body is Map ? (body['email_status'] ?? 'unavailable').toString() : 'unavailable';
   }
 
   /// Server-authorized live admission. The returned handoff is consumed by

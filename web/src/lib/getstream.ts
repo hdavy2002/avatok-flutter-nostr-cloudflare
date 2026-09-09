@@ -219,12 +219,12 @@ export function commercialSessionState(
 }
 
 /*
- * ── StreamVideoClient, memoised per user ───────────────────────────────────
+ * ── StreamVideoClient, memoised per account and server-issued room ─────────
  *
  * The SDK opens a websocket per client instance. React 18/19 double-invokes
  * effects in development, and a naive `new StreamVideoClient(...)` inside an
- * effect therefore opens two sockets and leaks one. Memoising on the user id
- * plus the api key makes a second construction for the same user a no-op.
+ * effect therefore opens two sockets and leaks one. Memoising on the account
+ * and server-issued room identity makes a second construction a no-op.
  *
  * The import is dynamic so the ~200 kB SDK is fetched only on a page that
  * actually joins a call — the marketplace and checkout pages must not pay for
@@ -245,15 +245,17 @@ type AnyStreamClient = {
 function wireClientErrorTelemetry(client: AnyStreamClient, userId: string): void {
   try {
     client.on?.('connection.error', (payload) => {
-      capture('gs_sdk_error', { code: 'connection.error', message: describeGsError(payload) });
-      captureException(payload instanceof Error ? payload : new Error(describeGsError(payload)), {
+      const message = describeGsError(payload);
+      capture('gs_sdk_error', { code: 'connection.error', message });
+      captureException(new Error(message), {
         code: 'gs_connection_error',
         user_id: userId,
       });
     });
     client.on?.('call.error', (payload) => {
-      capture('gs_sdk_error', { code: 'call.error', message: describeGsError(payload) });
-      captureException(payload instanceof Error ? payload : new Error(describeGsError(payload)), {
+      const message = describeGsError(payload);
+      capture('gs_sdk_error', { code: 'call.error', message });
+      captureException(new Error(message), {
         code: 'gs_call_error',
         user_id: userId,
       });
@@ -264,12 +266,38 @@ function wireClientErrorTelemetry(client: AnyStreamClient, userId: string): void
 }
 
 function describeGsError(payload: unknown): string {
-  if (payload instanceof Error) return payload.message;
-  if (payload && typeof payload === 'object' && 'message' in payload) return String((payload as { message: unknown }).message);
-  return String(payload);
+  const raw = payload instanceof Error
+    ? payload.message
+    : payload && typeof payload === 'object' && 'message' in payload
+      ? String((payload as { message: unknown }).message)
+      : String(payload);
+  // SDK errors occasionally echo request metadata. Keep diagnostics useful
+  // without forwarding JWT or bearer values to analytics.
+  return raw
+    .replace(/Bearer\s+[^\s]+/gi, 'Bearer [redacted]')
+    .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '[redacted-token]');
 }
 
-let cached: { key: string; client: AnyStreamClient } | null = null;
+/**
+ * Re-authorize the current commercial grant and return the fresh provider
+ * credentials. The callback must use a fresh app JWT for its Worker request;
+ * this module only validates that the returned token still belongs to the
+ * same Stream account and never exposes token material to telemetry.
+ */
+export type StreamCredentialProvider = () => Promise<CommercialJoinCredentials>;
+
+type CachedClient = {
+  key: string;
+  client: AnyStreamClient;
+  creds: CommercialJoinCredentials;
+  refresh?: StreamCredentialProvider;
+};
+
+let cachedEntry: CachedClient | null = null;
+// Serialize client construction/disconnect. Account or room switches can
+// otherwise overlap the dynamic SDK import and let an older client win the
+// module cache after the newer request has started.
+let clientQueue: Promise<void> = Promise.resolve();
 
 /**
  * Build (or reuse) the GetStream client for these credentials.
@@ -278,41 +306,85 @@ let cached: { key: string; client: AnyStreamClient } | null = null;
  * not force the SDK into the bundle of anything that merely imports the join
  * helpers above. The two call islands import the SDK's types directly.
  */
-export async function streamClientFor(creds: CommercialJoinCredentials): Promise<AnyStreamClient> {
-  const key = `${creds.api_key}:${creds.user_id}`;
-  if (cached && cached.key === key) return cached.client;
+async function streamClientForNow(
+  creds: CommercialJoinCredentials,
+  refresh?: StreamCredentialProvider,
+): Promise<AnyStreamClient> {
+  // Provider grants are valid for one server-issued call. Include the
+  // authority identity so entering another room as the same account cannot
+  // reuse a callback (or token) minted for the previous room.
+  const key = `${creds.api_key}:${creds.user_id}:${creds.call_type}:${creds.call_id}`;
+  if (cachedEntry && cachedEntry.key === key) {
+    // Keep the latest server grant and provider callback on the account's
+    // room client. Replace the callback as well so a remounted island cannot
+    // retain an earlier component's expired lifetime.
+    cachedEntry.creds = creds;
+    cachedEntry.refresh = refresh;
+    return cachedEntry.client;
+  }
 
-  // A different user on the same tab — tear the old socket down before opening
-  // a new one, or the previous user stays presence-visible in their old call.
-  if (cached) {
+  // A different account or server-issued room on the same tab — tear the old
+  // socket down before opening a new one, or the previous participant stays
+  // presence-visible in their old call.
+  if (cachedEntry) {
     try {
-      await cached.client.disconnectUser();
+      await cachedEntry.client.disconnectUser();
     } catch {
       // Already gone. Nothing to do, and nothing worth telling the user.
     }
-    cached = null;
+    cachedEntry = null;
   }
 
   const { StreamVideoClient } = await import('@stream-io/video-react-sdk');
+  const entry = {
+    key,
+    creds,
+    refresh,
+  } as CachedClient;
+  const tokenProvider = async (): Promise<string> => {
+    const next = entry.refresh ? await entry.refresh() : entry.creds;
+    if (next.api_key !== entry.creds.api_key || next.user_id !== entry.creds.user_id
+      || next.call_type !== entry.creds.call_type || next.call_id !== entry.creds.call_id) {
+      throw new Error('provider token account or room changed');
+    }
+    if (!next.token) throw new Error('provider token unavailable');
+    entry.creds = next;
+    return next.token;
+  };
   const client = new StreamVideoClient({
     apiKey: creds.api_key,
     user: { id: creds.user_id },
     token: creds.token,
+    tokenProvider,
   }) as unknown as AnyStreamClient;
   wireClientErrorTelemetry(client, creds.user_id);
 
-  cached = { key, client };
+  entry.client = client;
+  cachedEntry = entry;
   return client;
 }
 
+export function streamClientFor(
+  creds: CommercialJoinCredentials,
+  refresh?: StreamCredentialProvider,
+): Promise<AnyStreamClient> {
+  const result = clientQueue.then(() => streamClientForNow(creds, refresh));
+  clientQueue = result.then(() => undefined, () => undefined);
+  return result;
+}
+
 /** Drop the memoised client. Call on sign-out, not on leaving a call. */
-export async function releaseStreamClient(): Promise<void> {
-  if (!cached) return;
-  const { client } = cached;
-  cached = null;
-  try {
-    await client.disconnectUser();
-  } catch {
-    // Best effort — the socket is going away either way.
-  }
+export function releaseStreamClient(): Promise<void> {
+  const result = clientQueue.then(async () => {
+    if (!cachedEntry) return;
+    const { client } = cachedEntry;
+    cachedEntry = null;
+    try {
+      await client.disconnectUser();
+    } catch {
+      // Best effort — the socket is going away either way.
+    }
+  });
+  clientQueue = result.then(() => undefined, () => undefined);
+  return result;
 }

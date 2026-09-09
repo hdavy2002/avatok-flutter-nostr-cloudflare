@@ -20,6 +20,9 @@ import { claimBlock, releaseBlocks } from "../cal/engine";
 import { notifyCommercialUsers } from "../lib/commercial_notifications";
 import type { GatewayId } from "../lib/payments/types";
 import { freeSessionPolicy, countFreeEntitlements } from "../lib/free_session"; // [LIST-FREE-1]
+import { queueCommercialConfirmation, COMMERCIAL_CONFIRMATION_VERSION } from "../cal/emails";
+import { rateLimit } from "../money";
+import { commercialEmailKey, type EmailQueueStatus } from "../lib/email_outbox";
 
 type CheckoutKind = "live_event" | "consult_1to1";
 
@@ -328,6 +331,52 @@ function canonicalRequest(args: {
   });
 }
 
+type ConfirmationRecoveryRow = {
+  id: string; listing_id: string; buyer_id: string; creator_id: string; kind: string;
+  amount: number; order_status: string; title: string; listing_status: string; starts_at: number | null;
+  duration_min: number | null; booking_id: string | null; booking_start: number | null;
+  booking_end: number | null; booking_status: string | null; entitlement_state: string | null;
+};
+
+/**
+ * Replays the post-commit email hand-off from durable purchase authority. This
+ * is intentionally callable by checkout replay and a future bounded recovery
+ * sweep: a crash between entitlement commit and queue enqueue must not leave a
+ * completed order whose only recovery is a support intervention.
+ */
+export async function recoverCommercialConfirmation(env: Env, orderId: string, buyerId: string): Promise<EmailQueueStatus | "unavailable"> {
+  const row = await metaDb(env).prepare(
+    `SELECT o.id,o.listing_id,o.buyer_id,o.creator_id,o.kind,o.amount,o.status AS order_status,
+            l.title,l.status AS listing_status,l.starts_at,l.duration_min,
+            b.id AS booking_id,b.starts_at AS booking_start,b.ends_at AS booking_end,b.status AS booking_status,
+            e.state AS entitlement_state
+       FROM orders o
+       JOIN listings l ON l.id=o.listing_id
+       LEFT JOIN bookings b ON b.id=o.booking_id
+       LEFT JOIN commercial_entitlements e
+         ON e.order_id=o.id AND e.account_id=o.buyer_id
+        AND e.role IN ('viewer','buyer')
+      WHERE o.id=?1 AND o.buyer_id=?2
+      ORDER BY e.updated_at DESC LIMIT 1`,
+  ).bind(orderId, buyerId).first<ConfirmationRecoveryRow>();
+  if (!row || !["live_event", "consult_1to1"].includes(row.kind)) return "unavailable";
+  if (["refunded", "cancelled", "canceled", "cancelled_user", "cancelled_creator", "no_show_user", "no_show_creator"].includes(row.order_status ?? "")
+    || row.listing_status === "cancelled"
+    || !["reserved", "held", "active", "consumed"].includes(row.entitlement_state ?? "")) return "unavailable";
+  const kind = row.kind as CheckoutKind;
+  if (kind === "consult_1to1" && !["confirmed", "completed"].includes(row.booking_status ?? "")) return "unavailable";
+  const start = kind === "live_event" ? Number(row.starts_at) : Number(row.booking_start);
+  const end = kind === "live_event"
+    ? start + Math.max(1, Number(row.duration_min ?? 60)) * 60_000
+    : Number(row.booking_end);
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start <= 0 || end <= start) return "unavailable";
+  const result = await queueCommercialConfirmation(env, {
+    orderId: row.id, listingId: row.listing_id, bookingId: row.booking_id, kind,
+    title: row.title, start, end, price: Number(row.amount), creatorId: row.creator_id, buyerId: row.buyer_id,
+  });
+  return result.status;
+}
+
 /** POST /api/commercial/{live|consult}/:listingId/checkout. */
 export async function commercialCheckout(req: Request, env: Env): Promise<Response> {
   const route = idFrom(req);
@@ -446,6 +495,10 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
   }
   if (operation.request_sha256 !== requestHash) return json({ error: "idempotency key reused for different checkout" }, 409);
   if (operation.state === "completed") {
+    // The operation response is authoritative for payment idempotency, while
+    // the committed order/entitlement is authoritative for email recovery.
+    // A queue outage here must never turn a successful purchase into a failure.
+    try { await recoverCommercialConfirmation(env, orderId, auth.uid); } catch { /* cron/resend can retry */ }
     commercialEvent(env, "checkout", auth.uid, { kind: route.kind, outcome: "replay" });
     return json({ ...(safeResponse(operation.response_json) ?? {}), idempotent_replay: true });
   }
@@ -498,6 +551,88 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
       },
     },
   });
+}
+
+/**
+ * POST/GET /api/commercial/orders/:orderId/resend-confirmation
+ *
+ * GET exposes the authoritative status for the signed-in order participant.
+ * POST requeues only the buyer's verified Clerk address, using the same
+ * order/recipient/version key as checkout. The request body never supplies an
+ * address; Idempotency-Key is optional because the stable delivery key is the
+ * dedupe authority.
+ */
+export async function resendCommercialConfirmation(req: Request, env: Env): Promise<Response> {
+  const match = new URL(req.url).pathname.match(/^\/api\/commercial\/orders\/([^/]+)\/resend-confirmation$/);
+  if (!match) return json({ error: "bad confirmation path" }, 400);
+  let orderId: string;
+  try { orderId = decodeURIComponent(match[1]); } catch { return json({ error: "bad order id" }, 400); }
+  const auth = await requireUser(req, env);
+  if (isFail(auth)) return json({ error: auth.error }, auth.status);
+  if (req.method === "POST") {
+    const limited = await rateLimit(env, `commercial-email-resend:${auth.uid}`, 3, 3600);
+    if (limited) return limited;
+  }
+  const row = await metaDb(env).prepare(
+    `SELECT o.id,o.buyer_id,o.creator_id,o.status AS order_status,o.kind,
+            o.amount,l.id AS listing_id,l.title,l.status AS listing_status,l.starts_at,l.duration_min,
+            b.id AS booking_id,b.starts_at AS booking_start,b.ends_at AS booking_end,b.status AS booking_status,
+            e.state AS entitlement_state
+       FROM orders o JOIN listings l ON l.id=o.listing_id
+       LEFT JOIN bookings b ON b.id=o.booking_id
+       LEFT JOIN commercial_entitlements e
+         ON e.order_id=o.id AND e.account_id=o.buyer_id
+        AND e.role IN ('viewer','buyer')
+      WHERE o.id=?1 AND o.buyer_id=?2
+      ORDER BY e.updated_at DESC LIMIT 1`,
+  ).bind(orderId, auth.uid).first<{
+    id: string; buyer_id: string; creator_id: string; order_status: string; kind: string;
+    amount: number; listing_id: string; title: string; listing_status: string; starts_at: number | null; duration_min: number | null;
+    booking_id: string | null; booking_start: number | null; booking_end: number | null; booking_status: string | null;
+    entitlement_state: string | null;
+  }>();
+  if (!row) return json({ error: "commercial order not found" }, 404);
+  if (row.kind !== "live_event" && row.kind !== "consult_1to1") return json({ error: "confirmation unavailable for this order" }, 409);
+  if (["refunded", "cancelled", "canceled", "cancelled_user", "cancelled_creator", "no_show_user", "no_show_creator"].includes(row.order_status)
+    || row.listing_status === "cancelled") return json({ error: "confirmation unavailable for cancelled order" }, 409);
+  if (!["reserved", "held", "active", "consumed"].includes(row.entitlement_state ?? "")) {
+    return json({ error: "confirmation unavailable without active entitlement" }, 409);
+  }
+  const kind = row.kind;
+  if (kind === "consult_1to1" && !["confirmed", "completed"].includes(row.booking_status ?? "")) {
+    return json({ error: "confirmation unavailable for cancelled booking" }, 409);
+  }
+  const start = kind === "live_event" ? Number(row.starts_at) : Number(row.booking_start);
+  const end = kind === "live_event" ? start + Math.max(1, Number(row.duration_min ?? 60)) * 60_000 : Number(row.booking_end);
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start <= 0 || end <= start) {
+    return json({ error: "confirmation schedule unavailable" }, 409);
+  }
+  const key = commercialEmailKey(orderId, auth.uid, COMMERCIAL_CONFIRMATION_VERSION);
+  if (req.method === "GET") {
+    const delivery = await metaDb(env).prepare(
+      "SELECT delivery_status,state,error_message,attempts,next_attempt_at,provider_message_id FROM email_outbox WHERE outbox_key=?1 LIMIT 1",
+    ).bind(key).first<{ delivery_status: string | null; state: string | null; error_message: string | null; attempts: number | null; next_attempt_at: number | null; provider_message_id: string | null }>();
+    const emailStatus = delivery?.delivery_status === "delivered" || delivery?.delivery_status === "provider_accepted"
+      || delivery?.delivery_status === "queued" || delivery?.delivery_status === "sending" || delivery?.delivery_status === "failed" || delivery?.delivery_status === "bounced"
+      ? delivery.delivery_status : "unavailable";
+    return json({ ok: true, order_id: orderId, email_status: emailStatus, delivery_status: emailStatus,
+      attempts: delivery?.attempts ?? 0, next_attempt_at: delivery?.next_attempt_at ?? null,
+      provider_message_id: delivery?.provider_message_id ?? null });
+  }
+  if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
+  const result = await queueCommercialConfirmation(env, {
+    orderId, listingId: row.listing_id, bookingId: row.booking_id, kind, title: row.title,
+    start, end, price: Number(row.amount), creatorId: row.creator_id, buyerId: row.buyer_id,
+  }, { recipients: ["buyer"], force: true });
+  const emailStatus = result.buyer;
+  commercialEvent(env, "email_confirmation_resend", auth.uid, {
+    kind, outcome: emailStatus, delivery_status: emailStatus, resend: true,
+  });
+  // HTTP 200 means the authenticated resend request was processed. The
+  // email_status field carries provider/bookkeeping outcome; even "failed" or
+  // "unavailable" never implies a failed purchase.
+  return json({ ok: true,
+    order_id: orderId, email_status: emailStatus, delivery_status: emailStatus });
 }
 
 /** [PAY-HANDOFF-1] How a purchase is funded. The only thing that differs between the
@@ -818,6 +953,19 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
         throw new Error("creator entitlement authority mismatch");
       }
     }
+    // Entitlements and order authority are already committed at this point. Email
+    // enqueue failures are reported honestly and never enter the money rollback
+    // path; the authenticated resend route can recover the same stable keys.
+    const confirmation = await queueCommercialConfirmation(env, {
+      orderId, listingId: listing.id, bookingId, kind: route.kind, title: listing.title,
+      start: route.kind === "live_event" ? Number(startsAt) : Number(slotStart),
+      end: route.kind === "live_event" ? Number(endsAt) : Number(slotEnd),
+      price, creatorId: listing.creator_id, buyerId: auth.uid,
+    });
+    commercialEvent(env, "email_confirmation", auth.uid, {
+      kind: route.kind, outcome: confirmation.status,
+      buyer_status: confirmation.buyer, creator_status: confirmation.creator,
+    });
     const response = {
       ok: true,
       lane: "commercial",
@@ -840,6 +988,8 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
       starts_at: route.kind === "live_event" ? startsAt : slotStart,
       ends_at: route.kind === "live_event" ? endsAt : slotEnd,
       access: "account_bound",
+      email_status: confirmation.status,
+      email_recipients: { buyer: confirmation.buyer, creator: confirmation.creator },
     };
     commercialEvent(env, "checkout", auth.uid, { kind: route.kind, outcome: "authorized" });
     // notifyUser is reached through the stable commercial notification helper.

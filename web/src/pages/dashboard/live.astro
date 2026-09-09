@@ -1,11 +1,12 @@
 ---
-// AvaLive — manage live-event listings (going live happens in the phone app).
+// My Live Events — creator's account-owned live event schedule.
 export const prerender = false;
 import Dashboard from '../../layouts/Dashboard.astro';
-import CreatorListings from '../../islands/dashboard/CreatorListings.tsx';
+import CommercialSchedule from '../../islands/dashboard/CommercialSchedule.tsx';
 ---
-<Dashboard title="AvaLive · avatok.ai" heading="AvaLive" subtitle="Ticketed live streams — set it up here, go live from the app." active="live">
-  <CreatorListings client:load kind="live_event" createHref="/dashboard/listings/new?kind=live_event"
+<Dashboard title="My Live Events · avatok.ai" heading="My Live Events" subtitle="Host your paid broadcasts from the browser." active="live">
+  <CommercialSchedule client:load role="creator" kind="live_event"
+    description="Events are listed as soon as you publish them, even before the first ticket or host session exists."
     emptyTitle="No live events yet"
-    emptyBody="Create a ticketed live event — fans buy in advance. You broadcast from the AvaTOK app when it's showtime." />
+    emptyBody="Create a live event to give your audience a ticketed show to join." />
 </Dashboard>

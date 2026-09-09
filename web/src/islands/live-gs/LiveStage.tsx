@@ -14,6 +14,7 @@ import {
 import { Avatar, Spinner } from '../../components';
 import { capture } from '../../lib/analytics';
 import { GsChat } from './GsChat';
+import type { CommercialSessionState } from '../../lib/getstream';
 
 export interface LiveStageProps {
   title: string;
@@ -25,6 +26,8 @@ export interface LiveStageProps {
   chatToken: string;
   chatChannelId: string;
   chatChannelType?: string;
+  /** Worker-authoritative lifecycle; transport state is insufficient. */
+  serverState: CommercialSessionState | null;
   onLeave: () => void;
 }
 
@@ -56,13 +59,16 @@ export function LiveStage({
   chatToken,
   chatChannelId,
   chatChannelType,
+  serverState,
   onLeave,
 }: LiveStageProps) {
   const call = useCall();
   const { useCallCallingState, useIsCallLive, useCallStartedAt, useParticipantCount, useRemoteParticipants } =
     useCallStateHooks();
   const callingState = useCallCallingState();
-  const isLive = useIsCallLive();
+  const transportLive = useIsCallLive();
+  const isLive = serverState ? serverState.state === 'live' : transportLive;
+  const serverEnded = serverState?.state === 'ended' || serverState?.state === 'cancelled';
   const startedAt = useCallStartedAt();
   const viewerCount = useParticipantCount();
   const remoteParticipants = useRemoteParticipants();
@@ -152,7 +158,7 @@ export function LiveStage({
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center">
               <Spinner size={26} color="#fff" />
               <p className="font-display font-semibold text-[16px] text-white">
-                {isLive ? 'Connecting to the stream…' : 'Waiting for the creator to go live…'}
+                {serverEnded ? 'The creator has ended this session.' : isLive ? 'Connecting to the stream…' : 'Waiting for the creator to go live…'}
               </p>
             </div>
           )}
@@ -166,7 +172,7 @@ export function LiveStage({
                 aria-hidden
               />
               <span className="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink">
-                {isLive ? 'Live' : 'Backstage'}
+                {serverEnded ? 'Ended' : isLive ? 'Live' : 'Waiting'}
               </span>
               {isLive && (
                 <span className="font-mono text-[14px] text-inkSoft tabular-nums font-bold">· {elapsed}</span>
@@ -245,7 +251,7 @@ export function LiveStage({
             channelId={chatChannelId}
             channelType={chatChannelType}
             myName={myName}
-            disabled={connectionLost}
+            disabled={connectionLost || serverEnded}
           />
         </div>
       </aside>

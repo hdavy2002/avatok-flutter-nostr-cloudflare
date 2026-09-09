@@ -5,6 +5,8 @@
 // here. Clients never choose provider call types, call IDs, prices, members, or
 // roles.
 
+import { isCommercialId } from "./commercial_ids";
+
 export const COMMERCIAL_PROVIDER = "getstream" as const;
 
 export type CommercialSessionKind = "live_event" | "consult_1to1";
@@ -18,10 +20,8 @@ export type CommercialProviderIdentity = {
   callId: string;
 };
 
-const AUTHORITY_ID = /^[A-Za-z0-9-]{1,64}$/;
-
 function authorityId(value: string, field: string): string {
-  if (!AUTHORITY_ID.test(value)) {
+  if (!isCommercialId(value)) {
     throw new Error(`invalid server ${field}`);
   }
   return value;

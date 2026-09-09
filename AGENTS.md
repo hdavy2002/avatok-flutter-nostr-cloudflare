@@ -42,7 +42,7 @@ Then do the whole thing yourself. Do **not** hand him commands:
 
 ```bash
 # staging build  (staging code, staging backend)
-gh workflow run android.yml --ref staging -f environment=staging -f artifact=apk
+gh workflow run android.yml --ref staging -f environment=staging -f artifact=apk -f play_track=none
 
 # production build (main code, prod backend) — only on an explicit request
 gh workflow run android.yml --ref main    -f environment=prod    -f artifact=apk
@@ -255,17 +255,19 @@ literal text / string search (TODOs, error messages, arbitrary tokens).
 
 ## Engineering rulebook (READ — applies to every app)
 
-**PERMANENT FREE COMMUNICATION RULE — owner decision 2026-08-02.** Ordinary
-human communication in AvaTOK is free for every account and subscription tier:
-1:1 audio calls, 1:1 video calls, AvaTalk group audio/video conferences (up to
-the product cap of 25), and human chat messaging. Never add a per-minute charge,
-escrow hold, wallet/balance gate, paid-call rate, daily conference-minute quota,
-or subscription-tier participant cap to these surfaces. This rule does not make
-third-party-cost services free: AI voice/video agents, AI receptionist, PSTN/
-carrier calling, live translation, paid events, marketplace services, storage
-overage, and other explicitly AI/provider-backed products retain their own
-pricing rules. If a future spec conflicts with this paragraph, this paragraph
-wins unless the owner explicitly changes the decision.
+**HUMAN CALL ALLOWANCE + METERING — owner decision 2026-08-19; supersedes the
+2026-08-02 unlimited-free calling rule.** Human chat messaging remains free and
+unlimited. Every account receives one shared 200 participant-minute allowance
+per UTC calendar month for human 1:1 and AvaTalk group calls; audio and video
+both consume the same pool. After the pool is exhausted, audio costs 0.05 wallet
+token per participant-minute and video costs 0.10 wallet token per
+participant-minute. Usage is charged to each participant's own account. If an
+account has neither remaining allowance nor sufficient wallet/call-credit
+headroom, only that participant is disconnected; a group call continues for
+everyone else. Keep pricing and enforcement provider-neutral so Cloudflare and
+Stream use the identical authority. Human messaging, AI/receptionist, PSTN,
+translation, paid events, marketplace services, and storage keep their existing
+independent pricing rules. Do not add subscription-tier participant caps.
 
 **AvaTOK product rule — RULE CHANGE 2026-06-10 (owner decision, Phase 10).**
 Group conferences ARE allowed in AvaTalk groups, **≤25 participants, via Cloudflare Realtime**

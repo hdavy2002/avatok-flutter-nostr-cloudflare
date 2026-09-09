@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -110,7 +111,7 @@ class BookingSuccessScreen extends StatelessWidget {
               MaterialPageRoute(builder: (_) => const MySessionsScreen()),
             ),
             icon: Icon(PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold)),
-            label: const Text('View My Sessions'),
+            label: const Text('View tickets & appointments'),
           ),
           const SizedBox(height: Msg.s2),
           OutlinedButton(
@@ -183,7 +184,7 @@ class MySessionsScreen extends StatefulWidget {
 }
 
 class _MySessionsScreenState extends State<MySessionsScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   // [COMMERCIAL-TEST-GREEN-1] `_tabs` used to be `late final TabController
   // _tabs = TabController(length: 4, vsync: this);` — a lazily-initialized
   // field. When both commercial flags are off, `build()` never renders the
@@ -200,39 +201,54 @@ class _MySessionsScreenState extends State<MySessionsScreen>
   // controller and never triggers construction.
   late final TabController _tabs;
   CommercialSessionsResponse? _response;
+  final Set<String> _resendingOrders = {};
   bool _loading = true;
   String? _error;
   String? _focusMessage;
+  Timer? _clock;
+  Timer? _serverRefresh;
 
-  bool get _enabled =>
-      RemoteConfig.commercialLiveListingsEnabled ||
-      RemoteConfig.commercialConsultListingsEnabled;
+  // Existing purchases remain recoverable when discovery or new purchases are
+  // paused remotely.
+  bool get _enabled => true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tabs = TabController(length: 4, vsync: this);
-    if (_enabled) {
-      _load();
-    } else {
-      _loading = false;
-    }
+    _load();
+    _clock = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+    _serverRefresh = Timer.periodic(const Duration(minutes: 2), (_) {
+      if (mounted) _load();
+    });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _clock?.cancel();
+    _serverRefresh?.cancel();
     _tabs.dispose();
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _load();
+  }
+
   Future<void> _load() async {
     if (!_enabled) return;
+    final requestUid = ApiAuth.identity?.uid ?? '';
     setState(() {
       _loading = true;
       _error = null;
     });
-    final result = await CommercialSessionsApi.mine();
-    if (!mounted) return;
+    final result = await CommercialSessionsApi.mineAll(role: 'customer');
+    if (!mounted || requestUid != (ApiAuth.identity?.uid ?? '')) return;
     final matching = result?.sessions.where((session) =>
         (widget.focusBookingId == null ||
             session.bookingId == widget.focusBookingId) &&
@@ -270,8 +286,8 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: ZineAppBar(
-        title: 'My Sessions',
-        markWord: 'sessions',
+        title: 'My Tickets & Appointments',
+        markWord: 'tickets',
         tag: 'account bound',
         actions: [
           if (_enabled)
@@ -395,16 +411,18 @@ class _MySessionsScreenState extends State<MySessionsScreen>
         const SizedBox(height: Msg.s3),
         Row(children: [
           Expanded(
-              child: Text(
+            child: Text(
             session.isRefunded
-                ? 'Refunded / cancelled'
-                : session.isCompleted
-                    ? 'Completed'
-                    : session.joinLabel,
+                ? 'Refunded'
+                : session.isCancelled
+                    ? 'Cancelled'
+                    : session.isCompleted
+                        ? 'Completed'
+                        : session.joinLabel,
             style: ADText.sectionLabel(
                 c: session.isRefunded ? AD.danger : AD.textSecondary),
           )),
-          if (!session.isRefunded && !session.isCompleted)
+          if (!session.isRefunded && !session.isCancelled && !session.isCompleted)
             FilledButton(
               style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
               onPressed: joinEnabled
@@ -422,7 +440,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                     builder: (_) =>
                         ListingDetailScreen(listingId: session.listingId))),
             icon: Icon(PhosphorIcons.eye(PhosphorIconsStyle.bold), size: 16),
-            label: const Text('View event'),
+            label: Text(session.isConsultation ? 'View appointment' : 'View event'),
           ),
           if (session.sessionId != null && session.sessionId!.isNotEmpty)
             TextButton.icon(
@@ -441,7 +459,14 @@ class _MySessionsScreenState extends State<MySessionsScreen>
               icon: Icon(PhosphorIcons.info(PhosphorIconsStyle.bold), size: 16),
               label: const Text('Refund details'),
             ),
-          if (!session.isRefunded && !session.isCompleted)
+          if (session.orderId?.isNotEmpty == true && !session.isRefunded && !session.isCancelled)
+            TextButton.icon(
+              onPressed: _resendingOrders.contains(session.orderId)
+                  ? null : () => _resendConfirmation(session),
+              icon: Icon(PhosphorIcons.envelopeSimple(PhosphorIconsStyle.bold), size: 16),
+              label: Text(_resendingOrders.contains(session.orderId) ? 'Requesting…' : 'Resend email'),
+            ),
+          if (!session.isRefunded && !session.isCancelled && !session.isCompleted)
             TextButton.icon(
               onPressed: () => _addToCalendar(session),
               icon: Icon(PhosphorIcons.calendarPlus(PhosphorIconsStyle.bold),
@@ -451,6 +476,26 @@ class _MySessionsScreenState extends State<MySessionsScreen>
         ]),
       ]),
     );
+  }
+
+  Future<void> _resendConfirmation(CommercialSessionRecord session) async {
+    final orderId = session.orderId;
+    if (orderId == null || !_resendingOrders.add(orderId)) return;
+    final account = ApiAuth.identity?.uid;
+    setState(() {});
+    var status = 'unavailable';
+    try { status = await CommercialSessionsApi.resendConfirmation(orderId); } catch (_) { /* Show retry guidance. */ }
+    if (!mounted) return;
+    setState(() => _resendingOrders.remove(orderId));
+    if (account != ApiAuth.identity?.uid) return;
+    _notice(switch (status) {
+      'queued' || 'sending' => 'Confirmation queued for your verified email address.',
+      'provider_accepted' => 'The email provider accepted your confirmation. Check your inbox and spam folder.',
+      'delivered' => 'Your confirmation was delivered. Check your inbox and spam folder.',
+      'rate_limited' => 'Please wait before requesting another confirmation.',
+      'bounced' => 'The email could not be delivered. Check your verified email in account settings.',
+      _ => 'We could not queue the email. Your ticket or appointment is still available here.',
+    });
   }
 
   Future<void> _join(CommercialSessionRecord session) async {
@@ -826,7 +871,7 @@ class _JoinLinkResolverScreenState extends State<JoinLinkResolverScreen> {
                           onPressed: () => _goto(const MySessionsScreen()),
                           icon: Icon(
                               PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold)),
-                          label: const Text('View My Sessions'),
+                          label: const Text('View tickets & appointments'),
                         )
                       else
                         OutlinedButton(

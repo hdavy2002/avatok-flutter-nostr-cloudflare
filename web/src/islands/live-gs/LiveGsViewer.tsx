@@ -15,7 +15,7 @@
 // host's remote track.
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { StreamVideo, StreamCall, type Call } from '@stream-io/video-react-sdk';
-import { ClerkIsland, requireGuestAuth } from '../../lib/clerk';
+import { ClerkIsland, getActiveToken, requireGuestAuth } from '../../lib/clerk';
 import { IslandBoundary } from '../../components/IslandBoundary';
 import { cfImage } from '../../lib/config';
 import { inrOrFree } from '../../lib/money';
@@ -24,8 +24,10 @@ import { Spinner } from '../../components';
 import { capture, captureException } from '../../lib/analytics';
 import {
   joinCommercialSession,
+  commercialSessionState,
   streamClientFor,
   type CommercialJoinCredentials,
+  type CommercialSessionState,
   type JoinRefusal,
 } from '../../lib/getstream';
 import { LiveStage } from './LiveStage';
@@ -73,6 +75,10 @@ function Inner({ listingId, title, poster, price, creatorName, creatorHandle, cr
   const jwtRef = useRef<string | null>(null);
   const [client, setClient] = useState<Awaited<ReturnType<typeof streamClientFor>> | null>(null);
   const [call, setCall] = useState<Call | null>(null);
+  const [serverState, setServerState] = useState<CommercialSessionState | null>(null);
+  const [serverEnded, setServerEnded] = useState(false);
+  const callRef = useRef<Call | null>(null);
+  const operationGenerationRef = useRef(0);
   // [WEB-POSTHOG-1] §2.6 live_leave `watched_s` — set the moment the call is
   // actually joined (StreamCall mounted), not at attempt time.
   const joinedAtRef = useRef<number | null>(null);
@@ -81,15 +87,22 @@ function Inner({ listingId, title, poster, price, creatorName, creatorHandle, cr
   const bookHref = `/book/${encodeURIComponent(listingId)}`;
   const creatorHref = creatorHandle ? `/c/${encodeURIComponent(creatorHandle)}` : '/explore';
 
+  const freshAppJwt = useCallback(async (): Promise<string> => {
+    const fresh = await getActiveToken({ skipCache: true });
+    return fresh ?? requireGuestAuth();
+  }, []);
+
   const attemptJoin = useCallback(async () => {
+    const generation = ++operationGenerationRef.current;
     dispatch({ t: 'authing' });
     let jwt: string;
     try {
-      jwt = await requireGuestAuth();
+      jwt = await freshAppJwt();
     } catch {
       dispatch({ t: 'reset' }); // gate dismissed
       return;
     }
+    if (generation !== operationGenerationRef.current) return;
     jwtRef.current = jwt;
     dispatch({ t: 'joining' });
     const attemptStart = Date.now();
@@ -98,7 +111,12 @@ function Inner({ listingId, title, poster, price, creatorName, creatorHandle, cr
     } catch {
       /* best-effort */
     }
-    const result = await joinCommercialSession('live', listingId, jwt);
+    const fresh = await freshAppJwt().catch(() => null);
+    if (!fresh || generation !== operationGenerationRef.current) return;
+    jwt = fresh;
+    jwtRef.current = fresh;
+    const result = await joinCommercialSession('live', listingId, fresh);
+    if (generation !== operationGenerationRef.current) return;
     if (!result.ok) {
       try {
         capture('live_join_result', {
@@ -119,7 +137,7 @@ function Inner({ listingId, title, poster, price, creatorName, creatorHandle, cr
       /* best-effort */
     }
     dispatch({ t: 'live', creds: result });
-  }, [listingId, hasTicket]);
+  }, [freshAppJwt, listingId, hasTicket]);
 
   // Once we have credentials: build the GetStream client + call and join it.
   // The server already authorized this join (window open, ticket held); no
@@ -127,17 +145,29 @@ function Inner({ listingId, title, poster, price, creatorName, creatorHandle, cr
   useEffect(() => {
     if (state.phase !== 'live' || !state.creds) return;
     let disposed = false;
+    const generation = ++operationGenerationRef.current;
     const creds = state.creds;
     (async () => {
       try {
-        const c = await streamClientFor(creds);
-        if (disposed) return;
+        const c = await streamClientFor(creds, async () => {
+          const token = await freshAppJwt();
+          const refreshed = await joinCommercialSession('live', listingId, token);
+          if (!refreshed.ok) throw new Error('session credentials expired');
+          jwtRef.current = token;
+          return refreshed;
+        });
+        if (disposed || generation !== operationGenerationRef.current) return;
         // [WEB-POSTHOG-1] gs_sdk_error is wired once, client-wide, in
         // lib/getstream.ts's `streamClientFor` — no per-call hook needed here.
         const theCall = (c as any).call(creds.call_type, creds.call_id) as Call;
         setClient(c);
         setCall(theCall);
+        callRef.current = theCall;
         await theCall.join();
+        if (disposed || generation !== operationGenerationRef.current) {
+          await theCall.leave().catch(() => {});
+          return;
+        }
         joinedAtRef.current = Date.now();
       } catch (e) {
         if (disposed) return;
@@ -147,6 +177,9 @@ function Inner({ listingId, title, poster, price, creatorName, creatorHandle, cr
         } catch {
           /* best-effort */
         }
+        const failedCall = callRef.current;
+        callRef.current = null;
+        failedCall?.leave().catch(() => {});
         dispatch({ t: 'refused', refusal: { ok: false, reason: 'unavailable', status: 0, detail: 'could not connect to the stream' } });
       }
     })();
@@ -158,10 +191,39 @@ function Inner({ listingId, title, poster, price, creatorName, creatorHandle, cr
         prev?.leave().catch(() => {});
         return null;
       });
+      callRef.current = null;
       setClient(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.phase, state.creds]);
+  }, [freshAppJwt, listingId, state.phase, state.creds]);
+
+  // The Worker owns the lifecycle. GetStream's local calling state only tells
+  // us about transport; it cannot prove that a paid event is live or ended.
+  useEffect(() => {
+    if (state.phase !== 'live' || !state.creds) return;
+    let disposed = false;
+    const sync = async () => {
+      try {
+        const jwt = await freshAppJwt();
+        const next = await commercialSessionState('live', listingId, jwt);
+        if (disposed) return;
+        setServerState(next);
+        if (next.state === 'ended' || next.state === 'cancelled') {
+          setServerEnded(true);
+          callRef.current?.leave().catch(() => {});
+          dispatch({ t: 'left' });
+        }
+      } catch {
+        // Keep the call alive through transient status-poll failures.
+      }
+    };
+    void sync();
+    const timer = window.setInterval(() => void sync(), 3000);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [freshAppJwt, listingId, state.phase, state.creds]);
 
   // §2.6 live_leave — cover "closed the tab while watching", which the
   // reducer's `left`/`refused` transitions never see.
@@ -188,13 +250,14 @@ function Inner({ listingId, title, poster, price, creatorName, creatorHandle, cr
     } finally {
       joinedAtRef.current = null;
     }
+    callRef.current?.leave().catch(() => {});
     dispatch({ t: 'left' });
   }, []);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (state.phase === 'left') {
-    return <EndedCard title={title} creatorHref={creatorHref} rejoin={() => dispatch({ t: 'reset' })} />;
+    return <EndedCard title={title} creatorHref={creatorHref} ended={serverEnded} rejoin={() => { setServerEnded(false); setServerState(null); dispatch({ t: 'reset' }); }} />;
   }
 
   if (state.phase === 'refused' && state.refusal) {
@@ -227,6 +290,7 @@ function Inner({ listingId, title, poster, price, creatorName, creatorHandle, cr
             chatToken={state.creds.chat?.token ?? ''}
             chatChannelId={state.creds.chat?.channel_id ?? ''}
             chatChannelType={state.creds.chat?.channel_type}
+            serverState={serverState}
             onLeave={leave}
           />
         </StreamCall>
@@ -287,11 +351,11 @@ function PosterGate({
   );
 }
 
-function EndedCard({ title, creatorHref, rejoin }: { title?: string; creatorHref: string; rejoin: () => void }) {
+function EndedCard({ title, creatorHref, ended, rejoin }: { title?: string; creatorHref: string; ended: boolean; rejoin: () => void }) {
   return (
     <div className="mx-auto max-w-2xl px-4 py-16 text-center">
       <div className="rounded-zine border-zine border-ink bg-card p-10 shadow-zine">
-        <p className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">You left the stream</p>
+        <p className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">{ended ? 'Session ended' : 'You left the stream'}</p>
         <h1 className="mt-3 font-display font-semibold text-[26px] leading-tight text-ink">{title ?? 'Live session'}</h1>
         <div className="mt-6 flex items-center justify-center gap-3">
           <button
@@ -299,7 +363,7 @@ function EndedCard({ title, creatorHref, rejoin }: { title?: string; creatorHref
             onClick={rejoin}
             className="inline-flex rounded-full border-zine border-ink bg-lime px-7 py-3.5 font-display font-semibold text-[18px] text-ink shadow-zine-sm transition-transform duration-zine active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
           >
-            Rejoin
+            {ended ? 'Check again' : 'Rejoin'}
           </button>
           <a href={creatorHref} className="inline-flex rounded-full border-zine border-ink bg-card px-7 py-3.5 font-display font-semibold text-[18px] text-ink no-underline shadow-zine-sm">
             View the creator

@@ -27,8 +27,8 @@ class AppOrderScreen extends StatelessWidget {
       // [IOS-PORT-DISABLE-1] 2026-08-14 owner rename: 'AvaDialer' → 'Calls'
       // (display-only; RootId.key stays 'avadial'). The device-phone-app layer
       // is retired on all platforms; this root is AvaTOK-network calls.
-      'Calls',
-      'AvaTOK calls, contacts & voicemail',
+      'AvaCalls',
+      'AvaTOK and worldwide calls',
       AD.iconSearch
     ),
     // 2026-07-14 owner rename: 'AvaTOK' → 'AvaTalk' (display-only; RootId.key
@@ -66,11 +66,13 @@ class AppOrderScreen extends StatelessWidget {
         backgroundColor: AD.headerFooter,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        shape: const Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
+        shape: const Border(
+            bottom: BorderSide(color: AD.borderHairline, width: 1)),
         title: Text('App order', style: ADText.appTitle()),
         actions: [
           TextButton(
-            onPressed: () => scope.setRootOrder(List<RootId>.from(RootOrderPrefs.defaultOrder)),
+            onPressed: () => scope
+                .setRootOrder(List<RootId>.from(RootOrderPrefs.defaultOrder)),
             child: Text('Reset', style: ADText.rowName(c: AD.iconSearch)),
           ),
         ],
@@ -106,36 +108,44 @@ class AppOrderScreen extends StatelessWidget {
       key: ValueKey(root.key),
       padding: const EdgeInsets.only(bottom: 12),
       child: AdCard(
-        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
+        padding:
+            const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
         child: Row(children: [
           ReorderableDragStartListener(
             index: index,
             child: Padding(
               padding: const EdgeInsets.only(right: Msg.s3),
-              child: PhosphorIcon(PhosphorIcons.dotsSixVertical(PhosphorIconsStyle.bold),
-                  size: 18, color: AD.textTertiary),
+              child: PhosphorIcon(
+                  PhosphorIcons.dotsSixVertical(PhosphorIconsStyle.bold),
+                  size: 18,
+                  color: AD.textTertiary),
             ),
           ),
           ZineIconBadge(icon: m.$1, color: m.$4),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(root == RootId.services && !RemoteConfig.marketplaceVisible
-                  ? 'Services'
-                  : m.$2, style: ADText.rowName()),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(
+                  root == RootId.services && !RemoteConfig.marketplaceVisible
+                      ? 'Services'
+                      : m.$2,
+                  style: ADText.rowName()),
               const SizedBox(height: 1),
               Text(m.$3, style: ADText.statCaption()),
             ]),
           ),
           if (isLanding)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: Msg.s2, vertical: Msg.s1),
               decoration: BoxDecoration(
                 color: AD.primaryBadge,
                 borderRadius: Msg.brPill,
                 border: Border.all(color: AD.borderControl, width: 1),
               ),
-              child: Text('Opens at launch', style: ADText.statCaption(c: Colors.white)),
+              child: Text('Opens at launch',
+                  style: ADText.statCaption(c: Colors.white)),
             ),
         ]),
       ),

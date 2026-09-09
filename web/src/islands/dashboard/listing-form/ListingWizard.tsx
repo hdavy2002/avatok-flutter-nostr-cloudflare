@@ -654,12 +654,12 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
           rows. */}
       <div className="sm:hidden">
         <div className="flex items-baseline gap-2">
-          <span className="font-mono font-bold uppercase text-[11px] tracking-[0.1em] text-inkMute">
+          <span className="font-mono font-bold uppercase text-[13px] tracking-[0.1em] text-inkMute">
             Step {step + 1} of {STEP_LABELS.length}
           </span>
-          {saving && <span className="font-mono font-bold uppercase text-[11px] tracking-[0.1em] text-inkSoft">· Saving…</span>}
+          {saving && <span className="font-mono font-bold uppercase text-[13px] tracking-[0.1em] text-inkSoft">· Saving…</span>}
         </div>
-        <h2 className="mt-0.5 font-display font-semibold text-[20px] leading-tight text-ink">{STEP_LABELS[step]}</h2>
+        <h2 className="mt-0.5 font-display font-semibold text-[24px] leading-tight text-ink">{STEP_LABELS[step]}</h2>
         <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full border-zine border-ink bg-paper2">
           <div className="h-full bg-lime transition-[width] duration-200"
             style={{ width: `${((step + 1) / STEP_LABELS.length) * 100}%` }} />
