@@ -68,6 +68,17 @@ class _AvaSidebarState extends State<AvaSidebar> {
   @override
   void initState() {
     super.initState();
+    // [SIDEBAR-UNIFY-1] Which sidebar the user actually got. This is the whole
+    // success assertion for the unification: `variant` must be `avasidebar` on
+    // every root, and `shellsidebar` (emitted from the retired ShellSidebar in
+    // shell/v2/shell_chrome.dart) must never appear on a current build. A
+    // build that still reaches the old drawer says so here rather than only in
+    // a screenshot from the owner.
+    Analytics.capture('sidebar_opened', {
+      'variant': 'avasidebar',
+      'root': widget.current,
+      'permanent': widget.permanent,
+    });
     ProfileStore().load().then((p) {
       if (mounted) setState(() { _displayName = p.displayName; _handle = p.handle; _avatarUrl = p.avatarUrl; });
     });

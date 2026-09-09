@@ -577,7 +577,7 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
                 color: AD.onBand(AD.headerFooter),
                 icon: PhosphorIcons.list(PhosphorIconsStyle.bold),
                 onTap: () {
-                  Analytics.capture('library_menu_opened');
+                  Analytics.capture('library_menu_opened', {'source': 'header'});
                   _scaffoldKey.currentState?.openDrawer();
                 },
               ),

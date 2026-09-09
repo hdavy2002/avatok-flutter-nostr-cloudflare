@@ -8,6 +8,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/breakpoints.dart';
+import '../../core/analytics.dart'; // [SIDEBAR-UNIFY-1]
 import '../../core/avatar.dart';
 import '../../core/profile_store.dart';
 import '../../core/remote_config.dart';
@@ -536,6 +537,15 @@ class ShellSidebar extends StatelessWidget {
       );
     }
 
+    // [SIDEBAR-UNIFY-1] This drawer is RETIRED and has no mount sites left; it
+    // stays compiled but unreachable (same treatment as the legacy CallScreen).
+    // If this fires on a current build, a root has regressed back onto it —
+    // that is exactly the assertion the ship manifest makes, so it must emit
+    // even though it should never run.
+    Analytics.capture('sidebar_opened', {
+      'variant': 'shellsidebar',
+      'root': current.key,
+    });
     return Drawer(
       backgroundColor: AD.menu,
       shape:

@@ -4816,5 +4816,55 @@
         "note": "The gate actually lifting for a real person. If app_onboarding_required fires but this never does, users are reaching onboarding and not finishing it, or POST /api/account/app-onboarded is failing — in which case they will be walked through terms again on every reinstall."
       }
     ]
+  },
+  "SIDEBAR-UNIFY-1": {
+    "description": "[SIDEBAR-UNIFY-1] The app shipped TWO different sidebars. Messenger and AvaBrain drew AvaSidebar (shell/ava_sidebar.dart) — profile header, Marketplace/Messenger/Library/Wallet, Account & settings — while the Services/Marketplace root, the AvaCalls root and Wallet still mounted the retired ShellSidebar (shell/v2/shell_chrome.dart:508), the APPS/MARKETPLACE/MORE drawer, so which menu the owner saw depended on which root he was standing on. The unification was written on 2026-08-28 and then never committed: git status showed services_root.dart, avadial_root.dart and wallet_screen.dart modified-but-unstaged, and `git log --grep=SIDEBAR-UNIFY` was empty, so nothing ever reached a build. All three now use AvaSidebarForShell, the adapter that renders the one AvaSidebar wired to ShellV2 context (rootIdForDestination for the three app roots, openShellDestination for everything else). ShellSidebar has zero mount sites and stays compiled but unreachable, like the legacy CallScreen. Not two-sided: this is one device's own chrome, nobody else is involved.",
+    "shipped": "2026-09-09",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "sidebar_opened",
+        "property": "variant",
+        "equals": "avasidebar",
+        "min_events": 1,
+        "note": "The drawer the user actually got. AvaSidebar emits this from initState; the retired ShellSidebar emits variant=shellsidebar from its build. Presence of the event alone proves nothing — read the variant. Open the drawer from Messenger, Marketplace, AvaCalls, Wallet, Settings and Library on the new build: all six must be avasidebar."
+      },
+      {
+        "event": "sidebar_opened",
+        "property": "variant",
+        "not_in": [
+          "shellsidebar"
+        ],
+        "min_events": 1,
+        "note": "The failure value. A single shellsidebar row on the newest app_build means a root regressed back onto the retired drawer — the exact bug this issue closes, and the one a green build will not tell you about."
+      }
+    ],
+    "_verified_at": "app/lib/shell/v2/services_root.dart, app/lib/shell/v2/avadial_root.dart and app/lib/features/wallet/wallet_screen.dart all read `drawer: const AvaSidebarForShell()`; `grep -rn 'ShellSidebar(' app/lib` returns only the class declaration at shell/v2/shell_chrome.dart:508 and prose comments; flutter analyze on lib/shell + the three feature dirs reports 0 errors."
+  },
+  "SIDEBAR-MENU-ALL-1": {
+    "description": "[SIDEBAR-MENU-ALL-1] Two screens the owner reaches from the unified sidebar could not open it again. Settings (features/settings/settings_screen.dart:300) passed showBack:false, which makes AvaTokHeader fall back to _MenuButton, whose default action is `Scaffold.of(ctx).openDrawer()` — on a Scaffold that declared no `drawer:`. openDrawer is null-safe, so the hamburger was painted, tappable and a silent no-op. AvaLibrary (features/library/avalibrary_screen.dart) was worse: its local _darkHeader took no `leading` parameter at all and the root screen also passed showBack:false, so it had neither a menu nor a back button and no drawer — a dead end you could only leave with the system back gesture. Both now resolve ShellScope with dependOnInheritedWidgetOfExactType and mount AvaSidebarForShell, the same null-safe shape wallet_screen.dart uses ([WALLET-MENU-1]); pushed from outside the shell they fall back to a back button rather than leaving a dead hamburger. AvaLibrary's header gains the leading slot it was missing, with a cream glyph — the band is indigo since [RAJ-INDIGO-1] and an ink icon there is nearly invisible.",
+    "shipped": "2026-09-09",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "library_menu_opened",
+        "property": "source",
+        "equals": "header",
+        "min_events": 1,
+        "note": "AvaLibrary's hamburger actually opening the drawer. Absent means the header still renders no leading control, or ShellScope resolved null on the root screen and the fallback back button was shown instead — check which by opening AvaLibrary from the sidebar itself."
+      },
+      {
+        "event": "sidebar_opened",
+        "property": "variant",
+        "equals": "avasidebar",
+        "min_events": 1,
+        "note": "Shared with [SIDEBAR-UNIFY-1]: proves the drawer these two screens now mount is the unified one. Settings has no menu event of its own — it uses AvaTokHeader's default _MenuButton — so this is what confirms its hamburger stopped being a no-op."
+      }
+    ],
+    "_verified_at": "settings_screen.dart:~300 and avalibrary_screen.dart:~541 both read `drawer: shellScope == null ? null : const AvaSidebarForShell()` with showBack keyed off the same null check; avalibrary_screen.dart's _darkHeader now accepts and renders `leading`; flutter analyze on lib/features/settings + lib/features/library reports 0 errors."
   }
 }
