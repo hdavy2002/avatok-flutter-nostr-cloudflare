@@ -305,7 +305,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
   }
 
   void _showTopUp() =>
-      AvaWalletHook.instance.openTopUp(context, suggestedUsd: kMinTopUpUsd);
+      AvaWalletHook.instance.openTopUp(context, suggestedTokens: kMinTopUpTokens);
 
   Future<void> _run() async {
     final query = _ask.text.trim();

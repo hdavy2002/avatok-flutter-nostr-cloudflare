@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/subscribe_api.dart';
 import '../../core/play_billing.dart';
+import '../../core/play_prices.dart';
 // [UI-DS-SWEEP-1] migrated off core/ui/zine.dart onto AD / ADText / Msg.
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
@@ -27,6 +28,12 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _plans = const [];
+  /// [TOKENS-INR-DISPLAY-1] playProductId → Play's own localised price string
+  /// ("₹850.00"). The server's `priceUsd` is what Stripe charges on the WEB rail;
+  /// on Android the charge is Play's, in the buyer's currency, so a hardcoded
+  /// "$10 / month" beside a Play button was a money lie for every Indian user.
+  /// Empty until Play answers — a plan then shows no price rather than a wrong one.
+  Map<String, String> _playPrices = const {};
   int _currentTier = 0;
   String _currentStatus = 'none';
   int? _busyTier; // tier whose button is mid-checkout
@@ -60,6 +67,14 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
         _currentStatus = (cur['status'] as String?) ?? 'none';
         _loading = false;
       });
+      final ids = plans
+          .map((p) => (p['playProductId'] as String?) ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet();
+      if (ids.isNotEmpty) {
+        final prices = await PlayPrices.fetch(ids);
+        if (mounted && prices.isNotEmpty) setState(() => _playPrices = prices);
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() { _error = 'Could not load plans. Pull to retry.'; _loading = false; });
@@ -150,6 +165,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
     final tier = (plan['id'] as num?)?.toInt() ?? 0;
     final name = (plan['name'] as String?) ?? 'Plan';
     final price = (plan['priceUsd'] as num?)?.toDouble() ?? 0;
+    final playPrice = _playPrices[(plan['playProductId'] as String?) ?? ''];
     final isCurrent = tier == _currentTier;
     final lines = _featureLines(plan);
 
@@ -175,7 +191,11 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(name, style: ADText.appTitle()),
               Text(
-                price == 0 ? 'Free forever' : '\$${price.toStringAsFixed(0)} / month',
+                price == 0
+                    ? 'Free forever'
+                    : playPrice != null
+                        ? '$playPrice / month'
+                        : 'Priced by Google Play',
                 style: ADText.sectionLabel(c: AD.textSecondary),
               ),
             ]),

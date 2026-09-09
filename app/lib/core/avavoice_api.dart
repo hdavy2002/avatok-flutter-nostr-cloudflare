@@ -6,7 +6,7 @@ import 'config.dart';
 
 /// AvaVoiceApi — marketplace of creator-built AI voice agents.
 /// Spec: Specs/AVAVOICE-PROPOSAL.md (approved 2026-06-11).
-/// Money rules: coins are USD cents; platform keeps 50% (odd cent → platform);
+/// Money rules: 1 Token = ₹1 ([TOKENS-INR-1]); platform keeps 50% (odd cent → platform);
 /// per-minute billing rounded UP; creator-pays agents bill the CREATOR a flat
 /// $5/hour platform fee (kCreatorPaysRateTokensPerHour). Never say "credits".
 const String _base = 'https://$kSignalingHost/api/avavoice';

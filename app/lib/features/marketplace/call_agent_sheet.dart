@@ -20,7 +20,7 @@ Future<bool> showCallAgentSheet(
 }) async {
   final maxCtrl = TextEditingController();
   final mustCtrl = TextEditingController();
-  String cur = kMarketCurrencies.contains(currency) ? currency : 'USD';
+  String cur = kMarketCurrencies.contains(currency) ? currency : kMarketCurrencies.first;
   bool busy = false;
   String? error;
   bool dailyLimited = false; // P5: hit the 10/day agent-conversation cap
@@ -74,7 +74,7 @@ Future<bool> showCallAgentSheet(
             SizedBox(width: 110, child: DropdownButtonFormField<String>(
               value: cur, isExpanded: true, decoration: box(null),
               items: [for (final c in kMarketCurrencies) DropdownMenuItem(value: c, child: Text(c))],
-              onChanged: (v) => setState(() => cur = v ?? 'USD'),
+              onChanged: (v) => setState(() => cur = v ?? kMarketCurrencies.first),
             )),
           ]),
           const SizedBox(height: Msg.s4),

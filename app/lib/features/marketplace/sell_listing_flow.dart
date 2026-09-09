@@ -26,9 +26,14 @@ class SellListingFlow extends StatefulWidget {
   State<SellListingFlow> createState() => _SellListingFlowState();
 }
 
-/// Currencies shown in the price picker — global, not USD-only. ISO-4217 codes.
+/// Currencies shown in the price picker — a marketplace listing is genuinely
+/// multi-currency (see intent_theme.dart). [TOKENS-INR-DISPLAY-1] INR LEADS and
+/// is the default: India is the only market (see the PRODUCT PIVOT in
+/// CLAUDE.md) and the server already defaults to it
+/// (`LISTING_DEFAULT_CURRENCY = "INR"`, worker/src/routes/listings.ts) — the app
+/// was the last place still seeding every new listing as USD. ISO-4217 codes.
 const List<String> kMarketCurrencies = [
-  'USD', 'EUR', 'GBP', 'INR', 'RUB', 'AUD', 'CAD', 'AED', 'SGD', 'JPY',
+  'INR', 'USD', 'EUR', 'GBP', 'RUB', 'AUD', 'CAD', 'AED', 'SGD', 'JPY',
   'CNY', 'BRL', 'ZAR', 'NGN', 'PKR', 'BDT', 'IDR', 'MXN', 'TRY', 'SAR',
 ];
 
@@ -91,7 +96,7 @@ class _SellListingFlowState extends State<SellListingFlow> {
   })();
   final _location = TextEditingController();
   final _price = TextEditingController();
-  String _currency = 'USD';
+  String _currency = kMarketCurrencies.first;
   final _agentInstr = TextEditingController();
   String _agentLang = 'English';
   final _accent = TextEditingController();
@@ -521,7 +526,7 @@ class _SellListingFlowState extends State<SellListingFlow> {
                   isExpanded: true,
                   decoration: _box(),
                   items: [for (final c in kMarketCurrencies) DropdownMenuItem(value: c, child: Text(c))],
-                  onChanged: (v) => setState(() => _currency = v ?? 'USD'),
+                  onChanged: (v) => setState(() => _currency = v ?? kMarketCurrencies.first),
                 )),
               ),
             ]),

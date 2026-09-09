@@ -232,7 +232,12 @@ const DIRECTION_TYPES: Record<string, string[]> = {
 // 100. Anything we can't confidently format returns null rather than a guess.
 function formatMoney(minor: number, currency: string | null | undefined): string | null {
   if (!Number.isFinite(minor)) return null;
-  const cur = String(currency || "USD").toUpperCase();
+  // [TOKENS-INR-DISPLAY-1] A row with no stored currency is INR, not USD. The
+  // money-in rail bills rupees (TOPUP_CURRENCY in routes/wallet.ts) and the app
+  // renders whatever this returns verbatim, so a "USD" fallback printed "$500"
+  // on a ₹500 charge. Nothing historical is mislabelled by this: Stripe has only
+  // ever run on TEST keys in prod, so no real charge predates the INR rail.
+  const cur = String(currency || "INR").toUpperCase();
   const major = minor / 100;
   if (cur === "INR") return `₹${Math.round(major * 100) % 100 === 0 ? major.toFixed(0) : major.toFixed(2)}`;
   if (cur === "USD") return `$${major.toFixed(2)}`;

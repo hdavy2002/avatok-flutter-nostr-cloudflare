@@ -35,7 +35,7 @@ class _EditListingScreenState extends State<EditListingScreen> {
   final _desc = TextEditingController();
   final _price = TextEditingController();
   final _location = TextEditingController();
-  String _currency = 'USD';
+  String _currency = kMarketCurrencies.first;
   String _category = kMarketCategories.first;
   String _country = 'US';
   int? _expiryDays; // null = keep current expiry
@@ -57,7 +57,7 @@ class _EditListingScreenState extends State<EditListingScreen> {
     _title.text = l.title;
     _desc.text = l.description ?? '';
     _price.text = l.price > 0 ? l.price.toString() : '';
-    _currency = kMarketCurrencies.contains(l.currency) ? l.currency : 'USD';
+    _currency = kMarketCurrencies.contains(l.currency) ? l.currency : kMarketCurrencies.first;
     _category = kMarketCategories.contains(l.category) ? l.category : kMarketCategories.first;
     final cc = (l.country ?? '').toUpperCase();
     final dev = WidgetsBinding.instance.platformDispatcher.locale.countryCode?.toUpperCase();
@@ -172,7 +172,7 @@ class _EditListingScreenState extends State<EditListingScreen> {
                 SizedBox(width: 120, child: _field('Currency', DropdownButtonFormField<String>(
                   value: _currency, isExpanded: true, decoration: _box(),
                   items: [for (final c in kMarketCurrencies) DropdownMenuItem(value: c, child: Text(c))],
-                  onChanged: (v) => setState(() => _currency = v ?? 'USD'),
+                  onChanged: (v) => setState(() => _currency = v ?? kMarketCurrencies.first),
                 ))),
               ]),
               const SizedBox(height: Msg.s4),

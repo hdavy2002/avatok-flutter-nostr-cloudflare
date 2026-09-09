@@ -4,7 +4,7 @@
 ///   • [PaidBadge]   — the reusable "PAID" sticker shown on premium rows.
 ///   • [PaidFeature] — a wrapper that, on tap, checks the wallet via [AvaWalletHook]
 ///                     and either runs the action (with a cost preview) or opens a
-///                     top-up sheet (minimum top-up = [kMinTopUpUsd]).
+///                     top-up sheet (minimum top-up = [kMinTopUpTokens]).
 ///
 /// The real wallet wiring (balance reads, spend, the live top-up sheet) lands in
 /// a later phase — here [AvaWalletHook] is a thin interface with a safe default
@@ -18,10 +18,17 @@ import 'ui/avatok_dark.dart';
 import 'ui/messenger_theme.dart';
 import 'ui/zine_widgets.dart';
 
-/// Minimum wallet top-up, in USD. $10 unlocks premium AI (owner decision 2026-06-18,
-/// matches the server MIN_TOPUP). The alternative to topping up is adding your own
-/// free AI Studio key in Settings.
-const int kMinTopUpUsd = 10;
+/// Minimum wallet top-up that unlocks premium AI, in TOKENS (owner decision
+/// 2026-06-18). [TOKENS-INR-DISPLAY-1] 1 Token = ₹1 fixed, so this is ₹1,000 —
+/// it used to be `kMinTopUpUsd = 10` and printed "\$10" to an audience that pays
+/// in rupees. India is the only market (see the PRODUCT PIVOT in CLAUDE.md).
+/// The server's own floor is lower (MIN_TOPUP = 100 Tokens = ₹100); this is the
+/// amount we SUGGEST, not a server rule. The alternative to topping up is adding
+/// your own free AI Studio key in Settings.
+const int kMinTopUpTokens = 1000;
+
+/// Rupee rendering of [kMinTopUpTokens] — 1 Token = ₹1, no conversion.
+const String kMinTopUpLabel = '₹1,000';
 
 /// Wallet access contract used by [PaidFeature]. A later phase (AvaWallet wiring)
 /// sets [AvaWalletHook.instance] to a real implementation backed by WalletDO /
@@ -36,9 +43,10 @@ abstract class AvaWalletHook {
   /// back this with the WalletDO spend op (idempotent op_id).
   Future<bool> spend(int coins, {required String reason});
 
-  /// Open the real top-up sheet ($5 min). Returns true if the user topped up.
-  /// TODO(wallet phase): present the live Stripe/Tokens top-up flow.
-  Future<bool> openTopUp(BuildContext context, {int? suggestedUsd});
+  /// Open the real top-up sheet. [suggestedTokens] is a suggested amount in
+  /// TOKENS (1 Token = ₹1), not dollars.
+  /// TODO(wallet phase): present the live Tokens top-up flow.
+  Future<bool> openTopUp(BuildContext context, {int? suggestedTokens});
 
   /// The active hook. Defaults to an empty-wallet stub.
   static AvaWalletHook instance = const _StubWallet();
@@ -51,7 +59,7 @@ class _StubWallet implements AvaWalletHook {
   @override
   Future<bool> spend(int coins, {required String reason}) async => false;
   @override
-  Future<bool> openTopUp(BuildContext context, {int? suggestedUsd}) async {
+  Future<bool> openTopUp(BuildContext context, {int? suggestedTokens}) async {
     // Stub top-up sheet — dark v2. The wallet phase replaces this with the
     // live flow; the contract (returns true on successful top-up) is stable.
     if (!context.mounted) return false;
@@ -74,13 +82,13 @@ class _StubWallet implements AvaWalletHook {
                   style: ADText.threadName().copyWith(fontSize: 18))),
             ]),
             const SizedBox(height: Msg.s3),
-            Text('Premium Ava features run on Tokens. Add coins to your wallet '
-                '(minimum \$$kMinTopUpUsd) to unlock image and voice generation, '
+            Text('Premium Ava features run on Tokens. Add Tokens to your wallet '
+                '(minimum $kMinTopUpLabel) to unlock image and voice generation, '
                 'MCP tools, and always-on Guardian.',
                 style: ADText.preview()),
             const SizedBox(height: Msg.s4),
             ZineButton(
-              label: 'Add \$$kMinTopUpUsd to wallet',
+              label: 'Add $kMinTopUpLabel to wallet',
               variant: ZineButtonVariant.blue,
               fullWidth: true,
               fontSize: 16,
@@ -171,13 +179,13 @@ class PaidFeature extends StatelessWidget {
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('$actionLabel — $costTokens coins. Top up to continue.')));
       }
-      await _w.openTopUp(context, suggestedUsd: kMinTopUpUsd);
+      await _w.openTopUp(context, suggestedTokens: kMinTopUpTokens);
       return;
     }
     if (costTokens > 0) {
       final spent = await _w.spend(costTokens, reason: actionLabel);
       if (!spent) {
-        if (context.mounted) await _w.openTopUp(context, suggestedUsd: kMinTopUpUsd);
+        if (context.mounted) await _w.openTopUp(context, suggestedTokens: kMinTopUpTokens);
         return;
       }
     }

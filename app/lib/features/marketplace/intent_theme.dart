@@ -233,7 +233,10 @@ String _compact(num v, String code) {
 /// `ListingCard.money(tokens)`.
 String _amount(int price, String? currencyDisplay) {
   final code =
-      (currencyDisplay == null || currencyDisplay.trim().isEmpty) ? 'USD' : currencyDisplay.trim().toUpperCase();
+      // [TOKENS-INR-DISPLAY-1] A missing currency is INR, matching
+      // LISTING_DEFAULT_CURRENCY on the worker. It used to fall back to 'USD',
+      // which printed "$2000" on rows that were always rupees.
+      (currencyDisplay == null || currencyDisplay.trim().isEmpty) ? 'INR' : currencyDisplay.trim().toUpperCase();
   // 'COINS'/'AVACOIN'/'COIN' are legacy values already persisted in D1
   // (listings.currency_display) from before the token rename — they must keep
   // resolving or those rows render as the literal text "COINS 2000".

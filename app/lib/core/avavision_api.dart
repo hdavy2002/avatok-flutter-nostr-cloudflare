@@ -13,7 +13,7 @@ import 'config.dart';
 /// This client MIRRORS `avavoice_api.dart` method-for-method (master rule #4 —
 /// duplicate the proven pattern, do NOT refactor a shared module). All wire
 /// fields are snake_case (PHASE-1 §A is the authoritative contract). Money
-/// rules are identical to AvaVoice: coins are USD cents; platform keeps 50%
+/// rules are identical to AvaVoice: 1 Token = ₹1 ([TOKENS-INR-1]); platform keeps 50%
 /// (odd cent → platform); per-minute billing rounded UP; creator-pays agents
 /// bill the CREATOR a flat $5/hour. Never say "credits".
 const String _base = 'https://$kSignalingHost/api/avavision';

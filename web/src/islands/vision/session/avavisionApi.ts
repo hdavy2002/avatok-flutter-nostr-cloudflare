@@ -137,7 +137,7 @@ export function isBusy(a: { activeCalls?: number | null }): boolean {
 // [TOKENS-INR-RAIL-1] 1 token = ₹1, so there is no divide-by-100 and no "$".
 export const fmtCoins = inrOrFree;
 
-/** "Free to call" or "$X/hr · $Y/min" — coins are USD cents. */
+/** "Free to call" or "₹X/hr · ₹Y/min" — 1 token = ₹1 ([TOKENS-INR-RAIL-1]). */
 export function rateLabel(a: VisionAgent): string {
   if (isFreeForCallers(a)) return 'Free to call';
   const perMin = Math.ceil(a.ratePerHourCoins / 60);

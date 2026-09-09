@@ -14,6 +14,7 @@ import '../../core/api_auth.dart';
 import '../../core/config.dart';
 import '../../core/db.dart';
 import '../../core/money_api.dart';
+import '../../core/play_prices.dart';
 import '../../core/remote_config.dart';
 import '../../core/wallet_topup_billing.dart';
 import '../../core/ui/avatok_dark.dart';
@@ -126,10 +127,26 @@ const bool _kShowWithdraw = false;
 /// before it's initialized.
 String? _appliedPublishableKey;
 
-/// Format USD from real cents — used ONLY in a top-up's detail row ("Amount
-/// paid … USD"). USD must never appear anywhere else on the wallet; the wallet's
-/// native unit is Tokens.
-String _usdFromCents(int cents) => '\$${(cents.abs() / 100).toStringAsFixed(2)}';
+/// Format the REAL amount charged, from the ledger meta's minor units — used
+/// ONLY in a top-up's detail row ("Paid …"). Money must never appear anywhere
+/// else on the wallet; the wallet's native unit is Tokens.
+///
+/// [TOKENS-INR-DISPLAY-1] `meta.cents` is minor units of `meta.currency`, not
+/// US cents — the server writes paise on the INR rail (routes/wallet.ts
+/// `creditTopup`) and Play's own `provider_price_currency` on the Play rail.
+/// This used to hardcode '\$', so a ₹500 top-up printed "\$500.00".
+String _moneyFromMinor(int minor, String? currency) {
+  final code = (currency ?? 'inr').trim().toLowerCase();
+  final major = (minor.abs() / 100).toStringAsFixed(2);
+  switch (code) {
+    case 'inr':
+      return '₹$major';
+    case 'usd':
+      return '\$$major';
+    default:
+      return '${code.toUpperCase()} $major';
+  }
+}
 
 /// Compact coin count, e.g. 10000 → "10,000".
 String _tokens(num coins) {
@@ -698,26 +715,34 @@ class _WalletScreenState extends State<WalletScreen> {
 
   // ── top-up (Android — native Google Play Billing) ─────────────────────────
   // Google requires in-app digital top-ups to go through Play Billing, which only
-  // sells FIXED-PRICE products — so we present tiered USD buttons ($5..$100), each
-  // mapped to an `avatok_topup_*` consumable. Tapping one launches the native Play
+  // sells FIXED-PRICE products — so we present five tiers, each mapped to an
+  // `avatok_topup_*` consumable. [TOKENS-INR-DISPLAY-1] The BUTTON PRICE COMES
+  // FROM PLAY (`PlayPrices`), not from `TopupTier.usd`: Play bills an Indian
+  // buyer in ₹ and its `ProductDetails.price` is the only string that matches
+  // what the user is actually charged. `TopupTier.usd` is now an id-shaped
+  // legacy field — never render it. Tapping one launches the native Play
   // sheet; the purchase lands on the stream bound in initState, is verified +
   // credited server-side, and the balance refreshes here. No browser, no cards
   // handled by us.
   Future<void> _playTopupFlow() async {
     Analytics.capture('wallet_topup_opened', {'method': 'play_billing'});
     // [TOKENS-FX-1] The quote is INFORMATIONAL on Android: the Play rail only
-    // sells fixed USD-defined `avatok_topup_*` products and Google converts to
-    // the local currency at Play's own rate, so India's fixed ₹1/Token pricing
-    // cannot apply here until INR-priced Play products exist (deferred). We
-    // still fetch the quote so an Indian user sees honest copy about that.
+    // sells fixed `avatok_topup_*` products at whatever price the Play Console
+    // carries for the buyer's country, so India's fixed ₹1/Token pricing cannot
+    // be asserted here until those products are priced at ₹1/Token in the Play
+    // Console. We still fetch the quote so an Indian user sees honest copy.
     String? regionNote;
     try {
       final q = await MoneyApi.topupQuote();
       if (q['currency'] == 'INR') {
-        regionNote = '₹ pricing (1 Token = ₹1) is coming to Google Play — for now these '
-            'tiers are charged at Google Play\'s local rate.';
+        regionNote = 'Charged by Google Play in ₹. Token counts are exact; the ₹ amount is '
+            'the price Google Play shows for your account.';
       }
     } catch (_) {/* note is optional */}
+    // Ask Play what each tier actually costs in the buyer's currency. Missing is
+    // normal (no Play Services, product still propagating) — those tiers then
+    // render as a bare token count rather than an invented figure.
+    final prices = await PlayPrices.fetch(kTopupTiers.map((t) => t.productId).toSet());
     if (!mounted) return;
     await showModalBottomSheet<void>(
       context: context,
@@ -729,16 +754,24 @@ class _WalletScreenState extends State<WalletScreen> {
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Top up wallet', style: ADText.appTitle()),
           const SizedBox(height: Msg.s1),
-          Text('Pay securely with Google Play. \$1 = ${_tokens(kTokensPerUsd)} Tokens.', style: ADText.preview()),
+          Text('Pay securely with Google Play. Prices are shown in your Play account\u2019s currency.',
+              style: ADText.preview()),
           const SizedBox(height: Msg.s4),
           for (final t in kTopupTiers) ...[
             AdButton(
-              label: '\$${t.usd}   ·   ${_tokens(t.tokens)} Tokens',
+              label: prices[t.productId] == null
+                  ? '${_tokens(t.tokens)} Tokens'
+                  : '${prices[t.productId]}   ·   ${_tokens(t.tokens)} Tokens',
               fullWidth: true,
               trailingIcon: false,
               icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
               onPressed: () {
-                Analytics.capture('wallet_topup_tier_selected', {'usd': t.usd, 'tokens': t.tokens, 'product': t.productId});
+                Analytics.capture('wallet_topup_tier_selected', {
+                  'tokens': t.tokens,
+                  'product': t.productId,
+                  'play_price': prices[t.productId] ?? '',
+                  'play_price_known': prices[t.productId] != null,
+                });
                 Navigator.pop(c);
                 WalletTopupBilling.instance.buy(t.productId);
               },
@@ -1561,10 +1594,11 @@ class _WalletScreenState extends State<WalletScreen> {
       durLabel = mins == mins.roundToDouble() ? '${mins.round()} min' : '${mins.toStringAsFixed(1)} min';
     }
 
-    final usdCents = (meta['cents'] as num?)?.toInt();
+    final paidMinor = (meta['cents'] as num?)?.toInt();
+    final paidCurrency = (meta['currency'] ?? entry['currency'])?.toString();
     final usdLabel = '${entry['usd'] ?? ''}'.trim().isNotEmpty
         ? '${entry['usd']}'
-        : (usdCents != null ? _usdFromCents(usdCents) : '');
+        : (paidMinor != null ? _moneyFromMinor(paidMinor, paidCurrency) : '');
     final paidWith = _payMethod(meta) ?? '';
     final status = '${entry['status'] ?? 'completed'}';
     final balAfter = (entry['balance_after'] as num?)?.toInt();

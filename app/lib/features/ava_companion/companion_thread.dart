@@ -805,7 +805,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
               padding: const EdgeInsets.only(top: Msg.s2, left: 2),
               child: ZinePressable(
                 onTap: () => AvaWalletHook.instance
-                    .openTopUp(context, suggestedUsd: kMinTopUpUsd),
+                    .openTopUp(context, suggestedTokens: kMinTopUpTokens),
                 color: AD.online,
                 radius: BorderRadius.circular(12),
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
