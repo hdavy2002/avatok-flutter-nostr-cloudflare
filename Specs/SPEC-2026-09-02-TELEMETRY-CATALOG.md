@@ -168,6 +168,31 @@ listing form events mirroring §2.7 with the same names; `listing_view` /
 serves both surfaces; **pending** `flutter pub get` to posthog_flutter 5.x
 (Logs, replay, native crash capture only activate after that).
 
+### 3.1 Listing details in a WebView (`LIST-DETAIL-EMBED-1`, 2026-09-09)
+
+The app's listing details screen is the website's `/l/<id>` inside a WebView
+(`app/lib/features/marketplace/listing_web_detail.dart`), so the funnel now
+crosses a surface boundary mid-journey: the tap is an APP event and the booking
+that follows is a WEB event (§2.4–2.5). Both halves carry `listing_id`, which is
+what lets one dashboard read the whole path; without it a drop-off between the
+tap and the checkout is invisible on both surfaces.
+
+| Event | Props | Why it exists |
+|---|---|---|
+| `listing_web_detail_opened` | `listing_id`, `source` | The tap. `source` is the entry point (explore, search, browse, my listings, creator channel, avalive, deep link, push), so a drop-off is attributable to a place and not to "the page". |
+| `listing_web_detail_ready` | `listing_id`, `source`, `bridge_ms` | **The success value.** Fires only on the page's own bridge handshake, so it proves the WebView loaded avatok.ai and not a captive portal or a cached error page served 200. `bridge_ms` is time-to-usable on Indian mobile data — the number that says whether the swap was worth it. |
+| `listing_web_detail_token` | `listing_id`, `source`, `outcome`, `ms` | Auth crossing the bridge. `no_session` = `ApiAuth.clerkBearer` returned null; `error` = it threw. A run of these means the buyer is anonymous on their own listing and will be asked for an email code at checkout. |
+| `listing_web_detail_bridge_missing` | `listing_id`, `source` | 20s with no handshake. Reported, never shown — the page is public and readable without the bridge. |
+| `listing_web_detail_error` | `listing_id`, `source`, `code`, `description` | Main-frame load failure only. Sub-resource failures are not the page failing. |
+| `listing_web_detail_nav_blocked` | `listing_id`, `url` | A link out to a host the buying journey does not need. A run of one URL is a link on the page that a buyer wants and cannot follow. |
+| `listing_web_detail_ua_failed`, `listing_web_detail_page_log`, `listing_web_detail_shared`, `listing_web_detail_closed` | see the emit sites | `ua_failed` means the page rendered WITH the website's header — usable, obviously a web page. |
+
+Web-side pair: because chrome removal is keyed to the app's UA marker, every
+`web/` event fired inside the app carries the ordinary web super props with
+`platform: web`. To tell an in-app view from a browser view on the web side,
+read the UA marker — do NOT add a second `platform` value, which would split
+every existing web dashboard.
+
 ## 4. Desktop apps (macOS / Windows / Linux)
 
 Same Flutter `Analytics` class, `platform` from `Platform.operatingSystem`,

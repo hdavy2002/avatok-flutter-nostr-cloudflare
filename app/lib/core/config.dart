@@ -159,6 +159,38 @@ const String kInviteBase = 'https://avatok.ai/i/';
 /// production data.
 const String kListingWebFormUrl = 'https://avatok.ai/embed/listing?embed=1';
 
+/// [LIST-DETAIL-EMBED-1 2026-09-09, owner decision] The listing DETAILS page in
+/// the app is the website's own page, shown in an in-app WebView
+/// (features/marketplace/listing_web_detail.dart).
+///
+/// This is the REAL public route, not an /embed/ copy: `/l/<id>` already renders
+/// the approved details comp for every listing kind (live event, consultation,
+/// goods) and already carries the booking flow that actually sells. A parallel
+/// /embed/listing-detail page would be a second surface to keep in step with a
+/// server contract that keeps growing — the exact mistake [LIST-EMBED-1] was
+/// created to stop.
+///
+/// Chrome removal does NOT ride on this URL. `/l/<id>` 301s to the pretty
+/// `/<handle>/<slug>` as soon as both exist, and a redirect drops the query
+/// string — so `?embed=1` cannot be what hides the site header, or the app would
+/// show a web header on exactly the listings that have a handle and a slug.
+/// The app marks its WebView in the USER AGENT ([kEmbedUserAgentMarker]) and
+/// web/src/layouts/Base.astro reads that, so every page the buyer reaches from
+/// here — /l/<id>, /<handle>/<slug>, /book/<id>, /pay/return — renders
+/// chrome-less. `?embed=1` is kept because web/src/lib/embed.ts still accepts it.
+///
+/// ⚠️ Same prod-only seam as [kListingWebFormUrl]: there is no staging website,
+/// so a staging APK reads listings here from PRODUCTION.
+String listingWebDetailUrl(String listingId) =>
+    'https://avatok.ai/l/${Uri.encodeComponent(listingId)}?embed=1';
+
+/// [LIST-DETAIL-EMBED-1] Appended to the WebView's user agent, and the ONLY
+/// signal that survives a 301 to the canonical listing URL. Base.astro switches
+/// site chrome off when it sees this, and lib/embed.ts treats it as the embed
+/// flag alongside the `AvatokHost` channel. Changing this string is a protocol
+/// change: the web half must change in the same commit.
+const String kEmbedUserAgentMarker = 'AvatokApp/1';
+
 /// Public download / join page shared in invite messages.
 const String kDownloadUrl = 'https://avatok.ai/download';
 

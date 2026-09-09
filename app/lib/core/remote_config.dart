@@ -845,6 +845,23 @@ class RemoteConfig {
   /// this is on regardless of that flag's value.
   static bool get listingWebFormEnabled => _b('listingWebFormEnabled', true);
 
+  /// [LIST-DETAIL-EMBED-1 2026-09-09, owner decision] The listing DETAILS page
+  /// is the WEBSITE's `/l/<id>` page in an in-app WebView
+  /// (features/marketplace/listing_web_detail.dart) instead of the native
+  /// screen. Mirrors `listingWebDetailEnabled` in config.ts DEFAULTS, where it
+  /// is declared — a getter with no server-side key can never be flipped (see
+  /// the fake-flag rule in CLAUDE.md).
+  ///
+  /// Default TRUE, like [listingWebFormEnabled]: this is the shipped flow and
+  /// the flag is the brake. Read once, in `ListingDetailScreen`, so every entry
+  /// point in the app (explore, search, marketplace browse, my listings,
+  /// creator channel, avalive discovery, deep links, push) follows it without
+  /// knowing it exists.
+  ///
+  /// ⚠️ Turning this OFF puts the native CheckoutSheet back in front of buyers,
+  /// which the pivot forbids (payments are web only). Treat it as a rollback.
+  static bool get listingWebDetailEnabled => _b('listingWebDetailEnabled', true);
+
   /// Effective Marketplace visibility for the CURRENT account. The global
   /// `marketplaceEnabled` KV flag stays false during the phased/pro launch, so
   /// ordinary testers never see the Marketplace. Admins (see [isAdmin]) get it

@@ -15,6 +15,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import '../../sync/party/party_hub.dart';
+import '../marketplace/listing_web_detail.dart';
 import '../marketplace/intent_theme.dart';
 import '../marketplace/call_agent_sheet.dart';
 import '../../core/marketplace_api.dart';
@@ -39,16 +40,60 @@ import '../commercial_getstream/commercial_live_gateway.dart';
 import '../commercial_getstream/commercial_live_screens.dart' as commercial;
 import 'widgets.dart';
 
-/// Listing details page (Phase 6): media carousel, title, description, icon
-/// row, Book/Join CTA, reviews, creator mini-card → channel.
-class ListingDetailScreen extends StatefulWidget {
+/// [LIST-DETAIL-EMBED-1 2026-09-09, owner decision] The one door to a listing's
+/// details, and the only place that decides which side of it opens.
+///
+/// Every entry point in the app pushes this — explore, search, marketplace
+/// browse, my listings, creator channel, avalive discovery, `core/deep_links.dart`
+/// and `push/push_service.dart` — so the swap to the web page happens once, here,
+/// and no caller needs to know. ON (the default) opens the website's own
+/// `/l/<id>` in an in-app WebView; OFF restores [NativeListingDetailScreen]
+/// below.
+///
+/// ⚠️ OFF is a ROLLBACK, not a preference: the native screen's bottom bar runs
+/// the native CheckoutSheet, and the marketplace pivot says payments are web
+/// only (Specs/PIVOT-2026-08-27-MARKETPLACE-FIRST-PAID-SESSIONS.md).
+///
+/// Read at push time rather than watched: a listing already on screen must not
+/// swap itself for a different UI under the buyer's thumb because a remote flag
+/// refreshed mid-session.
+class ListingDetailScreen extends StatelessWidget {
   final String listingId;
-  const ListingDetailScreen({super.key, required this.listingId});
+
+  /// Where the buyer came from. Forwarded to the WebView screen's telemetry so
+  /// a drop-off is attributable to an entry point rather than to "the page".
+  final String source;
+
+  const ListingDetailScreen({
+    super.key,
+    required this.listingId,
+    this.source = 'unknown',
+  });
+
   @override
-  State<ListingDetailScreen> createState() => _ListingDetailScreenState();
+  Widget build(BuildContext context) {
+    if (RemoteConfig.listingWebDetailEnabled) {
+      return ListingWebDetailScreen(listingId: listingId, source: source);
+    }
+    return NativeListingDetailScreen(listingId: listingId);
+  }
 }
 
-class _ListingDetailScreenState extends State<ListingDetailScreen> {
+/// Listing details page (Phase 6): media carousel, title, description, icon
+/// row, Book/Join CTA, reviews, creator mini-card → channel.
+///
+/// [LIST-DETAIL-EMBED-1] Kept, and reachable only through
+/// `ListingDetailScreen` with `listingWebDetailEnabled` off. Do not push it
+/// directly — a direct push is a checkout the pivot does not allow, and it
+/// bypasses the kill switch that is supposed to govern this screen.
+class NativeListingDetailScreen extends StatefulWidget {
+  final String listingId;
+  const NativeListingDetailScreen({super.key, required this.listingId});
+  @override
+  State<NativeListingDetailScreen> createState() => _ListingDetailScreenState();
+}
+
+class _ListingDetailScreenState extends State<NativeListingDetailScreen> {
   ListingDetail? _d;
   bool _loading = true;
 

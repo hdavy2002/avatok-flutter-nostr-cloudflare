@@ -1563,6 +1563,14 @@ export interface PlatformConfig {
   // fields the server now requires (see listingContentFieldsError), so a
   // listing created that way still needs finishing on the web.
   listingWebFormEnabled: boolean;
+  // [LIST-DETAIL-EMBED-1 2026-09-09, owner decision] The listing DETAILS page in
+  // the app is the website's own `/l/<id>` page in an in-app WebView, not the
+  // native screen. ON by default — it is the shipped flow and this is the brake.
+  // Off, `ListingDetailScreen` falls back to features/explore/listing_detail.dart,
+  // whose bottom bar runs the NATIVE checkout — which the marketplace pivot says
+  // must not exist (payments are web only). So flipping this off restores a
+  // working screen that sells the wrong way; it is a rollback, not a setting.
+  listingWebDetailEnabled: boolean;
   // [CARD-AI-REVIEW-1] The MODEL half of POST /api/listings/copy-review — the
   // creator wizard's pre-publish copy review. OFF here does NOT disable the
   // feature: the route's deterministic length pass still runs and still returns
@@ -2375,6 +2383,8 @@ const DEFAULTS: PlatformConfig = {
   // ON by default — it is the shipped flow, and the flag is the brake, not the
   // switch that turns the feature on.
   listingWebFormEnabled: true,
+  // [LIST-DETAIL-EMBED-1] See the interface note — ON is the shipped flow.
+  listingWebDetailEnabled: true,
   // Per-listing billing — DARK. While off, publishes are free and entitlements are
   // still recorded so the 5-free quota is accurate when this flips on (staging first).
   listingFeeEnabled: false,

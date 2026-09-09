@@ -50,6 +50,7 @@ import { Modal } from '../components/Modal';
 import { EmailCodeSignIn } from '../islands/auth/EmailCodeSignIn';
 import { Field } from '../components/Field';
 import { Button } from '../components/Button';
+import { installEmbedBridge } from './embed';
 
 const GUEST_JWT_KEY = 'avatok_guest_jwt';
 const DEVICE_ID_KEY = 'avatok_device_id';
@@ -111,6 +112,23 @@ export function deviceId(): string {
 export async function getActiveToken(
   opts?: { skipCache?: boolean },
 ): Promise<string | null> {
+  // [LIST-DETAIL-EMBED-1] Self-install rather than rely on mount order. The
+  // provider used to be set by the one island that owned the embedded page
+  // (EmbeddedCreateListing), which could guarantee it ran before its own child.
+  // Now that ANY page can be embedded, the bridge is mounted by Base.astro
+  // alongside islands it does not own, and Astro hydrates islands
+  // independently — so a listing island could ask for a token before the
+  // bridge island's effect had run and be told, wrongly, that there is no
+  // session. `installEmbedBridge` is idempotent and returns null off-app, so
+  // asking here costs nothing and removes the race.
+  if (!_hostToken) {
+    try {
+      const p = installEmbedBridge();
+      if (p) _hostToken = p;
+    } catch {
+      /* not embedded, or no window — the normal Clerk paths below apply */
+    }
+  }
   // [LIST-EMBED-1] The host wins when present: inside the app WebView there is
   // no Clerk session to fall back to, and the stored guest token is not a
   // requireUser JWT (see the header) — so anything but the host's token 401s.

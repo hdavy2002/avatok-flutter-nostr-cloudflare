@@ -48,18 +48,40 @@ function w(): EmbedWindow | null {
 }
 
 /**
+ * [LIST-DETAIL-EMBED-1 2026-09-09] Appended to the WebView's user agent by the
+ * app (`kEmbedUserAgentMarker` in app/lib/core/config.dart). Changing this
+ * string is a protocol change — both halves move in the same commit.
+ */
+export const EMBED_UA_MARKER = 'AvatokApp/1';
+
+/**
  * True when this page is running inside the app's WebView.
  *
- * Both halves must hold: `?embed=1` (the app's URL) AND the `AvatokHost`
- * channel (registered by the Dart side before the first load). The query param
- * alone is a URL anyone can type, and a page that decided it was embedded on
- * that basis would sit there waiting for a token from a host that does not
- * exist — a blank form with no error. Requiring the channel means a browser
- * visit to the same URL simply falls back to the normal Clerk path.
+ * The `AvatokHost` channel is the load-bearing half and is checked first: only
+ * the Dart side can register it, so its presence cannot be faked by typing a
+ * URL. The second half is a marker the page can also see — `?embed=1` (the app
+ * puts it on the URL it opens) OR our UA marker.
+ *
+ * [LIST-DETAIL-EMBED-1] The UA marker was added because the details WebView
+ * NAVIGATES. `/l/<id>` 301s to `/<handle>/<slug>` as soon as both exist, and a
+ * redirect drops the query string; from the details page the buyer then walks
+ * to `/book/<id>` and on to Stripe. A param-only signal would have described
+ * only the first page of that journey, so every page after the first would have
+ * gone back to minting its own Clerk session — which inside the WebView means
+ * no session at all, and an email-code prompt at checkout for a buyer who is
+ * already signed in.
+ *
+ * Why keep the param at all: it is what the create wizard's URL carries
+ * (`kListingWebFormUrl`), and an older APK in the wild sets no UA marker.
  */
 export function isEmbedded(): boolean {
   const win = w();
   if (!win || typeof win.AvatokHost?.postMessage !== 'function') return false;
+  try {
+    if (win.navigator?.userAgent?.includes(EMBED_UA_MARKER)) return true;
+  } catch {
+    /* no navigator — fall through to the param */
+  }
   try {
     return new URLSearchParams(win.location.search).get('embed') === '1';
   } catch {
@@ -81,6 +103,8 @@ let seq = 0;
 const pending = new Map<number, { resolve: (t: string | null) => void; timer: number }>();
 /** In-flight dedupe only — see the header on why nothing is cached for longer. */
 let inFlight: Promise<string | null> | null = null;
+/** The installed provider — see installEmbedBridge on why this is cached. */
+let _provider: (() => Promise<string | null>) | null = null;
 
 const TOKEN_TIMEOUT_MS = 10_000;
 
@@ -107,6 +131,13 @@ export function installEmbedBridge(): (() => Promise<string | null>) | null {
   const win = w();
   if (!win || !isEmbedded()) return null;
 
+  // [LIST-DETAIL-EMBED-1] Idempotent. Base.astro now mounts a bridge island on
+  // every embedded page, and /embed/listing's own island installs one too, so
+  // this can legitimately be called twice on one page. Returning the same
+  // provider — rather than re-handshaking — keeps one `ready` on the wire, so
+  // the host's `bridge_ms` stays the time to FIRST paintable page.
+  if (_provider) return _provider;
+
   win.__avatokEmbedToken = (id: number, token: string | null) => {
     const entry = pending.get(id);
     if (!entry) return; // already timed out — a late answer is not an error
@@ -117,7 +148,7 @@ export function installEmbedBridge(): (() => Promise<string | null>) | null {
 
   send({ type: 'ready' });
 
-  return () => {
+  _provider = () => {
     if (inFlight) return inFlight;
     inFlight = requestTokenFromHost().finally(() => {
       // Release on the next tick so a burst of parallel callers (the wizard
@@ -127,6 +158,7 @@ export function installEmbedBridge(): (() => Promise<string | null>) | null {
     });
     return inFlight;
   };
+  return _provider;
 }
 
 /** Tell the host whether closing now would lose work (drives the X's confirm). */
