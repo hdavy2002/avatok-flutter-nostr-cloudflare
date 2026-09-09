@@ -907,9 +907,9 @@ class ListingPromotion {
   int get pctOff => (json['pct_off'] as num?)?.toInt() ?? 0;
 }
 
-class ListingSlot {
+class CreatedListingSlot {
   final Map<String, dynamic> json;
-  ListingSlot.fromJson(Map<String, dynamic> value)
+  CreatedListingSlot.fromJson(Map<String, dynamic> value)
       : json = Map<String, dynamic>.unmodifiable(value);
   String get id => (json['id'] ?? '').toString();
   int get startsAt => (json['starts_at'] as num?)?.toInt() ?? 0;
@@ -1085,7 +1085,7 @@ class ListingsApi {
     });
   }
 
-  static Future<ListingApiResult<ListingSlot>> addListingSlot(
+  static Future<ListingApiResult<CreatedListingSlot>> addListingSlot(
     String id, {
     required int startsAt,
     required int durationMin,
@@ -1101,7 +1101,7 @@ class ListingsApi {
     return _result(r, (body) {
       final slot = body['slot'];
       if (slot is! Map) throw const FormatException('missing slot');
-      return ListingSlot.fromJson(slot.cast<String, dynamic>());
+      return CreatedListingSlot.fromJson(slot.cast<String, dynamic>());
     });
   }
 
