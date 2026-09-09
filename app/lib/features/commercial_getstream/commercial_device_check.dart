@@ -264,9 +264,10 @@ class _CommercialDeviceCheckPanelState extends State<CommercialDeviceCheckPanel>
       await widget.controller.setMicrophoneEnabled(widget.microphoneEnabled && widget.microphoneGranted);
       if (!mounted || generation != _syncGeneration) return;
       setState(() => _error = null);
-      Analytics.capture('commercial_device_check', {'result': 'ready', 'camera_enabled': widget.cameraEnabled, 'microphone_enabled': widget.microphoneEnabled});
-      _reportReady((!widget.cameraEnabled || widget.cameraGranted) &&
-          (!widget.microphoneEnabled || widget.microphoneGranted), generation);
+      final ready = (!widget.cameraEnabled || widget.cameraGranted) &&
+          (!widget.microphoneEnabled || widget.microphoneGranted);
+      Analytics.capture('commercial_device_check', {'result': ready ? 'ready' : 'permission_required', 'camera_enabled': widget.cameraEnabled, 'microphone_enabled': widget.microphoneEnabled});
+      _reportReady(ready, generation);
     } catch (_) {
       if (mounted && generation == _syncGeneration) {
         setState(() => _error = 'This camera or microphone could not be opened. Check permissions and try again.');
