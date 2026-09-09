@@ -256,3 +256,51 @@ clip-path:polygon(34.8% 0,100% 0,100% 100%,15.5% 100%,16.4% 96%,17.8% 95%,17% 92
 .rail-ticket-art { filter:none; mix-blend-mode:normal; mask-image:none; }
 .rail-ticket-art svg { display:block; width:100%; height:100%; }
 .rail-ticket { background-color:#ffcf54; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='160'%3E%3Cfilter id='paper'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.62' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 .25 0 0 0 0 .15 0 0 0 0 .03 0 0 0 .26 0'/%3E%3C/filter%3E%3Cpath fill='%23b78427' opacity='.55' d='M15 22h1v2h-1zM88 101h2v1h-2zM149 32h1v3h-1zM205 119h2v1h-2zM54 148h1v2h-1zM178 76h1v2h-1z'/%3E%3Cpath fill='%23fff' filter='url(%23paper)' d='M0 0h240v160H0z'/%3E%3C/svg%3E"); border-block:2px dashed #e8b13c; }
+
+/* [WEB-TYPE-6] Comfortable reading sizes on phones and tablets. */
+@media(max-width:1199px) {
+ .station-copy > p:not(.station-aside) { font-size:18px; line-height:1.5; }
+ .rail-home .station-actions .rail-button,.station-outline { font-size:18px; min-height:48px; padding:12px 16px; }
+ .station-hero .rail-next { font-size:16px !important; }
+ .rail-ideas .rail-eyebrow { font-size:20px; }
+ .rail-section-copy,.rail-idea p { font-size:18px; line-height:1.5; }
+ .rail-idea h3 { font-size:28px; line-height:1.25; }
+ .rail-idea-copy { padding:18px; }
+ .rail-badge { font-size:16px; padding:6px 15px; }
+ .rail-home .rail-explore { font-size:18px; }
+ .rail-note { font-size:15px; line-height:1.6; }
+ .rail-format-grid h3 { font-size:19px; }.rail-format-grid p { font-size:16px; line-height:1.5; }
+ .rail-ticket-main > p { font-size:15px; line-height:1.5; }
+ .rail-ticket li { font-size:17px; line-height:1.4; }
+ .rail-ticket-end { font-size:14px; }
+ .rail-last-cta .rail-button { font-size:18px; }
+ .rail-last-cta .rail-script { font-size:22px; }
+ .station-footer .bazaar-footer .bf-col h2 { font-size:15px; }
+ .station-footer .bazaar-footer .bf-col a,.station-footer .bazaar-footer .bf-brand p { font-size:17px; line-height:1.6; }
+ .station-footer .bazaar-footer .bf-legal-links { font-size:14px; line-height:1.9; }
+ .station-footer .bazaar-footer .bf-bottom { font-size:14px; line-height:1.6; }
+}
+@media(min-width:700px) and (max-width:1199px) {
+ .station-frame { aspect-ratio:auto; min-height:52vw; }
+ .station-copy { position:relative; top:auto; padding:28px 0; }
+ .station-art { top:auto; bottom:0; height:auto; aspect-ratio:865/427; }
+ .station-actions { flex-wrap:wrap; gap:10px; }
+ .rail-home .station-aside { font-size:22px; margin-top:24px; }
+ .rail-section-copy { margin-top:14px !important; }
+ .rail-formats h2 { font-size:32px; }
+ .rail-format-grid > a { flex-direction:column; align-items:center; text-align:center; gap:12px; }
+ .rail-ticket-end { width:18%; }
+ .rail-last-cta .rail-script { position:static; }
+}
+@media(max-width:699px) {
+ .rail-home .station-copy h1 { font-size:15cqw; }
+ .rail-home .station-actions { flex-wrap:wrap; }
+ .rail-ideas h2 { font-size:clamp(30px,8.6vw,46px); }
+ .rail-formats h2 { font-size:26px; }
+ .rail-format-grid { grid-template-columns:1fr; gap:0; }
+ .rail-format-grid > a { flex-direction:row; text-align:left; padding:18px 4px; gap:18px; }
+ .rail-format-grid > a + a { border-left:0; border-top:1px solid #d8c8b1; }
+ .rail-format-icon { width:54px; height:54px; }
+ .rail-ticket-main h2 { font-size:29px; }
+ .rail-last-cta .rail-button { padding-inline:18px; }
+}

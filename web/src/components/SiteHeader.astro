@@ -315,4 +315,9 @@ const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false } = Astro.p
     .avh-bar { gap: 12px; padding: 10px 14px; }
     .avh-logo img { height: 40px; }
   }
+  /* Shared readable navigation on phones and tablets. */
+  @media (max-width:1199px) {
+    .avh-nav a,.avh-mobile a,.avh-cta { font-size:18px; }
+    .avh-mobile a { white-space:normal; text-align:center; padding:10px 12px; min-height:48px; }
+  }
 </style>
