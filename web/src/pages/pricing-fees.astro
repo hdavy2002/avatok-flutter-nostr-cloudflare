@@ -1,143 +1,216 @@
 ---
 export const prerender = true;
 import Content from '../layouts/Content.astro';
-import LegalStatus from '../components/LegalStatus.astro';
 ---
 
 <Content
-  kicker="Legal"
-  title="Pricing & Fees"
-  description="How avaTOK prices are shown, how tax is applied, and the fees that apply to marketplace earnings, consultations, and withdrawals."
+  kicker="Plan your usage"
+  title="Calculate Your Pricing"
+  description="Estimate your avaTOK usage with a simple calculator for calls, streaming, and audio rooms."
   image="/og/pricing-fees.png"
-  lead="What you pay on avaTOK, what is deducted, and where each figure is shown."
-  updated="2026-08-05"
+  lead="Choose a use case, set your expected usage, and see how your monthly estimate will be calculated."
+  updated="2026-09-09"
+  width="wide"
+  tone="sky"
 >
-  <p>
-    This page explains how pricing and fees work on avaTOK — our creator marketplace, paid live
-    streaming, and paid 1:1 video sessions. It sits alongside our
-    <a href="/terms">Terms of Service</a>, <a href="/tokens">Tokens &amp; Wallet</a> policy,
-    <a href="/payouts">Payouts &amp; Withdrawals</a> policy, and
-    <a href="/refunds">Refunds &amp; Cancellations</a> policy.
-  </p>
+  <section class="pricing-intro" aria-labelledby="calculator-title">
+    <p class="eyebrow">Usage calculator · first draft</p>
+    <h2 id="calculator-title">Estimate your monthly usage</h2>
+    <p>
+      Build a quick estimate for the way you expect to use avaTOK. The calculator structure is ready
+      now; feature rates and participant-minute pricing will be added once the pricing model is final.
+    </p>
+  </section>
 
-  <h2 id="status">1. Who charges you</h2>
-  <LegalStatus variant="full" />
-  <p>
-    All transactions on avaTOK are with the avaTOK founding team in India, under Indian law. While
-    our payment gateway application is under review, charges are in test, limited to invited users,
-    and any amount taken in error is refunded in full — see
-    <a href="/refunds">Refunds &amp; Cancellations</a>.
-  </p>
+  <div class="pricing-calculator" data-calculator>
+    <section class="calculator-card calculator-inputs" aria-labelledby="inputs-title">
+      <div class="card-heading">
+        <div>
+          <p class="eyebrow">Your usage</p>
+          <h2 id="inputs-title">Video and audio pricing calculator</h2>
+        </div>
+        <span class="draft-badge">Rates coming soon</span>
+      </div>
+      <p class="card-copy">Choose the options that best match your expected calls, streams, or audio rooms.</p>
 
-  <h2>2. The screen you confirm on is the authoritative price</h2>
-  <p>
-    Prices, token costs, commissions, and fees are shown in the app before you confirm. Where they
-    are inclusive or exclusive of tax is indicated at checkout. <strong>The figures shown on that
-    screen apply to your transaction</strong> — this page describes the types of charge, not the
-    amounts, because they can vary by payment method and by listing.
-  </p>
+      <fieldset>
+        <legend>Use case</legend>
+        <div class="option-grid option-grid--three">
+          <label class="choice"><input type="radio" name="use-case" value="video" checked /> <span>Video calls</span></label>
+          <label class="choice"><input type="radio" name="use-case" value="streaming" /> <span>Live streaming</span></label>
+          <label class="choice"><input type="radio" name="use-case" value="audio" /> <span>Audio rooms</span></label>
+        </div>
+      </fieldset>
 
-  <h2>3. Top-ups and tokens</h2>
-  <p>
-    Top-ups are converted into <a href="/tokens">tokens</a> at a fixed rate of <strong>1 token = ₹1
-    (one Indian rupee)</strong> — 100 tokens are ₹100. Tokens are then used to pay for AI features,
-    marketplace purchases, and consultations. The token cost of each feature or service is shown
-    before you commit to it.
-  </p>
-  <p>
-    The same fixed rate applies in reverse: <strong>unused tokens can be withdrawn</strong> at 1
-    token = ₹1, less the transfer fee and any tax. See
-    <a href="/payouts">Payouts &amp; Withdrawals</a>.
-  </p>
+      <fieldset>
+        <legend>Video quality</legend>
+        <div class="option-grid option-grid--five">
+          <label class="choice"><input type="radio" name="quality" value="audio-only" checked /> <span>Audio only</span></label>
+          <label class="choice"><input type="radio" name="quality" value="sd" /> <span>SD</span></label>
+          <label class="choice"><input type="radio" name="quality" value="hd" /> <span>HD</span></label>
+          <label class="choice"><input type="radio" name="quality" value="fhd" /> <span>FHD</span></label>
+          <label class="choice"><input type="radio" name="quality" value="4k" /> <span>4K</span></label>
+        </div>
+      </fieldset>
 
-  <h2>4. Tax</h2>
-  <p>
-    For customers in India, <strong>GST</strong> applies where the law requires it and is shown at
-    checkout, either included in the displayed price or added on top, as indicated. For customers
-    outside India, any sales tax, VAT, or equivalent that we may be required to collect is shown in the
-    same way.
-  </p>
-  <p>
-    Where Indian tax law requires withholding on marketplace payouts — for example TDS — we may
-    withhold the required amount from a payout. See <a href="/payouts">Payouts &amp; Withdrawals</a>.
-    You remain responsible for your own tax position.
-  </p>
+      <div class="range-field">
+        <div class="field-label"><label for="participants">Participants per call</label><output id="participants-output">2</output></div>
+        <input id="participants" type="range" min="1" max="25" value="2" />
+        <div class="range-hint"><span>1</span><span>25</span></div>
+      </div>
 
-  <h2>5. Platform commission on earnings</h2>
-  <p>
-    Where you earn on avaTOK — by selling a digital service on the marketplace or by providing a
-    live consultation — we deduct a <strong>platform commission</strong> from the amount the
-    customer pays. The commission applicable to a listing or booking is shown before you publish or
-    accept it, and it is reflected in what is credited to your balance.
-  </p>
-  <p>
-    Commission is separate from the withdrawal transfer fee. Earnings are credited to your token
-    balance; moving that balance to your bank is a withdrawal.
-  </p>
+      <div class="range-field">
+        <div class="field-label"><label for="duration">Average session duration</label><output id="duration-output">60 min</output></div>
+        <input id="duration" type="range" min="5" max="240" step="5" value="60" />
+        <div class="range-hint"><span>5 min</span><span>4 hours</span></div>
+      </div>
 
-  <h2>6. Withdrawal transfer fee</h2>
-  <p>
-    Withdrawing unused tokens is subject to a <strong>transfer fee</strong>, plus GST where it
-    applies in India. Both are shown at the time of withdrawal, before you confirm. Your own bank or
-    payment provider may apply its own charge on top, which we do not control. Full detail is on the
-    <a href="/payouts">Payouts &amp; Withdrawals</a> page.
-  </p>
+      <div class="range-field">
+        <div class="field-label"><label for="sessions">Monthly sessions</label><output id="sessions-output">1</output></div>
+        <input id="sessions" type="range" min="1" max="100" value="1" />
+        <div class="range-hint"><span>1</span><span>100</span></div>
+      </div>
 
-  <h2>7. App-store fees</h2>
-  <p>
-    Where you buy through the Android or iOS app, the purchase is processed by <strong>Google
-    Play</strong> or <strong>Apple</strong> and their commercial terms apply to that transaction.
-    The price you see in the store is the price you pay; store commission is deducted from what
-    reaches us, not added to your bill. Refunds for those purchases are handled by the store — see
-    <a href="/refunds">Refunds &amp; Cancellations</a>.
-  </p>
+      <fieldset>
+        <legend>Add-ons</legend>
+        <div class="option-grid option-grid--three">
+          <label class="choice choice--check"><input type="checkbox" name="addon" value="recording" /> <span>Recording</span></label>
+          <label class="choice choice--check"><input type="checkbox" name="addon" value="noise-cancellation" /> <span>Noise cancellation</span></label>
+          <label class="choice choice--check"><input type="checkbox" name="addon" value="transcription" /> <span>Transcriptions / captions</span></label>
+          <label class="choice choice--check"><input type="checkbox" name="addon" value="hls" /> <span>HLS live streaming</span></label>
+          <label class="choice choice--check"><input type="checkbox" name="addon" value="rtmp-in" /> <span>RTMP in</span></label>
+          <label class="choice choice--check"><input type="checkbox" name="addon" value="rtmp-out" /> <span>RTMP out</span></label>
+        </div>
+      </fieldset>
+    </section>
 
-  <h2>8. Currency and conversion</h2>
-  <p>
-    Prices are shown in <strong>Indian rupees (₹)</strong>, and tokens are denominated in rupees —
-    1 token = ₹1. India is the only market we serve while we are testing. Marketplace listings
-    created by sellers may display another currency where the seller has chosen one; the amount you
-    are actually charged is the one on the confirmation screen. If your payment method is in a
-    different currency from the one you are charged in, your bank or card issuer may apply its own
-    conversion rate and a foreign-transaction fee. Those are set by them and are outside our
-    control, so the amount on your statement may differ from the amount shown in the app.
-  </p>
+    <aside class="calculator-card calculator-summary" aria-labelledby="summary-title">
+      <div class="card-heading">
+        <div>
+          <p class="eyebrow">Your estimate</p>
+          <h2 id="summary-title">Estimated cost</h2>
+        </div>
+        <div class="billing-toggle" role="group" aria-label="Billing period">
+          <button type="button" class="is-active" data-period="monthly">Monthly</button>
+          <button type="button" data-period="yearly">Yearly</button>
+        </div>
+      </div>
 
-  <h2>9. Where each charge appears</h2>
-  <table>
-    <thead>
-      <tr><th>Charge</th><th>Where it is shown</th></tr>
-    </thead>
-    <tbody>
-      <tr><td>Top-up amount and tokens received (1 token = ₹1)</td><td>The top-up screen, before you pay</td></tr>
-      <tr><td>Token cost of a feature or booking</td><td>Before you confirm the action</td></tr>
-      <tr><td>GST or other tax</td><td>At checkout, marked inclusive or exclusive</td></tr>
-      <tr><td>Platform commission on earnings</td><td>On the listing or booking, before you accept</td></tr>
-      <tr><td>Withdrawal transfer fee and tax</td><td>On the withdrawal screen, before you confirm</td></tr>
-      <tr><td>Tax withheld on a payout</td><td>On the payout record</td></tr>
-    </tbody>
-  </table>
+      <div class="estimate-total">
+        <span class="estimate-value">Pricing soon</span>
+        <span class="estimate-caption">Rates will be published here</span>
+      </div>
 
-  <h2>10. Changes to pricing</h2>
-  <p>
-    We may change prices, token costs, commissions, and fees. Where a change affects you, we will
-    give notice — in the app, by email, or by updating this page — before it takes effect, as far as
-    is reasonably practicable. Continuing to use a paid feature after a change takes effect means
-    the new pricing applies to you. A change does not retroactively alter a transaction you have
-    already completed.
-  </p>
+      <dl class="usage-breakdown">
+        <div><dt>Participant minutes</dt><dd id="participant-minutes">120</dd></div>
+        <div><dt>Sessions per month</dt><dd id="session-count">1</dd></div>
+        <div><dt>Selected add-ons</dt><dd id="addon-count">0</dd></div>
+      </dl>
 
-  <h2>11. Changes to this page</h2>
-  <p>
-    We may update this page from time to time. We will post the updated version here and revise the
-    "Last updated" date above.
-  </p>
+      <div class="rate-notice">
+        <strong>Pricing values are being finalized.</strong>
+        <p>Once feature costs and participant-minute rates are set, this panel will calculate the estimate automatically.</p>
+      </div>
+      <a class="summary-link" href="mailto:support@avatok.ai?subject=Pricing%20calculator">Ask about pricing <span aria-hidden="true">→</span></a>
+    </aside>
+  </div>
 
-  <h2>12. Contact</h2>
-  <p>
-    Billing, pricing, and payout questions:
-    <a href="mailto:support@avatok.ai">support@avatok.ai</a>. General enquiries:
-    <a href="mailto:hello@avatok.ai">hello@avatok.ai</a>. See also our
-    <a href="/terms">Terms of Service</a> and <a href="/privacy">Privacy Policy</a>.
-  </p>
+  <section class="pricing-notes" aria-labelledby="notes-title">
+    <p class="eyebrow">How this will work</p>
+    <h2 id="notes-title">A clearer way to plan your usage</h2>
+    <p>
+      Your estimate will be based on the selected feature, quality, participant minutes, session
+      count, and any optional add-ons. The final amount shown before you confirm a paid feature remains
+      the authoritative price.
+    </p>
+  </section>
 </Content>
+
+<script>
+  const calculator = document.querySelector('[data-calculator]');
+
+  if (calculator) {
+    const participants = document.querySelector('#participants');
+    const duration = document.querySelector('#duration');
+    const sessions = document.querySelector('#sessions');
+    const participantOutput = document.querySelector('#participants-output');
+    const durationOutput = document.querySelector('#duration-output');
+    const sessionsOutput = document.querySelector('#sessions-output');
+    const participantMinutes = document.querySelector('#participant-minutes');
+    const sessionCount = document.querySelector('#session-count');
+    const addonCount = document.querySelector('#addon-count');
+
+    function updateEstimate() {
+      const participantCount = Number(participants.value);
+      const durationMinutes = Number(duration.value);
+      const sessionTotal = Number(sessions.value);
+      const addons = calculator.querySelectorAll('input[name="addon"]:checked').length;
+
+      participantOutput.textContent = participantCount;
+      durationOutput.textContent = `${durationMinutes} min`;
+      sessionsOutput.textContent = sessionTotal;
+      participantMinutes.textContent = (participantCount * durationMinutes * sessionTotal).toLocaleString();
+      sessionCount.textContent = sessionTotal;
+      addonCount.textContent = addons;
+    }
+
+    calculator.querySelectorAll('input[type="range"], input[type="checkbox"]').forEach((input) => {
+      input.addEventListener('input', updateEstimate);
+      input.addEventListener('change', updateEstimate);
+    });
+
+    calculator.querySelectorAll('[data-period]').forEach((button) => {
+      button.addEventListener('click', () => {
+        calculator.querySelectorAll('[data-period]').forEach((period) => period.classList.remove('is-active'));
+        button.classList.add('is-active');
+      });
+    });
+
+    updateEstimate();
+  }
+</script>
+
+<style is:global>
+  .pricing-intro, .pricing-notes { padding:28px 30px; border:1px solid var(--ink); border-radius:24px; background:var(--white); color:var(--ink); }
+  .pricing-intro { margin-bottom:34px; box-shadow:10px 10px 0 var(--blue); }
+  .pricing-intro h2, .pricing-notes h2 { margin:8px 0 12px; font-family:var(--display); font-size:clamp(34px,4vw,54px); line-height:1; letter-spacing:-.045em; }
+  .pricing-intro p:last-child, .pricing-notes p:last-child { max-width:780px; margin:0; }
+  .eyebrow { margin:0; color:var(--blue); font-size:13px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
+  .pricing-calculator { display:grid; grid-template-columns:minmax(0,1.08fr) minmax(340px,.92fr); gap:24px; align-items:start; }
+  .calculator-card { padding:30px; border:1px solid var(--ink); border-radius:24px; background:var(--white); color:var(--ink); box-shadow:8px 8px 0 rgba(22,22,20,.9); }
+  .calculator-summary { position:sticky; top:28px; box-shadow:8px 8px 0 var(--pink); }
+  .card-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; }
+  .calculator-card h2 { margin:7px 0 0; font-size:clamp(24px,2.5vw,34px); line-height:1.05; letter-spacing:-.04em; }
+  .card-copy { margin:16px 0 30px; color:rgba(22,22,20,.7); font-size:17px; line-height:1.45; }
+  .draft-badge { flex:none; padding:8px 10px; border-radius:999px; background:var(--lime); font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
+  fieldset { margin:0 0 28px; padding:0; border:0; }
+  legend, .range-field label { margin-bottom:11px; color:var(--ink); font-size:16px; font-weight:800; }
+  .option-grid { display:grid; gap:9px; }
+  .option-grid--three { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .option-grid--five { grid-template-columns:repeat(5,minmax(0,1fr)); }
+  .choice { display:flex; align-items:center; gap:8px; min-height:45px; padding:9px 11px; border:1px solid rgba(22,22,20,.28); border-radius:8px; background:rgba(253,241,211,.55); font-size:14px; line-height:1.2; cursor:pointer; }
+  .choice:has(input:checked) { border-color:var(--blue); background:#d7eef0; box-shadow:inset 0 0 0 1px var(--blue); }
+  .choice input { accent-color:var(--blue); width:16px; height:16px; flex:none; }
+  .range-field { margin:0 0 28px; }
+  .field-label { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .field-label output { min-width:82px; padding:8px 10px; border-radius:7px; background:#f0e2c9; text-align:right; font-weight:800; }
+  input[type="range"] { display:block; width:100%; margin:13px 0 5px; accent-color:var(--blue); }
+  .range-hint { display:flex; justify-content:space-between; color:rgba(22,22,20,.58); font-size:12px; }
+  .billing-toggle { display:flex; padding:4px; border-radius:9px; background:#f0e2c9; }
+  .billing-toggle button { padding:8px 11px; border:0; border-radius:6px; background:transparent; color:var(--ink); font:inherit; font-size:13px; cursor:pointer; }
+  .billing-toggle button.is-active { background:var(--white); box-shadow:0 1px 3px rgba(22,22,20,.15); font-weight:800; }
+  .estimate-total { display:grid; place-items:center; min-height:170px; margin:30px 0 25px; padding:24px; border:1px solid rgba(22,22,20,.25); border-radius:18px; background:#fffaf0; text-align:center; }
+  .estimate-value { color:var(--blue); font-size:clamp(34px,4vw,52px); font-weight:800; letter-spacing:-.06em; }
+  .estimate-caption { color:rgba(22,22,20,.6); font-size:15px; }
+  .usage-breakdown { margin:0; }
+  .usage-breakdown div { display:flex; justify-content:space-between; gap:15px; padding:15px 0; border-bottom:1px solid rgba(22,22,20,.2); }
+  .usage-breakdown dt { color:rgba(22,22,20,.72); }
+  .usage-breakdown dd { margin:0; color:var(--blue); font-weight:800; }
+  .rate-notice { margin-top:24px; padding:18px; border-left:5px solid var(--blue); border-radius:0 14px 14px 0; background:#d7eef0; }
+  .rate-notice strong { display:block; margin-bottom:5px; }
+  .rate-notice p { margin:0; color:rgba(22,22,20,.72); font-size:15px; line-height:1.4; }
+  .summary-link { display:flex; justify-content:space-between; align-items:center; margin-top:24px; padding:14px 16px; border-radius:999px; background:var(--ink); color:var(--white) !important; text-decoration:none !important; font-weight:800; }
+  .pricing-notes { margin-top:34px; box-shadow:10px 10px 0 var(--lime); }
+  @media (max-width:900px) { .pricing-calculator { grid-template-columns:1fr; } .calculator-summary { position:static; } .option-grid--five { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+  @media (max-width:560px) { .pricing-intro, .pricing-notes, .calculator-card { padding:22px 19px; } .card-heading { display:block; } .draft-badge { display:inline-block; margin-top:14px; } .option-grid--three, .option-grid--five { grid-template-columns:repeat(2,minmax(0,1fr)); } .option-grid--three .choice:first-child { grid-column:span 2; } .billing-toggle { margin-top:16px; width:max-content; } }
+</style>
