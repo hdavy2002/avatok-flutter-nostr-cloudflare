@@ -72,39 +72,71 @@ type SendEmail = (msg: EmailMsg, env: Env) => Promise<void>;
 
 interface DueBooking { id: string; creator_id: string; buyer_id: string; listing_id?: string | null; kind?: string | null; starts_at: number; title: string | null; }
 
-async function dueRows(env: Env, flagCol: string, lo: number, hi: number): Promise<DueBooking[]> {
+async function dueRows(env: Env, flagCol: string, lo: number, hi: number, cursor = ""): Promise<DueBooking[]> {
   const rs = await env.DB_META.prepare(
     `SELECT b.id, b.creator_id, b.buyer_id, b.listing_id, b.kind, b.starts_at,
             (SELECT title FROM calendar_events e WHERE e.booking_id=b.id LIMIT 1) AS title
-       FROM bookings b WHERE b.status='confirmed' AND b.${flagCol}=0 AND b.starts_at>?1 AND b.starts_at<=?2 LIMIT 100`,
-  ).bind(lo, hi).all();
+       FROM bookings b WHERE b.status='confirmed' AND b.${flagCol}=0
+         AND b.starts_at>?1 AND b.starts_at<=?2 AND b.id>?3
+       ORDER BY b.id ASC LIMIT 100`,
+  ).bind(lo, hi, cursor).all();
   return (rs.results ?? []) as unknown as DueBooking[];
+}
+
+async function processDueBookings(
+  env: Env,
+  flagCol: string,
+  lo: number,
+  hi: number,
+  process: (booking: DueBooking) => Promise<void>,
+): Promise<void> {
+  let cursor = "";
+  for (;;) {
+    const page = await dueRows(env, flagCol, lo, hi, cursor);
+    for (const booking of page) {
+      try {
+        await process(booking);
+      } catch (error) {
+        // Keep this booking's flag at 0 and continue the bounded page. The next
+        // cron tick will retry it through the catch-up window; stable email and
+        // notification keys make any earlier recipient success idempotent.
+        console.error(`[reminders:${flagCol}] booking ${booking.id}:`, String(error));
+      }
+    }
+    if (page.length < 100) break;
+    const next = page[page.length - 1]?.id;
+    if (!next || next === cursor) break;
+    cursor = next;
+  }
 }
 
 export async function bookingReminderLadder(env: Env, sendEmail: SendEmail): Promise<void> {
   const now = Date.now();
   const H = 3_600_000, M = 60_000;
 
-  // T-24h — email "Tomorrow: …" (band 23h..24h; the 15-min cron sweeps it).
-  for (const b of await dueRows(env, "reminder24_sent", now + 23 * H, now + 24 * H)) {
+  // T-24h — email "Tomorrow: …". The wider future-only band catches a delayed
+  // cron without sending a reminder for a session that has already started.
+  await processDueBookings(env, "reminder24_sent", now + 20 * H, now + 26 * H, async (b) => {
     // Consultations are commercial sessions too: both parties receive the
     // durable T-24h mail with the canonical /session/:bookingId destination.
     // Other booking rows retain the legacy signed invite path below.
     await remind(env, sendEmail, b, "24h", false);
     await env.DB_META.prepare("UPDATE bookings SET reminder24_sent=1 WHERE id=?1").bind(b.id).run();
-  }
+  });
   // Live tickets have no bookings row. Their email identity is the stable
   // listing/entitlement/account tuple, so a retry cannot invent a booking or
   // resend a successful recipient's mail.
-  await liveTicketReminderSweep(env, sendEmail, "24h", now + 23 * H, now + 24 * H, false);
-  // T-60m — email + push, both parties, with join link.
-  for (const b of await dueRows(env, "reminder_sent", now + 45 * M, now + 60 * M)) {
+  await liveTicketReminderSweep(env, sendEmail, "24h", now + 20 * H, now + 26 * H, false);
+  // T-60m — email + push, both parties, with join link. Catch up a delayed
+  // 15-minute tick while keeping the session safely in the future.
+  await processDueBookings(env, "reminder_sent", now + 30 * M, now + 90 * M, async (b) => {
     await remind(env, sendEmail, b, "60m", true);
-    await env.DB_META.prepare("UPDATE bookings SET reminder_sent=1, reminder24_sent=1 WHERE id=?1").bind(b.id).run();
-  }
-  await liveTicketReminderSweep(env, sendEmail, "60m", now + 45 * M, now + 60 * M, true);
-  // T-10m — push only ("Starting soon — tap to join").
-  for (const b of await dueRows(env, "reminder10_sent", now, now + 10 * M)) {
+    await env.DB_META.prepare("UPDATE bookings SET reminder_sent=1 WHERE id=?1").bind(b.id).run();
+  });
+  await liveTicketReminderSweep(env, sendEmail, "60m", now + 30 * M, now + 90 * M, true);
+  // T-10m — push only ("Starting soon — tap to join"). A small past window lets
+  // a delayed tick still help someone joining just after the scheduled start.
+  await processDueBookings(env, "reminder10_sent", now - 5 * M, now + 10 * M, async (b) => {
     if (b.kind === "consult_1to1") {
       for (const uid of [b.creator_id, b.buyer_id]) {
         await pushReminder(env, uid, `commercial-notification:commercial_join_window:${b.id}:10m:${uid}`, "Starting soon", `${b.title ?? "Your consultation"} is ready to join.`, {
@@ -112,13 +144,14 @@ export async function bookingReminderLadder(env: Env, sendEmail: SendEmail): Pro
         });
       }
     } else {
+      const legacyUrl = `/j/${await signJoinToken(env, b.id, b.starts_at + 86_400_000)}`;
       for (const uid of [b.creator_id, b.buyer_id]) {
-        await pushReminder(env, uid, `commercial-notification:commercial_join_window:${b.id}:10m:${uid}`, "Starting soon", `${b.title ?? "Your session"} — tap to join`, { type: "commercial_join_window", booking_id: b.id, deeplink: `/session/${b.id}` });
+        await pushReminder(env, uid, `commercial-notification:commercial_join_window:${b.id}:10m:${uid}`, "Starting soon", `${b.title ?? "Your session"} — tap to join`, { type: "commercial_join_window", booking_id: b.id, deeplink: legacyUrl });
       }
     }
-    await env.DB_META.prepare("UPDATE bookings SET reminder10_sent=1, reminder_sent=1, reminder24_sent=1 WHERE id=?1").bind(b.id).run();
-  }
-  await liveTicketReminderSweep(env, sendEmail, "10m", now, now + 10 * M, true);
+    await env.DB_META.prepare("UPDATE bookings SET reminder10_sent=1 WHERE id=?1").bind(b.id).run();
+  });
+  await liveTicketReminderSweep(env, sendEmail, "10m", now - 5 * M, now + 10 * M, true);
 
   // Legacy calendar_events-only rows (no bookings row): keep the old push T-60.
   let due60: { results?: unknown[] } | null = null;
@@ -210,6 +243,7 @@ async function liveTicketReminderSweep(
   let cursor = "";
   const pageSize = 100;
   const seen = new Set<string>();
+  let failures = 0;
   try {
     for (;;) {
       const rows = await env.DB_META.prepare(
@@ -232,28 +266,35 @@ async function liveTicketReminderSweep(
           const key = `${eventKey}:${uid}:${tier}`;
           if (seen.has(key)) continue;
           seen.add(key);
-          const title = row.title ?? "Your live event";
-          const joinUrl = `https://avatok.ai/live/${encodeURIComponent(row.listing_id)}`;
-          if (tier !== "10m") {
-            const otherName = uid === row.creator_id ? "your attendees" : "the host";
-            const { subject, html } = reminderHtml(tier, { title, start: row.starts_at, otherName, joinUrl });
-            const email = await clerkEmail(env, uid);
-            if (email) {
-              await sendEmail({
-                to: email, subject, html,
-                kind: "commercial_reminder", orderId: null, recipientId: uid,
-                messageVersion: `commercial-live-ticket-reminder-${tier}.v1`,
-                outboxKey: `commercial-reminder:live:${row.listing_id}:${row.starts_at}:${uid}:${tier}:v1`,
-              }, env);
+          try {
+            const title = row.title ?? "Your live event";
+            const joinUrl = `https://avatok.ai/live/${encodeURIComponent(row.listing_id)}`;
+            if (tier !== "10m") {
+              const otherName = uid === row.creator_id ? "your attendees" : "the host";
+              const { subject, html } = reminderHtml(tier, { title, start: row.starts_at, otherName, joinUrl });
+              const email = await clerkEmail(env, uid);
+              if (email) {
+                await sendEmail({
+                  to: email, subject, html,
+                  kind: "commercial_reminder", orderId: null, recipientId: uid,
+                  messageVersion: `commercial-live-ticket-reminder-${tier}.v1`,
+                  outboxKey: `commercial-reminder:live:${row.listing_id}:${row.starts_at}:${uid}:${tier}:v1`,
+                }, env);
+              }
             }
-          }
-          if (push) {
-            await pushReminder(env, uid, `commercial-notification:live_join_window:${row.listing_id}:${row.starts_at}:${tier}:${uid}`, tier === "10m" ? "Starting soon" : "Live event reminder", tier === "10m" ? `${title} starts in 10 minutes — tap to join` : title, {
-              type: "commercial_join_window", listing_id: row.listing_id,
-              ...(row.booking_id ? { booking_id: row.booking_id } : {}),
-              ...(row.session_id ? { session_id: row.session_id } : {}),
-              deeplink: joinUrl,
-            });
+            if (push) {
+              await pushReminder(env, uid, `commercial-notification:live_join_window:${row.listing_id}:${row.starts_at}:${tier}:${uid}`, tier === "10m" ? "Starting soon" : "Live event reminder", tier === "10m" ? `${title} starts in 10 minutes — tap to join` : title, {
+                type: "commercial_join_window", listing_id: row.listing_id,
+                ...(row.booking_id ? { booking_id: row.booking_id } : {}),
+                ...(row.session_id ? { session_id: row.session_id } : {}),
+                deeplink: joinUrl,
+              });
+            }
+          } catch (error) {
+            // One recipient's transient provider failure must not prevent the
+            // remaining live ticket audience from receiving its reminder.
+            failures++;
+            console.error(`[reminders:${tier}] live recipient ${uid}:`, String(error));
           }
         }
       }
@@ -268,6 +309,7 @@ async function liveTicketReminderSweep(
     // leave the sweep eligible for the next tick.
     if (!String(error).includes("no such table") && !String(error).includes("no such column")) throw error;
   }
+  if (failures > 0) console.warn(`[reminders:${tier}] ${failures} live recipient(s) remain eligible for retry`);
 }
 
 // ---------------------------------------------------------------------------
