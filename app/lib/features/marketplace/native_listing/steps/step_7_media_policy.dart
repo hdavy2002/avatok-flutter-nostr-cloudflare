@@ -118,7 +118,7 @@ class _ListingStep7PhotosPolicyState extends State<ListingStep7PhotosPolicy> {
                                       onPressed: widget.onUpload == null
                                           ? null
                                           : () => _pick(face: false),
-                                      icon: const Icon(
+                                      icon: Icon(
                                           PhosphorIcons.imageSquare(PhosphorIconsStyle.regular)),
                                       label: const Text('Add photo'))
                               ]),
@@ -212,7 +212,7 @@ class _ListingStep7PhotosPolicyState extends State<ListingStep7PhotosPolicy> {
               child: Image.network(url,
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) =>
-                      Icon(PhosphorIcons.imageSquare(PhosphorIconsStyle.regular))));
+                      Icon(PhosphorIcons.imageSquare(PhosphorIconsStyle.regular)))));
   Widget _cover(String url, VoidCallback remove) => Stack(children: [
         _thumb(url, 'No image'),
         Positioned(
@@ -220,7 +220,7 @@ class _ListingStep7PhotosPolicyState extends State<ListingStep7PhotosPolicy> {
             top: 0,
             child: IconButton(
                 onPressed: remove,
-                icon: const CircleAvatar(
+                icon: CircleAvatar(
                     radius: 12, child: Icon(PhosphorIcons.x(PhosphorIconsStyle.bold), size: 14))))
       ]);
 }
