@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -130,9 +132,15 @@ void main() {
     );
   });
 
-  testWidgets('customer surfaces stay closed while commercial flags are off', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: MySessionsScreen()));
-    expect(find.text('Commercial sessions are unavailable while services are off.'), findsOneWidget);
+  testWidgets('customer recovery stays available while join flags remain gated', (tester) async {
+    // Retrieval is intentionally independent from discovery/purchase flags, so
+    // existing tickets remain recoverable after a capability is paused. Join
+    // admission still checks the per-kind kill switches before opening a room.
+    final source = File('lib/features/booking/commercial_customer_screens.dart').readAsStringSync();
+    expect(source, contains('bool get _enabled => true;'));
+    expect(source, contains("CommercialSessionsApi.mineAll(role: 'customer')"));
+    expect(source, contains('RemoteConfig.commercialLiveJoinEnabled'));
+    expect(source, contains('RemoteConfig.commercialConsultJoinEnabled'));
   });
 
   testWidgets('booking success shows account-bound receipt reference and calendar action', (tester) async {

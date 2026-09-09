@@ -16,10 +16,14 @@ void main() {
     expect(liveServerStateFromJson('made_up'), LiveServerState.unknown);
   });
 
-  test('phase 2E source keeps live join POST-only and no-store', () {
+  test('phase 2E source uses the centralized live join route contract', () {
     final router = File('../worker/src/index.ts').readAsStringSync();
+    final ids = File('../worker/src/lib/commercial_ids.ts').readAsStringSync();
     final route = File('../worker/src/routes/commercial_stream_sessions.ts').readAsStringSync();
-    expect(router, contains(r'^\/api\/commercial\/live\/[A-Za-z0-9-]{1,64}\/join$/.test(p) && req.method === "POST"'));
+    expect(router, contains('import { commercialRoutePattern } from "./lib/commercial_ids";'));
+    expect(router, contains('commercialRoutePattern("live", "join").test(p) && req.method === "POST"'));
+    expect(ids, contains('COMMERCIAL_ID_SEGMENT'));
+    expect(ids, contains('commercialRoutePattern'));
     expect(route, contains('noStoreJoinResponse'));
     expect(route, contains("Cache-Control"));
   });
