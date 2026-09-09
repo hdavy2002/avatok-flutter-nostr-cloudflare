@@ -13,56 +13,30 @@ const ideas = [
   { id: 'english', title: 'English practice adda', body: 'Run a small group conversation session.', format: 'Group session', tone: 'blue', x: 305, y: 911, href: '/marketplace?group=book_their_time&q=English' },
   { id: 'festival', title: 'Festival ka front row', body: 'Take viewers along to your local celebrations.', format: 'Live event', tone: 'yellow', x: 577, y: 911, href: '/marketplace?group=india_goes_live&q=festival' },
 ];
-const stops = [
-  { title: 'Suno, dil se.', text: 'Offer your time and attention in a private conversation.', tag: 'Private 1:1', href: '/marketplace?group=find_your_people', id: 'live-friends' },
-  { title: 'Apni duniya, live.', text: 'Share a puja, a food walk, or a festival with ticketed viewers.', tag: 'Live events', href: '/marketplace?group=india_goes_live', id: 'live-streaming' },
-  { title: 'Saath seekho.', text: 'Teach or advise a small group in a live session.', tag: 'Group sessions', href: '/marketplace?group=book_their_time', id: 'group-sessions' },
-];
+
 ---
 <Base title="avaTOK — Get Paid to Listen, Chat & Live Stream From Home" description="Be a listener, stream a puja, or host a class. Create a free listing on avaTOK and offer paid live events, private 1:1 consultations and group sessions. Apna time. Apni kamaai." image="/ogimage.jpg" chrome={false}>
   <Fragment slot="head">
     <meta name="theme-color" content="#f7ead5" />
-    <link rel="preload" as="image" href="/assets/railway/creator-train.jpg" />
+    <link rel="preload" as="image" href="/assets/railway/approved-ideas.jpg" />
   </Fragment>
   <a class="rail-skip" href="#marketplace-catalogue">Skip to earning ideas</a>
   <SiteHeader sticky={false} />
-  <main class="rail-home" data-design="railway-2026-09" id="main-content">
-    <section class="rail-hero" aria-labelledby="rail-title" data-rail-hero>
-      <div class="rail-side rail-side--left" aria-hidden="true"></div>
-      <div class="rail-side rail-side--right" aria-hidden="true"></div>
-      <div class="rail-intro">
-        <p class="rail-eyebrow rail-route">Ghar se <span aria-hidden="true">⟶</span> duniya tak</p>
-        <h1 id="rail-title">Agla station:<br /><span>Apni kamaai.</span></h1>
-        <p class="rail-intro-copy">Be a listener. Stream a puja. Host a class.<br />Get paid for your time on avaTOK.</p>
-        <div class="rail-actions">
-          <a class="rail-button" href="/sign-up" data-home-cta="hero-create">Create free <span aria-hidden="true">↗</span></a>
-          <a class="rail-text-link" href="#marketplace-catalogue" data-home-cta="hero-ideas">Find your first idea <span aria-hidden="true">↓</span></a>
-        </div>
-      </div>
-      <div class="rail-scene" data-rail-scene>
-        <div class="rail-train-arrival">
-          <div class="rail-train" data-rail-train>
-            <img src="/assets/railway/creator-train.jpg" width="2149" height="732" alt="A blue Indian train with three creator windows: a human listener, a puja livestream and a group teacher." fetchpriority="high" decoding="async" />
-            {stops.map((stop, i) => <span class:list={['rail-window', 'rail-window--' + i, i === 0 && 'is-active']} data-rail-window={i} aria-hidden="true"></span>)}
-            <span class="rail-steam rail-steam--one" aria-hidden="true">∿</span>
-            <span class="rail-steam rail-steam--two" aria-hidden="true">∿</span>
+  <main class="rail-home" data-design="station-static-2026-09" id="main-content">
+    <section class="station-hero" aria-labelledby="rail-title">
+      <div class="station-frame">
+        <div class="station-copy">
+          <h1 id="rail-title">Apna time.<br /><span>Apni kamaai.</span></h1>
+          <p>Be a listener. Stream a puja. Host a class.<br />Get paid for your time, live on avaTOK.</p>
+          <div class="station-actions">
+            <a class="rail-button" href="/sign-up" data-home-cta="hero-create">Create free</a>
+            <a class="station-outline" href="#marketplace-catalogue" data-home-cta="hero-ideas">Explore ideas</a>
           </div>
+          <p class="station-aside">India’s<br />stories travel<br />further here.</p>
         </div>
-        <div class="rail-motion-row">
-          <span class="rail-script">India's stories travel further here.</span>
-          <button class="rail-motion" type="button" data-motion-toggle hidden aria-pressed="false">Pause animation</button>
+        <div class="station-art">
+          <img src="/assets/railway/approved-ideas.jpg" width="865" height="1819" alt="A creator with her laptop at an Indian railway station, beside a blue train, an Apna Adda sign and a chai stall." fetchpriority="high" decoding="async" />
         </div>
-      </div>
-      <div class="rail-stops" aria-label="Three ways to earn" data-rail-stops>
-        {stops.map((stop, i) => (
-          <div class:list={['rail-stop', i === 0 && 'is-active']} data-rail-stop={i} id={stop.id}>
-            <button type="button" data-stop-button={i} aria-pressed={i === 0 ? 'true' : 'false'} aria-label={'Highlight ' + stop.tag + ' on the train'}>
-              <span class="rail-stop-number">0{i + 1}</span><span>{stop.title}</span>
-            </button>
-            <p>{stop.text}</p>
-            <a href={stop.href} data-home-cta={'hero-' + stop.id}>{stop.tag} <span aria-hidden="true">↗</span></a>
-          </div>
-        ))}
       </div>
       <a class="rail-next" href="#marketplace-catalogue">Agla stop: your first idea <span aria-hidden="true">↓</span></a>
     </section>
@@ -73,7 +47,7 @@ const stops = [
       <p class="rail-section-copy">A few ideas to get your first listing started.</p>
       <div class="rail-idea-grid">
         {ideas.map((idea) => (
-          <a class="rail-idea" href={idea.href} data-home-idea={idea.id} aria-label={idea.title + ' — explore ' + idea.format.toLowerCase() + ' listings'}>
+          <a class="rail-idea" id={idea.id === 'listener' ? 'live-friends' : undefined} href={idea.href} data-home-idea={idea.id} aria-label={idea.title + ' — explore ' + idea.format.toLowerCase() + ' listings'}>
             <div class="rail-idea-art" aria-hidden="true">
               <img src="/assets/railway/approved-ideas.jpg" alt="" width="865" height="1819" loading="lazy" decoding="async" style={'left:' + (-idea.x / 254 * 100) + '%;top:' + (-idea.y / 140 * 100) + '%;'} />
             </div>
@@ -91,9 +65,9 @@ const stops = [
     <section class="rail-formats rail-wrap" aria-labelledby="formats-title" id="consultations" data-home-section="formats">
       <h2 class="rail-flowered" id="formats-title"><img src="/ornament-flower.png" alt="" width="34" height="34" /> Ek platform. Teen tareeke. <img src="/ornament-flower.png" alt="" width="34" height="34" /></h2>
       <div class="rail-format-grid">
-        <a href="/marketplace?group=india_goes_live" data-home-cta="format-live"><span class="rail-format-icon rail-badge--pink" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="12" height="12" rx="2" /><path d="m15 10 6-3v10l-6-3" /></svg></span><span><h3>Live events</h3><p>Sell tickets to your stream.</p></span><span aria-hidden="true">↗</span></a>
+        <a id="live-streaming" href="/marketplace?group=india_goes_live" data-home-cta="format-live"><span class="rail-format-icon rail-badge--pink" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="12" height="12" rx="2" /><path d="m15 10 6-3v10l-6-3" /></svg></span><span><h3>Live events</h3><p>Sell tickets to your stream.</p></span><span aria-hidden="true">↗</span></a>
         <a href="/marketplace?group=book_their_time" data-home-cta="format-private"><span class="rail-format-icon rail-badge--yellow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="4" /><path d="M4 22v-3a8 8 0 0 1 16 0v3" /></svg></span><span><h3>1:1 sessions</h3><p>Offer your undivided time.</p></span><span aria-hidden="true">↗</span></a>
-        <a href="/marketplace?group=book_their_time" data-home-cta="format-group"><span class="rail-format-icon rail-badge--blue" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="3" /><path d="M2 21v-3a7 7 0 0 1 14 0v3M16 4a3 3 0 0 1 0 6m2 4a5 5 0 0 1 4 5v2" /></svg></span><span><h3>Group sessions</h3><p>Teach or advise a small group.</p></span><span aria-hidden="true">↗</span></a>
+        <a id="group-sessions" href="/marketplace?group=book_their_time" data-home-cta="format-group"><span class="rail-format-icon rail-badge--blue" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="3" /><path d="M2 21v-3a7 7 0 0 1 14 0v3M16 4a3 3 0 0 1 0 6m2 4a5 5 0 0 1 4 5v2" /></svg></span><span><h3>Group sessions</h3><p>Teach or advise a small group.</p></span><span aria-hidden="true">↗</span></a>
       </div>
     </section>
 
