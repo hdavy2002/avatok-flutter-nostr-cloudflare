@@ -63,11 +63,12 @@ interface Props {
 
 // The site menu. Every entry points at something that exists — checked.
 const DEFAULT_LINKS: HeaderLink[] = [
-  { href: '/marketplace', label: 'Marketplace' },
   { href: '/#live-streaming', label: 'Live events' },
   { href: '/#consultations', label: 'Private sessions' },
   { href: '/#marketplace-catalogue', label: 'Categories' },
   { href: '/sign-up', label: 'For creators' },
+  { href: '/pricing-fees', label: 'Pricing' },
+  { href: 'https://avatok.ai/ideas', label: 'Ideas' },
 ];
 
 // `auth` is destructured and ignored on purpose — see the deprecation note above.
@@ -120,7 +121,7 @@ const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false } = Astro.p
 
   <div class="avh-right">
     {/* [WEB-HEADER-2 2026-08-26] Search pill removed at the owner's request.
-        Browsing is reachable via the Marketplace link. */}
+        Browsing is reachable via the Categories and Ideas links. */}
     {/* [WEB-AUTH-STATE-1 2026-08-28] BOTH states are rendered, and CSS shows one.
         See lib/authState.ts for why. In short: the old three-way `auth` prop made
         each PAGE assert whether its visitor was signed in, so a signed-out
