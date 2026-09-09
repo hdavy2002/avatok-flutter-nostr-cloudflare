@@ -112,7 +112,7 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
       _busy = true;
       _error = null;
     });
-    final CommercialCheckoutResult result;
+    CommercialCheckoutResult result;
     if (_isConsult) {
       result = await CommercialCheckoutApi.consultation(
         listingId: widget.listing.id,
@@ -150,13 +150,14 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
       }
     }
     if (!mounted) return;
+    final receipt = result;
     setState(() {
       _busy = false;
-      _receipt = result;
-      if (result.ok)
+      _receipt = receipt;
+      if (receipt.ok)
         _step = _BookingStep.done;
       else
-        _error = result.error == 'insufficient_funds'
+        _error = receipt.error == 'insufficient_funds'
             ? 'Your wallet needs more balance before this booking can be confirmed.'
             : 'Booking could not be completed. Please try again.';
     });

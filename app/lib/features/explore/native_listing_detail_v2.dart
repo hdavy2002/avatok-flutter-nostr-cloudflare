@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -101,7 +102,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
         context,
         MaterialPageRoute(
             builder: (_) => NativeListingBookingFlow(
-                listing: d.listing, initialBooked: d.booked)));
+                listing: d.listing)));
   }
 
   @override
@@ -117,20 +118,20 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
     }
     final d = detail!;
     return Scaffold(
-      backgroundColor: const Color(0xfff6e9ca),
+      backgroundColor: AD.bg,
       appBar: AppBar(
-        backgroundColor: const Color(0xfff6e9ca),
+        backgroundColor: AD.bg,
         foregroundColor: AD.textPrimary,
         title: Text('BAZAAR', style: ADText.rowName()),
         actions: [
           IconButton(
               onPressed: () => Share.share(
                   'See ${d.listing.title} on AvaTOK — https://avatok.ai/l/${d.listing.id}'),
-              icon: const Icon(Icons.ios_share)),
+              icon: PhosphorIcon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold))),
           IconButton(
               onPressed: _toggleFavourite,
               icon: Icon(
-                  d.listing.favorited ? Icons.favorite : Icons.favorite_border,
+                  d.listing.favorited ? PhosphorIcons.heart(PhosphorIconsStyle.fill) : PhosphorIcons.heart(PhosphorIconsStyle.regular),
                   color: d.listing.favorited ? AD.danger : AD.textPrimary)),
         ],
       ),
@@ -149,7 +150,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
               padding: const EdgeInsets.all(12),
               child: FilledButton.icon(
                   onPressed: _openBooking,
-                  icon: const Icon(Icons.event_available),
+            icon: PhosphorIcon(PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold)),
                   label: Text(d.booked ? 'OPEN BOOKING' : _cta(d.listing))))),
     );
   }
@@ -189,7 +190,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
   Widget _shareCard(ListingCard l) {
     final link = 'https://avatok.ai/l/${l.id}';
     return Card(
-        color: const Color(0xff2d7180),
+        color: AD.headerFooter,
         elevation: 0,
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
@@ -197,7 +198,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
         child: Padding(
             padding: const EdgeInsets.all(14),
             child: Row(children: [
-              QrImageView(data: link, size: 78, backgroundColor: Colors.white),
+              QrImageView(data: link, size: 78, backgroundColor: AD.card),
               const SizedBox(width: 14),
               Expanded(
                   child: Column(
@@ -208,7 +209,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                             color: Colors.white, fontWeight: FontWeight.w900)),
                     const SizedBox(height: 4),
                     const Text('Copy the link or scan it on another phone.',
-                        style: TextStyle(color: Colors.white70)),
+                        style: TextStyle(color: AD.card)),
                     const SizedBox(height: 8),
                     Wrap(spacing: 8, children: [
                       OutlinedButton(
@@ -232,20 +233,20 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
           color: l.status == 'live'
-              ? const Color(0xffd93825)
-              : const Color(0xff2d7180),
+              ? AD.danger
+              : AD.headerFooter,
           borderRadius: BorderRadius.circular(12)),
       child: Row(children: [
-        Icon(Icons.circle,
-            size: 10,
-            color: l.status == 'live' ? Colors.white : const Color(0xfff6e9ca)),
+        Container(width: 10, height: 10,
+            decoration: BoxDecoration(shape: BoxShape.circle,
+                color: l.status == 'live' ? AD.card : AD.bg)),
         const SizedBox(width: 8),
         Expanded(
             child: Text(
                 l.status == 'live'
                     ? 'LIVE NOW · ${l.title.toUpperCase()}'
                     : 'NEXT SHOW · ${_when(l.startsAt)}',
-                style: ADText.rowName(c: Colors.white))),
+            style: ADText.rowName(c: Colors.white))),
         Text(l.status == 'live' ? 'JOIN NOW' : 'BOOK AHEAD',
             style: ADText.rowName(c: Colors.white))
       ]));
@@ -255,7 +256,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
     return Container(
         height: 250,
         decoration: BoxDecoration(
-            color: const Color(0xff2d7180),
+            color: AD.headerFooter,
             border: Border.all(color: AD.textPrimary, width: 3),
             borderRadius: BorderRadius.circular(24),
             boxShadow: const [
@@ -281,8 +282,8 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                Colors.transparent,
-                Colors.black.withOpacity(.7)
+                AD.card.withOpacity(0),
+                AD.scrim,
               ]))),
           Positioned(
               left: 16,
@@ -297,7 +298,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
               top: 12,
               left: 12,
               child: _pill(l.status == 'live' ? '● LIVE' : 'NEXT SHOW',
-                  const Color(0xffd93825))),
+                      AD.danger)),
         ]));
   }
 
@@ -333,7 +334,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
         padding: const EdgeInsets.fromLTRB(2, 20, 2, 20),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(l.category.toUpperCase(),
-              style: ADText.sectionLabel(c: const Color(0xff8c6a52))),
+              style: ADText.sectionLabel(c: AD.textTertiary)),
           const SizedBox(height: 6),
           Text(l.title,
               style: const TextStyle(
@@ -346,7 +347,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
               spacing: 7,
               runSpacing: 7,
               children: badges
-                  .map((x) => _pill(x, const Color(0xffe8d4aa), dark: true))
+                  .map((x) => _pill(x, AD.cardHover, dark: true))
                   .toList()),
           if ((l.description ?? l.blurb ?? l.oneLiner).isNotEmpty)
             Padding(
@@ -364,7 +365,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                 child: Text('“Jo jeeta wahi asli scene.” — a regular',
                     style: TextStyle(
                         fontStyle: FontStyle.italic,
-                        color: Color(0xff8c6a52)))),
+                        color: AD.textTertiary))),
             Image.network('https://avatok.ai/assets/luv-it-sticker.png',
                 width: 58,
                 height: 58,
@@ -381,7 +382,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
         padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: const BoxDecoration(
             border: Border.symmetric(
-                horizontal: BorderSide(color: Color(0xff8c6a52), width: 1))),
+                horizontal: BorderSide(color: AD.textTertiary, width: 1))),
         child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
           _stat('${l.joinedCount}', 'BOOKED'),
           _stat('${l.favorited ? '♥' : l.ratingCount}', 'FAVOURITES'),
@@ -393,7 +394,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
   Widget _stat(String value, String label) => Column(children: [
         Text(value,
             style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-        Text(label, style: ADText.sectionLabel(c: const Color(0xff8c6a52)))
+        Text(label, style: ADText.sectionLabel(c: AD.textTertiary))
       ]);
   Widget _pill(String text, Color color, {bool dark = false}) => Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -407,7 +408,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
               color: dark ? AD.textPrimary : Colors.white)));
 
   Widget _bookingCard(ListingCard l) => Card(
-      color: const Color(0xfffdf1d3),
+      color: AD.card,
       elevation: 0,
       shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(22),
@@ -439,7 +440,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
             const SizedBox(height: 8),
             Text('No hidden fees · policy shown before payment',
                 textAlign: TextAlign.center,
-                style: ADText.sectionLabel(c: const Color(0xff8c6a52)))
+                style: ADText.sectionLabel(c: AD.textTertiary))
           ])));
 
   Widget _sections(ListingDetail d) =>
@@ -479,7 +480,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-          color: const Color(0xfffdf1d3),
+          color: AD.card,
           border: Border.all(color: AD.textPrimary, width: 1.5),
           borderRadius: BorderRadius.circular(14)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -518,7 +519,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                   if (l.creator.kycVerified)
                     const Text('✓ ID VERIFIED',
                         style: TextStyle(
-                            color: Color(0xff2d7180),
+                            color: AD.headerFooter,
                             fontWeight: FontWeight.w800))
                 ]))
           ]),
@@ -532,7 +533,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                   MaterialPageRoute(
                       builder: (_) =>
                           CreatorChannelScreen(creatorUid: l.creator.uid))),
-              icon: const Icon(Icons.mail_outline),
+              icon: PhosphorIcon(PhosphorIcons.envelope(PhosphorIconsStyle.bold)),
               label: Text('Message ${name.split(' ').first}')),
           if (c != null && c.listings.isNotEmpty)
             Padding(
@@ -591,9 +592,9 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 10),
       decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: Color(0x338c6a52)))),
+          border: Border(bottom: BorderSide(color: AD.borderHairline)),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('★' * r.rating, style: const TextStyle(color: Color(0xffd93825))),
+        Text('★' * r.rating, style: TextStyle(color: AD.danger)),
         const SizedBox(width: 8),
         Expanded(
             child:
@@ -601,7 +602,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
           Text(r.body.isEmpty ? 'Verified booking' : r.body,
               style: ADText.preview()),
           Text(r.authorName ?? 'AvaTOK member',
-              style: ADText.sectionLabel(c: const Color(0xff8c6a52)))
+              style: ADText.sectionLabel(c: AD.textTertiary))
         ]))
       ]));
   Widget _related() => _section(
@@ -623,7 +624,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                         builder: (_) => NativeListingDetailV2(listingId: l.id)),
                   ),
                   child: Card(
-                    color: const Color(0xfffdf1d3),
+                    color: AD.card,
                     child: Padding(
                       padding: const EdgeInsets.all(10),
                       child: Column(
@@ -631,7 +632,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                         children: [
                           Expanded(
                             child: l.coverUrl == null
-                                ? const ColoredBox(color: Color(0xff2d7180))
+                                ? ColoredBox(color: AD.headerFooter)
                                 : Image.network(l.coverUrl!,
                                     width: double.infinity, fit: BoxFit.cover),
                           ),
@@ -662,7 +663,7 @@ class _TrustTile extends StatelessWidget {
   Widget build(BuildContext context) => Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-          color: const Color(0xffd9eee8),
+          color: AD.cardHover,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: AD.textPrimary)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -684,7 +685,7 @@ class NativeListingPreview extends StatelessWidget {
           leading: SizedBox(
               width: 64,
               child: card.coverUrl == null
-                  ? const ColoredBox(color: Color(0xff2d7180))
+                  ? ColoredBox(color: AD.headerFooter)
                   : Image.network(card.coverUrl!, fit: BoxFit.cover)),
           title: Text(card.title),
           subtitle: Text(card.displayPrice)));
