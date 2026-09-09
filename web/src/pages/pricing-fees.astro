@@ -183,7 +183,7 @@ import Content from '../layouts/Content.astro';
   .calculator-card h2 { margin:7px 0 0; font-size:clamp(24px,2.5vw,34px); line-height:1.05; letter-spacing:-.04em; }
   .card-copy { margin:16px 0 30px; color:rgba(22,22,20,.7); font-size:17px; line-height:1.45; }
   .draft-badge { flex:none; padding:8px 10px; border-radius:999px; background:var(--lime); font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
-  fieldset { margin:0 0 28px; padding:0; border:0; }
+  fieldset { margin:0 0 34px; padding:0; border:0; }
   legend, .range-field label { margin-bottom:11px; color:var(--ink); font-size:16px; font-weight:800; }
   .option-grid { display:grid; gap:9px; }
   .option-grid--three { grid-template-columns:repeat(3,minmax(0,1fr)); }
@@ -191,7 +191,7 @@ import Content from '../layouts/Content.astro';
   .choice { display:flex; align-items:center; gap:8px; min-height:45px; padding:9px 11px; border:1px solid rgba(22,22,20,.28); border-radius:8px; background:rgba(253,241,211,.55); font-size:14px; line-height:1.2; cursor:pointer; }
   .choice:has(input:checked) { border-color:var(--blue); background:#d7eef0; box-shadow:inset 0 0 0 1px var(--blue); }
   .choice input { accent-color:var(--blue); width:16px; height:16px; flex:none; }
-  .range-field { margin:0 0 28px; }
+  .range-field { margin:0 0 38px; }
   .field-label { display:flex; align-items:center; justify-content:space-between; gap:12px; }
   .field-label output { min-width:82px; padding:8px 10px; border-radius:7px; background:#f0e2c9; text-align:right; font-weight:800; }
   input[type="range"] { display:block; width:100%; margin:13px 0 5px; accent-color:var(--blue); }
@@ -212,5 +212,17 @@ import Content from '../layouts/Content.astro';
   .summary-link { display:flex; justify-content:space-between; align-items:center; margin-top:24px; padding:14px 16px; border-radius:999px; background:var(--ink); color:var(--white) !important; text-decoration:none !important; font-weight:800; }
   .pricing-notes { margin-top:34px; box-shadow:10px 10px 0 var(--lime); }
   @media (max-width:900px) { .pricing-calculator { grid-template-columns:1fr; } .calculator-summary { position:static; } .option-grid--five { grid-template-columns:repeat(3,minmax(0,1fr)); } }
-  @media (max-width:560px) { .pricing-intro, .pricing-notes, .calculator-card { padding:22px 19px; } .card-heading { display:block; } .draft-badge { display:inline-block; margin-top:14px; } .option-grid--three, .option-grid--five { grid-template-columns:repeat(2,minmax(0,1fr)); } .option-grid--three .choice:first-child { grid-column:span 2; } .billing-toggle { margin-top:16px; width:max-content; } }
+  @media (max-width:560px) {
+    .pricing-intro, .pricing-notes, .calculator-card { padding:22px 19px; }
+    .card-heading { display:block; }
+    .draft-badge { display:inline-block; margin-top:14px; }
+    .option-grid--three, .option-grid--five { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .option-grid--three .choice:first-child { grid-column:span 2; }
+    .calculator-inputs fieldset { margin-bottom:40px; }
+    .calculator-inputs fieldset + .range-field { margin-top:10px; }
+    .calculator-inputs .range-field { margin-bottom:46px; }
+    .calculator-inputs .range-field + .range-field { margin-top:8px; }
+    .choice { min-height:50px; padding:10px 11px; }
+    .billing-toggle { margin-top:16px; width:max-content; }
+  }
 </style>
