@@ -275,10 +275,10 @@ clip-path:polygon(34.8% 0,100% 0,100% 100%,15.5% 100%,16.4% 96%,17.8% 95%,17% 92
  .rail-ticket-end { font-size:14px; }
  .rail-last-cta .rail-button { font-size:18px; }
  .rail-last-cta .rail-script { font-size:22px; }
- .station-footer .bazaar-footer .bf-col h2 { font-size:15px; }
- .station-footer .bazaar-footer .bf-col a,.station-footer .bazaar-footer .bf-brand p { font-size:17px; line-height:1.6; }
- .station-footer .bazaar-footer .bf-legal-links { font-size:14px; line-height:1.9; }
- .station-footer .bazaar-footer .bf-bottom { font-size:14px; line-height:1.6; }
+ .station-footer .bazaar-footer.bazaar-footer .bf-col h2 { font-size:15px; }
+ .station-footer .bazaar-footer.bazaar-footer .bf-col a,.station-footer .bazaar-footer.bazaar-footer .bf-brand p { font-size:17px; line-height:1.6; }
+ .station-footer .bazaar-footer.bazaar-footer .bf-legal-links { font-size:14px; line-height:1.9; }
+ .station-footer .bazaar-footer.bazaar-footer .bf-legal-inner { font-size:14px; line-height:1.6; }
 }
 @media(min-width:700px) and (max-width:1199px) {
  .station-frame { aspect-ratio:auto; min-height:52vw; }
