@@ -61,29 +61,18 @@ const groups: { title: string; items: Item[] }[] = [
     { key: 'overview', label: 'Dashboard', icon: I.grid, href: '/dashboard', tone: 'bg-lilac' },
     { key: 'bookings', label: 'My Tickets & Appointments', icon: I.check, href: '/dashboard/bookings', tone: 'bg-card' },
     { key: 'library', label: 'Library', icon: I.folder, href: '/dashboard/library', tone: 'bg-mint' },
-    // [FAV-LIST-1 2026-09-06] The shows this person hearted. In Featured rather
-    // than Studio because saving is something a BUYER does, and Studio is the
-    // creator's half of the rail.
-    { key: 'saved', label: 'Saved', icon: I.heart, href: '/dashboard/saved', tone: 'bg-coral' },
   ]},
   { title: 'Studio', items: [
     { key: 'create-listing', label: 'Create listing', icon: I.list, href: '/dashboard/listings/new', tone: 'bg-lime' },
     { key: 'listings', label: 'My listings', icon: I.list, href: '/dashboard/listings', tone: 'bg-lime' },
-    { key: 'live', label: 'My Live Events', icon: I.broadcast, href: '/dashboard/live', tone: 'bg-coral' },
     { key: 'consult', label: 'Customer Appointments', icon: I.video, href: '/dashboard/consult', tone: 'bg-mint' },
     { key: 'calendar', label: 'Availability', icon: I.calendar, href: '/dashboard/calendar', tone: 'bg-card' },
   ]},
   { title: 'Apps', items: [
-    { key: 'voice', label: 'AvaVoice', icon: I.mic, href: '/dashboard/voice', tone: 'bg-lilac' },
-    { key: 'inbox', label: 'AvaInbox', icon: I.inbox, href: '/dashboard/inbox', tone: 'bg-card' },
-    { key: 'storage', label: 'AvaStorage', icon: I.storage, href: '/dashboard/storage', tone: 'bg-card' },
     { key: 'affiliate', label: 'AvaAffiliate', icon: I.megaphone, href: '/dashboard/affiliate', tone: 'bg-coral' },
   ]},
   { title: 'Account', items: [
     { key: 'wallet', label: 'Wallet', icon: I.wallet, href: '/dashboard/wallet', tone: 'bg-lime' },
-    { key: 'payout', label: 'Payout', icon: I.dollar, href: '/dashboard/payout', tone: 'bg-mint' },
-    { key: 'identity', label: 'AvaIdentity', icon: I.id, href: '/dashboard/identity', tone: 'bg-blue' },
-    { key: 'billing', label: 'Billing', icon: I.card, href: '/dashboard/billing', tone: 'bg-card' },
     { key: 'settings', label: 'Settings', icon: I.gear, href: '/dashboard/settings', tone: 'bg-card' },
   ]},
 ];
