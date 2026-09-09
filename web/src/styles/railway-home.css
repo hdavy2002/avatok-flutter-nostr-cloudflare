@@ -139,8 +139,8 @@
 .station-outline { display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:12px 22px; border:1.5px solid #162235; border-radius:8px; font-family:'Anton',Impact,sans-serif; text-transform:uppercase; font-size:clamp(.875rem,1.2vw,1.125rem); }
 .station-outline:hover { background:#ecdabe; }
 .rail-home .station-aside { font-family:'Kalam',cursive; font-size:clamp(1rem,1.55vw,1.6rem); line-height:1.25; margin-top:38px; transform:rotate(-6deg); display:inline-block; }
-.station-art { position:relative; margin-left:34%; width:66%; aspect-ratio:565/427; overflow:hidden; mask-image:linear-gradient(to right,transparent,#000 5%); }
-.station-art img { position:absolute; width:153.097345%; max-width:none; height:auto; left:-53.097345%; top:-17.096019%; }
+.station-art { position:relative; margin-left:38%; width:62%; aspect-ratio:520/427; overflow:hidden; mask-image:linear-gradient(to right,transparent,#000 5%); }
+.station-art img { position:absolute; width:166.346154%; max-width:none; height:auto; left:-66.346154%; top:-17.096019%; }
 .station-hero .rail-next { margin:0; padding:16px; }
 .station-hero .rail-next span { animation:none; }
 @media (max-width:1000px) and (min-width:701px) {
@@ -171,7 +171,7 @@
  .avh--home .avh-burger { margin-left:0; min-height:44px; min-width:44px; }
  .avh-mobile--home:not([hidden]) { padding:4px 16px 18px; }
  .station-copy { padding:28px 6% 22px; }
- .station-art { aspect-ratio:565/400; border-top:1px solid #eadbc5; mask-image:linear-gradient(to bottom,transparent,#000 4%); }
+ .station-art { aspect-ratio:520/427; border-top:1px solid #eadbc5; mask-image:linear-gradient(to bottom,transparent,#000 4%); }
  .station-hero .rail-next { padding:15px 10px !important; font-size:.8125rem !important; }
  .station-hero .station-actions { flex-wrap:wrap; }
 }
