@@ -1570,7 +1570,6 @@ export interface PlatformConfig {
   // whose bottom bar runs the NATIVE checkout — which the marketplace pivot says
   // must not exist (payments are web only). So flipping this off restores a
   // working screen that sells the wrong way; it is a rollback, not a setting.
-  listingWebDetailEnabled: boolean;
   // [CARD-AI-REVIEW-1] The MODEL half of POST /api/listings/copy-review — the
   // creator wizard's pre-publish copy review. OFF here does NOT disable the
   // feature: the route's deterministic length pass still runs and still returns
@@ -2385,7 +2384,6 @@ const DEFAULTS: PlatformConfig = {
   listingWebFormEnabled: true,
   // [LIST-DETAIL-EMBED-1] Native detail is the safe default during migration;
   // enable the web detail explicitly through the flag when ready.
-  listingWebDetailEnabled: false,
   // Per-listing billing — DARK. While off, publishes are free and entitlements are
   // still recorded so the 5-free quota is accurate when this flips on (staging first).
   listingFeeEnabled: false,

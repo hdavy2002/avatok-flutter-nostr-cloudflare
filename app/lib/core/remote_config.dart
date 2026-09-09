@@ -848,7 +848,6 @@ class RemoteConfig {
   /// Legacy server field retained for config compatibility. Listing details
   /// are now always native; this flag is intentionally no longer consulted by
   /// the Flutter route.
-  static bool get listingWebDetailEnabled => _b('listingWebDetailEnabled', false);
 
   /// Effective Marketplace visibility for the CURRENT account. The global
   /// `marketplaceEnabled` KV flag stays false during the phased/pro launch, so

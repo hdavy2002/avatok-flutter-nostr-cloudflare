@@ -161,7 +161,6 @@ const String kListingWebFormUrl = 'https://avatok.ai/embed/listing?embed=1';
 
 /// [LIST-DETAIL-EMBED-1 2026-09-09, owner decision] The listing DETAILS page in
 /// the app is the website's own page, shown in an in-app WebView
-/// (features/marketplace/listing_web_detail.dart).
 ///
 /// This is the REAL public route, not an /embed/ copy: `/l/<id>` already renders
 /// the approved details comp for every listing kind (live event, consultation,

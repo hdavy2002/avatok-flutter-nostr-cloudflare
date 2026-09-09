@@ -10,6 +10,7 @@ import '../marketplace/native_listing/native_listing_wizard_screen.dart';
 import '../listings/my_listings_screen.dart';
 import 'explore_search.dart';
 import 'listing_detail.dart';
+import 'native_listing_booking_flow.dart';
 import 'widgets.dart';
 
 /// AvaExplore — the live creator marketplace (Phase 6; dummy replaced).
@@ -63,10 +64,8 @@ class _ExploreHomeState extends State<ExploreHome> {
   Future<void> _joinLive(ListingCard l) async {
     // "Live now" Join → popup card → confirm pays from wallet (Phase 7 deep-links
     // into the stream after payment).
-    final ok = await showModalBottomSheet<bool>(
-      context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
-      builder: (_) => CheckoutSheet(listing: l),
-    );
+    final ok = await Navigator.push<bool>(context,
+        MaterialPageRoute(builder: (_) => NativeListingBookingFlow(listing: l)));
     if (ok == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('You\'re in! The stream opens here when AvaLive ships (Phase 7).')));
