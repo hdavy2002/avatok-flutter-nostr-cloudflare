@@ -592,7 +592,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 10),
       decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: AD.borderHairline)),
+          border: Border(bottom: BorderSide(color: AD.borderHairline))),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('★' * r.rating, style: TextStyle(color: AD.danger)),
         const SizedBox(width: 8),
