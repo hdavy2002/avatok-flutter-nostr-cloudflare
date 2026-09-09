@@ -73,7 +73,12 @@ const ideas = [
 
     <section class="rail-onboarding rail-wrap" aria-labelledby="ticket-title" id="how-avatok-works" data-home-section="start">
       <div class="rail-ticket">
-        <div class="rail-ticket-art" aria-hidden="true"><img src="/assets/railway/approved-ideas.jpg" alt="" width="865" height="1819" loading="lazy" /></div>
+        <div class="rail-ticket-art" aria-hidden="true">
+          <svg viewBox="80 1352 120 58" xmlns="http://www.w3.org/2000/svg">
+            <defs><filter id="ticket-ink" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0 0 0 0 0.10  0 0 0 0 0.10  0 0 0 0 0.06  -0.6378 -2.1456 -0.2166 0 2" /></filter></defs>
+            <image href="/assets/railway/approved-ideas.jpg" width="865" height="1819" filter="url(#ticket-ink)" />
+          </svg>
+        </div>
         <div class="rail-ticket-main">
           <h2 id="ticket-title">Your first booking express</h2>
           <p>Four simple steps to get on board</p>
