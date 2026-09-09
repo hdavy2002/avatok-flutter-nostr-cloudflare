@@ -28,6 +28,8 @@ import '../ava_ai/ava_ai_setup.dart';
 import 'settings_registry.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../shell/v2/shell_chrome.dart';
+import '../../shell/ava_sidebar.dart' show AvaSidebarForShell; // [SIDEBAR-MENU-ALL-1]
+import '../../shell/shell_v2.dart' show ShellScope; // [SIDEBAR-MENU-ALL-1]
 
 /// Account settings — Backup, Manage keys, Delete account.
 class SettingsScreen extends StatefulWidget {
@@ -294,10 +296,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // ListView; page padding now keys off ZineBreakpoints instead of a fixed
     // 20px so a <360dp phone gets tighter gutters.
     final hPad = ZineBreakpoints.pagePadding(context);
+    // [SIDEBAR-MENU-ALL-1] Settings rendered the hamburger (showBack: false ->
+    // AvaTokHeader falls back to _MenuButton, whose default action is
+    // `Scaffold.of(ctx).openDrawer()`) on a Scaffold that had NO `drawer:`.
+    // `openDrawer` is null-safe, so the control was a silent no-op. Same
+    // null-safe ShellScope resolution as wallet_screen.dart ([WALLET-MENU-1]):
+    // the drawer needs the shell, and Settings can also be pushed from
+    // standalone contexts, so outside the shell fall back to a back button
+    // rather than leaving a dead hamburger.
+    final shellScope = context.dependOnInheritedWidgetOfExactType<ShellScope>();
     return Scaffold(
       backgroundColor: AD.bg,
       resizeToAvoidBottomInset: true,
-      appBar: _adHeader(context, 'Settings', showBack: false),
+      drawer: shellScope == null ? null : const AvaSidebarForShell(),
+      appBar: _adHeader(context, 'Settings', showBack: shellScope == null),
       body: SafeArea(
         child: ListView(padding: EdgeInsets.all(hPad), children: [
         // Soft nudge to verify phone for users who skipped it at onboarding.

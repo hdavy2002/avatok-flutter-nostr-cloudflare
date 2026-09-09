@@ -19,6 +19,8 @@ import 'lib_thumbs.dart';
 import 'private_ingest.dart';
 import 'voicemail_tile.dart';
 import 'library_media_viewer.dart';
+import '../../shell/ava_sidebar.dart' show AvaSidebarForShell; // [SIDEBAR-MENU-ALL-1]
+import '../../shell/shell_v2.dart' show ShellScope; // [SIDEBAR-MENU-ALL-1]
 
 /// Inline dark v2 header band (replaces the light ZineAppBar): header/footer
 /// surface, hairline bottom border, back button + Nunito title + optional tag.
@@ -27,6 +29,12 @@ PreferredSizeWidget _darkHeader({
   String? tag,
   List<Widget> actions = const [],
   bool showBack = true,
+  // [SIDEBAR-MENU-ALL-1] Optional leading widget (the shell hamburger),
+  // rendered in place of the back button when showBack is false. Same shape as
+  // wallet_screen.dart's `_darkHeader` ([WALLET-MENU-1]); without it this
+  // header had NO leading control at all on the root screen, so AvaLibrary was
+  // a dead end — no menu and no way back.
+  Widget? leading,
 }) {
   return PreferredSize(
     preferredSize: Size.fromHeight(tag == null ? 76 : 92),
@@ -42,6 +50,9 @@ PreferredSizeWidget _darkHeader({
           child: Row(children: [
             if (showBack) ...[
               const AdBackButton(),
+              const SizedBox(width: 8),
+            ] else if (leading != null) ...[
+              leading,
               const SizedBox(width: 8),
             ],
             Expanded(
@@ -405,6 +416,8 @@ class AvaLibraryScreen extends StatefulWidget {
 }
 
 class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
+  // [SIDEBAR-MENU-ALL-1] Opens the unified AvaSidebar from the header hamburger.
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   LibraryTree? _tree;
   bool _loading = true;
   String _query = '';
@@ -538,12 +551,36 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
         : _allFolders.where((f) => f.name.toLowerCase().contains(q)).toList();
     final empty = counts.values.fold<int>(0, (a, b) => a + b) == 0 && _allFolders.isEmpty;
 
+    // [SIDEBAR-MENU-ALL-1] Null-safe ShellScope resolution, same as
+    // wallet_screen.dart: the drawer needs the shell, and AvaLibrary can also
+    // be pushed from standalone contexts, so the hamburger only appears when
+    // there is actually a drawer behind it.
+    final shellScope = context.dependOnInheritedWidgetOfExactType<ShellScope>();
+
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: AD.bg,
+      drawer: shellScope == null ? null : const AvaSidebarForShell(),
       appBar: _darkHeader(
         title: 'AvaLibrary',
         tag: 'Your files, every type',
-        showBack: false,
+        // Outside the shell there is no drawer, so fall back to a back button
+        // rather than leaving the screen with no leading control at all.
+        showBack: shellScope == null,
+        leading: shellScope == null
+            ? null
+            : AdBackButton(
+                // [RAJ-INDIGO-1] cream on the indigo band — an ink glyph here
+                // is very nearly invisible. (The `showBack` AdBackButton above
+                // still defaults to ink; that predates this change and is left
+                // alone rather than fixed under an unrelated issue id.)
+                color: AD.onBand(AD.headerFooter),
+                icon: PhosphorIcons.list(PhosphorIconsStyle.bold),
+                onTap: () {
+                  Analytics.capture('library_menu_opened');
+                  _scaffoldKey.currentState?.openDrawer();
+                },
+              ),
       ),
       floatingActionButton: _ZineFab(onTap: _add, label: 'Add'),
       body: RefreshIndicator(
