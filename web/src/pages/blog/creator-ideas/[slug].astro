@@ -21,10 +21,15 @@ const sessionAdvice = idea.format === 'private'
   : idea.topic === 'daily'
   ? 'Describe the viewing window and what people will see. A drop-in diary needs a clear start, occasional context for newcomers and an honest description of how access is charged in the listing.'
   : 'Sell access to a planned live event with a named theme, start time and duration. Build the experience around what viewers can see, hear or ask during that session.';
-const jsonLd = { '@context':'https://schema.org', '@type':'BlogPosting', headline:idea.title, description:idea.description, image:'https://avatok.ai'+idea.image, author:{'@type':'Organization',name:'avaTOK'}, publisher:{'@id':'https://avatok.ai/#organization'}, mainEntityOfPage:'https://avatok.ai'+idea.href, inLanguage:'en-IN' };
+const articleTitle = idea.title + ' — Creator Idea & Practical Guide · avaTOK';
+const articleDescription = idea.description + ' Learn what to offer, how to start and what equipment you need.';
+const jsonLd = { '@context':'https://schema.org', '@type':'BlogPosting', '@id':'https://avatok.ai'+idea.href+'#article', url:'https://avatok.ai'+idea.href, headline:idea.title, description:articleDescription, datePublished:'2026-09-09', dateModified:'2026-09-09', articleSection:topics[idea.topic].label, isPartOf:{'@id':'https://avatok.ai/ideas/#collection'}, image:'https://avatok.ai'+idea.image, author:{'@type':'Organization',name:'avaTOK',url:'https://avatok.ai/about'}, publisher:{'@id':'https://avatok.ai/#organization'}, mainEntityOfPage:'https://avatok.ai'+idea.href, inLanguage:'en-IN' };
 ---
-<Base title={idea.title + ' — How to turn this idea into a paid session · avaTOK'} description={idea.description + ' A practical creator guide with a session plan, equipment advice and ways to bring viewers back.'} image={idea.image}>
+<Base title={articleTitle} description={articleDescription} image={idea.image} imageAlt={'Illustration of ' + idea.title} imageWidth={1536} imageHeight={1024} ogType="article">
   <script slot="head" type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <script slot="head" type="application/ld+json" set:html={JSON.stringify({'@context':'https://schema.org','@type':'BreadcrumbList',itemListElement:[{'@type':'ListItem',position:1,name:'Creator ideas',item:'https://avatok.ai/ideas/'},{'@type':'ListItem',position:2,name:idea.title,item:'https://avatok.ai'+idea.href}]})} />
+  <meta slot="head" property="article:published_time" content="2026-09-09T00:00:00+05:30" />
+  <meta slot="head" property="article:modified_time" content="2026-09-09T00:00:00+05:30" />
   <main class="idea-page creator-guide" id="main-content" data-creator-guide={idea.id}>
     <div class="guide-shell">
       <nav class="guide-breadcrumb" aria-label="Breadcrumb"><a href="/ideas">All creator ideas</a><span aria-hidden="true">/</span><span>{topics[idea.topic].label}</span></nav>
@@ -33,7 +38,7 @@ const jsonLd = { '@context':'https://schema.org', '@type':'BlogPosting', headlin
         <div class="idea-chips"><span class:list={['idea-format',idea.format]}>{formats[idea.format]}</span><span>{topics[idea.topic].label}</span>{idea.setting === 'home' && <span>From home</span>}</div>
         <h1>{idea.title}</h1>
         <p class="guide-lead">{idea.description}</p>
-        <p class="guide-byline">The avaTOK creator guide · Practical ideas, your own style</p>
+        <p class="guide-byline">By <a href="/about">avaTOK</a> · <time datetime="2026-09-09">9 September 2026</time> · Practical ideas, your own style</p>
       </header>
       <figure class="guide-hero"><img src={idea.image} srcset={idea.cardImage + " 768w, " + idea.image + " 1536w"} sizes="(max-width:699px) 90vw, (max-width:1440px) 92vw, 1320px" alt={'Illustration of ' + idea.title + ': ' + idea.description} width="1536" height="1024" fetchpriority="high" /><figcaption>Illustrated idea · Make the session your own.</figcaption></figure>
       <div class="guide-layout">

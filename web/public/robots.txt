@@ -3,13 +3,18 @@
 # are kept out of search. Per-page <meta name="robots" content="noindex"> is the
 # authoritative signal; these rules are a belt-and-suspenders for crawlers.
 #
-# [WEB-SEO-1 2026-08-27] AI answer engines are named EXPLICITLY below. They are
-# already covered by `User-agent: *`, but several of them (GPTBot, Google-Extended,
+# Public pages welcome search crawlers. Search and training crawlers have
+# different purposes; permission does not guarantee indexing or recommendations.
+
+User-agent: *`, but several of them (GPTBot, Google-Extended,
 # Applebot-Extended, CCBot) are opt-OUT crawlers that publishers commonly block,
 # and an explicit Allow is the unambiguous signal that avaTOK wants to be read,
 # quoted and cited when someone asks an assistant how to earn money from home.
 # Do NOT add a Disallow for these without a deliberate decision — it would remove
 # avaTOK from ChatGPT, Claude, Perplexity and Google AI Overviews answers.
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /vision
 
 User-agent: *
 Disallow: /dashboard
@@ -27,9 +32,15 @@ Disallow: /vision
 
 User-agent: OAI-SearchBot
 Allow: /
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /vision
 
 User-agent: ChatGPT-User
 Allow: /
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /vision
 
 # Anthropic
 User-agent: ClaudeBot
@@ -40,37 +51,67 @@ Disallow: /vision
 
 User-agent: Claude-User
 Allow: /
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /vision
 
 User-agent: Claude-SearchBot
 Allow: /
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /vision
 
 # Perplexity
 User-agent: PerplexityBot
 Allow: /
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /vision
 
 User-agent: Perplexity-User
 Allow: /
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /vision
 
 # Google Gemini / AI Overviews grounding
 User-agent: Google-Extended
 Allow: /
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /vision
 
 # Apple Intelligence
 User-agent: Applebot-Extended
 Allow: /
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /vision
 
 # Microsoft Copilot
 User-agent: Bingbot
 Allow: /
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /vision
 
 # Common Crawl — the corpus most open models are trained on
 User-agent: CCBot
 Allow: /
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /vision
 
 User-agent: Amazonbot
 Allow: /
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /vision
 
 User-agent: meta-externalagent
 Allow: /
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /vision
 
 Sitemap: https://avatok.ai/sitemap.xml

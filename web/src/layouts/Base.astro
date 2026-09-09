@@ -17,6 +17,10 @@ export interface Props {
   description?: string;
   /** Absolute or path OpenGraph image. */
   image?: string;
+  imageAlt?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  ogType?: "website" | "article";
   /** Set false to hide the nav/footer chrome (e.g. immersive viewer pages). */
   chrome?: boolean;
   /**
@@ -40,9 +44,8 @@ export interface Props {
   /** Hide the header auth CTAs (Log in / Sign up) entirely. */
   hideNavCtas?: boolean;
   /**
-   * [WEB-SEO-1] Per-page keywords. Google ignores this tag, but the answer
-   * engines we care about (and several Indian/regional crawlers) still read it,
-   * and it costs nothing. Pages that don't set it inherit the site defaults.
+   * [WEB-SEO-1] Optional legacy keywords. Discovery relies on visible content, crawl access
+   * and descriptive page metadata; this tag is not a ranking guarantee.
    */
   keywords?: string;
 }
@@ -55,6 +58,10 @@ const {
   // does not set its own description inherits this, so it is worth getting right.
   description = 'avaTOK is a free platform to earn from home — create a free listing and get paid to listen, chat, be a home friend, host private sessions or live stream. People subscribe to your calendar and book you.',
   image,
+  imageAlt = title,
+  imageWidth,
+  imageHeight,
+  ogType = "website",
   chrome = true,
   headerAuth = 'auto',
   navStatic = false,
@@ -87,7 +94,7 @@ const orgLd = {
       logo: 'https://avatok.ai/avatok-logo.png',
       image: 'https://avatok.ai/ogimage.jpg',
       description:
-        'avaTOK is a free platform where anyone can earn money from home by listening, chatting, being a home friend, hosting private sessions or live streaming. Creators publish a free listing and people book them through their calendar.',
+        'avaTOK is an India-focused creator marketplace for live events and booked sessions. Creators can share skills, conversations and experiences, including activities hosted from home.',
       areaServed: 'IN',
       email: 'support@avatok.ai',
     },
@@ -119,7 +126,7 @@ const orgLd = {
     <meta name="keywords" content={keywords} />
 
     <!-- Per-page social meta — pages can add more via the `head` slot. -->
-    <meta property="og:type" content="website" />
+    <meta property="og:type" content={ogType} />
     <meta property="og:site_name" content="avaTOK" />
     <meta property="og:locale" content="en_IN" />
     <meta property="og:title" content={title} />
@@ -127,11 +134,14 @@ const orgLd = {
     <meta property="og:url" content={canonical} />
     <meta property="og:image" content={ogImage} />
     <meta property="og:image:secure_url" content={ogImage} />
-    <meta property="og:image:alt" content={title} />
+    <meta property="og:image:alt" content={imageAlt} />
+    {imageWidth && <meta property="og:image:width" content={imageWidth} />}
+    {imageHeight && <meta property="og:image:height" content={imageHeight} />}
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImage} />
+    <meta name="twitter:image:alt" content={imageAlt} />
 
     {/* [WEB-SEO-1] Organization + WebSite structured data on every page. */}
     {!noindex && <script type="application/ld+json" set:html={JSON.stringify(orgLd)} />}

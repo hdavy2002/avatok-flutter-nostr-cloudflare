@@ -77,3 +77,31 @@ for (const href of new Set(guideLinks)) assert(sitemap.includes('https://avatok.
 for (const match of ideas.matchAll(/src="(\/assets\/ideas\/guides\/[^"]+)"/g)) {
  assert(existsSync(resolve(root,match[1].slice(1))),'Missing responsive card image: '+match[1]);
 }
+
+// Share previews and machine-readable discovery must match visible articles.
+function meta(page, key) {
+ const tags = page.match(/<meta\b[^>]*>/g) || [];
+ const tag = tags.find(tag => tag.includes('property="'+key+'"') || tag.includes('name="'+key+'"'));
+ return tag?.match(/content="([^"]*)"/)?.[1];
+}
+for (const href of new Set(guideLinks)) {
+ const page = readFileSync(resolve(root,href.slice(1),'index.html'),'utf8');
+ const hero = page.match(/<figure class="guide-hero">[\s\S]*?<img[^>]+src="([^"]+)"/)[1];
+ assert.equal(meta(page,'og:image'),'https://avatok.ai'+hero,'Hero and OG image match');
+ assert.equal(meta(page,'twitter:image'),meta(page,'og:image'));
+ assert.equal(meta(page,'og:type'),'article');
+ assert(meta(page,'og:title') && meta(page,'og:description'),'Share title and description');
+ assert.equal(meta(page,'description'),meta(page,'og:description'));
+ assert.equal(meta(page,'og:image:width'),'1536');
+ assert.equal(meta(page,'og:image:height'),'1024');
+ assert.match(page,/BreadcrumbList/);
+ assert.match(page,/datePublished/);
+ const index = readFileSync(resolve(root,'llms-creator-ideas.txt'),'utf8');
+ assert(index.includes('https://avatok.ai'+href),'AI-readable article index');
+}
+assert.match(ideas,/CollectionPage/);
+assert.match(ideas,/ItemList/);
+assert(meta(ideas,'og:image')?.includes('/assets/ideas/guides/'),'Ideas-specific preview image');
+assert.equal(meta(ideas,'twitter:image'),meta(ideas,'og:image'));
+assert(meta(ideas,'og:title') && meta(ideas,'og:description'));
+console.log('Sharing metadata and discovery checks passed for ideas and all 115 articles.');

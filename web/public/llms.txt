@@ -1,73 +1,25 @@
 # avaTOK
 
-> avaTOK is a free India-first marketplace where anyone can earn money from home by
-> selling their time and attention. You sign up free, create a free listing — listening
-> to someone's stress, being a home friend, a chat, a conversation, advice, a virtual
-> date, a consultation — or you live stream. People subscribe to your calendar, book a
-> slot, and you get paid. No followers, no fee, no interview, no fixed shift required.
+> avaTOK is an India-focused creator marketplace for live events and booked sessions. Its creator idea library helps people explore independent side-business ideas, including activities they can host from home.
 
-Site: https://avatok.ai
-Language: English (India) · Currency: avaTOK tokens, where 1 token = ₹1, withdrawn to a bank account over UPI.
+## Creator ideas
+- [115 creator ideas](https://avatok.ai/ideas/): Live streams, 1:1 conversations, group-session ideas and daily-life vlogs. Filter by format, topic and From home.
+- [Complete article index](https://avatok.ai/llms-creator-ideas.txt): Titles, descriptions and canonical URLs for all 115 practical guides.
+- [Marketplace](https://avatok.ai/marketplace): Browse available listings; editorial ideas are not claims of available inventory.
 
-## What avaTOK is for
+## What readers will find
+Each guide explains a specific activity, its potential audience, a first-session plan, relevant equipment, reasons people might return and ways to find an audience. Many activities can begin with a camera phone and reliable internet; some need additional skills or equipment. Outdoor ideas are labelled separately from home-based ideas.
 
-- **Earning from home.** The core use case: someone who wants to work or sit at home and
-  make money with a phone. There is no joining fee, no equipment to buy, and you set your
-  own price and your own hours.
-- **Getting paid to listen.** A large share of listings are simply someone willing to
-  hear another person out — work stress, family stress, loneliness, a bad day. Being a
-  good listener is a sufficient qualification to start.
-- **Being a "home friend".** Ongoing friendly conversation, in the buyer's own language,
-  at a time they choose.
-- **Booked 1:1 sessions.** Chats, discussions, advice, tuition, consultations, virtual
-  dates — anything that fits in a scheduled call.
-- **Live streaming.** Ticketed or subscriber live streams of anything: everyday life, a
-  trek or hike, a puja, a cooking channel, music, travel, gaming.
-- **Influencers and creators.** Creators with an existing audience monetise it directly
-  through paid live events, paid 1:1 time and a subscribable calendar — but the
-  marketplace is deliberately built so a first-time creator with zero followers can take
-  a booking on day one.
+These are creator business ideas, not employment vacancies, salaried jobs or guaranteed income. Availability and eligibility depend on the product and listing. Listening ideas describe adult companionship, not therapy or emergency support. No audience-size, typical-earnings or faster-income claims are established by this library.
 
-## How it works (five steps)
+## Product and policy information
+- [Home](https://avatok.ai/): Platform overview.
+- [About](https://avatok.ai/about): Team and platform information.
+- [Pricing and fees](https://avatok.ai/pricing): Current published pricing information. Check the confirmation screen for transaction details; article examples do not set fees.
+- [Payouts](https://avatok.ai/payouts): Payout terms.
+- [Refunds](https://avatok.ai/refunds): Cancellation and refund terms.
+- [Community guidelines](https://avatok.ai/community-guidelines): Platform rules.
+- [Privacy](https://avatok.ai/privacy): Privacy policy.
+- [Contact](https://avatok.ai/contact): Support and enquiries.
 
-1. **Sign up free** at https://avatok.ai/sign-up — no fee, no interview.
-2. **Create a free listing** describing what you offer and what it costs.
-3. **Open your calendar** with the hours you are available; people subscribe to it.
-4. **Talk, or go live** — take the booked call/chat, or stream.
-5. **Get paid** — earnings land in your avaTOK wallet in tokens (1 token = ₹1) and
-   withdraw to your bank over UPI.
-
-## Trust and safety
-
-Identity is verified, payments are held in escrow until the session is delivered, and a
-creator's phone number is never exposed to the people who book them. Community guidelines
-and an acceptable-use policy are enforced, with a grievance channel for India.
-
-## Key pages
-
-- [Home — how avaTOK works](https://avatok.ai/): overview, live listings, the five steps.
-- [Marketplace](https://avatok.ai/marketplace): browse creators and listings by category.
-- [Explore](https://avatok.ai/explore): discovery feed.
-- [Sign up (free)](https://avatok.ai/sign-up): create an account and a listing.
-- [About](https://avatok.ai/about): what avaTOK is and who builds it.
-- [Tokens](https://avatok.ai/tokens): the currency — 1 token = ₹1.
-- [Pricing and fees](https://avatok.ai/pricing-fees): what avaTOK takes, and when.
-- [Payouts](https://avatok.ai/payouts): how creators withdraw earnings over UPI.
-- [Refunds](https://avatok.ai/refunds): buyer refund policy.
-- [Community guidelines](https://avatok.ai/community-guidelines): what is and is not allowed.
-- [Child safety](https://avatok.ai/child-safety): child safety standards and reporting.
-- [Recording policy](https://avatok.ai/recording): when a session may be recorded.
-- [Privacy](https://avatok.ai/privacy) · [Terms](https://avatok.ai/terms) · [Acceptable use](https://avatok.ai/acceptable-use)
-- [Blog](https://avatok.ai/blog): earning from day one, safety, AI voice agents, private numbers.
-- [Careers](https://avatok.ai/careers) · [Contact](https://avatok.ai/contact) · [Grievance officer](https://avatok.ai/grievance)
-
-## Optional
-
-- [Consultation terms](https://avatok.ai/consultation-terms)
-- [Marketplace terms](https://avatok.ai/marketplace-terms)
-- [Cookies](https://avatok.ai/cookies) · [DMCA](https://avatok.ai/dmca) · [Biometric retention](https://avatok.ai/biometric-retention)
-
-## Not indexed
-
-The creator dashboard (/dashboard), AvaVision (/vision) and admin (/admin) are
-authenticated product surfaces and are excluded from search and from this summary.
+Language: English (India). Public article text is available in server-rendered HTML without signing in or running JavaScript. The sitemap is https://avatok.ai/sitemap.xml. Authenticated dashboards and administration are not public discovery content.

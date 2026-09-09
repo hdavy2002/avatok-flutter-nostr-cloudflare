@@ -5,9 +5,13 @@ import TruckBorder from '../components/TruckBorder.astro';
 import { creatorIdeas, topics, formats } from '../lib/creatorIdeas';
 import '../styles/creator-ideas.css';
 const travelArt = creatorIdeas.find(idea => idea.id === 'idea-8')!;
+const pageTitle = '115 Creator & Work-from-Home Ideas in India · avaTOK';
+const pageDescription = 'Explore 115 creator ideas for India: live streaming, 1:1 sessions, group classes and daily-life vlogs, with practical guides and phone-first tips.';
 const kitchenArt = creatorIdeas.find(idea => idea.id === 'idea-19')!;
+const collection = { '@context':'https://schema.org', '@type':'CollectionPage', '@id':'https://avatok.ai/ideas/#collection', url:'https://avatok.ai/ideas/', name:pageTitle, description:pageDescription, inLanguage:'en-IN', image:'https://avatok.ai'+kitchenArt.image, isPartOf:{'@id':'https://avatok.ai/#website'}, mainEntity:{'@type':'ItemList', numberOfItems:creatorIdeas.length, itemListElement:creatorIdeas.map((idea,index)=>({'@type':'ListItem',position:index+1,url:'https://avatok.ai'+idea.href,name:idea.title}))} };
 ---
-<Base title="Creator Ideas — Apna Idea, Apna Adda · avaTOK" description="Explore ideas for Indian creators: live streams, private 1:1 conversations, group sessions and daily-life vlogs. Find something you can offer from home or out in the world.">
+<Base title={pageTitle} description={pageDescription} image={kitchenArt.image} imageAlt="An Indian creator sharing a regional meal from her home kitchen" imageWidth={1536} imageHeight={1024}>
+  <script slot="head" type="application/ld+json" set:html={JSON.stringify(collection)} />
   <main class="idea-page" id="main-content">
     <section class="idea-hero idea-shell" aria-labelledby="idea-title">
       <div class="idea-hero-copy">
@@ -23,6 +27,7 @@ const kitchenArt = creatorIdeas.find(idea => idea.id === 'idea-19')!;
         <div class="idea-stamp">Desi ideas.<br />Endless possibilities.</div>
       </div>
     </section>
+    <section class="idea-shell idea-intro" aria-label="Work-from-home creator ideas"><div style="grid-column:1/-1"><h2>Explore a side business from home</h2><p>Looking for work-from-home ideas in India? Explore ways students, first-time creators and experienced hosts can offer their skills, conversations or everyday experiences. Many ideas start with a camera phone and reliable internet. These are independent creator business ideas, not salaried job vacancies or guaranteed earnings. Use the From home filter to find activities you can host indoors.</p></div></section>
     <TruckBorder kind="lotus" />
     <section class="idea-shell idea-intro" aria-label="Ways to create">
       <div><span class="idea-format live">Live stream</span><p>Show a place, a performance, or your everyday life. Let people join your world.</p></div>
