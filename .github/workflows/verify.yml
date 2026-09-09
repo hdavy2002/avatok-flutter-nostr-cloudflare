@@ -16,9 +16,16 @@ name: verify
 
 on:
   workflow_dispatch:
+    inputs:
+      commercial_only:
+        description: 'Run focused commercial media checks; full verification remains the default'
+        type: boolean
+        default: false
+
 
 jobs:
   worker-ts:
+    if: ${{ !inputs.commercial_only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,6 +60,7 @@ jobs:
         # that stub's filename — must be --dir.)
         run: npx vitest run --dir test
   consumers-ts:
+    if: ${{ !inputs.commercial_only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -82,6 +90,7 @@ jobs:
   # Also runs on every PR via typecheck.yml (pull_request) — that is the
   # trigger that actually catches drift early; this copy is the on-demand one.
   design-guard:
+    if: ${{ !inputs.commercial_only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -111,6 +120,7 @@ jobs:
   # loud SKIP and exits 0 — a missing secret must never fail CI, and must never
   # be mistaken for a pass. Set the secret to make it real.
   ship-gate:
+    if: ${{ !inputs.commercial_only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -169,10 +179,22 @@ jobs:
       # fatal — that is the purpose of this gate. Warning cleanup is tracked
       # separately.
       - name: Analyze (fatal on errors)
+        if: ${{ !inputs.commercial_only }}
         working-directory: app
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
+      - name: Analyze commercial media (fatal on errors)
+        if: ${{ inputs.commercial_only }}
+        working-directory: app
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings lib/features/commercial_getstream
+
+      - name: Focused commercial device regression tests
+        if: ${{ inputs.commercial_only }}
+        working-directory: app
+        run: flutter test test/features/commercial_getstream test/commercial_speaker_test.dart
+
       - name: Flutter unit tests
+        if: ${{ !inputs.commercial_only }}
         working-directory: app
         run: flutter test
 

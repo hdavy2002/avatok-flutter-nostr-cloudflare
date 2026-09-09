@@ -263,7 +263,7 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> with WidgetsB
   }
 
   Future<void> _toggleMicrophone() async {
-    if (_mediaBusy) return;
+    if (_mediaBusy || _starting) return;
     setState(() => _mediaBusy = true);
     try {
       final result = await _call.setMicrophoneEnabled(enabled: !_microphoneEnabled);
@@ -279,7 +279,7 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> with WidgetsB
   }
 
   Future<void> _toggleCamera() async {
-    if (_mediaBusy) return;
+    if (_mediaBusy || _starting) return;
     setState(() => _mediaBusy = true);
     try {
       final result = await _call.setCameraEnabled(enabled: !_cameraEnabled);
@@ -295,7 +295,7 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> with WidgetsB
   }
 
   Future<void> _flipCamera() async {
-    if (_mediaBusy) return;
+    if (_mediaBusy || _starting) return;
     setState(() => _mediaBusy = true);
     try {
       final result = await _call.flipCamera();
@@ -428,6 +428,7 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> with WidgetsB
             ),
             const SizedBox(height: Msg.s4),
             _BackstageDeviceControls(
+              enabled: !_starting && !_mediaBusy,
               cameraEnabled: _cameraEnabled,
               microphoneEnabled: _microphoneEnabled,
               audioLevel: _audioLevel,
@@ -461,6 +462,7 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> with WidgetsB
 
 class _BackstageDeviceControls extends StatelessWidget {
   const _BackstageDeviceControls({
+    required this.enabled,
     required this.cameraEnabled,
     required this.microphoneEnabled,
     required this.audioLevel,
@@ -470,6 +472,7 @@ class _BackstageDeviceControls extends StatelessWidget {
     required this.onFlipCamera,
   });
 
+  final bool enabled;
   final bool cameraEnabled;
   final bool microphoneEnabled;
   final double audioLevel;
@@ -494,21 +497,21 @@ class _BackstageDeviceControls extends StatelessWidget {
                     ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)
                     : PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold),
                 label: cameraEnabled ? 'Camera on' : 'Camera off',
-                onPressed: onToggleCamera,
+                onPressed: enabled ? onToggleCamera : null,
               ),
               _BackstageControl(
                 icon: microphoneEnabled
                     ? PhosphorIcons.microphone(PhosphorIconsStyle.bold)
                     : PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold),
                 label: microphoneEnabled ? 'Mic on' : 'Mic off',
-                onPressed: onToggleMicrophone,
+                onPressed: enabled ? onToggleMicrophone : null,
               ),
               _BackstageControl(
                 icon: PhosphorIcons.cameraRotate(PhosphorIconsStyle.bold),
                 label: 'Flip camera',
-                onPressed: onFlipCamera,
+                onPressed: enabled && cameraEnabled ? onFlipCamera : null,
               ),
-              CommercialSpeakerTestButton(controller: speaker),
+              CommercialSpeakerTestButton(controller: speaker, enabled: enabled),
               SizedBox(
                 width: 150,
                 child: Semantics(
@@ -541,7 +544,7 @@ class _BackstageControl extends StatelessWidget {
 
   final IconData icon;
   final String label;
-  final Future<void> Function() onPressed;
+  final Future<void> Function()? onPressed;
 
   @override
   Widget build(BuildContext context) => OutlinedButton.icon(
