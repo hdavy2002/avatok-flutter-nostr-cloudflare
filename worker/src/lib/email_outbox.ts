@@ -17,7 +17,6 @@ export interface DurableEmailMessage {
   orderId?: string | null;
   recipientId?: string | null;
   messageVersion?: string;
-  force?: boolean;
   from?: string;
   replyTo?: { email: string; name?: string };
   attachments?: { name: string; content: string }[];
@@ -64,7 +63,7 @@ function statusFromRow(row: { delivery_status?: string | null; state?: string | 
  * send an unrecoverable payload. A successful purchase is never rolled back
  * for that email failure; the authenticated resend can recover after rollout.
  */
-export async function enqueueEmail(env: Env, input: DurableEmailMessage, opts?: { force?: boolean }): Promise<EmailQueueResult> {
+export async function enqueueEmail(env: Env, input: DurableEmailMessage): Promise<EmailQueueResult> {
   const key = input.outboxKey ?? await fallbackKey(input);
   const now = Date.now();
   const payload = JSON.stringify({ ...input, outboxKey: key });
@@ -74,11 +73,17 @@ export async function enqueueEmail(env: Env, input: DurableEmailMessage, opts?: 
     existing = await env.DB_META.prepare(
       "SELECT state,delivery_status FROM email_outbox WHERE outbox_key=?1 LIMIT 1",
     ).bind(key).first<{ state: string; delivery_status: string | null }>() ?? null;
-    if (existing && opts?.force && statusFromRow(existing) === "bounced") {
-      return { outboxKey: key, status: "bounced", queued: false, durable: true };
-    }
-    if (existing && !opts?.force && ["provider_accepted", "delivered"].includes(statusFromRow(existing))) {
-      return { outboxKey: key, status: statusFromRow(existing), queued: false, durable: true };
+    if (existing) {
+      const existingStatus = statusFromRow(existing);
+      if (existingStatus === "provider_accepted" || existingStatus === "delivered") {
+        return { outboxKey: key, status: existingStatus, queued: false, durable: true };
+      }
+      if (existingStatus === "bounced" || existingStatus === "failed") {
+        return { outboxKey: key, status: "failed", queued: false, durable: true };
+      }
+      if (existingStatus === "sending") {
+        return { outboxKey: key, status: "sending", queued: false, durable: true };
+      }
     }
     if (!existing) {
       await env.DB_META.prepare(
@@ -88,12 +93,6 @@ export async function enqueueEmail(env: Env, input: DurableEmailMessage, opts?: 
          VALUES (?1,?2,'pending',?3,'queued',?4,?5,?6,0,?7,?8,?8,?8)`,
       ).bind(key, input.kind ?? DEFAULT_KIND, payload, input.recipientId ?? null, input.orderId ?? null,
         input.messageVersion ?? DEFAULT_VERSION, MAX_ATTEMPTS, now).run();
-    } else if (opts?.force) {
-      await env.DB_META.prepare(
-        `UPDATE email_outbox SET state='pending',delivery_status='queued',error_message=NULL,
-           lease_expires_at=NULL,next_attempt_at=?2,updated_at=?2 WHERE outbox_key=?1
-           AND delivery_status IN ('failed','queued')`,
-      ).bind(key, now).run();
     }
   } catch {
     // A missing/unavailable outbox is a real bookkeeping failure. Do not tell
@@ -103,7 +102,7 @@ export async function enqueueEmail(env: Env, input: DurableEmailMessage, opts?: 
   }
 
   try {
-    await env.Q_EMAIL.send({ ...input, outboxKey: key, kind: input.kind ?? DEFAULT_KIND, orderId: input.orderId ?? null, recipientId: input.recipientId ?? null, messageVersion: input.messageVersion ?? DEFAULT_VERSION, force: opts?.force === true });
+    await env.Q_EMAIL.send({ ...input, outboxKey: key, kind: input.kind ?? DEFAULT_KIND, orderId: input.orderId ?? null, recipientId: input.recipientId ?? null, messageVersion: input.messageVersion ?? DEFAULT_VERSION });
     try {
       await env.DB_META.prepare(
         "UPDATE email_outbox SET state='pending',delivery_status='queued',queue_accepted_at=?2,updated_at=?2,next_attempt_at=?2 WHERE outbox_key=?1 AND state='pending' AND delivery_status='queued'",
@@ -157,26 +156,42 @@ export async function verifiedClerkEmail(env: Env, uid: string): Promise<string 
 /** Requeue rows left pending or with an expired sending lease after a Worker crash. */
 export async function recoverEmailOutbox(env: Env, limit = 50): Promise<number> {
   const now = Date.now();
-  let rows: Array<{ outbox_key: string; payload_json: string }> = [];
+  let rows: Array<{ outbox_key: string; payload_json: string; delivery_status: string }> = [];
   try {
+    await env.DB_META.prepare(
+      `UPDATE email_outbox SET state='failed',delivery_status='failed',error_message='retry budget exhausted',
+         lease_expires_at=NULL,next_attempt_at=NULL,updated_at=?1
+       WHERE delivery_status='sending' AND lease_expires_at IS NOT NULL AND lease_expires_at<?1
+         AND attempts>=max_attempts`,
+    ).bind(now).run();
     await env.DB_META.prepare(
       `UPDATE email_outbox SET state='pending',delivery_status='queued',lease_expires_at=NULL,updated_at=?1
        WHERE delivery_status='sending' AND lease_expires_at IS NOT NULL AND lease_expires_at<?1
          AND attempts<max_attempts`,
     ).bind(now).run();
     const result = await env.DB_META.prepare(
-      `SELECT outbox_key,payload_json FROM email_outbox
+      `SELECT outbox_key,payload_json,delivery_status FROM email_outbox
        WHERE delivery_status IN ('queued','failed') AND attempts<max_attempts
-         AND (next_attempt_at IS NULL OR next_attempt_at<=?1)
+         AND next_attempt_at IS NOT NULL AND next_attempt_at<=?1
        ORDER BY created_at LIMIT ?2`,
-    ).bind(now, Math.max(1, Math.min(100, limit))).all<{ outbox_key: string; payload_json: string }>();
-    rows = (result.results ?? []) as Array<{ outbox_key: string; payload_json: string }>;
+    ).bind(now, Math.max(1, Math.min(100, limit))).all<{ outbox_key: string; payload_json: string; delivery_status: string }>();
+    rows = (result.results ?? []) as Array<{ outbox_key: string; payload_json: string; delivery_status: string }>;
   } catch {
     return 0;
   }
   let queued = 0;
   for (const row of rows) {
     try {
+      // Failed rows are terminal to ordinary producers. Recovery owns the
+      // explicit transition back to queued, guarded by the retry timestamp.
+      if (row.delivery_status === "failed") {
+        const reopened = await env.DB_META.prepare(
+          `UPDATE email_outbox SET state='pending',delivery_status='queued',lease_expires_at=NULL,
+             updated_at=?2 WHERE outbox_key=?1 AND delivery_status='failed'
+             AND next_attempt_at IS NOT NULL AND next_attempt_at<=?2 AND attempts<max_attempts`,
+        ).bind(row.outbox_key, now).run();
+        if ((reopened.meta?.changes ?? 0) === 0) continue;
+      }
       const msg = JSON.parse(row.payload_json) as DurableEmailMessage;
       const result = await enqueueEmail(env, { ...msg, outboxKey: row.outbox_key });
       if (result.queued) queued++;

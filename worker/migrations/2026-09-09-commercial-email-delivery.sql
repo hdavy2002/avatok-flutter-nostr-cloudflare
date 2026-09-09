@@ -30,6 +30,11 @@ UPDATE email_outbox
    SET delivery_status=CASE WHEN state='sent' AND kind='brevo_send' THEN 'provider_accepted' ELSE 'queued' END
  WHERE delivery_status='queued';
 
+-- Legacy queued rows have no retry timestamp. Make them immediately eligible;
+-- permanent provider failures use NULL and stay out of recovery sweeps.
+UPDATE email_outbox SET next_attempt_at=0
+ WHERE delivery_status='queued' AND next_attempt_at IS NULL;
+
 CREATE INDEX IF NOT EXISTS idx_email_outbox_delivery
   ON email_outbox(delivery_status,next_attempt_at,lease_expires_at);
 CREATE INDEX IF NOT EXISTS idx_email_outbox_order_recipient

@@ -557,10 +557,10 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
  * POST/GET /api/commercial/orders/:orderId/resend-confirmation
  *
  * GET exposes the authoritative status for the signed-in order participant.
- * POST requeues only the buyer's verified Clerk address, using the same
- * order/recipient/version key as checkout. The request body never supplies an
- * address; Idempotency-Key is optional because the stable delivery key is the
- * dedupe authority.
+ * POST queues only the buyer's verified Clerk address. Each request gets a
+ * stable attempt key derived from Idempotency-Key (or a server nonce when the
+ * header is absent), so a queue redelivery cannot restart an accepted resend.
+ * The request body never supplies an address.
  */
 export async function resendCommercialConfirmation(req: Request, env: Env): Promise<Response> {
   const match = new URL(req.url).pathname.match(/^\/api\/commercial\/orders\/([^/]+)\/resend-confirmation$/);
@@ -607,11 +607,15 @@ export async function resendCommercialConfirmation(req: Request, env: Env): Prom
   if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start <= 0 || end <= start) {
     return json({ error: "confirmation schedule unavailable" }, 409);
   }
-  const key = commercialEmailKey(orderId, auth.uid, COMMERCIAL_CONFIRMATION_VERSION);
   if (req.method === "GET") {
     const delivery = await metaDb(env).prepare(
-      "SELECT delivery_status,state,error_message,attempts,next_attempt_at,provider_message_id FROM email_outbox WHERE outbox_key=?1 LIMIT 1",
-    ).bind(key).first<{ delivery_status: string | null; state: string | null; error_message: string | null; attempts: number | null; next_attempt_at: number | null; provider_message_id: string | null }>();
+      `SELECT delivery_status,state,error_message,attempts,next_attempt_at,provider_message_id
+         FROM email_outbox
+        WHERE order_id=?1 AND recipient_id=?2 AND kind='commercial_email'
+          AND (message_version=?3 OR message_version LIKE ?4)
+        ORDER BY created_at DESC LIMIT 1`,
+    ).bind(orderId, auth.uid, COMMERCIAL_CONFIRMATION_VERSION, `${COMMERCIAL_CONFIRMATION_VERSION}.resend.%`)
+      .first<{ delivery_status: string | null; state: string | null; error_message: string | null; attempts: number | null; next_attempt_at: number | null; provider_message_id: string | null }>();
     const emailStatus = delivery?.delivery_status === "delivered" || delivery?.delivery_status === "provider_accepted"
       || delivery?.delivery_status === "queued" || delivery?.delivery_status === "sending" || delivery?.delivery_status === "failed" || delivery?.delivery_status === "bounced"
       ? delivery.delivery_status : "unavailable";
@@ -620,10 +624,12 @@ export async function resendCommercialConfirmation(req: Request, env: Env): Prom
       provider_message_id: delivery?.provider_message_id ?? null });
   }
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
+  const requestKey = req.headers.get("Idempotency-Key")?.trim() || crypto.randomUUID();
+  const messageVersion = `${COMMERCIAL_CONFIRMATION_VERSION}.resend.${(await sha256Hex(`${orderId}:${auth.uid}:${requestKey}`)).slice(0, 48)}`;
   const result = await queueCommercialConfirmation(env, {
     orderId, listingId: row.listing_id, bookingId: row.booking_id, kind, title: row.title,
     start, end, price: Number(row.amount), creatorId: row.creator_id, buyerId: row.buyer_id,
-  }, { recipients: ["buyer"], force: true });
+  }, { recipients: ["buyer"], messageVersion });
   const emailStatus = result.buyer;
   commercialEvent(env, "email_confirmation_resend", auth.uid, {
     kind, outcome: emailStatus, delivery_status: emailStatus, resend: true,

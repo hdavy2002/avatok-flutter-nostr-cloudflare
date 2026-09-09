@@ -35,7 +35,10 @@ export default {
         switch (q) {
           case "moderation": await handleModeration(msg.body as ModerationMsg, env); break;
           case "push-notifications": await handlePush(msg.body as PushMsg, env); break;
-          case "email": await sendEmail(msg.body as EmailMsg, env); break;
+          // Queue delivery acks permanent provider rejections after recording
+          // them; cron callers below request an exception so reminder flags do
+          // not advance when mail was unavailable or rejected.
+          case "email": await sendEmailDurably(msg.body as EmailMsg, env, { throwOnPermanent: false }); break;
           case "brain-events": await handleBrain(msg.body as BrainMsg, env); break;
           case "account-deletions": await handleDeletion(msg.body as DeletionMsg, env); break;
           case "wallet-transactions": await handleWalletTx(msg.body as WalletTxMsg, env); break;
@@ -347,7 +350,7 @@ async function captureConsumerException(
 }
 
 async function sendEmail(msg: EmailMsg, env: Env): Promise<void> {
-  await sendEmailDurably(msg, env);
+  await sendEmailDurably(msg, env, { throwOnPermanent: true });
 }
 
 // --- analytics consumer (PostHog /batch; identity by uid only, never PII) ---

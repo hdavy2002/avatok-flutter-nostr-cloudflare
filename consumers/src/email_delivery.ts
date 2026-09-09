@@ -44,19 +44,25 @@ async function markFailure(env: Env, key: string, message: string, attempts: num
 }
 
 /** Brevo queue handler. Provider acceptance is recorded separately from delivery. */
-export async function sendEmailDurably(msg: EmailMsg, env: Env): Promise<void> {
+export async function sendEmailDurably(msg: EmailMsg, env: Env, opts?: { throwOnPermanent?: boolean }): Promise<void> {
   const key = await keyFor(msg);
   const now = Date.now();
   let attempts = 0;
   let maxAttempts = MAX_ATTEMPTS;
   try {
     await env.DB_META.prepare(
+      `UPDATE email_outbox SET state='failed',delivery_status='failed',
+         error_message='retry budget exhausted',lease_expires_at=NULL,next_attempt_at=NULL,updated_at=?1
+       WHERE outbox_key=?2 AND delivery_status='sending' AND lease_expires_at IS NOT NULL
+         AND lease_expires_at<?1 AND attempts>=max_attempts`,
+    ).bind(now, key).run();
+    await env.DB_META.prepare(
       `UPDATE email_outbox SET state='pending',delivery_status='queued',lease_expires_at=NULL,updated_at=?1
        WHERE outbox_key=?2 AND delivery_status='sending' AND lease_expires_at IS NOT NULL AND lease_expires_at<?1`,
     ).bind(now, key).run();
     const row = await env.DB_META.prepare(
-      "SELECT state,delivery_status,attempts,max_attempts FROM email_outbox WHERE outbox_key=?1 LIMIT 1",
-    ).bind(key).first<{ state: string; delivery_status: string | null; attempts: number; max_attempts: number }>();
+      "SELECT state,delivery_status,attempts,max_attempts,next_attempt_at FROM email_outbox WHERE outbox_key=?1 LIMIT 1",
+    ).bind(key).first<{ state: string; delivery_status: string | null; attempts: number; max_attempts: number; next_attempt_at: number | null }>();
     if (!row) {
       await env.DB_META.prepare(
         `INSERT OR IGNORE INTO email_outbox
@@ -66,21 +72,8 @@ export async function sendEmailDurably(msg: EmailMsg, env: Env): Promise<void> {
       ).bind(key, msg.kind ?? "email", JSON.stringify({ ...msg, outboxKey: key }), msg.recipientId ?? null,
         msg.orderId ?? null, msg.messageVersion ?? "email.v1", MAX_ATTEMPTS, now).run();
     } else if (["provider_accepted", "delivered", "bounced"].includes(status(row))) {
-      // Checkout is idempotent by order/recipient/version. An authenticated
-      // resend is the one deliberate exception: restart a previously accepted
-      // attempt so the button has useful semantics. A bounced address remains
-      // terminal because retrying it cannot produce delivery evidence.
-      if (msg.force && ["provider_accepted", "delivered"].includes(status(row))) {
-        await env.DB_META.prepare(
-          `UPDATE email_outbox SET state='pending',delivery_status='queued',attempts=0,
-             error_message=NULL,lease_expires_at=NULL,next_attempt_at=?2,updated_at=?2
-           WHERE outbox_key=?1 AND delivery_status IN ('provider_accepted','delivered')`,
-        ).bind(key, now).run();
-        attempts = 0;
-        maxAttempts = Number(row.max_attempts ?? MAX_ATTEMPTS);
-      } else {
-        return;
-      }
+      if (status(row) === "bounced" && opts?.throwOnPermanent) throw new Error("email delivery bounced");
+      return;
     } else {
       attempts = Number(row.attempts ?? 0);
       maxAttempts = Number(row.max_attempts ?? MAX_ATTEMPTS);
@@ -88,20 +81,26 @@ export async function sendEmailDurably(msg: EmailMsg, env: Env): Promise<void> {
     const claim = await env.DB_META.prepare(
       `UPDATE email_outbox SET state='sending',delivery_status='sending',attempts=attempts+1,
          lease_expires_at=?2,updated_at=?3 WHERE outbox_key=?1
-         AND delivery_status IN ('queued','failed') AND attempts<max_attempts`,
-    ).bind(key, now + LEASE_MS, now).run();
-    // Zero changes means another consumer owns the send, the row is terminal,
-    // or retry budget is exhausted. Ack it; only the owner may call Brevo.
-    if ((claim.meta?.changes ?? 0) === 0) return;
+         AND (delivery_status='queued' OR (delivery_status='failed' AND next_attempt_at IS NOT NULL AND next_attempt_at<=?5))
+         AND attempts=?4 AND attempts<max_attempts`,
+    ).bind(key, now + LEASE_MS, now, attempts, now).run();
+    // A zero CAS means another consumer owns it, it is pending retry, or the
+    // budget is exhausted. Cron must surface that state so cadence flags do not
+    // advance; queue delivery can ack and let recovery proceed.
+    if ((claim.meta?.changes ?? 0) === 0) {
+      if (opts?.throwOnPermanent) throw new Error("email delivery claim unavailable");
+      return;
+    }
     attempts += 1;
   } catch (error) {
     // Persistence/claim failure must reach queue retry. Sending without a claim
-    // would defeat the exactly-once boundary and can duplicate a purchase mail.
+    // would bypass the durable ownership boundary.
     throw error;
   }
 
   if (!env.BREVO_API_KEY) {
     if (!await markFailure(env, key, "BREVO_API_KEY is not configured", attempts)) throw new Error("email failure could not be recorded");
+    if (opts?.throwOnPermanent) throw new Error("email delivery unavailable: BREVO_API_KEY is not configured");
     return;
   }
 
@@ -126,6 +125,7 @@ export async function sendEmailDurably(msg: EmailMsg, env: Env): Promise<void> {
   } catch (error) {
     if (!await markFailure(env, key, String(error), attempts)) throw new Error("email failure could not be recorded");
     if (attempts < maxAttempts) throw error;
+    if (opts?.throwOnPermanent) throw new Error("email delivery retry budget exhausted");
     return;
   }
 
@@ -135,7 +135,9 @@ export async function sendEmailDurably(msg: EmailMsg, env: Env): Promise<void> {
     if (!await markFailure(env, key, `Brevo ${response.status}: ${responseText}`, attempts, retryable)) {
       throw new Error("email failure could not be recorded");
     }
+    if (!retryable && opts?.throwOnPermanent) throw new Error(`email delivery rejected: Brevo ${response.status}`);
     if (attempts < maxAttempts && retryable) throw new Error(`Brevo send failed: ${response.status}`);
+    if (retryable && opts?.throwOnPermanent) throw new Error("email delivery retry budget exhausted");
     return;
   }
 

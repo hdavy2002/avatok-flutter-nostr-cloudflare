@@ -26,6 +26,7 @@ describe("JOURNEY-04 commercial confirmation contract", () => {
     expect(checkout).toContain("WHERE o.id=?1 AND o.buyer_id=?2");
     expect(checkout).toContain("active entitlement");
     expect(checkout).toContain("recoverCommercialConfirmation(env, orderId, auth.uid)");
+    expect(checkout).toContain(".resend.${(await sha256Hex");
   });
 
   it("adds the base table defensively and retains provider uncertainty", () => {
@@ -35,5 +36,9 @@ describe("JOURNEY-04 commercial confirmation contract", () => {
     expect(migration).toContain("WHEN state='sent' AND kind='brevo_send'");
     expect(outbox).toContain("provider_accepted");
     expect(outbox).toContain("recoverEmailOutbox");
+    expect(outbox).toContain("existingStatus === \"failed\"");
+    expect(outbox).toContain("existingStatus === \"sending\"");
+    expect(outbox).toContain("next_attempt_at IS NOT NULL");
+    expect(outbox).toContain("retry budget exhausted");
   });
 });

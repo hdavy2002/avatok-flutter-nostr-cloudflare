@@ -71,13 +71,14 @@ function commercialDestination(env: Env, c: CommercialConfirmationCtx): string {
  * intentionally have no bookings row. The same canonical destination is used
  * by the app, browser and ICS attachment.
  */
-export async function queueCommercialConfirmation(env: Env, c: CommercialConfirmationCtx, opts?: { recipients?: Array<"buyer" | "creator">; force?: boolean }): Promise<{
+export async function queueCommercialConfirmation(env: Env, c: CommercialConfirmationCtx, opts?: { recipients?: Array<"buyer" | "creator">; messageVersion?: string }): Promise<{
   buyer: EmailDeliveryStatus | "unavailable";
   creator: EmailDeliveryStatus | "unavailable";
   status: EmailDeliveryStatus | "unavailable";
 }> {
   const creatorName = c.creatorName ?? await profileName(env, c.creatorId, "the creator");
   const buyerName = c.buyerName ?? await profileName(env, c.buyerId, "the customer");
+  const messageVersion = opts?.messageVersion ?? COMMERCIAL_CONFIRMATION_VERSION;
   const destination = commercialDestination(env, c);
   const ics = {
     name: c.kind === "live_event" ? "live-event.ics" : "appointment.ics",
@@ -100,23 +101,24 @@ export async function queueCommercialConfirmation(env: Env, c: CommercialConfirm
   const recipients = opts?.recipients ?? ["buyer", "creator"];
   const [buyer, creator] = await Promise.all([
     recipients.includes("buyer") ? queueEmail(env, c.buyerId, `Confirmation: ${c.title}`, shell(c.kind === "live_event" ? "Live event ticket confirmed" : "Appointment confirmed", buyerBody, { label: "Open booking", url: destination }), ics, {
-      outboxKey: commercialEmailKey(c.orderId, c.buyerId, COMMERCIAL_CONFIRMATION_VERSION),
-      orderId: c.orderId, messageVersion: COMMERCIAL_CONFIRMATION_VERSION, verified: true, force: opts?.force,
+      outboxKey: commercialEmailKey(c.orderId, c.buyerId, messageVersion),
+      orderId: c.orderId, messageVersion, verified: true,
     }) : Promise.resolve("unavailable" as const),
     recipients.includes("creator") ? queueEmail(env, c.creatorId, `New customer: ${c.title}`, shell(c.kind === "live_event" ? "New live event ticket" : "New appointment", creatorBody, { label: "Open session", url: destination }), ics, {
-      outboxKey: commercialEmailKey(c.orderId, c.creatorId, COMMERCIAL_CONFIRMATION_VERSION),
-      orderId: c.orderId, messageVersion: COMMERCIAL_CONFIRMATION_VERSION, verified: true, force: opts?.force,
+      outboxKey: commercialEmailKey(c.orderId, c.creatorId, messageVersion),
+      orderId: c.orderId, messageVersion, verified: true,
     }) : Promise.resolve("unavailable" as const),
   ]);
   const statuses = [buyer, creator];
   const aggregate = statuses.includes("failed") ? "failed"
     : statuses.includes("bounced") ? "bounced"
       : statuses.includes("unavailable") ? "unavailable"
-      : statuses.includes("provider_accepted") || statuses.includes("delivered") ? "provider_accepted" : "queued";
+      : statuses.includes("sending") ? "sending"
+        : statuses.includes("provider_accepted") || statuses.includes("delivered") ? "provider_accepted" : "queued";
   return { buyer, creator, status: aggregate };
 }
 
-async function queueEmail(env: Env, uid: string, subject: string, html: string, ics?: { name: string; content: string }, opts?: { outboxKey?: string; orderId?: string | null; messageVersion?: string; verified?: boolean; force?: boolean }): Promise<EmailQueueStatus> {
+async function queueEmail(env: Env, uid: string, subject: string, html: string, ics?: { name: string; content: string }, opts?: { outboxKey?: string; orderId?: string | null; messageVersion?: string; verified?: boolean }): Promise<EmailQueueStatus> {
   try {
     const email = opts?.verified ? await verifiedClerkEmail(env, uid) : await clerkEmail(env, uid);
     if (!email) return "unavailable";
@@ -125,9 +127,8 @@ async function queueEmail(env: Env, uid: string, subject: string, html: string, 
       to: email, subject, html, outboxKey: key, kind: OUTBOX_KIND,
       orderId: opts?.orderId ?? null, recipientId: uid,
       messageVersion: opts?.messageVersion ?? "email.v1",
-      force: opts?.force === true,
       ...(ics ? { attachments: [{ name: ics.name, content: ics.content }] } : {}),
-    }, { force: opts?.force });
+    });
     return result.status;
   } catch { return "failed"; }
 }

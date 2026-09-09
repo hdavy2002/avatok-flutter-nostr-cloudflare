@@ -373,8 +373,6 @@ export interface EmailMsg {
   orderId?: string | null;
   recipientId?: string | null;
   messageVersion?: string;
-  /** Explicit authenticated resend; only producers may set this. */
-  force?: boolean;
   from?: string;
   replyTo?: { email: string; name?: string };
   attachments?: { name: string; content: string }[];
