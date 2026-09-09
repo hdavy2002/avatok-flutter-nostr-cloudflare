@@ -32,7 +32,6 @@ import '../../features/avatok/place_1to1_call.dart';
 import '../../core/ui/rajasthani_motifs.dart';
 import '../../core/ui/illustrations.dart';
 import '../ava_sidebar.dart'; // [SIDEBAR-UNIFY-1] AvaSidebarForShell
-import '../shell_v2.dart';
 import 'shell_chrome.dart';
 
 // [AVADIAL-AVATOK-ONLY-1] 2026-07-16 pivot (owner decision): AvaDial drops the

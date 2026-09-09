@@ -1,14 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/ui/avatok_dark.dart';
 import '../../core/remote_config.dart';
 import '../../features/marketplace/marketplace_browse.dart';
 import '../ava_sidebar.dart'; // [SIDEBAR-UNIFY-1] AvaSidebarForShell
-import '../shell_v2.dart';
 import 'shell_chrome.dart';
-import 'shell_destinations.dart';
-import '../../core/ui/messenger_theme.dart';
 
 /// Services root (plan §6) — landing is the existing marketplace browse; the
 /// sidebar carries Home, the Marketplace submenus (My Listings / Sell /
