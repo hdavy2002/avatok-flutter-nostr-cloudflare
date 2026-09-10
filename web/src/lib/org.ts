@@ -73,6 +73,9 @@ export interface OrgConstants {
   logo: OrgLogo;
   description: string;
   slogan: string;
+  // [WEB-SEO-7] Owner decision 2026-09-10: founders are never named publicly.
+  // Do NOT add a schema.org `founder` Person node.
+  foundersDescription: string;
   foundingDate: string;
   email: string;
   address: PostalAddress;
@@ -100,6 +103,9 @@ export const ORG: OrgConstants = {
   description:
     'avaTOK is an India-focused creator marketplace for paid live streaming and 1:1 video sessions. Creators publish listings, people book or join, and creators get paid — including for skills, conversations and experiences hosted from home.',
   slogan: 'Apna hunar. Apni kamaai.',
+  // [WEB-SEO-7] Owner decision 2026-09-10: founders are never named publicly.
+  // Do NOT add a schema.org `founder` Person node.
+  foundersDescription: 'Founded by three friends in India',
   foundingDate: '2025',
   email: 'support@avatok.ai',
   address: {
