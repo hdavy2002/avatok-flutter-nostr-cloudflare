@@ -42,10 +42,12 @@ const labelStyle = {
   fontSize: '0.6875rem', letterSpacing: '.14em', textTransform: 'uppercase' as const,
   color: '#8a7a63', margin: 0,
 };
+// [QUICKINFO-TYPE-1 2026-09-11] Values are plain body text, not display caps.
+// They were Comfortaa uppercase at 1.125rem, which made "TUE 8 SEPT, 2:42" and
+// "AUDIO AND VIDEO" shout louder than the title. Only the title stays display.
 const valueStyle = {
-  fontFamily: "'Comfortaa', 'Baloo 2', sans-serif", fontWeight: 400,
-  fontSize: '1.125rem', letterSpacing: '.045em', textTransform: 'uppercase' as const,
-  color: INK, margin: '3px 0 0',
+  fontFamily: 'Instrument Sans, system-ui, sans-serif', fontWeight: 600,
+  fontSize: '0.9375rem', lineHeight: 1.4, color: INK, margin: '4px 0 0',
 };
 const bodyStyle = {
   fontFamily: 'Instrument Sans, system-ui, sans-serif', fontSize: '0.9375rem',
