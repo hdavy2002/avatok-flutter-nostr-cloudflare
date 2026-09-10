@@ -348,7 +348,7 @@ clip-path:polygon(34.8% 0,100% 0,100% 100%,15.5% 100%,16.4% 96%,17.8% 95%,17% 92
  align-items:center; gap:clamp(22px,3vw,54px); overflow:hidden;
 }
 .creator-hero .creator-hero__copy { position:relative; inset:auto; width:auto; padding:0; z-index:3; }
-.creator-hero__kicker {
+.rail-home .creator-hero__kicker {
  width:max-content; display:flex; align-items:center; gap:9px; margin:0 0 clamp(28px,2.6vw,40px); padding:8px 14px;
  border:1.5px solid var(--rail-ink); border-radius:999px; background:#fff; box-shadow:3px 3px 0 var(--hero-yellow);
  font-size:clamp(12px,1vw,15px) !important;
@@ -409,7 +409,7 @@ clip-path:polygon(34.8% 0,100% 0,100% 100%,15.5% 100%,16.4% 96%,17.8% 95%,17% 92
  .creator-hero { background:radial-gradient(circle at 18% 18%,rgba(255,200,61,.2) 0 58px,transparent 59px),#fff4df; }
  .creator-hero__frame { min-height:0; padding:28px 20px 18px; display:flex; flex-direction:column; gap:18px; overflow:hidden; }
  .creator-hero .creator-hero__copy { text-align:center; }
- .creator-hero__kicker { margin:0 auto 26px; font-size:10px !important; padding:7px 10px; }
+ .rail-home .creator-hero__kicker { margin:0 auto 26px; font-size:10px !important; padding:7px 10px; }
  .rail-home .creator-hero__copy h1 {
   margin:0 auto 15px; font-size:clamp(34px,10.4vw,48px); line-height:1.08; letter-spacing:-.055em;
   white-space:nowrap; text-align:center;
