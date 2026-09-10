@@ -3,3 +3,16 @@
 # "Alternative page with proper canonical tag" x6). A canonical tag is a hint;
 # a 301 is a rule. Cloudflare Pages evaluates this file before _worker.js.
 https://www.avatok.ai/* https://avatok.ai/:splat 301
+
+# [WEB-SEO-2] Retired URLs Google still holds from the pre-pivot site (Search
+# Console "Crawled - currently not indexed", 10 URLs, last crawled Jun/Jul
+# 2026). Left alone they either 404 or — worse — fall into the /[username]
+# mockup catch-all and answer 200 with a demo profile. A 301 to the page that
+# replaced them hands over whatever link equity they had and clears the report.
+/videos                       /marketplace   301
+/video-sessions/*             /marketplace   301
+/live-events/*                /marketplace   301
+/creator-resources            /ideas         301
+/creator-resources/*          /ideas         301
+/how-it-works                 /about         301
+/coming-soon                  /              301
