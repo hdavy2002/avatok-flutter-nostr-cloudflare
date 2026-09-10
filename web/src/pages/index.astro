@@ -18,13 +18,13 @@ const ideas = [
 <Base title="AvaTOK — Get Paid to Listen, Chat & Live Stream From Home" description="AvaTOK is an India-focused creator marketplace where people create listings, book time with one another, and host paid live events, private sessions, and group conversations." image="/ogimage.jpg" chrome={false}>
   <Fragment slot="head">
     <meta name="theme-color" content="#f7ead5" />
-    <link rel="preload" as="image" href="/assets/railway/approved-ideas.jpg" />
+    <link rel="preload" as="image" href="/assets/home/avatok-creator-constellation.png" />
   </Fragment>
   <a class="rail-skip" href="#marketplace-catalogue">Skip to earning ideas</a>
   <SiteHeader />
-  <main class="rail-home" data-design="station-static-2026-09" id="main-content">
-    <section class="station-hero" aria-labelledby="rail-title">
-      <div class="station-frame">
+  <main class="rail-home" data-design="creator-marketplace-2026-09" id="main-content">
+    <section class="station-hero creator-hero" aria-labelledby="rail-title">
+      <div class="creator-hero__frame">
         {/* [UI-MOTION-1 2026-09-10] "texts-reveal" (transitions.dev, `.t-*` in
             styles/motion.css) — headline and supporting line rise in with a
             staggered blur on first paint. `.t-stagger` goes on `.station-copy`
@@ -37,23 +37,29 @@ const ideas = [
             reveal script itself fails, so nothing is ever permanently parked
             at opacity:0. */}
         <noscript><style>.t-stagger .t-stagger-line{opacity:1!important;transform:none!important;filter:none!important}</style></noscript>
-        <div class="station-copy t-stagger" id="hero-reveal">
-          <p class="station-kicker">AvaTOK · India’s creator marketplace</p>
-          <h1 id="rail-title" class="t-stagger-line">Apna time.<br /><span>Apni kamaai.</span></h1>
-          <p class="t-stagger-line t-stagger-line--2">AvaTOK helps people turn time, skills, and local experiences into bookable conversations and live events.<br />Be a listener. Stream a puja. Host a class.</p>
+        <div class="station-copy creator-hero__copy t-stagger" id="hero-reveal">
+          <p class="station-kicker creator-hero__kicker"><span aria-hidden="true"></span> India’s creator marketplace</p>
+          <h1 id="rail-title" class="t-stagger-line"><span class="creator-hero__line">Apna hunar.</span><span class="creator-hero__line creator-hero__line--accent">Apni kamaai.</span></h1>
+          <p class="t-stagger-line t-stagger-line--2">Jo aata hai, usse kamao. Host a live event, offer your time 1:1, or teach a small group—<strong>on your terms, at your price.</strong></p>
           <div class="station-actions">
-            <a class="rail-button" href="/sign-up" data-home-cta="hero-create">Create free</a>
-            <a class="station-outline" href="/ideas" data-home-cta="hero-ideas">Browse ideas</a>
+            <a class="rail-button" href="/sign-up" data-home-cta="hero-create">Start earning free</a>
+            <a class="station-outline" href="/ideas" data-home-cta="hero-ideas">Explore ideas</a>
           </div>
-          <p class="station-aside">India’s<br />stories travel<br />further here.</p>
+          <div class="creator-hero__formats" aria-label="Ways to earn on AvaTOK">
+            <a href="/marketplace?group=india_goes_live" data-home-cta="hero-live">Live events</a>
+            <a href="/marketplace?group=find_your_people" data-home-cta="hero-private">Private 1:1</a>
+            <a href="/marketplace?group=book_their_time" data-home-cta="hero-group">Group sessions</a>
+          </div>
         </div>
         {/* closes the merged .station-copy.t-stagger div opened above (it used
             to close a plain .station-copy). */}
-        <div class="station-art">
-          <img src="/assets/railway/approved-ideas.jpg" width="865" height="1819" alt="A creator with her laptop at an Indian railway station, beside a blue train, an Apna Adda sign and a chai stall." fetchpriority="high" decoding="async" />
+        <div class="station-art creator-hero__art">
+          <span class="creator-hero__live" aria-hidden="true">● Live from India</span>
+          <img src="/assets/home/avatok-creator-constellation.png" width="1156" height="1360" alt="Indian creators hosting a live stream, teaching a class, and offering a one-to-one conversation online." fetchpriority="high" decoding="async" />
+          <p class="creator-hero__share"><strong>80%</strong><span>you keep</span></p>
         </div>
       </div>
-      <a class="rail-next" href="#marketplace-catalogue">Agla stop: your first idea <span aria-hidden="true">↓</span></a>
+      <a class="rail-next" href="#marketplace-catalogue">Find your first earning idea <span aria-hidden="true">↓</span></a>
     </section>
 
     <section class="rail-ideas rail-wrap" id="marketplace-catalogue" aria-labelledby="ideas-title" data-home-section="ideas">

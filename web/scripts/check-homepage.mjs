@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 
 const root = resolve('dist');
 const html = readFileSync(resolve(root, 'index.html'), 'utf8');
-assert.match(html, /data-design="station-static-2026-09"/, 'Expected railway homepage');
+assert.match(html, /data-design="creator-marketplace-2026-09"/, 'Expected creator marketplace homepage');
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One readable main heading');
 assert.equal((html.match(/data-home-idea=/g) || []).length, 6, 'Six earning ideas');
 const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
@@ -21,8 +21,12 @@ for (const name of ['approved-hero.jpg', 'approved-ideas.jpg', 'creator-train.jp
 }
 assert.match(html, /href="\/sign-up"/, 'Signup remains reachable');
 assert.match(html, /href="\/marketplace/, 'Marketplace remains reachable');
+for (const group of ['india_goes_live', 'find_your_people', 'book_their_time']) {
+  assert.match(html, new RegExp('href="/marketplace\\?group=' + group + '"'), 'Hero links to marketplace group: ' + group);
+}
 assert.doesNotMatch(html, /data-motion-toggle|data-rail-train/, 'Old train animation removed');
-assert.match(html, /station-art/, 'Static station artwork exists');
+assert.match(html, /avatok-creator-constellation\.png/, 'Creator marketplace hero artwork exists');
+assert(existsSync(resolve(root, 'assets/home/avatok-creator-constellation.png')), 'Missing creator marketplace hero artwork');
 assert.match(html, /class="bazaar-footer"/, 'Existing footer remains');
 const archive = readFileSync(resolve(root, 'archive/home-2026-09-09/index.html'), 'utf8');
 assert.match(archive, /noindex, nofollow/, 'Archive must not compete in search');
