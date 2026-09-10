@@ -3779,10 +3779,16 @@ export async function getListingBySlug(req: Request, env: Env, handle: string, s
 // GET /api/creators/:id — channel: profile, public fields, listings, reviews.
 export async function getCreator(req: Request, env: Env, id: string): Promise<Response> {
   const uid = await maybeUid(req, env);
+  // [WEB-HANDLE-1] `:id` is a handle OR a uid. The web's creator page is
+  // /c/<handle> (creatorPath in web/src/lib/urls.ts) and the creators sitemap
+  // emits the same, but until 2026-09-10 this only matched `uid`, so every
+  // /c/<handle> was a 404 — the same handle-or-uid lookup getListingBySlug
+  // already does. Every query below keys on the RESOLVED uid, not the param.
   const user = await metaSession(env).prepare(
-    "SELECT uid, handle, display_name, bio, avatar_url FROM users WHERE uid=?1",
+    "SELECT uid, handle, display_name, bio, avatar_url FROM users WHERE uid=?1 OR handle=?1",
   ).bind(id).first<any>();
   if (!user) return json({ error: "not found" }, 404);
+  id = String(user.uid);
   const prof = await metaSession(env).prepare("SELECT * FROM creator_profiles WHERE user_id=?1").bind(id).first<any>();
   const kyc = await metaSession(env).prepare("SELECT status FROM kyc_status WHERE uid=?1").bind(id).first<any>();
   // [AVA-MKT-VERT-1] §2.0 — the channel page lists LISTINGS, so it is scoped too: one
