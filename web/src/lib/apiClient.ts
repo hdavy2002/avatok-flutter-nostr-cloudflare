@@ -228,8 +228,38 @@ export async function getListingBySlug(handle: string, slug: string, auth?: stri
 }
 
 /** GET /api/creators/:id — creator channel (public read). */
-export function getCreator(id: string, auth?: string | null, signal?: AbortSignal): Promise<Creator> {
-  return request<Creator>(`/api/creators/${encodeURIComponent(id)}`, { auth, signal });
+export async function getCreator(id: string, auth?: string | null, signal?: AbortSignal): Promise<Creator> {
+  // [WEB-HANDLE-1 2026-09-10] The worker answers with an ENVELOPE —
+  // `{ creator: { uid, handle, name, avatar_url, bio, rating_avg, rating_count,
+  // follower_count, ... }, listings, reviews, viewer }` (routes/listings.ts
+  // getCreator) — while this page model is a flat `Creator` with `id`,
+  // `avatar`, `stats`. Nothing translated between the two, so every /c/<handle>
+  // page rendered "@undefined" with no avatar and no listings. Same idempotent
+  // unwrap as getListing above: an already-flat body passes through unchanged.
+  const raw = await request<Record<string, unknown> & { creator?: Record<string, unknown> }>(
+    `/api/creators/${encodeURIComponent(id)}`,
+    { auth, signal },
+  );
+  const inner = raw?.creator && typeof raw.creator === 'object' ? raw.creator : null;
+  if (!inner) return raw as unknown as Creator;
+  const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined);
+  const listings = (raw.listings as Card[] | undefined) ?? [];
+  return {
+    id: String(inner.uid ?? inner.id ?? ''),
+    handle: String(inner.handle ?? inner.uid ?? ''),
+    name: (inner.name as string | null | undefined) ?? null,
+    avatar: (inner.avatar_url as string | null | undefined) ?? (inner.avatar as string | null | undefined) ?? null,
+    bio: (inner.bio as string | null | undefined) ?? null,
+    country: (inner.country as string | null | undefined) ?? null,
+    stats: {
+      followers: num(inner.follower_count),
+      listings: listings.length,
+      rating: (inner.rating_avg as number | null | undefined) ?? null,
+      reviews: num(inner.rating_count),
+    },
+    listings,
+    reviews: (raw.reviews as Review[] | undefined) ?? [],
+  };
 }
 
 /**
