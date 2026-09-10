@@ -221,6 +221,7 @@ import {
   marketplaceSearch, marketplacePrecheck, marketplaceAudio, marketplaceDealDecision,
 } from "./routes/marketplace";
 import { marketplaceCategories, proposedCategories } from "./routes/categories";
+import { sitemapListings, sitemapCreators } from "./routes/sitemap"; // [WEB-SEO-3]
 import { composeSession, composeTurn, composePublish } from "./routes/compose";
 import {
   affiliateRegister, affiliateMe, affiliateListings, affiliateLinkCreate, affiliateLinks,
@@ -1723,6 +1724,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/explore/live-now" && req.method === "GET") return await exploreLiveNow(req, env);
       if (p === "/api/explore/search" && req.method === "GET") return await exploreSearch(req, env);
       if (p === "/api/explore/categories" && req.method === "GET") return await cached(req, ctx, () => exploreCategories(env), 300);
+      // [WEB-SEO-3] Dynamic sitemap feeds — public, 1h edge cache.
+      if (p === "/api/sitemap/listings" && req.method === "GET") return await cached(req, ctx, () => sitemapListings(env), 3600);
+      if (p === "/api/sitemap/creators" && req.method === "GET") return await cached(req, ctx, () => sitemapCreators(env), 3600);
       if (p === "/api/listings" && req.method === "POST") return await createListing(req, env);
       if (p === "/api/listings/mine" && req.method === "GET") return await myListings(req, env);
       // [CARD-AI-REVIEW-1] Suggest-only copy review for the creator wizard. Must

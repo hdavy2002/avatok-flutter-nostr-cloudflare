@@ -1,81 +1,36 @@
-// [WEB-SEO-1 2026-08-27] avatok.ai sitemap.
+// [WEB-SEO-3 2026-09-10] avatok.ai sitemap index.
 //
-// WHY THIS IS HAND-ROLLED AND NOT @astrojs/sitemap.
-//   Adding the integration means a new dependency, and CI runs `npm ci` against
-//   a committed package-lock.json — a lockfile edit made without a working npm
-//   install is exactly how a green-looking commit turns into a failed deploy.
-//   This file needs no dependency and no lockfile change.
+// Replaces the old single-file sitemap.xml.ts (now sitemap-pages.xml.ts — the
+// static marketing routes) with a <sitemapindex> that references it plus the
+// two dynamic feeds this issue adds: sitemap-listings.xml.ts (per-listing
+// /<handle>/<slug> or /l/<id> pages) and sitemap-creators.xml.ts (per-creator
+// /c/<handle> pages). Those two cannot be enumerated at build time — they are
+// generated at request time from live D1 rows — so they are separate
+// prerender=false routes that fetch the Worker's /api/sitemap/* endpoints.
 //
-// WHAT GOES IN.
-//   Only PUBLIC, prerendered, indexable routes. Deliberately excluded:
-//     - /dashboard, /admin, /vision — noindex product surfaces (see robots.txt)
-//     - /sign-in, /sign-up, /forgot-password — auth screens; /sign-up is the one
-//       exception because it is the funnel's destination and worth ranking
-//     - dynamic routes (/[username], /l/[id], /book/[id], /watch/[id], …) — they
-//       are per-creator and per-listing, generated at request time, so they
-//       cannot be enumerated here. When creator profiles matter for SEO, the
-//       right move is a second sitemap fed by the Worker's listings API, not a
-//       hardcoded list that silently goes stale.
-//
-// Keep in sync with src/pages/ when a public page is added.
+// This index itself stays prerendered (static, tiny, never changes shape).
+// robots.txt's `Sitemap:` line keeps pointing at this same /sitemap.xml URL.
 import type { APIRoute } from 'astro';
-import { creatorIdeas } from '../lib/creatorIdeas';
 
 export const prerender = true;
 
 const SITE = 'https://avatok.ai';
 
-/** [path, changefreq, priority] */
-const ROUTES: Array<[string, string, string]> = [
-  ['/', 'daily', '1.0'],
-  ['/marketplace', 'daily', '0.9'],
-  ['/explore', 'daily', '0.9'],
-  ['/sign-up', 'monthly', '0.9'],
-  ['/about', 'monthly', '0.7'],
-  ['/blog', 'weekly', '0.7'],
-  ['/ideas', 'weekly', '0.8'],
-  ...creatorIdeas.map(idea => [idea.href, 'monthly', '0.6'] as [string, string, string]),
-  ['/blog/earn-from-day-one', 'monthly', '0.7'],
-  ['/blog/real-people-safety', 'monthly', '0.6'],
-  ['/blog/ai-in-every-chat', 'monthly', '0.6'],
-  ['/blog/ai-voice-agents', 'monthly', '0.6'],
-  ['/blog/never-miss-a-call', 'monthly', '0.6'],
-  ['/blog/your-private-number', 'monthly', '0.6'],
-  ['/tokens', 'monthly', '0.6'],
-  ['/pricing-fees', 'monthly', '0.6'],
-  ['/payouts', 'monthly', '0.6'],
-  ['/refunds', 'monthly', '0.4'],
-  ['/community-guidelines', 'monthly', '0.5'],
-  ['/child-safety', 'monthly', '0.5'],
-  ['/recording', 'monthly', '0.4'],
-  ['/careers', 'monthly', '0.5'],
-  ['/contact', 'monthly', '0.5'],
-  ['/grievance', 'yearly', '0.3'],
-  ['/privacy', 'yearly', '0.3'],
-  ['/terms', 'yearly', '0.3'],
-  ['/acceptable-use', 'yearly', '0.3'],
-  ['/marketplace-terms', 'yearly', '0.3'],
-  ['/consultation-terms', 'yearly', '0.3'],
-  ['/cookies', 'yearly', '0.3'],
-  ['/dmca', 'yearly', '0.3'],
-  ['/biometric-retention', 'yearly', '0.3'],
-];
+const SITEMAPS = ['/sitemap-pages.xml', '/sitemap-listings.xml', '/sitemap-creators.xml'];
 
 export const GET: APIRoute = () => {
   const lastmod = new Date().toISOString().slice(0, 10);
-  const urls = ROUTES.map(
-    ([path, changefreq, priority]) =>
-      `  <url>\n` +
+  const entries = SITEMAPS.map(
+    (path) =>
+      `  <sitemap>\n` +
       `    <loc>${SITE}${path}</loc>\n` +
       `    <lastmod>${lastmod}</lastmod>\n` +
-      `    <changefreq>${changefreq}</changefreq>\n` +
-      `    <priority>${priority}</priority>\n` +
-      `  </url>`,
+      `  </sitemap>`,
   ).join('\n');
 
   const xml =
     `<?xml version="1.0" encoding="UTF-8"?>\n` +
-    `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
+    `<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries}\n</sitemapindex>\n`;
 
   return new Response(xml, {
     headers: {
