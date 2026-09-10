@@ -12,6 +12,7 @@ import { metaSession } from "../db/shard";
 import { requireUser, isFail } from "../authz";
 import { verifyClerk, resolveCanonicalUid, linkClerkAlias } from "../auth";
 import { emailFor, phoneFor, nameFor, primaryVerifiedEmailFor, publicIdentityFor } from "../lib/identity";
+import { ensureHandle } from "../lib/handles";
 import { admitCall, unavailableBody, CALLER_VISIBLE_OUTCOME } from "../lib/call_admission";
 // [STREAM-AUTH-1] Shared with routes/stream_video_calls.ts `streamCallPlace`.
 import { APP_BUILD_HEADER, UPDATE_REQUIRED_MESSAGE, callMinBuildFrom, clientBuildFrom } from "../lib/call_build_gate";
@@ -2702,6 +2703,13 @@ export function normalizeHandle(h: string): string {
 // (Specs/AVATOK-NUMBER-FEATURE-SPEC.md). The network identity is the AvaTOK number;
 // search is by number / phone (if public) / email. Kept so old clients get a clear
 // signal instead of a 404.
+//
+// [WEB-HANDLE-1 2026-09-10] SUPERSEDED FOR THE WEB ONLY: owner decision
+// 2026-09-10 makes the handle the WEB identity (pretty listing URLs
+// /<handle>/<slug>, creator pages /c/<handle>, the creators sitemap). Every
+// user is now auto-assigned a handle server-side — see lib/handles.ts. This
+// endpoint stays deprecated/410; the app's in-app identity is still the
+// AvaTOK number, unchanged by the above.
 export async function handleCheck(_req: Request, _env: Env): Promise<Response> {
   return json({ deprecated: true, valid: false, available: false, reason: "Handles are retired. Use your AvaTOK number, phone, or email." }, 410);
 }
@@ -3033,6 +3041,10 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
   ).bind(ctx.uid, name, firstName, lastName, avatarUrl, emailHash, phoneHash, birthYear, now, bio, gender,
          vetVerdict === "passed" ? now : null,
          vetVerdict === "passed" ? "vetted_v2" : null).run();
+  // [WEB-HANDLE-1] Every user gets a stable @handle for the web surface
+  // (pretty listing URLs, /c/<handle> creator pages, the creators sitemap).
+  // Idempotent + never throws — a missing handle must never break profile save.
+  try { await ensureHandle(env, ctx.uid, { displayName: name, firstName, lastName }); } catch { /* ensureHandle never throws, but stay defensive */ }
   // [WELCOME-100-1] New account → 100-token welcome bonus (persistent promo
   // bucket; idempotent). Awaited (no executionCtx here) but NEVER blocks signup.
   if (!existedBefore) {

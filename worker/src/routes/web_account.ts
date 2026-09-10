@@ -65,6 +65,7 @@ import { json, normalizePhone } from "../util";
 import { requireUser, isFail } from "../authz";
 import { sha256Hex } from "../util";
 import { track } from "../hooks";
+import { ensureHandle } from "../lib/handles";
 
 const APP = "avatok";
 
@@ -132,6 +133,13 @@ export async function webAccountBootstrap(req: Request, env: Env): Promise<Respo
       "UPDATE users SET display_name=COALESCE(NULLIF(display_name,''),?2), updated_at=?3 WHERE uid=?1",
     ).bind(ctx.uid, displayName, now).run();
   }
+
+  // [WEB-HANDLE-1] A name is available right here (either just submitted, or
+  // already on the row) — good enough to seed a handle now rather than wait
+  // for the app's own profile save or a first listing publish (which also
+  // hook ensureHandle; this call is idempotent so there is no double-write).
+  // Never blocks signup: ensureHandle swallows every failure and returns null.
+  try { await ensureHandle(env, ctx.uid, displayName ? { displayName } : undefined); } catch { /* ensureHandle never throws, but stay defensive */ }
 
   // 3. Phone — see the header for why both forms are stored.
   let phoneStored = false;

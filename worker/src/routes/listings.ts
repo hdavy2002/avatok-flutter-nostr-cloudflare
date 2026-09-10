@@ -38,6 +38,7 @@ import { publishFixedListing, releaseListingReservations } from "../cal/listing_
 import { hold, refund } from "../ledger";
 import { LANGS as TRL_LANGS, RATE_PER_MIN as TRL_RATE } from "./translate";
 import { track } from "../hooks";
+import { ensureHandle } from "../lib/handles";
 // [MKT-POSTER-AUTO-1] Shared poster generation, extracted from admin_listings.ts.
 import {
   generateListingPoster,
@@ -2738,6 +2739,10 @@ export async function publishListingAuthoritative(
         return { ok: false, status: 503, body: { error: "publication_repair_pending", published: true, message: "The listing is published, but its search and notification updates are still being repaired." } };
       }
       track(env, creatorUid, "listing_published", APP, { kind: l.kind, price: l.price, fanout: fo.sent, ...actorProps });
+      // [WEB-HANDLE-1] Every creator with a public listing gets a stable @handle
+      // for the web surface (pretty listing URLs, /c/<handle> pages). Idempotent +
+      // never throws; fire this AFTER publish succeeds, never on a failure path.
+      try { await ensureHandle(env, creatorUid); } catch { /* ensureHandle never throws, but stay defensive */ }
       return { ok: true, status: 200, body: { ok: true, status: "published", fanout: fo } };
     }
     // An exclusive fixed consult is a creator commitment at publication time,
@@ -2790,6 +2795,10 @@ export async function publishListingAuthoritative(
           return { ok: false, status: 503, body: { error: "publication_repair_pending", published: true, message: "The listing is published, but its search and notification updates are still being repaired." } };
         }
         track(env, creatorUid, "listing_published", APP, { kind: l.kind, price: l.price, fanout: fo.sent, ...actorProps });
+        // [WEB-HANDLE-1] Every creator with a public listing gets a stable @handle
+        // for the web surface (pretty listing URLs, /c/<handle> pages). Idempotent +
+        // never throws; fire this AFTER publish succeeds, never on a failure path.
+        try { await ensureHandle(env, creatorUid); } catch { /* ensureHandle never throws, but stay defensive */ }
         return { ok: true, status: 200, body: { ok: true, status: "published", fanout: fo } };
       }
     }
@@ -2819,6 +2828,10 @@ export async function publishListingAuthoritative(
     fee_source: feeEntitlement?.source ?? feeQuote?.source ?? null, fee_charged: feeEntitlement?.charged ?? 0,
     fee_period: feeQuote?.period ?? null, ...actorProps,
   });
+  // [WEB-HANDLE-1] Every creator with a public listing gets a stable @handle
+  // for the web surface (pretty listing URLs, /c/<handle> pages). Idempotent +
+  // never throws; fire this AFTER publish succeeds, never on a failure path.
+  try { await ensureHandle(env, creatorUid); } catch { /* ensureHandle never throws, but stay defensive */ }
   return {
     ok: true, status: 200, body: {
       ok: true, status: "published", fanout: fo,
