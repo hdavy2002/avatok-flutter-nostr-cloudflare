@@ -88,7 +88,7 @@ const gutters = showHero ? 'mx-auto max-w-[1760px] px-4 sm:px-10' : '';
     {visibleTiles.map((g, i) => (
       <a
         href={`${mpBase}?group=${encodeURIComponent(g.id)}#listings`}
-        class="block overflow-hidden rounded-[18px] border-[3px] border-ink bg-card no-underline shadow-zine transition-transform duration-zine ease-out hover:-translate-y-[3px] active:translate-y-0 active:shadow-zine-pressed"
+        class={`${i === 0 ? 'hidden sm:block' : 'block'} overflow-hidden rounded-[18px] border-[3px] border-ink bg-card no-underline shadow-zine transition-transform duration-zine ease-out hover:-translate-y-[3px] active:translate-y-0 active:shadow-zine-pressed`}
       >
         <div class="border-b-zine border-ink"><TruckBorder kind={MOTIFS[i % MOTIFS.length]} /></div>
         {/* [MARKET-BAZAAR-3] Taller and roomier than before. The tiles were

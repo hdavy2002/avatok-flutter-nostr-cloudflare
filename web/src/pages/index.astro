@@ -3,16 +3,10 @@ export const prerender = true;
 import Base from '../layouts/Base.astro';
 import SiteHeader from '../components/SiteHeader.astro';
 import SiteFooter from '../components/SiteFooter.astro';
+import { creatorIdeas, formats, topics } from '../lib/creatorIdeas';
 import '../styles/railway-home.css';
 
-const ideas = [
-  { id: 'listener', title: 'Kisi ki baat suno', body: 'Be a human listener for someone who needs company.', format: 'Private 1:1', tone: 'pink', x: 35, y: 657, href: '/marketplace?group=find_your_people&q=listener' },
-  { id: 'puja', title: 'Puja, live from home', body: 'Bring a local puja to NRIs missing home.', format: 'Live event', tone: 'yellow', x: 305, y: 657, href: '/marketplace?group=india_goes_live&q=puja' },
-  { id: 'street-food', title: 'Apni gali dikhao', body: 'Host a street-food walk through your neighbourhood.', format: 'Live event', tone: 'yellow', x: 577, y: 657, href: '/marketplace?group=india_goes_live&q=food' },
-  { id: 'chai', title: 'Chai pe charcha', body: 'Offer a friendly chat in your own language.', format: 'Private 1:1', tone: 'pink', x: 35, y: 911, href: '/marketplace?group=find_your_people&q=chat' },
-  { id: 'english', title: 'English practice adda', body: 'Run a small group conversation session.', format: 'Group session', tone: 'blue', x: 305, y: 911, href: '/marketplace?group=book_their_time&q=English' },
-  { id: 'festival', title: 'Festival ka front row', body: 'Take viewers along to your local celebrations.', format: 'Live event', tone: 'yellow', x: 577, y: 911, href: '/marketplace?group=india_goes_live&q=festival' },
-];
+const ideas = creatorIdeas.slice(0, 6);
 
 ---
 <Base title="AvaTOK — Get Paid to Listen, Chat & Live Stream From Home" description="AvaTOK is an India-focused creator marketplace where people create listings, book time with one another, and host paid live events, private sessions, and group conversations." image="/ogimage.jpg" chrome={false}>
@@ -20,7 +14,7 @@ const ideas = [
     <meta name="theme-color" content="#f7ead5" />
     <link rel="preload" as="image" href="/assets/home/avatok-creator-constellation.png" />
   </Fragment>
-  <a class="rail-skip" href="#marketplace-catalogue">Skip to earning ideas</a>
+  <a class="rail-skip" href="#ideas-catalogue">Skip to earning ideas</a>
   <SiteHeader />
   <main class="rail-home" data-design="creator-marketplace-2026-09" id="main-content">
     <section class="station-hero creator-hero" aria-labelledby="rail-title">
@@ -59,38 +53,26 @@ const ideas = [
           <p class="creator-hero__share"><strong>80%</strong><span>you keep</span></p>
         </div>
       </div>
-      <a class="rail-next" href="#marketplace-catalogue">Find your first earning idea <span aria-hidden="true">↓</span></a>
+      <a class="rail-next" href="#ideas-catalogue">Find your first earning idea <span aria-hidden="true">↓</span></a>
     </section>
 
-    <section class="rail-ideas rail-wrap" id="marketplace-catalogue" aria-labelledby="ideas-title" data-home-section="ideas">
+    <section class="rail-ideas rail-wrap" id="ideas-catalogue" aria-labelledby="ideas-title" data-home-section="ideas">
       <p class="rail-eyebrow rail-flowered"><img src="/ornament-flower.png" alt="" width="28" height="28" /> Kya offer karoge? <img src="/ornament-flower.png" alt="" width="28" height="28" /></p>
       <h2 id="ideas-title">Socha hai, isse bhi <span>kamaa sakte ho?</span></h2>
       <p class="rail-section-copy">A few ideas to get your first listing started.</p>
       <div class="rail-idea-grid">
         {ideas.map((idea) => (
-          <a class="rail-idea" id={idea.id === 'listener' ? 'live-friends' : undefined} href={idea.href} data-home-idea={idea.id} aria-label={idea.title + ' — explore ' + idea.format.toLowerCase() + ' listings'}>
-            <div class="rail-idea-art" aria-hidden="true">
-              <img src="/assets/railway/approved-ideas.jpg" alt="" width="865" height="1819" loading="lazy" decoding="async" style={'left:' + (-idea.x / 254 * 100) + '%;top:' + (-idea.y / 140 * 100) + '%;'} />
-            </div>
-            <div class="rail-idea-copy">
-              <h3>{idea.title}</h3><p>{idea.body}</p>
-              <div class="rail-card-bottom"><span class:list={['rail-badge', 'rail-badge--' + idea.tone]}>{idea.format}</span><span class="rail-card-arrow" aria-hidden="true">↗</span></div>
-            </div>
-          </a>
+          <article class="idea-card rail-article-card">
+            <a class="idea-card-link" href={idea.href} aria-labelledby={`${idea.id}-title`} data-home-idea={idea.id}>
+              <div class="idea-picture"><img src={idea.cardImage} srcset={`${idea.cardImage} 768w, ${idea.image} 1536w`} sizes="(max-width:699px) 90vw, (max-width:1100px) 44vw, 29vw" alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
+              <div class="idea-card-copy"><div class="idea-chips"><span class:list={['idea-format', idea.format]}>{formats[idea.format]}</span><span>{topics[idea.topic].label}</span>{idea.setting === 'home' && <span>From home</span>}</div><h3 id={`${idea.id}-title`}>{idea.title}</h3><p>{idea.description}</p><span class="idea-read-guide">Read the guide <span aria-hidden="true">↗</span></span></div>
+            </a>
+          </article>
         ))}
       </div>
-      {/* [UI-MOTION-1 2026-09-10] "learn-more-hover" (transitions.dev, `.t-*` in
-          styles/motion.css) — hover-only: the label text alone still says
-          everything, the chevron is decoration. */}
-      <a class="rail-explore t-learn" href="/marketplace" data-home-cta="explore-categories">Explore all categories
-        <span class="t-learn-chevron" aria-hidden="true">
-          <svg width="20" height="16" viewBox="0 0 20 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <path d="M2 8H10" />
-            <path class="t-learn-arm t-learn-arm-top" d="M10 8L18 1" />
-            <path class="t-learn-arm t-learn-arm-bot" d="M10 8L18 15" />
-          </svg>
-        </span>
-      </a>
+      {/* [WEB-HOME-EXPLORE-BTN 2026-09-10] A real button, not a text link —
+          the only way on from the six sample ideas is the full /ideas page. */}
+      <a class="rail-button rail-button--ink rail-explore-button" href="/ideas" data-home-cta="explore-ideas">Explore more ideas <span aria-hidden="true">↗</span></a>
       <p class="rail-note">Listening sessions: adults 18+ · Companionship, not therapy or emergency support.</p>
     </section>
 
