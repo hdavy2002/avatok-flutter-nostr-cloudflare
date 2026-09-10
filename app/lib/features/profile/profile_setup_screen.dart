@@ -16,6 +16,7 @@ import '../../core/moderation_service.dart';
 import '../../core/profile_store.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/motion/motion.dart';
 import '../../core/ui/breakpoints.dart';
 import '../../identity/identity.dart';
 import '../avatok/ava_number.dart';
@@ -480,8 +481,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       await _uploadAvatar(cropped);
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Couldn't open that image — try another.")));
+        showAdToast(context, message: "Couldn't open that image — try another.");
       }
     }
   }
@@ -492,8 +492,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     if (!mounted) return;
     if (url == null) {
       setState(() => _photoBusy = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Upload failed — please try again.')));
+      showAdToast(context, message: 'Upload failed — please try again.');
       return;
     }
     await AvatarCache.putBytes(url, 192, bytes);
@@ -584,8 +583,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     if (_bioAiBusy) return;
     final seed = _bio.text.trim();
     if (seed.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Type a line or two about yourself first, then tap the sparkle.')));
+      showAdToast(context,
+          message: 'Type a line or two about yourself first, then tap the sparkle.');
       return;
     }
     setState(() => _bioAiBusy = true);
@@ -611,14 +610,13 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
           _bioAiBusy = false;
           if (r.statusCode == 422 && reason.isNotEmpty) { _bioModError = reason; _bioOk = false; }
         });
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-            reason.isNotEmpty ? reason : "Couldn't write a bio just now — try rephrasing your notes.")));
+        showAdToast(context,
+            message: reason.isNotEmpty ? reason : "Couldn't write a bio just now — try rephrasing your notes.");
       }
     } catch (_) {
       if (!mounted) return;
       setState(() => _bioAiBusy = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Network issue — try the sparkle again in a moment.')));
+      showAdToast(context, message: 'Network issue — try the sparkle again in a moment.');
     }
   }
 
@@ -719,8 +717,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     if (id == null) {
       if (mounted) {
         setState(() { _saving = false; _holdMsg = null; });
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Still getting your account ready — try once more.')));
+        showAdToast(context, message: 'Still getting your account ready — try once more.');
       }
       return;
     }
@@ -1114,7 +1111,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             Row(key: _bioKey, children: [
               Expanded(child: Text('About you', style: ADText.sectionLabel())),
               // Sparkle: type 1–2 lines, tap to have Ava draft a short bio.
-              GestureDetector(
+              AdPress(
                 onTap: _bioAiBusy ? null : _writeBioWithAi,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
@@ -1125,12 +1122,14 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                   ),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     if (_bioAiBusy)
-                      const SizedBox(width: 14, height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      // [UI-MOTION-LIB] Only rendered while _bioAiBusy is true — the
+                      // AI bio call is genuine in-flight work, and this dot loader
+                      // never exists outside that window.
+                      const AdDotLoader(active: true, size: 14, color: Colors.white)
                     else
                       PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), size: 15, color: Colors.white),
                     const SizedBox(width: Msg.s1),
-                    Text(_bioAiBusy ? 'Writing…' : 'Write my bio',
+                    AdSwitchText(_bioAiBusy ? 'Writing…' : 'Write my bio',
                         style: const TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600, fontSize: 12, color: Colors.white)),
                   ]),
                 ),

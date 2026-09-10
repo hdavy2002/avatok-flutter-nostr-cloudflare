@@ -7,6 +7,7 @@ import '../../core/avatar_cache.dart';
 import '../../core/listings_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/motion/motion.dart';
 
 /// Country code → flag emoji ("IN" → 🇮🇳).
 String flagEmoji(String? cc) {
@@ -108,7 +109,7 @@ class ListingCardTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final live = card.status == 'live';
-    return GestureDetector(
+    return AdPress(
       onTap: onTap,
       child: Container(
         clipBehavior: Clip.antiAlias,

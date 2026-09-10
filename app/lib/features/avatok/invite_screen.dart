@@ -12,6 +12,7 @@ import '../../core/device_contacts.dart';
 import '../../core/profile_store.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/motion/motion.dart';
 
 /// AvaInvite — "invite your phone contacts to AvaTOK".
 ///
@@ -135,7 +136,7 @@ class _InviteScreenState extends State<InviteScreen> {
   }
 
   void _snack(String msg) {
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    if (mounted) showAdToast(context, message: msg);
   }
 
   Future<void> _whatsapp(ContactRef c) async {

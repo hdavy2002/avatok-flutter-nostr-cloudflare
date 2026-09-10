@@ -21,6 +21,7 @@ import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/illustrations.dart'; // [RAJ-SEAMS-1]
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/rajasthani_motifs.dart';
+import '../../core/ui/motion/motion.dart';
 import 'package:flutter_svg/flutter_svg.dart'; // [RAJ-SEAMS-1]
 import '../../shell/ava_sidebar.dart' show AvaSidebarForShell; // [SIDEBAR-UNIFY-1]
 import '../../shell/shell_v2.dart' show ShellScope;
@@ -787,7 +788,7 @@ class _WalletScreenState extends State<WalletScreen> {
   }
 
   void _snack(String m) {
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+    if (mounted) showAdToast(context, message: m);
   }
 
   // ── filters ─────────────────────────────────────────────────────────────
@@ -1332,7 +1333,7 @@ class _WalletScreenState extends State<WalletScreen> {
             child: FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
-              child: Text(_tokens(_balance), style: AWText.balanceHuge()),
+              child: AdPopNumber(_tokens(_balance), style: AWText.balanceHuge()),
             ),
           ),
           const SizedBox(width: Msg.s2),

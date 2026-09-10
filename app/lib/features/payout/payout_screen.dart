@@ -7,6 +7,7 @@ import '../../core/money_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/motion/motion.dart';
 import '../identity/identity_api.dart';
 import '../identity/identity_gate.dart';
 import 'payout_api.dart';
@@ -59,7 +60,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
 
   void _snack(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    showAdToast(context, message: msg);
   }
 
   // ── add bank (KYC gate fires first) ───────────────────────────────────────

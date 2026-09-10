@@ -21,6 +21,7 @@ import '../../core/profile_store.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/breakpoints.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/motion/motion.dart';
 import '../../core/ui/rajasthani_motifs.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
@@ -212,8 +213,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     if (!mounted) return;
     setState(() => _savingProfile = false);
     if (r.ok) { _next(); return; }
-    ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not save your profile — check your connection and try again')));
+    showAdToast(context,
+        message: 'Could not save your profile — check your connection and try again');
   }
 
   void _next() {
@@ -544,8 +545,10 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   Widget? _handleTrailing() {
     if (_checkingHandle) {
-      return const SizedBox(width: 18, height: 18,
-          child: CircularProgressIndicator(strokeWidth: 2.4, color: AD.iconSearch));
+      // [UI-MOTION-LIB] active is the same _checkingHandle flag that gates
+      // this widget's own existence, so it can never keep animating after
+      // the handle-availability check completes.
+      return const AdDotLoader(active: true, size: 18, color: AD.iconSearch);
     }
     if (_handleAvail == true) {
       return PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),

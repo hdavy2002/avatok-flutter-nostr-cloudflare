@@ -514,7 +514,7 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             busy
                 ? const SizedBox(width: 18, height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: AD.textPrimary))
+                    child: AdDotLoader(active: true, size: 18, color: AD.textPrimary))
                 : PhosphorIcon(PhosphorIcons.magicWand(PhosphorIconsStyle.bold), size: 20, color: AD.textPrimary),
             const SizedBox(width: 8),
             Text('Help me write better', style: ADText.statCaption(c: AD.textPrimary)),
@@ -627,7 +627,7 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
                   child: busy
                       ? const SizedBox(
                           width: 16, height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: AD.textPrimary),
+                          child: AdDotLoader(active: true, size: 16, color: AD.textPrimary),
                         )
                       : PhosphorIcon(PhosphorIcons.translate(PhosphorIconsStyle.bold),
                           size: 23, color: AD.textPrimary),

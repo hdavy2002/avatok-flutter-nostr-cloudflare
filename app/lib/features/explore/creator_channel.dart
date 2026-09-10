@@ -14,6 +14,7 @@ import '../avatok/data.dart';
 import 'listing_detail.dart';
 import 'widgets.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/motion/motion.dart';
 
 /// Creator channel page (Phase 6): profile card, public details, listings grid,
 /// all reviews, Follow + Message buttons, A7 polish (banner, link chips, pinned).
@@ -93,7 +94,7 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
         onTap: () async {
           Navigator.pop(s);
           final ok = await ListingsApi.report('creator', c.uid, 'inappropriate');
-          if (mounted && ok) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Report submitted — thank you')));
+          if (mounted && ok) showAdToast(context, message: 'Report submitted — thank you');
         },
       ),
       ListTile(
@@ -102,7 +103,7 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
         onTap: () async {
           Navigator.pop(s);
           final ok = await ListingsApi.blockCreator(c.uid);
-          if (mounted && ok) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Creator blocked'))); Navigator.pop(context); }
+          if (mounted && ok) { showAdToast(context, message: 'Creator blocked'); Navigator.pop(context); }
         },
       ),
     ])));

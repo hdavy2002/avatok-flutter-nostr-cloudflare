@@ -27,6 +27,7 @@ import '../ava_ai/ava_ai_setup.dart';
 // else in app/lib referenced that page.
 import 'settings_registry.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/motion/motion.dart';
 import '../../shell/v2/shell_chrome.dart';
 import '../../shell/ava_sidebar.dart' show AvaSidebarForShell; // [SIDEBAR-MENU-ALL-1]
 import '../../shell/shell_v2.dart' show ShellScope; // [SIDEBAR-MENU-ALL-1]
@@ -119,8 +120,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               await _aiStore.clear();
               await _refreshAi();
               if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Ava AI disconnected')));
+                await showAdToast(context, message: 'Ava AI disconnected');
               }
             },
             child: Text('Disconnect', style: ADText.rowName(c: AD.danger)),
@@ -161,8 +161,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _backupToDrive() async {
     if (widget.identity == null || _backingUp) return;
     setState(() => _backingUp = true);
-    ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Backing up to your Google Drive…')));
+    showAdToast(context, message: 'Backing up to your Google Drive…');
     try {
       final res = await ApiAuth.postJson(kBackupUrl, const {}, timeout: const Duration(seconds: 30));
       final j = jsonDecode(res.body) as Map<String, dynamic>;
@@ -172,12 +171,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final name = 'avatok-backup-${DateTime.now().toIso8601String().split('T').first}.json';
       final ok = await DriveService.I.upload('Backups', name, 'application/json', dl.bodyBytes);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ok
+      showAdToast(context, message: ok
           ? 'Backed up to your AvaTOK Drive (Backups) ✓'
-          : 'Export done, but Drive isn\'t connected — connect it in AvaStorage.')));
+          : 'Export done, but Drive isn\'t connected — connect it in AvaStorage.');
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Backup to Drive failed — check your connection.')));
+      if (mounted) showAdToast(context, message: 'Backup to Drive failed — check your connection.');
     } finally {
       if (mounted) setState(() => _backingUp = false);
     }
@@ -187,8 +185,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final id = widget.identity;
     if (id == null || _backingUp) return;
     setState(() => _backingUp = true);
-    ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Exporting your account…')));
+    showAdToast(context, message: 'Exporting your account…');
     try {
       // pubkey derived server-side from the NIP-98 signature.
       final res = await ApiAuth.postJson(kBackupUrl, const {},
@@ -198,8 +195,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       setState(() => _backingUp = false);
       if (url == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Backup failed — please try again')));
+        showAdToast(context, message: 'Backup failed — please try again');
         return;
       }
       showDialog(
@@ -221,8 +217,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onPressed: () {
                 Clipboard.setData(ClipboardData(text: url));
                 Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Download link copied')));
+                showAdToast(context, message: 'Download link copied');
               },
               child: Text('Copy link', style: ADText.preview(c: AD.iconSearch)),
             ),
@@ -234,8 +229,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _backingUp = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Backup failed — check your connection')));
+      showAdToast(context, message: 'Backup failed — check your connection');
     }
   }
 
@@ -278,8 +272,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               if (ok) {
                 widget.onSignOut();
               } else {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Could not schedule deletion — please try again.')));
+                showAdToast(context, message: 'Could not schedule deletion — please try again.');
               }
             },
           ),
@@ -422,7 +415,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               color: AD.iconVideo, size: 34),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(_aiConnected ? 'Connected to Gemini' : 'Connect Google AI Studio',
+            AdSwitchText(_aiConnected ? 'Connected to Gemini' : 'Connect Google AI Studio',
                 style: ADText.rowName()),
             const SizedBox(height: 2),
             Text(_aiConnected

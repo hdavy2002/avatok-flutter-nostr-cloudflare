@@ -21,6 +21,7 @@ import '../../core/marketplace_api.dart';
 import '../../core/listings_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/motion/motion.dart';
 import '../identity/identity_screen.dart';
 import '../identity/public_action_gate.dart';
 
@@ -796,8 +797,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
         'compose_ms': DateTime.now().difference(_openedAt).inMilliseconds,
       });
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Submitted for review. You can publish after approval.')));
+      showAdToast(context, message: 'Submitted for review. You can publish after approval.');
       Navigator.of(context).maybePop(id);
       return;
     }

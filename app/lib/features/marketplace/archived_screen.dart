@@ -6,6 +6,7 @@ import '../../core/cached_image.dart';
 import '../../core/listings_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/motion/motion.dart';
 
 /// AvaMarketplace — Archived. Shows the owner's expired + cancelled listings with
 /// a Restore action (→ draft). Restored drafts appear in the "Drafts" section
@@ -110,7 +111,7 @@ class _Row extends StatelessWidget {
     if (res['ok'] == true) {
       onChanged();
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not restore.')));
+      showAdToast(context, message: 'Could not restore.');
     }
   }
 
@@ -136,7 +137,7 @@ class _Row extends StatelessWidget {
     if (done) {
       onChanged();
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not delete.')));
+      showAdToast(context, message: 'Could not delete.');
     }
   }
 
@@ -145,12 +146,10 @@ class _Row extends StatelessWidget {
     final res = await ListingsApi.publish(card.id);
     if (!context.mounted) return;
     if (res['ok'] == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Re-published with a fresh expiry.')));
+      showAdToast(context, message: 'Re-published with a fresh expiry.');
       onChanged();
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(res['error']?.toString() ?? res['reason']?.toString() ?? 'Could not publish.')));
+      showAdToast(context, message: res['error']?.toString() ?? res['reason']?.toString() ?? 'Could not publish.');
     }
   }
 
@@ -194,8 +193,7 @@ class _Row extends StatelessWidget {
       'price_amount': int.tryParse(price.text.trim()) ?? card.price,
     });
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(ok ? 'Saved.' : 'Could not save.')));
+    showAdToast(context, message: ok ? 'Saved.' : 'Could not save.');
     if (ok) onChanged();
   }
 

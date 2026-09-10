@@ -5,6 +5,7 @@ import '../../core/listings_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../explore/widgets.dart';
+import '../../core/ui/motion/motion.dart';
 
 /// Marketplace intent theming — the SHARED pale palette (M-D6, owner decision
 /// 2026-07-18) consumed by the browse card AND all five detail templates.
@@ -351,7 +352,7 @@ class MarketplaceCard extends StatelessWidget {
     final label = priceLabel(card.price, card.currency, priceSemantics);
     final free = card.price <= 0;
 
-    return GestureDetector(
+    return AdPress(
       onTap: onTap,
       child: Container(
         clipBehavior: Clip.antiAlias,

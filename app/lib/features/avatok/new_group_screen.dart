@@ -11,6 +11,7 @@ import '../../core/group_store.dart';
 import '../../core/profile_store.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/motion/motion.dart';
 import '../../sync/group_api.dart';
 import '../profile/avatar_crop_screen.dart';
 import 'chat_thread.dart';
@@ -145,8 +146,7 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
     if (!mounted) return;
     if (url == null || url.isEmpty) {
       setState(() { _creating = false; _photoUploadFailed = true; });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Group photo failed to upload — try picking it again.')));
+      showAdToast(context, message: 'Group photo failed to upload — try picking it again.');
       return;
     }
     _photoUrl = url;
@@ -163,8 +163,7 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
     if (g == null) {
       if (mounted) {
         setState(() => _creating = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not create the group — try again')));
+        showAdToast(context, message: 'Could not create the group — try again');
       }
       return;
     }

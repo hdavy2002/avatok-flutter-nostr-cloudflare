@@ -6,6 +6,7 @@ import '../../core/listings_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/motion/motion.dart';
 import '../marketplace/native_listing/native_listing_wizard_screen.dart';
 import '../listings/my_listings_screen.dart';
 import 'explore_search.dart';
@@ -67,8 +68,7 @@ class _ExploreHomeState extends State<ExploreHome> {
     final ok = await Navigator.push<bool>(context,
         MaterialPageRoute(builder: (_) => NativeListingBookingFlow(listing: l)));
     if (ok == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('You\'re in! The stream opens here when AvaLive ships (Phase 7).')));
+      showAdToast(context, message: 'You\'re in! The stream opens here when AvaLive ships (Phase 7).');
     }
   }
 
@@ -175,7 +175,7 @@ class _ExploreHomeState extends State<ExploreHome> {
             separatorBuilder: (_, __) => const SizedBox(width: 12),
             itemBuilder: (_, i) {
               final l = _live[i];
-              return GestureDetector(
+              return AdPress(
                 onTap: () => _open(l.id),
                 child: Container(
                   width: 230,

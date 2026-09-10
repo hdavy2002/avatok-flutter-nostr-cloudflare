@@ -7,6 +7,7 @@ import '../../core/listings_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import 'native_listing/native_listing_wizard_screen.dart';
+import '../../core/ui/motion/motion.dart';
 
 /// Friendly status label (the raw 'published' shows as 'live' to owners).
 ///
@@ -87,7 +88,16 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
           future: _future,
           builder: (context, snap) {
             if (snap.connectionState != ConnectionState.done) {
-              return const Center(child: CircularProgressIndicator());
+              return ListView.separated(
+                padding: const EdgeInsets.all(Msg.s3),
+                itemCount: 5,
+                separatorBuilder: (_, __) => const SizedBox(height: Msg.s2),
+                itemBuilder: (_, __) => const AdSkeleton(
+                  isLoading: true,
+                  skeleton: _MyListingRowSkeleton(),
+                  child: SizedBox.shrink(),
+                ),
+              );
             }
             // Cancelled (deleted) and expired listings live in Archived — keep
             // them OUT of My Listings so they don't appear duplicated (pic 7/9).
@@ -150,7 +160,7 @@ class _MyListingRow extends StatelessWidget {
     if (res['ok'] == true) {
       onChanged();
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not update listing.')));
+      showAdToast(context, message: 'Could not update listing.');
     }
   }
 
@@ -215,7 +225,7 @@ class _MyListingRow extends StatelessWidget {
                     color: _statusChipColor(card.status),
                     borderRadius: Msg.brPill,
                   ),
-                  child: Text(
+                  child: AdSwitchText(
                     _statusLabel(card.status),
                     style: ADText.preview(
                       c: card.status == 'rejected' ? AD.destructiveInk : AD.textPrimary,
@@ -244,6 +254,41 @@ class _MyListingRow extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Grey-block placeholder matching [_MyListingRow]'s shape (cover thumb + two
+/// text lines) — shown by [AdSkeleton] while the owner's listings load.
+class _MyListingRowSkeleton extends StatelessWidget {
+  const _MyListingRowSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return AdCard(
+      padding: const EdgeInsets.all(Msg.s3),
+      child: Row(children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: AD.mediaPlaceholderBg,
+            borderRadius: BorderRadius.circular(Msg.rSm),
+          ),
+        ),
+        const SizedBox(width: Msg.s3),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(width: 140, height: 14, color: AD.mediaPlaceholderBg),
+              const SizedBox(height: Msg.s2),
+              Container(width: 90, height: 12, color: AD.mediaPlaceholderBg),
+            ],
+          ),
+        ),
+      ]),
     );
   }
 }

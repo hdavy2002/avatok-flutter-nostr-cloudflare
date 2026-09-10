@@ -71,6 +71,7 @@ import '../library/library_picker.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/breakpoints.dart'; // [RESP-SMALL-1] chromeScale
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/motion/motion.dart';
 import '../../core/ui/rajasthani_motifs.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/bubble_theme.dart'; // [AVAGRP-BUBBLE-1] per-sender pale bubble theming contract
@@ -1295,7 +1296,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                       // pale band. On indigo none of them clear 2:1. Cream at
                       // full / 75% carries the same "live vs idle" distinction
                       // without leaving the band's foreground rule.
-                      Text(
+                      AdSwitchText(
                           (_peerTyping
                               ? (c.group ? '${_typingWho ?? "Someone"} is typing…' : 'Typing…')
                               : (c.group ? '${c.members} members · tap to manage'

@@ -7,6 +7,7 @@ import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/motion/motion.dart';
 import '../explore/listing_detail.dart';
 import '../explore/widgets.dart';
 import '../calendar/avacalendar_screen.dart';
@@ -89,8 +90,7 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
         msg = await ListingsApi.cancel(l.id) ? 'Cancelled' : 'Failed';
     }
     if (!mounted) return;
-    if (msg != null)
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    if (msg != null) showAdToast(context, message: msg);
     _load();
   }
 
@@ -101,8 +101,7 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
       l.kind == 'consult' && RemoteConfig.commercialConsultListingsEnabled;
 
   void _notice(String message) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    showAdToast(context, message: message);
   }
 
   Future<void> _salesSummary(ListingCard l) async {

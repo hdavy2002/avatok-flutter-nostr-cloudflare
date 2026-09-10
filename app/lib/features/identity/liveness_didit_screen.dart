@@ -33,6 +33,7 @@ import '../../core/config.dart';
 import '../../core/profile_store.dart';
 import '../../core/ui/messenger_theme.dart';
 import 'liveness_v2/live_theme.dart';
+import '../../core/ui/motion/motion.dart';
 
 class DiditLivenessScreen extends StatefulWidget {
   const DiditLivenessScreen({super.key, this.listingContext = false, this.requester = 'onboarding'});
@@ -272,6 +273,7 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
         return _resultView(
           icon: PhosphorIcons.sealCheck(PhosphorIconsStyle.bold),
           color: LiveTheme.lime,
+          useSuccessCheck: true,
           lead: "You're ", mark: 'verified!',
           sub: 'All set — you can carry on in the app.',
           button: LiveTheme.limeButton(
@@ -420,6 +422,10 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
     required IconData icon, required Color color,
     required String lead, required String mark, required String sub,
     required Widget button,
+    // [UI-MOTION-LIB] Only the PASS state gets the drawn checkmark — this is
+    // the ONE "success" outcome _resultView renders; fail/unavailable keep
+    // their static PhosphorIcon glyph, unchanged.
+    bool useSuccessCheck = false,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -434,7 +440,13 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
               // [UI-MSG-ELEV-1] Hard offset "sticker" shadow removed — flat.
               boxShadow: Msg.none,
             ),
-            child: PhosphorIcon(icon, size: 48, color: LiveTheme.ink),
+            // [UI-MOTION-LIB] Was a static PhosphorIcon.sealCheck pop-in with no
+            // motion at all on PASS — replaced with the drawn AdSuccessCheck tick
+            // (fade + settle-rotate + stroke-draw). fail/unavailable keep the
+            // plain glyph; a "success" motion on a failure reads as wrong.
+            child: useSuccessCheck
+                ? const AdSuccessCheck(size: 48, color: LiveTheme.ink)
+                : PhosphorIcon(icon, size: 48, color: LiveTheme.ink),
           ),
         ),
         const SizedBox(height: Msg.s5),

@@ -15,6 +15,7 @@ import '../../core/group_store.dart';
 import '../../core/profile_store.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/motion/motion.dart';
 import '../../identity/identity.dart';
 import '../../sync/group_api.dart';
 import '../profile/avatar_crop_screen.dart';
@@ -210,7 +211,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   }
 
   void _toast(String m) {
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+    if (mounted) showAdToast(context, message: m);
   }
 
   /// [AVA-GRPINFO-PROFILES] Open the full profile for a tapped MEMBERS row.
@@ -719,7 +720,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
               subtitle: Text('Share so others can ask to join', style: ADText.preview()),
               onTap: () {
                 Clipboard.setData(ClipboardData(text: 'https://avatok.ai/g/${_group.id}'));
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invite link copied')));
+                showAdToast(context, message: 'Invite link copied');
               },
             ),
             if (_amAdmin)

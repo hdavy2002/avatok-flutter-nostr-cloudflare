@@ -5,6 +5,7 @@ import '../../core/analytics.dart';
 import '../../core/listings_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/motion/motion.dart';
 import '../../core/ui/zine_widgets.dart';
 
 /// Edits the creator's policy for future checkouts. Existing orders must keep
@@ -101,8 +102,7 @@ class _CommercialServicePolicyScreenState
       'listing_id': widget.listingId,
       'kind': listing.kind,
     });
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Policy updated for future bookings.')));
+    showAdToast(context, message: 'Policy updated for future bookings.');
     Navigator.pop(context, true);
   }
 

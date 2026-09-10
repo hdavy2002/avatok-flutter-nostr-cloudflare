@@ -6,6 +6,7 @@ import '../../core/money_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/motion/motion.dart';
 
 /// Money ops console (Phase 2, audit A2) — admin-only (`/admin/money`).
 /// User lookup → live balance/holds/KYC/strikes + ledger table → refund /
@@ -113,7 +114,7 @@ class _AdminMoneyScreenState extends State<AdminMoneyScreen> {
     _lookup();
   }
 
-  void _snack(String m) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m))); }
+  void _snack(String m) { if (mounted) showAdToast(context, message: m); }
 
   // 1 Token = ₹1 (canonical, site-wide: matches wallet/top-up + UPI payout).
   String _inr(num c) => '\u20b9${c.abs().round()}';

@@ -9,6 +9,7 @@ import '../../core/commercial_checkout_api.dart';
 import '../../core/listings_api.dart';
 import '../../core/money_api.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/motion/motion.dart';
 import '../../features/calendar/calendar_data.dart';
 import '../../identity/identity.dart';
 import '../wallet/wallet_screen.dart';
@@ -532,8 +533,7 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
 
   Widget _done() =>
       _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
-            color: AD.online, size: 52),
+        const AdSuccessCheck(size: 52, color: AD.online),
         const SizedBox(height: 10),
         const Text('You’re booked',
             style: TextStyle(fontFamily: ADText.display, fontSize: 24, fontWeight: FontWeight.w700)),

@@ -9,6 +9,7 @@ import '../../core/group_store.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/illustrations.dart'; // [RAJ-SEAMS-1]
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/motion/motion.dart';
 // [RAJ-SINGLEWAVE-1] `core/ui/rajasthani_motifs.dart` import removed with the
 // header band — this file no longer draws a seam of its own. The one above it,
 // in chat_list, is now the only wave on the Groups tab.
@@ -97,12 +98,10 @@ class _GroupsTabState extends State<GroupsTab> {
   Future<void> _respondInvite(GroupInvite inv, bool accept) async {
     final ok = await GroupInvitesApi.respond(conv: inv.conv, accept: accept);
     if (!ok) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Couldn't respond — try again.")));
+      if (mounted) showAdToast(context, message: "Couldn't respond — try again.");
       return;
     }
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(accept ? 'Joined ${inv.groupName}' : 'Invite declined')));
+    if (mounted) showAdToast(context, message: accept ? 'Joined ${inv.groupName}' : 'Invite declined');
     await _load();
     if (accept && mounted) {
       final match = _groups.where((g) => g.id == inv.conv).toList();

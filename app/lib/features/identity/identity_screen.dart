@@ -12,6 +12,7 @@ import 'identity_api.dart';
 import 'identity_gate.dart';       // Stripe KYC (payouts) — a DIFFERENT gate
 import 'ladder_api.dart';
 import 'public_action_gate.dart';  // [AVA-IDGATE-1] liveness gate + BIPA consent
+import '../../core/ui/motion/motion.dart';
 
 /// AvaIdentity — the ONE-STOP identity hub (replaces the Profile sidebar
 /// entry; PROPOSAL-PROGRESSIVE-IDENTITY.md §7b). Shows the Trust Ladder with
@@ -173,10 +174,12 @@ class _IdentityScreenState extends State<IdentityScreen> {
     if (sure != true || !mounted) return;
     final r = await ApiAuth.postJson(kAccountDeleteUrl, const {});
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(r.statusCode == 200
+    // [UI-MOTION-LIB] Plain informational notice, no action button —
+    // swapped the SnackBar for the toast to match the rest of the motion pass.
+    await showAdToast(context,
+        message: r.statusCode == 200
             ? 'Deletion scheduled — everything is wiped in 30 days.'
-            : 'Could not schedule deletion — try again.')));
+            : 'Could not schedule deletion — try again.');
     Analytics.capture('account_deletion_from_identity_hub', {'ok': r.statusCode == 200});
   }
 

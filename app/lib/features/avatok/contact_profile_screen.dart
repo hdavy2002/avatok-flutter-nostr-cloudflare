@@ -13,6 +13,7 @@ import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/illustrations.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/motion/motion.dart';
 import '../../core/ui/rajasthani_motifs.dart';
 import '../../identity/identity.dart';
 import '../profile/qr_share.dart';
@@ -207,7 +208,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
                 icon: PhosphorIcon(PhosphorIcons.copy(PhosphorIconsStyle.bold), size: 18, color: AD.textPrimary),
                 onPressed: () {
                   Clipboard.setData(ClipboardData(text: _number));
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied')));
+                  showAdToast(context, message: 'Copied');
                 }),
           ]))
         else
@@ -224,7 +225,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
                 icon: PhosphorIcon(PhosphorIcons.copy(PhosphorIconsStyle.bold), size: 18, color: AD.textPrimary),
                 onPressed: () {
                   Clipboard.setData(ClipboardData(text: _email));
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied')));
+                  showAdToast(context, message: 'Copied');
                 }),
           ])),
         ],
@@ -249,8 +250,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
                 try {
                   await QrShare.share(link: _addLink, name: _displayName, number: _number);
                 } catch (_) {
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Couldn't prepare the QR image — try again.")));
+                  if (mounted) showAdToast(context, message: "Couldn't prepare the QR image — try again.");
                 }
               }),
           ])),
@@ -372,8 +372,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
       if (next != null && next.enabled) _avaDm = next;
     });
     if (next == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not change Ava for this chat — please try again.')));
+      showAdToast(context, message: 'Could not change Ava for this chat — please try again.');
     }
     // Server already emits dm_ava_enabled/disabled with both emails; this is
     // the client-side interaction marker only.
@@ -440,7 +439,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
 
   /// Inline dark v2 primary (full-width) button — replaces ZineButton.
   Widget _primaryButton({required String label, required IconData icon, required VoidCallback onPressed}) =>
-      GestureDetector(
+      AdPress(
         onTap: onPressed,
         child: Container(
           width: double.infinity,

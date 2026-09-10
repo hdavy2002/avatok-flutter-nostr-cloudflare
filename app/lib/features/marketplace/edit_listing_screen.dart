@@ -12,6 +12,7 @@ import '../../core/listings_api.dart';
 import '../../core/marketplace_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/motion/motion.dart';
 import 'sell_listing_flow.dart'
     show kMarketCategories, kMarketCurrencies, kCountries, kCountryCodes, flagFor;
 
@@ -141,7 +142,7 @@ class _EditListingScreenState extends State<EditListingScreen> {
     if (!mounted) return;
     Analytics.capture('listing_edited', {'listing_id': widget.listingId, 'expiry_changed': _expiryDays != null});
     if (ok) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Listing updated.')));
+      showAdToast(context, message: 'Listing updated.');
       Navigator.of(context).pop(true);
     } else {
       setState(() { _busy = false; _error = 'Could not save your changes. Try again.'; });

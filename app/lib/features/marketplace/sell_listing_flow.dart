@@ -12,6 +12,7 @@ import '../../core/listings_api.dart';
 import '../../core/marketplace_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/motion/motion.dart';
 import '../identity/listing_liveness_gate.dart';
 import '../identity/public_action_gate.dart' show isIdentityRequired;
 import '../wallet/wallet_screen.dart';
@@ -364,8 +365,7 @@ class _SellListingFlowState extends State<SellListingFlow> {
     if (res['ok'] == true) {
       Analytics.capture('listing_published', {'type': _type, 'submit_ms': sw.elapsedMilliseconds});
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_successFeeText(res))));
+        showAdToast(context, message: _successFeeText(res));
         Navigator.of(context).maybePop();
       }
     } else if (isIdentityRequired(_statusOf(res), jsonEncode(res))) {

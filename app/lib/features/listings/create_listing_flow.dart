@@ -13,6 +13,7 @@ import '../../core/listings_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/motion/motion.dart';
 import '../avavoice/studio/agent_form_flow.dart';
 import '../avavision/studio/agent_form_flow.dart' as avavision;
 import '../explore/listing_detail.dart';
@@ -323,10 +324,9 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
         if (!mounted) return;
       }
       Navigator.pop(context, true);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(widget.initialKind == null
+      showAdToast(context, message: widget.initialKind == null
               ? 'Published! Your listing is live in AvaExplore.'
-              : 'Published! Your service is now visible in Marketplace.')));
+              : 'Published! Your service is now visible in Marketplace.');
       return;
     }
     setState(() {

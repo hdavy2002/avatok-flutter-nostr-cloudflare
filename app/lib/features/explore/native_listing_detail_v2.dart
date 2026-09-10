@@ -9,6 +9,7 @@ import '../../core/avatar.dart';
 import '../../core/listings_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/motion/motion.dart';
 import 'creator_channel.dart';
 import 'native_listing_booking_flow.dart';
 
@@ -215,9 +216,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                       OutlinedButton(
                           onPressed: () {
                             Clipboard.setData(ClipboardData(text: link));
-                            ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                    content: Text('Listing link copied')));
+                            showAdToast(context, message: 'Listing link copied');
                           },
                           child: const Text('COPY LINK')),
                       OutlinedButton(

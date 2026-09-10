@@ -14,6 +14,7 @@ import '../../core/ui/zine_widgets.dart';
 import '../explore/listing_detail.dart';
 import 'commercial_service_cards.dart';
 import 'intent_theme.dart';
+import '../../core/ui/motion/motion.dart';
 
 /// [UI-MKT-1] Card-impression de-dupe — fire 'mkt_card_impression' once per
 /// listing_id per app session (a simple in-memory set is enough; the point is to
@@ -261,10 +262,22 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
             future: _future,
             builder: (context, snap) {
               if (snap.connectionState != ConnectionState.done) {
-                return const SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(vertical: 48),
-                    child: Center(child: CircularProgressIndicator()),
+                return SliverPadding(
+                  padding: const EdgeInsets.all(Msg.s3),
+                  sliver: SliverGrid(
+                    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: 240,
+                        mainAxisSpacing: 12,
+                        crossAxisSpacing: 12,
+                        childAspectRatio: 0.66),
+                    delegate: SliverChildBuilderDelegate(
+                      (_, __) => const AdSkeleton(
+                        isLoading: true,
+                        skeleton: _MarketplaceCardSkeleton(),
+                        child: SizedBox.shrink(),
+                      ),
+                      childCount: 6,
+                    ),
                   ),
                 );
               }
@@ -730,9 +743,22 @@ class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
           future: _all,
           builder: (context, snap) {
             if (snap.connectionState != ConnectionState.done) {
-              return const SizedBox(
-                height: 120,
-                child: Center(child: CircularProgressIndicator()),
+              return SizedBox(
+                height: metrics.height,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: Msg.s4),
+                  itemCount: 3,
+                  separatorBuilder: (_, __) => const SizedBox(width: Msg.s3),
+                  itemBuilder: (_, __) => SizedBox(
+                    width: metrics.width,
+                    child: const AdSkeleton(
+                      isLoading: true,
+                      skeleton: _ShelfCardSkeleton(),
+                      child: SizedBox.shrink(),
+                    ),
+                  ),
+                ),
               );
             }
             if (snap.hasError) {
@@ -925,6 +951,75 @@ class _CardState extends State<_Card> {
       // state and reverts on failure itself (and fires listing_favorited /
       // listing_unfavorited), so the desired flag the card passes is ignored.
       onFavToggle: (_) => _toggleFav(),
+    );
+  }
+}
+
+/// Grey-block placeholder matching [MarketplaceCard]'s shape (cover image +
+/// two text lines) — shown by [AdSkeleton] while the browse grid's first page
+/// is in flight, replacing what used to be a bare spinner.
+class _MarketplaceCardSkeleton extends StatelessWidget {
+  const _MarketplaceCardSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: AD.card,
+        borderRadius: BorderRadius.circular(AD.rListCard),
+        border: Border.all(color: AD.borderCard, width: 2),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: Container(color: AD.mediaPlaceholderBg)),
+        Container(height: 1, color: AD.borderCard),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s2, Msg.s3, Msg.s2),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(width: 100, height: 12, color: AD.mediaPlaceholderBg),
+              const SizedBox(height: Msg.s2),
+              Container(width: 60, height: 12, color: AD.mediaPlaceholderBg),
+            ],
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+/// Grey-block placeholder matching the commercial shelf's poster cards
+/// ([LiveEventCard] / [ConsultationCard]) — shown by [AdSkeleton] while that
+/// shelf's data is in flight.
+class _ShelfCardSkeleton extends StatelessWidget {
+  const _ShelfCardSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AD.card,
+        borderRadius: BorderRadius.circular(AD.rListCard),
+        border: Border.all(color: AD.borderControl),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: Container(color: AD.mediaPlaceholderBg)),
+        Padding(
+          padding: const EdgeInsets.all(Msg.s3),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(width: 120, height: 14, color: AD.mediaPlaceholderBg),
+              const SizedBox(height: Msg.s2),
+              Container(width: 80, height: 12, color: AD.mediaPlaceholderBg),
+            ],
+          ),
+        ),
+      ]),
     );
   }
 }

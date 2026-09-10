@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/analytics.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/motion/motion.dart';
 import '../explore/widgets.dart' show fmtWhen;
 
 Future<void> showShareLiveEventSheet(
@@ -51,8 +52,7 @@ class ShareLiveEventSheet extends StatelessWidget {
     await Clipboard.setData(ClipboardData(text: _url));
     Analytics.capture('commercial_live_link_copied', {'listing_id': listingId});
     if (context.mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Event link copied')));
+      showAdToast(context, message: 'Event link copied');
     }
   }
 

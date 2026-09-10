@@ -17,6 +17,7 @@ import '../../core/profile_store.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/illustrations.dart'; // [RAJ-SEAMS-1]
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/motion/motion.dart';
 import '../../core/ui/rajasthani_motifs.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'package:flutter_svg/flutter_svg.dart'; // [RAJ-SEAMS-1]
@@ -175,8 +176,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (id == null) {
       if (mounted) {
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Still getting your account ready — try once more in a second.')));
+        showAdToast(context, message: 'Still getting your account ready — try once more in a second.');
       }
       return;
     }
@@ -194,8 +194,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!r.allow) {
         if (!mounted) return;
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(r.reason.isEmpty ? 'Please revise that field.' : r.reason)));
+        showAdToast(context, message: r.reason.isEmpty ? 'Please revise that field.' : r.reason);
         return;
       }
     }
@@ -234,8 +233,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     unawaited(_initShare());
     if (mounted) setState(() { _saving = false; _listed = true; });
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile saved')));
+      showAdToast(context, message: 'Profile saved');
     }
     // Background directory publish. STILL fire-and-forget for LATENCY (owner report
     // 2026-06-27 "saving takes forever" — server vetting runs AI name plausibility
@@ -356,8 +354,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (cropped == null || !mounted) return;
       await _uploadAvatar(cropped);
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Couldn't open that image — try another.")));
+      if (mounted) showAdToast(context, message: "Couldn't open that image — try another.");
     }
   }
 
@@ -371,7 +368,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (url == null) {
       if (mounted) {
         setState(() => _photoBusy = false);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Upload failed — please try again.')));
+        showAdToast(context, message: 'Upload failed — please try again.');
       }
       return;
     }
@@ -381,7 +378,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await Directory.registerProfile(uid: id.uid, name: _fullName, firstName: _name.text.trim(), lastName: _last.text.trim(), avatarUrl: url);
     if (!mounted) return;
     setState(() { _avatarUrl = url; _photoBusy = false; });
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Photo updated')));
+    showAdToast(context, message: 'Photo updated');
   }
 
   Future<void> _removePhoto() async {
@@ -393,7 +390,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await Directory.registerProfile(uid: id.uid, name: _fullName, firstName: _name.text.trim(), lastName: _last.text.trim(), avatarUrl: '');
     if (!mounted) return;
     setState(() { _avatarUrl = ''; _photoBusy = false; });
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Photo removed')));
+    showAdToast(context, message: 'Photo removed');
   }
 
   /// Change the sign-in email — sends a 6-digit OTP to the NEW address and only
@@ -420,8 +417,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           if (r.statusCode == 200) {
             if (ctx.mounted) Navigator.of(ctx).pop();
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Email updated')));
+              showAdToast(context, message: 'Email updated');
             }
           } else {
             setS(() => err = 'Incorrect or expired code.');
@@ -497,8 +493,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           if (r.statusCode == 200) {
             if (ctx.mounted) Navigator.of(ctx).pop();
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Password updated')));
+              showAdToast(context, message: 'Password updated');
             }
           } else {
             String msg = 'Incorrect or expired code.';
@@ -867,8 +862,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   try {
                     await QrShare.share(link: _shareLink, name: _fullName, number: _cardNumber);
                   } catch (_) {
-                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Couldn't prepare the QR image — try again.")));
+                    if (mounted) showAdToast(context, message: "Couldn't prepare the QR image — try again.");
                   }
                 })),
               const SizedBox(width: Msg.s2),
@@ -878,7 +872,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 onPressed: _shareLink.isEmpty ? null : () {
                   Analytics.capture('qr_card_action', {'action': 'copy'});
                   Clipboard.setData(ClipboardData(text: _shareLink));
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Link copied')));
+                  showAdToast(context, message: 'Link copied');
                 })),
             ]),
             const SizedBox(height: Msg.s2),
@@ -891,11 +885,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 onPressed: _shareLink.isEmpty ? null : () async {
                   try {
                     final path = await QrShare.download(link: _shareLink, name: _fullName, number: _cardNumber);
-                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Saved QR card to $path')));
+                    if (mounted) showAdToast(context, message: 'Saved QR card to $path');
                   } catch (_) {
-                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Couldn't save the image.")));
+                    if (mounted) showAdToast(context, message: "Couldn't save the image.");
                   }
                 })),
               const SizedBox(width: Msg.s2),
@@ -906,8 +898,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   try {
                     await QrShare.printCard(link: _shareLink, name: _fullName, number: _cardNumber);
                   } catch (_) {
-                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Couldn't open the print dialog.")));
+                    if (mounted) showAdToast(context, message: "Couldn't open the print dialog.");
                   }
                 })),
             ]),

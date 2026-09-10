@@ -8,6 +8,7 @@ import '../../core/notifications_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/motion/motion.dart';
 
 /// In-app notification feed (wallet, moderation, briefings, social).
 /// Pass [realtime] (NostrClient.notifications) to prepend live notifications as
@@ -124,9 +125,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       // Be honest: the list is empty locally, but the server still holds them and
       // the next refresh will bring them back. Silently "succeeding" here is how
       // you get a bug report that says "clear all doesn't work".
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Couldn't reach the server — pull to refresh to retry.")),
-      );
+      // [UI-MOTION-LIB] Plain informational notice, no action button.
+      showAdToast(context,
+          message: "Couldn't reach the server — pull to refresh to retry.");
     }
   }
 
@@ -229,13 +230,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     itemBuilder: (_, i) {
                       if (i == _items.length) {
                         if (_end) return const SizedBox(height: 8);
-                        return const Padding(
-                          padding: EdgeInsets.symmetric(vertical: Msg.s5),
+                        // [UI-MOTION-LIB] Only animates while an actual page
+                        // fetch (_pageIn) is in flight, not for the whole time this
+                        // row happens to be the last one in the list.
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: Msg.s5),
                           child: Center(
-                            child: SizedBox(
-                              width: 18, height: 18,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: AD.iconSearch),
+                            child: AdDotLoader(
+                              active: _paging,
+                              size: 18,
+                              color: AD.iconSearch,
                             ),
                           ),
                         );

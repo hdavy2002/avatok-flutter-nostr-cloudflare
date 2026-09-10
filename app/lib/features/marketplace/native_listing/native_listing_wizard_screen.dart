@@ -10,6 +10,7 @@ import '../../../core/listings_api.dart';
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/messenger_theme.dart';
 import '../../../core/ui/zine_widgets.dart';
+import '../../../core/ui/motion/motion.dart';
 import '../../identity/listing_liveness_gate.dart';
 import '../../identity/public_action_gate.dart' show isIdentityRequired;
 
@@ -266,7 +267,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
       if (result['ok'] != true) throw StateError(_serverMessage(result));
       Analytics.capture('listing_native_wizard_submitted', {'listing_id': _id!, 'source': widget.source});
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Listing submitted for review.')));
+      showAdToast(context, message: 'Listing submitted for review.');
       Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) setState(() => _error = e.toString().replaceFirst('Bad state: ', ''));
@@ -356,7 +357,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
           if (_id != null) TextButton.icon(onPressed: _publishing ? null : () async {
             final result = await ListingsApi.wizardRepeat(_id!, 4);
             if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result['ok'] == true ? 'Four draft copies created.' : _serverMessage(result))));
+            showAdToast(context, message: result['ok'] == true ? 'Four draft copies created.' : _serverMessage(result));
           }, icon: Icon(PhosphorIcons.repeat(PhosphorIconsStyle.regular)), label: const Text('Repeat this listing for four weeks')),
         ]);
     }

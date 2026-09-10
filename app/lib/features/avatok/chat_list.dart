@@ -14,6 +14,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/ui/motion/motion.dart';
+
 import '../../auth/clerk_client.dart';
 import '../../core/account_gate.dart';
 import '../../core/avatar.dart';
@@ -2089,15 +2091,13 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     if (c == null || !mounted) return;
     // Don't let someone add their own account (e.g. their other email).
     if (c.uid.isEmpty || c.uid == _id?.uid) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("That's your own account — you can't add yourself")));
+      showAdToast(context, message: "That's your own account — you can't add yourself");
       return;
     }
     final list = await _contactsStore.add(c);
     if (mounted) {
       setState(() => _contacts = list);
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Added ${c.name.isNotEmpty ? c.name : c.subtitle}')));
+      showAdToast(context, message: 'Added ${c.name.isNotEmpty ? c.name : c.subtitle}');
     }
   }
 
@@ -2493,8 +2493,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                     const Padding(
                       padding: EdgeInsets.only(top: 60),
                       child: Center(
-                          child: SizedBox(width: 24, height: 24,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: AD.unreadAccent))),
+                          child: AdDotLoader(active: true, size: 24, color: AD.unreadAccent)),
                     ),
                   if (rows.isEmpty && _booted)
                     Padding(

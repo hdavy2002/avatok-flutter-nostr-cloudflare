@@ -10,6 +10,7 @@ import '../../core/play_prices.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/motion/motion.dart';
 
 /// SubscribeScreen — Phase 1 plans (Free / Plus / Pro / Max).
 ///
@@ -109,7 +110,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
 
   void _notice(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    showAdToast(context, message: msg);
   }
 
   @override
@@ -208,7 +209,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
                 borderRadius: Msg.brPill,
                 border: Border.all(color: AD.borderCard, width: 1),
               ),
-              child: Text(
+              child: AdSwitchText(
                 _currentStatus == 'canceled' ? 'Ending' : 'Your plan',
                 // Dark ink ON the green fill — NOT AD.online, which would be
                 // green-on-green and invisible.
