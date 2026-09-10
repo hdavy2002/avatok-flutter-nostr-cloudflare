@@ -47,11 +47,14 @@ export interface GatewayPickerProps {
   bookingId: string | null;
   /** The selected slot for a consult, `null` for a live ticket. */
   slot: { start_at: number; end_at: number } | null;
+  holdId?: string;
   /** What the client computed before asking the server — only used to detect drift. */
   clientTotalCoins: number | null;
   /** Gated on the parent's "I accept the cancellation terms" checkbox. */
   disabled?: boolean;
   onPaid: (status: PayStatusResponse) => void;
+  /** Return to the availability picker when the server rejects a stale slot. */
+  onSlotConflict?: () => void;
 }
 
 type Phase = 'pick' | 'opening' | 'stripe-form' | 'polling' | 'timeout';
@@ -62,9 +65,11 @@ export function GatewayPicker({
   kind,
   bookingId,
   slot,
+  holdId,
   clientTotalCoins,
   disabled,
   onPaid,
+  onSlotConflict,
 }: GatewayPickerProps) {
   const [methods, setMethods] = useState<PayMethod[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -189,7 +194,7 @@ export function GatewayPicker({
         body: {
           listingId,
           ...(bookingId ? { bookingId } : {}),
-          ...(slot ? { slot } : {}),
+          ...(slot ? { slot, hold_id:holdId } : {}),
         },
       });
 
@@ -267,6 +272,10 @@ export function GatewayPicker({
     } catch (e) {
       setBusy(false);
       setPhase('pick');
+      if (e instanceof ApiError && e.status === 409 && /calendar|slot|conflict|booked|reservation|hold|availability|schedule/i.test(e.error)) {
+        onSlotConflict?.();
+        return;
+      }
       setError(
         e instanceof ApiError ? listingErrorMessage(e.error) : e instanceof Error ? e.message : 'Could not start that payment. Try again.',
       );

@@ -10,6 +10,8 @@ import { inrOrFree, priceBreakdown } from '../../lib/money';
 import { bookingBox, calendarCopy, cta, freeBox } from '../../lib/copy';
 import { capture } from '../../lib/analytics';
 import type { ListingSlot } from '../../lib/types';
+import { getListingAvailability } from '../../lib/availability';
+import type { ListingAvailabilityResponse } from '../../lib/availability';
 
 export interface BookingBoxProps {
   listingId: string;
@@ -66,6 +68,17 @@ function tzDateParts(ms: number, timeZone: string): { y: number; m: number; d: n
 function tzDay(ms: number, timeZone: string): Date {
   const { y, m, d } = tzDateParts(ms, timeZone);
   return new Date(y, m, d);
+}
+
+function dateKeyInZone(ms: number, timeZone: string): string {
+  const { y, m, d } = tzDateParts(ms, timeZone);
+  return `${String(y).padStart(4, '0')}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+function shiftDateKey(value: string, amount: number): string {
+  const [y, m, d] = value.split('-').map(Number);
+  const next = new Date(Date.UTC(y, m - 1, d + amount));
+  return `${String(next.getUTCFullYear()).padStart(4, '0')}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-${String(next.getUTCDate()).padStart(2, '0')}`;
 }
 
 /**
@@ -253,23 +266,75 @@ export default function BookingBox({
   // reader's own browser zone.
   const tz = timezone || 'Asia/Kolkata';
 
-  // [LIST-PAGE-2 gap 1] Show days = slots' dates (if slots exist) else the
-  // listing's own starts_at, else a recurring weekday expanded over whichever
-  // month the calendar is showing (handled inside MonthCalendar itself).
+  // Consult listings now read the listing-aware availability authority. The
+  // legacy listing_slots response can lag behind creator conflicts, holds, or
+  // schedule changes, so it must not make a time look selectable here.
+  const isConsult = kind === 'consult';
+  const [availability, setAvailability] = useState<ListingAvailabilityResponse | null>(null);
+  const [availabilityLoading, setAvailabilityLoading] = useState(isConsult);
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isConsult) return;
+    const from = dateKeyInZone(Date.now(), tz);
+    const to = shiftDateKey(from, 61);
+    let cancelled = false;
+    setAvailabilityLoading(true);
+    setAvailabilityError(null);
+    void getListingAvailability(listingId, from, to, tz)
+      .then((next) => {
+        if (!cancelled) setAvailability(next);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setAvailability(null);
+        setAvailabilityError(error instanceof Error ? error.message : 'Could not load available times.');
+      })
+      .finally(() => {
+        if (!cancelled) setAvailabilityLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [isConsult, listingId, tz]);
+
+  const availabilitySlots = useMemo<ListingSlot[]>(
+    () => (availability?.slots ?? [])
+      .filter((slot) => slot.available && Number.isSafeInteger(Number(slot.start_at)) && Number(slot.end_at) > Number(slot.start_at))
+      .map((slot) => ({
+        id: slot.id,
+        listing_id: listingId,
+        starts_at: Number(slot.start_at),
+        ends_at: Number(slot.end_at),
+        capacity: 1,
+        booked_count: 0,
+        status: 'open',
+      })),
+    [availability, listingId],
+  );
+
+  // [LIST-PAGE-2 gap 1] Show days = genuinely available consult slots (the
+  // listing's fixed starts_at is never used as a consult fallback), otherwise
+  // the legacy listing starts_at/recurring weekday display.
   // Bucketed via `tzDay` so a slot the host scheduled late at night IST lands
   // on the correct calendar day regardless of the viewer's own clock.
-  const allSlots = slots ?? [];
+  const allSlots = isConsult ? availabilitySlots : (slots ?? []);
   const showDates = useMemo(
-    () => (allSlots.length > 0 ? allSlots.map((s) => tzDay(s.starts_at, tz)) : startsAtMs != null ? [tzDay(startsAtMs, tz)] : []),
-    [allSlots, startsAtMs, tz],
+    () => (allSlots.length > 0 ? allSlots.map((s) => tzDay(s.starts_at, tz)) : isConsult ? [] : startsAtMs != null ? [tzDay(startsAtMs, tz)] : []),
+    [allSlots, isConsult, startsAtMs, tz],
   );
-  const showCalendar = !isFreeEntry && kind !== 'agent' && (showDates.length > 0 || (scheduleMode === 'recurring' && !!recurrenceDays?.length));
+  const showCalendar = !isFreeEntry && kind !== 'agent' && (isConsult || showDates.length > 0 || (scheduleMode === 'recurring' && !!recurrenceDays?.length));
 
   const [selectedDate, setSelectedDate] = useState<Date | null>(() => {
     const today = tzDay(Date.now(), tz);
     const upcoming = showDates.map(startOfDay).filter((d) => d.getTime() >= today.getTime()).sort((a, b) => a.getTime() - b.getTime());
     return upcoming[0] ?? null;
   });
+
+  useEffect(() => {
+    if (!isConsult || availabilityLoading || selectedDate || showDates.length === 0) return;
+    const today = tzDay(Date.now(), tz);
+    const upcoming = showDates.map(startOfDay).filter((d) => d.getTime() >= today.getTime()).sort((a, b) => a.getTime() - b.getTime());
+    if (upcoming[0]) setSelectedDate(upcoming[0]);
+  }, [availabilityLoading, isConsult, selectedDate, showDates, tz]);
 
   const openSlots = useMemo(() => allSlots.filter((s) => s.status === 'open'), [allSlots]);
   const dateFilteredSlots = useMemo(() => {
@@ -334,6 +399,16 @@ export default function BookingBox({
         <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 700, color: '#5a5a54' }}>
           Times shown are the host's — {tz}
         </p>
+      )}
+
+      {isConsult && availabilityLoading && (
+        <p role="status" style={{ margin: 0, fontSize: '0.8125rem', fontWeight: 800, color: '#5a5a54' }}>Loading available times…</p>
+      )}
+      {isConsult && availabilityError && !availabilityLoading && (
+        <p role="alert" style={{ margin: 0, fontSize: '0.8125rem', fontWeight: 800, color: '#d93825' }}>Could not load available times. Open booking to try again.</p>
+      )}
+      {isConsult && !availabilityLoading && !availabilityError && availabilitySlots.length === 0 && (
+        <p style={{ margin: 0, fontSize: '0.8125rem', fontWeight: 800, color: '#5a5a54' }}>No available times in the next 62 days.</p>
       )}
 
       {showCalendar && (

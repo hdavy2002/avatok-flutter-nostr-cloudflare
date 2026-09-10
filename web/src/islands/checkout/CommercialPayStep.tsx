@@ -48,6 +48,17 @@ function uuidv4(): string {
   );
 }
 
+/** A checkout slot is only a read-time suggestion. The commercial endpoint is
+ * authoritative and can reject it after another buyer claims the interval.
+ * These are conflict responses that should reopen the picker so it remounts
+ * and fetches a fresh availability window. Policy and payment errors stay on
+ * the pay step where the buyer can act on them. */
+function isSlotConflict(error: unknown): error is ApiError {
+  return error instanceof ApiError
+    && error.status === 409
+    && /calendar|slot|conflict|booked|reservation|hold|availability|schedule/i.test(error.error);
+}
+
 /** Best-effort, honest cancellation copy derived from the listing's own
  *  commercial_* attrs (the same fields commercial_checkout.ts's policyFor()
  *  reads server-side). Generic fallback text when an attr is missing, never a
@@ -89,6 +100,22 @@ export interface CommercialPayStepProps {
 
 export function CommercialPayStep({ listing, selection, token, onBooked, onBack }: CommercialPayStepProps) {
   const [idemKey] = useState(uuidv4);
+  const [slotHold,setSlotHold]=useState<{hold_id:string;expires_at:number}|null>(null);
+  const [holdError,setHoldError]=useState<string|null>(null);
+  const [holdRetry,setHoldRetry]=useState(0);
+  const [clock,setClock]=useState(Date.now());
+  useEffect(()=>{const timer=setInterval(()=>setClock(Date.now()),1000);return()=>clearInterval(timer);},[]);
+  useEffect(()=>{
+    if(selection.kind!=='consult_1to1'||!selection.slot)return;
+    let active=true;setHoldError(null);
+    request<{hold_id:string;expires_at:number}>(`/api/commercial/consult/${encodeURIComponent(selection.listingId)}/hold`,{
+      method:'POST',auth:token,headers:{'Idempotency-Key':`hold-${idemKey}`},
+      body:{slot_id:selection.slot.id??`availability:${selection.listingId}:${selection.slot.start_at}:${selection.slot.end_at}`,start_at:selection.slot.start_at,end_at:selection.slot.end_at}
+    }).then(value=>{if(active)setSlotHold(value);}).catch(error=>{if(active)setHoldError(error instanceof ApiError?error.error:'Could not reserve this time. Try again.');});
+    return()=>{active=false;};
+  },[selection.listingId,selection.slot?.start_at,selection.slot?.end_at,token,idemKey,holdRetry]);
+  const holdReady=selection.kind!=='consult_1to1'||!!slotHold&&slotHold.expires_at>clock;
+
   // [WEB-COMM-PAY-2] Minted once per checkout attempt, reused on retry — mirrors the
   // Idempotency-Key discipline. Required so the gateway rail's webhook-driven provisioning
   // (provisionFromGatewayPurchase → commercial_checkout.ts:640) actually creates a
@@ -129,7 +156,7 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
   const [freeFull, setFreeFull] = useState(false);
 
   async function reserveFree() {
-    if (freeBusy) return;
+    if (freeBusy || !holdReady) return;
     setFreeBusy(true);
     setFreeError(null);
     setFreeFull(false);
@@ -153,7 +180,7 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
           headers: { 'Idempotency-Key': idemKey },
           body: {
             accept_policy: true,
-            ...(selection.slot ? { slot: selection.slot } : {}),
+            ...(selection.slot ? { slot: selection.slot, hold_id: slotHold?.hold_id } : {}),
           },
         },
       );
@@ -191,6 +218,13 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
         } catch {
           /* best-effort */
         }
+      } else if (isSlotConflict(e)) {
+        try {
+          capture('checkout_result', { outcome: 'refused', reason: 'slot_taken', status: 409, gateway: 'free', ms: Date.now() - submitStart });
+        } catch {
+          /* best-effort */
+        }
+        onBack();
       } else if (e instanceof ApiError) {
         setFreeError(listingErrorMessage(e.error, e.body && typeof e.body === 'object' ? (e.body as { message?: unknown }).message : undefined));
         try {
@@ -257,7 +291,7 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
           headers: { 'Idempotency-Key': idemKey },
           body: {
             accept_policy: true,
-            ...(selection.slot ? { slot: selection.slot } : {}),
+            ...(selection.slot ? { slot: selection.slot, hold_id: slotHold?.hold_id } : {}),
           },
         },
       );
@@ -302,6 +336,13 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
         } catch {
           /* best-effort */
         }
+      } else if (isSlotConflict(e)) {
+        try {
+          capture('checkout_result', { outcome: 'refused', reason: 'slot_taken', status: 409, gateway: 'wallet', ms: Date.now() - submitStart });
+        } catch {
+          /* best-effort */
+        }
+        onBack();
       } else if (e instanceof ApiError) {
         setWalletError(listingErrorMessage(e.error, e.body && typeof e.body === 'object' ? (e.body as { message?: unknown }).message : undefined));
         try {
@@ -341,9 +382,11 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
   // wallet card, no GatewayPicker, no "Pay ₹0" button. Still shows the honest
   // breakdown ("Free") and the cancellation terms (a free booking can still be
   // a no-show), then one summary, one button, one back link.
+  if(selection.kind==='consult_1to1'&&!slotHold) return <Card><p role="status" className="font-body font-bold text-ink">{holdError || (slotHold ? 'Your hold expired. Choose an available time again.' : 'Reserving your selected time…')}</p>{!holdError&&!slotHold&&<Spinner size={22}/>}<div className="mt-3 flex gap-3">{holdError&&<Button label="Try again" onClick={()=>setHoldRetry(v=>v+1)}/>}<Button label="Choose another time" onClick={onBack}/></div></Card>;
   if (isFreeEntry) {
     return (
       <div className="flex flex-col gap-4">
+      {slotHold && <p role="status" className="font-body font-bold text-inkSoft">{holdReady ? `This time is held for ${Math.ceil((slotHold.expires_at-clock)/60000)} more minute(s).` : 'This hold expired. Go back to choose an available time. If payment is already open, wait for its result.'}</p>}
         <Card>
           <div className="flex items-center justify-between">
             <span className="font-mono font-bold uppercase text-[14px] tracking-[0.08em] text-inkSoft">
@@ -382,7 +425,7 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
           variant="lime"
           fullWidth
           loading={freeBusy}
-          disabled={freeFull}
+          disabled={freeFull || !holdReady}
           label={freeFull ? freeBox.full : cta.RESERVE_FREE}
           onClick={() => void reserveFree()}
         />
@@ -401,6 +444,7 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
 
   return (
     <div className="flex flex-col gap-4">
+      {slotHold && <p role="status" className="font-body font-bold text-inkSoft">{holdReady ? `This time is held for ${Math.ceil((slotHold.expires_at-clock)/60000)} more minute(s).` : 'This hold expired. Go back to choose an available time. If payment is already open, wait for its result.'}</p>}
       <Card>
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
@@ -471,7 +515,7 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
             variant="lime"
             fullWidth
             loading={walletBusy}
-            disabled={!accepted || walletInsufficient}
+            disabled={!accepted || walletInsufficient || !holdReady}
             label={
               walletInsufficient
                 ? 'Not enough balance'
@@ -496,9 +540,11 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
           kind={selection.kind}
           bookingId={bookingId}
           slot={selection.slot}
+          holdId={slotHold?.hold_id}
           clientTotalCoins={clientTotal}
-          disabled={!accepted}
+          disabled={!accepted || !holdReady}
           onPaid={onGatewayPaid}
+          onSlotConflict={onBack}
         />
       </div>
 

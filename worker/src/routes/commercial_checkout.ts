@@ -16,7 +16,15 @@ import { json } from "../util";
 import { commercialEvent } from "../lib/commercial_telemetry";
 import { commercialLaneState, commercialLaneFlags, type CommercialLaneState } from "../lib/commercial_lane";
 import { taxFor, type TaxBreakdown } from "../lib/commercial_tax";
-import { claimBlock, releaseBlocks } from "../cal/engine";
+import {
+  claimBlock,
+  releaseBlocks,
+  claimListingSlot,
+  releaseListingReservation,
+  validateListingSlot,
+  expireAvailabilityReservations,
+  loadUnifiedSchedule,
+} from "../cal/engine";
 import { notifyCommercialUsers } from "../lib/commercial_notifications";
 import type { GatewayId } from "../lib/payments/types";
 import { freeSessionPolicy, countFreeEntitlements } from "../lib/free_session"; // [LIST-FREE-1]
@@ -137,6 +145,134 @@ const CHECKOUT_POLICY_VERSION = "commercial-policy-v1";
 const CHECKOUT_ID = /^[A-Za-z0-9_.:-]{8,128}$/;
 const REFUND_WINDOWS = new Set([0, 12, 24, 48]);
 const BOOKING_NOTICE_HOURS = new Set([1, 2, 6, 24]);
+const AVAILABILITY_HOLD_MS = 5 * 60_000;
+
+type AvailabilityHold = {
+  reservation_id: string;
+  creator_id: string;
+  listing_id: string;
+  status: string;
+  starts_at: number;
+  ends_at: number;
+  source_ref: string | null;
+  hold_expires_at: number | null;
+};
+
+function parseHoldSlot(listingId: string, value: unknown): { startAt: number; endAt: number } | null {
+  if (typeof value !== "string") return null;
+  const m = value.match(/^availability:([A-Za-z0-9-]{1,64}):(\d+):(\d+)$/);
+  if (!m || m[1] !== listingId) return null;
+  const startAt = Number(m[2]), endAt = Number(m[3]);
+  return Number.isSafeInteger(startAt) && Number.isSafeInteger(endAt) && startAt > 0 && endAt > startAt
+    ? { startAt, endAt } : null;
+}
+
+function holdOwnerRef(uid: string, idem: string): string { return `commercial-hold:${uid}:${idem}`; }
+function checkoutReservationRef(uid: string, orderId: string): string { return `commercial-availability:${uid}:${orderId}`; }
+
+async function availabilitySchemaReady(env: Env): Promise<boolean> {
+  try {
+    await metaDb(env).prepare("SELECT id FROM availability_reservations LIMIT 1").first();
+    return true;
+  } catch { return false; }
+}
+
+async function loadOwnedAvailabilityHold(env: Env, uid: string, reservationId: string): Promise<AvailabilityHold | null> {
+  const row = await metaDb(env).prepare(
+    `SELECT id reservation_id,creator_id,listing_id,status,starts_at,ends_at,source_ref,hold_expires_at
+       FROM availability_reservations WHERE id=?1 LIMIT 1`,
+  ).bind(reservationId).first<AvailabilityHold>();
+  if (!row || row.source_ref === null
+    || (!row.source_ref.startsWith(`commercial-hold:${uid}:`)
+      && !row.source_ref.startsWith(`commercial-availability:${uid}:`))) return null;
+  return row;
+}
+
+export async function claimCheckoutAvailability(env: Env, args: {
+  uid: string; listingId: string; startAt: number; endAt: number; sourceRef: string;
+  holdId?: string | null; scheduleVersion?: number;
+}): Promise<{ ok: true; reservationId: string; expiresAt: number; replay?: boolean } | { ok: false; reason: string; detail?: unknown }> {
+  if (!(await availabilitySchemaReady(env))) return { ok: false, reason: "availability_unavailable" };
+  await expireAvailabilityReservations(env).catch(() => {});
+  const now = Date.now();
+  if (args.holdId) {
+    const owned = await loadOwnedAvailabilityHold(env, args.uid, args.holdId);
+    if (!owned) return { ok: false, reason: "hold_not_found" };
+    const payment=await metaDb(env).prepare('SELECT h.order_id,g.gateway FROM availability_gateway_holds h LEFT JOIN gateway_orders g ON g.order_id=h.order_id WHERE h.reservation_id=?1').bind(owned.reservation_id).first<{order_id:string;gateway:string|null}>();
+    if(payment && args.sourceRef!==`commercial-hold:${args.uid}:gateway:${payment.order_id}` && args.sourceRef!==checkoutReservationRef(args.uid,`${payment.gateway}-order:${payment.order_id}`)) return {ok:false,reason:'hold_already_used'};
+    if (owned.listing_id !== args.listingId || Number(owned.starts_at) !== args.startAt || Number(owned.ends_at) !== args.endAt) {
+      return { ok: false, reason: "hold_slot_mismatch" };
+    }
+    if (owned.status === "held" && owned.hold_expires_at !== null && Number(owned.hold_expires_at) <= now) return { ok: false, reason: "hold_expired" };
+    if (!["held", "reserved", "confirmed"].includes(owned.status)) return { ok: false, reason: "hold_unavailable" };
+    if (owned.status!=='held' && owned.source_ref!==args.sourceRef) return {ok:false,reason:'hold_already_used'};
+    return { ok: true, reservationId: owned.reservation_id, expiresAt: Number(owned.hold_expires_at ?? 0), replay: owned.status !== "held" };
+  }
+  const holdExpiresAt = now + AVAILABILITY_HOLD_MS;
+  const prior = await metaDb(env).prepare(
+    "SELECT id,status,hold_expires_at,starts_at,ends_at FROM availability_reservations WHERE creator_id=(SELECT creator_id FROM listings WHERE id=?1) AND source_ref=?2 LIMIT 1",
+  ).bind(args.listingId, args.sourceRef).first<{ id: string; status: string; hold_expires_at: number | null; starts_at: number; ends_at: number }>();
+  if (prior) {
+    if (Number(prior.starts_at) !== args.startAt || Number(prior.ends_at) !== args.endAt) return { ok: false, reason: "source_ref_reused" };
+    if (prior.status === "held" && prior.hold_expires_at !== null && Number(prior.hold_expires_at) <= now) return { ok: false, reason: "hold_expired" };
+    if (["held", "reserved", "confirmed"].includes(prior.status)) return { ok: true, reservationId: prior.id, expiresAt: Number(prior.hold_expires_at ?? 0), replay: true };
+  }
+  const claim = await claimListingSlot(env, {
+    creatorId: (await metaDb(env).prepare("SELECT creator_id FROM listings WHERE id=?1").bind(args.listingId).first<{ creator_id: string }>())?.creator_id ?? "",
+    listingId: args.listingId,
+    startAt: args.startAt,
+    endAt: args.endAt,
+    kind: "hold",
+    status: "held",
+    title: "Commercial checkout hold",
+    sourceRef: args.sourceRef,
+    holdExpiresAt,
+    scheduleVersion: args.scheduleVersion,
+  });
+  if (!claim.ok) return { ok: false, reason: claim.reason, detail: claim.conflict };
+  const persisted = await metaDb(env).prepare(
+    "SELECT status,hold_expires_at FROM availability_reservations WHERE id=?1 AND creator_id=?2 LIMIT 1",
+  ).bind(claim.reservationId, (await metaDb(env).prepare("SELECT creator_id FROM listings WHERE id=?1").bind(args.listingId).first<{ creator_id: string }>())?.creator_id ?? "").first<{ status: string; hold_expires_at: number | null }>();
+  return {
+    ok: true,
+    reservationId: claim.reservationId,
+    expiresAt: Number(persisted?.hold_expires_at ?? holdExpiresAt),
+    replay: persisted?.status !== "held",
+  };
+}
+
+/** Conditional state transition: an expired or foreign hold can never become a booking. */
+async function convertAvailabilityHold(env: Env, args: {
+  uid: string; reservationId: string; listingId: string; startAt: number; endAt: number; sourceRef: string; orderId: string;
+}): Promise<boolean> {
+  const now = Date.now();
+  const r = await metaDb(env).prepare(
+    `UPDATE availability_reservations
+        SET kind='booking',status='reserved',hold_expires_at=NULL,source_ref=?1,updated_at=?2
+      WHERE id=?3 AND creator_id=?4 AND listing_id=?5 AND starts_at=?6 AND ends_at=?7
+        AND status='held' AND (hold_expires_at IS NULL OR hold_expires_at>?2)`,
+  ).bind(args.sourceRef, now, args.reservationId, args.uid, args.listingId, args.startAt, args.endAt).run();
+  if (Number(r.meta?.changes ?? 0) === 1) {
+    await metaDb(env).prepare(
+      `INSERT OR IGNORE INTO availability_reservation_events
+        (id,reservation_id,operation,idempotency_key,created_at)
+       VALUES (?1,?2,'checkout',?3,?4)`,
+    ).bind(crypto.randomUUID(), args.reservationId, args.orderId, now).run().catch(() => {});
+    return true;
+  }
+  const current = await metaDb(env).prepare(
+    `SELECT status,creator_id,listing_id,source_ref,starts_at,ends_at FROM availability_reservations WHERE id=?1 LIMIT 1`,
+  ).bind(args.reservationId).first<any>();
+  return !!current && current.source_ref===args.sourceRef && current.creator_id === args.uid && current.listing_id === args.listingId
+    && Number(current.starts_at) === args.startAt && Number(current.ends_at) === args.endAt
+    && ["reserved", "confirmed"].includes(String(current.status));
+}
+
+export async function releaseCheckoutAvailability(env: Env, uid: string, reservationId: string | null): Promise<void> {
+  if(!reservationId)return;
+  const row=await metaDb(env).prepare('SELECT creator_id,source_ref FROM availability_reservations WHERE id=?1').bind(reservationId).first<{creator_id:string;source_ref:string}>();
+  if(row && (row.creator_id===uid || row.source_ref?.startsWith(`commercial-hold:${uid}:`) || row.source_ref?.startsWith(`commercial-availability:${uid}:`))) await releaseListingReservation(env,row.creator_id,reservationId);
+}
 
 function checkoutKind(pathKind: string): CheckoutKind | null {
   if (pathKind === "live") return "live_event";
@@ -153,9 +289,78 @@ function idFrom(req: Request): { kind: CheckoutKind; listingId: string } | null 
   return kind ? { kind, listingId: match[2] } : null;
 }
 
+function holdIdFrom(req: Request): { kind: CheckoutKind; listingId: string } | null {
+  const pathname = new URL(req.url).pathname;
+  const commercial = pathname.match(/^\/api\/commercial\/(live|consult)\/([A-Za-z0-9-]{1,64})\/hold$/);
+  if (commercial) {
+    const kind = checkoutKind(commercial[1]);
+    return kind ? { kind, listingId: commercial[2] } : null;
+  }
+  const listing = pathname.match(/^\/api\/listings\/([A-Za-z0-9-]{1,64})\/hold$/);
+  return listing ? { kind: "consult_1to1", listingId: listing[1] } : null;
+}
+
 function idempotencyKey(req: Request): string | null {
   const value = (req.headers.get("idempotency-key") ?? "").trim();
   return CHECKOUT_ID.test(value) ? value : null;
+}
+
+/**
+ * POST /api/commercial/consult/:listingId/hold (or /api/listings/:listingId/hold)
+ *
+ * The client submits only the server-issued availability slot id. The hold is
+ * account-bound through its source_ref and expires after five minutes. A
+ * repeated Idempotency-Key returns the same reservation, while reusing it for
+ * another slot is rejected by the reservation source-ref uniqueness guard.
+ */
+export async function commercialHold(req: Request, env: Env): Promise<Response> {
+  const route = holdIdFrom(req);
+  if (!route) return json({ error: "bad commercial hold path" }, 400);
+  if (route.kind !== "consult_1to1") return json({ error: "holds are only available for consultation slots" }, 409);
+  const auth = await requireUser(req, env);
+  if (isFail(auth)) return json({ error: auth.error }, auth.status);
+  const idem = idempotencyKey(req);
+  if (!idem) return json({ error: "valid Idempotency-Key required" }, 400);
+  const listing = await metaDb(env).prepare(
+    "SELECT id,creator_id,kind,title,status,duration_min FROM listings WHERE id=?1 LIMIT 1",
+  ).bind(route.listingId).first<{ id: string; creator_id: string; kind: string; title: string; status: string; duration_min: number | null }>();
+  if (!listing || !["consult", "consultation"].includes(listing.kind) || !["published", "live"].includes(listing.status)) {
+    return json({ error: "listing unavailable" }, 404);
+  }
+  if (listing.creator_id === auth.uid) return json({ error: "cannot hold your own service" }, 400);
+  const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const slotId = typeof body.slot_id === "string" ? body.slot_id : typeof body.slot === "string" ? body.slot : null;
+  const parsed = parseHoldSlot(listing.id, slotId);
+  if (!parsed) return json({ error: "server-issued slot_id required" }, 400);
+  const suppliedStart = body.start_at === undefined ? parsed.startAt : Math.trunc(Number(body.start_at));
+  const suppliedEnd = body.end_at === undefined ? parsed.endAt : Math.trunc(Number(body.end_at));
+  if (suppliedStart !== parsed.startAt || suppliedEnd !== parsed.endAt) return json({ error: "slot_id interval mismatch" }, 400);
+  const sourceRef = holdOwnerRef(auth.uid, idem);
+  const busyHolds=await metaDb(env).prepare("SELECT COUNT(*) AS n FROM availability_reservations WHERE status='held' AND hold_expires_at>?1 AND substr(source_ref,1,?2)=?3 AND source_ref!=?4").bind(Date.now(),`commercial-hold:${auth.uid}:`.length,`commercial-hold:${auth.uid}:`,sourceRef).first<{n:number}>();
+  if(Number(busyHolds?.n??0)>=3)return json({error:'Finish an existing checkout before holding another time'},429);
+  const held = await claimCheckoutAvailability(env, {
+    uid: auth.uid, listingId: listing.id, startAt: parsed.startAt, endAt: parsed.endAt,
+    sourceRef,
+  });
+  if (!held.ok) {
+    const status = held.reason === "availability_unavailable" ? 503 : held.reason === "hold_not_found" ? 404 : 409;
+    return json({ error: held.reason }, status);
+  }
+  const response = {
+    ok: true,
+    hold_id: held.reservationId,
+    reservation_id: held.reservationId,
+    listing_id: listing.id,
+    slot_id: slotId,
+    start_at: parsed.startAt,
+    end_at: parsed.endAt,
+    expires_at: held.expiresAt,
+    hold_expires_at: held.expiresAt,
+    schedule_version: (await loadUnifiedSchedule(env,listing.creator_id,listing.id)).version,
+    duration_min: Math.trunc((parsed.endAt - parsed.startAt) / 60_000),
+    idempotent_replay: held.replay === true,
+  };
+  return json(response, held.replay ? 200 : 201, { "cache-control": "no-store" });
 }
 
 async function sha256Hex(value: string): Promise<string> {
@@ -320,6 +525,7 @@ function canonicalRequest(args: {
   idem: string;
   slotStart: number | null;
   slotEnd: number | null;
+  availabilityHoldId?: string | null;
 }): string {
   return JSON.stringify({
     account_id: args.uid,
@@ -328,6 +534,7 @@ function canonicalRequest(args: {
     idempotency_key: args.idem,
     slot_start: args.slotStart,
     slot_end: args.slotEnd,
+    hold_id: args.availabilityHoldId ?? null,
   });
 }
 
@@ -453,23 +660,31 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
 
   let slotStart: number | null = null;
   let slotEnd: number | null = null;
+  let availabilityHoldId: string | null = null;
   if (route.kind === "consult_1to1") {
     const slot = body.slot;
-    if (!slot || typeof slot !== "object" || Array.isArray(slot)) {
-      return json({ error: "slot {start_at,end_at} required" }, 400);
+    const slotId = typeof body.slot_id === "string" ? body.slot_id : typeof slot === "string" ? slot : null;
+    const parsedSlot = slotId ? parseHoldSlot(listing.id, slotId) : null;
+    const rawSlot = slot && typeof slot === "object" && !Array.isArray(slot) ? slot as Record<string, unknown> : null;
+    slotStart = parsedSlot?.startAt ?? Math.trunc(Number(rawSlot?.start_at ?? body.start_at));
+    slotEnd = parsedSlot?.endAt ?? Math.trunc(Number(rawSlot?.end_at ?? body.end_at ?? (slotStart + Number(listing.duration_min ?? 60) * 60_000)));
+    if (parsedSlot && ((body.start_at !== undefined && Math.trunc(Number(body.start_at)) !== parsedSlot.startAt)
+      || (body.end_at !== undefined && Math.trunc(Number(body.end_at)) !== parsedSlot.endAt))) {
+      return json({ error: "slot_id interval mismatch" }, 400);
     }
-    const rawSlot = slot as Record<string, unknown>;
-    slotStart = Math.trunc(Number(rawSlot.start_at));
-    slotEnd = Math.trunc(Number(rawSlot.end_at ?? (slotStart + Number(listing.duration_min ?? 60) * 60_000)));
     if (!Number.isSafeInteger(slotStart) || !Number.isSafeInteger(slotEnd) || slotEnd <= slotStart || slotStart <= Date.now()) {
       return json({ error: "future consultation slot required" }, 400);
     }
     if (slotStart - Date.now() < policy.booking_notice_hours * 3_600_000) {
       return json({ error: "booking notice policy", booking_notice_hours: policy.booking_notice_hours }, 409);
     }
+    availabilityHoldId = typeof body.hold_id === "string" ? body.hold_id : typeof body.reservation_id === "string" ? body.reservation_id : null;
+    if (availabilityHoldId !== null && !/^[0-9a-f-]{20,80}$/i.test(availabilityHoldId)) {
+      return json({ error: "invalid hold_id" }, 400);
+    }
   }
 
-  const request = canonicalRequest({ uid: auth.uid, kind: route.kind, listingId: listing.id, idem, slotStart, slotEnd });
+  const request = canonicalRequest({ uid: auth.uid, kind: route.kind, listingId: listing.id, idem, slotStart, slotEnd, availabilityHoldId });
   const requestHash = await sha256Hex(request);
   const operationHash = await sha256Hex(`${auth.uid}:${idem}`);
   const operationId = `commercial-checkout:${operationHash}`;
@@ -530,7 +745,7 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
 
   return await provisionCommercialPurchase(env, {
     auth, route, listing, config, policy, price, tax, startsAt, endsAt,
-    slotStart, slotEnd, orderId, operationId, bookingId, requestHash,
+    slotStart, slotEnd, availabilityHoldId, orderId, operationId, bookingId, requestHash,
     funding: {
       rail: "wallet",
       // The original behaviour, unchanged: debit the buyer's WalletDO balance.
@@ -690,6 +905,7 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
   endsAt: number | null;
   slotStart: number | null;
   slotEnd: number | null;
+  availabilityHoldId?: string | null;
   orderId: string;
   operationId: string;
   bookingId: string | null;
@@ -698,32 +914,46 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
 }): Promise<Response> {
   const {
     auth, route, listing, config, policy, price, tax, startsAt, endsAt,
-    slotStart, slotEnd, orderId, operationId, bookingId, requestHash, funding,
+    slotStart, slotEnd, availabilityHoldId, orderId, operationId, bookingId, requestHash, funding,
   } = ctx;
   let holdWasFresh = false;
   const calendarClaims: CalendarClaim[] = [];
+  let availabilityReservationId: string | null = null;
   try {
     if (route.kind === "consult_1to1" && bookingId && slotStart !== null && slotEnd !== null) {
-      for (const participant of [
-        { userId: listing.creator_id, role: "creator" },
-        { userId: auth.uid, role: "buyer" },
-      ]) {
-        const claimed = await claimCommercialBlock(env, {
-          userId: participant.userId,
-          sourceRef: `commercial:${bookingId}:${participant.role}`,
-          start: slotStart,
-          end: slotEnd,
-          title: listing.title,
-        });
-        if (!claimed.ok) {
-          for (const prior of calendarClaims) await releaseBlocks(env, "avaconsult", prior.sourceRef);
-          const response = { error: "calendar conflict", conflictWith: claimed.conflict };
-          await finishOperation(env, operationId, "failed", response);
-          commercialEvent(env, "checkout_booking", auth.uid, { kind: route.kind, outcome: "refused", reason: "calendar_conflict" });
-          return json(response, 409);
-        }
-        calendarClaims.push(claimed.claim);
+      const reservation = await claimCheckoutAvailability(env, {
+        uid: auth.uid,
+        listingId: listing.id,
+        startAt: slotStart,
+        endAt: slotEnd,
+        holdId: availabilityHoldId,
+        sourceRef: checkoutReservationRef(auth.uid, orderId),
+      });
+      if (!reservation.ok) {
+        const status = reservation.reason === "availability_unavailable" ? 503 : reservation.reason === "hold_expired" ? 409 : 409;
+        const response = { error: reservation.reason };
+        await finishOperation(env, operationId, "failed", response);
+        commercialEvent(env, "checkout_booking", auth.uid, { kind: route.kind, outcome: "refused", reason: reservation.reason });
+        return json(response, status);
       }
+      availabilityReservationId = reservation.reservationId;
+      // The unified reservation trigger owns the creator's canonical block. Only
+      // the buyer's personal calendar needs a second projection.
+      const buyerClaim = await claimCommercialBlock(env, {
+        userId: auth.uid,
+        sourceRef: `commercial:${bookingId}:buyer`,
+        start: slotStart,
+        end: slotEnd,
+        title: listing.title,
+      });
+      if (!buyerClaim.ok) {
+        await releaseCheckoutAvailability(env, auth.uid, availabilityReservationId);
+        const response = { error: "calendar conflict", conflictWith: buyerClaim.conflict };
+        await finishOperation(env, operationId, "failed", response);
+        commercialEvent(env, "checkout_booking", auth.uid, { kind: route.kind, outcome: "refused", reason: "calendar_conflict" });
+        return json(response, 409);
+      }
+      calendarClaims.push(buyerClaim.claim);
     }
     // [TAX-GST-1] The buyer is charged base + tax in ONE debit, and the whole amount sits
     // in escrow. Two separate debits (one to escrow, one to platform:tax) would leave a
@@ -740,6 +970,7 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
       if (!held.ok) {
         commercialEvent(env, "checkout_hold", auth.uid, { kind: route.kind, outcome: "refused", reason: held.status === 402 ? "insufficient_funds" : "wallet_failure", rail: funding.rail });
         for (const claim of calendarClaims) await releaseBlocks(env, "avaconsult", claim.sourceRef);
+        await releaseCheckoutAvailability(env, auth.uid, availabilityReservationId);
         const response = { error: held.status === 402 ? "insufficient_funds" : "payment_failed", needed: tax.buyerTotal };
         await finishOperation(env, operationId, "failed", response);
         return json(response, held.status === 402 ? 402 : 502);
@@ -748,6 +979,19 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
       commercialEvent(env, "checkout_hold", auth.uid, { kind: route.kind, outcome: "authorized", duplicate: !holdWasFresh, rail: funding.rail });
     } else {
       commercialEvent(env, "checkout_hold", auth.uid, { kind: route.kind, outcome: "free" });
+    }
+
+    if (route.kind === "consult_1to1" && availabilityReservationId && slotStart !== null && slotEnd !== null) {
+      const converted = await convertAvailabilityHold(env, {
+        uid: listing.creator_id,
+        reservationId: availabilityReservationId,
+        listingId: listing.id,
+        startAt: slotStart,
+        endAt: slotEnd,
+        sourceRef: checkoutReservationRef(auth.uid, orderId),
+        orderId,
+      });
+      if (!converted) throw new Error("availability hold expired");
     }
 
     const creatorFeePct = Math.trunc(Number(config.commercialCreatorFeePct));
@@ -1037,14 +1281,15 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
     const errorText = String(error);
     const collision = errorText.includes("authority mismatch");
     const slotConflict = errorText.includes("slot already booked");
+    const availabilityFailure = errorText.includes("availability hold expired") || errorText.includes("availability unavailable");
     // The live-ticket partial unique index closes the NULL booking_id race.
     // A concurrent buyer can therefore collide before the entitlement readback;
     // translate that constraint into a deterministic account-bound refusal, not
     // a generic retry that could leave the caller guessing about ownership.
     const ticketRace = errorText.includes("ticket already owned");
     commercialEvent(env, "checkout", auth.uid, {
-      kind: route.kind, outcome: ticketRace || slotConflict || collision ? "refused" : "retryable",
-      reason: ticketRace ? "ticket_already_owned" : slotConflict ? "slot_already_booked" : collision ? "authority_mismatch" : "transient_failure",
+      kind: route.kind, outcome: ticketRace || slotConflict || collision || availabilityFailure ? "refused" : "retryable",
+      reason: ticketRace ? "ticket_already_owned" : slotConflict ? "slot_already_booked" : collision ? "authority_mismatch" : availabilityFailure ? "availability_hold_expired" : "transient_failure",
     });
     if (validEntitlement) {
       return collision
@@ -1054,12 +1299,13 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
     // A transient failure after order/policy/booking writes but before the
     // entitlement is durable remains resumable. Do not mark the operation
     // failed or refund a hold that a retry can safely complete.
-    if (!validEntitlement && !collision && !slotConflict && !ticketRace
+    if (!validEntitlement && !collision && !slotConflict && !ticketRace && !availabilityFailure
       && !errorText.includes("configuration invalid")) {
       return json({ error: "commercial checkout retryable", retryable: true }, 503);
     }
     if (!validEntitlement) {
       for (const claim of calendarClaims) await releaseBlocks(env, "avaconsult", claim.sourceRef);
+      await releaseCheckoutAvailability(env, listing.creator_id, availabilityReservationId);
     }
     // [TAX-GST-1 fix] tax.buyerTotal, NOT price. The hold took base + tax in one debit,
     // so an aborted checkout must give back base + tax. Refunding `price` here left the
@@ -1071,7 +1317,7 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
     if (!validEntitlement && tax.buyerTotal > 0) {
       try { await funding.reverse(tax.buyerTotal); } catch { /* review via ledger */ }
     }
-    if (!validEntitlement && (holdWasFresh || tax.buyerTotal === 0 || collision || slotConflict || ticketRace)) {
+    if (!validEntitlement && (holdWasFresh || tax.buyerTotal === 0 || collision || slotConflict || ticketRace || availabilityFailure)) {
       await metaDb(env).batch([
         metaDb(env).prepare(
           "UPDATE orders SET status='refunded',updated_at=?2 WHERE id=?1 AND status IN ('held','free')",
@@ -1083,10 +1329,12 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
     }
     const message = ticketRace
       ? "ticket already owned"
-      : slotConflict ? "consultation slot already booked" : "commercial checkout unavailable";
+      : slotConflict ? "consultation slot already booked"
+        : availabilityFailure ? "consultation slot no longer held"
+          : "commercial checkout unavailable";
     const response = { error: message };
     await finishOperation(env, operationId, "failed", response);
-    return json(response, ticketRace || slotConflict ? 409 : 503);
+    return json(response, ticketRace || slotConflict || availabilityFailure ? 409 : 503);
   }
 }
 
@@ -1128,6 +1376,7 @@ export async function provisionFromGatewayPurchase(env: Env, args: {
   purchaseId: string;
   gatewayRef: string;
   slot?: { start_at: number; end_at: number } | null;
+  hold_id?: string | null;
   gateway?: GatewayId;
 }): Promise<Response> {
   const gateway: GatewayId = args.gateway ?? "cashfree";
@@ -1191,6 +1440,7 @@ export async function provisionFromGatewayPurchase(env: Env, args: {
     startsAt, endsAt, slotStart, slotEnd,
     orderId, operationId,
     bookingId: args.bookingId,
+    availabilityHoldId: args.hold_id ?? null,
     requestHash,
     funding: {
       rail: gateway,

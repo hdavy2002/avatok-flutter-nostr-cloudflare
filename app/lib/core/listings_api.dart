@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'api_auth.dart';
+import 'availability_api.dart';
 import 'config.dart';
 import 'disk_cache.dart';
 import '../identity/identity.dart' show AccountScope;
@@ -1555,6 +1556,45 @@ class ListingsApi {
   /// Consult slot grid for a day — occupied slots come back flagged (greyed UX).
   static Future<List<Map<String, dynamic>>> slotGrid(String creatorUid, String dateYmd, int durMin) async {
     final r = await ApiAuth.getSigned('https://$kSignalingHost/api/calendar/slots?creator=$creatorUid&date=$dateYmd&dur=$durMin');
-    return (((_j(r.body)['slots']) as List?) ?? const []).map((s) => (s as Map).cast<String, dynamic>()).toList();
+    return (((_j(r.body)['slots']) as List?) ?? const []).whereType<Map>().map((raw) {
+      // Legacy calendar/slots responses used `start`/`end` while the unified
+      // availability and booking contracts use `start_at`/`end_at`. Normalize
+      // the old response at this boundary so every existing picker sends the
+      // exact UTC epoch fields expected by checkout.
+      final slot = raw.cast<String, dynamic>();
+      final start = _slotEpoch(slot['start_at'] ?? slot['starts_at'] ?? slot['start']);
+      final end = _slotEpoch(slot['end_at'] ?? slot['ends_at'] ?? slot['end']);
+      return <String, dynamic>{
+        ...slot,
+        if (start != null) 'start_at': start,
+        if (end != null) 'end_at': end,
+      };
+    }).toList(growable: false);
+  }
+
+  /// Typed listing availability used by the native customer booking flow.
+  /// Keep this alias near the legacy slot grid while callers migrate to the
+  /// server-authoritative date/slot response.
+  static Future<ListingAvailability> listingAvailability({
+    required String listingId,
+    required String from,
+    required String to,
+    required String timezone,
+  }) => AvailabilityApi.listingAvailability(
+        listingId: listingId,
+        from: from,
+        to: to,
+        timezone: timezone,
+      );
+
+  static int? _slotEpoch(dynamic value) {
+    if (value is num) return value.toInt();
+    if (value is String) {
+      final numeric = int.tryParse(value);
+      if (numeric != null) return numeric;
+      final parsed = DateTime.tryParse(value);
+      return parsed?.millisecondsSinceEpoch;
+    }
+    return null;
   }
 }

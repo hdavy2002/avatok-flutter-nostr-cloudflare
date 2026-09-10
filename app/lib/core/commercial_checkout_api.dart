@@ -111,10 +111,18 @@ class CommercialCheckoutApi {
     );
   }
 
+  static Future<({String id, int expiresAt})> holdConsultation({required String listingId,required String slotId,required int startAt,required int endAt,required String idempotencyKey}) async {
+    final response=await ApiAuth.postJsonH('$_base/consult/${Uri.encodeComponent(listingId)}/hold',{'slot_id':slotId,'start_at':startAt,'end_at':endAt},{'Idempotency-Key':idempotencyKey},timeout:const Duration(seconds:20));
+    final raw=jsonDecode(response.body);
+    if(response.statusCode!=200 || raw is! Map || raw['hold_id'] is! String || raw['expires_at'] is! num) throw StateError(raw is Map ? '${raw['error']??'Could not reserve this time'}':'Could not reserve this time');
+    return (id:raw['hold_id'] as String,expiresAt:(raw['expires_at'] as num).toInt());
+  }
+
   static Future<CommercialCheckoutResult> consultation({
     required String listingId,
     required int startAt,
     required int endAt,
+    String? holdId,
     required bool acceptPolicy,
     required String idempotencyKey,
   }) async {
@@ -122,6 +130,7 @@ class CommercialCheckoutApi {
       path: 'consult/${Uri.encodeComponent(listingId)}/checkout',
       body: {
         'accept_policy': acceptPolicy,
+        if(holdId!=null) 'hold_id':holdId,
         'slot': {'start_at': startAt, 'end_at': endAt},
       },
       idempotencyKey: idempotencyKey,

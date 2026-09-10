@@ -107,3 +107,11 @@ CREATE TABLE IF NOT EXISTS availability_reservation_events (
   created_at     INTEGER NOT NULL,
   UNIQUE(reservation_id, operation, idempotency_key)
 );
+
+-- Payment order -> creator hold. One hold cannot fund two gateway orders.
+CREATE TABLE IF NOT EXISTS availability_gateway_holds (
+ order_id TEXT PRIMARY KEY,
+ reservation_id TEXT NOT NULL UNIQUE,
+ buyer_id TEXT NOT NULL,
+ created_at INTEGER NOT NULL
+);

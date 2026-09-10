@@ -3,10 +3,14 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/account_gate.dart';
 import '../../core/analytics.dart';
+import '../../core/availability_api.dart';
+import '../../core/availability_time.dart';
 import '../../core/commercial_checkout_api.dart';
 import '../../core/listings_api.dart';
 import '../../core/money_api.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../features/calendar/calendar_data.dart';
+import '../../identity/identity.dart';
 import '../wallet/wallet_screen.dart';
 
 /// A self-contained native replacement for the browser booking island.
@@ -27,16 +31,18 @@ enum _BookingStep { choose, you, pay, done }
 
 class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
   _BookingStep _step = _BookingStep.choose;
-  DateTime _day = DateTime.now().add(const Duration(days: 1));
-  List<Map<String, dynamic>> _slots = const [];
-  Map<String, dynamic>? _selected;
-  bool _loadingSlots = false;
+  DateTime _day = DateTime.now().toLocal();
+  ListingAvailability? _availability;
+  AvailabilitySlot? _selectedSlot;
+  bool _loadingAvailability = false;
+  bool _availabilityStale = false;
   bool _accepted = false;
   bool _busy = false;
   int? _balance;
   String? _error;
   CommercialCheckoutResult? _receipt;
   late final String _idempotencyKey = CommercialCheckoutApi.newIdempotencyKey();
+  late final String _viewerTimezone = _resolveViewerTimezone();
 
   bool get _isConsult =>
       widget.listing.kind == 'consult' || widget.listing.kind == 'consult_1to1';
@@ -53,41 +59,166 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
     super.initState();
     Analytics.capture('native_booking_opened',
         {'listing_id': widget.listing.id, 'render_mode': 'native'});
-    if (_isConsult) _loadSlots();
+    if (_isConsult) _loadAvailability();
   }
 
-  Future<void> _loadSlots() async {
+  String _formatYmd(DateTime value) =>
+      '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+
+  String _resolveViewerTimezone() {
+    final candidate = DateTime.now().timeZoneName.trim();
+    if (candidate.contains('/')) {
+      try {
+        AvailabilityTime.location(candidate);
+        return candidate;
+      } catch (_) {
+        // Some Android builds report a non-IANA abbreviation. UTC is the
+        // explicit, valid fallback sent to the server in that case.
+      }
+    }
+    return 'UTC';
+  }
+
+  DateTime? _parseDate(String value) {
+    final parsed = DateTime.tryParse(value);
+    return parsed == null
+        ? null
+        : DateTime(parsed.year, parsed.month, parsed.day);
+  }
+
+  DateTime? _firstServerDay(ListingAvailability value) {
+    for (final day in value.days.where((day) => day.availableCount > 0)) {
+      final parsed = _parseDate(day.date);
+      if (parsed != null) return parsed;
+    }
+    for (final day in value.days) {
+      final parsed = _parseDate(day.date);
+      if (parsed != null) return parsed;
+    }
+    return null;
+  }
+
+  Future<void> _loadAvailability() async {
+    final now = DateTime.now().toLocal();
+    final from = _formatYmd(now);
+    // The endpoint accepts at most 62 inclusive dates. Keep the request under
+    // that limit and let the server decide which dates are bookable.
+    final to = _formatYmd(now.add(const Duration(days: 60)));
+    final scope = AccountScope.id;
+    AvailabilityCache<ListingAvailability>? cached;
+    if (mounted) {
+      setState(() {
+        _loadingAvailability = true;
+        _error = null;
+      });
+    }
     setState(() {
-      _loadingSlots = true;
-      _selected = null;
-      _error = null;
+      _selectedSlot = null;
     });
     try {
-      final rows = await ListingsApi.slotGrid(
-          widget.listing.creator.uid, _ymd, widget.listing.durationMin ?? 60);
-      if (!mounted) return;
-      setState(
-          () => _slots = rows.where((s) => s['available'] != false).toList());
+      cached = await AvailabilityApi.cachedListingAvailability(
+        listingId: widget.listing.id,
+        from: from,
+        to: to,
+        timezone: _viewerTimezone,
+      );
+      if (scope != AccountScope.id) return;
+      if (cached != null && mounted) {
+        setState(() {
+          _availability = cached!.value;
+          _availabilityStale = true;
+          _day = _firstServerDay(cached!.value) ?? _day;
+        });
+      }
+
+      final fresh = await ListingsApi.listingAvailability(
+        listingId: widget.listing.id,
+        from: from,
+        to: to,
+        timezone: _viewerTimezone,
+      );
+      if (scope != AccountScope.id || !mounted) return;
+      if (fresh.timezone != _viewerTimezone) {
+        throw const AvailabilityApiException(
+          statusCode: 200,
+          code: 'timezone_mismatch',
+          message: 'The server returned availability in a different timezone.',
+        );
+      }
+      setState(() {
+        _availability = fresh;
+        _availabilityStale = false;
+        _selectedSlot = null;
+        _day = _firstServerDay(fresh) ?? _day;
+        _error = null;
+      });
+    } on AvailabilityApiException catch (error) {
+      if (!mounted || scope != AccountScope.id) return;
+      setState(() {
+        _availabilityStale = _availability != null;
+        _error = error.code == 'account_changed'
+            ? error.message
+            : 'We could not refresh availability. Please try again.';
+      });
     } catch (_) {
-      if (mounted)
-        setState(
-            () => _error = 'We could not load availability. Please try again.');
+      if (mounted && scope == AccountScope.id) {
+        setState(() {
+          _availabilityStale = _availability != null;
+          _error = 'We could not refresh availability. Please try again.';
+        });
+      }
     } finally {
-      if (mounted) setState(() => _loadingSlots = false);
+      if (mounted && scope == AccountScope.id) {
+        setState(() => _loadingAvailability = false);
+      }
     }
   }
 
+  List<AvailabilitySlot> get _daySlots {
+    final value = _availability;
+    if (value == null || _availabilityStale) return const <AvailabilitySlot>[];
+    return value.slots
+        .where((slot) => slot.available && _slotDate(slot) == _ymd)
+        .toList(growable: false);
+  }
+
+  String _slotDate(AvailabilitySlot slot) =>
+      _formatYmd(AvailabilityTime.inTimezone(slot.startAt, _viewerTimezone));
+
+  String? _holdId;
+  int? _holdExpiresAt;
+  String _holdKey=CommercialCheckoutApi.newIdempotencyKey();
+
   Future<void> _continueFromChoose() async {
-    if (_isConsult && _selected == null) {
+    if (_isConsult && (_selectedSlot == null || _availabilityStale)) {
+      if (_availabilityStale) {
+        await _loadAvailability();
+      }
+      if (!mounted) return;
       setState(() => _error = 'Choose an available time first.');
       return;
     }
+    if(_step==_BookingStep.you)return;
+    _holdKey=CommercialCheckoutApi.newIdempotencyKey();
     setState(() => _step = _BookingStep.you);
     final ok = await AccountGate.ensureMember(context,
         reason: 'sign in to receive your booking');
     if (!mounted || !ok) {
       if (mounted) setState(() => _step = _BookingStep.choose);
       return;
+    }
+    if(_isConsult){
+      final scope=AccountScope.id;
+      final slot=_selectedSlot!;
+      try{
+        final held=await CommercialCheckoutApi.holdConsultation(listingId:widget.listing.id,slotId:slot.id,startAt:slot.startAt.millisecondsSinceEpoch,endAt:slot.endAt.millisecondsSinceEpoch,idempotencyKey:_holdKey);
+        if(!mounted || scope!=AccountScope.id)return;
+        _holdId=held.id;_holdExpiresAt=held.expiresAt;
+      }catch(error){
+        if(!mounted || scope!=AccountScope.id)return;
+        setState((){_step=_BookingStep.choose;_error='This time could not be reserved. Please select an available time.';_holdKey=CommercialCheckoutApi.newIdempotencyKey();});
+        await _loadAvailability();return;
+      }
     }
     setState(() => _step = _BookingStep.pay);
     if (!_free) _loadBalance();
@@ -116,10 +247,21 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
     });
     CommercialCheckoutResult result;
     if (_isConsult) {
+      final slot = _selectedSlot;
+      if (slot == null || _availabilityStale || !slot.available || _holdId==null || (_holdExpiresAt??0)<=DateTime.now().millisecondsSinceEpoch) {
+        setState(() {
+          _busy = false;
+          _step = _BookingStep.choose;
+          _error = 'That availability is out of date. Choose another time.';
+        });
+        await _loadAvailability();
+        return;
+      }
       result = await CommercialCheckoutApi.consultation(
         listingId: widget.listing.id,
-        startAt: _slotValue('start_at', 'starts_at'),
-        endAt: _slotValue('end_at', 'ends_at'),
+        startAt: slot.startAt.millisecondsSinceEpoch,
+        endAt: slot.endAt.millisecondsSinceEpoch,
+        holdId:_holdId,
         acceptPolicy: true,
         idempotencyKey: _idempotencyKey,
       );
@@ -135,10 +277,8 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
       // to the retired browser or bottom-sheet experience.
       try {
         final booking = await ListingsApi.book(widget.listing.id,
-            slotStart:
-                _selected == null ? null : _slotValue('start_at', 'starts_at'),
-            slotEnd:
-                _selected == null ? null : _slotValue('end_at', 'ends_at'));
+            slotStart: _selectedSlot?.startAt.millisecondsSinceEpoch,
+            slotEnd: _selectedSlot?.endAt.millisecondsSinceEpoch);
         result = CommercialCheckoutResult(
             status: 200,
             ok: true,
@@ -152,6 +292,20 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
       }
     }
     if (!mounted) return;
+    if (!result.ok && _isConsult && _slotWasStolen(result)) {
+      setState(() {
+        _busy = false;
+        _selectedSlot = null;
+        _step = _BookingStep.choose;
+        _error = 'That time was just booked. Choose another available slot.';
+      });
+      await _loadAvailability();
+      if (mounted) {
+        setState(() => _error =
+            'That time was just booked. Choose another available slot.');
+      }
+      return;
+    }
     final receipt = result;
     setState(() {
       _busy = false;
@@ -165,18 +319,21 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
     });
   }
 
-  int _slotValue(String a, String b) =>
-      ((_selected?[a] ?? _selected?[b]) as num?)?.toInt() ?? 0;
-
-  String _slotLabel(Map<String, dynamic> s) {
-    final ms = _slotValueFrom(s, 'start_at', 'starts_at');
-    if (ms == 0) return 'Time unavailable';
-    final d = DateTime.fromMillisecondsSinceEpoch(ms).toLocal();
-    return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  bool _slotWasStolen(CommercialCheckoutResult result) {
+    if (result.status != 409 && result.status != 400) return false;
+    final error = (result.error ?? '').toLowerCase();
+    return error.contains('slot') ||
+        error.contains('availability') ||
+        error.contains('booked') ||
+        error.contains('conflict') ||
+        error.contains('reservation') ||
+        error.contains('hold');
   }
 
-  int _slotValueFrom(Map<String, dynamic> s, String a, String b) =>
-      ((s[a] ?? s[b]) as num?)?.toInt() ?? 0;
+  String _slotLabel(AvailabilitySlot slot) {
+    final d = AvailabilityTime.inTimezone(slot.startAt, _viewerTimezone);
+    return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -244,33 +401,68 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
         if (_isConsult) ...[
           const SizedBox(height: 14),
+          Text('Times shown in $_viewerTimezone',
+              style: const TextStyle(color: AD.textSecondary)),
+          const SizedBox(height: 10),
           OutlinedButton.icon(
-              onPressed: _loadingSlots
+              onPressed: _loadingAvailability || _availability == null
                   ? null
                   : () async {
+                      final days = _availability!.days
+                          .map((day) => _parseDate(day.date))
+                          .whereType<DateTime>()
+                          .toList(growable: false);
+                      if (days.isEmpty) return;
                       final d = await showDatePicker(
                           context: context,
                           initialDate: _day,
-                          firstDate: DateTime.now(),
-                          lastDate:
-                              DateTime.now().add(const Duration(days: 90)));
-                      if (d != null) {
+                          firstDate: days.first,
+                          lastDate: days.last,
+                          selectableDayPredicate: (candidate) =>
+                              _availability!.days.any((day) =>
+                                  day.availableCount > 0 &&
+                                  day.date == _formatYmd(candidate)));
+                      if (d != null && mounted) {
                         setState(() => _day = d);
-                        _loadSlots();
+                        setState(() => _selectedSlot = null);
                       }
                     },
               icon: PhosphorIcon(PhosphorIcons.calendar(PhosphorIconsStyle.bold)),
               label: Text(_ymd)),
           const SizedBox(height: 14),
-          if (_loadingSlots)
+          if (_loadingAvailability && _availability == null)
             const Center(child: CircularProgressIndicator())
+          else if (_availability == null && _error != null) ...[
+            _errorText(),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+                onPressed: _loadingAvailability ? null : _loadAvailability,
+                icon: PhosphorIcon(
+                    PhosphorIcons.arrowClockwise(PhosphorIconsStyle.bold)),
+                label: const Text('Retry')),
+          ]
+          else if (_availabilityStale) ...[
+            const Text(
+                'Availability is out of date. Refresh before choosing a time.',
+                style: TextStyle(color: AD.terracotta)),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+                onPressed: _loadingAvailability ? null : _loadAvailability,
+                icon: PhosphorIcon(
+                    PhosphorIcons.arrowClockwise(PhosphorIconsStyle.bold)),
+                label: const Text('Refresh availability')),
+          ]
+          else if (_daySlots.isEmpty)
+            const Text('No available times were returned for this date.',
+                style: TextStyle(color: AD.textSecondary))
           else
             Wrap(spacing: 8, runSpacing: 8, children: [
-              for (final slot in _slots)
+              for (final slot in _daySlots)
                 ChoiceChip(
                     label: Text(_slotLabel(slot)),
-                    selected: identical(_selected, slot),
-                    onSelected: (_) => setState(() => _selected = slot))
+                    selected: _selectedSlot?.id == slot.id,
+                    onSelected: (_) =>
+                        setState(() => _selectedSlot = slot))
             ]),
         ] else
           Text(

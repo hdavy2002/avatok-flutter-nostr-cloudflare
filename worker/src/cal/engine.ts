@@ -165,7 +165,7 @@ export async function freeSlots(env: Env, creatorId: string, date: string, durMi
   let blockRows: any[];
   try {
     blockRows = ((await metaDb(env).prepare(
-      "SELECT b.source_app,b.title,b.starts_at,b.ends_at FROM calendar_blocks b WHERE b.user_id=?1 AND b.status='busy' AND b.starts_at < ?3 AND b.ends_at > ?2 AND NOT EXISTS (SELECT 1 FROM availability_reservations ar WHERE b.source_app='availability' AND ar.id=b.source_ref AND (ar.status IN ('cancelled','expired') OR (ar.status='held' AND ar.hold_expires_at IS NOT NULL AND ar.hold_expires_at<=?4)))",
+      "SELECT b.source_app,b.title,b.starts_at,b.ends_at FROM calendar_blocks b WHERE b.user_id=?1 AND b.status='busy' AND b.starts_at < ?3 AND b.ends_at > ?2 AND (?7 IS NULL OR COALESCE(b.source_ref,'') NOT IN (?7,'commercial:'||?7||':creator','commercial:'||?7||':buyer')) AND NOT EXISTS (SELECT 1 FROM availability_reservations ar WHERE b.source_app='availability' AND ar.id=b.source_ref AND (ar.status IN ('cancelled','expired') OR (ar.status='held' AND ar.hold_expires_at IS NOT NULL AND ar.hold_expires_at<=?4)))",
     ).bind(creatorId, lo - 86_400_000, hi + 86_400_000, Date.now()).all()).results ?? []) as any[];
   } catch {
     blockRows = ((await metaDb(env).prepare(
@@ -244,6 +244,8 @@ export interface ListingClaimArgs {
    *  only when the caller supplies and reuses sourceRef/idempotency handling. */
   idempotencyKey?: string | null;
   excludeReservationId?: string | null;
+  excludeBookingId?: string | null;
+  durationMin?: number;
   scheduleVersion?: number;
 }
 
@@ -298,19 +300,21 @@ async function loadUnifiedSchedule(env: Env, creatorId: string, listingId?: stri
   let shared: any = null, listing: any = null;
   let unifiedTables = true;
   let legacyTz = "UTC", legacySlotMin = 60;
-  const listingMeta = listingId ? await db.prepare('SELECT duration_min FROM listings WHERE id=?1').bind(listingId).first<{duration_min:number}>() : null;
+  const listingMeta = listingId ? await db.prepare('SELECT duration_min,attrs FROM listings WHERE id=?1').bind(listingId).first<{duration_min:number;attrs:string|null}>() : null;
   try {
     shared = await db.prepare("SELECT * FROM availability_schedules WHERE creator_id=?1 AND listing_id IS NULL").bind(creatorId).first<any>();
     if (listingId) listing = await db.prepare("SELECT * FROM availability_schedules WHERE creator_id=?1 AND listing_id=?2").bind(creatorId, listingId).first<any>();
   } catch { unifiedTables = false; }
 
+  let listingNotice=0;
+  if(listingMeta){try{const attrs=JSON.parse(listingMeta.attrs??'{}');listingNotice=Math.max(0,Number(attrs.commercial_booking_notice_hours??24))*60;}catch{listingNotice=1440;}}
   let rules: Array<{ weekday: number; start_min: number; end_min: number }> = [];
   const schedule = listing ?? shared;
   if (unifiedTables && schedule) {
     rules = ((await db.prepare("SELECT weekday,start_min,end_min FROM availability_schedule_rules WHERE schedule_id=?1 ORDER BY weekday,start_min").bind(schedule.id).all()).results ?? []) as any;
   } else if (!unifiedTables || !schedule) {
     const legacy = await db.prepare("SELECT weekday,start_min,end_min,tz,slot_min FROM availability_rules WHERE user_id=?1 ORDER BY weekday,start_min").bind(creatorId).all();
-    rules = ((legacy.results ?? []) as any).map((r) => ({ weekday: Number(r.weekday), start_min: Number(r.start_min), end_min: Number(r.end_min) }));
+    rules = ((legacy.results ?? []) as any[]).map((r: any) => ({ weekday: Number(r.weekday), start_min: Number(r.start_min), end_min: Number(r.end_min) }));
     const first = (legacy.results ?? [])[0] as any;
     if (first?.tz) legacyTz = String(first.tz);
     if (first?.slot_min) legacySlotMin = Math.max(1, Number(first.slot_min));
@@ -334,7 +338,7 @@ async function loadUnifiedSchedule(env: Env, creatorId: string, listingId?: stri
     mode: (schedule?.mode === "custom" || schedule?.mode === "exclusive" ? schedule.mode : "shared"),
     duration_min: Math.max(1, Number(listing?.duration_min ?? listingMeta?.duration_min ?? schedule?.duration_min ?? legacySlotMin)),
     slot_interval_min: Math.max(1, Number(schedule?.slot_interval_min ?? legacySlotMin)),
-    buffer_min: Math.max(0, Number(schedule?.buffer_min ?? legacyPolicy?.buffer_min ?? 10)), min_notice_min: Math.max(0, Number(schedule?.min_notice_min ?? legacyPolicy?.min_notice_min ?? 120)),
+    buffer_min: Math.max(0, Number(schedule?.buffer_min ?? legacyPolicy?.buffer_min ?? 10)), min_notice_min: Math.max(listingNotice, Number(schedule?.min_notice_min ?? legacyPolicy?.min_notice_min ?? 120)),
     max_per_day: Math.max(1, Number(schedule?.max_per_day ?? legacyPolicy?.max_per_day ?? 8)), horizon_days: Math.min(366, Math.max(1, Number(schedule?.horizon_days ?? 60))), version: Number(schedule?.version ?? 0), rules, exceptions,
   };
 }
@@ -367,9 +371,24 @@ async function listingOwner(env: Env, listingId: string): Promise<{ creator_id: 
   return await metaDb(env).prepare("SELECT creator_id,status FROM listings WHERE id=?1").bind(listingId).first<{ creator_id: string; status: string }>();
 }
 
-async function unifiedConflicts(env: Env, creatorId: string, listingId: string, startAt: number, endAt: number, bufferMin: number, excludeReservationId?: string | null): Promise<UnifiedConflict[]> {
+/** Published live occurrences also protect legacy rows predating reservations. */
+export async function loadFixedLiveCommitments(env: Env,creatorId:string,from:number,to:number,excludeListingId:string=''):Promise<UnifiedConflict[]> {
+  const rows=await metaDb(env).prepare(`SELECT l.title,s.starts_at,s.ends_at FROM listing_slots s JOIN listings l ON l.id=s.listing_id
+    WHERE l.creator_id=?1 AND l.id!=?4 AND l.kind='live_event' AND l.status IN ('published','live') AND s.status IN ('open','full') AND s.starts_at<?3 AND s.ends_at>?2
+    UNION SELECT l.title,l.starts_at,l.starts_at+COALESCE(l.duration_min,60)*60000 AS ends_at FROM listings l
+    WHERE l.creator_id=?1 AND l.id!=?4 AND l.kind='live_event' AND l.status IN ('published','live') AND l.starts_at<?3 AND l.starts_at+COALESCE(l.duration_min,60)*60000>?2 AND NOT EXISTS(SELECT 1 FROM listing_slots s WHERE s.listing_id=l.id AND s.status IN ('open','full'))`).bind(creatorId,from,to,excludeListingId).all();
+  return ((rows.results??[]) as any[]).map(r=>({title:r.title,starts_at:Number(r.starts_at),ends_at:Number(r.ends_at),source_app:'live_event'}));
+}
+
+function fixedLiveAdmission(creator:string,listing:string,start:string,end:string):string {
+ return `NOT EXISTS(SELECT 1 FROM listings l LEFT JOIN listing_slots s ON s.listing_id=l.id AND s.status IN ('open','full')
+ WHERE l.creator_id=${creator} AND l.id!=${listing} AND l.kind='live_event' AND l.status IN ('published','live')
+ AND COALESCE(s.starts_at,l.starts_at)<${end} AND COALESCE(s.ends_at,l.starts_at+COALESCE(l.duration_min,60)*60000)>${start})`;
+}
+
+async function unifiedConflicts(env: Env, creatorId: string, listingId: string, startAt: number, endAt: number, bufferMin: number, excludeReservationId?: string | null, excludeBookingId?: string | null): Promise<UnifiedConflict[]> {
   const db = metaDb(env), lo = startAt - Math.max(0, bufferMin) * 60_000, hi = endAt + Math.max(0, bufferMin) * 60_000, now = Date.now();
-  const out: UnifiedConflict[] = [];
+  const out: UnifiedConflict[] = await loadFixedLiveCommitments(env,creatorId,lo,hi,listingId);
   try {
     const rs = await db.prepare("SELECT id,listing_id,kind,title,starts_at,ends_at FROM availability_reservations WHERE creator_id=?1 AND status IN ('held','reserved','confirmed') AND (status!='held' OR hold_expires_at IS NULL OR hold_expires_at>?4) AND starts_at < ?3 AND ends_at > ?2 AND (?5 IS NULL OR id!=?5)").bind(creatorId, lo, hi, now, excludeReservationId ?? null).all();
     for (const r of (rs.results ?? []) as any[]) {
@@ -380,11 +399,11 @@ async function unifiedConflicts(env: Env, creatorId: string, listingId: string, 
     }
   } catch (error) { throw error; }
   try {
-    const rs = await db.prepare("SELECT b.source_app,b.title,b.starts_at,b.ends_at FROM calendar_blocks b WHERE b.user_id=?1 AND b.status='busy' AND b.starts_at < ?3 AND b.ends_at > ?2 AND NOT EXISTS (SELECT 1 FROM availability_reservations ar WHERE b.source_app='availability' AND ar.id=b.source_ref AND ((ar.status IN ('cancelled','expired') OR (ar.status='held' AND ar.hold_expires_at IS NOT NULL AND ar.hold_expires_at<=?4)) OR (ar.kind='exclusive' AND ar.listing_id=?5) OR ar.id=?6))").bind(creatorId, lo, hi, now, listingId, excludeReservationId ?? null).all();
+    const rs = await db.prepare("SELECT b.source_app,b.title,b.starts_at,b.ends_at FROM calendar_blocks b WHERE b.user_id=?1 AND b.status='busy' AND b.starts_at < ?3 AND b.ends_at > ?2 AND (?7 IS NULL OR COALESCE(b.source_ref,'') NOT IN (?7,'commercial:'||?7||':creator','commercial:'||?7||':buyer')) AND NOT EXISTS (SELECT 1 FROM availability_reservations ar WHERE b.source_app='availability' AND ar.id=b.source_ref AND ((ar.status IN ('cancelled','expired') OR (ar.status='held' AND ar.hold_expires_at IS NOT NULL AND ar.hold_expires_at<=?4)) OR (ar.kind='exclusive' AND ar.listing_id=?5) OR ar.id=?6))").bind(creatorId, lo, hi, now, listingId, excludeReservationId ?? null, excludeBookingId ?? null).all();
     for (const r of (rs.results ?? []) as any[]) out.push({ title: r.title ?? null, source_app: r.source_app, starts_at: Number(r.starts_at), ends_at: Number(r.ends_at) });
   } catch (error) { throw error; }
   try {
-    const rs = await db.prepare("SELECT b.starts_at,b.ends_at,l.title FROM bookings b LEFT JOIN listings l ON l.id=b.listing_id WHERE b.creator_id=?1 AND b.status IN ('confirmed','scheduled','pending') AND b.starts_at < ?3 AND b.ends_at > ?2").bind(creatorId, lo, hi).all();
+    const rs = await db.prepare("SELECT b.starts_at,b.ends_at,l.title FROM bookings b LEFT JOIN listings l ON l.id=b.listing_id WHERE b.creator_id=?1 AND b.status IN ('confirmed','scheduled','pending') AND b.starts_at < ?3 AND b.ends_at > ?2 AND (?4 IS NULL OR b.id!=?4)").bind(creatorId, lo, hi, excludeBookingId ?? null).all();
     for (const r of (rs.results ?? []) as any[]) out.push({ title: r.title ?? null, source_app: "booking", starts_at: Number(r.starts_at), ends_at: Number(r.ends_at) });
   } catch (error) { throw error; }
   return out.sort((a, b) => a.starts_at - b.starts_at);
@@ -396,9 +415,9 @@ export async function expireAvailabilityReservations(env: Env, now = Date.now())
   return Number(r.meta?.changes ?? 0);
 }
 
-async function capReached(env: Env, creatorId: string, schedule: UnifiedSchedule, startAt: number, excludeReservationId?: string): Promise<boolean> {
+async function capReached(env: Env, creatorId: string, schedule: UnifiedSchedule, startAt: number, excludeReservationId?: string, excludeBookingId?: string): Promise<boolean> {
   const local = localParts(startAt, schedule.timezone), dayStart = zonedEpoch(local.date, 0, schedule.timezone), dayEnd = zonedEpoch(local.date, 1440, schedule.timezone), now = Date.now();
-  const rows = await metaDb(env).prepare("SELECT starts_at,ends_at FROM availability_reservations WHERE creator_id=?1 AND kind IN ('booking','hold') AND status IN ('held','reserved','confirmed') AND (status!='held' OR hold_expires_at IS NULL OR hold_expires_at>?4) AND starts_at>=?2 AND starts_at<?3 AND (?5 IS NULL OR id!=?5) UNION SELECT starts_at,ends_at FROM bookings WHERE creator_id=?1 AND status IN ('confirmed','scheduled','pending') AND starts_at>=?2 AND starts_at<?3").bind(creatorId, dayStart, dayEnd, now, excludeReservationId ?? null).all();
+  const rows = await metaDb(env).prepare("SELECT starts_at,ends_at FROM availability_reservations WHERE creator_id=?1 AND kind IN ('booking','hold') AND status IN ('held','reserved','confirmed') AND (status!='held' OR hold_expires_at IS NULL OR hold_expires_at>?4) AND starts_at>=?2 AND starts_at<?3 AND (?5 IS NULL OR id!=?5) UNION SELECT starts_at,ends_at FROM bookings WHERE creator_id=?1 AND status IN ('confirmed','scheduled','pending') AND starts_at>=?2 AND starts_at<?3 AND (?6 IS NULL OR id!=?6)").bind(creatorId, dayStart, dayEnd, now, excludeReservationId ?? null, excludeBookingId ?? null).all();
   const seen = new Set<string>();
   for (const x of (rows.results ?? []) as any[]) seen.add(`${x.starts_at}:${x.ends_at}`);
   return seen.size >= schedule.max_per_day;
@@ -406,7 +425,7 @@ async function capReached(env: Env, creatorId: string, schedule: UnifiedSchedule
 
 /** Validate listing membership, duration, local schedule, notice, cap and
  * current creator occupancy. Checkout must call this immediately before claim. */
-export async function validateListingSlot(env: Env, listingId: string, startAt: number, endAt: number, opts: { durationMin?: number; now?: number; excludeReservationId?: string } = {}): Promise<ListingSlotValidation> {
+export async function validateListingSlot(env: Env, listingId: string, startAt: number, endAt: number, opts: { durationMin?: number; now?: number; excludeReservationId?: string; excludeBookingId?: string } = {}): Promise<ListingSlotValidation> {
   const listing = await listingOwner(env, listingId);
   if (!listing) return { ok: false, listingId, reason: "listing_not_found" };
   if (!["published", "live"].includes(listing.status)) return { ok: false, listingId, creatorId: listing.creator_id, reason: "listing_unpublished" };
@@ -429,8 +448,8 @@ export async function validateListingSlot(env: Env, listingId: string, startAt: 
   const aligned = !!insideWindow && ((lp.minutes - insideWindow.start_min) % Math.max(1, schedule.slot_interval_min) === 0);
   const inside = !!insideWindow && aligned;
   if (!inside) return { ok: false, listingId, creatorId: listing.creator_id, scheduleVersion: schedule.version, reason: windows.length ? "outside_hours" : "outside_hours" };
-  if (await capReached(env, listing.creator_id, schedule, startAt, opts.excludeReservationId)) return { ok: false, listingId, creatorId: listing.creator_id, scheduleVersion: schedule.version, reason: "max_per_day" };
-  const conflicts = await unifiedConflicts(env, listing.creator_id, listingId, startAt, endAt, schedule.buffer_min, opts.excludeReservationId);
+  if (await capReached(env, listing.creator_id, schedule, startAt, opts.excludeReservationId, opts.excludeBookingId)) return { ok: false, listingId, creatorId: listing.creator_id, scheduleVersion: schedule.version, reason: "max_per_day" };
+  const conflicts = await unifiedConflicts(env, listing.creator_id, listingId, startAt, endAt, schedule.buffer_min, opts.excludeReservationId, opts.excludeBookingId);
   if (conflicts.length) return { ok: false, listingId, creatorId: listing.creator_id, scheduleVersion: schedule.version, reason: "conflict", conflict: conflicts[0] };
   return { ok: true, listingId, creatorId: listing.creator_id, scheduleVersion: schedule.version };
 }
@@ -449,7 +468,7 @@ export async function claimListingSlot(env: Env, a: ListingClaimArgs): Promise<L
     }
   }
   const sharedSnapshot = await loadUnifiedSchedule(env,a.creatorId,null);
-  const valid = await validateListingSlot(env, a.listingId, a.startAt, a.endAt, { excludeReservationId: a.excludeReservationId ?? undefined });
+  const valid = await validateListingSlot(env, a.listingId, a.startAt, a.endAt, { excludeReservationId: a.excludeReservationId ?? undefined, excludeBookingId:a.excludeBookingId??undefined,durationMin:a.durationMin });
   if (!valid.ok) return { ok: false, reason: valid.reason ?? "unavailable", conflict: valid.conflict, scheduleVersion: valid.scheduleVersion };
   if (valid.creatorId !== a.creatorId) return { ok: false, reason: "listing_membership", scheduleVersion: valid.scheduleVersion };
   const id = crypto.randomUUID(), now = Date.now(), schedule = await loadUnifiedSchedule(env, a.creatorId, a.listingId);
@@ -465,7 +484,7 @@ export async function claimListingSlot(env: Env, a: ListingClaimArgs): Promise<L
       SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?11
       WHERE NOT EXISTS (
         SELECT 1 FROM calendar_blocks b
-        WHERE b.user_id=?2 AND b.status='busy' AND b.starts_at < ?7 + ?12 AND b.ends_at > ?6 - ?12
+        WHERE b.user_id=?2 AND b.status='busy' AND (?19 IS NULL OR COALESCE(b.source_ref,'') NOT IN (?19,'commercial:'||?19||':creator','commercial:'||?19||':buyer')) AND b.starts_at < ?7 + ?12 AND b.ends_at > ?6 - ?12
           AND NOT EXISTS (SELECT 1 FROM availability_reservations ex WHERE b.source_app='availability' AND ex.id=b.source_ref AND ex.kind='exclusive' AND ex.listing_id=?3)
           AND NOT EXISTS (SELECT 1 FROM availability_reservations own WHERE b.source_app='availability' AND own.id=b.source_ref AND own.id=?13)
           AND NOT EXISTS (SELECT 1 FROM availability_reservations dead WHERE b.source_app='availability' AND dead.id=b.source_ref AND (dead.status IN ('cancelled','expired') OR (dead.status='held' AND dead.hold_expires_at IS NOT NULL AND dead.hold_expires_at<=?11)))
@@ -478,22 +497,23 @@ export async function claimListingSlot(env: Env, a: ListingClaimArgs): Promise<L
           AND (?13 IS NULL OR x.id!=?13)
           AND NOT (x.kind='exclusive' AND x.listing_id=?3)
       )
-      AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.creator_id=?2 AND b.status IN ('confirmed','scheduled','pending') AND b.starts_at<?7+?12 AND b.ends_at>?6-?12)
+      AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.creator_id=?2 AND b.status IN ('confirmed','scheduled','pending') AND b.starts_at<?7+?12 AND b.ends_at>?6-?12 AND (?19 IS NULL OR b.id!=?19))
       AND (SELECT COUNT(*) FROM (
         SELECT starts_at,ends_at FROM availability_reservations
           WHERE creator_id=?2 AND kind IN ('booking','hold') AND status IN ('held','reserved','confirmed')
             AND (status!='held' OR hold_expires_at IS NULL OR hold_expires_at>?11) AND starts_at>=?14 AND starts_at<?15 AND (?13 IS NULL OR id!=?13)
         UNION SELECT starts_at,ends_at FROM bookings
-          WHERE creator_id=?2 AND status IN ('confirmed','scheduled','pending') AND starts_at>=?14 AND starts_at<?15
+          WHERE creator_id=?2 AND status IN ('confirmed','scheduled','pending') AND starts_at>=?14 AND starts_at<?15 AND (?19 IS NULL OR id!=?19)
       )) < ?16
-      AND COALESCE((SELECT version FROM availability_schedules WHERE creator_id=?2 AND listing_id=?3),(SELECT version FROM availability_schedules WHERE creator_id=?2 AND listing_id IS NULL),0)=?17 AND COALESCE((SELECT version FROM availability_schedules WHERE creator_id=?2 AND listing_id IS NULL),0)=?18`).bind(id, a.creatorId, a.listingId, a.kind, a.status, a.startAt, a.endAt, a.title ?? null, a.sourceRef ?? null, a.holdExpiresAt ?? null, now, buf, a.excludeReservationId ?? null, dayStart, dayEnd, schedule.max_per_day, schedule.version, sharedSnapshot.version).run();
+      AND ${fixedLiveAdmission('?2','?3','?6-?12','?7+?12')}
+      AND COALESCE((SELECT version FROM availability_schedules WHERE creator_id=?2 AND listing_id=?3),(SELECT version FROM availability_schedules WHERE creator_id=?2 AND listing_id IS NULL),0)=?17 AND COALESCE((SELECT version FROM availability_schedules WHERE creator_id=?2 AND listing_id IS NULL),0)=?18`).bind(id, a.creatorId, a.listingId, a.kind, a.status, a.startAt, a.endAt, a.title ?? null, a.sourceRef ?? null, a.holdExpiresAt ?? null, now, buf, a.excludeReservationId ?? null, dayStart, dayEnd, schedule.max_per_day, schedule.version, sharedSnapshot.version,a.excludeBookingId??null).run();
     if (Number(r.meta?.changes ?? 0) > 0) return { ok: true, reservationId: id, scheduleVersion: valid.scheduleVersion };
   } catch (e) {
     // A deployment without the additive migration should fail closed for the
     // new claim path; legacy routes continue using claimBlock().
     return { ok: false, reason: "availability_unavailable" };
   }
-  const conflict = (await unifiedConflicts(env, a.creatorId, a.listingId, a.startAt, a.endAt, buf / 60_000, a.excludeReservationId))[0];
+  const conflict = (await unifiedConflicts(env, a.creatorId, a.listingId, a.startAt, a.endAt, buf / 60_000, a.excludeReservationId, a.excludeBookingId))[0];
   return { ok: false, reason: conflict ? "conflict" : "max_per_day", conflict, scheduleVersion: valid.scheduleVersion };
 }
 
@@ -526,7 +546,7 @@ export async function claimExclusiveReservation(env: Env, a: ExclusiveReservatio
   try {
     const r = await metaDb(env).prepare(`INSERT INTO availability_reservations (id,creator_id,listing_id,kind,status,starts_at,ends_at,title,source_ref,created_at,updated_at)
       SELECT ?1,?2,?3,'exclusive','reserved',?4,?5,?6,?7,?8,?8
-      WHERE NOT EXISTS (SELECT 1 FROM calendar_blocks b WHERE b.user_id=?2 AND b.status='busy' AND b.starts_at < ?5 + ?9 AND b.ends_at > ?4 - ?9 AND NOT EXISTS (SELECT 1 FROM availability_reservations dead WHERE b.source_app='availability' AND dead.id=b.source_ref AND (dead.status IN ('cancelled','expired') OR (dead.status='held' AND dead.hold_expires_at IS NOT NULL AND dead.hold_expires_at<=?8))))
+      WHERE ${fixedLiveAdmission('?2','?3','?4-?9','?5+?9')} AND NOT EXISTS (SELECT 1 FROM calendar_blocks b WHERE b.user_id=?2 AND b.status='busy' AND b.starts_at < ?5 + ?9 AND b.ends_at > ?4 - ?9 AND NOT EXISTS (SELECT 1 FROM availability_reservations dead WHERE b.source_app='availability' AND dead.id=b.source_ref AND (dead.status IN ('cancelled','expired') OR (dead.status='held' AND dead.hold_expires_at IS NOT NULL AND dead.hold_expires_at<=?8))))
         AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.creator_id=?2 AND b.status IN ('confirmed','scheduled','pending') AND b.starts_at<?5+?9 AND b.ends_at>?4-?9)
         AND NOT EXISTS (SELECT 1 FROM availability_reservations x WHERE x.creator_id=?2 AND x.status IN ('held','reserved','confirmed') AND (x.status!='held' OR x.hold_expires_at IS NULL OR x.hold_expires_at>?8) AND x.starts_at < ?5 + ?9 AND x.ends_at > ?4 - ?9)`).bind(id, a.creatorId, a.listingId, a.startAt, a.endAt, a.title ?? null, a.sourceRef ?? null, now, buf).run();
     if (Number(r.meta?.changes ?? 0) > 0) return { ok: true, reservationId: id };
@@ -549,3 +569,18 @@ export async function previewListingConflicts(env: Env, creatorId: string, listi
 }
 
 export { loadUnifiedSchedule, windowsForDate, localParts };
+
+/** Compare-and-swap a fixed window without dropping its existing protection. */
+export async function replaceExclusiveReservation(env: Env, a: ExclusiveReservationArgs & {reservationId:string;expectedStartAt:number;expectedEndAt:number}): Promise<ListingClaimResult> {
+  const owner=await listingOwner(env,a.listingId);
+  if(owner?.creator_id!==a.creatorId)return {ok:false,reason:'listing_membership'};
+  if(!Number.isSafeInteger(a.startAt)||!Number.isSafeInteger(a.endAt)||a.endAt<=a.startAt)return {ok:false,reason:'bad_interval'};
+  const now=Date.now(),buf=Math.max(0,a.bufferMin??(await loadUnifiedSchedule(env,a.creatorId,null)).buffer_min)*60000;
+  const result=await metaDb(env).prepare(`UPDATE availability_reservations SET starts_at=?1,ends_at=?2,title=?3,updated_at=?4
+    WHERE id=?5 AND creator_id=?6 AND listing_id=?7 AND kind='exclusive' AND status='reserved' AND starts_at=?8 AND ends_at=?9
+    AND NOT EXISTS(SELECT 1 FROM calendar_blocks b WHERE b.user_id=?6 AND b.status='busy' AND b.starts_at<?2+?10 AND b.ends_at>?1-?10
+      AND NOT EXISTS(SELECT 1 FROM availability_reservations r WHERE b.source_app='availability' AND r.id=b.source_ref AND (r.id=?5 OR r.status IN ('cancelled','expired') OR (r.status='held' AND r.hold_expires_at<=?4))))
+    AND NOT EXISTS(SELECT 1 FROM bookings b WHERE b.creator_id=?6 AND b.status IN ('confirmed','scheduled','pending') AND b.starts_at<?2+?10 AND b.ends_at>?1-?10)`)
+    .bind(a.startAt,a.endAt,a.title??null,now,a.reservationId,a.creatorId,a.listingId,a.expectedStartAt,a.expectedEndAt,buf).run();
+  return Number(result.meta?.changes??0)===1?{ok:true,reservationId:a.reservationId}:{ok:false,reason:'conflict'};
+}

@@ -62,6 +62,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
   bool _refreshing = false;
   String? _error;
   bool _stale = false;
+  int _loadGeneration = 0;
 
   @override
   void initState() {
@@ -86,18 +87,22 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
   }
 
   Future<void> _loadData({bool showBusy = true}) async {
+    final generation = ++_loadGeneration;
+    bool current() => mounted && generation == _loadGeneration;
     final listingId = _selectedListingId;
     final range = _monthRange;
     final from = _dateKey(range.$1);
     final to = _dateKey(range.$2);
-    if (showBusy && mounted)
+    if (showBusy && current())
       setState(() {
         _loading = true;
         _error = null;
+        _availability = null;
+        _stale = true;
       });
 
     final cachedBlocks = await CalendarStore.cached();
-    if (mounted && cachedBlocks.isNotEmpty) {
+    if (current() && cachedBlocks.isNotEmpty) {
       setState(() {
         _blocks = cachedBlocks;
         _loading = false;
@@ -108,7 +113,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
       cachedSchedule =
           await AvailabilityApi.cachedSchedule(listingId: listingId);
     } catch (e) {
-      if (mounted) {
+      if (current()) {
         setState(() {
           _loading = false;
           _refreshing = false;
@@ -129,7 +134,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
           timezone: cacheTimezone,
         );
       } catch (e) {
-        if (mounted) {
+        if (current()) {
           setState(() {
             _loading = false;
             _refreshing = false;
@@ -139,7 +144,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
         return;
       }
     }
-    if (mounted && (cachedSchedule != null || cachedAvailability != null)) {
+    if (current() && (cachedSchedule != null || cachedAvailability != null)) {
       setState(() {
         if (cachedSchedule != null) _schedule = cachedSchedule.value;
         if (cachedAvailability != null)
@@ -157,14 +162,14 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
         from: range.$1.subtract(const Duration(days: 7)).millisecondsSinceEpoch,
         to: range.$2.add(const Duration(days: 7)).millisecondsSinceEpoch,
       );
-      if (mounted) setState(() => _blocks = blocks);
+      if (current()) setState(() => _blocks = blocks);
     } catch (e) {
       errors.add(_friendlyError(e));
     }
     try {
       final schedule =
           await AvailabilityApi.fetchSchedule(listingId: listingId);
-      if (mounted)
+      if (current())
         setState(() {
           _schedule = schedule;
           if (listingId == null) _stale = false;
@@ -177,7 +182,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
             to: to,
             timezone: schedule.timezone,
           );
-          if (mounted)
+          if (current())
             setState(() {
               _availability = availability;
               _stale = false;
@@ -189,7 +194,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
     } catch (e) {
       errors.add(_friendlyError(e));
     }
-    if (mounted) {
+    if (current()) {
       setState(() {
         _loading = false;
         _refreshing = false;
@@ -217,8 +222,9 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
       '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
   List<CalBlock> _onDay(DateTime day) {
-    final start = DateTime(day.year, day.month, day.day).millisecondsSinceEpoch;
-    final end = start + const Duration(days: 1).inMilliseconds;
+    final zone = _schedule?.timezone ?? 'UTC';
+    final start = AvailabilityTime.wallTimeToUtc(date: day,minutes:0,timezone:zone).millisecondsSinceEpoch;
+    final end = AvailabilityTime.wallTimeToUtc(date:DateTime(day.year,day.month,day.day+1),minutes:0,timezone:zone).millisecondsSinceEpoch;
     return (_blocks.where((b) => b.startsAt < end && b.endsAt > start).toList()
       ..sort((a, b) => a.startsAt.compareTo(b.startsAt)));
   }
@@ -780,10 +786,10 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
     final result = await showDialog<AvailabilityException>(
         context: context,
         builder: (_) => _ExceptionDialog(
-            day: day, initial: _exceptionOnDay(day), listings: _listings));
+            day: day, initial: _exceptionOnDay(day), listings: _listings.where((l)=>_selectedListingId==null || l.id==_selectedListingId).toList()));
     if (result == null || _schedule == null) return;
     final exceptions = [..._schedule!.exceptions]
-      ..removeWhere((e) => e.date == _dateKey(day));
+      ..removeWhere((e) => e.date == _dateKey(day) && e.id == _exceptionOnDay(day)?.id);
     exceptions.add(result);
     try {
       final saved = await AvailabilityApi.saveSchedule(
@@ -825,7 +831,7 @@ class _ExceptionDialogState extends State<_ExceptionDialog> {
         hour: (initial?.startMin ?? 0) ~/ 60,
         minute: (initial?.startMin ?? 0) % 60);
     _end = TimeOfDay(
-        hour: (initial?.endMin ?? 1440) ~/ 60,
+        hour: ((initial?.endMin ?? 1440) ~/ 60) % 24,
         minute: (initial?.endMin ?? 1440) % 60);
     _listingId = initial?.listingId;
   }
@@ -917,7 +923,7 @@ class _ExceptionDialogState extends State<_ExceptionDialog> {
                       date:
                           '${widget.day.year.toString().padLeft(4, '0')}-${widget.day.month.toString().padLeft(2, '0')}-${widget.day.day.toString().padLeft(2, '0')}',
                       startMin: _start.hour * 60 + _start.minute,
-                      endMin: _end.hour * 60 + _end.minute,
+                      endMin: _end.hour == 0 && _end.minute == 0 ? 1440 : _end.hour * 60 + _end.minute,
                       status: _status,
                       listingId: _status == AvailabilityExceptionStatus.reserved
                           ? _listingId

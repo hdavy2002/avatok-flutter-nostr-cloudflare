@@ -48,7 +48,7 @@ export type BookSelection =
       listingId: string;
       title: string;
       /** Only for consult — the picked calendar slot. Null for a live ticket. */
-      slot: { start_at: number; end_at: number } | null;
+      slot: { start_at: number; end_at: number; id?: string } | null;
       /** Client-side estimate (the listing's base price in tokens) shown before
        *  the server confirms the real total via priceBreakdown(). */
       requiredCoins: number | null;

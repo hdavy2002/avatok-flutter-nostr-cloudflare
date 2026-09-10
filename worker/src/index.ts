@@ -30,7 +30,7 @@ import {
   commercialSessionsMine,
   reconcileCommercialSessions,
 } from "./routes/commercial_stream_sessions";
-import { commercialCheckout, resendCommercialConfirmation } from "./routes/commercial_checkout";
+import { commercialCheckout, commercialHold, resendCommercialConfirmation } from "./routes/commercial_checkout";
 import { recoverEmailOutbox } from "./lib/email_outbox";
 import { commercialLifecycle } from "./routes/commercial_lifecycle";
 import { commercialRoutePattern } from "./lib/commercial_ids";
@@ -1500,6 +1500,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
           && (req.method === "POST" || req.method === "GET")) {
         return await resendCommercialConfirmation(req, env);
       }
+      if ((/^\/api\/commercial\/consult\/[A-Za-z0-9-]{1,64}\/hold$/.test(p) || /^\/api\/listings\/[A-Za-z0-9-]{1,64}\/hold$/.test(p)) && req.method === "POST") return await commercialHold(req, env);
       if (/^\/api\/commercial\/(live|consult)\/[A-Za-z0-9-]{1,64}\/checkout$/.test(p) && req.method === "POST") {
         return await commercialCheckout(req, env);
       }

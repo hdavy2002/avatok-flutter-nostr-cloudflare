@@ -6,7 +6,7 @@ import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { metaDb } from "../db/shard";
 import { track } from "../hooks";
-import { zonedEpoch, validateListingSlot, previewListingConflicts, loadUnifiedSchedule, windowsForDate, localParts } from "../cal/engine";
+import { zonedEpoch, validateListingSlot, previewListingConflicts, loadUnifiedSchedule, windowsForDate, localParts, loadFixedLiveCommitments } from "../cal/engine";
 
 const APP = "avacalendar";
 const MAX_RANGE_DAYS = 62;
@@ -108,10 +108,17 @@ export async function putSchedule(req: Request, env: Env): Promise<Response> {
   const otherZones = await db.prepare("SELECT timezone FROM availability_schedules WHERE creator_id=?1 AND id!=?2 LIMIT 101").bind(own.creatorId,existing?.id??'').all<{timezone:string}>();
   if ((otherZones.results??[]).some(s=>s.timezone!==timezone)) return json({error:'All listing schedules use the creator calendar timezone. Keep the existing timezone while other schedules exist.'},400);
   const id = existing?.id ?? crypto.randomUUID();
-  // IDs are server-owned; a client cannot replace another schedule's exceptions.
-  const normalized = parsedExceptions.map(e => ({...e,id:crypto.randomUUID()}));
+  // Reuse only IDs read from this schedule. Unchanged reserved windows remain
+  // intact when their appointments are already booked and other rules change.
+  const previous = existing ? ((await db.prepare("SELECT e.*,r.status AS reservation_status,r.starts_at,r.ends_at FROM availability_exceptions e LEFT JOIN availability_reservations r ON r.id=e.reservation_id WHERE e.schedule_id=?1").bind(id).all()).results??[]) as any[] : [];
+  const keys=new Set<string>();
+  for(const e of parsedExceptions){const key=`${e.date}:${e.start_min}:${e.end_min}`;if(keys.has(key))return json({error:'Duplicate date interval'},400);keys.add(key);}
+  const normalized = parsedExceptions.map(e => {
+    const prior=previous.find(p=>p.date===e.date && p.start_min===e.start_min && p.end_min===e.end_min && p.status===e.status && (p.listing_id??null)===(e.listing_id??listingId));
+    return {...e,id:prior?.id??crypto.randomUUID(),prior};
+  });
   const reservations = normalized.filter(e => e.status === 'reserved' || (e.status === 'unavailable' && listingId === null)).map(e => ({
-    exception:e, id:crypto.randomUUID(), start:zonedEpoch(e.date,e.start_min,timezone), end:zonedEpoch(e.date,e.end_min,timezone),
+    exception:e, id:crypto.randomUUID(), retained:false, start:zonedEpoch(e.date,e.start_min,timezone), end:zonedEpoch(e.date,e.end_min,timezone),
     listing:e.listing_id ?? listingId ?? '', kind:e.status === 'reserved' ? 'exclusive' : 'block',
   }));
   for (let i=0;i<reservations.length;i++) {
@@ -121,7 +128,9 @@ export async function putSchedule(req: Request, env: Env): Promise<Response> {
     if (!(a.end>a.start)) return json({error:'Invalid date interval'},400);
     if (reservations.slice(i+1).some(b=>a.start<b.end && b.start<a.end)) return json({error:'Date reservations overlap each other'},409);
   }
-  const intervals = JSON.stringify(reservations.map(r=>({start:r.start,end:r.end})));
+  for(const r of reservations){const p=r.exception.prior;if(p?.reservation_id && ['reserved','confirmed'].includes(p.reservation_status) && p.starts_at===r.start && p.ends_at===r.end){r.id=p.reservation_id;r.retained=true;}}
+  const intervals = JSON.stringify(reservations.filter(r=>!r.retained).map(r=>({start:r.start,end:r.end})));
+  const retainedIds=JSON.stringify(reservations.filter(r=>r.retained).map(r=>r.id));
   // The admission and every child mutation use one unguessable write token.
   // A competing save that loses the version comparison changes no child rows.
   const noConflict = `NOT EXISTS (
@@ -132,6 +141,10 @@ export async function putSchedule(req: Request, env: Env): Promise<Response> {
   ) AND NOT EXISTS (
     SELECT 1 FROM json_each(?15) n JOIN bookings b ON b.creator_id=?2 AND b.status IN ('confirmed','scheduled','pending')
     WHERE b.starts_at < json_extract(n.value,'$.end') + ?8*60000 AND b.ends_at > json_extract(n.value,'$.start') - ?8*60000
+  ) AND NOT EXISTS(
+    SELECT 1 FROM json_each(?15) n JOIN listings l ON l.creator_id=?2 AND l.kind='live_event' AND l.status IN ('published','live')
+    LEFT JOIN listing_slots s ON s.listing_id=l.id AND s.status IN ('open','full')
+    WHERE COALESCE(s.starts_at,l.starts_at)<json_extract(n.value,'$.end')+?8*60000 AND COALESCE(s.ends_at,l.starts_at+COALESCE(l.duration_min,60)*60000)>json_extract(n.value,'$.start')-?8*60000
   )`;
   const values = [id,own.creatorId,listingId,timezone,input.mode,duration,interval,buffer,notice,cap,horizon,nextVersion,now,token,intervals,`schedule:${id}:%`,version];
   const upsert = existing
@@ -139,7 +152,7 @@ export async function putSchedule(req: Request, env: Env): Promise<Response> {
     : db.prepare(`INSERT INTO availability_schedules(id,creator_id,listing_id,timezone,mode,duration_min,slot_interval_min,buffer_min,min_notice_min,max_per_day,horizon_days,version,updated_at,write_token)
       SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14 WHERE ?17=0 AND NOT EXISTS(SELECT 1 FROM availability_schedules WHERE creator_id=?2 AND listing_id IS ?3) AND ${noConflict}`).bind(...values);
   const stmts: D1PreparedStatement[] = [upsert,
-    db.prepare("UPDATE availability_reservations SET status='cancelled',updated_at=?3 WHERE creator_id=?4 AND source_ref LIKE ?5 AND kind IN ('exclusive','block') AND EXISTS(SELECT 1 FROM availability_schedules WHERE id=?1 AND write_token=?2)").bind(id,token,now,own.creatorId,`schedule:${id}:%`),
+    db.prepare("UPDATE availability_reservations SET status='cancelled',updated_at=?3 WHERE creator_id=?4 AND source_ref LIKE ?5 AND kind IN ('exclusive','block') AND id NOT IN (SELECT value FROM json_each(?6)) AND EXISTS(SELECT 1 FROM availability_schedules WHERE id=?1 AND write_token=?2)").bind(id,token,now,own.creatorId,`schedule:${id}:%`,retainedIds),
     db.prepare("DELETE FROM availability_schedule_rules WHERE schedule_id=?1 AND EXISTS(SELECT 1 FROM availability_schedules WHERE id=?1 AND write_token=?2)").bind(id,token),
     db.prepare("DELETE FROM availability_exceptions WHERE schedule_id=?1 AND EXISTS(SELECT 1 FROM availability_schedules WHERE id=?1 AND write_token=?2)").bind(id,token),
   ];
@@ -147,7 +160,7 @@ export async function putSchedule(req: Request, env: Env): Promise<Response> {
   for (const e of normalized) {
     const r=reservations.find(r=>r.exception.id===e.id);
     stmts.push(db.prepare("INSERT INTO availability_exceptions(id,creator_id,schedule_id,listing_id,date,start_min,end_min,status,reservation_id,created_at) SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10 WHERE EXISTS(SELECT 1 FROM availability_schedules WHERE id=?3 AND write_token=?11)").bind(e.id,own.creatorId,id,e.listing_id??listingId,e.date,e.start_min,e.end_min,e.status,r?.id??null,now,token));
-    if (r) stmts.push(db.prepare("INSERT INTO availability_reservations(id,creator_id,listing_id,kind,status,starts_at,ends_at,title,source_ref,created_at,updated_at) SELECT ?1,?2,?3,?4,'reserved',?5,?6,?7,?8,?9,?9 WHERE EXISTS(SELECT 1 FROM availability_schedules WHERE id=?10 AND write_token=?11)").bind(r.id,own.creatorId,r.listing,r.kind,r.start,r.end,r.kind==='block'?'Unavailable':'Reserved for listing',`schedule:${id}:${e.id}`,now,id,token));
+    if (r && !r.retained) stmts.push(db.prepare("INSERT INTO availability_reservations(id,creator_id,listing_id,kind,status,starts_at,ends_at,title,source_ref,created_at,updated_at) SELECT ?1,?2,?3,?4,'reserved',?5,?6,?7,?8,?9,?9 WHERE EXISTS(SELECT 1 FROM availability_schedules WHERE id=?10 AND write_token=?11)").bind(r.id,own.creatorId,r.listing,r.kind,r.start,r.end,r.kind==='block'?'Unavailable':'Reserved for listing',`schedule:${id}:${e.id}`,now,id,token));
   }
   try {
     const results = await db.batch(stmts);
@@ -170,6 +183,7 @@ export async function listingAvailability(req: Request, env: Env, listingId: str
   const viewerLo = zonedEpoch(from, 0, timezone), viewerHi = zonedEpoch(to, 1440, timezone);
   const rangeLo = viewerLo - 86_400_000, rangeHi = viewerHi + 86_400_000;
   const dates = dateRange(localParts(viewerLo, schedule.timezone).date, localParts(viewerHi - 1, schedule.timezone).date);
+  const liveBlocks = await loadFixedLiveCommitments(env,listing.creator_id,rangeLo,rangeHi,listingId);
   const blocks = ((await metaDb(env).prepare("SELECT source_app,source_ref,starts_at,ends_at FROM calendar_blocks WHERE user_id=?1 AND status='busy' AND starts_at<?3 AND ends_at>?2").bind(listing.creator_id, rangeLo, rangeHi).all()).results ?? []) as any[];
   const reservations = ((await metaDb(env).prepare("SELECT id,listing_id,kind,status,starts_at,ends_at,hold_expires_at FROM availability_reservations WHERE creator_id=?1 AND starts_at<?3 AND ends_at>?2 AND status IN ('held','reserved','confirmed')").bind(listing.creator_id, rangeLo, rangeHi).all()).results ?? []) as any[];
   const bookings = ((await metaDb(env).prepare("SELECT id,starts_at,ends_at,status FROM bookings WHERE creator_id=?1 AND starts_at<?3 AND ends_at>?2 AND status IN ('confirmed','scheduled','pending')").bind(listing.creator_id, rangeLo, rangeHi).all()).results ?? []) as any[];
@@ -194,7 +208,7 @@ export async function listingAvailability(req: Request, env: Env, listingId: str
       const today = localParts(now, schedule.timezone).date;
       if (date < today || dateDiff(today, date) > schedule.horizon_days || endAt > dayEnd) continue;
       const id = `availability:${listingId}:${startAt}:${endAt}`; if (emitted.has(id)) continue; emitted.add(id);
-      const hit = dayFull || [...effectiveBlocks, ...conflictingReservations, ...bookings].find((x) => Number(x.starts_at) < endAt + schedule.buffer_min * 60_000 && Number(x.ends_at) > startAt - schedule.buffer_min * 60_000 && !(x.kind === "exclusive" && x.listing_id === listingId));
+      const hit = dayFull || [...liveBlocks, ...effectiveBlocks, ...conflictingReservations, ...bookings].find((x) => Number(x.starts_at) < endAt + schedule.buffer_min * 60_000 && Number(x.ends_at) > startAt - schedule.buffer_min * 60_000 && !(x.kind === "exclusive" && x.listing_id === listingId));
       const item = { id, start_at: startAt, end_at: endAt, available: !hit, ...(hit ? { reason: dayFull ? "max_per_day" : "unavailable" } : {}) };
       daySlots.push(item); slots.push(item);
     }

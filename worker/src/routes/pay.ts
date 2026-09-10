@@ -34,7 +34,7 @@ import { readConfig } from "./config";
 import { taxFor } from "../lib/commercial_tax";
 import { commercialLaneState } from "../lib/commercial_lane";
 import { commercialEvent } from "../lib/commercial_telemetry";
-import { provisionFromGatewayPurchase } from "./commercial_checkout";
+import { provisionFromGatewayPurchase, claimCheckoutAvailability, releaseCheckoutAvailability } from "./commercial_checkout";
 import { resolveGateway, listEnabledMethods, gatewayFlagOn } from "../lib/payments/registry";
 import type { GatewayAdapter } from "../lib/payments/types";
 import { track, trackException } from "../hooks";
@@ -111,10 +111,10 @@ export async function payCreateOrder(req: Request, env: Env, gatewayId: string):
   const adapter = gate.adapter;
 
   const b = (await req.json().catch(() => ({}))) as {
-    listingId?: unknown; bookingId?: unknown; slot?: unknown; order_id?: unknown;
+    listingId?: unknown; bookingId?: unknown; slot?: unknown; order_id?: unknown; hold_id?: unknown;
   };
   const listingId = String(b.listingId || "");
-  const bookingId = b.bookingId ? String(b.bookingId) : null;
+  let bookingId = b.bookingId ? String(b.bookingId) : null;
   if (!listingId) return json({ error: "listingId required" }, 400);
 
   const db = metaDb(env);
@@ -170,6 +170,22 @@ export async function payCreateOrder(req: Request, env: Env, gatewayId: string):
   // contract), otherwise mint one — mirrors direct_purchases minting purchase_id.
   const orderId = b.order_id ? String(b.order_id) : `pay-order:${crypto.randomUUID()}`;
   const now = Date.now();
+  let availabilityHoldId:string|null=null;
+  if(kind==='consult_1to1' && slotStart!==null && slotEnd!==null){
+    bookingId=`gateway-booking-${crypto.randomUUID()}`;
+    const held=await claimCheckoutAvailability(env,{uid:auth.uid,listingId:listing.id,startAt:slotStart,endAt:slotEnd,sourceRef:`commercial-hold:${auth.uid}:gateway:${orderId}`,holdId:typeof b.hold_id==='string'?b.hold_id:null});
+    if(!held.ok)return json({error:held.reason},held.reason==='availability_unavailable'?503:409);
+    availabilityHoldId=held.reservationId;
+    try{
+      // Link before contacting a payment provider. Reusing a hold for another
+      // payment order is rejected by the UNIQUE constraint.
+      const linked=await db.batch([
+        db.prepare("INSERT INTO availability_gateway_holds(order_id,reservation_id,buyer_id,created_at) SELECT ?1,?2,?3,?4 WHERE EXISTS(SELECT 1 FROM availability_reservations WHERE id=?2 AND status='held' AND hold_expires_at>?4)").bind(orderId,availabilityHoldId,auth.uid,now),
+        db.prepare("UPDATE availability_reservations SET hold_expires_at=?1,updated_at=?2 WHERE id=?3 AND status='held' AND hold_expires_at>?2 AND EXISTS(SELECT 1 FROM availability_gateway_holds WHERE order_id=?4 AND reservation_id=?3)").bind(now+30*60000,now,availabilityHoldId,orderId),
+      ]);
+      if(Number(linked[0]?.meta?.changes??0)!==1||Number(linked[1]?.meta?.changes??0)!==1)return json({error:'hold_expired'},409);
+    }catch{return json({error:'hold_already_used'},409);}
+  }
 
   // Row written BEFORE the gateway call, same reasoning as direct_purchases: if
   // createOrder times out after the gateway already created the order, this row is the
@@ -190,6 +206,7 @@ export async function payCreateOrder(req: Request, env: Env, gatewayId: string):
     // Most likely a reused order_id — PRIMARY KEY collision. Treat as a bad request
     // rather than a 500; a genuine retry should let the gateway mint a fresh id.
     await trackException(env, err, { uid: auth.uid, route: `/api/pay/${adapter.id}/order`, method: "POST", handled: true, app_name: APP });
+    await releaseCheckoutAvailability(env,auth.uid,availabilityHoldId);
     return json({ error: "order_id already used" }, 409);
   }
 
@@ -207,6 +224,7 @@ export async function payCreateOrder(req: Request, env: Env, gatewayId: string):
     await db.prepare("UPDATE gateway_orders SET status='failed',last_error=?2,updated_at=?3 WHERE order_id=?1")
       .bind(orderId, created.error.slice(0, 300), Date.now()).run();
     commercialEvent(env, "checkout", auth.uid, { kind, outcome: "refused", reason: "gateway_error", gateway: adapter.id });
+    await releaseCheckoutAvailability(env,auth.uid,availabilityHoldId);
     return json({ error: "could not start payment", reason: created.error }, created.status);
   }
 
@@ -377,6 +395,7 @@ async function payWebhookInner(req: Request, env: Env, gatewayId: string): Promi
   const bridgeOrderId = `${adapter.id}-order:${row.order_id}`;
   const totalTokens = Math.round(row.amount_paise / 100);
   let provisioned: Response;
+  const holdLink=row.kind==='consult_1to1'?await db.prepare('SELECT reservation_id FROM availability_gateway_holds WHERE order_id=?1 AND buyer_id=?2').bind(row.order_id,row.uid).first<{reservation_id:string}>():null;
   try {
     provisioned = await provisionFromGatewayPurchase(env, {
       uid: row.uid,
@@ -387,6 +406,7 @@ async function payWebhookInner(req: Request, env: Env, gatewayId: string): Promi
       purchaseId: row.order_id,
       gatewayRef: row.gateway_order_id,
       gateway: adapter.id,
+      hold_id:holdLink?.reservation_id??null,
       slot: row.slot_start != null && row.slot_end != null
         ? { start_at: Number(row.slot_start), end_at: Number(row.slot_end) }
         : null,
@@ -402,6 +422,14 @@ async function payWebhookInner(req: Request, env: Env, gatewayId: string): Promi
     const detail = await provisioned.clone().text().catch(() => "");
     await db.prepare("UPDATE gateway_orders SET last_error=?2,updated_at=?3 WHERE order_id=?1")
       .bind(row.order_id, `provision failed: ${detail}`.slice(0, 300), Date.now()).run();
+    if(provisioned.status===409 && /hold|slot|availability|conflict/.test(detail)){
+      // A late payment can arrive after the reservation expired. Never grant a
+      // conflicting booking; refund through the same provider, idempotently.
+      const refund=await adapter.refund(env,{gatewayOrderId:row.gateway_order_id,amountPaise:row.amount_paise,reason:'Selected appointment is no longer available',opId:`availability-refund:${row.order_id}`});
+      await db.prepare("UPDATE gateway_orders SET status='review_pending',last_error=?2,updated_at=?3 WHERE order_id=?1").bind(row.order_id,refund.accepted?'availability refund pending':`availability refund retry: ${refund.error??'provider unavailable'}`,Date.now()).run();
+      if(!refund.accepted)return json({error:'refund retry required',retry:true},500);
+      return json({ok:true,refund_pending:true});
+    }
     // 5xx ⇒ transient, so 500 and let the gateway retry: the money IS taken and the
     // buyer has nothing yet. 4xx ⇒ a decided refusal (price changed, listing gone) — 200
     // stops the retries and leaves the row for a human, per spec §2.5 rule 4.
