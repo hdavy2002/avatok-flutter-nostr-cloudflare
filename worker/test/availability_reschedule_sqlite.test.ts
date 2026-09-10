@@ -52,7 +52,7 @@ function d1(db: any, beforeBatch?: () => void): any {
           return wrapped;
         },
         async run() {
-          const result = db.prepare(named).run(params);
+          let result;try{result=db.prepare(named).run(params);}catch(error){console.error("D1 fixture SQL failed",sql,String(error));throw error;}
           return { meta: { changes: Number(result.changes ?? 0) } };
         },
         async first<T = any>(): Promise<T | null> {
@@ -115,13 +115,14 @@ function setup(simulateCasLoss = false) {
     CREATE TABLE commercial_entitlements (
       entitlement_id TEXT PRIMARY KEY, order_id TEXT NOT NULL, account_id TEXT NOT NULL,
       kind TEXT NOT NULL, listing_id TEXT NOT NULL, booking_id TEXT, role TEXT NOT NULL,
-      state TEXT NOT NULL, starts_at INTEGER NOT NULL, ends_at INTEGER NOT NULL
+      state TEXT NOT NULL, starts_at INTEGER NOT NULL, ends_at INTEGER NOT NULL, updated_at INTEGER
     );
     CREATE TABLE commercial_sessions (
       commercial_session_id TEXT PRIMARY KEY, kind TEXT NOT NULL, listing_id TEXT NOT NULL,
       booking_id TEXT, session_version INTEGER NOT NULL, updated_at INTEGER NOT NULL,
       state TEXT NOT NULL, settlement_state TEXT, scheduled_at INTEGER
     );
+    CREATE TABLE commercial_money_claims(order_id TEXT PRIMARY KEY,claim_type TEXT,claim_id TEXT,state TEXT);
     CREATE TABLE gcal_accounts (user_id TEXT PRIMARY KEY);
     CREATE TABLE gcal_calendars (user_id TEXT NOT NULL, selected INTEGER NOT NULL DEFAULT 0, last_success_at INTEGER, last_error TEXT);
   `);
@@ -182,7 +183,7 @@ describe("commercial reschedule route against SQLite", () => {
   it("moves the real reservation, entitlement, both mirrors, events, and session", async () => {
     const fixture = setup(); currentDb = fixture.db;
     const response = await lifecycle.commercialLifecycle(request(fixture.newStart, fixture.newEnd, "reschedule-1"), fixture.env as any);
-    expect(response.status).toBe(200);
+    expect(response.status, await response.clone().text()).toBe(200);
     expect(fixture.db.prepare("SELECT starts_at,ends_at,reschedule_count FROM bookings WHERE id='booking-1'").get())
       .toMatchObject({ starts_at: fixture.newStart, ends_at: fixture.newEnd, reschedule_count: 1 });
     expect(fixture.db.prepare("SELECT status,starts_at,ends_at FROM availability_reservations WHERE id='old-reservation'").get())
@@ -200,7 +201,7 @@ describe("commercial reschedule route against SQLite", () => {
   it("leaves old projections intact when a concurrent booking CAS loses", async () => {
     const fixture = setup(true); currentDb = fixture.db;
     const response = await lifecycle.commercialLifecycle(request(fixture.newStart, fixture.newEnd, "reschedule-cas"), fixture.env as any);
-    expect(response.status).toBe(409);
+    expect(response.status, await response.clone().text()).toBe(409);
     expect(fixture.db.prepare("SELECT COUNT(*) AS n FROM commercial_entitlements WHERE starts_at=? AND ends_at=?").get(fixture.oldStart, fixture.oldEnd).n).toBe(1);
     expect(fixture.db.prepare("SELECT COUNT(*) AS n FROM calendar_blocks WHERE starts_at=? AND ends_at=? AND status='busy'").get(fixture.oldStart, fixture.oldEnd).n).toBe(2);
     expect(fixture.db.prepare("SELECT COUNT(*) AS n FROM calendar_events WHERE booking_id='booking-1' AND start_at=? AND end_at=?").get(fixture.oldStart, fixture.oldEnd).n).toBe(2);
