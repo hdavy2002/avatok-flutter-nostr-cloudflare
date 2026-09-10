@@ -48,7 +48,15 @@ gh workflow run android.yml --ref staging -f environment=staging -f artifact=apk
 gh workflow run android.yml --ref main    -f environment=prod    -f artifact=apk -f play_track=none
 ```
 
-#### 📲 THE OTHER MAGIC WORD: **"ship local"** (added 2026-08-22)
+#### 📲 ~~"ship local"~~ — **DEAD as of 2026-09-10. There is no adb and no local APK.**
+
+> 🚫 The whole local toolchain was deleted on 2026-09-10 (see the Tooling section
+> below). `scripts/push_apk.sh` cannot run: `adb` is gone. If the owner says "ship
+> local", tell him local installs are gone by his own 2026-09-10 decision and offer
+> `ship it` instead. **Do not reinstall the Android SDK to make this work.**
+> The historical text is kept below only so the script and its arguments stay readable.
+
+#### 📲 THE OTHER MAGIC WORD: **"ship local"** (added 2026-08-22 — SUPERSEDED)
 
 **"ship local"** is NOT a cloud build and has nothing to do with `gh workflow run`,
 Play, or `latestAppBuild`. It means: **take the APK that was just built locally and
@@ -69,6 +77,9 @@ emulator **hangs on in-place updates**, so the script force-stops the app,
 he will be logged out.** Say so in one line when reporting; do not
 quietly reach for `--keep-data` to avoid it, and do not "improve" the script back to
 `adb install -r` as the default.
+
+🚨 **AS OF 2026-09-10 THERE ARE NO LOCAL TARGETS AT ALL — `adb` and the SDK were
+deleted with the rest of the toolchain. Everything below is history.**
 
 🚨 **THERE IS ONLY ONE TARGET TODAY — THE EMULATOR IS GONE (verified 2026-09-05).**
 `emulator -list-avds` prints **nothing**. `~/.android/avd/Pixel_10a.avd` still
@@ -991,78 +1002,44 @@ landed), so they were green on day one and fail only on NEW debt.
 ### Tooling
 
 - Use **Desktop Commander** for all file and shell operations.
-- **✅ THE LOCAL BUILD TOOLCHAIN IS BACK — YOU CAN BUILD AND HOT RELOAD (verified
-  2026-08-27 by running `flutter doctor -v`).**
+- **🚫 THERE IS NO LOCAL BUILD TOOLCHAIN — AND IT IS NOT COMING BACK (owner decision
+  2026-09-10). DO NOT INSTALL ONE.**
 
-  **The 2026-08-05 "toolchain deleted, do not install one, you cannot compile-check
-  your own Dart changes" rule that used to sit here is DEAD.** It was true when
-  written — the boot disk was at 119 MB free — but the toolchain was rebuilt
-  afterwards and nobody updated this file. It then cost a session: an agent read the
-  stale rule, told the owner a local build was impossible, and was corrected by the
-  owner pointing at a hot-reload session that had actually happened. **Do not assert
-  the toolchain is missing. Run `flutter doctor` and look.**
+  The owner deliberately deleted the entire local phone-app stack on 2026-09-10 because
+  the Mac kept running out of disk. Removed: `~/.gradle` (28 GB of Gradle caches),
+  `~/Library/Android` (the Android SDK, `adb`, the emulator binary and every system
+  image), `~/.android`, `~/development/flutter` (the Flutter/Dart SDK), `~/.pub-cache`,
+  `app/build`, and **Android Studio itself**. The `.zshrc` exports for `ANDROID_HOME`,
+  `ANDROID_NDK*`, the Flutter `bin` on `PATH` and the platform-tools/emulator `PATH`
+  entries are commented out; `JAVA_HOME` now points at Homebrew `openjdk@17`, which is
+  still installed and is used by things other than Android. That freed ~44 GB.
 
-  What is actually installed (all verified 2026-08-27):
+  **This is a preference, not an accident. Do not "helpfully" reinstall Flutter, the
+  Android SDK, Android Studio, an AVD, Xcode or CocoaPods, and do not tell the owner
+  to.** If you think a task needs a local build, it does not — use CI.
 
-  | Piece | Where | Version |
-  |---|---|---|
-  | Flutter + Dart | `/Users/davy/development/flutter/bin` | 3.41.9 · Dart 3.11.5 |
-  | Android SDK | `/Users/davy/Library/Android/sdk` | SDK 36.0.0, platform android-37.0, build-tools 36.0.0 |
-  | `adb` | `…/sdk/platform-tools/adb` | on `PATH` |
-  | JDK | `/opt/homebrew/opt/openjdk@17/…` | OpenJDK 17.0.19, set via `flutter config --jdk-dir` |
-  | Emulator binary | `…/sdk/emulator` | 37.1.11.0 — **but NO AVD exists** (2026-09-05) |
-  | System image | `…/system-images/android-36/google_apis_playstore/arm64-v8a` | installed; an AVD can be recreated from it |
+  | Command | Status |
+  |---|---|
+  | `flutter analyze` / `flutter build` / `flutter run` | ❌ gone — `flutter: command not found` |
+  | `adb` / `scripts/push_apk.sh` / **"ship local"** | ❌ gone — no `adb`, no SDK |
+  | emulator | ❌ gone — no binary, no AVD, no system image |
+  | `gh workflow run android.yml` / **"ship it"** | ✅ **unchanged — this is the only way to build** |
+  | `python3 tool/check_design_guard.py`, `tool/check_ship_readiness.py` | ✅ unchanged (plain python3, no toolchain) |
+  | `worker/` + `web/` npm/tsc/wrangler work | ✅ unchanged |
 
-  `flutter doctor` is **green on the Android toolchain** with all licences accepted.
+  **The compile net is now CI, not `flutter analyze`.** A Dart type error will be found
+  by `verify.yml` / `typecheck.yml` on a 40–80 minute round trip, so read your own diff
+  carefully before pushing and lean on Graphify to check call sites and signatures. Be
+  especially careful with the traps this file already documents — `PhosphorIcons.coins`
+  vs a blind coins→tokens rename is exactly the class of error that used to be caught
+  locally in seconds and now costs an hour.
 
-  ⚠️ **DISK IS DOWN TO ~15 GB FREE (2026-09-05), not the ~35 GB this file claimed.**
-  A debug APK alone is 271 MB and one AVD is ~8–10 GB, so creating an emulator would
-  take most of what is left. Check `df -h /` before adding anything, and ask the
-  owner before creating an AVD, adding an SDK or installing Xcode. `flutter clean`
-  in `app/` reclaims the most for the least loss.
+  **Previewing on the phone is now: `ship it` → Closed Alpha → the owner hits Update in
+  the app.** There is no side-load path any more.
 
-  **`/usr/bin/java` is a stub and reports "Unable to locate a Java Runtime" — that is
-  NOT a broken toolchain.** Flutter is pointed at the Homebrew JDK above and Gradle
-  uses that. Do not "fix" it by installing another JDK, and do not conclude from that
-  one command that builds are impossible.
-
-  **What you can therefore do, and should:**
-
-  ```bash
-  cd app
-  flutter analyze                    # compile-check your own Dart — USE THIS
-  flutter build apk --debug          # local APK — see the timing note below
-  flutter run -d ZA223K79KG          # hot reload on the phone (r = reload, R = restart)
-  # No emulator command: there is no AVD. See the ship-local section above.
-  ```
-
-  ⏱ **A cold `flutter build apk --debug` takes ~20 MINUTES on this machine**
-  (measured 2026-09-05: 11:46 → 12:06, arm64 only). Most of it is silent — Gradle
-  prints `Running Gradle task 'assembleDebug'...` and nothing else for ten minutes
-  at a stretch. That is not a hang. Run it detached to a log
-  (`flutter build apk --debug > /tmp/apkbuild.log 2>&1 &`) and poll, rather than
-  holding a foreground call open and concluding it died.
-
-  A local `flutter run` leaves `app/build/…/app-debug.apk` next to a
-  `*.cache.dill.track.dill` — that `.dill` is the incremental-compiler artifact and is
-  the fingerprint of a hot-reload session, useful when you need to tell whether a
-  local build really happened.
-
-  **`flutter analyze` is now the cheap compile net. Run it before every commit that
-  touches `app/`.** CI (`verify.yml`) is still the authority, but it is a 40–80 min
-  round trip and should no longer be the first place a type error is discovered.
-
-  ⚠️ **iOS/macOS builds are still NOT possible** — Xcode is incomplete and CocoaPods
-  is not installed. Android and web only.
-
-  ⚠️ **This does not change the build rules above.** `ship it` still means a cloud
-  build via `gh workflow run`, Play distribution still goes through CI, and you still
-  **never trigger a cloud build the owner did not ask for**. A local build is for
-  preview on the phone (`scripts/push_apk.sh`), never for shipping
-  to users.
-
-  ⚠️ **Disk: see the warning above — ~15 GB free as of 2026-09-05.** Do not add
-  Xcode, a second SDK, or an AVD without asking.
+  (The 2026-08-27 "the toolchain is back, run `flutter doctor` and look" note that used
+  to sit here is dead. `flutter doctor` will now say `command not found`, and that is
+  the expected, intended answer — not something to fix.)
 
 - **REPO LOCATION — `/Users/davy/Documents/websites/avaTOK-2-Flutter` (verified 2026-08-02).**
   This is a REAL directory holding the real `.git`, not a symlink. There is no
