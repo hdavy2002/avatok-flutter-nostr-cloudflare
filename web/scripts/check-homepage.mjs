@@ -37,6 +37,7 @@ console.log('Homepage smoke checks passed: six ideas, anchors, assets, signup, m
 const ideas = readFileSync(resolve(root, 'ideas/index.html'), 'utf8');
 assert.equal((ideas.match(/data-idea-card/g) || []).length, 115, 'All 115 creator ideas are present');
 assert.equal((ideas.match(/<h1[ >]/g) || []).length, 1, 'Ideas page has one main heading');
+assert.equal((ideas.match(/class="idea-title-line(?: |")/g) || []).length, 2, 'Ideas hero keeps both headline phrases on horizontal lines');
 assert.match(html, /href="\/ideas"[^>]*data-home-cta="hero-ideas"/, 'Hero links to the ideas page');
 assert.match(ideas, /class="bazaar-footer"/, 'Ideas uses shared footer');
 assert.match(ideas, /avh--sticky/, 'Ideas uses shared header');
