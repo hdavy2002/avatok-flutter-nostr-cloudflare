@@ -22,6 +22,8 @@ export interface Props {
   heading?: string;
 }
 
+import { ORG } from '../lib/org';
+
 const { variant = 'full', heading } = Astro.props;
 ---
 
@@ -32,9 +34,9 @@ const { variant = 'full', heading } = Astro.props;
     <p>
       avaTOK is built and operated by an independent founding team in India. We are
       an <strong>unregistered business</strong> at the ideation and testing stage, and
-      we intend to register a company in Mumbai, India once funding is in place. The
+      we intend to register a company in {ORG.address.locality}, India once funding is in place. The
       service is invite-only and is not yet fully operational. Contact:
-      <a href="mailto:support@avatok.ai">support@avatok.ai</a>.
+      <a href={`mailto:${ORG.email}`}>{ORG.email}</a>.
     </p>
   ) : (
     <Fragment>
@@ -48,7 +50,7 @@ const { variant = 'full', heading } = Astro.props;
         <strong>We are currently an unregistered business in India.</strong> No company
         has been incorporated yet, so avaTOK is not operated by any registered
         company, and no entity name should be read into our branding. We have begun
-        the formalities to register a company in Mumbai, India, and intend to complete
+        the formalities to register a company in {ORG.address.locality}, India, and intend to complete
         registration as soon as our funding is in place. When that happens we will
         update these pages and tell affected users. If you are an investor and would
         like to talk to us, write to <a href="mailto:hello@avatok.ai">hello@avatok.ai</a>.
@@ -67,8 +69,8 @@ const { variant = 'full', heading } = Astro.props;
       )}
 
       <p style="margin-top:12px">
-        <strong>Operating address.</strong> Mumbai, India.<br />
-        <strong>Contact.</strong> <a href="mailto:support@avatok.ai">support@avatok.ai</a>
+        <strong>Operating address.</strong> {ORG.address.locality}, India.<br />
+        <strong>Contact.</strong> <a href={`mailto:${ORG.email}`}>{ORG.email}</a>
         (support and billing) · <a href="mailto:hello@avatok.ai">hello@avatok.ai</a>
         (general and investor enquiries) ·
         <a href="mailto:privacy@avatok.ai">privacy@avatok.ai</a> (privacy).

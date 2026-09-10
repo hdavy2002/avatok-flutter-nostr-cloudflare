@@ -15,6 +15,7 @@ import '../styles/motion.css';
 import SiteHeader from '../components/SiteHeader.astro';
 import SiteFooter from '../components/SiteFooter.astro';
 import { EMBED_UA_MARKER } from '../lib/embed';
+import { orgJsonLd } from '../lib/org';
 
 export interface Props {
   title?: string;
@@ -86,106 +87,14 @@ const pageTitle = /avatok/i.test(title) ? title : `${title} · avaTOK`;
 // og:image at all and shared as a bare grey link with `twitter:card=summary`.
 const ogImage = new URL(image ?? '/ogimage.jpg', Astro.site ?? 'https://avatok.ai').toString();
 
-// [WEB-SEO-1] Site-wide Organization/WebSite graph. Answer engines read this to
-// decide what avaTOK *is*; keep it consistent with the visible copy on /about.
-//
-// [WEB-SEO-2 2026-09-10] Enriched for Google's knowledge panel and sitelinks.
-// The panel Google draws beside a brand search is assembled from the Knowledge
-// Graph, and the Knowledge Graph is fed by exactly the fields added here:
-// a square logo (>=112px, ImageObject), `sameAs` official profiles, a parent
-// organisation, founding date, contact point and a locality. The WebSite node
-// gains a SearchAction so Google can offer a sitelinks search box that posts to
-// /marketplace?q=. None of this is a ranking signal — it is what lets Google
-// SHOW more once the pages rank.
-//
-// NAMING RULE (owner decision 2026-09-10, consistent with the no-company rule
-// in CLAUDE.md): the Organization is the BRAND, avaTOK. `parentOrganization`
-// is AvaGlobal Inc (Delaware), which handles international traffic and does
-// exist. The Indian entity, Ava Global International Pvt Ltd (Mumbai), is in
-// process and is NOT named until it is registered — naming it now would
-// contradict /terms#status. When it is registered, add it as `legalName` here
-// and update LegalStatus.astro / SiteFooter.astro in the same change.
-//
-// `sameAs` must only list profiles that resolve today. The Play listing is
-// Closed Alpha and returns 404 to the public, so it is deliberately absent —
-// a 404 in sameAs is worse than no entry. Add it when the app is public.
-const orgLd = {
-  '@context': 'https://schema.org',
-  '@graph': [
-    {
-      '@type': 'Organization',
-      '@id': 'https://avatok.ai/#organization',
-      name: 'avaTOK',
-      alternateName: ['AvaTOK', 'AvaTok', 'Avatok', 'avatok.ai'],
-      url: 'https://avatok.ai/',
-      logo: {
-        '@type': 'ImageObject',
-        '@id': 'https://avatok.ai/#logo',
-        url: 'https://avatok.ai/app-logo2.png',
-        contentUrl: 'https://avatok.ai/app-logo2.png',
-        width: 251,
-        height: 256,
-        caption: 'avaTOK',
-      },
-      image: { '@id': 'https://avatok.ai/#logo' },
-      description:
-        'avaTOK is an India-focused creator marketplace for paid live streaming and 1:1 video sessions. Creators publish listings, people book or join, and creators get paid — including for skills, conversations and experiences hosted from home.',
-      slogan: 'Apna hunar. Apni kamaai.',
-      foundingDate: '2025',
-      parentOrganization: {
-        '@type': 'Organization',
-        name: 'AvaGlobal Inc',
-        address: { '@type': 'PostalAddress', addressRegion: 'Delaware', addressCountry: 'US' },
-      },
-      address: { '@type': 'PostalAddress', addressLocality: 'Mumbai', addressRegion: 'Maharashtra', addressCountry: 'IN' },
-      areaServed: { '@type': 'Country', name: 'India' },
-      knowsLanguage: ['en', 'hi'],
-      email: 'support@avatok.ai',
-      contactPoint: [
-        {
-          '@type': 'ContactPoint',
-          contactType: 'customer support',
-          email: 'support@avatok.ai',
-          url: 'https://avatok.ai/contact',
-          areaServed: 'IN',
-          availableLanguage: ['English', 'Hindi'],
-        },
-      ],
-      sameAs: [
-        'https://www.youtube.com/@avatok',
-      ],
-    },
-    {
-      '@type': 'WebSite',
-      '@id': 'https://avatok.ai/#website',
-      url: 'https://avatok.ai/',
-      name: 'avaTOK',
-      alternateName: 'avatok.ai',
-      description,
-      inLanguage: 'en-IN',
-      publisher: { '@id': 'https://avatok.ai/#organization' },
-      potentialAction: {
-        '@type': 'SearchAction',
-        target: {
-          '@type': 'EntryPoint',
-          urlTemplate: 'https://avatok.ai/marketplace?q={search_term_string}',
-        },
-        'query-input': 'required name=search_term_string',
-      },
-    },
-    {
-      '@type': 'WebPage',
-      '@id': `${canonical}#webpage`,
-      url: canonical,
-      name: title,
-      description,
-      isPartOf: { '@id': 'https://avatok.ai/#website' },
-      about: { '@id': 'https://avatok.ai/#organization' },
-      inLanguage: 'en-IN',
-      primaryImageOfPage: { '@type': 'ImageObject', url: ogImage },
-    },
-  ],
-};
+// [WEB-SEO-5 2026-09-10] Organization/WebSite/WebPage JSON-LD now built from
+// the single source of truth in `../lib/org.ts` (`ORG` + `orgJsonLd()`)
+// instead of being defined inline here. To change a brand fact — add the
+// Pvt Ltd legal name once registered, add an Instagram URL, a street
+// address, etc. — edit `org.ts`, not this file. All of the original
+// reasoning (naming rule, sameAs policy, knowledge-panel field notes) now
+// lives as comments on `org.ts`.
+const orgLd = orgJsonLd({ canonical, title, description, ogImage });
 ---
 
 <!doctype html>
