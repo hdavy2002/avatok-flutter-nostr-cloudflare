@@ -156,7 +156,7 @@ export async function createSlot(req: Request, env: Env, listingId: string): Pro
   // are admitted by the checkout/booking path instead.
   let reserveCreatorTime = listing.kind === "live_event";
   if (!reserveCreatorTime && listing.kind === "consult") {
-    const schedule = await db.prepare(
+    const schedule = await metaDb(env).prepare(
       "SELECT mode FROM availability_schedules WHERE creator_id=?1 AND listing_id=?2 LIMIT 1",
     ).bind(ctx.uid, listingId).first<{ mode: string }>().catch(() => null);
     reserveCreatorTime = schedule?.mode === "exclusive";

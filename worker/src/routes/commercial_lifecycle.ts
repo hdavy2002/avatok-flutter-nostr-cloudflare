@@ -74,7 +74,7 @@ async function claimRescheduleReservation(env: Env, authority: Authority, start:
   const valid = await validateListingSlot(env, authority.listing_id, start, end, {
     durationMin: Math.max(1, Math.trunc((Number(authority.booking_ends_at) - Number(authority.booking_starts_at)) / 60_000)),
     excludeReservationId: oldReservationId,
-    excludeBookingId: authority.booking_id,
+    excludeBookingId: authority.booking_id ?? undefined,
   });
   if (!valid.ok) return { ok: false, reason: valid.reason ?? "unavailable", conflict: valid.conflict };
   const claim = await claimListingSlot(env, {
@@ -87,7 +87,7 @@ async function claimRescheduleReservation(env: Env, authority: Authority, start:
     title: "Commercial consultation",
     sourceRef: `commercial-reschedule:${authority.order_id}:${operationId}`,
     excludeReservationId: oldReservationId ?? null,
-    excludeBookingId: authority.booking_id,
+    excludeBookingId: authority.booking_id ?? undefined,
     scheduleVersion: valid.scheduleVersion,
     durationMin: Math.max(1, Math.trunc((Number(authority.booking_ends_at) - Number(authority.booking_starts_at)) / 60_000)),
   });
@@ -470,7 +470,7 @@ async function reschedule(env: Env, authority: Authority, uid: string, idem: str
   const slotValidation = await validateListingSlot(env, authority.listing_id, start, end, {
     durationMin: Math.max(1, Math.trunc(oldDuration / 60_000)),
     excludeReservationId: oldReservation?.id,
-    excludeBookingId: authority.booking_id,
+    excludeBookingId: authority.booking_id ?? undefined,
   });
   if (!slotValidation.ok) return json({ error: "consultation slot unavailable", reason: slotValidation.reason }, 409);
   const conflict = await metaDb(env).prepare(
