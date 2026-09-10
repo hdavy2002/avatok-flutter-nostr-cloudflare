@@ -33,6 +33,9 @@ jobs:
       - name: Type-check worker
         working-directory: worker
         run: npm run typecheck
+      - name: Unified availability and checkout regression
+        working-directory: worker
+        run: npx vitest run availability commercial_checkout_phase2c_contract.test.ts
       # [WALLET-FREEZE-1] Runs on every PR, even when the change is unrelated to
       # AvaWallet. This prevents a future transaction type or layout edit from
       # silently hiding money/history again.
@@ -118,3 +121,24 @@ jobs:
           fetch-depth: 0
       - name: Flags declared server-side + every shipped issue declares success -- run locally with `python3 tool/check_ship_readiness.py --check all`
         run: python3 tool/check_ship_readiness.py --check all
+
+  # [AVAILABILITY-1] Compile the same Astro/React client before production deploy.
+  availability-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+      - name: Build web without deploying
+        working-directory: web
+        env:
+          PUBLIC_CLERK_PUBLISHABLE_KEY: pk_live_Y2xlcmsuYXZhdG9rLmFpJA
+          PUBLIC_API_BASE: https://api.avatok.ai
+          PUBLIC_RELEASE_SHA: ${{ github.sha }}
+        run: npm run build

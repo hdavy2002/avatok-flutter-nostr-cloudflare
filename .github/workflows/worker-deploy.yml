@@ -9,6 +9,11 @@ on:
         default: staging
         type: choice
         options: [staging, prod]
+      apply_unified_availability:
+        description: Apply additive unified availability tables before deploying
+        required: true
+        default: false
+        type: boolean
       apply_media_jobs_neutral:
         description: Rename the historical media job table and queue id column to neutral names
         required: true
@@ -44,6 +49,7 @@ jobs:
         working-directory: worker
         run: |
           npm run typecheck
+          npx vitest run availability commercial_checkout_phase2c_contract.test.ts
           npm test -- listing_review_binding.test.ts listing_lifecycle_authority.test.ts listing_billing.test.ts listing_fee_route_contract.test.ts commercial_notifications_contract.test.ts
 
       - name: Select target
@@ -72,6 +78,14 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           ALLOW_PROD: ${{ inputs.environment == 'prod' && '1' || '0' }}
         run: scripts/cf.sh worker d1 execute DB_MEDIA --remote --file=migrations/2026-08-19-media-jobs-neutral.sql
+
+      - name: Apply unified availability schema
+        if: ${{ inputs.apply_unified_availability }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ALLOW_PROD: ${{ inputs.environment == 'prod' && '1' || '0' }}
+        run: scripts/cf.sh worker d1 execute DB_META --remote --file=migrations/2026-09-10-unified-availability.sql
 
       - name: Deploy Worker
         env:

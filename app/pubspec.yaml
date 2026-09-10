@@ -78,6 +78,8 @@ dependencies:
   # Android-only native plugin; must be validated by the CI APK build.
   android_play_install_referrer: ^0.4.0
   http: ^1.2.0
+  # IANA timezone conversion for schedule wall times and DST-safe rendering.
+  timezone: ^0.9.4
   # firebase_core + firebase_messaging are FCM PUSH ONLY. Keep them.
   # [STREAM-LANE-1] Bumped 3.x/15.x → 4.x/16.x on 2026-08-21: run #604 failed
   # version solving because stream_video_push_notification ^1.4.3 requires

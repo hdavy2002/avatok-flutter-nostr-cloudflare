@@ -97,6 +97,7 @@ const LEGACY_GONE = new Set<string>([
 ]);
 import { guestCreate, guestHandleCheck, guestUpgrade, getIdentityLevel } from "./routes/ladder";
 import { createSlot, listSlots, cancelSlot, bookSlot, cancelBooking, listEvents, listBlocks, getRules, putRules, getTime } from "./routes/calendar";
+import { getAvailabilitySchedule, putAvailabilitySchedule, getListingAvailability, previewAvailabilityConflicts } from "./routes/calendar_availability";
 import { listBookings, getPolicies, putPolicies, proposeReschedule, respondReschedule, listReschedules, joinInfo } from "./routes/booking";
 import { gcalConnect, gcalCallback, gcalStatus, gcalDisconnect, gcalWebhook } from "./cal/gcal";
 import { payoutSetup, payoutAccounts, payoutRequest, payoutStatus, wiseWebhook } from "./routes/payout";
@@ -1301,6 +1302,12 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // --- AvaCalendar + AvaBooking (Phase 5: conflict engine, gcal sync,
       // policies, reschedule flow, public join links) ---
       if (p === "/api/time" && req.method === "GET") return getTime();
+      // [AVAILABILITY-1] One listing-aware schedule shared by web and native.
+      if (p === "/api/calendar/schedule" && req.method === "GET") return await getAvailabilitySchedule(req, env);
+      if (p === "/api/calendar/schedule" && req.method === "PUT") return await putAvailabilitySchedule(req, env);
+      if (p === "/api/calendar/conflicts/preview" && req.method === "POST") return await previewAvailabilityConflicts(req, env);
+      const availabilityListing = p.match(/^\/api\/listings\/([A-Za-z0-9-]{1,64})\/availability$/);
+      if (availabilityListing && req.method === "GET") return await getListingAvailability(req, env, availabilityListing[1]);
       if (p === "/api/calendar/slots" && req.method === "POST") return await createSlot(req, env);
       if (p === "/api/calendar/slots" && req.method === "GET") return await listSlots(req, env);
       const cs = p.match(/^\/api\/calendar\/slots\/([A-Za-z0-9-]{1,64})$/);

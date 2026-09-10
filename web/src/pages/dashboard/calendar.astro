@@ -3,7 +3,7 @@ export const prerender = false;
 import Dashboard from '../../layouts/Dashboard.astro';
 import CalendarPanel from '../../islands/dashboard/CalendarPanel.tsx';
 ---
-<Dashboard title="Availability · avatok.ai" heading="Availability" subtitle="Set the times customers can book with you." active="calendar">
-  <p class="mb-4 text-inkSoft">First <a href="/dashboard/listings/new" class="font-bold underline">create your appointment service</a>, then set the times customers can book below.</p>
+<Dashboard title="Calendar & availability · avatok.ai" heading="Calendar & availability" subtitle="Keep one schedule for every listing and booking." active="calendar">
+  <p class="mb-4 text-inkSoft">Set your working hours, review commitments, and open or block specific dates. Existing bookings stay protected when availability changes.</p>
   <CalendarPanel client:load />
 </Dashboard>
