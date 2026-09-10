@@ -50,12 +50,24 @@ class Msg {
 
   // ------------------------------------------------------------------ radii
   // Three values. That is the whole scale.
+  // [UI-ROUND-1 2026-09-10] The scale was 8 / 12 / 16. Owner decision: the app
+  // should read visibly softer, so every step moved up one notch to 16 / 20 /
+  // 24 and a fourth step (28) was added for the largest surfaces.
+  //
+  // WHAT DID NOT CHANGE, AND WHY IT MATTERS. The August audit's finding was
+  // never "the corners are too sharp" — it was that 233 FULL PILLS and 18
+  // unrelated radii were live at once. Rounder is fine; disagreeing is not.
+  // So this is still a four-value scale and `rPill` is still off-limits for
+  // buttons, cards, inputs and rows. If a new surface needs a radius, it takes
+  // one of these four. It does not invent a fifth.
   /// Chips, small badges, inline controls.
-  static const double rSm = 8;
+  static const double rSm = 16;
   /// Buttons, inputs, list rows, bubbles.
-  static const double rMd = 12;
+  static const double rMd = 20;
   /// Cards, sheets, dialogs, menus.
-  static const double rLg = 16;
+  static const double rLg = 24;
+  /// Largest surfaces only — full-bleed media, hero cards, modal shells.
+  static const double rXl = 28;
   /// Fully round. ONLY for: unread badges, status dots, tags, avatars,
   /// and the drag handle on a bottom sheet. Not for buttons. Not for cards.
   static const double rPill = 999;
@@ -63,6 +75,7 @@ class Msg {
   static final BorderRadius brSm = BorderRadius.circular(rSm);
   static final BorderRadius brMd = BorderRadius.circular(rMd);
   static final BorderRadius brLg = BorderRadius.circular(rLg);
+  static final BorderRadius brXl = BorderRadius.circular(rXl);
   static final BorderRadius brPill = BorderRadius.circular(rPill);
 
   /// Bottom sheets — rounded top corners only.
@@ -148,9 +161,21 @@ class Msg {
 
   // ----------------------------------------------------------------- motion
   // Three durations. Replaces the 25+ ad-hoc values the audit found.
-  static const Duration fast = Duration(milliseconds: 120);
-  static const Duration base = Duration(milliseconds: 200);
-  static const Duration slow = Duration(milliseconds: 320);
+  // [UI-MOTION-1 2026-09-10] Raised to the four-speed scale the transition
+  // library is built on (150 / 250 / 350 / 500), so a snippet's published
+  // timing and this app's timing are the same number and nobody has to
+  // translate. The three original values were 120/200/320 — close enough that
+  // nothing visibly changes, far enough that they were a second scale.
+  /// Exits and dismissals. Leaving should feel snappier than arriving.
+  static const Duration fast = Duration(milliseconds: 150);
+  /// The default. Enters, page changes, tab slides, icon swaps.
+  static const Duration base = Duration(milliseconds: 250);
+  /// Deliberate arrivals — toasts, sheets, toggles, panel reveals.
+  static const Duration slow = Duration(milliseconds: 350);
+  /// Events worth acknowledging: a payment confirmed, a balance changing, a
+  /// success tick. NOT a general-purpose duration — if you reach for this on a
+  /// list row you have mis-read the moment.
+  static const Duration event = Duration(milliseconds: 500);
 
   /// The ONLY easing curve for the messenger surface.
   ///
@@ -158,6 +183,22 @@ class Msg {
   /// overshoot, and overshoot is what reads as "toy". If a transition needs
   /// personality, give it the right duration, not a springy curve.
   static const Curve curve = Curves.easeOutCubic;
+
+  // [UI-MOTION-1] Three named curves, matching the transition library.
+  //
+  // The ban above is UNCHANGED and is the reason `pop` and `spring` are
+  // spelled out here rather than left to `Curves.easeOutBack` /
+  // `Curves.elasticOut`: naming them makes their use countable. `elasticOut`
+  // and `bounceOut` remain banned outright.
+  /// The default. No overshoot. Safe on any surface, including list rows.
+  static const Curve settle = Cubic(0.22, 1.0, 0.36, 1.0);
+  /// Mild overshoot. Numbers and toggles ONLY.
+  static const Curve pop = Cubic(0.34, 1.45, 0.64, 1.0);
+  /// Strong overshoot. Reward moments only — a like, a badge arriving, a
+  /// payment confirmed. Budget: ONE per screen. This is the curve the audit
+  /// called cartoonish when it was used for an ID-verification tick, so it
+  /// earns its place or it does not appear.
+  static const Curve spring = Cubic(0.34, 1.96, 0.64, 1.0);
 
   // ---------------------------------------------------------------- colours
   // Restrained palette. Everything else on a chat screen is paper, ink or a

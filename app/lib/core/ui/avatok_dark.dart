@@ -437,16 +437,22 @@ class AD {
   // New code should prefer `Msg.rSm/rMd/rLg` directly.
   /// Device-frame mock only — not a UI surface, so it stays off the scale.
   static const double rPhone = 44;
-  static const double rSheet = 16;      // was 22 — sheets are Msg.rLg
-  static const double rMenu = 16;       // was 18 — menus are Msg.rLg
-  static const double rDialog = 16;     // dialogs are Msg.rLg (unchanged)
-  static const double rListCard = 12;   // was 14 — list rows are Msg.rMd
-  static const double rStatCard = 12;   // was 11 — Msg.rMd
-  static const double rInput = 12;      // was 11 — inputs are Msg.rMd
-  static const double rIconButton = 8;  // was 10 — inline control, Msg.rSm
-  static const double rTab = 8;         // was 10 — inline control, Msg.rSm
-  static const double rChip = 8;        // was 7  — chips are Msg.rSm
-  static const double rBadge = 8;       // was 9  — small badge, Msg.rSm
+  // [UI-ROUND-1 2026-09-10] Every alias moved up one step with the Msg scale
+  // (8/12/16 -> 16/20/24, plus a new 28). These names stay because ~540 call
+  // sites use them; only the numbers changed, so nothing here needs touching
+  // when the scale moves again.
+  static const double rSheet = 24;      // Msg.rLg
+  static const double rMenu = 24;       // Msg.rLg
+  static const double rDialog = 24;     // Msg.rLg
+  static const double rHero = 28;       // Msg.rXl — full-bleed media, hero cards
+  static const double rListCard = 20;   // Msg.rMd
+  static const double rStatCard = 20;   // Msg.rMd
+  static const double rInput = 20;      // Msg.rMd
+  static const double rImage = 20;      // Msg.rMd — thumbnails, avatars-as-squares
+  static const double rIconButton = 16; // Msg.rSm
+  static const double rTab = 16;        // Msg.rSm
+  static const double rChip = 16;       // Msg.rSm
+  static const double rBadge = 16;      // Msg.rSm
 
   // ---------------------------------------------------------------- spacing
   static const double screenPad = 20;
@@ -624,17 +630,58 @@ class AvatarFamily {
 /// tuning, not a stable scale.
 class ADText {
   ADText._();
-  /// Null intentionally inherits Flutter's platform-native default font.
-  static const String? family = null;
+
+  // [UI-COMFORTAA-1 2026-09-10] The platform-native face is gone. `family` was
+  // `null`, which inherited Roboto / SF; it is now an explicit two-family
+  // system, which is the Phase 5 swap this file's header said had to be a
+  // decision rather than a side effect. Both are bundled in pubspec.yaml.
+  //
+  // THE SPLIT, AND THE REASON FOR IT. Comfortaa is a display face: circular
+  // stroke terminals, small x-height, no italic, and no weight above 700. It
+  // is lovely at 22px and genuinely hard to read at 11px, which is the size of
+  // every timestamp in the product. So it carries the things people LOOK at
+  // and Instrument Sans carries the things people READ:
+  //
+  //   [display]  Comfortaa      screen titles, section heads, the wordmark,
+  //                             the wallet balance figure, empty-state heads
+  //   [family]   InstrumentSans chat text, previews, row names, timestamps,
+  //                             captions, and every tabular figure
+  //
+  // Two hard rules, both enforced by the font files rather than by taste:
+  //   1. NEVER request w800 or w900 on `display`. Comfortaa has neither, so
+  //      the engine synthesises them by smearing the glyphs sideways — the
+  //      exact failure the web type rules already document for Anton.
+  //   2. NEVER request italic on `display`. Comfortaa has no italic cut.
+  //
+  /// Body / reading face. Everything dense, small or numeric.
+  static const String? family = 'InstrumentSans';
+
+  /// Display face. Titles and headings only — see the two rules above.
+  static const String? display = 'Comfortaa';
 
   static TextStyle _s(double size, FontWeight w, Color c,
           {double? spacing, double height = 1.2}) =>
       TextStyle(fontFamily: family, fontSize: size, fontWeight: w,
           color: c, letterSpacing: spacing, height: height);
 
+  /// Display-face variant of [_s]. Asserts the Comfortaa weight ceiling in
+  /// debug so a synthesised bold is caught at the call site, not on a phone.
+  static TextStyle _d(double size, FontWeight w, Color c,
+      {double? spacing, double height = 1.2}) {
+    assert(w.value <= 700,
+        'Comfortaa has no weight above 700 — w${w.value} would be synthesised '
+        'and the glyphs will smear. Use w700 or switch to ADText.family.');
+    return TextStyle(fontFamily: display, fontSize: size, fontWeight: w,
+        color: c, letterSpacing: spacing, height: height);
+  }
+
   /// App wordmark / screen title — 22 / 700. The heaviest weight in the app.
+  /// [UI-COMFORTAA-1] Display face, and POSITIVE tracking. The old value was
+  /// -0.22 (-1% of 22px). Negative tracking on a bold rounded face closes the
+  /// gaps between circular terminals and the letters visibly touch — the same
+  /// trap the web type rules already document. Comfortaa needs air, not less.
   static TextStyle appTitle({Color c = AD.textPrimary}) =>
-      _s(22, FontWeight.w700, c, spacing: -0.01 * 22, height: 1.05);
+      _d(22, FontWeight.w700, c, spacing: 0.02 * 22, height: 1.12);
   /// Thread name in header — 16 / 500.
   static TextStyle threadName({Color c = AD.textPrimary}) =>
       _s(16, FontWeight.w500, c);

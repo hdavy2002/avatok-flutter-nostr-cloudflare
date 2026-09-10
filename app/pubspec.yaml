@@ -388,6 +388,46 @@ flutter:
         - asset: assets/fonts/Nunito-Black.ttf
           weight: 900
 
+    # [UI-COMFORTAA-1 2026-09-10] Owner decision: Comfortaa becomes the DISPLAY
+    # family (titles, headings, wordmark, the balance figure) and Instrument
+    # Sans the BODY family (chat text, previews, timestamps, tabular figures).
+    #
+    # This is the "Phase 5" font swap that ADText's header warned about, landed
+    # deliberately rather than quietly:
+    #   * Comfortaa ships 300-700 ONLY. There is no 800 and no 900, so any
+    #     w800/w900 request against it is SYNTHESISED by the engine — strokes
+    #     smear and letters touch. The Msg ceiling of w700 is therefore not
+    #     just a style rule any more, it is a hard limit of the font file.
+    #     Do not raise it. Do not ask Comfortaa for w800.
+    #   * Comfortaa has NO italic. Nothing in the app may request one on it.
+    #   * Comfortaa's x-height is small, so it reads smaller than the platform
+    #     face it replaces. Display sizes were NOT bumped to compensate —
+    #     body stays on Instrument Sans precisely so small text stays legible.
+    #   * Instrument Sans carries the tabular figures the wallet columns need.
+    # Both are static instances cut from the canonical Google Fonts variable
+    # files. A newly bundled font needs a FULL REBUILD — hot reload silently
+    # falls back.
+    - family: Comfortaa
+      fonts:
+        - asset: assets/fonts/Comfortaa-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Comfortaa-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Comfortaa-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Comfortaa-Bold.ttf
+          weight: 700
+    - family: InstrumentSans
+      fonts:
+        - asset: assets/fonts/InstrumentSans-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/InstrumentSans-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/InstrumentSans-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/InstrumentSans-Bold.ttf
+          weight: 700
+
 dependency_overrides:
   # STREAM-ONLY CALLING: RealtimeKit's dormant Android engine packages a
   # different Twilio AudioSwitch ABI under the same Java class names as
