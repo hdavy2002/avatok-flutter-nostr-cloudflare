@@ -1397,7 +1397,11 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
      srcset. object-fit:cover keeps the painted lettering centred instead of
      squashing a 2:3 poster into a 16:9 frame. */
   .player-card__poster { position: absolute; inset: 0; display: block; }
-  .player-card__poster img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  /* [POSTER-COVER-1 2026-09-11] Owner reversed POSTER-FULL-1: the black
+     letterbox bars read as empty space, so the poster now fills the frame like
+     a cover image. The slight upward bias keeps top-lettered titles in view
+     when a 4:3 poster is cropped into the wider desktop frame. */
+  .player-card__poster img { width: 100%; height: 100%; object-fit: cover; object-position: center 35%; display: block; }
   /* [MOBILE-POSTER-1] The generated phone poster is 2:3. Match the mobile
      frame to that ratio so the portrait asset fills the card instead of being
      mounted inside a wide black letterbox. */
