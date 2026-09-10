@@ -46,6 +46,10 @@ export interface ParentOrg {
 
 export interface SameAs {
   youtube: string | null;
+  /** Company Page (not a personal profile — founders stay anonymous, [WEB-SEO-7]). */
+  linkedin: string | null;
+  crunchbase: string | null;
+  wikidata: string | null;
   instagram: string | null;
   /** Closed Alpha today — the public listing 404s. Set once the app is public. */
   playStore: string | null;
@@ -124,6 +128,11 @@ export const ORG: OrgConstants = {
   },
   sameAs: {
     youtube: 'https://www.youtube.com/@avatok',
+    // [WEB-SEO-8 2026-09-10] Company Page created from the owner's LinkedIn.
+    linkedin: 'https://www.linkedin.com/company/avatok',
+    // Set when the owner creates these (see marketing/avatok-entity-anchors.md).
+    crunchbase: null,
+    wikidata: null,
     // Set once a real, resolving Instagram profile exists.
     instagram: null,
     // Closed Alpha — 404s publicly today. Set once the Play listing is public.
