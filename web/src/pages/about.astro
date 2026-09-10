@@ -2,6 +2,7 @@
 export const prerender = true;
 import Content from '../layouts/Content.astro';
 import LegalStatus from '../components/LegalStatus.astro';
+import EntityFaq from '../components/EntityFaq.astro';
 ---
 
 <Content
@@ -97,6 +98,9 @@ import LegalStatus from '../components/LegalStatus.astro';
     creator platform, we would like to hear from you —
     <a href="mailto:hello@avatok.ai">hello@avatok.ai</a>.
   </p>
+
+  {/* [WEB-SEO-6] Entity definition + FAQPage — see the component header. */}
+  <EntityFaq />
 
   <h2 id="press">Press & media</h2>
   <p>

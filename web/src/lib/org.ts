@@ -178,6 +178,14 @@ export function orgJsonLd({ canonical, title, description, ogImage }: PageLdInpu
     },
     image: { '@id': logoId },
     description: ORG.description,
+    // [WEB-SEO-6] Google's AI Overview for "avatok" conflates this brand with
+    // avatok.tech (industrial conductors) and an old avatar-video app. This
+    // field exists in schema.org for exactly that: tell the Knowledge Graph
+    // which one we are — and which we are not. Mirrors the visible FAQ on
+    // /about (components/EntityFaq.astro).
+    disambiguatingDescription:
+      'The Indian creator platform for paid live streaming and 1:1 video sessions at avatok.ai. Not related to avatok.tech (industrial power equipment) or to avatar/selfie-video creation apps that share the name.',
+    knowsAbout: ['live streaming', 'creator economy', 'paid 1:1 video consultations', 'work from home India'],
     slogan: ORG.slogan,
     foundingDate: ORG.foundingDate,
     parentOrganization: {

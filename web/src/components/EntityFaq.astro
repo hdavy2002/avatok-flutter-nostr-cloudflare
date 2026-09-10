@@ -1,0 +1,80 @@
+---
+/**
+ * [WEB-SEO-6 2026-09-10] "What is avaTOK?" — entity disambiguation block.
+ *
+ * WHY THIS EXISTS. A Google search for "avatok" ranks avatok.ai first, but the
+ * AI Overview beside it describes two unrelated things that share the name: an
+ * industrial-conductor brand (avatok.tech) and an old avatar-video app on
+ * download sites. Google cannot tell which entity the word means, so it hedges.
+ * The fix it responds to best is the site DEFINING ITSELF in plain crawlable
+ * prose — a question-shaped definition plus an explicit "not to be confused
+ * with" — and the same text again as FAQPage structured data.
+ *
+ * Every fact here comes from src/lib/org.ts so the wording cannot drift from
+ * the Organization graph (Base.astro) or the legal-status copy.
+ *
+ * Renders visible HTML AND the JSON-LD (in-body JSON-LD is valid and Google
+ * reads it). Mount on entity home pages only — /about today — not on every
+ * page; repeating a FAQPage site-wide reads as spam.
+ */
+import { ORG } from '../lib/org';
+
+const faqs: Array<{ q: string; a: string }> = [
+  {
+    q: 'What is avaTOK?',
+    a: `avaTOK (avatok.ai) is an Indian creator marketplace for paid live streaming and paid 1:1 video sessions. Creators publish a listing — a live event, a private session, a conversation or a skill they can teach — people book or join it, and the creator gets paid. It is built in India for India, and the brand is spelled avaTOK.`,
+  },
+  {
+    q: 'Is avaTOK the same as Avatok industrial conductors or the AvaTok avatar app?',
+    a: `No. avaTOK at avatok.ai is a creator platform for live streams and video sessions. It has no connection to avatok.tech (industrial composite-core conductors and power equipment) or to any avatar or selfie-video creation app that also uses the name AvaTok. If you are looking for those, avatok.ai is not it.`,
+  },
+  {
+    q: 'Who runs avaTOK?',
+    a: `avaTOK is built and operated by an independent founding team in India, working from ${ORG.address.locality}. It is currently an unregistered business at the ideation and testing stage; international operations run under ${ORG.parent.name}. Contact: ${ORG.email}.`,
+  },
+  {
+    q: 'What can I do on avaTOK?',
+    a: `Two things. Earn: create a free listing and get paid to host live streams, run 1:1 video consultations, be a home friend, listen, or teach something you know. Book: browse the marketplace, join a live event or book a creator's time in a slot they have opened on their calendar.`,
+  },
+  {
+    q: 'Is avaTOK free?',
+    a: `Creating an account and publishing a listing is free. Buyers pay in tokens (1 token = ₹1) when they book or join a paid session; avaTOK keeps a platform fee and the creator withdraws the rest. Prices are indicative during the testing period.`,
+  },
+];
+
+const faqLd = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  '@id': `${ORG.url}about#faq`,
+  about: { '@id': `${ORG.url}#organization` },
+  mainEntity: faqs.map((f) => ({
+    '@type': 'Question',
+    name: f.q,
+    acceptedAnswer: { '@type': 'Answer', text: f.a },
+  })),
+};
+---
+
+<section class="entity-faq" id="what-is-avatok" aria-labelledby="entity-faq-title">
+  <h2 id="entity-faq-title">What is avaTOK?</h2>
+  <p>
+    <strong>avaTOK</strong> is the name of this platform — spelled with a lower-case <em>ava</em> and an
+    upper-case <em>TOK</em>, at <a href="https://avatok.ai/">avatok.ai</a>. Because a few unrelated
+    products share the name, here is the short, plain version.
+  </p>
+  <dl>
+    {faqs.map((f) => (
+      <>
+        <dt>{f.q}</dt>
+        <dd>{f.a}</dd>
+      </>
+    ))}
+  </dl>
+</section>
+<script type="application/ld+json" set:html={JSON.stringify(faqLd)} />
+
+<style>
+  .entity-faq dl { margin: 0; }
+  .entity-faq dt { font-weight: 700; margin-top: 1.1em; }
+  .entity-faq dd { margin: 0.35em 0 0 0; }
+</style>
