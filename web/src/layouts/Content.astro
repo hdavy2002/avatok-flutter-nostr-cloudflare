@@ -14,7 +14,12 @@ export interface Props {
   tone?: 'cream' | 'sky' | 'lime' | 'pink';
   /** Per-page OpenGraph image. Defaults to the shared editorial card. */
   image?: string;
-  /** Override the `<title>` / og:title. Defaults to `${title} · avaTOK`. */
+  /**
+   * Override the `<title>` / og:title. Defaults to `title`; Base.astro appends
+   * " · avaTOK" to any title that does not already name the brand ([WEB-SEO-2]),
+   * which is why this layout no longer adds the suffix itself — "About avaTOK"
+   * used to ship as "About avaTOK · avaTOK".
+   */
   ogTitle?: string;
 }
 
@@ -43,7 +48,7 @@ const routeTone = tone ?? (
 ---
 
 <Base
-  title={ogTitle ?? `${title} · avaTOK`}
+  title={ogTitle ?? title}
   description={description ?? lead}
   image={image}
   chrome={false}

@@ -6,15 +6,18 @@
 # Public pages welcome search crawlers. Search and training crawlers have
 # different purposes; permission does not guarantee indexing or recommendations.
 
-User-agent: *`, but several of them (GPTBot, Google-Extended,
-# Applebot-Extended, CCBot) are opt-OUT crawlers that publishers commonly block,
-# and an explicit Allow is the unambiguous signal that avaTOK wants to be read,
-# quoted and cited when someone asks an assistant how to earn money from home.
-# Do NOT add a Disallow for these without a deliberate decision — it would remove
-# avaTOK from ChatGPT, Claude, Perplexity and Google AI Overviews answers.
-Disallow: /dashboard
-Disallow: /admin
-Disallow: /vision
+# [WEB-SEO-2 2026-09-10] The block that used to sit here was corrupted: a
+# fragment of the AI-crawler comment below had been spliced into the first
+# `User-agent: *` line, so the group was unparseable and its Disallow lines
+# were ignored by every crawler. The intact default group follows.
+#
+# Why the AI crawlers below get an explicit Allow: several of them (GPTBot,
+# Google-Extended, Applebot-Extended, CCBot) are opt-OUT crawlers that
+# publishers commonly block, and an explicit Allow is the unambiguous signal
+# that avaTOK wants to be read, quoted and cited when someone asks an assistant
+# how to earn money from home. Do NOT add a Disallow for these without a
+# deliberate decision — it would remove avaTOK from ChatGPT, Claude, Perplexity
+# and Google AI Overviews answers.
 
 User-agent: *
 Disallow: /dashboard

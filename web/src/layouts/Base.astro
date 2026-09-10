@@ -75,6 +75,9 @@ const {
 } = Astro.props;
 
 const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://avatok.ai').toString();
+// [WEB-SEO-2] See the <title> note below. Case-insensitive so "AvaTOK",
+// "avatok.ai" and "AvaTok" all count as already branded.
+const pageTitle = /avatok/i.test(title) ? title : `${title} · avaTOK`;
 // og:image must be an ABSOLUTE url — Facebook, WhatsApp, LinkedIn and Slack all
 // drop a relative path, which is why shared links used to render with no card.
 //
@@ -84,8 +87,28 @@ const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://avatok.ai')
 const ogImage = new URL(image ?? '/ogimage.jpg', Astro.site ?? 'https://avatok.ai').toString();
 
 // [WEB-SEO-1] Site-wide Organization/WebSite graph. Answer engines read this to
-// decide what avaTOK *is*; the home page carries its own richer copy (it emits
-// its own <head>), so keep the two consistent.
+// decide what avaTOK *is*; keep it consistent with the visible copy on /about.
+//
+// [WEB-SEO-2 2026-09-10] Enriched for Google's knowledge panel and sitelinks.
+// The panel Google draws beside a brand search is assembled from the Knowledge
+// Graph, and the Knowledge Graph is fed by exactly the fields added here:
+// a square logo (>=112px, ImageObject), `sameAs` official profiles, a parent
+// organisation, founding date, contact point and a locality. The WebSite node
+// gains a SearchAction so Google can offer a sitelinks search box that posts to
+// /marketplace?q=. None of this is a ranking signal — it is what lets Google
+// SHOW more once the pages rank.
+//
+// NAMING RULE (owner decision 2026-09-10, consistent with the no-company rule
+// in CLAUDE.md): the Organization is the BRAND, avaTOK. `parentOrganization`
+// is AvaGlobal Inc (Delaware), which handles international traffic and does
+// exist. The Indian entity, Ava Global International Pvt Ltd (Mumbai), is in
+// process and is NOT named until it is registered — naming it now would
+// contradict /terms#status. When it is registered, add it as `legalName` here
+// and update LegalStatus.astro / SiteFooter.astro in the same change.
+//
+// `sameAs` must only list profiles that resolve today. The Play listing is
+// Closed Alpha and returns 404 to the public, so it is deliberately absent —
+// a 404 in sameAs is worse than no entry. Add it when the app is public.
 const orgLd = {
   '@context': 'https://schema.org',
   '@graph': [
@@ -93,22 +116,73 @@ const orgLd = {
       '@type': 'Organization',
       '@id': 'https://avatok.ai/#organization',
       name: 'avaTOK',
-      alternateName: ['AvaTOK', 'AvaTok', 'avatok.ai'],
+      alternateName: ['AvaTOK', 'AvaTok', 'Avatok', 'avatok.ai'],
       url: 'https://avatok.ai/',
-      logo: 'https://avatok.ai/avatok-logo.png',
-      image: 'https://avatok.ai/ogimage.jpg',
+      logo: {
+        '@type': 'ImageObject',
+        '@id': 'https://avatok.ai/#logo',
+        url: 'https://avatok.ai/app-logo2.png',
+        contentUrl: 'https://avatok.ai/app-logo2.png',
+        width: 251,
+        height: 256,
+        caption: 'avaTOK',
+      },
+      image: { '@id': 'https://avatok.ai/#logo' },
       description:
-        'avaTOK is an India-focused creator marketplace for live events and booked sessions. Creators can share skills, conversations and experiences, including activities hosted from home.',
-      areaServed: 'IN',
+        'avaTOK is an India-focused creator marketplace for paid live streaming and 1:1 video sessions. Creators publish listings, people book or join, and creators get paid — including for skills, conversations and experiences hosted from home.',
+      slogan: 'Apna hunar. Apni kamaai.',
+      foundingDate: '2025',
+      parentOrganization: {
+        '@type': 'Organization',
+        name: 'AvaGlobal Inc',
+        address: { '@type': 'PostalAddress', addressRegion: 'Delaware', addressCountry: 'US' },
+      },
+      address: { '@type': 'PostalAddress', addressLocality: 'Mumbai', addressRegion: 'Maharashtra', addressCountry: 'IN' },
+      areaServed: { '@type': 'Country', name: 'India' },
+      knowsLanguage: ['en', 'hi'],
       email: 'support@avatok.ai',
+      contactPoint: [
+        {
+          '@type': 'ContactPoint',
+          contactType: 'customer support',
+          email: 'support@avatok.ai',
+          url: 'https://avatok.ai/contact',
+          areaServed: 'IN',
+          availableLanguage: ['English', 'Hindi'],
+        },
+      ],
+      sameAs: [
+        'https://www.youtube.com/@avatok',
+      ],
     },
     {
       '@type': 'WebSite',
       '@id': 'https://avatok.ai/#website',
       url: 'https://avatok.ai/',
       name: 'avaTOK',
+      alternateName: 'avatok.ai',
+      description,
       inLanguage: 'en-IN',
       publisher: { '@id': 'https://avatok.ai/#organization' },
+      potentialAction: {
+        '@type': 'SearchAction',
+        target: {
+          '@type': 'EntryPoint',
+          urlTemplate: 'https://avatok.ai/marketplace?q={search_term_string}',
+        },
+        'query-input': 'required name=search_term_string',
+      },
+    },
+    {
+      '@type': 'WebPage',
+      '@id': `${canonical}#webpage`,
+      url: canonical,
+      name: title,
+      description,
+      isPartOf: { '@id': 'https://avatok.ai/#website' },
+      about: { '@id': 'https://avatok.ai/#organization' },
+      inLanguage: 'en-IN',
+      primaryImageOfPage: { '@type': 'ImageObject', url: ogImage },
     },
   ],
 };
@@ -125,7 +199,11 @@ const orgLd = {
     {noindex
       ? <meta name="robots" content="noindex, nofollow" />
       : <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />}
-    <title>{title}</title>
+    {/* [WEB-SEO-2] Every title carries the brand once. Sitelinks (the row of
+        page links under the main result) are built from titles; "Contact us"
+        or "Tokens & Wallet" with no brand read as generic and get dropped. A
+        page that already names avaTOK keeps its title untouched. */}
+    <title>{pageTitle}</title>
     <meta name="description" content={description} />
     <meta name="keywords" content={keywords} />
 
@@ -133,7 +211,7 @@ const orgLd = {
     <meta property="og:type" content={ogType} />
     <meta property="og:site_name" content="avaTOK" />
     <meta property="og:locale" content="en_IN" />
-    <meta property="og:title" content={title} />
+    <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
     <meta property="og:image" content={ogImage} />
@@ -142,7 +220,7 @@ const orgLd = {
     {imageWidth && <meta property="og:image:width" content={imageWidth} />}
     {imageHeight && <meta property="og:image:height" content={imageHeight} />}
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content={title} />
+    <meta name="twitter:title" content={pageTitle} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImage} />
     <meta name="twitter:image:alt" content={imageAlt} />

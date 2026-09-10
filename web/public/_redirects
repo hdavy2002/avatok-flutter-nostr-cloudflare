@@ -1,0 +1,5 @@
+# [WEB-SEO-2 2026-09-10] www.avatok.ai is a CNAME to the same Pages project as the
+# apex, so until now it served a full duplicate of every page (Search Console:
+# "Alternative page with proper canonical tag" x6). A canonical tag is a hint;
+# a 301 is a rule. Cloudflare Pages evaluates this file before _worker.js.
+https://www.avatok.ai/* https://avatok.ai/:splat 301
