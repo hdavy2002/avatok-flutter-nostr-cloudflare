@@ -281,8 +281,19 @@ class ApiAuth {
   /// Signed GET (for authed reads like /api/library).
   static Future<http.Response> getSigned(String url,
       {Duration timeout = const Duration(seconds: 8)}) async {
-    final headers = await _headers('GET', url);
-    return _tracked(url, () => http.get(Uri.parse(url), headers: headers).timeout(timeout));
+    // The timeout must cover Clerk bearer acquisition as well as the HTTP
+    // request. Without this, a stalled token provider bypasses the timeout
+    // entirely and screens such as Marketplace can spin forever.
+    final started = DateTime.now();
+    final headers = await _headers('GET', url).timeout(timeout);
+    final remaining = timeout - DateTime.now().difference(started);
+    if (remaining <= Duration.zero) {
+      throw TimeoutException('auth headers consumed the request budget', timeout);
+    }
+    return _tracked(
+      url,
+      () => http.get(Uri.parse(url), headers: headers).timeout(remaining),
+    );
   }
 
   /// Signed PUT with a JSON body (e.g. agent persona, OLX listing edit).

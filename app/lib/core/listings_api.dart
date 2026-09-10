@@ -977,6 +977,9 @@ class PublicImageUpload {
 }
 
 class ListingsApi {
+  // Browse is a foreground screen. Keep a cold Marketplace load responsive
+  // while still allowing ordinary mobile latency and Clerk token refresh.
+  static const Duration _browseTimeout = Duration(seconds: 4);
   static Map<String, dynamic> _j(String body) {
     try { return jsonDecode(body) as Map<String, dynamic>; } catch (_) { return {}; }
   }
@@ -1045,7 +1048,10 @@ class ListingsApi {
   /// available from `/api/listings/mine`. The category endpoint itself is
   /// public; callers can use [categories] for the legacy list-only API.
   static Future<ListingApiResult<List<ExploreCategory>>> getWizardCategories() async {
-    final r = await ApiAuth.getSigned('$_base/explore/categories');
+    final r = await ApiAuth.getSigned(
+      '$_base/explore/categories',
+      timeout: _browseTimeout,
+    );
     return _result(r, (body) => ((body['categories'] as List?) ?? const [])
         .whereType<Map>()
         .map((row) => ExploreCategory.fromJson(row.cast<String, dynamic>()))
@@ -1184,7 +1190,10 @@ class ListingsApi {
           await ListingsCache.readFresh(_categoriesKey, _categoriesTtl));
       if (cached != null && cached.isNotEmpty) return cached;
     }
-    final r = await ApiAuth.getSigned('$_base/explore/categories');
+    final r = await ApiAuth.getSigned(
+      '$_base/explore/categories',
+      timeout: _browseTimeout,
+    );
     final list = (_j(r.body)['categories'] as List?) ?? const [];
     if (list.isNotEmpty) await ListingsCache.write(_categoriesKey, list);
     return list
@@ -1231,7 +1240,7 @@ class ListingsApi {
       if (creator != null) 'creator=$creator',
       'limit=40',
     ].join('&');
-    final r = await ApiAuth.getSigned('$_base/explore?$q');
+    final r = await ApiAuth.getSigned('$_base/explore?$q', timeout: _browseTimeout);
     final list = (_j(r.body)['listings'] as List?) ?? const [];
     if (cacheable) await ListingsCache.write(key, list);
     return list.map((x) => ListingCard.fromJson((x as Map).cast<String, dynamic>())).toList();
@@ -1260,7 +1269,7 @@ class ListingsApi {
         if (country != null && country.isNotEmpty) 'country=$country',
         if (category != null && category.isNotEmpty) 'category=${Uri.encodeQueryComponent(category)}',
       ].join('&');
-      final r = await ApiAuth.getSigned('$_base/marketplace/search?$params');
+      final r = await ApiAuth.getSigned('$_base/marketplace/search?$params', timeout: _browseTimeout);
       return _cards(_j(r.body));
     }
     final params = <String>[
@@ -1277,7 +1286,7 @@ class ListingsApi {
         return cached.map((r) => ListingCard.fromJson((r as Map).cast<String, dynamic>())).toList();
       }
     }
-    final r = await ApiAuth.getSigned('$_base/explore?$params');
+    final r = await ApiAuth.getSigned('$_base/explore?$params', timeout: _browseTimeout);
     final list = (_j(r.body)['listings'] as List?) ?? const [];
     await ListingsCache.write(cacheKey, list);
     return list.map((x) => ListingCard.fromJson((x as Map).cast<String, dynamic>())).toList();
@@ -1316,7 +1325,7 @@ class ListingsApi {
       final cached = _cardsFrom(await ListingsCache.readFresh(_liveNowKey, _liveNowTtl));
       if (cached != null) return cached;
     }
-    final r = await ApiAuth.getSigned('$_base/explore/live-now');
+    final r = await ApiAuth.getSigned('$_base/explore/live-now', timeout: _browseTimeout);
     final list = (_j(r.body)['listings'] as List?) ?? const [];
     if (cache) await ListingsCache.write(_liveNowKey, list);
     return list.map((x) => ListingCard.fromJson((x as Map).cast<String, dynamic>())).toList();
@@ -1338,7 +1347,7 @@ class ListingsApi {
       if (to != null) 'to=$to',
       if (minRating != null) 'minRating=$minRating',
     ].join('&');
-    final r = await ApiAuth.getSigned('$_base/explore/search?$params');
+    final r = await ApiAuth.getSigned('$_base/explore/search?$params', timeout: _browseTimeout);
     return _cards(_j(r.body));
   }
 

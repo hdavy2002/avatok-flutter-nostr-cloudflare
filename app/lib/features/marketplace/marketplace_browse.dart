@@ -639,16 +639,21 @@ class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
   }
 
   Future<_GroupedListings> _loadAll({bool forceFresh = false}) async {
-    final live = widget.liveEnabled
-        ? await _loadLive(forceFresh: forceFresh)
-        : const <ListingCard>[];
-    final consult = widget.consultEnabled
-        ? await (widget.query.isEmpty
+    // These are independent browse lanes. Start both together so a slow live
+    // endpoint cannot make the consulting lane wait behind it (or vice versa).
+    final liveFuture = widget.liveEnabled
+        ? _loadLive(forceFresh: forceFresh)
+        : Future<List<ListingCard>>.value(const <ListingCard>[]);
+    final consultFuture = widget.consultEnabled
+        ? (widget.query.isEmpty
             // [MKT-CACHE-1] `cache: true` — this is a browse read, not a
             // "did my listing publish?" read.
             ? ListingsApi.explore(kind: 'consult', cache: true, forceFresh: forceFresh)
             : ListingsApi.search(q: widget.query, kind: 'consult'))
-        : const <ListingCard>[];
+        : Future<List<ListingCard>>.value(const <ListingCard>[]);
+    final lanes = await Future.wait([liveFuture, consultFuture]);
+    final live = lanes[0];
+    final consult = lanes[1];
     // De-dupe across lanes — a listing that answers both queries must not
     // appear twice inside its group's row.
     final byId = <String, ListingCard>{};
