@@ -15,7 +15,7 @@ import { defaultsFor } from '../../../lib/listingDefaults';
 import { cfImage } from '../../../lib/config';
 import { MEDIA_MODES, PRICING, groupsForKind, subCategoriesFor, feeSplit } from '../../../lib/listingTaxonomy';
 import type { GroupId } from '../../../lib/listingTaxonomy';
-import type { ListingDraft, DraftSlot, Kind, PosterMirror } from './types';
+import type { ListingDraft, DraftSlot, Kind, PosterMirror, AvailabilityRule } from './types';
 
 type Patch = (p: Partial<ListingDraft>) => void;
 type CreatorInfo = { name?: string | null; handle?: string | null; avatar?: string | null };
@@ -397,6 +397,15 @@ export function Step4Time({ draft, patch, err, slotsSupported, onAddSlot, onRemo
   // one of the friendly options — i.e. it was picked "Other…", loaded from an
   // existing listing with an uncommon tz, or (pre-normalization) a legacy id.
   const [tzOther, setTzOther] = useState(!TZ_OPTIONS.some((o) => o.value === draft.timezone));
+  const availabilityModes: { key: ListingDraft['availability_mode']; label: string; help: string }[] = [
+    { key: 'shared', label: 'Shared creator hours', help: 'Use the working hours from your AvaCalendar.' },
+    { key: 'custom', label: 'Custom hours for this listing', help: 'Narrow this consult to its own weekly windows.' },
+    { key: 'exclusive', label: 'Exclusive windows', help: 'Reserve these windows so other listings cannot use them.' },
+  ];
+  const rules = draft.availability_rules;
+  const patchRule = (index: number, next: Partial<AvailabilityRule>) => {
+    patch({ availability_rules: rules.map((r, i) => i === index ? { ...r, ...next } : r) });
+  };
   return (
     <div className="flex flex-col gap-5">
       <label className="block">
@@ -417,12 +426,42 @@ export function Step4Time({ draft, patch, err, slotsSupported, onAddSlot, onRemo
         <ErrLine err={err} field="timezone" />
       </label>
 
+      {draft.kind === 'consult' && (
+        <div>
+          <span className={labelCls}>Consult availability</span>
+          <div className="flex flex-col gap-2">
+            {availabilityModes.map((mode) => (
+              <button key={mode.key} type="button" onClick={() => patch({ availability_mode: mode.key })}
+                className={['flex items-center justify-between rounded-zine border-zine border-ink p-3 text-left shadow-zine-xs', draft.availability_mode === mode.key ? 'bg-lime' : 'bg-card'].join(' ')}>
+                <span><span className="block font-display font-semibold text-[15px] text-ink">{mode.label}</span><span className="block font-body font-bold text-[12px] text-inkSoft">{mode.help}</span></span>
+                {draft.availability_mode === mode.key && <span>✓</span>}
+              </button>
+            ))}
+          </div>
+          {draft.availability_mode === 'custom' && (
+            <div className="mt-3 flex flex-col gap-2 rounded-zine border-zine border-dashed border-ink p-3">
+              <p className="font-body font-bold text-[12px] text-inkSoft">Add at least one weekly window. Times use {draft.timezone}.</p>
+              {rules.map((rule, index) => (
+                <div key={`${index}-${rule.weekday}`} className="grid grid-cols-[1fr_1fr_1fr_auto] items-end gap-2">
+                  <label className="block"><span className={labelCls}>Day</span><select className={inputCls} value={rule.weekday} onChange={(e) => patchRule(index, { weekday: Number(e.target.value) })}>{RECUR_DAYS.map((day, i) => <option key={day} value={i}>{day}</option>)}</select></label>
+                  <label className="block"><span className={labelCls}>Starts</span><input className={inputCls} type="time" value={`${String(Math.floor(rule.start_min / 60)).padStart(2, '0')}:${String(rule.start_min % 60).padStart(2, '0')}`} onChange={(e) => { const [h, m] = e.target.value.split(':').map(Number); patchRule(index, { start_min: h * 60 + m }); }} /></label>
+                  <label className="block"><span className={labelCls}>Ends</span><input className={inputCls} type="time" value={`${String(Math.floor(rule.end_min / 60)).padStart(2, '0')}:${String(rule.end_min % 60).padStart(2, '0')}`} onChange={(e) => { const [h, m] = e.target.value.split(':').map(Number); patchRule(index, { end_min: h * 60 + m }); }} /></label>
+                  <button type="button" className="pb-2 font-body font-bold text-[12px] text-coral" onClick={() => patch({ availability_rules: rules.filter((_, i) => i !== index) })}>Remove</button>
+                </div>
+              ))}
+              <button type="button" className="self-start font-body font-bold text-[13px] text-blueInk underline" onClick={() => patch({ availability_rules: [...rules, { weekday: 1, start_min: 9 * 60, end_min: 17 * 60 }] })}>+ Add weekly window</button>
+              <ErrLine err={err} field="availability_rules" />
+            </div>
+          )}
+        </div>
+      )}
+
       {draft.schedule_mode === 'fixed_date' && (
         <>
-          <div>
+          {(draft.kind !== 'consult' || draft.availability_mode === 'exclusive') && <div>
             <Field label="Starts" type="datetime-local" value={draft.starts_at} onChange={(e) => patch({ starts_at: e.target.value })} />
             <ErrLine err={err} field="starts_at" />
-          </div>
+          </div>}
           <label className="block">
             <span className={labelCls}>Length (minutes)</span>
             <input type="number" min={5} max={480} className={inputCls} value={draft.duration_min}
@@ -530,6 +569,7 @@ export function Step4Time({ draft, patch, err, slotsSupported, onAddSlot, onRemo
           <ErrLine err={err} field="response_time_min" />
         </div>
       )}
+      {draft.kind === 'consult' && <p className="font-body font-bold text-[12px] text-inkSoft">Consults always have one seat. Duration is the session length used by the calendar and checkout.</p>}
       {draft.kind !== 'consult' && (
         <label className="block">
           <span className={labelCls}>Seats (capacity)</span>

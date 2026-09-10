@@ -41,6 +41,10 @@ jobs:
             exit 1
           fi
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Install Worker dependencies
         working-directory: worker
         run: npm ci
@@ -85,7 +89,12 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           ALLOW_PROD: ${{ inputs.environment == 'prod' && '1' || '0' }}
-        run: scripts/cf.sh worker d1 execute DB_META --remote --file=migrations/2026-09-10-unified-availability.sql
+        run: |
+          scripts/cf.sh worker d1 execute DB_META --remote --file=migrations/2026-09-10-unified-availability.sql
+          python3 scripts/d1_apply_alters.py worker/migrations/2026-09-10-gcal-account-state.sql --binding DB_META
+          scripts/cf.sh worker d1 execute DB_META --remote --file=migrations/2026-09-10-gcal-reliability.sql
+          python3 scripts/d1_apply_alters.py worker/migrations/2026-09-10-gcal-full-sync-state.sql --binding DB_META
+          python3 scripts/d1_apply_alters.py worker/migrations/2026-09-10-gcal-export-state.sql --binding DB_META
 
       - name: Deploy Worker
         env:

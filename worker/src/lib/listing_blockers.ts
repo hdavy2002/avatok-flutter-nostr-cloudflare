@@ -1,3 +1,4 @@
+import {loadUnifiedSchedule,windowsForDate,localParts} from "../cal/engine";
 // [LISTING-BLOCKERS-1 2026-09-05] ONE definition of "can this listing publish?".
 //
 // WHY THIS FILE EXISTS
@@ -44,7 +45,6 @@ import { publishBlockedReason, sectionFor } from "./listing_section";
 import { readConfig } from "../routes/config";
 
 const MARKET_KINDS = new Set(["sell", "buy", "social"]);
-const CAPACITIES = new Set([1, 10, 20]);
 
 export type ListingBlocker = {
   /** Stable and machine-readable. Clients branch on this, never on `message`. */
@@ -243,21 +243,28 @@ export async function listingBlockers(
       });
     }
   } else {
-    if (!CAPACITIES.has(Number(l?.capacity))) {
+    if (Number(l?.capacity)!==1) {
       out.push({
         code: "bad_capacity",
         field: "capacity",
-        message: "Capacity must be 1, 10 or 20.",
-        legacy: { status: 400, body: { error: "capacity must be 1, 10 or 20" } },
+        message: "A 1:1 consultation has one seat.",
+        legacy: { status: 400, body: { error: "capacity must be 1" } },
       });
     }
     // Availability belongs to the CREATOR, not to whoever is publishing.
     const creatorUid = String(l?.creator_id ?? "");
     let hasRules = false;
     try {
-      hasRules = !!(await env.DB_META
-        .prepare("SELECT 1 FROM availability_rules WHERE user_id=?1 LIMIT 1")
-        .bind(creatorUid).first());
+      const schedule=await loadUnifiedSchedule(env,creatorUid,String(l?.id??''));
+      const shared=await loadUnifiedSchedule(env,creatorUid,null);
+      const named=await env.DB_META.prepare("SELECT id FROM listing_slots WHERE listing_id=?1 AND status='open' AND capacity=1 AND ends_at>?2 LIMIT 1").bind(String(l?.id??''),Date.now()).first();
+      hasRules=!!named || (schedule.mode==='exclusive' && Number(l?.starts_at)>Date.now() && Number(l?.duration_min)>=5 && Number(l?.duration_min)<=480);
+      const today=localParts(Date.now(),schedule.timezone).date;
+      const day=new Date(`${today}T00:00:00Z`);
+      for(let n=0;!hasRules && n<=schedule.horizon_days;n++){
+        hasRules=windowsForDate(shared,day.toISOString().slice(0,10),schedule).some(w=>w.end_min-w.start_min>=schedule.duration_min);
+        day.setUTCDate(day.getUTCDate()+1);
+      }
     } catch { hasRules = false; }
     if (!hasRules) {
       out.push({

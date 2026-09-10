@@ -115,3 +115,9 @@ CREATE TABLE IF NOT EXISTS availability_gateway_holds (
  buyer_id TEXT NOT NULL,
  created_at INTEGER NOT NULL
 );
+
+-- A transaction-owned move token keeps losing reschedules from moving mirrors.
+CREATE TABLE IF NOT EXISTS availability_booking_moves (
+  booking_id TEXT PRIMARY KEY,
+  token TEXT NOT NULL
+);

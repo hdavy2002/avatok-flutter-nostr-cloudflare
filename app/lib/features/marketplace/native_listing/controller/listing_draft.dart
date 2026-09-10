@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../../../../core/availability_time.dart';
+
 /// The complete native-wizard draft. Field names intentionally mirror the web
 /// wizard and Worker listing contract so a save is cumulative and lossless.
 class ListingDraft {
@@ -8,6 +10,9 @@ class ListingDraft {
   final String kind;
   final bool freeEntry;
   final String scheduleMode;
+  final String availabilityMode;
+  final List<Map<String, dynamic>> availabilityRules;
+  final int availabilityVersion;
   final String title, blurb, description, category, mediaMode;
   final List<String> spokenLang;
   final String price;
@@ -35,6 +40,9 @@ class ListingDraft {
     this.kind = 'live_event',
     this.freeEntry = false,
     this.scheduleMode = 'fixed_date',
+    this.availabilityMode = 'shared',
+    this.availabilityRules = const [],
+    this.availabilityVersion = 0,
     this.title = '',
     this.blurb = '',
     this.description = '',
@@ -86,6 +94,9 @@ class ListingDraft {
     String? kind,
     bool? freeEntry,
     String? scheduleMode,
+    String? availabilityMode,
+    List<Map<String, dynamic>>? availabilityRules,
+    int? availabilityVersion,
     String? title,
     String? blurb,
     String? description,
@@ -137,6 +148,9 @@ class ListingDraft {
         kind: kind ?? this.kind,
         freeEntry: freeEntry ?? this.freeEntry,
         scheduleMode: scheduleMode ?? this.scheduleMode,
+        availabilityMode: availabilityMode ?? this.availabilityMode,
+        availabilityRules: List.unmodifiable(availabilityRules ?? this.availabilityRules),
+        availabilityVersion: availabilityVersion ?? this.availabilityVersion,
         title: title ?? this.title,
         blurb: blurb ?? this.blurb,
         description: description ?? this.description,
@@ -210,7 +224,7 @@ class ListingDraft {
     if (responseTimeMin.trim().isNotEmpty)
       body['response_time_min'] = int.tryParse(responseTimeMin.trim());
     if (scheduleMode == 'fixed_date') {
-      body['starts_at'] = localEpoch(startsAt);
+      body['starts_at'] = localEpoch(startsAt, timezone: timezone);
       body['duration_min'] = durationMin;
     } else if (scheduleMode == 'recurring') {
       body['recurrence_days'] = recurrenceDays;
@@ -260,8 +274,12 @@ class ListingDraft {
       };
 
   Map<String, dynamic> snapshot() =>
-      jsonDecode(jsonEncode(toSaveBody(includePolicy: true)))
-          as Map<String, dynamic>;
+      <String, dynamic>{
+        ...jsonDecode(jsonEncode(toSaveBody(includePolicy: true))) as Map<String, dynamic>,
+        'availability_mode': availabilityMode,
+        'availability_rules': availabilityRules,
+        'availability_version': availabilityVersion,
+      };
 
   bool get earlyBirdInvalid {
     if (earlyBirdPct.trim().isEmpty) return false;
@@ -269,10 +287,20 @@ class ListingDraft {
     return n == null || n < 1 || n > 100;
   }
 
-  static int? localEpoch(String value) {
+  static int? localEpoch(String value, {String timezone = 'UTC'}) {
     if (value.isEmpty) return null;
-    final ms = DateTime.tryParse(value)?.millisecondsSinceEpoch;
-    return ms;
+    final parsed = DateTime.tryParse(value);
+    if (parsed == null) return null;
+    try {
+      final utc = AvailabilityTime.wallTimeToUtc(
+        date: DateTime(parsed.year, parsed.month, parsed.day),
+        minutes: parsed.hour * 60 + parsed.minute,
+        timezone: timezone,
+      );
+      return utc.millisecondsSinceEpoch;
+    } catch (_) {
+      return null;
+    }
   }
 
   static String _cap(String value, int max) =>
@@ -296,6 +324,9 @@ class ListingDraft {
           : (l['kind']?.toString() == 'consult' ? 'consult' : 'ai_agent'),
       freeEntry: l['free_entry'] == true,
       scheduleMode: l['schedule_mode']?.toString() ?? 'fixed_date',
+      availabilityMode: l['availability_mode']?.toString() ?? 'shared',
+      availabilityRules: (l['availability_rules'] as List?)?.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() ?? const [],
+      availabilityVersion: (l['availability_version'] as num?)?.toInt() ?? 0,
       title: l['title']?.toString() ?? '',
       blurb: l['blurb']?.toString() ?? '',
       description: l['description']?.toString() ?? '',
@@ -311,7 +342,7 @@ class ListingDraft {
       earlyBirdPct: attrs['early_bird_pct']?.toString() ?? '',
       promoCode: attrs['promo_code']?.toString() ?? '',
       timezone: l['timezone']?.toString() ?? 'Asia/Kolkata',
-      startsAt: _epochLocal(l['starts_at']),
+      startsAt: _epochLocal(l['starts_at'], l['timezone']?.toString() ?? 'Asia/Kolkata'),
       durationMin: (l['duration_min'] as num?)?.toInt() ?? 60,
       recurrenceDays: (l['recurrence_days'] as List?)
               ?.whereType<num>()
@@ -360,13 +391,12 @@ class ListingDraft {
     );
   }
 
-  static String _epochLocal(dynamic value) {
+  static String _epochLocal(dynamic value, String timezone) {
     if (value == null) return '';
     final n = value is num ? value.toInt() : int.tryParse('$value');
     if (n == null) return '';
     final d =
-        DateTime.fromMillisecondsSinceEpoch(n < 100000000000 ? n * 1000 : n)
-            .toLocal();
+        AvailabilityTime.inTimezone(DateTime.fromMillisecondsSinceEpoch(n < 100000000000 ? n * 1000 : n, isUtc: true), timezone);
     String p(int x) => x.toString().padLeft(2, '0');
     return '${d.year}-${p(d.month)}-${p(d.day)}T${p(d.hour)}:${p(d.minute)}';
   }

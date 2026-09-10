@@ -4,6 +4,7 @@ library;
 
 import 'dart:convert';
 
+import '../../../../core/availability_time.dart';
 import 'listing_draft.dart';
 
 const _timezoneAliases = <String, String>{'Asia/Calcutta': 'Asia/Kolkata'};
@@ -25,10 +26,19 @@ ListingDraft emptyListingDraft({ListingDraft? initial}) {
   return draft.copyWith(timezone: normalizeListingTimezone(draft.timezone.isEmpty ? bestEffortLocalTimezone() : draft.timezone));
 }
 
-int? listingLocalToEpoch(String value) {
+int? listingLocalToEpoch(String value, {String timezone = 'UTC'}) {
   if (value.trim().isEmpty) return null;
   final parsed = DateTime.tryParse(value);
-  return parsed?.millisecondsSinceEpoch;
+  if (parsed == null) return null;
+  try {
+    return AvailabilityTime.wallTimeToUtc(
+      date: DateTime(parsed.year, parsed.month, parsed.day),
+      minutes: parsed.hour * 60 + parsed.minute,
+      timezone: timezone,
+    ).millisecondsSinceEpoch;
+  } catch (_) {
+    return null;
+  }
 }
 
 String listingEpochToLocal(Object? value) {
@@ -53,6 +63,9 @@ ListingDraft listingDraftFromListing(Map<String, dynamic> listing) {
     freeEntry: _bool(listing['free_entry']),
     contentFreeCapTokens: _string(attrs['content_free_cap_tokens']),
     scheduleMode: listingScheduleModeFromWire(listing['schedule_mode']),
+    availabilityMode: _string(listing['availability_mode'], fallback: 'shared'),
+    availabilityRules: _list(listing['availability_rules']).whereType<Map>().map((e) => e.cast<String, dynamic>()).toList(),
+    availabilityVersion: _int(listing['availability_version']),
     title: _string(listing['title']), blurb: _string(listing['blurb']), description: _string(listing['description']),
     category: _string(listing['category']),
     mediaMode: _string(listing['media_mode'], fallback: 'audio_video') == 'audio_only' ? 'audio_only' : 'audio_video',
@@ -140,7 +153,7 @@ Map<String, dynamic> listingBodyForSave(ListingDraft draft, {bool includeAttrs =
     if (draft.credential.trim().isNotEmpty) 'credential': draft.credential.trim(),
     if (draft.responseTimeMin.trim().isNotEmpty) 'response_time_min': int.tryParse(draft.responseTimeMin.trim()),
   };
-  if (draft.scheduleMode == ListingScheduleMode.fixedDate) { body['starts_at'] = listingLocalToEpoch(draft.startsAt); body['duration_min'] = draft.durationMin; }
+  if (draft.scheduleMode == ListingScheduleMode.fixedDate) { body['starts_at'] = listingLocalToEpoch(draft.startsAt, timezone: draft.timezone); body['duration_min'] = draft.durationMin; }
   if (draft.scheduleMode == ListingScheduleMode.recurring) { body['recurrence_days'] = draft.recurrenceDays; body['recurrence_time'] = draft.recurrenceTime; body['duration_min'] = draft.durationMin; }
   if (draft.kind == ListingKind.consult) body['capacity'] = 1;
   if (draft.kind != ListingKind.consult && draft.capacity > 0) body['capacity'] = draft.capacity;

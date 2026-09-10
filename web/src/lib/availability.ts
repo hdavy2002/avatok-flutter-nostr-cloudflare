@@ -105,6 +105,22 @@ export interface GoogleCalendarStatus {
   connected_at?: number | null;
   last_sync_at?: number | null;
   error?: string | null;
+  last_error?: string | null;
+  destination_calendar_id?: string | null;
+  calendars?: GoogleCalendar[];
+}
+
+export interface GoogleCalendar {
+  id: string;
+  summary: string;
+  timezone: string;
+  access_role?: string | null;
+  primary: boolean;
+  selected: boolean;
+  destination: boolean;
+  last_sync_at?: number | null;
+  last_success_at?: number | null;
+  last_error?: string | null;
 }
 
 export function getCreatorSchedule(token: string, listingId?: string | null, signal?: AbortSignal): Promise<ScheduleResponse> {
@@ -162,6 +178,18 @@ export function getGoogleCalendarStatus(token: string, signal?: AbortSignal): Pr
 
 export function getGoogleCalendarConnectUrl(token: string, signal?: AbortSignal): Promise<{ url: string }> {
   return request<{ url: string }>('/api/calendar/gcal/connect', { auth: token, signal });
+}
+
+export function getGoogleCalendars(token: string, signal?: AbortSignal): Promise<{ calendars: GoogleCalendar[]; destination_calendar_id?: string | null }> {
+  return request<{ calendars: GoogleCalendar[]; destination_calendar_id?: string | null }>('/api/calendar/gcal/calendars', { auth: token, signal });
+}
+
+export function saveGoogleCalendarSelection(
+  token: string,
+  body: { read_calendar_ids: string[]; destination_calendar_id: string },
+  signal?: AbortSignal,
+): Promise<{ calendars: GoogleCalendar[]; destination_calendar_id: string }> {
+  return request<{ calendars: GoogleCalendar[]; destination_calendar_id: string }>('/api/calendar/gcal/calendars', { method: 'PUT', auth: token, body, signal });
 }
 
 export function disconnectGoogleCalendar(token: string, signal?: AbortSignal): Promise<{ ok: boolean }> {

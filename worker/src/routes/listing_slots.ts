@@ -15,9 +15,13 @@ import { requireUser, isFail } from "../authz";
 import { metaDb } from "../db/shard";
 import { readConfig } from "./config";
 import { syncListingStartsAt } from "../lib/slots";
+import { claimExclusiveReservation, releaseListingReservation } from "../cal/engine";
 
 const MAX_CAPACITY = 500;
-const MAX_CONSULT_CAPACITY = 5;
+// Consult availability is always one creator-to-customer session. Group
+// capacity belongs to live events and must not turn a consult window into a
+// shared booking.
+const MAX_CONSULT_CAPACITY = 1;
 const MIN_CAPACITY = 1;
 
 async function slotsOn(env: Env): Promise<boolean> {
@@ -145,10 +149,41 @@ export async function createSlot(req: Request, env: Env, listingId: string): Pro
 
   const id = crypto.randomUUID();
   const now = Date.now();
-  await metaDb(env).prepare(
-    `INSERT INTO listing_slots (id, listing_id, starts_at, ends_at, label, capacity, booked_count, status, created_at, updated_at)
-     VALUES (?1,?2,?3,?4,?5,?6,0,'open',?7,?7)`,
-  ).bind(id, listingId, startsAt, endsAt, label, capacity, now).run();
+  let reservationId: string | null = null;
+  // A live occurrence is creator time, even while the listing is still a
+  // draft. An explicitly exclusive consult schedule has the same guarantee;
+  // shared/custom consult windows remain customer-bookable availability and
+  // are admitted by the checkout/booking path instead.
+  let reserveCreatorTime = listing.kind === "live_event";
+  if (!reserveCreatorTime && listing.kind === "consult") {
+    const schedule = await db.prepare(
+      "SELECT mode FROM availability_schedules WHERE creator_id=?1 AND listing_id=?2 LIMIT 1",
+    ).bind(ctx.uid, listingId).first<{ mode: string }>().catch(() => null);
+    reserveCreatorTime = schedule?.mode === "exclusive";
+  }
+  if (reserveCreatorTime) {
+    const claim = await claimExclusiveReservation(env, {
+      creatorId: ctx.uid,
+      listingId,
+      startAt: startsAt,
+      endAt: endsAt,
+      title: label || "Live event",
+      sourceRef: `listing-slot:${id}`,
+    });
+    if (!claim.ok) {
+      return json({ ok: false, error: claim.reason === "availability_unavailable" ? "availability_unavailable" : "conflict", conflictWith: claim.conflict }, claim.reason === "availability_unavailable" ? 503 : 409);
+    }
+    reservationId = claim.reservationId;
+  }
+  try {
+    await metaDb(env).prepare(
+      `INSERT INTO listing_slots (id, listing_id, starts_at, ends_at, label, capacity, booked_count, status, created_at, updated_at)
+       VALUES (?1,?2,?3,?4,?5,?6,0,'open',?7,?7)`,
+    ).bind(id, listingId, startsAt, endsAt, label, capacity, now).run();
+  } catch (error) {
+    if (reservationId) await releaseListingReservation(env, ctx.uid, reservationId).catch(() => {});
+    throw error;
+  }
 
   await syncListingStartsAt(env, listingId);
 
@@ -221,6 +256,13 @@ export async function patchSlot(req: Request, env: Env, slotId: string): Promise
     `UPDATE listing_slots SET ${sets.join(", ")} WHERE id=?1`,
   ).bind(slotId, ...binds).run();
 
+  if (b.status === "cancelled" && (slot.kind === "live_event" || slot.kind === "consult")) {
+    const reservation = await metaDb(env).prepare(
+      "SELECT id FROM availability_reservations WHERE creator_id=?1 AND source_ref=?2 AND status IN ('held','reserved','confirmed') LIMIT 1",
+    ).bind(ctx.uid, `listing-slot:${slotId}`).first<{ id: string }>();
+    if (reservation) await releaseListingReservation(env, ctx.uid, reservation.id).catch(() => {});
+  }
+
   await syncListingStartsAt(env, slot.listing_id);
   return json({ ok: true });
 }
@@ -236,6 +278,12 @@ export async function deleteSlot(req: Request, env: Env, slotId: string): Promis
     return json({ error: "slot has bookings", message: "Cancel the slot instead of deleting a slot with existing bookings." }, 409);
   }
   await metaDb(env).prepare("DELETE FROM listing_slots WHERE id=?1").bind(slotId).run();
+  if (slot.kind === "live_event" || slot.kind === "consult") {
+    const reservation = await metaDb(env).prepare(
+      "SELECT id FROM availability_reservations WHERE creator_id=?1 AND source_ref=?2 AND status IN ('held','reserved','confirmed') LIMIT 1",
+    ).bind(ctx.uid, `listing-slot:${slotId}`).first<{ id: string }>();
+    if (reservation) await releaseListingReservation(env, ctx.uid, reservation.id).catch(() => {});
+  }
   await syncListingStartsAt(env, slot.listing_id);
   return json({ ok: true });
 }

@@ -69,6 +69,51 @@ class ListingWizardRepository {
     if (r.status != 200) throw ListingWizardException.fromResponse(r);
   }
 
+  Future<ListingDraft> saveAvailability(String id, ListingDraft d) async {
+    if (d.kind != 'consult') return d;
+    // Every consult listing owns a schedule row. `shared` controls how the
+    // listing consumes creator hours; it must not redirect writes to the
+    // creator global schedule or leave a stale custom row behind.
+    final target = id;
+    final query = '?listing_id=${Uri.encodeComponent(target)}';
+    final currentResponse = await request('GET', '/calendar/schedule$query', null);
+    if (currentResponse.status != 200) throw ListingWizardException.fromResponse(currentResponse);
+    final current = Map<String, dynamic>.from((currentResponse.body['schedule'] as Map?) ?? const {});
+    final schedule = <String, dynamic>{
+      ...current,
+      'listing_id': target,
+      'timezone': d.timezone,
+      'mode': d.availabilityMode,
+      'duration_min': d.durationMin,
+      'horizon_days': 62,
+      if (d.availabilityMode == 'custom') 'rules': d.availabilityRules,
+      'version': (current['version'] as num?)?.toInt() ?? d.availabilityVersion,
+    };
+    final savedResponse = await request('PUT', '/calendar/schedule$query', {'schedule': schedule});
+    if (savedResponse.status != 200) throw ListingWizardException.fromResponse(savedResponse);
+    final saved = Map<String, dynamic>.from((savedResponse.body['schedule'] as Map?) ?? const {});
+    return d.copyWith(
+      timezone: saved['timezone']?.toString(),
+      availabilityMode: saved['mode']?.toString(),
+      availabilityRules: (saved['rules'] as List?)?.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList(),
+      availabilityVersion: (saved['version'] as num?)?.toInt(),
+    );
+  }
+
+  Future<ListingDraft> loadAvailability(String id, ListingDraft d) async {
+    if (d.kind != 'consult') return d;
+    final r = await request('GET', '/calendar/schedule?listing_id=${Uri.encodeComponent(id)}', null);
+    if (r.status != 200) throw ListingWizardException.fromResponse(r);
+    final schedule = Map<String, dynamic>.from((r.body['schedule'] as Map?) ?? const {});
+    return d.copyWith(
+      timezone: schedule['timezone']?.toString(),
+      availabilityMode: schedule['mode']?.toString(),
+      availabilityRules: (schedule['rules'] as List?)?.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList(),
+      availabilityVersion: (schedule['version'] as num?)?.toInt(),
+      durationMin: (schedule['duration_min'] as num?)?.toInt(),
+    );
+  }
+
   Future<ListingReviewResult> review(String id) async {
     final r = await request(
         'POST', '/listings/${Uri.encodeComponent(id)}/review', {});
@@ -191,10 +236,11 @@ class ListingWizardController extends ChangeNotifier {
   Future<void> resume(String id, {int startAt = 0}) async {
     _set(_state.copyWith(loading: true, clearError: true));
     try {
-      final draft = await repository.load(id);
+      var draft = await repository.load(id);
       if (draft == null)
         throw const ListingWizardException(
             'not_found', 'Could not load this listing.', 404);
+      if (draft.kind == 'consult') draft = await repository.loadAvailability(id, draft);
       _savedSnapshot = _snapshot(draft);
       _set(_state.copyWith(
           draft: draft,
@@ -222,10 +268,13 @@ class ListingWizardController extends ChangeNotifier {
       final id = draft.id ?? await repository.create(draft);
       final saved = draft.copyWith(id: id);
       if (draft.id == null || id.isNotEmpty) await repository.update(id, saved);
-      _savedSnapshot = _snapshot(saved);
+      final persisted = step == 3 && saved.kind == 'consult'
+          ? await repository.saveAvailability(id, saved)
+          : saved;
+      _savedSnapshot = _snapshot(persisted);
       if (!_disposed)
         _set(_state.copyWith(
-            draft: _state.draft.copyWith(id: id),
+            draft: persisted.copyWith(id: id),
             dirty: _snapshot(_state.draft) != _savedSnapshot,
             saveState: ListingSaveState.saved));
       return true;
@@ -388,15 +437,16 @@ ListingFieldError? validateStep(ListingDraft d, int step) {
   if (step == 3) {
     if (d.timezone.isEmpty)
       return const ListingFieldError('timezone', 'Pick a valid timezone.');
-    if (d.scheduleMode == 'fixed_date' &&
-        (d.startsAt.isEmpty || ListingDraft.localEpoch(d.startsAt) == null))
-      return const ListingFieldError(
-          'starts_at', 'Pick the date and time this starts.');
-    if (d.scheduleMode == 'fixed_date' &&
-        (ListingDraft.localEpoch(d.startsAt)! <=
-            DateTime.now().millisecondsSinceEpoch))
-      return const ListingFieldError(
-          'starts_at', 'The start time needs to be in the future.');
+    final consultNeedsFixedWindow = d.kind != 'consult' || d.availabilityMode == 'exclusive';
+    final hasExplicitSlots = d.slots.isNotEmpty;
+    if (d.scheduleMode == 'fixed_date' && consultNeedsFixedWindow && d.startsAt.isEmpty && !hasExplicitSlots)
+      return const ListingFieldError('starts_at', 'Pick the date and time this starts, or add an explicit slot.');
+    if (d.scheduleMode == 'fixed_date' && consultNeedsFixedWindow && d.startsAt.isNotEmpty) {
+      final start = ListingDraft.localEpoch(d.startsAt, timezone: d.timezone);
+      if (start == null) return const ListingFieldError('starts_at', 'Pick the date and time this starts.');
+      if (start <= DateTime.now().millisecondsSinceEpoch)
+        return const ListingFieldError('starts_at', 'The start time needs to be in the future.');
+    }
     if (d.scheduleMode == 'recurring' && d.recurrenceDays.isEmpty)
       return const ListingFieldError(
           'recurrence_days', 'Pick at least one day of the week.');
@@ -406,6 +456,17 @@ ListingFieldError? validateStep(ListingDraft d, int step) {
     if (d.durationMin < 5 || d.durationMin > 480)
       return const ListingFieldError(
           'duration_min', 'Length must be between 5 minutes and 8 hours.');
+    if (d.kind == 'consult' &&
+        !const {'shared', 'custom', 'exclusive'}.contains(d.availabilityMode))
+      return const ListingFieldError('availability_mode', 'Choose shared, custom, or exclusive availability.');
+    if (d.kind == 'consult' && d.availabilityMode == 'custom' && d.availabilityRules.isEmpty)
+      return const ListingFieldError('availability_rules', 'Add at least one weekly window for custom consult hours.');
+    if (d.kind == 'consult' && d.availabilityMode == 'custom' && d.availabilityRules.any((r) {
+      final weekday = (r['weekday'] as num?)?.toInt() ?? -1;
+      final start = (r['start_min'] as num?)?.toInt() ?? -1;
+      final end = (r['end_min'] as num?)?.toInt() ?? -1;
+      return weekday < 0 || weekday > 6 || start < 0 || end > 1440 || end <= start;
+    })) return const ListingFieldError('availability_rules', 'Each consult window needs a valid start and end time.');
     if (d.maxPerBooking < 1 || d.maxPerBooking > 20)
       return const ListingFieldError(
           'max_per_booking', 'Bookings per person must be 1–20.');

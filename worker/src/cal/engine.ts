@@ -1,3 +1,4 @@
+import { gcalAvailabilityReady } from './gcal_availability';
 // Phase 5 — the conflict engine. ONE availability surface for the whole
 // platform: every scheduling write path (slot create, booking, AvaLive event
 // publish, gcal import, manual block) goes through claimBlock(); every picker
@@ -165,7 +166,7 @@ export async function freeSlots(env: Env, creatorId: string, date: string, durMi
   let blockRows: any[];
   try {
     blockRows = ((await metaDb(env).prepare(
-      "SELECT b.source_app,b.title,b.starts_at,b.ends_at FROM calendar_blocks b WHERE b.user_id=?1 AND b.status='busy' AND b.starts_at < ?3 AND b.ends_at > ?2 AND (?7 IS NULL OR COALESCE(b.source_ref,'') NOT IN (?7,'commercial:'||?7||':creator','commercial:'||?7||':buyer')) AND NOT EXISTS (SELECT 1 FROM availability_reservations ar WHERE b.source_app='availability' AND ar.id=b.source_ref AND (ar.status IN ('cancelled','expired') OR (ar.status='held' AND ar.hold_expires_at IS NOT NULL AND ar.hold_expires_at<=?4)))",
+      "SELECT b.source_app,b.title,b.starts_at,b.ends_at FROM calendar_blocks b WHERE b.user_id=?1 AND b.status='busy' AND b.starts_at < ?3 AND b.ends_at > ?2 AND NOT EXISTS (SELECT 1 FROM availability_reservations ar WHERE b.source_app='availability' AND ar.id=b.source_ref AND (ar.status IN ('cancelled','expired') OR (ar.status='held' AND ar.hold_expires_at IS NOT NULL AND ar.hold_expires_at<=?4)))",
     ).bind(creatorId, lo - 86_400_000, hi + 86_400_000, Date.now()).all()).results ?? []) as any[];
   } catch {
     blockRows = ((await metaDb(env).prepare(
@@ -225,7 +226,7 @@ export interface ListingSlotValidation {
   creatorId?: string;
   scheduleVersion?: number;
   reason?: "listing_not_found" | "listing_unpublished" | "bad_interval" | "duration" |
-    "min_notice" | "outside_hours" | "exception" | "conflict" | "max_per_day";
+    "min_notice" | "outside_hours" | "exception" | "conflict" | "max_per_day" | "calendar_refresh_pending";
   conflict?: UnifiedConflict;
 }
 
@@ -355,7 +356,7 @@ function windowsForDate(schedule: UnifiedSchedule, date: string, listingSchedule
     : mergeWindows(creator,listingEx.filter(x=>x.status==='available'));
   // A concrete reservation explicitly offers its window even outside normal hours.
   // Hard closures still win, and its canonical block hides it from other listings.
-  base=mergeWindows(base,ownReserved);
+  base=mergeWindows(listingSchedule?.mode==='exclusive'?[]:base,ownReserved);
   const hard=[...globalEx,...listingEx].filter(x=>x.status==='unavailable' || (x.status==='reserved' && x.listing_id!==listingId));
   for(const x of hard) base=base.flatMap(w=>{
     if(x.end_min<=w.start_min || x.start_min>=w.end_min) return [w];
@@ -380,7 +381,7 @@ export async function loadFixedLiveCommitments(env: Env,creatorId:string,from:nu
   return ((rows.results??[]) as any[]).map(r=>({title:r.title,starts_at:Number(r.starts_at),ends_at:Number(r.ends_at),source_app:'live_event'}));
 }
 
-function fixedLiveAdmission(creator:string,listing:string,start:string,end:string):string {
+export function fixedLiveAdmission(creator:string,listing:string,start:string,end:string):string {
  return `NOT EXISTS(SELECT 1 FROM listings l LEFT JOIN listing_slots s ON s.listing_id=l.id AND s.status IN ('open','full')
  WHERE l.creator_id=${creator} AND l.id!=${listing} AND l.kind='live_event' AND l.status IN ('published','live')
  AND COALESCE(s.starts_at,l.starts_at)<${end} AND COALESCE(s.ends_at,l.starts_at+COALESCE(l.duration_min,60)*60000)>${start})`;
@@ -430,9 +431,14 @@ export async function validateListingSlot(env: Env, listingId: string, startAt: 
   if (!listing) return { ok: false, listingId, reason: "listing_not_found" };
   if (!["published", "live"].includes(listing.status)) return { ok: false, listingId, creatorId: listing.creator_id, reason: "listing_unpublished" };
   if (!(Number.isSafeInteger(startAt) && Number.isSafeInteger(endAt) && startAt > 0 && startAt % 60_000 === 0 && endAt > startAt)) return { ok: false, listingId, creatorId: listing.creator_id, reason: "bad_interval" };
+  if(!(await gcalAvailabilityReady(env,listing.creator_id)).ready)return {ok:false,listingId,creatorId:listing.creator_id,reason:'calendar_refresh_pending'};
   const schedule = await loadUnifiedSchedule(env, listing.creator_id, listingId);
   const shared = schedule.listing_id ? await loadUnifiedSchedule(env, listing.creator_id, null) : schedule;
-  const expectedDuration = Math.max(1, Number(opts.durationMin ?? schedule.duration_min));
+  const hasFixed=await metaDb(env).prepare('SELECT id FROM listing_slots WHERE listing_id=?1 LIMIT 1').bind(listingId).first();
+  const offered=hasFixed?await metaDb(env).prepare("SELECT id,starts_at,ends_at,capacity,booked_count,status FROM listing_slots WHERE listing_id=?1 AND starts_at=?2 AND ends_at=?3 AND status='open' AND capacity=1 AND booked_count<capacity LIMIT 1").bind(listingId,startAt,endAt).first<any>():null;
+  if(hasFixed && !offered)return {ok:false,listingId,reason:'outside_hours'};
+  const fixedBase = !hasFixed && schedule.mode==='exclusive' ? await metaDb(env).prepare("SELECT id FROM availability_reservations WHERE listing_id=?1 AND creator_id=?2 AND kind='exclusive' AND status='reserved' AND source_ref LIKE ?3 AND starts_at=?4 AND ends_at=?5 LIMIT 1").bind(listingId,listing.creator_id,`listing:${listingId}:fixed:%`,startAt,endAt).first() : null;
+  const expectedDuration = Math.max(1, Number(opts.durationMin ?? (offered ? (endAt-startAt)/60000 : schedule.duration_min)));
   if (endAt - startAt !== expectedDuration * 60_000) return { ok: false, listingId, creatorId: listing.creator_id, scheduleVersion: schedule.version, reason: "duration" };
   const now = opts.now ?? Date.now();
   if (startAt - now < schedule.min_notice_min * 60_000) return { ok: false, listingId, creatorId: listing.creator_id, scheduleVersion: schedule.version, reason: "min_notice" };
@@ -446,7 +452,8 @@ export async function validateListingSlot(env: Env, listingId: string, startAt: 
   const requiredEndMin = lp.minutes + Math.ceil((endAt - startAt) / 60_000);
   const insideWindow = windows.find((w) => lp.minutes >= w.start_min && requiredEndMin <= w.end_min);
   const aligned = !!insideWindow && ((lp.minutes - insideWindow.start_min) % Math.max(1, schedule.slot_interval_min) === 0);
-  const inside = !!insideWindow && aligned;
+  const hardClosure=[...shared.exceptions,...schedule.exceptions].some(x=>x.date===lp.date && x.status==='unavailable' && x.start_min<requiredEndMin && x.end_min>lp.minutes);
+  const inside = (!!offered || !!fixedBase || !!insideWindow && aligned) && !hardClosure;
   if (!inside) return { ok: false, listingId, creatorId: listing.creator_id, scheduleVersion: schedule.version, reason: windows.length ? "outside_hours" : "outside_hours" };
   if (await capReached(env, listing.creator_id, schedule, startAt, opts.excludeReservationId, opts.excludeBookingId)) return { ok: false, listingId, creatorId: listing.creator_id, scheduleVersion: schedule.version, reason: "max_per_day" };
   const conflicts = await unifiedConflicts(env, listing.creator_id, listingId, startAt, endAt, schedule.buffer_min, opts.excludeReservationId, opts.excludeBookingId);
@@ -505,6 +512,7 @@ export async function claimListingSlot(env: Env, a: ListingClaimArgs): Promise<L
         UNION SELECT starts_at,ends_at FROM bookings
           WHERE creator_id=?2 AND status IN ('confirmed','scheduled','pending') AND starts_at>=?14 AND starts_at<?15 AND (?19 IS NULL OR id!=?19)
       )) < ?16
+      AND (NOT EXISTS(SELECT 1 FROM listing_slots WHERE listing_id=?3) OR EXISTS(SELECT 1 FROM listing_slots WHERE listing_id=?3 AND starts_at=?6 AND ends_at=?7 AND status='open' AND capacity=1 AND booked_count<capacity))
       AND ${fixedLiveAdmission('?2','?3','?6-?12','?7+?12')}
       AND COALESCE((SELECT version FROM availability_schedules WHERE creator_id=?2 AND listing_id=?3),(SELECT version FROM availability_schedules WHERE creator_id=?2 AND listing_id IS NULL),0)=?17 AND COALESCE((SELECT version FROM availability_schedules WHERE creator_id=?2 AND listing_id IS NULL),0)=?18`).bind(id, a.creatorId, a.listingId, a.kind, a.status, a.startAt, a.endAt, a.title ?? null, a.sourceRef ?? null, a.holdExpiresAt ?? null, now, buf, a.excludeReservationId ?? null, dayStart, dayEnd, schedule.max_per_day, schedule.version, sharedSnapshot.version,a.excludeBookingId??null).run();
     if (Number(r.meta?.changes ?? 0) > 0) return { ok: true, reservationId: id, scheduleVersion: valid.scheduleVersion };
@@ -535,6 +543,7 @@ export async function claimExclusiveReservation(env: Env, a: ExclusiveReservatio
   const owner = await listingOwner(env, a.listingId);
   if (!owner || owner.creator_id !== a.creatorId) return { ok: false, reason: "listing_membership" };
   if (!(Number.isFinite(a.startAt) && Number.isFinite(a.endAt) && a.endAt > a.startAt)) return { ok: false, reason: "bad_interval" };
+  if(!(await gcalAvailabilityReady(env,a.creatorId)).ready)return {ok:false,reason:'availability_unavailable'};
   if (a.sourceRef) {
     const existing = await metaDb(env).prepare("SELECT id,listing_id,kind,status,hold_expires_at,starts_at,ends_at FROM availability_reservations WHERE creator_id=?1 AND source_ref=?2").bind(a.creatorId, a.sourceRef).first<any>();
     if (existing) {

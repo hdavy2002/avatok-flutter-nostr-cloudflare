@@ -10,6 +10,7 @@
  */
 import type { ListingDraft, StepIndex } from './types';
 import { PRICING } from '../../../lib/listingTaxonomy';
+import { epochForDateTime } from '../../../lib/availability';
 
 export const VIBE_TAGS = ['safe_space', 'cam_optional', 'listener_first', 'savage', 'beginner_ok', 'queer_friendly', 'women_only'] as const;
 export const BILLING_UNITS = ['session', 'minute', '10min', 'chat', 'night', 'game'] as const;
@@ -17,15 +18,20 @@ export const SCHEDULE_MODES = ['fixed_date', 'recurring', 'on_request', 'always_
 export const REFUND_WINDOWS = [0, 12, 24, 48] as const;
 export const BOOKING_NOTICE_HOURS = [1, 2, 6, 24] as const;
 
-export function localToEpoch(value: string): number | null {
+export function localToEpoch(value: string, timezone?: string): number | null {
   if (!value) return null;
+  try {
+    const [date, time] = value.split('T');
+    if (timezone && date && time) return epochForDateTime(date, time, timezone);
+  } catch { return null; }
   const ms = new Date(value).getTime();
   return Number.isFinite(ms) ? ms : null;
 }
 
-export function epochToLocal(ms: number | null | undefined): string {
+export function epochToLocal(ms: number | null | undefined, timezone?:string): string {
   if (!ms || !Number.isFinite(ms)) return '';
   const d = new Date(ms);
+  if(timezone){const parts=new Intl.DateTimeFormat('en-CA',{timeZone:timezone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(d);const p=Object.fromEntries(parts.map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;}
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
@@ -153,7 +159,7 @@ export function bodyForSave(d: ListingDraft, opts: { includeAttrs: boolean; incl
   };
   if (d.response_time_min !== '') body.response_time_min = Math.trunc(Number(d.response_time_min));
   if (d.schedule_mode === 'fixed_date') {
-    body.starts_at = localToEpoch(d.starts_at);
+    body.starts_at = localToEpoch(d.starts_at, d.timezone);
     body.duration_min = d.duration_min;
   } else if (d.schedule_mode === 'recurring') {
     body.recurrence_days = d.recurrence_days;
@@ -233,16 +239,31 @@ export function validateStep(d: ListingDraft, step: StepIndex): FieldProblem | n
       if (d.kind === 'live_event' && d.schedule_mode !== 'fixed_date' && d.schedule_mode !== 'recurring') {
         return { field: 'starts_at', message: 'A live event needs a date and time — pick "One fixed date".' };
       }
-      if (d.schedule_mode === 'fixed_date') {
-        const ms = localToEpoch(d.starts_at);
+      const consultNeedsFixedWindow = d.kind !== 'consult' || d.availability_mode === 'exclusive';
+      if (d.schedule_mode === 'fixed_date' && consultNeedsFixedWindow && !d.starts_at && d.slots.length === 0) {
+        return { field: 'starts_at', message: 'Pick the date and time this starts, or add an explicit slot.' };
+      }
+      if (d.schedule_mode === 'fixed_date' && consultNeedsFixedWindow && d.starts_at) {
+        const ms = localToEpoch(d.starts_at, d.timezone);
         if (ms === null) return { field: 'starts_at', message: 'Pick the date and time this starts.' };
         if (ms <= Date.now()) return { field: 'starts_at', message: 'The start time needs to be in the future.' };
         if (d.duration_min < 5 || d.duration_min > 480) return { field: 'duration_min', message: 'Length must be between 5 minutes and 8 hours.' };
+      }
+      if (d.schedule_mode === 'fixed_date' && (d.duration_min < 5 || d.duration_min > 480)) {
+        return { field: 'duration_min', message: 'Length must be between 5 minutes and 8 hours.' };
       }
       if (d.schedule_mode === 'recurring') {
         if (!d.recurrence_days.length) return { field: 'recurrence_days', message: 'Pick at least one day of the week.' };
         if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(d.recurrence_time)) return { field: 'recurrence_time', message: 'Pick a valid time.' };
         if (d.duration_min < 5 || d.duration_min > 480) return { field: 'duration_min', message: 'Length must be between 5 minutes and 8 hours.' };
+      }
+      if (d.kind === 'consult' && d.availability_mode !== 'exclusive' && (d.duration_min < 5 || d.duration_min > 480)) {
+        return { field: 'duration_min', message: 'Length must be between 5 minutes and 8 hours.' };
+      }
+      if (d.kind === 'consult' && d.availability_mode === 'custom') {
+        if (!d.availability_rules.length) return { field: 'availability_rules', message: 'Add at least one weekly window for custom consult hours.' };
+        const bad = d.availability_rules.some((r) => r.weekday < 0 || r.weekday > 6 || r.start_min < 0 || r.end_min > 1440 || r.end_min <= r.start_min);
+        if (bad) return { field: 'availability_rules', message: 'Each consult window needs a valid start and end time.' };
       }
       if (d.max_per_booking < 1 || d.max_per_booking > 20) return { field: 'max_per_booking', message: 'Bookings per person must be 1–20.' };
       if (d.response_time_min !== '' && (!Number.isInteger(Number(d.response_time_min)) || Number(d.response_time_min) < 0)) {

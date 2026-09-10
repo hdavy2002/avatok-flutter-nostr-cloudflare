@@ -10,7 +10,14 @@ import { escrowBalance, refund } from "../ledger";
 import { executeCommercialRefund } from "../lib/commercial_refund_rail";
 import { commercialEvent } from "../lib/commercial_telemetry";
 import { json } from "../util";
-import { claimBlock, releaseBlocks } from "../cal/engine";
+import {
+  claimBlock,
+  releaseBlocks,
+  claimListingSlot,
+  releaseListingReservation,
+  validateListingSlot,
+  expireAvailabilityReservations,
+} from "../cal/engine";
 import { notifyCommercialUsers } from "../lib/commercial_notifications";
 import { claimCommercialMoney, completeCommercialMoneyClaim } from "../commercial_money_claim";
 
@@ -29,6 +36,7 @@ type Authority = {
   event_starts_at: number | null;
   buyer_entitlement_id: string | null;
   booking_starts_at: number | null; booking_ends_at: number | null; booking_status: string | null;
+  booking_reschedule_count: number | null;
   session_id: string | null; session_state: string | null; session_settlement_state: string | null;
 };
 
@@ -37,6 +45,54 @@ type LifecycleOperation = {
   account_id: string; order_id: string; request_sha256: string;
   state: "started" | "completed" | "failed" | "review_pending"; response_json: string | null;
 };
+
+type AvailabilityReservation = {
+  id: string;
+  creator_id: string;
+  listing_id: string;
+  kind: string;
+  status: string;
+  starts_at: number;
+  ends_at: number;
+  source_ref: string | null;
+  hold_expires_at: number | null;
+};
+
+async function availabilityReservationForOrder(env: Env, authority: Authority): Promise<AvailabilityReservation | null> {
+  if (!authority.booking_id) return null;
+  await expireAvailabilityReservations(env).catch(() => {});
+  return await metaDb(env).prepare(
+    `SELECT id,creator_id,listing_id,kind,status,starts_at,ends_at,source_ref,hold_expires_at
+       FROM availability_reservations
+      WHERE creator_id=?1 AND listing_id=?2 AND source_ref LIKE ?3
+        AND status IN ('held','reserved','confirmed')
+      ORDER BY updated_at DESC LIMIT 1`,
+  ).bind(authority.creator_id, authority.listing_id, `commercial-availability:%:${authority.order_id}`).first<AvailabilityReservation>();
+}
+
+async function claimRescheduleReservation(env: Env, authority: Authority, start: number, end: number, operationId: string, oldReservationId?: string): Promise<{ ok: true; id: string } | { ok: false; reason: string; conflict?: unknown }> {
+  const valid = await validateListingSlot(env, authority.listing_id, start, end, {
+    durationMin: Math.max(1, Math.trunc((Number(authority.booking_ends_at) - Number(authority.booking_starts_at)) / 60_000)),
+    excludeReservationId: oldReservationId,
+    excludeBookingId: authority.booking_id,
+  });
+  if (!valid.ok) return { ok: false, reason: valid.reason ?? "unavailable", conflict: valid.conflict };
+  const claim = await claimListingSlot(env, {
+    creatorId: authority.creator_id,
+    listingId: authority.listing_id,
+    startAt: start,
+    endAt: end,
+    kind: "booking",
+    status: "reserved",
+    title: "Commercial consultation",
+    sourceRef: `commercial-reschedule:${authority.order_id}:${operationId}`,
+    excludeReservationId: oldReservationId ?? null,
+    excludeBookingId: authority.booking_id,
+    scheduleVersion: valid.scheduleVersion,
+    durationMin: Math.max(1, Math.trunc((Number(authority.booking_ends_at) - Number(authority.booking_starts_at)) / 60_000)),
+  });
+  return claim.ok ? { ok: true, id: claim.reservationId } : { ok: false, reason: claim.reason, conflict: claim.conflict };
+}
 
 function path(req: Request): { kind: Kind; id: string; action: "cancel" | "reschedule" | "calendar" } | null {
   const m = new URL(req.url).pathname.match(
@@ -90,6 +146,7 @@ async function loadAuthorities(env: Env, args: { kind: Kind; id: string; uid: st
           WHERE e.order_id=o.id AND e.account_id=o.buyer_id
             AND e.state IN ('reserved','held','active','consumed') LIMIT 1) buyer_entitlement_id,
         b.starts_at booking_starts_at,b.ends_at booking_ends_at,b.status booking_status,
+        b.reschedule_count booking_reschedule_count,
         s.commercial_session_id session_id,s.state session_state,s.settlement_state session_settlement_state
      FROM orders o
      JOIN listings l ON l.id=o.listing_id
@@ -227,6 +284,19 @@ async function cancelOne(env: Env, authority: Authority, uid: string, idem: stri
   // claim. Routing this to markReview (the old behaviour, because 0 !== 100) parked a
   // fully-decided case in a queue with no screen behind it.
   if (decision.state === "no_refund") {
+    const now = Date.now();
+    await metaDb(env).batch([
+      authority.booking_id ? metaDb(env).prepare("UPDATE bookings SET status='cancelled',updated_at=?2 WHERE id=?1 AND status IN ('confirmed','completed')").bind(authority.booking_id, now) : metaDb(env).prepare("SELECT 1"),
+      authority.booking_id ? metaDb(env).prepare("UPDATE calendar_events SET status='cancelled' WHERE booking_id=?1 AND status='confirmed'").bind(authority.booking_id) : metaDb(env).prepare("SELECT 1"),
+      metaDb(env).prepare("UPDATE commercial_entitlements SET state='revoked',updated_at=?2 WHERE order_id=?1 AND state IN ('reserved','held','active','consumed')").bind(authority.order_id, now),
+      authority.session_id ? metaDb(env).prepare("UPDATE commercial_sessions SET state='cancelled',updated_at=?2 WHERE commercial_session_id=?1 AND state NOT IN ('ended','cancelled')").bind(authority.session_id, now) : metaDb(env).prepare("SELECT 1"),
+    ]);
+    const availability = await availabilityReservationForOrder(env, authority);
+    if (availability) await releaseListingReservation(env, authority.creator_id, availability.id, "cancelled");
+    if (authority.booking_id) {
+      await releaseBlocks(env, "avaconsult", `commercial:${authority.booking_id}:creator`);
+      await releaseBlocks(env, "avaconsult", `commercial:${authority.booking_id}:buyer`);
+    }
     const noRefund = {
       ok: true,
       state: "no_refund",
@@ -342,6 +412,8 @@ async function cancelOne(env: Env, authority: Authority, uid: string, idem: stri
     claimType: "refund",
     claimId: operationId,
   });
+  const availability = await availabilityReservationForOrder(env, authority);
+  if (availability) await releaseListingReservation(env, authority.creator_id, availability.id, "cancelled");
   if (authority.booking_id) {
     await releaseBlocks(env, "avaconsult", `commercial:${authority.booking_id}:creator`);
     await releaseBlocks(env, "avaconsult", `commercial:${authority.booking_id}:buyer`);
@@ -394,20 +466,27 @@ async function reschedule(env: Env, authority: Authority, uid: string, idem: str
   if (!Number.isFinite(oldDuration) || end - start !== oldDuration) return json({ error: "consultation duration is immutable" }, 409);
   const notice = Number(policy.booking_notice_hours);
   if (!Number.isInteger(notice) || start - Date.now() < notice * 3_600_000) return json({ error: "booking notice policy" }, 409);
+  const oldReservation = await availabilityReservationForOrder(env, authority);
+  const slotValidation = await validateListingSlot(env, authority.listing_id, start, end, {
+    durationMin: Math.max(1, Math.trunc(oldDuration / 60_000)),
+    excludeReservationId: oldReservation?.id,
+    excludeBookingId: authority.booking_id,
+  });
+  if (!slotValidation.ok) return json({ error: "consultation slot unavailable", reason: slotValidation.reason }, 409);
   const conflict = await metaDb(env).prepare(
     `SELECT id FROM bookings WHERE kind='consult_1to1' AND status IN ('confirmed','completed')
        AND id<>?1 AND (creator_id=?2 OR buyer_id=?3)
        AND starts_at < ?5 AND ends_at > ?4 LIMIT 1`,
   ).bind(authority.booking_id, authority.creator_id, uid, start, end).first<{ id: string }>();
-  if (conflict) return json({ error: "consultation slot already booked", conflictWith: conflict }, 409);
+  if (conflict) return json({ error: "consultation slot already booked" }, 409);
   for (const participant of [authority.creator_id, uid]) {
     const blockConflict = await metaDb(env).prepare(
       `SELECT source_app,title,starts_at,ends_at FROM calendar_blocks
        WHERE user_id=?1 AND status='busy' AND starts_at < ?3 AND ends_at > ?2
-         AND source_ref NOT IN (?4,?5) LIMIT 1`,
-    ).bind(participant, start, end, `commercial:${authority.booking_id}:creator`, `commercial:${authority.booking_id}:buyer`)
+         AND COALESCE(source_ref,'') NOT IN (?4,?5,?6) AND NOT EXISTS (SELECT 1 FROM availability_reservations ar WHERE calendar_blocks.source_app='availability' AND ar.id=calendar_blocks.source_ref AND (ar.status IN ('expired','cancelled') OR (ar.status='held' AND ar.hold_expires_at<=?7))) LIMIT 1`,
+    ).bind(participant, start, end, `commercial:${authority.booking_id}:creator`, `commercial:${authority.booking_id}:buyer`, oldReservation?.id ?? "", Date.now())
       .first<Record<string, unknown>>();
-    if (blockConflict) return json({ error: "calendar conflict", conflictWith: blockConflict }, 409);
+    if (blockConflict) return json({ error: "calendar conflict" }, 409);
   }
   const requestHash = await sha256(`${uid}:${authority.order_id}:${idem}:${start}:${end}`);
   const operationId = `commercial-reschedule:${await sha256(`${authority.order_id}:${idem}:${start}:${end}`).then((v) => v.slice(0, 48))}`;
@@ -425,23 +504,65 @@ async function reschedule(env: Env, authority: Authority, uid: string, idem: str
   const now = Date.now();
   const oldStart = Number(authority.booking_starts_at);
   const oldEnd = Number(authority.booking_ends_at);
-  await metaDb(env).batch([
-    metaDb(env).prepare(
-      "UPDATE bookings SET starts_at=?2,ends_at=?3,updated_at=?4 WHERE id=?1 AND status='confirmed' AND starts_at=?5 AND ends_at=?6",
-    ).bind(authority.booking_id, start, end, now, oldStart, oldEnd),
-    metaDb(env).prepare(
-      "UPDATE commercial_entitlements SET starts_at=?2,ends_at=?3,updated_at=?4 WHERE order_id=?1 AND booking_id=?5 AND state IN ('reserved','held','active') AND starts_at=?6 AND ends_at=?7",
-    ).bind(authority.order_id, start, end, now, authority.booking_id, oldStart, oldEnd),
-    metaDb(env).prepare(
-      "UPDATE calendar_blocks SET starts_at=?2,ends_at=?3 WHERE source_app='avaconsult' AND source_ref IN (?1,?4) AND status='busy' AND starts_at=?5 AND ends_at=?6",
-    ).bind(`commercial:${authority.booking_id}:creator`, start, end, `commercial:${authority.booking_id}:buyer`, oldStart, oldEnd),
-    metaDb(env).prepare(
-      "UPDATE calendar_events SET start_at=?2,end_at=?3,reminded_24=0,reminded_10=0 WHERE booking_id=?1 AND status='confirmed' AND start_at=?4 AND end_at=?5",
-    ).bind(authority.booking_id, start, end, oldStart, oldEnd),
-    authority.session_id ? metaDb(env).prepare(
-      "UPDATE commercial_sessions SET scheduled_at=?2,updated_at=?3 WHERE commercial_session_id=?1 AND state IN ('scheduled','backstage') AND scheduled_at=?4",
-    ).bind(authority.session_id, start, now, oldStart) : metaDb(env).prepare("SELECT 1"),
-  ]);
+  const moveToken = crypto.randomUUID();
+  const oldRescheduleCount = Math.max(0, Math.trunc(Number(authority.booking_reschedule_count ?? 0)));
+  const bookingState = (id: string, startRef: string, endRef: string, countRef: string): string =>
+    `EXISTS (SELECT 1 FROM bookings bx WHERE bx.id=${id} AND bx.status='confirmed' AND bx.starts_at=${startRef} AND bx.ends_at=${endRef} AND bx.reschedule_count=${countRef}) AND EXISTS(SELECT 1 FROM availability_booking_moves am WHERE am.booking_id=${id} AND am.token='${moveToken}')`;
+  const claimed = await claimRescheduleReservation(env, authority, start, end, operationId, oldReservation?.id);
+  if (!claimed.ok) {
+    const response = { ok: false, error: "consultation slot unavailable", reason: claimed.reason };
+    await finishOperation(env, operationId, "failed", response);
+    return json(response, 409);
+  }
+  const newReservationId = claimed.id;
+  try {
+    const results = await metaDb(env).batch([
+      metaDb(env).prepare(`INSERT INTO availability_booking_moves(booking_id,token)
+        SELECT ?1,?2 WHERE EXISTS(SELECT 1 FROM bookings WHERE id=?1 AND status='confirmed' AND starts_at=?3 AND ends_at=?4 AND reschedule_count=?5)
+        ON CONFLICT(booking_id) DO UPDATE SET token=excluded.token`)
+        .bind(authority.booking_id,moveToken,oldStart,oldEnd,oldRescheduleCount),
+      metaDb(env).prepare(
+        "UPDATE bookings SET starts_at=?2,ends_at=?3,reschedule_count=reschedule_count+1,updated_at=?5 WHERE id=?1 AND status='confirmed' AND starts_at=?6 AND ends_at=?7 AND reschedule_count=?4 AND EXISTS (SELECT 1 FROM availability_reservations ar WHERE ar.id=?8 AND ar.creator_id=?9 AND ar.status='reserved' AND ar.source_ref=?10)",
+      ).bind(authority.booking_id, start, end, oldRescheduleCount, now, oldStart, oldEnd, newReservationId, authority.creator_id, `commercial-reschedule:${authority.order_id}:${operationId}`),
+      metaDb(env).prepare(
+        `UPDATE commercial_entitlements SET starts_at=?2,ends_at=?3,updated_at=?4
+           WHERE order_id=?1 AND booking_id=?6 AND state IN ('reserved','held','active')
+             AND starts_at=?7 AND ends_at=?8 AND ${bookingState("?6", "?2", "?3", "?5")}`,
+      ).bind(authority.order_id, start, end, now, oldRescheduleCount + 1, authority.booking_id, oldStart, oldEnd),
+      metaDb(env).prepare(
+        `UPDATE calendar_blocks SET starts_at=?2,ends_at=?3
+           WHERE source_app='avaconsult' AND source_ref IN (?1,?4) AND status='busy' AND starts_at=?6 AND ends_at=?7
+             AND ${bookingState("?8", "?2", "?3", "?5")}`,
+      ).bind(`commercial:${authority.booking_id}:creator`, start, end, `commercial:${authority.booking_id}:buyer`, oldRescheduleCount + 1, oldStart, oldEnd, authority.booking_id),
+      metaDb(env).prepare(
+        `UPDATE calendar_events SET start_at=?2,end_at=?3,reminded_24=0,reminded_10=0
+           WHERE booking_id=?1 AND status='confirmed' AND start_at=?6 AND end_at=?7 AND ${bookingState("?1", "?2", "?3", "?5")}`,
+      ).bind(authority.booking_id, start, end, now, oldRescheduleCount + 1, oldStart, oldEnd),
+      authority.session_id ? metaDb(env).prepare(
+        `UPDATE commercial_sessions SET scheduled_at=?2,updated_at=?4
+           WHERE commercial_session_id=?1 AND state IN ('scheduled','backstage') AND scheduled_at=?6 AND ${bookingState("?7", "?2", "?3", "?5")}`,
+      ).bind(authority.session_id, start, end, now, oldRescheduleCount + 1, oldStart, authority.booking_id) : metaDb(env).prepare("SELECT 1"),
+      oldReservation ? metaDb(env).prepare(
+        `UPDATE availability_reservations SET source_ref=NULL,status='cancelled',updated_at=?4
+           WHERE id=?1 AND creator_id=?6 AND status IN ('held','reserved','confirmed') AND starts_at=?7 AND ends_at=?8 AND ${bookingState("?9", "?2", "?3", "?5")}`,
+      ).bind(oldReservation.id, start, end, now, oldRescheduleCount + 1, authority.creator_id, oldStart, oldEnd, authority.booking_id) : metaDb(env).prepare("SELECT 1"),
+      metaDb(env).prepare(
+        `UPDATE availability_reservations SET source_ref=?2,updated_at=?5
+           WHERE id=?1 AND creator_id=?6 AND status='reserved' AND source_ref=?7 AND ${bookingState("?8", "?3", "?4", "?9")}`,
+      ).bind(newReservationId, `commercial-availability:${authority.buyer_id}:${authority.order_id}`, start, end, now, authority.creator_id, `commercial-reschedule:${authority.order_id}:${operationId}`, authority.booking_id, oldRescheduleCount + 1),
+    ]);
+    if (Number(results[1]?.meta?.changes ?? 0) !== 1) {
+      await metaDb(env).prepare("UPDATE availability_reservations SET status='cancelled',updated_at=?3 WHERE id=?1 AND source_ref=?2").bind(newReservationId,`commercial-reschedule:${authority.order_id}:${operationId}`,Date.now()).run().catch(() => {});
+      const response = { ok: false, error: "commercial reschedule lost a concurrent booking update", retryable: true };
+      await finishOperation(env, operationId, "failed", response);
+      return json(response, 409);
+    }
+  } catch {
+    await metaDb(env).prepare("UPDATE availability_reservations SET status='cancelled',updated_at=?3 WHERE id=?1 AND source_ref=?2").bind(newReservationId,`commercial-reschedule:${authority.order_id}:${operationId}`,Date.now()).run().catch(() => {});
+    const response = { ok: false, error: "commercial reschedule unavailable", retryable: true };
+    await finishOperation(env, operationId, "failed", response);
+    return json(response, 503);
+  }
   const updated = await metaDb(env).prepare(
     "SELECT starts_at,ends_at,status FROM bookings WHERE id=?1",
   ).bind(authority.booking_id).first<{ starts_at: number; ends_at: number; status: string }>();
@@ -449,9 +570,9 @@ async function reschedule(env: Env, authority: Authority, uid: string, idem: str
     "SELECT starts_at,ends_at FROM commercial_entitlements WHERE order_id=?1 AND booking_id=?2 AND state IN ('reserved','held','active')",
   ).bind(authority.order_id, authority.booking_id).all<{ starts_at: number; ends_at: number }>();
   const blocks = await metaDb(env).prepare(
-    `SELECT source_ref,starts_at,ends_at FROM calendar_blocks
-      WHERE source_app='avaconsult' AND source_ref IN (?1,?2) AND status='busy'`,
-  ).bind(`commercial:${authority.booking_id}:creator`, `commercial:${authority.booking_id}:buyer`).all<{ source_ref: string; starts_at: number; ends_at: number }>();
+    `SELECT user_id,source_ref,starts_at,ends_at FROM calendar_blocks
+      WHERE ((source_app='avaconsult' AND source_ref IN (?1,?2)) OR (source_app='availability' AND source_ref=?3)) AND status='busy'`,
+  ).bind(`commercial:${authority.booking_id}:creator`, `commercial:${authority.booking_id}:buyer`,newReservationId).all<{ user_id:string; source_ref: string; starts_at: number; ends_at: number }>();
   const events = await metaDb(env).prepare(
     "SELECT start_at,end_at FROM calendar_events WHERE booking_id=?1 AND status='confirmed'",
   ).bind(authority.booking_id).all<{ start_at: number; end_at: number }>();
@@ -463,7 +584,7 @@ async function reschedule(env: Env, authority: Authority, uid: string, idem: str
   const allNew = Boolean(updated && updated.status === "confirmed"
     && Number(updated.starts_at) === start && Number(updated.ends_at) === end
     && allAt(entitlements.results ?? [], start, end)
-    && (blocks.results ?? []).length === 2 && allAt(blocks.results ?? [], start, end)
+    && (blocks.results ?? []).some(x=>x.user_id===authority.creator_id) && (blocks.results ?? []).some(x=>x.user_id===authority.buyer_id) && allAt(blocks.results ?? [], start, end)
     && (events.results ?? []).length === 2 && allAt(events.results ?? [], start, end)
     && (!authority.session_id || (session && Number(session.scheduled_at) === start && ["scheduled", "backstage"].includes(session.state))));
   if (!allNew) {
@@ -471,7 +592,7 @@ async function reschedule(env: Env, authority: Authority, uid: string, idem: str
     const bookingEnd = Number(updated?.ends_at);
     const allOld = Boolean(updated && updated.status === "confirmed" && bookingStart === oldStart && bookingEnd === oldEnd
       && allAt(entitlements.results ?? [], oldStart, oldEnd)
-      && (blocks.results ?? []).length === 2 && allAt(blocks.results ?? [], oldStart, oldEnd)
+      && (blocks.results ?? []).some(x=>x.user_id===authority.creator_id) && (blocks.results ?? []).some(x=>x.user_id===authority.buyer_id) && allAt(blocks.results ?? [], oldStart, oldEnd)
       && (events.results ?? []).length === 2 && allAt(events.results ?? [], oldStart, oldEnd)
       && (!authority.session_id || (session && Number(session.scheduled_at) === oldStart)));
     if (allOld) {
@@ -479,25 +600,8 @@ async function reschedule(env: Env, authority: Authority, uid: string, idem: str
       await finishOperation(env, operationId, "failed", response);
       return json(response, 409);
     }
-    // A conditional update can only leave a partially moved authority if a
-    // concurrent writer raced between statements. Reconcile every projection
-    // to the booking's current schedule; never leave mixed old/new rows.
-    if (updated && updated.status === "confirmed" && Number.isSafeInteger(bookingStart) && Number.isSafeInteger(bookingEnd) && bookingEnd > bookingStart) {
-      await metaDb(env).batch([
-        metaDb(env).prepare(
-          "UPDATE commercial_entitlements SET starts_at=?2,ends_at=?3,updated_at=?4 WHERE order_id=?1 AND booking_id=?5 AND state IN ('reserved','held','active')",
-        ).bind(authority.order_id, bookingStart, bookingEnd, Date.now(), authority.booking_id),
-        metaDb(env).prepare(
-          "UPDATE calendar_blocks SET starts_at=?2,ends_at=?3 WHERE source_app='avaconsult' AND source_ref IN (?1,?4) AND status='busy'",
-        ).bind(`commercial:${authority.booking_id}:creator`, bookingStart, bookingEnd, `commercial:${authority.booking_id}:buyer`),
-        metaDb(env).prepare(
-          "UPDATE calendar_events SET start_at=?2,end_at=?3 WHERE booking_id=?1 AND status='confirmed'",
-        ).bind(authority.booking_id, bookingStart, bookingEnd),
-        authority.session_id ? metaDb(env).prepare(
-          "UPDATE commercial_sessions SET scheduled_at=?2,updated_at=?3 WHERE commercial_session_id=?1 AND state IN ('scheduled','backstage')",
-        ).bind(authority.session_id, bookingStart, Date.now()) : metaDb(env).prepare("SELECT 1"),
-      ]);
-    }
+    // Do not rewrite projections from a stale readback: a later cancellation or
+    // reschedule may already own the booking. Leave reconciliation explicit.
     return await finishOperation(env, operationId, "review_pending", { ok: false, state: "review_pending", reason: "reschedule_authority_mismatch" }).then(() => json({ ok: false, state: "review_pending" }, 202));
   }
   const response = { ok: true, state: "rescheduled", booking_id: authority.booking_id, starts_at: start, ends_at: end };

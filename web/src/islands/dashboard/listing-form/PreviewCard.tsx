@@ -18,7 +18,7 @@ export function draftToCard(d: ListingDraft, creator?: { name?: string | null; h
     price: d.free_entry ? 0 : (d.price ? Number(d.price) : 0),
     category: d.category || null,
     location: d.location || null,
-    starts_at: d.schedule_mode === 'fixed_date' ? localToEpoch(d.starts_at) : null,
+    starts_at: d.schedule_mode === 'fixed_date' ? localToEpoch(d.starts_at, d.timezone) : null,
     duration_min: d.duration_min || null,
     capacity: d.kind === 'consult' ? 1 : null,
     spoken_lang: d.spoken_lang.length ? d.spoken_lang.join(',') : null,

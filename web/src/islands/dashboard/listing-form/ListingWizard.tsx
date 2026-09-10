@@ -27,6 +27,8 @@ import type { ListingDraft, StepIndex, DraftSlot } from './types';
 import { bodyForSave, buildAttrs, validateStep, publishReadiness, epochToLocal, normalizeTimezone } from './wizardLogic';
 import type { ListingReviewResult } from './wizardLogic';
 import { defaultsFor } from '../../../lib/listingDefaults';
+import { getCreatorSchedule, saveCreatorSchedule, previewCalendarConflicts, epochForDateTime } from '../../../lib/availability';
+import type { CreatorSchedule } from '../../../lib/availability';
 import {
   Step1Type, Step2Pitch, Step3Money, Step4Time, Step5HowItWorks, Step6HouseRules, Step7Photos, Step8Preview,
 } from './steps';
@@ -68,7 +70,7 @@ function draftFromListing(l: any): Partial<ListingDraft> {
     price: l.price != null ? String(l.price) : '',
     billing_unit: l.billing_unit || 'session',
     timezone: normalizeTimezone(l.timezone || 'Asia/Kolkata'),
-    starts_at: epochToLocal(l.starts_at),
+    starts_at: epochToLocal(l.starts_at,normalizeTimezone(l.timezone || 'Asia/Kolkata')),
     duration_min: l.duration_min || 60,
     recurrence_days: Array.isArray(l.recurrence_days) ? l.recurrence_days : [],
     recurrence_time: l.recurrence_time || '18:00',
@@ -132,6 +134,7 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
   const [reviewing, setReviewing] = useState(false);
   const [slotsSupported, setSlotsSupported] = useState<boolean | null>(null);
   const [slotBusy, setSlotBusy] = useState(false);
+  const [availabilitySchedule, setAvailabilitySchedule] = useState<CreatorSchedule | null>(null);
   const [categories, setCategories] = useState<{ id: string; label: string; emoji?: string | null; group_id?: string | null }[]>([]);
   // [MKT-3GROUP-1] `adda_rooms` is a `find_your_people` blip gated on
   // `conferenceEnabled`, which is FALSE in production (verified on the live
@@ -205,6 +208,31 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
     }, 300);
     return () => { cancelled = true; window.clearInterval(poll); try { unsub?.(); } catch { /* ignore */ } };
   }, []);
+
+  // Consult time is owned by AvaCalendar. Hydrate the listing-specific view
+  // when the draft is known; a shared schedule still comes back through the
+  // same endpoint and keeps one creator timezone across all listings.
+  useEffect(() => {
+    if (!draft.id || draft.kind !== 'consult') return;
+    let alive = true;
+    void (async () => {
+      try {
+        const token = await getActiveToken();
+        const r = await getCreatorSchedule(token, draft.id);
+        if (!alive) return;
+        setAvailabilitySchedule(r.schedule);
+        setDraft((d) => ({
+          ...d,
+          timezone: r.schedule.timezone || d.timezone,
+          availability_mode: r.schedule.mode,
+          availability_rules: r.schedule.rules,
+          availability_version: r.schedule.version,
+          duration_min: r.schedule.duration_min || d.duration_min,
+        }));
+      } catch { /* availability is optional until a consult is saved */ }
+    })();
+    return () => { alive = false; };
+  }, [draft.id, draft.kind]);
 
   // categories — same source publishListing validates against, so nothing
   // picked here can be rejected at publish for not existing.
@@ -347,6 +375,15 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
       const ms = Date.now() - startedAt;
       if (!id) { setError('Could not save the draft. Try again.'); capture('listing_save', { outcome: 'error', status: 0, reason: 'no_id', step: STEP_LABELS[currentStep], ms, fields }); return false; }
       if (id !== draft.id) setDraft((d) => ({ ...d, id }));
+      if (currentStep === 3) {
+        const availabilityResult = await saveListingAvailability(token, { ...draft, id });
+        if (!availabilityResult.ok) return false;
+        if (availabilityResult.schedule) {
+          const schedule = availabilityResult.schedule;
+          setAvailabilitySchedule(schedule);
+          setDraft((d) => ({ ...d, timezone: schedule.timezone, availability_mode: schedule.mode, availability_rules: schedule.rules, availability_version: schedule.version, duration_min: schedule.duration_min || d.duration_min }));
+        }
+      }
       capture('listing_save', { outcome: 'ok', status: 200, step: STEP_LABELS[currentStep], ms, fields });
       capture('listing_step_complete', { step: STEP_LABELS[currentStep], ms: Date.now() - stepStartRef.current });
       return true;
@@ -388,6 +425,65 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
         reason: e instanceof ApiError ? e.error : (e instanceof Error ? e.message : 'unknown'), step: STEP_LABELS[currentStep], ms, fields,
       });
       return false;
+    }
+  }
+
+  async function saveListingAvailability(token: string, d: ListingDraft & { id: string | null }): Promise<{ ok: boolean; schedule?: CreatorSchedule }> {
+    if (!d.id) return { ok: true };
+    let start = NaN;
+    if (d.schedule_mode === 'fixed_date' && d.starts_at && (d.kind !== 'consult' || d.availability_mode === 'exclusive')) {
+      try {
+        const [date, time] = d.starts_at.split('T');
+        start = epochForDateTime(date, time, d.timezone);
+      } catch {
+        setFieldErr({ field: 'starts_at', message: 'That local time does not exist in the selected timezone.' });
+        setError('Choose a valid time in the selected timezone.');
+        return { ok: false };
+      }
+    }
+    if (Number.isFinite(start)) {
+      const preview = await previewCalendarConflicts(token, { listing_id: d.id, start_at: start, end_at: start + d.duration_min * 60_000, timezone: d.timezone });
+      if (!preview.ok) {
+        const first = preview.conflicts[0];
+        setFieldErr({ field: 'starts_at', message: first ? `This overlaps ${first.title || 'another commitment'}. Choose another time.` : 'That time conflicts with another commitment.' });
+        setError('Choose a time that does not conflict with your calendar.');
+        capture('availability_conflict_preview', { listing_id: d.id, kind: d.kind, conflicts: preview.conflicts.length });
+        return { ok: false };
+      }
+    }
+    for (const slot of d.slots) {
+      const preview = await previewCalendarConflicts(token, { listing_id: d.id, start_at: slot.starts_at, end_at: slot.starts_at + slot.duration_min * 60_000, timezone: d.timezone });
+      if (!preview.ok) {
+        const first = preview.conflicts[0];
+        setFieldErr({ field: 'starts_at', message: first ? `A slot overlaps ${first.title || 'another commitment'}. Choose another time.` : 'A slot conflicts with another commitment.' });
+        setError('Choose slot times that do not conflict with your calendar.');
+        capture('availability_conflict_preview', { listing_id: d.id, kind: d.kind, conflicts: preview.conflicts.length, slot: true });
+        return { ok: false };
+      }
+    }
+    if (d.kind !== 'consult') return { ok: true };
+    try {
+      const targetListing = d.id;
+      let current = availabilitySchedule;
+      if (!current || current.listing_id !== targetListing) current = (await getCreatorSchedule(token, targetListing)).schedule;
+      const schedule: CreatorSchedule = {
+        ...current,
+        listing_id: targetListing,
+        timezone: d.timezone,
+        mode: d.availability_mode,
+        duration_min: d.duration_min,
+        slot_interval_min: Math.max(5, current.slot_interval_min || d.duration_min),
+        horizon_days: 62,
+        rules: d.availability_mode === 'custom' ? d.availability_rules : current.rules,
+        version: current.version,
+      };
+      const saved = await saveCreatorSchedule(token, schedule);
+      capture('availability_schedule_saved', { listing_id: targetListing, mode: schedule.mode, version: saved.schedule.version });
+      return { ok: true, schedule: saved.schedule };
+    } catch (e) {
+      const msg = e instanceof ApiError ? listingErrorMessage(e.error, (e.body as any)?.detail, (e.body as any)?.message) : 'Could not save consult availability.';
+      setError(msg); setFieldErr({ field: 'availability_rules', message: msg });
+      return { ok: false };
     }
   }
 

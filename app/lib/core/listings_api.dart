@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'api_auth.dart';
 import 'availability_api.dart';
+import '../features/calendar/calendar_data.dart' show ListingAvailability;
 import 'config.dart';
 import 'disk_cache.dart';
 import '../identity/identity.dart' show AccountScope;

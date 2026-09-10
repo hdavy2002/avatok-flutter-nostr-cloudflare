@@ -220,6 +220,9 @@ class ListingDraft {
   final bool freeEntry;
   final String contentFreeCapTokens;
   final ListingScheduleMode scheduleMode;
+  final String availabilityMode;
+  final List<Map<String, dynamic>> availabilityRules;
+  final int availabilityVersion;
   final String title, blurb, description, category, mediaMode;
   final List<String> vibeTags, spokenLang;
   final String price, billingUnit, earlyBirdPct, promoCode;
@@ -258,6 +261,9 @@ class ListingDraft {
     this.freeEntry = false,
     this.contentFreeCapTokens = '',
     this.scheduleMode = ListingScheduleMode.fixedDate,
+    this.availabilityMode = 'shared',
+    this.availabilityRules = const [],
+    this.availabilityVersion = 0,
     this.title = '',
     this.blurb = '',
     this.description = '',
@@ -308,7 +314,8 @@ class ListingDraft {
 
   ListingDraft copyWith({
     String? id, bool clearId = false, String? status, ListingKind? kind, bool? freeEntry,
-    String? contentFreeCapTokens, ListingScheduleMode? scheduleMode, String? title, String? blurb,
+    String? contentFreeCapTokens, ListingScheduleMode? scheduleMode, String? availabilityMode,
+    List<Map<String, dynamic>>? availabilityRules, int? availabilityVersion, String? title, String? blurb,
     String? description, String? category, String? mediaMode, List<String>? vibeTags,
     List<String>? spokenLang, String? price, String? billingUnit, String? earlyBirdPct,
     String? promoCode, String? timezone, String? startsAt, int? durationMin, List<int>? recurrenceDays,
@@ -326,7 +333,9 @@ class ListingDraft {
   }) => ListingDraft(
         id: clearId ? null : (id ?? this.id), status: status ?? this.status, kind: kind ?? this.kind,
         freeEntry: freeEntry ?? this.freeEntry, contentFreeCapTokens: contentFreeCapTokens ?? this.contentFreeCapTokens,
-        scheduleMode: scheduleMode ?? this.scheduleMode, title: title ?? this.title, blurb: blurb ?? this.blurb,
+        scheduleMode: scheduleMode ?? this.scheduleMode, availabilityMode: availabilityMode ?? this.availabilityMode,
+        availabilityRules: availabilityRules ?? this.availabilityRules, availabilityVersion: availabilityVersion ?? this.availabilityVersion,
+        title: title ?? this.title, blurb: blurb ?? this.blurb,
         description: description ?? this.description, category: category ?? this.category, mediaMode: mediaMode ?? this.mediaMode,
         vibeTags: vibeTags ?? this.vibeTags, spokenLang: spokenLang ?? this.spokenLang, price: price ?? this.price,
         billingUnit: billingUnit ?? this.billingUnit, earlyBirdPct: earlyBirdPct ?? this.earlyBirdPct, promoCode: promoCode ?? this.promoCode,
@@ -359,4 +368,3 @@ int _int(Object? value, {int fallback = 0}) => value is num ? value.toInt() : in
 int? _nullableInt(Object? value) => value == null ? null : _int(value);
 bool _bool(Object? value, {bool fallback = false}) => value is bool ? value : value == null ? fallback : '$value'.toLowerCase() == 'true';
 bool? _nullableBool(Object? value) => value == null ? null : _bool(value);
-

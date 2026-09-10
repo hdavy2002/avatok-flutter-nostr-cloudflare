@@ -14,6 +14,9 @@ import { notifyUser } from "./notify";
 
 const GTOKEN = "https://oauth2.googleapis.com/token";
 const GCAL = "https://www.googleapis.com/calendar/v3";
+const DAY = 86_400_000;
+const FULL_RECONCILE_MS = DAY;
+const SYNC_HORIZON_DAYS = 90;
 
 // ---------------------------------------------------------------------------
 // shared helpers (compact mirrors of avatok-api's cal/ modules)
@@ -313,83 +316,42 @@ async function liveTicketReminderSweep(
 }
 
 // ---------------------------------------------------------------------------
-// 2. Gcal inbound-sync cron fallback (15-min tick), ≤50 accounts per run,
-//    oldest-synced first. Loop-guard: skips events we exported (avatok marker).
+// 2. Gcal inbound-sync cron fallback (15-min tick), ≤50 accounts per run.
+// The Worker owns OAuth/selection and the same per-calendar state is read here
+// so polling remains a durable recovery path when a push channel is missed.
 // ---------------------------------------------------------------------------
+function localDateEpoch(date: string, timezone: string): number | null {
+  const [year, month, day] = date.split("-").map(Number); if (!year || !month || !day) return null;
+  const wall = Date.UTC(year, month - 1, day); const formatter = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const asWall = (epoch: number) => { const parts: Record<string, number> = {}; for (const p of formatter.formatToParts(new Date(epoch))) if (p.type !== "literal") parts[p.type] = Number(p.value); return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second); };
+  let epoch = wall; for (let i = 0; i < 4; i++) epoch += wall - asWall(epoch); return asWall(epoch) === wall ? epoch : null;
+}
+function eventRange(event: any, timezone: string): { starts: number; ends: number } | null {
+  if (event.start?.dateTime && event.end?.dateTime) { const starts = Date.parse(event.start.dateTime), ends = Date.parse(event.end.dateTime); return starts > 0 && ends > starts ? { starts, ends } : null; }
+  if (event.start?.date && event.end?.date) { const starts = localDateEpoch(event.start.date, timezone), ends = localDateEpoch(event.end.date, timezone); return starts !== null && ends !== null && ends > starts ? { starts, ends } : null; }
+  return null;
+}
 async function gcalAccessToken(env: Env, uid: string, refreshEnc: string, cached: { access_token: string | null; access_expires_at: number | null }): Promise<string | null> {
-  if (cached.access_token && (cached.access_expires_at ?? 0) > Date.now()) return cached.access_token;
-  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return null;
-  // AES-GCM decrypt with key = SHA-256(GCAL_TOKEN_KEY) — mirrors avatok-api cal/gcal.ts.
-  const raw = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(env.GCAL_TOKEN_KEY || "dev-gcal-key"));
-  const key = await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["decrypt"]);
-  let refresh: string;
-  try {
-    const all = Uint8Array.from(atob(refreshEnc), (c) => c.charCodeAt(0));
-    refresh = new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: all.slice(0, 12) }, key, all.slice(12)));
-  } catch { return null; }
-  const r = await fetch(GTOKEN, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ refresh_token: refresh, client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, grant_type: "refresh_token" }),
-  });
-  if (!r.ok) return null;
-  const t = (await r.json()) as { access_token: string; expires_in: number };
-  await env.DB_META.prepare("UPDATE gcal_accounts SET access_token=?2, access_expires_at=?3 WHERE user_id=?1")
-    .bind(uid, t.access_token, Date.now() + (t.expires_in - 60) * 1000).run();
-  return t.access_token;
+  if (cached.access_token && (cached.access_expires_at ?? 0) > Date.now() + 30_000) return cached.access_token;
+  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GCAL_TOKEN_KEY) return null;
+  const raw = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(env.GCAL_TOKEN_KEY)); const key = await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["decrypt"]);
+  let refresh: string; try { const all = Uint8Array.from(atob(refreshEnc), (c) => c.charCodeAt(0)); if (all.length <= 12) return null; refresh = new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: all.slice(0, 12) }, key, all.slice(12))); } catch { return null; }
+  const response = await fetch(GTOKEN, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ refresh_token: refresh, client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, grant_type: "refresh_token" }) }); if (!response.ok) return null;
+  const token = await response.json() as { access_token?: string; expires_in?: number }; if (!token.access_token || !token.expires_in) return null; await env.DB_META.prepare("UPDATE gcal_accounts SET access_token=?2,access_expires_at=?3,last_error=NULL WHERE user_id=?1").bind(uid, token.access_token, Date.now() + Math.max(60, token.expires_in - 60) * 1000).run(); return token.access_token;
 }
-
-export async function gcalSyncSweep(env: Env): Promise<void> {
-  let accounts: any[];
-  try {
-    accounts = ((await env.DB_META.prepare(
-      "SELECT user_id, refresh_token_enc, access_token, access_expires_at, sync_token FROM gcal_accounts ORDER BY COALESCE(last_sync_at,0) ASC LIMIT 50",
-    ).all()).results ?? []) as any[];
-  } catch { return; } // table not migrated yet
-  for (const a of accounts) {
-    try {
-      const tok = await gcalAccessToken(env, a.user_id, a.refresh_token_enc, a);
-      if (!tok) continue;
-      let pageToken: string | undefined;
-      let syncToken: string | null = a.sync_token;
-      for (let page = 0; page < 5; page++) {
-        const u = new URL(`${GCAL}/calendars/primary/events`);
-        u.searchParams.set("singleEvents", "true");
-        u.searchParams.set("maxResults", "250");
-        if (pageToken) u.searchParams.set("pageToken", pageToken);
-        else if (syncToken) u.searchParams.set("syncToken", syncToken);
-        else {
-          u.searchParams.set("timeMin", new Date().toISOString());
-          u.searchParams.set("timeMax", new Date(Date.now() + 60 * 86_400_000).toISOString());
-        }
-        const r = await fetch(u, { headers: { Authorization: `Bearer ${tok}` } });
-        if (r.status === 410) { await env.DB_META.prepare("UPDATE gcal_accounts SET sync_token=NULL WHERE user_id=?1").bind(a.user_id).run(); syncToken = null; pageToken = undefined; continue; }
-        if (!r.ok) break;
-        const data = (await r.json()) as any;
-        for (const ev of data.items ?? []) {
-          if (ev.extendedProperties?.private?.avatok === "1") continue; // ours — no echo loop
-          const refId = `gcal:${ev.id}`;
-          if (ev.status === "cancelled") {
-            await env.DB_META.prepare("UPDATE calendar_blocks SET status='cancelled' WHERE user_id=?1 AND source_app='gcal' AND source_ref=?2").bind(a.user_id, refId).run();
-            continue;
-          }
-          if (ev.transparency === "transparent") continue;
-          const s = Date.parse(ev.start?.dateTime ?? (ev.start?.date ? ev.start.date + "T00:00:00Z" : ""));
-          const e = Date.parse(ev.end?.dateTime ?? (ev.end?.date ? ev.end.date + "T00:00:00Z" : ""));
-          if (!(s > 0 && e > s)) continue;
-          await env.DB_META.prepare(
-            `INSERT INTO calendar_blocks (id, user_id, source_app, source_ref, starts_at, ends_at, title, status, created_at)
-             VALUES (?1,?2,'gcal',?3,?4,?5,?6,'busy',?7)
-             ON CONFLICT(id) DO UPDATE SET starts_at=?4, ends_at=?5, title=?6, status='busy'`,
-          ).bind(`gcalblk:${a.user_id}:${ev.id}`, a.user_id, refId, s, e, ev.summary ?? "Google Calendar", Date.now()).run();
-        }
-        pageToken = data.nextPageToken;
-        if (!pageToken) {
-          if (data.nextSyncToken) await env.DB_META.prepare("UPDATE gcal_accounts SET sync_token=?2, last_sync_at=?3 WHERE user_id=?1").bind(a.user_id, data.nextSyncToken, Date.now()).run();
-          else await env.DB_META.prepare("UPDATE gcal_accounts SET last_sync_at=?2 WHERE user_id=?1").bind(a.user_id, Date.now()).run();
-          break;
-        }
-      }
-    } catch (e) { console.error("[gcal-sync]", a.user_id, String(e)); }
+async function renewWatch(env: Env, uid: string, row: any, token: string): Promise<void> {
+  if (row.channel_id && (row.channel_expires_at ?? 0) > Date.now() + DAY) return;
+  const channelId = crypto.randomUUID(); const raw = new TextEncoder().encode(`${uid}.${row.calendar_id}.${channelId}`); const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.GCAL_TOKEN_KEY!), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]); const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, raw)); const channelToken = `${uid}.${row.calendar_id}.${btoa(String.fromCharCode(...sig))}`.slice(0, 256);
+  const response = await fetch(`${GCAL}/calendars/${encodeURIComponent(row.calendar_id)}/events/watch`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ id: channelId, type: "web_hook", address: "https://api.avatok.ai/webhooks/gcal", token: channelToken, expiration: Date.now() + 6 * DAY }) }); if (!response.ok) throw new Error(`watch renewal failed (${response.status})`); const data = await response.json() as { id?: string; resourceId?: string; expiration?: string | number }; if (!data.id || !data.resourceId) throw new Error("watch renewal returned no channel id"); await env.DB_META.prepare("UPDATE gcal_calendars SET channel_id=?3,resource_id=?4,channel_token=?5,channel_expires_at=?6,updated_at=?7 WHERE user_id=?1 AND calendar_id=?2").bind(uid, row.calendar_id, data.id, data.resourceId, channelToken, Number(data.expiration) || Date.now() + 6 * DAY, Date.now()).run();
+}
+async function syncCalendar(env: Env, uid: string, row: any, token: string): Promise<void> {
+  let watchError: unknown = null; try { await renewWatch(env, uid, row, token); } catch (error) { watchError = error; } let pageToken: string | undefined; const periodicFull = !row.last_full_sync_at || Date.now() - row.last_full_sync_at > FULL_RECONCILE_MS; const syncRequestToken = periodicFull ? null : row.sync_token; const fullSync = !syncRequestToken; const seen = new Set<string>(); let finalSyncToken: string | null = null;
+  const initialTimeMin = new Date().toISOString(); const initialTimeMax = new Date(Date.now() + SYNC_HORIZON_DAYS * DAY).toISOString();
+  for (let page = 0; page < 100; page++) { const u = new URL(`${GCAL}/calendars/${encodeURIComponent(row.calendar_id)}/events`); u.searchParams.set("singleEvents", "true"); u.searchParams.set("showDeleted", "true"); u.searchParams.set("maxResults", "250"); u.searchParams.set("timeZone", row.timezone || "UTC"); if (syncRequestToken) u.searchParams.set("syncToken", syncRequestToken); else { u.searchParams.set("timeMin", initialTimeMin); u.searchParams.set("timeMax", initialTimeMax); } if (pageToken) u.searchParams.set("pageToken", pageToken);
+    const response = await fetch(u, { headers: { Authorization: `Bearer ${token}` } }); if (response.status === 410) { await env.DB_META.prepare("UPDATE gcal_calendars SET sync_token=NULL,channel_id=NULL,resource_id=NULL,channel_token=NULL,channel_expires_at=NULL WHERE user_id=?1 AND calendar_id=?2").bind(uid, row.calendar_id).run(); return syncCalendar(env, uid, { ...row, sync_token: null, channel_id: null }, token); } if (!response.ok) throw new Error(`event sync failed (${response.status})`); const data = await response.json() as any;
+    for (const ev of data.items ?? []) { const ref = `gcal:${row.calendar_id}:${ev.id}`; if (ev.id) seen.add(ref); if (ev.extendedProperties?.private?.avatok === "1") { await env.DB_META.prepare("UPDATE calendar_blocks SET status='cancelled' WHERE user_id=?1 AND source_app='gcal' AND source_ref=?2").bind(uid, ref).run(); continue; } if (ev.status === "cancelled" || ev.transparency === "transparent") { await env.DB_META.prepare("UPDATE calendar_blocks SET status='cancelled' WHERE user_id=?1 AND source_app='gcal' AND source_ref=?2").bind(uid, ref).run(); continue; } const range = eventRange(ev, row.timezone || "UTC"); if (!range) { await env.DB_META.prepare("UPDATE calendar_blocks SET status='cancelled' WHERE user_id=?1 AND source_app='gcal' AND source_ref=?2").bind(uid, ref).run(); continue; } await env.DB_META.prepare("INSERT INTO calendar_blocks(id,user_id,source_app,source_ref,starts_at,ends_at,title,status,created_at) VALUES(?1,?2,'gcal',?3,?4,?5,'Google Calendar','busy',?6) ON CONFLICT(id) DO UPDATE SET starts_at=?4,ends_at=?5,title='Google Calendar',status='busy'").bind(`gcalblk:${uid}:${row.calendar_id}:${ev.id}`, uid, ref, range.starts, range.ends, Date.now()).run(); }
+    pageToken = data.nextPageToken; if (!pageToken) { finalSyncToken = data.nextSyncToken ?? null; break; }
   }
+  if (!finalSyncToken) throw new Error("event sync did not return a final sync token"); if (fullSync) { const existing = await env.DB_META.prepare("SELECT id,source_ref FROM calendar_blocks WHERE user_id=?1 AND source_app='gcal' AND status='busy' AND source_ref LIKE ?2").bind(uid, `gcal:${row.calendar_id}:%`).all<{ id: string; source_ref: string }>(); for (const block of (existing.results ?? [])) if (!seen.has(block.source_ref)) await env.DB_META.prepare("UPDATE calendar_blocks SET status='cancelled' WHERE id=?1").bind(block.id).run(); } const syncedAt = Date.now(); await env.DB_META.prepare("UPDATE gcal_calendars SET sync_token=?3,last_sync_at=?4,last_success_at=?4,last_full_sync_at=CASE WHEN ?5=1 THEN ?4 ELSE last_full_sync_at END,last_error=?6,updated_at=?4 WHERE user_id=?1 AND calendar_id=?2").bind(uid, row.calendar_id, finalSyncToken, syncedAt, fullSync ? 1 : 0, watchError ? String(watchError).slice(0, 500) : null).run();
 }
+export async function gcalSyncSweep(env: Env): Promise<void> { let accounts: any[]; try { accounts = ((await env.DB_META.prepare("SELECT user_id,refresh_token_enc,access_token,access_expires_at,sync_token FROM gcal_accounts ORDER BY COALESCE(last_sync_at,0) ASC LIMIT 50").all()).results ?? []) as any[]; } catch { return; } for (const account of accounts) { try { const token = await gcalAccessToken(env, account.user_id, account.refresh_token_enc, account); if (!token) continue; let calendars = ((await env.DB_META.prepare("SELECT * FROM gcal_calendars WHERE user_id=?1 AND selected=1 ORDER BY primary_calendar DESC,calendar_id").bind(account.user_id).all()).results ?? []) as any[]; if (!calendars.length) { await env.DB_META.prepare("INSERT OR IGNORE INTO gcal_calendars(user_id,calendar_id,summary,timezone,primary_calendar,selected,destination,sync_token,updated_at) VALUES(?1,'primary','Google Calendar','UTC',1,1,1,?2,?3)").bind(account.user_id, account.sync_token ?? null, Date.now()).run(); calendars = ((await env.DB_META.prepare("SELECT * FROM gcal_calendars WHERE user_id=?1 AND selected=1").bind(account.user_id).all()).results ?? []) as any[]; } for (const row of calendars) { try { await syncCalendar(env, account.user_id, row, token); } catch (error) { await env.DB_META.prepare("UPDATE gcal_calendars SET last_sync_at=?3,last_error=?4,updated_at=?3 WHERE user_id=?1 AND calendar_id=?2").bind(account.user_id, row.calendar_id, Date.now(), String(error).slice(0, 500)).run(); console.error("[gcal-sync]", account.user_id, row.calendar_id, String(error)); } } } catch (error) { console.error("[gcal-sync]", account.user_id, String(error)); } } }

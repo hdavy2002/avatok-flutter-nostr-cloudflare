@@ -1,272 +1,202 @@
-// Phase 5 — Google Calendar two-way sync (per-account OAuth).
-//   Outbound: every confirmed block/booking → insert/patch/delete a gcal event,
-//             marked with extendedProperties.private.avatok="1" (loop guard).
-//   Inbound:  events.list with an incremental syncToken (webhook channel or the
-//             15-min consumers cron calls importGcal) → busy gcal events become
-//             source_app='gcal' calendar_blocks ⇒ external meetings grey out
-//             platform slots.
-// Refresh tokens are AES-GCM-encrypted with the GCAL_TOKEN_KEY secret in D1.
+// Google Calendar two-way sync for creator availability.
+// OAuth refresh tokens are encrypted at rest. CalendarList selection is kept
+// separately from the OAuth anchor so Drive's existing drive.file consent
+// remains intact. Google is an input/projection channel; AvaTOK remains the
+// booking authority.
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { metaDb } from "../db/shard";
 import { track } from "../hooks";
+export { gcalAvailabilityReady } from "./gcal_availability";
 
 const GAUTH = "https://accounts.google.com/o/oauth2/v2/auth";
 const GTOKEN = "https://oauth2.googleapis.com/token";
 const GCAL = "https://www.googleapis.com/calendar/v3";
-// One Google connection grants Calendar (booking sync) + Drive (drive.file =
-// only files AvaTOK creates → the "AvaTOK" folder). The same access token serves
-// both APIs; gcalAccessToken() is reused by lib/drive.ts. (Hybrid storage:
-// own files → Drive; shared chat media stays on encrypted R2.)
-const SCOPE = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.file";
-// Backup/Drive connect (/api/ava/drive/connect) requests ONLY drive.file — a
-// NON-sensitive scope (the app can see only files IT created). That avoids the
-// Google "unverified app" screen, the 100-user OAuth cap, and any verification
-// review, so ANY user can connect their OWN Drive with their OWN email.
-// AvaCalendar keeps SCOPE (calendar.events is sensitive → would need verification
-// before going wide); when Calendar ships it can use its own scope the same way.
-const SCOPE_DRIVE = "https://www.googleapis.com/auth/drive.file";
 const REDIRECT = "https://api.avatok.ai/api/calendar/gcal/callback";
+const WEBHOOK = "https://api.avatok.ai/webhooks/gcal";
+const DAY = 86_400_000;
+const SYNC_HORIZON_DAYS = 90;
+const FULL_RECONCILE_MS = DAY;
+const SCOPE = [
+  "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+  "https://www.googleapis.com/auth/drive.file",
+].join(" ");
+const SCOPE_DRIVE = "https://www.googleapis.com/auth/drive.file";
 
-// ---------------------------------------------------------------------------
-// Token crypto — AES-GCM with key derived (SHA-256) from GCAL_TOKEN_KEY.
-// ---------------------------------------------------------------------------
-async function aesKey(env: Env): Promise<CryptoKey> {
-  const raw = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(env.GCAL_TOKEN_KEY || "dev-gcal-key"));
-  return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
-}
-export async function encToken(env: Env, plain: string): Promise<string> {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await aesKey(env), new TextEncoder().encode(plain)));
-  const all = new Uint8Array(iv.length + ct.length); all.set(iv); all.set(ct, 12);
-  return btoa(String.fromCharCode(...all));
-}
-export async function decToken(env: Env, b64: string): Promise<string> {
-  const all = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: all.slice(0, 12) }, await aesKey(env), all.slice(12));
-  return new TextDecoder().decode(pt);
-}
+type GoogleCalendar = { id: string; summary?: string; summaryOverride?: string; timeZone?: string; primary?: boolean; selected?: boolean; deleted?: boolean; accessRole?: string };
+type GcalCalendarRow = Omit<GoogleCalendar, "selected"> & { calendar_id: string; summary: string; timezone: string; access_role: string | null; selected: number; destination: number; primary_calendar: number; sync_token: string | null; channel_id: string | null; resource_id: string | null; channel_token: string | null; channel_expires_at: number | null; last_sync_at: number | null; last_success_at: number | null; last_full_sync_at: number | null; last_error: string | null };
 
-// HMAC state for the OAuth round-trip (uid → callback, 10-min expiry).
-async function hmacHex(env: Env, data: string): Promise<string> {
-  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.GCAL_TOKEN_KEY || "dev-gcal-key"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(data)));
-  return [...sig].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
+function tokenKey(env: Env): string { if (!env.GCAL_TOKEN_KEY) throw new Error("Google Calendar token encryption is not configured"); return env.GCAL_TOKEN_KEY; }
+async function aesKey(env: Env): Promise<CryptoKey> { const raw = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(tokenKey(env))); return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]); }
+export async function encToken(env: Env, plain: string): Promise<string> { const iv = crypto.getRandomValues(new Uint8Array(12)); const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await aesKey(env), new TextEncoder().encode(plain))); const all = new Uint8Array(iv.length + ct.length); all.set(iv); all.set(ct, iv.length); return btoa(String.fromCharCode(...all)); }
+export async function decToken(env: Env, b64: string): Promise<string> { const all = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)); if (all.length <= 12) throw new Error("Invalid encrypted Google token"); return new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: all.slice(0, 12) }, await aesKey(env), all.slice(12))); }
+async function hmacHex(env: Env, data: string): Promise<string> { const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(tokenKey(env)), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]); const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(data))); return [...sig].map((b) => b.toString(16).padStart(2, "0")).join(""); }
+function googleHeaders(token: string): Record<string, string> { return { Authorization: `Bearer ${token}`, "content-type": "application/json" }; }
+async function markAccountError(env: Env, uid: string, error: unknown): Promise<void> { try { await metaDb(env).prepare("UPDATE gcal_accounts SET last_error=?2 WHERE user_id=?1").bind(uid, String(error).slice(0, 500)).run(); } catch { /* migration not yet applied */ } }
+async function markCalendarState(env: Env, uid: string, calendarId: string, error?: unknown): Promise<void> { const now = Date.now(); await metaDb(env).prepare("UPDATE gcal_calendars SET last_sync_at=?3,last_success_at=CASE WHEN ?4=1 THEN ?3 ELSE last_success_at END,last_error=?5,updated_at=?3 WHERE user_id=?1 AND calendar_id=?2").bind(uid, calendarId, now, error ? 0 : 1, error ? String(error).slice(0, 500) : null).run(); if (error) await markAccountError(env, uid, error); else await metaDb(env).prepare("UPDATE gcal_accounts SET last_sync_at=?2,last_error=NULL WHERE user_id=?1").bind(uid, now).run(); }
 
-// ---------------------------------------------------------------------------
-// Routes
-// ---------------------------------------------------------------------------
-/** GET /api/calendar/gcal/connect → { url } the app opens in a browser. */
-export async function gcalConnect(req: Request, env: Env): Promise<Response> {
-  const ctx = await requireUser(req, env);
-  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  if (!env.GOOGLE_CLIENT_ID) return json({ error: "gcal not configured" }, 503);
-  const exp = Date.now() + 600_000;
-  // `?return=app` (AvaStorage Drive connect via flutter_web_auth_2) tags the
-  // state with `.app` so the callback redirects to avatokauth:// (the in-app
-  // auth sheet auto-closes). The HMAC still signs only uid+exp, so the extra
-  // segment doesn't affect verification. Without it (AvaCalendar web connect)
-  // the callback keeps showing the "you can close this window" page.
-  const reqUrl = new URL(req.url);
-  const wantApp = reqUrl.searchParams.get("return") === "app";
-  // Backup/Drive flow → drive.file only (non-sensitive, no verification/cap).
-  // AvaCalendar (or an explicit ?scope=full) keeps the combined sensitive scope.
-  const driveOnly = (reqUrl.pathname.includes("/ava/drive/") ||
-      reqUrl.searchParams.get("scope") === "drive") &&
-    reqUrl.searchParams.get("scope") !== "full";
-  const sig = await hmacHex(env, ctx.uid + "." + exp);
-  const state = `${ctx.uid}.${exp}.${sig}${wantApp ? ".app" : ""}`;
-  const u = new URL(GAUTH);
-  u.searchParams.set("client_id", env.GOOGLE_CLIENT_ID);
-  u.searchParams.set("redirect_uri", REDIRECT);
-  u.searchParams.set("response_type", "code");
-  u.searchParams.set("scope", driveOnly ? SCOPE_DRIVE : SCOPE);
-  u.searchParams.set("access_type", "offline");
-  u.searchParams.set("prompt", "consent");          // always get a refresh_token
-  u.searchParams.set("include_granted_scopes", "true"); // incremental consent
-  u.searchParams.set("state", state);
-  // Server-truth telemetry: which scope each connect requested, so we can prove
-  // the Backup flow stays verification-free (drive.file only) and track adoption.
-  await track(env, ctx.uid, "gcal_connect_url", driveOnly ? "avastorage" : "avacalendar", {
-    drive_only: driveOnly,
-    scope_mode: driveOnly ? "drive.file" : "calendar.events+drive.file",
-    sensitive_scope: !driveOnly,
-    return_app: wantApp,
-    path: reqUrl.pathname,
-  });
-  return json({ url: u.toString() });
-}
-
-/** GET /api/calendar/gcal/callback?code&state — browser redirect target. */
-export async function gcalCallback(req: Request, env: Env): Promise<Response> {
-  const url = new URL(req.url);
-  const code = url.searchParams.get("code") || "";
-  const state = url.searchParams.get("state") || "";
-  const [uid, expS, sig, flow] = state.split(".");
-  const isApp = flow === "app"; // AvaStorage Drive connect → deep-link back
-  // App flow auto-closes its in-app auth sheet via this deep link; the web
-  // (calendar) flow renders an HTML page the user closes manually.
-  const back = (err?: string) =>
-    isApp
-      ? new Response(null, {
-          status: 302,
-          headers: { Location: `avatokauth://drive-connected${err ? `?error=${err}` : ""}` },
-        })
-      : null;
-  if (!uid || !sig || Number(expS) < Date.now() || sig !== await hmacHex(env, uid + "." + expS)) {
-    return back("invalid_link") ??
-      new Response("Invalid or expired link. Reopen from AvaCalendar settings.", { status: 400 });
-  }
-  const tr = await fetch(GTOKEN, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ code, client_id: env.GOOGLE_CLIENT_ID!, client_secret: env.GOOGLE_CLIENT_SECRET!, redirect_uri: REDIRECT, grant_type: "authorization_code" }),
-  });
-  if (!tr.ok) return back("token_exchange") ?? new Response("Google token exchange failed.", { status: 502 });
-  const t = (await tr.json()) as { access_token: string; refresh_token?: string; expires_in: number };
-  if (!t.refresh_token) return back("no_refresh") ?? new Response("No refresh token granted — disconnect AvaTOK in your Google account settings and retry.", { status: 400 });
-  await metaDb(env).prepare(
-    `INSERT INTO gcal_accounts (user_id, refresh_token_enc, access_token, access_expires_at, connected_at)
-     VALUES (?1,?2,?3,?4,?5)
-     ON CONFLICT(user_id) DO UPDATE SET refresh_token_enc=?2, access_token=?3, access_expires_at=?4, connected_at=?5, sync_token=NULL`,
-  ).bind(uid, await encToken(env, t.refresh_token), t.access_token, Date.now() + (t.expires_in - 60) * 1000, Date.now()).run();
-  try { await importGcal(env, uid); } catch { /* first import is best-effort */ }
-  return back() ??
-    new Response("<html><body style='font-family:system-ui;text-align:center;padding-top:80px'><h2>Google Calendar connected ✅</h2><p>You can close this window and return to AvaTOK.</p></body></html>",
-      { headers: { "content-type": "text/html" } });
-}
-
-/** GET /api/calendar/gcal/status · DELETE /api/calendar/gcal */
-export async function gcalStatus(req: Request, env: Env): Promise<Response> {
-  const ctx = await requireUser(req, env);
-  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  const row = await metaDb(env).prepare("SELECT connected_at, last_sync_at FROM gcal_accounts WHERE user_id=?1").bind(ctx.uid).first();
-  return json({ connected: !!row, ...(row ?? {}) });
-}
-export async function gcalDisconnect(req: Request, env: Env): Promise<Response> {
-  const ctx = await requireUser(req, env);
-  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  await metaDb(env).prepare("DELETE FROM gcal_accounts WHERE user_id=?1").bind(ctx.uid).run();
-  await metaDb(env).prepare("UPDATE calendar_blocks SET status='cancelled' WHERE user_id=?1 AND source_app='gcal'").bind(ctx.uid).run();
-  return json({ ok: true });
-}
-
-// ---------------------------------------------------------------------------
-// Access tokens (refresh flow, cached in the row)
-// ---------------------------------------------------------------------------
+/** Access-token refresh. There is no development encryption fallback. */
 export async function gcalAccessToken(env: Env, uid: string): Promise<string | null> {
-  const row = await metaDb(env).prepare(
-    "SELECT refresh_token_enc, access_token, access_expires_at FROM gcal_accounts WHERE user_id=?1",
-  ).bind(uid).first<{ refresh_token_enc: string; access_token: string | null; access_expires_at: number | null }>();
-  if (!row) return null;
-  if (row.access_token && (row.access_expires_at ?? 0) > Date.now()) return row.access_token;
-  const r = await fetch(GTOKEN, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ refresh_token: await decToken(env, row.refresh_token_enc), client_id: env.GOOGLE_CLIENT_ID!, client_secret: env.GOOGLE_CLIENT_SECRET!, grant_type: "refresh_token" }),
-  });
-  if (!r.ok) return null;
-  const t = (await r.json()) as { access_token: string; expires_in: number };
-  await metaDb(env).prepare("UPDATE gcal_accounts SET access_token=?2, access_expires_at=?3 WHERE user_id=?1")
-    .bind(uid, t.access_token, Date.now() + (t.expires_in - 60) * 1000).run();
-  return t.access_token;
+  const row = await metaDb(env).prepare("SELECT refresh_token_enc,access_token,access_expires_at FROM gcal_accounts WHERE user_id=?1").bind(uid).first<{ refresh_token_enc: string; access_token: string | null; access_expires_at: number | null }>();
+  if (!row || !env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GCAL_TOKEN_KEY) return null;
+  if (row.access_token && (row.access_expires_at ?? 0) > Date.now() + 30_000) return row.access_token;
+  let refresh: string; try { refresh = await decToken(env, row.refresh_token_enc); } catch (error) { await markAccountError(env, uid, error); return null; }
+  const response = await fetch(GTOKEN, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ refresh_token: refresh, client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, grant_type: "refresh_token" }) });
+  if (!response.ok) { await markAccountError(env, uid, `Google token refresh failed (${response.status})`); return null; }
+  const token = await response.json() as { access_token?: string; expires_in?: number }; if (!token.access_token || !token.expires_in) { await markAccountError(env, uid, "Google token refresh returned no access token"); return null; }
+  await metaDb(env).prepare("UPDATE gcal_accounts SET access_token=?2,access_expires_at=?3,last_error=NULL WHERE user_id=?1").bind(uid, token.access_token, Date.now() + Math.max(60, token.expires_in - 60) * 1000).run(); return token.access_token;
 }
 
-// ---------------------------------------------------------------------------
-// Outbound — block/booking → gcal event (best-effort, never blocks the API path)
-// ---------------------------------------------------------------------------
-export async function gcalExport(env: Env, uid: string, blockId: string, action: "upsert" | "delete"): Promise<void> {
-  const tok = await gcalAccessToken(env, uid);
-  if (!tok) return;
-  const blk = await metaDb(env).prepare(
-    "SELECT id, title, starts_at, ends_at, status, gcal_event_id, source_app FROM calendar_blocks WHERE id=?1",
-  ).bind(blockId).first<any>();
-  if (!blk || blk.source_app === "gcal") return; // never re-export imports
-  const hdr = { Authorization: `Bearer ${tok}`, "content-type": "application/json" };
-  if (action === "delete" || blk.status === "cancelled") {
-    if (blk.gcal_event_id) await fetch(`${GCAL}/calendars/primary/events/${blk.gcal_event_id}`, { method: "DELETE", headers: hdr }).catch(() => {});
-    return;
-  }
-  const body = JSON.stringify({
-    summary: blk.title || "AvaTOK booking",
-    start: { dateTime: new Date(blk.starts_at).toISOString() },
-    end: { dateTime: new Date(blk.ends_at).toISOString() },
-    extendedProperties: { private: { avatok: "1", block_id: blk.id } },  // loop guard
-  });
-  if (blk.gcal_event_id) {
-    await fetch(`${GCAL}/calendars/primary/events/${blk.gcal_event_id}`, { method: "PATCH", headers: hdr, body }).catch(() => {});
-  } else {
-    const r = await fetch(`${GCAL}/calendars/primary/events`, { method: "POST", headers: hdr, body });
-    if (r.ok) {
-      const ev = (await r.json()) as { id: string };
-      await metaDb(env).prepare("UPDATE calendar_blocks SET gcal_event_id=?2 WHERE id=?1").bind(blk.id, ev.id).run();
+async function listGoogleCalendars(env: Env, accessToken: string): Promise<GoogleCalendar[]> {
+  const items: GoogleCalendar[] = []; let pageToken: string | undefined;
+  for (let page = 0; page < 20; page++) { const u = new URL(`${GCAL}/users/me/calendarList`); u.searchParams.set("maxResults", "250"); u.searchParams.set("showDeleted", "true"); if (pageToken) u.searchParams.set("pageToken", pageToken); const response = await fetch(u, { headers: googleHeaders(accessToken) }); if (!response.ok) throw new Error(`Google Calendar list failed (${response.status})`); const data = await response.json() as { items?: GoogleCalendar[]; nextPageToken?: string }; items.push(...(data.items ?? [])); pageToken = data.nextPageToken; if (!pageToken) break; }
+  if (!items.length) throw new Error("Google returned no calendars"); return items;
+}
+async function upsertCalendarRows(env: Env, uid: string, calendars: GoogleCalendar[]): Promise<void> {
+  const now = Date.now();
+  const destination = await metaDb(env).prepare("SELECT calendar_id FROM gcal_calendars WHERE user_id=?1 AND destination=1 LIMIT 1").bind(uid).first<{ calendar_id: string }>();
+  let hasDestination = !!destination?.calendar_id;
+  for (const calendar of calendars) {
+    if (!calendar.id) continue;
+    if (calendar.deleted) {
+      // CalendarList.showDeleted=true reports calendars that were removed or
+      // revoked. Retire their local projection immediately so a stale busy
+      // block cannot keep an unavailable calendar looking occupied.
+      await metaDb(env).batch([
+        metaDb(env).prepare("UPDATE gcal_calendars SET selected=0,destination=0,sync_token=NULL,last_success_at=NULL,last_full_sync_at=NULL,last_error='Google calendar was deleted or access was revoked',updated_at=?3 WHERE user_id=?1 AND calendar_id=?2").bind(uid, calendar.id, now),
+        metaDb(env).prepare("UPDATE calendar_blocks SET status='cancelled' WHERE user_id=?1 AND source_app='gcal' AND source_ref LIKE ?2").bind(uid, `gcal:${calendar.id}:%`),
+      ]);
+      continue;
     }
+    const defaultDestination = calendar.primary && !hasDestination ? 1 : 0;
+    await metaDb(env).prepare("INSERT INTO gcal_calendars(user_id,calendar_id,summary,timezone,access_role,primary_calendar,selected,destination,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9) ON CONFLICT(user_id,calendar_id) DO UPDATE SET summary=?3,timezone=?4,access_role=?5,primary_calendar=?6,updated_at=?9").bind(uid, calendar.id, calendar.summaryOverride || calendar.summary || "Google Calendar", calendar.timeZone || "UTC", calendar.accessRole || null, calendar.primary ? 1 : 0, calendar.primary ? 1 : 0, defaultDestination, now).run();
+    if (defaultDestination) hasDestination = true;
   }
 }
+async function refreshCalendarRows(env: Env, uid: string, accessToken: string): Promise<GcalCalendarRow[]> { await upsertCalendarRows(env, uid, await listGoogleCalendars(env, accessToken)); const rows = await metaDb(env).prepare("SELECT * FROM gcal_calendars WHERE user_id=?1 ORDER BY primary_calendar DESC,calendar_id").bind(uid).all<GcalCalendarRow>(); return (rows.results ?? []) as GcalCalendarRow[]; }
+function calendarResponse(row: GcalCalendarRow) { return { id: row.calendar_id, summary: row.summary, timezone: row.timezone, access_role: row.access_role, primary: !!row.primary_calendar, selected: !!row.selected, destination: !!row.destination, last_sync_at: row.last_sync_at, last_success_at: row.last_success_at, last_error: row.last_error }; }
+async function ensurePrimaryFallback(env: Env, uid: string): Promise<GcalCalendarRow[]> { const account = await metaDb(env).prepare("SELECT sync_token FROM gcal_accounts WHERE user_id=?1").bind(uid).first<{ sync_token: string | null }>(); await metaDb(env).prepare("INSERT OR IGNORE INTO gcal_calendars(user_id,calendar_id,summary,timezone,primary_calendar,selected,destination,sync_token,updated_at) VALUES(?1,'primary','Google Calendar','UTC',1,1,1,?2,?3)").bind(uid, account?.sync_token ?? null, Date.now()).run(); const rows = await metaDb(env).prepare("SELECT * FROM gcal_calendars WHERE user_id=?1 AND selected=1 ORDER BY primary_calendar DESC,calendar_id").bind(uid).all<GcalCalendarRow>(); return (rows.results ?? []) as GcalCalendarRow[]; }
 
-// ---------------------------------------------------------------------------
-// Inbound — gcal busy events → calendar_blocks (source_app='gcal').
-// Incremental via sync_token; full window (now..+60d) on first run / 410.
-// ---------------------------------------------------------------------------
-export async function importGcal(env: Env, uid: string): Promise<number> {
-  const tok = await gcalAccessToken(env, uid);
-  if (!tok) return 0;
-  const acct = await metaDb(env).prepare("SELECT sync_token FROM gcal_accounts WHERE user_id=?1").bind(uid).first<{ sync_token: string | null }>();
-  let pageToken: string | undefined;
-  let syncToken = acct?.sync_token ?? null;
-  let imported = 0;
+// OAuth routes. Calendar uses incremental CalendarList consent; Drive keeps its
+// existing drive.file-only flow.
+export async function gcalConnect(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env); if (isFail(ctx)) return json({ error: ctx.error }, ctx.status); if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GCAL_TOKEN_KEY) return json({ error: "Google Calendar is not configured" }, 503);
+  const exp = Date.now() + 600_000, reqUrl = new URL(req.url), wantApp = reqUrl.searchParams.get("return") === "app"; const driveOnly = (reqUrl.pathname.includes("/ava/drive/") || reqUrl.searchParams.get("scope") === "drive") && reqUrl.searchParams.get("scope") !== "full"; const sig = await hmacHex(env, ctx.uid + "." + exp); const state = `${ctx.uid}.${exp}.${sig}${wantApp ? ".app" : ""}`;
+  const u = new URL(GAUTH); u.searchParams.set("client_id", env.GOOGLE_CLIENT_ID); u.searchParams.set("redirect_uri", REDIRECT); u.searchParams.set("response_type", "code"); u.searchParams.set("scope", driveOnly ? SCOPE_DRIVE : SCOPE); u.searchParams.set("access_type", "offline"); u.searchParams.set("prompt", "consent"); u.searchParams.set("include_granted_scopes", "true"); u.searchParams.set("state", state);
+  await track(env, ctx.uid, "gcal_connect_url", driveOnly ? "avastorage" : "avacalendar", { drive_only: driveOnly, scope_mode: driveOnly ? "drive.file" : "calendar.events+calendarlist.readonly+drive.file", sensitive_scope: !driveOnly, return_app: wantApp, path: reqUrl.pathname }); return json({ url: u.toString() });
+}
+export async function gcalCallback(req: Request, env: Env): Promise<Response> {
+  const url = new URL(req.url), code = url.searchParams.get("code") || "", state = url.searchParams.get("state") || ""; const [uid, expS, sig, flow] = state.split("."); const isApp = flow === "app"; const back = (err?: string) => isApp ? new Response(null, { status: 302, headers: { Location: `avatokauth://drive-connected${err ? `?error=${encodeURIComponent(err)}` : ""}` } }) : null;
+  if (!uid || !sig || Number(expS) < Date.now() || sig !== await hmacHex(env, uid + "." + expS)) return back("invalid_link") ?? new Response("Invalid or expired link. Reopen from AvaTOK settings.", { status: 400 });
+  const tr = await fetch(GTOKEN, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ code, client_id: env.GOOGLE_CLIENT_ID!, client_secret: env.GOOGLE_CLIENT_SECRET!, redirect_uri: REDIRECT, grant_type: "authorization_code" }) }); if (!tr.ok) return back("token_exchange") ?? new Response("Google token exchange failed.", { status: 502 });
+  const t = await tr.json() as { access_token?: string; refresh_token?: string; expires_in?: number }; if (!t.access_token || !t.expires_in) return back("no_access") ?? new Response("Google token exchange returned no access token.", { status: 502 }); const old = await metaDb(env).prepare("SELECT refresh_token_enc FROM gcal_accounts WHERE user_id=?1").bind(uid).first<{ refresh_token_enc: string }>(); const refreshEnc = t.refresh_token ? await encToken(env, t.refresh_token) : old?.refresh_token_enc; if (!refreshEnc) return back("no_refresh") ?? new Response("No refresh token granted. Disconnect AvaTOK in Google settings and retry.", { status: 400 });
+  await metaDb(env).prepare("INSERT INTO gcal_accounts(user_id,refresh_token_enc,access_token,access_expires_at,connected_at,last_error) VALUES(?1,?2,?3,?4,?5,NULL) ON CONFLICT(user_id) DO UPDATE SET refresh_token_enc=?2,access_token=?3,access_expires_at=?4,connected_at=?5,last_error=NULL").bind(uid, refreshEnc, t.access_token, Date.now() + Math.max(60, t.expires_in - 60) * 1000, Date.now()).run(); try { await refreshCalendarRows(env, uid, t.access_token); await importGcal(env, uid); } catch (error) { await markAccountError(env, uid, error); }
+  return back() ?? new Response("<html><body style='font-family:system-ui;text-align:center;padding-top:80px'><h2>Google Calendar connected ✅</h2><p>You can close this window and return to AvaTOK.</p></body></html>", { headers: { "content-type": "text/html" } });
+}
+export async function gcalStatus(req: Request, env: Env): Promise<Response> { const ctx = await requireUser(req, env); if (isFail(ctx)) return json({ error: ctx.error }, ctx.status); const account = await metaDb(env).prepare("SELECT connected_at,last_sync_at,last_error FROM gcal_accounts WHERE user_id=?1").bind(ctx.uid).first<any>(); const rows = account ? await metaDb(env).prepare("SELECT * FROM gcal_calendars WHERE user_id=?1 ORDER BY primary_calendar DESC,summary").bind(ctx.uid).all<GcalCalendarRow>() : { results: [] as GcalCalendarRow[] }; const calendars = ((rows.results ?? []) as GcalCalendarRow[]).map(calendarResponse); const lastSuccess = calendars.reduce<number | null>((latest, row) => Math.max(latest ?? 0, row.last_success_at ?? 0) || null, null); return json({ connected: !!account, connected_at: account?.connected_at ?? null, last_sync_at: lastSuccess ?? account?.last_sync_at ?? null, last_error: account?.last_error ?? calendars.find((row) => row.last_error)?.last_error ?? null, calendars, destination_calendar_id: calendars.find((row) => row.destination)?.id ?? null }); }
+export async function gcalCalendars(req: Request, env: Env): Promise<Response> { const ctx = await requireUser(req, env); if (isFail(ctx)) return json({ error: ctx.error }, ctx.status); const tok = await gcalAccessToken(env, ctx.uid); if (!tok) return json({ error: "Google Calendar access is unavailable. Reconnect to refresh permission." }, 409); try { const rows = await refreshCalendarRows(env, ctx.uid, tok); return json({ calendars: rows.map(calendarResponse), destination_calendar_id: rows.find((row) => row.destination)?.calendar_id ?? null }); } catch (error) { await markAccountError(env, ctx.uid, error); return json({ error: "Google calendar list is unavailable", reason: String(error) }, 502); } }
+export async function gcalSaveCalendars(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  let body: { read_calendar_ids?: unknown; destination_calendar_id?: unknown };
+  try { body = await req.json() as typeof body; } catch { return json({ error: "Invalid JSON" }, 400); }
+  const selected = Array.isArray(body.read_calendar_ids) ? body.read_calendar_ids.filter((v): v is string => typeof v === "string" && v.length > 0 && v.length < 512) : [];
+  const destination = typeof body.destination_calendar_id === "string" ? body.destination_calendar_id : "";
+  if (!selected.length || !destination || !selected.includes(destination)) return json({ error: "Choose at least one read calendar and one selected destination calendar" }, 400);
+  const tok = await gcalAccessToken(env, ctx.uid);
+  if (!tok) return json({ error: "Google Calendar access is unavailable. Reconnect to refresh permission." }, 409);
+  try {
+    const rows = await refreshCalendarRows(env, ctx.uid, tok);
+    const allowed = new Set(rows.map((row) => row.calendar_id));
+    const destinationRow = rows.find((row) => row.calendar_id === destination);
+    if (selected.some((id) => !allowed.has(id)) || !destinationRow) return json({ error: "One or more calendars are no longer accessible. Refresh and try again." }, 409);
+    if (destinationRow.access_role && destinationRow.access_role !== "writer" && destinationRow.access_role !== "owner") return json({ error: "Choose a Google calendar where AvaTOK has write access for booking exports." }, 409);
+    const now = Date.now();
+    const removed = rows.filter((row) => row.selected && !selected.includes(row.calendar_id)).map((row) => row.calendar_id);
+    const reEnabled = new Set(rows.filter((row) => !row.selected && selected.includes(row.calendar_id)).map((row) => row.calendar_id));
+    const statements = [
+      metaDb(env).prepare("UPDATE gcal_calendars SET selected=0,destination=0,updated_at=?2 WHERE user_id=?1").bind(ctx.uid, now),
+      ...selected.map((id) => metaDb(env).prepare("UPDATE gcal_calendars SET selected=1,sync_token=CASE WHEN ?4=1 THEN NULL ELSE sync_token END,last_success_at=CASE WHEN ?4=1 THEN NULL ELSE last_success_at END,last_full_sync_at=CASE WHEN ?4=1 THEN NULL ELSE last_full_sync_at END,last_error=CASE WHEN ?4=1 THEN NULL ELSE last_error END,updated_at=?3 WHERE user_id=?1 AND calendar_id=?2").bind(ctx.uid, id, now, reEnabled.has(id) ? 1 : 0)),
+      metaDb(env).prepare("UPDATE gcal_calendars SET destination=1,updated_at=?3 WHERE user_id=?1 AND calendar_id=?2").bind(ctx.uid, destination, now),
+      ...removed.map((calendarId) => metaDb(env).prepare("UPDATE calendar_blocks SET status='cancelled' WHERE user_id=?1 AND source_app='gcal' AND source_ref LIKE ?2").bind(ctx.uid, `gcal:${calendarId}:%`)),
+    ];
+    await metaDb(env).batch(statements);
+    await importGcal(env, ctx.uid);
+    const fresh = await metaDb(env).prepare("SELECT * FROM gcal_calendars WHERE user_id=?1 ORDER BY primary_calendar DESC,summary").bind(ctx.uid).all<GcalCalendarRow>();
+    return json({ calendars: ((fresh.results ?? []) as GcalCalendarRow[]).map(calendarResponse), destination_calendar_id: destination });
+  } catch (error) { await markAccountError(env, ctx.uid, error); return json({ error: "Calendar selection could not be saved", reason: String(error) }, 502); }
+}
+export async function gcalDisconnect(req: Request, env: Env): Promise<Response> { const ctx = await requireUser(req, env); if (isFail(ctx)) return json({ error: ctx.error }, ctx.status); const rows = await metaDb(env).prepare("SELECT channel_id,resource_id FROM gcal_calendars WHERE user_id=?1 AND channel_id IS NOT NULL").bind(ctx.uid).all<{ channel_id: string; resource_id: string | null }>(); const tok = await gcalAccessToken(env, ctx.uid); for (const row of (rows.results ?? [])) if (tok) await fetch(`${GCAL}/channels/stop`, { method: "POST", headers: googleHeaders(tok), body: JSON.stringify({ id: row.channel_id, resourceId: row.resource_id }) }).catch(() => {}); await metaDb(env).prepare("DELETE FROM gcal_calendars WHERE user_id=?1").bind(ctx.uid).run(); await metaDb(env).prepare("DELETE FROM gcal_export_events WHERE user_id=?1").bind(ctx.uid).run(); await metaDb(env).prepare("DELETE FROM gcal_accounts WHERE user_id=?1").bind(ctx.uid).run(); await metaDb(env).prepare("UPDATE calendar_blocks SET status='cancelled' WHERE user_id=?1 AND source_app='gcal'").bind(ctx.uid).run(); return json({ ok: true }); }
 
-  for (let page = 0; page < 10; page++) {
-    const u = new URL(`${GCAL}/calendars/primary/events`);
-    u.searchParams.set("singleEvents", "true");
-    u.searchParams.set("maxResults", "250");
-    if (pageToken) u.searchParams.set("pageToken", pageToken);
-    else if (syncToken) u.searchParams.set("syncToken", syncToken);
-    else {
-      u.searchParams.set("timeMin", new Date().toISOString());
-      u.searchParams.set("timeMax", new Date(Date.now() + 60 * 86_400_000).toISOString());
-    }
-    const r = await fetch(u, { headers: { Authorization: `Bearer ${tok}` } });
-    if (r.status === 410) { // expired sync token → restart full
-      await metaDb(env).prepare("UPDATE gcal_accounts SET sync_token=NULL WHERE user_id=?1").bind(uid).run();
-      syncToken = null; pageToken = undefined; continue;
-    }
-    if (!r.ok) break;
-    const data = (await r.json()) as any;
-    for (const ev of data.items ?? []) {
-      if (ev.extendedProperties?.private?.avatok === "1") continue;       // loop guard: ours
-      const refId = `gcal:${ev.id}`;
-      if (ev.status === "cancelled") {
-        await metaDb(env).prepare("UPDATE calendar_blocks SET status='cancelled' WHERE user_id=?1 AND source_app='gcal' AND source_ref=?2").bind(uid, refId).run();
-        continue;
-      }
-      if (ev.transparency === "transparent") continue;                    // free, not busy
-      const s = Date.parse(ev.start?.dateTime ?? (ev.start?.date ? ev.start.date + "T00:00:00Z" : ""));
-      const e = Date.parse(ev.end?.dateTime ?? (ev.end?.date ? ev.end.date + "T00:00:00Z" : ""));
-      if (!(s > 0 && e > s)) continue;
-      await metaDb(env).prepare(
-        `INSERT INTO calendar_blocks (id, user_id, source_app, source_ref, starts_at, ends_at, title, status, created_at)
-         VALUES (?1,?2,'gcal',?3,?4,?5,?6,'busy',?7)
-         ON CONFLICT(id) DO UPDATE SET starts_at=?4, ends_at=?5, title=?6, status='busy'`,
-      ).bind(`gcalblk:${uid}:${ev.id}`, uid, refId, s, e, ev.summary ?? "Google Calendar", Date.now()).run();
-      imported++;
-    }
-    pageToken = data.nextPageToken;
-    if (!pageToken) {
-      if (data.nextSyncToken) await metaDb(env).prepare("UPDATE gcal_accounts SET sync_token=?2, last_sync_at=?3 WHERE user_id=?1").bind(uid, data.nextSyncToken, Date.now()).run();
-      break;
-    }
+// Outbound booking/block projection. Mapping rows make retries and lifecycle
+// updates idempotent even when Google returns a transient failure.
+async function destinationCalendar(env: Env, uid: string, accessToken: string): Promise<string> { const row = await metaDb(env).prepare("SELECT calendar_id,access_role FROM gcal_calendars WHERE user_id=?1 AND destination=1 LIMIT 1").bind(uid).first<{ calendar_id: string; access_role: string | null }>(); if (row?.calendar_id && (!row.access_role || row.access_role === "writer" || row.access_role === "owner")) return row.calendar_id; try { const rows = await refreshCalendarRows(env, uid, accessToken); const writable = rows.find((item) => item.destination && (!item.access_role || item.access_role === "writer" || item.access_role === "owner")); return writable?.calendar_id || rows.find((item) => item.primary_calendar && (!item.access_role || item.access_role === "writer" || item.access_role === "owner"))?.calendar_id || "primary"; } catch { return "primary"; } }
+async function stableGoogleEventId(uid: string, blockId: string, calendarId: string): Promise<string> { const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${uid}\u0000${blockId}\u0000${calendarId}`))); return `a${[...digest].map((b) => b.toString(16).padStart(2, "0")).join("")}`; }
+type ExportSnapshot = { hash: string; title: string; starts: number; ends: number; status: string };
+async function exportSnapshot(blk: any, calendarId: string, action: "upsert" | "delete"): Promise<ExportSnapshot> { const title = String(blk.title ?? ""); const starts = Number(blk.starts_at); const ends = Number(blk.ends_at); const status = action === "delete" || blk.status === "cancelled" ? "cancelled" : String(blk.status || "busy"); const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${calendarId}\u0000${title}\u0000${starts}\u0000${ends}\u0000${status}`))); return { hash: [...digest].map((b) => b.toString(16).padStart(2, "0")).join(""), title, starts, ends, status }; }
+export async function gcalExport(env: Env, uid: string, blockId: string, action: "upsert" | "delete"): Promise<void> { const tok = await gcalAccessToken(env, uid); if (!tok) { const connected = await metaDb(env).prepare("SELECT 1 AS connected FROM gcal_accounts WHERE user_id=?1").bind(uid).first<{ connected: number }>(); if (connected?.connected) throw new Error("Google Calendar access is unavailable"); return; } const blk = await metaDb(env).prepare("SELECT id,user_id,source_ref,title,starts_at,ends_at,status,gcal_event_id,source_app FROM calendar_blocks WHERE id=?1").bind(blockId).first<any>(); if (!blk || blk.user_id !== uid || blk.source_app === "gcal") return; if (blk.source_app === "availability") { const reservation = await metaDb(env).prepare("SELECT kind,status FROM availability_reservations WHERE id=?1").bind(blk.source_ref).first<{ kind: string; status: string }>(); if (!reservation || reservation.kind !== "booking" || !["reserved", "confirmed", "cancelled", "expired"].includes(reservation.status)) return; } if (blk.source_app === "avaconsult") { const canonical = await metaDb(env).prepare("SELECT 1 AS present FROM calendar_blocks b JOIN availability_reservations ar ON ar.id=b.source_ref WHERE b.user_id=?1 AND b.id!=?2 AND b.source_app='availability' AND b.status='busy' AND ar.kind='booking' AND ar.status IN ('reserved','confirmed') AND b.starts_at=?3 AND b.ends_at=?4 LIMIT 1").bind(uid, blk.id, blk.starts_at, blk.ends_at).first<{ present: number }>(); if (canonical?.present) return; } const calendarId = await destinationCalendar(env, uid, tok); const existing = await metaDb(env).prepare("SELECT event_id FROM gcal_export_events WHERE user_id=?1 AND block_id=?2 AND calendar_id=?3").bind(uid, blk.id, calendarId).first<{ event_id: string }>(); const eventId = existing?.event_id || blk.gcal_event_id || null; const hdr = googleHeaders(tok);
+  const snapshot = await exportSnapshot(blk, calendarId, action); if (action === "delete" || blk.status === "cancelled") { if (eventId) { const response = await fetch(`${GCAL}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}?sendUpdates=none`, { method: "DELETE", headers: hdr }); if (!response.ok && response.status !== 404 && response.status !== 410) throw new Error(`Google event delete failed (${response.status})`); } await metaDb(env).prepare("UPDATE calendar_blocks SET gcal_event_id=NULL WHERE id=?1").bind(blk.id).run(); await metaDb(env).prepare("UPDATE gcal_export_events SET state='deleted',last_error=NULL,snapshot_hash=?4,snapshot_title=?5,snapshot_starts_at=?6,snapshot_ends_at=?7,snapshot_status=?8,next_retry_at=NULL,retry_count=0,updated_at=?9 WHERE user_id=?1 AND block_id=?2 AND calendar_id=?3").bind(uid, blk.id, calendarId, snapshot.hash, snapshot.title, snapshot.starts, snapshot.ends, snapshot.status, Date.now()).run(); return; }
+  const stableId = await stableGoogleEventId(uid, blk.id, calendarId); const body = JSON.stringify({ summary: blk.title || "AvaTOK booking", start: { dateTime: new Date(blk.starts_at).toISOString(), timeZone: "UTC" }, end: { dateTime: new Date(blk.ends_at).toISOString(), timeZone: "UTC" }, visibility: "private", reminders: { useDefault: true }, extendedProperties: { private: { avatok: "1", block_id: blk.id } } }); const insertBody = JSON.stringify({ id: stableId, summary: blk.title || "AvaTOK booking", start: { dateTime: new Date(blk.starts_at).toISOString(), timeZone: "UTC" }, end: { dateTime: new Date(blk.ends_at).toISOString(), timeZone: "UTC" }, visibility: "private", reminders: { useDefault: true }, extendedProperties: { private: { avatok: "1", block_id: blk.id } } }); let response: Response; if (eventId) { response = await fetch(`${GCAL}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}?sendUpdates=none`, { method: "PATCH", headers: hdr, body }); if (response.status === 404) { response = await fetch(`${GCAL}/calendars/${encodeURIComponent(calendarId)}/events?sendUpdates=none`, { method: "POST", headers: hdr, body: insertBody }); if (response.status === 409) response = await fetch(`${GCAL}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(stableId)}?sendUpdates=none`, { method: "PATCH", headers: hdr, body }); } } else { response = await fetch(`${GCAL}/calendars/${encodeURIComponent(calendarId)}/events?sendUpdates=none`, { method: "POST", headers: hdr, body: insertBody }); if (response.status === 409) response = await fetch(`${GCAL}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(stableId)}?sendUpdates=none`, { method: "PATCH", headers: hdr, body }); } if (!response.ok) throw new Error(`Google event export failed (${response.status})`); const event = await response.json() as { id?: string }; if (!event.id) throw new Error("Google event export returned no event id"); await metaDb(env).prepare("UPDATE calendar_blocks SET gcal_event_id=?2 WHERE id=?1").bind(blk.id, event.id).run(); await metaDb(env).prepare("INSERT INTO gcal_export_events(user_id,block_id,calendar_id,event_id,state,last_error,snapshot_hash,snapshot_title,snapshot_starts_at,snapshot_ends_at,snapshot_status,next_retry_at,retry_count,updated_at) VALUES(?1,?2,?3,?4,'active',NULL,?5,?6,?7,?8,?9,NULL,0,?10) ON CONFLICT(user_id,block_id,calendar_id) DO UPDATE SET event_id=?4,state='active',last_error=NULL,snapshot_hash=?5,snapshot_title=?6,snapshot_starts_at=?7,snapshot_ends_at=?8,snapshot_status=?9,next_retry_at=NULL,retry_count=0,updated_at=?10").bind(uid, blk.id, calendarId, event.id, snapshot.hash, snapshot.title, snapshot.starts, snapshot.ends, snapshot.status, Date.now()).run(); }
+
+function localDateEpoch(date: string, timezone: string): number | null { const [year, month, day] = date.split("-").map(Number); if (!year || !month || !day) return null; const wall = Date.UTC(year, month - 1, day); const formatter = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }); const asWall = (epoch: number) => { const parts: Record<string, number> = {}; for (const part of formatter.formatToParts(new Date(epoch))) if (part.type !== "literal") parts[part.type] = Number(part.value); return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second); }; let epoch = wall; for (let i = 0; i < 4; i++) epoch += wall - asWall(epoch); return asWall(epoch) === wall ? epoch : null; }
+function eventRange(event: any, timezone: string): { starts: number; ends: number } | null { if (event.extendedProperties?.private?.avatok === "1") return null; if (event.start?.dateTime && event.end?.dateTime) { const starts = Date.parse(event.start.dateTime), ends = Date.parse(event.end.dateTime); return starts > 0 && ends > starts ? { starts, ends } : null; } if (event.start?.date && event.end?.date) { const starts = localDateEpoch(event.start.date, timezone), ends = localDateEpoch(event.end.date, timezone); return starts !== null && ends !== null && ends > starts ? { starts, ends } : null; } return null; }
+async function ensureWatch(env: Env, uid: string, row: GcalCalendarRow, accessToken: string): Promise<void> { if (row.channel_id && (row.channel_expires_at ?? 0) > Date.now() + DAY) return; const channelId = crypto.randomUUID(); const channelToken = `${uid}.${row.calendar_id}.${await hmacHex(env, `${uid}.${row.calendar_id}.${channelId}`)}`.slice(0, 256); const response = await fetch(`${GCAL}/calendars/${encodeURIComponent(row.calendar_id)}/events/watch`, { method: "POST", headers: googleHeaders(accessToken), body: JSON.stringify({ id: channelId, type: "web_hook", address: WEBHOOK, token: channelToken, expiration: Date.now() + 6 * DAY }) }); if (!response.ok) throw new Error(`Google watch registration failed (${response.status})`); const data = await response.json() as { id?: string; resourceId?: string; expiration?: string | number }; if (!data.id || !data.resourceId) throw new Error("Google watch registration returned no channel id"); await metaDb(env).prepare("UPDATE gcal_calendars SET channel_id=?3,resource_id=?4,channel_token=?5,channel_expires_at=?6,updated_at=?7 WHERE user_id=?1 AND calendar_id=?2").bind(uid, row.calendar_id, data.id, data.resourceId, channelToken, Number(data.expiration) || Date.now() + 6 * DAY, Date.now()).run(); }
+
+async function importCalendar(env: Env, uid: string, row: GcalCalendarRow, accessToken: string): Promise<number> { let watchError: unknown = null; try { await ensureWatch(env, uid, row, accessToken); } catch (error) { watchError = error; } let pageToken: string | undefined; const periodicFull = !row.last_full_sync_at || Date.now() - row.last_full_sync_at > FULL_RECONCILE_MS; const syncRequestToken = periodicFull ? null : row.sync_token; const fullSync = !syncRequestToken; const initialTimeMin = new Date().toISOString(); const initialTimeMax = new Date(Date.now() + SYNC_HORIZON_DAYS * DAY).toISOString(); const seen = new Set<string>(); let imported = 0; let finalSyncToken: string | null = null;
+  for (let page = 0; page < 100; page++) { const u = new URL(`${GCAL}/calendars/${encodeURIComponent(row.calendar_id)}/events`); u.searchParams.set("singleEvents", "true"); u.searchParams.set("showDeleted", "true"); u.searchParams.set("maxResults", "250"); u.searchParams.set("timeZone", row.timezone || "UTC"); if (syncRequestToken) u.searchParams.set("syncToken", syncRequestToken); else { u.searchParams.set("timeMin", initialTimeMin); u.searchParams.set("timeMax", initialTimeMax); } if (pageToken) u.searchParams.set("pageToken", pageToken);
+    const response = await fetch(u, { headers: googleHeaders(accessToken) }); if (response.status === 410) { await metaDb(env).prepare("UPDATE gcal_calendars SET sync_token=NULL,channel_id=NULL,resource_id=NULL,channel_token=NULL,channel_expires_at=NULL,updated_at=?3 WHERE user_id=?1 AND calendar_id=?2").bind(uid, row.calendar_id, Date.now()).run(); return importCalendar(env, uid, { ...row, sync_token: null, channel_id: null }, accessToken); } if (!response.ok) throw new Error(`Google event sync failed (${response.status})`);
+    const data = await response.json() as { items?: any[]; nextPageToken?: string; nextSyncToken?: string }; for (const event of data.items ?? []) { const canonicalRef = `gcal:${row.calendar_id}:${event.id}`; const oldRef = row.primary_calendar ? `gcal:${event.id}` : null; if (event.id) seen.add(canonicalRef); if (event.status === "cancelled" || event.transparency === "transparent") { await metaDb(env).prepare("UPDATE calendar_blocks SET status='cancelled' WHERE user_id=?1 AND source_app='gcal' AND (source_ref=?2 OR source_ref=?3)").bind(uid, canonicalRef, oldRef).run(); continue; } const range = eventRange(event, row.timezone || "UTC"); if (!range) { await metaDb(env).prepare("UPDATE calendar_blocks SET status='cancelled' WHERE user_id=?1 AND source_app='gcal' AND (source_ref=?2 OR source_ref=?3)").bind(uid, canonicalRef, oldRef).run(); continue; } await metaDb(env).prepare("INSERT INTO calendar_blocks(id,user_id,source_app,source_ref,starts_at,ends_at,title,status,created_at) VALUES(?1,?2,'gcal',?3,?4,?5,'Google Calendar','busy',?6) ON CONFLICT(id) DO UPDATE SET starts_at=?4,ends_at=?5,title='Google Calendar',status='busy'").bind(`gcalblk:${uid}:${row.calendar_id}:${event.id}`, uid, canonicalRef, range.starts, range.ends, Date.now()).run(); if (oldRef) await metaDb(env).prepare("UPDATE calendar_blocks SET status='cancelled' WHERE user_id=?1 AND source_app='gcal' AND source_ref=?2 AND id!=?3").bind(uid, oldRef, `gcalblk:${uid}:${row.calendar_id}:${event.id}`).run(); imported++; }
+    pageToken = data.nextPageToken; if (!pageToken) { finalSyncToken = data.nextSyncToken ?? null; break; }
   }
-  return imported;
+  if (!finalSyncToken) throw new Error("Google event sync did not return a final sync token"); if (fullSync) { const existing = await metaDb(env).prepare("SELECT id,source_ref FROM calendar_blocks WHERE user_id=?1 AND source_app='gcal' AND status='busy' AND source_ref LIKE ?2").bind(uid, `gcal:${row.calendar_id}:%`).all<{ id: string; source_ref: string }>(); for (const block of (existing.results ?? [])) if (!seen.has(block.source_ref)) await metaDb(env).prepare("UPDATE calendar_blocks SET status='cancelled' WHERE id=?1").bind(block.id).run(); }
+  const syncedAt = Date.now(); await metaDb(env).prepare("UPDATE gcal_calendars SET sync_token=?3,last_sync_at=?4,last_success_at=?4,last_full_sync_at=CASE WHEN ?5=1 THEN ?4 ELSE last_full_sync_at END,last_error=?6,updated_at=?4 WHERE user_id=?1 AND calendar_id=?2").bind(uid, row.calendar_id, finalSyncToken, syncedAt, fullSync ? 1 : 0, watchError ? String(watchError).slice(0, 500) : null).run(); if (watchError) await markAccountError(env, uid, watchError); else await metaDb(env).prepare("UPDATE gcal_accounts SET last_sync_at=?2,last_error=NULL WHERE user_id=?1").bind(uid, syncedAt).run(); return imported;
 }
-
-/** POST /webhooks/gcal — push channel notification → import for that user. */
-export async function gcalWebhook(req: Request, env: Env): Promise<Response> {
-  const chan = req.headers.get("x-goog-channel-id");
-  if (!chan) return json({ ok: true });
-  const row = await metaDb(env).prepare("SELECT user_id FROM gcal_accounts WHERE channel_id=?1").bind(chan).first<{ user_id: string }>();
-  if (row) { try { await importGcal(env, row.user_id); } catch { /* cron fallback covers */ } }
-  return json({ ok: true });
+type GcalExportCandidate = { id: string; user_id: string; title: string | null; starts_at: number; ends_at: number; status: string; source_app: string; target_calendar_id: string; event_id: string | null; export_state: string | null; snapshot_hash: string | null; snapshot_title: string | null; snapshot_starts_at: number | null; snapshot_ends_at: number | null; snapshot_status: string | null; next_retry_at: number | null; retry_count: number | null };
+async function recordExportFailure(env: Env, row: GcalExportCandidate, error: unknown): Promise<void> { const now = Date.now(); const attempt = Math.min(8, Number(row.retry_count ?? 0) + 1); const delay = Math.min(6 * 60 * 60_000, 30_000 * 2 ** (attempt - 1)); const action = row.status === "cancelled" ? "delete" : "upsert"; const snapshot = await exportSnapshot(row, row.target_calendar_id, action); const eventId = row.event_id || await stableGoogleEventId(row.user_id, row.id, row.target_calendar_id); await metaDb(env).prepare("INSERT INTO gcal_export_events(user_id,block_id,calendar_id,event_id,state,last_error,snapshot_hash,snapshot_title,snapshot_starts_at,snapshot_ends_at,snapshot_status,next_retry_at,retry_count,updated_at) VALUES(?1,?2,?3,?4,'error',?5,?6,?7,?8,?9,?10,?11,?12,?13) ON CONFLICT(user_id,block_id,calendar_id) DO UPDATE SET event_id=?4,state='error',last_error=?5,next_retry_at=?11,retry_count=?12,updated_at=?13").bind(row.user_id, row.id, row.target_calendar_id, eventId, String(error).slice(0, 500), snapshot.hash, snapshot.title, snapshot.starts, snapshot.ends, snapshot.status, now + delay, attempt, now).run(); }
+/** Durable bounded outbound projection. The canonical calendar block is
+ * compared with the last exported snapshot before any Google call, while
+ * failed rows retain exponential retry state for the next scheduled sweep. */
+export async function gcalExportSweep(env: Env, limit = 50): Promise<number> {
+  const now = Date.now(); let rows: GcalExportCandidate[];
+  try {
+    const result = await metaDb(env).prepare(`SELECT b.id,b.user_id,b.title,b.starts_at,b.ends_at,b.status,b.source_app,
+        COALESCE(destination.calendar_id,'primary') AS target_calendar_id,
+        e.event_id,e.state AS export_state,e.snapshot_hash,e.snapshot_title,e.snapshot_starts_at,e.snapshot_ends_at,e.snapshot_status,e.next_retry_at,e.retry_count
+      FROM calendar_blocks b
+      JOIN gcal_accounts ga ON ga.user_id=b.user_id
+      LEFT JOIN availability_reservations ar ON b.source_app='availability' AND ar.id=b.source_ref
+      LEFT JOIN gcal_calendars destination ON destination.user_id=b.user_id AND destination.selected=1 AND destination.destination=1
+      LEFT JOIN gcal_export_events e ON e.user_id=b.user_id AND e.block_id=b.id AND e.calendar_id=COALESCE(destination.calendar_id,'primary')
+      WHERE ((b.source_app='availability' AND ar.kind='booking' AND ar.status IN ('reserved','confirmed','cancelled','expired')) OR b.source_app='avaconsult')
+        AND NOT (b.source_app='avaconsult' AND b.status='busy' AND EXISTS (
+          SELECT 1 FROM calendar_blocks canonical JOIN availability_reservations car ON car.id=canonical.source_ref
+          WHERE canonical.user_id=b.user_id AND canonical.source_app='availability' AND canonical.status='busy'
+            AND car.kind='booking' AND car.status IN ('reserved','confirmed')
+            AND canonical.starts_at=b.starts_at AND canonical.ends_at=b.ends_at
+        ))
+        AND ((b.status='busy' AND b.ends_at>?1) OR (b.status='cancelled' AND e.event_id IS NOT NULL))
+        AND (e.next_retry_at IS NULL OR e.next_retry_at<=?1)
+        AND (e.event_id IS NULL OR e.state='error' OR (e.state='deleted' AND b.status!='cancelled') OR e.snapshot_hash IS NULL OR COALESCE(e.snapshot_title,'')!=COALESCE(b.title,'')
+          OR e.snapshot_starts_at IS NULL OR e.snapshot_starts_at!=b.starts_at OR e.snapshot_ends_at IS NULL OR e.snapshot_ends_at!=b.ends_at
+          OR e.snapshot_status IS NULL OR e.snapshot_status!=CASE WHEN b.status='cancelled' THEN 'cancelled' ELSE b.status END
+          OR (e.next_retry_at IS NOT NULL AND e.next_retry_at<=?1))
+      ORDER BY COALESCE(e.next_retry_at,0),b.starts_at LIMIT ?2`).bind(now, Math.max(1, Math.min(50, Math.trunc(limit)))).all<GcalExportCandidate>();
+    rows = (result.results ?? []) as GcalExportCandidate[];
+  } catch { return 0; }
+  let processed = 0;
+  for (const row of rows) {
+    if (row.next_retry_at && row.next_retry_at > now) continue;
+    try { await gcalExport(env, row.user_id, row.id, row.status === "cancelled" ? "delete" : "upsert"); processed++; }
+    catch (error) { await recordExportFailure(env, row, error); processed++; }
+  }
+  return processed;
 }
+export async function importGcal(env: Env, uid: string): Promise<number> { const tok = await gcalAccessToken(env, uid); if (!tok) return 0; let rows = await metaDb(env).prepare("SELECT * FROM gcal_calendars WHERE user_id=?1 AND selected=1 ORDER BY primary_calendar DESC,calendar_id").bind(uid).all<GcalCalendarRow>().then((r) => (r.results ?? []) as GcalCalendarRow[]); if (!rows.length) { try { rows = (await refreshCalendarRows(env, uid, tok)).filter((row) => !!row.selected); } catch { rows = await ensurePrimaryFallback(env, uid); } } let imported = 0; for (const row of rows) { try { imported += await importCalendar(env, uid, row, tok); } catch (error) { await markCalendarState(env, uid, row.calendar_id, error); console.error("[gcal-sync]", uid, row.calendar_id, String(error)); } } if (rows.length) await metaDb(env).prepare("UPDATE gcal_accounts SET last_sync_at=?2 WHERE user_id=?1").bind(uid, Date.now()).run(); return imported; }
+/**
+ * True only when every selected Google source has a successful recent sync.
+ * A disconnected account, or an account with no selected read calendars, is
+ * intentionally ready because AvaTOK has no external busy source to protect.
+ */
+export async function gcalWebhook(req: Request, env: Env): Promise<Response> { const channelId = req.headers.get("x-goog-channel-id"), resourceId = req.headers.get("x-goog-resource-id"), channelToken = req.headers.get("x-goog-channel-token"); if (!channelId || !resourceId) return json({ ok: true }); const row = await metaDb(env).prepare("SELECT user_id,calendar_id,resource_id,channel_token FROM gcal_calendars WHERE channel_id=?1").bind(channelId).first<{ user_id: string; calendar_id: string; resource_id: string; channel_token: string }>(); if (!row || row.resource_id !== resourceId || !row.channel_token || row.channel_token !== channelToken) return json({ error: "invalid channel" }, 401); try { await importGcal(env, row.user_id); } catch (error) { await markCalendarState(env, row.user_id, row.calendar_id, error); } return json({ ok: true }); }

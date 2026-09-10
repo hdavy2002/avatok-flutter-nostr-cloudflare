@@ -206,14 +206,15 @@ export async function claimCheckoutAvailability(env: Env, args: {
     if (owned.status === "held" && owned.hold_expires_at !== null && Number(owned.hold_expires_at) <= now) return { ok: false, reason: "hold_expired" };
     if (!["held", "reserved", "confirmed"].includes(owned.status)) return { ok: false, reason: "hold_unavailable" };
     if (owned.status!=='held' && owned.source_ref!==args.sourceRef) return {ok:false,reason:'hold_already_used'};
+    if(owned.status==='held'){const valid=await validateListingSlot(env,args.listingId,args.startAt,args.endAt,{excludeReservationId:owned.reservation_id});if(!valid.ok)return {ok:false,reason:valid.reason??'slot_unavailable'};}
     return { ok: true, reservationId: owned.reservation_id, expiresAt: Number(owned.hold_expires_at ?? 0), replay: owned.status !== "held" };
   }
   const holdExpiresAt = now + AVAILABILITY_HOLD_MS;
   const prior = await metaDb(env).prepare(
-    "SELECT id,status,hold_expires_at,starts_at,ends_at FROM availability_reservations WHERE creator_id=(SELECT creator_id FROM listings WHERE id=?1) AND source_ref=?2 LIMIT 1",
-  ).bind(args.listingId, args.sourceRef).first<{ id: string; status: string; hold_expires_at: number | null; starts_at: number; ends_at: number }>();
+    "SELECT id,listing_id,status,hold_expires_at,starts_at,ends_at FROM availability_reservations WHERE creator_id=(SELECT creator_id FROM listings WHERE id=?1) AND source_ref=?2 LIMIT 1",
+  ).bind(args.listingId, args.sourceRef).first<{ id: string; listing_id:string; status: string; hold_expires_at: number | null; starts_at: number; ends_at: number }>();
   if (prior) {
-    if (Number(prior.starts_at) !== args.startAt || Number(prior.ends_at) !== args.endAt) return { ok: false, reason: "source_ref_reused" };
+    if (prior.listing_id !== args.listingId || Number(prior.starts_at) !== args.startAt || Number(prior.ends_at) !== args.endAt) return { ok: false, reason: "source_ref_reused" };
     if (prior.status === "held" && prior.hold_expires_at !== null && Number(prior.hold_expires_at) <= now) return { ok: false, reason: "hold_expired" };
     if (["held", "reserved", "confirmed"].includes(prior.status)) return { ok: true, reservationId: prior.id, expiresAt: Number(prior.hold_expires_at ?? 0), replay: true };
   }
@@ -248,7 +249,7 @@ async function convertAvailabilityHold(env: Env, args: {
   const now = Date.now();
   const r = await metaDb(env).prepare(
     `UPDATE availability_reservations
-        SET kind='booking',status='reserved',hold_expires_at=NULL,source_ref=?1,updated_at=?2
+        SET kind='booking',status='reserved',hold_expires_at=NULL,source_ref=?1,updated_at=?2,title=(SELECT title FROM listings WHERE id=?5)
       WHERE id=?3 AND creator_id=?4 AND listing_id=?5 AND starts_at=?6 AND ends_at=?7
         AND status='held' AND (hold_expires_at IS NULL OR hold_expires_at>?2)`,
   ).bind(args.sourceRef, now, args.reservationId, args.uid, args.listingId, args.startAt, args.endAt).run();

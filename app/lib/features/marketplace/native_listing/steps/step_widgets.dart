@@ -31,6 +31,8 @@ dynamic listingDraftValue(dynamic draft, String camel, String snake, [dynamic fa
           'ListingScheduleMode.alwaysOn' || 'always_on' => 'always_on',
           _ => 'fixed_date',
         };
+      case 'availabilityMode': return draft.availabilityMode ?? fallback;
+      case 'availabilityRules': return draft.availabilityRules ?? fallback;
       case 'title': return draft.title ?? fallback;
       case 'blurb': return draft.blurb ?? fallback;
       case 'description': return draft.description ?? fallback;

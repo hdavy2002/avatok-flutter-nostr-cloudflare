@@ -34,6 +34,7 @@ import { json } from "../util";
 import { requireUser, isFail, requireKyc } from "../authz";
 import { metaDb, metaSession, moderationDb } from "../db/shard";
 import { claimBlock, releaseBlocks, policyViolation } from "../cal/engine";
+import { publishFixedListing, releaseListingReservations } from "../cal/listing_reservations";
 import { hold, refund } from "../ledger";
 import { LANGS as TRL_LANGS, RATE_PER_MIN as TRL_RATE } from "./translate";
 import { track } from "../hooks";
@@ -2608,12 +2609,44 @@ export async function publishListingAuthoritative(
     // and capacity all moved to lib/listing_blockers.ts and ran above — see the
     // note there. What is left here is the one step with a SIDE EFFECT.
     if (l.kind === "live_event") {
-      // Conflict engine: claim the CREATOR's slot — occupied ⇒ 409 (greyed UX client-side).
-      // Stays out of listingBlockers() precisely because it WRITES: a preview
-      // that ran this would book the creator's diary on every keystroke.
+      // The fixed event window is a durable exclusive reservation. It is
+      // admitted together with the publication status write below, so a race
+      // cannot publish an event without reserving its creator time (or reserve
+      // time for an event that failed the authority-version guard).
       const start = Number(l.starts_at), dur = Number(l.duration_min);
-      const claim = await claimBlock(env, { userId: creatorUid, sourceApp: APP, sourceRef: id, start, end: start + dur * 60_000, title: String(l.title) });
-      if (!claim.ok) return { ok: false, status: 409, body: { error: "conflict", conflictWith: claim.conflict } };
+      let slotRows: Array<{ id: string; starts_at: number; ends_at: number; label: string | null }>;
+      try {
+        const slotResult = await db.prepare(
+          "SELECT id, starts_at, ends_at, label FROM listing_slots WHERE listing_id=?1 AND status != 'cancelled' ORDER BY starts_at ASC",
+        ).bind(id).all<{ id: string; starts_at: number; ends_at: number; label: string | null }>();
+        slotRows = slotResult.results ?? [];
+      } catch {
+        return { ok: false, status: 503, body: { error: "availability_unavailable", message: "Listing occurrences could not be checked." } };
+      }
+      const fixed = await publishFixedListing(env, {
+        listingId: id,
+        creatorId: creatorUid,
+        startAt: start,
+        endAt: start + dur * 60_000,
+        title: String(l.title),
+        expectedStatus: "approved",
+        expectedAuthorityVersion: Number(l.authority_version ?? 0),
+        reviewedContentHash: String(l.reviewed_content_hash ?? ""),
+        reserveBase: slotRows.length === 0,
+        occurrences: slotRows.map((slot) => ({
+          sourceRef: `listing-slot:${slot.id}`,
+          startAt: Number(slot.starts_at),
+          endAt: Number(slot.ends_at),
+          title: slot.label || l.title,
+        })),
+      });
+      if (!fixed.ok) {
+        return { ok: false, status: fixed.reason === "availability_unavailable" ? 503 : 409, body: {
+          error: fixed.reason === "availability_unavailable" ? "availability_unavailable" : "conflict",
+          conflictWith: fixed.reason === "conflict" ? { listing_id: id } : undefined,
+          message: fixed.reason === "listing_changed" ? "The listing changed during publication. Reload and try again." : undefined,
+        } };
+      }
       claimedCreatorSlot = true;
     }
   }
@@ -2695,12 +2728,77 @@ export async function publishListingAuthoritative(
       }
     }
   } else {
+    // Creator-service publication is committed by publishFixedListing above.
+    // Marketplace listings retain the entitlement-backed finalizer below;
+    // consult listings still use the ordinary status transition and reserve
+    // customer time at checkout through the unified availability engine.
+    if (l.kind === "live_event") {
+      let fo: { sent: number; capped: boolean };
+      try { fo = await ensurePublicationEffects(env, l); } catch {
+        return { ok: false, status: 503, body: { error: "publication_repair_pending", published: true, message: "The listing is published, but its search and notification updates are still being repaired." } };
+      }
+      track(env, creatorUid, "listing_published", APP, { kind: l.kind, price: l.price, fanout: fo.sent, ...actorProps });
+      return { ok: true, status: 200, body: { ok: true, status: "published", fanout: fo } };
+    }
+    // An exclusive fixed consult is a creator commitment at publication time,
+    // even when it has no named listing_slots. Run the same guarded batch after
+    // the entitlement gate so the status and reservation cannot diverge.
+    if (l.kind === "consult" && l.schedule_mode === "fixed_date") {
+      let exclusive = false;
+      try {
+        const schedule = await db.prepare(
+          "SELECT mode FROM availability_schedules WHERE creator_id=?1 AND listing_id=?2 LIMIT 1",
+        ).bind(creatorUid, id).first<{ mode: string }>();
+        exclusive = schedule?.mode === "exclusive";
+      } catch {
+        return { ok: false, status: 503, body: { error: "availability_unavailable", message: "Consult availability could not be checked." } };
+      }
+      if (exclusive) {
+        let slotRows: Array<{ id: string; starts_at: number; ends_at: number; label: string | null }>;
+        try {
+          const slotResult = await db.prepare(
+            "SELECT id, starts_at, ends_at, label FROM listing_slots WHERE listing_id=?1 AND status != 'cancelled' ORDER BY starts_at ASC",
+          ).bind(id).all<{ id: string; starts_at: number; ends_at: number; label: string | null }>();
+          slotRows = slotResult.results ?? [];
+        } catch {
+          return { ok: false, status: 503, body: { error: "availability_unavailable", message: "Consult occurrences could not be checked." } };
+        }
+        const fixed = await publishFixedListing(env, {
+          listingId: id,
+          creatorId: creatorUid,
+          startAt: Number(l.starts_at),
+          endAt: Number(l.starts_at) + Number(l.duration_min) * 60_000,
+          title: String(l.title),
+          expectedStatus: "approved",
+          expectedAuthorityVersion: Number(l.authority_version ?? 0),
+          reviewedContentHash: String(l.reviewed_content_hash ?? ""),
+          reserveBase: slotRows.length === 0,
+          occurrences: slotRows.map((slot) => ({
+            sourceRef: `listing-slot:${slot.id}`,
+            startAt: Number(slot.starts_at),
+            endAt: Number(slot.ends_at),
+            title: slot.label || l.title,
+          })),
+        });
+        if (!fixed.ok) return { ok: false, status: fixed.reason === "availability_unavailable" ? 503 : 409, body: {
+          error: fixed.reason === "availability_unavailable" ? "availability_unavailable" : "conflict",
+          conflictWith: fixed.reason === "conflict" ? { listing_id: id } : undefined,
+          message: fixed.reason === "listing_changed" ? "The listing changed during publication. Reload and try again." : undefined,
+        } };
+        let fo: { sent: number; capped: boolean };
+        try { fo = await ensurePublicationEffects(env, l); } catch {
+          return { ok: false, status: 503, body: { error: "publication_repair_pending", published: true, message: "The listing is published, but its search and notification updates are still being repaired." } };
+        }
+        track(env, creatorUid, "listing_published", APP, { kind: l.kind, price: l.price, fanout: fo.sent, ...actorProps });
+        return { ok: true, status: 200, body: { ok: true, status: "published", fanout: fo } };
+      }
+    }
     const published = await db.prepare(
       `UPDATE listings SET status='published', publication_version=publication_version+1, updated_at=?2
         WHERE id=?1 AND status='approved' AND authority_version=?3 AND reviewed_content_hash=?4`,
     ).bind(id, pubNow, Number(l.authority_version ?? 0), String(l.reviewed_content_hash)).run();
     if (!(published.meta?.changes ?? 0)) {
-      if (claimedCreatorSlot) await releaseBlocks(env, APP, id).catch(() => undefined);
+      if (claimedCreatorSlot) await releaseListingReservations(env, creatorUid, id).catch(() => undefined);
       return { ok: false, status: 409, body: {
         error: "publish_conflict", message: "The listing changed during publication. Reload and try again.",
       } };
@@ -2824,7 +2922,11 @@ export async function setListingStatus(req: Request, env: Env, id: string): Prom
     return json({ error: "conflict", message: "This listing's status changed before the request completed." }, 409);
   }
   void partyEmit(env, `listing:${id}`, { t: "listing_update", status: to }); // #8: live SOLD/status change
-  if (to === "cancelled" || to === "completed") { await releaseBlocks(env, APP, id); await ftsSync(env, id, true); }
+  if (to === "cancelled" || to === "completed") {
+    await releaseBlocks(env, APP, id);
+    await releaseListingReservations(env, String(l.creator_id), id).catch(() => {});
+    await ftsSync(env, id, true);
+  }
   // NOTE: `to === "live"` can no longer reach this line — checkTransition() above
   // refuses it unconditionally for actor "creator". The "is LIVE now" fanout that
   // used to fire here on the (now-closed) creator->live bypass moved to
@@ -2906,6 +3008,7 @@ export async function systemMarkListingCompleted(
   }
 
   await releaseBlocks(env, APP, listingId);
+  await releaseListingReservations(env, String(row.creator_id), listingId).catch(() => {});
   await ftsSync(env, listingId, true);
   await db.prepare(
     `INSERT INTO listing_fanout_events
@@ -3130,6 +3233,7 @@ export async function cancelListing(req: Request, env: Env, id: string): Promise
     // (the source of truth). AI Search de-index hooks here once that binding lands.
     await ftsSync(env, id, true).catch(() => {});
     await releaseBlocks(env, APP, id).catch(() => {});
+    await releaseListingReservations(env, ctx.uid, id).catch(() => {});
     try {
       const covers = parseJson(l.cover_media, [] as any[]);
       for (const c of Array.isArray(covers) ? covers : []) {
@@ -3166,6 +3270,9 @@ export async function cancelListing(req: Request, env: Env, id: string): Promise
   // just not a reason to tell the creator their archive did not happen.
   await releaseBlocks(env, APP, id).catch((e) => {
     console.error("listing_cancel_release_blocks_failed", { listing_id: id, error: String((e as any)?.message || e) });
+  });
+  await releaseListingReservations(env, ctx.uid, id).catch((e) => {
+    console.error("listing_cancel_release_reservations_failed", { listing_id: id, error: String((e as any)?.message || e) });
   });
   await ftsSync(env, id, true).catch((e) => {
     console.error("listing_cancel_fts_sync_failed", { listing_id: id, error: String((e as any)?.message || e) });

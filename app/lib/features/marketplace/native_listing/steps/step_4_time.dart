@@ -69,10 +69,12 @@ class _Step4TimeState extends State<Step4Time> {
     final schedule = '${listingDraftValue(widget.draft, 'scheduleMode', 'schedule_mode', 'fixed_date')}';
     final showTime = schedule == 'fixed_date' || schedule == 'recurring';
     final slots = (listingDraftValue(widget.draft, 'slots', 'slots', const []) as Iterable?)?.toList() ?? const [];
+    final availabilityMode = '${listingDraftValue(widget.draft, 'availabilityMode', 'availability_mode', 'shared')}';
     return NativeStepLayout(children: [
       _timezoneField(),
+      if (kind == 'consult') _availabilityMode(availabilityMode),
       if (schedule == 'fixed_date') ...[
-        _dateTimeField(context),
+        if (kind != 'consult' || availabilityMode == 'exclusive') _dateTimeField(context),
         nativeNumberField(
           label: 'Length (minutes)',
           value: '${listingDraftValue(widget.draft, 'durationMin', 'duration_min', 60)}',
@@ -120,6 +122,56 @@ class _Step4TimeState extends State<Step4Time> {
         error: widget.error('max_per_booking'),
       ),
     ]);
+  }
+
+  Widget _availabilityMode(String mode) {
+    const options = <String, String>{
+      'shared': 'Shared creator hours',
+      'custom': 'Custom hours for this listing',
+      'exclusive': 'Exclusive windows',
+    };
+    final rules = (listingDraftValue(widget.draft, 'availabilityRules', 'availability_rules', const []) as Iterable?)
+            ?.whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList() ?? <Map<String, dynamic>>[];
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const NativeStepLabel('Consult availability'),
+      const SizedBox(height: 8),
+      for (final entry in options.entries) Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: NativeStepCard(selected: mode == entry.key, child: InkWell(
+          onTap: () => widget.patch({'availability_mode': entry.key}),
+        child: Row(children: [Expanded(child: Text(entry.value, style: ADText.preview(c: AD.textPrimary))), if (mode == entry.key) Icon(PhosphorIconsRegular.check)]),
+        )),
+      ),
+      if (mode == 'custom') ...[
+        Text('Custom hours use ${listingDraftValue(widget.draft, 'timezone', 'timezone', 'UTC')}.', style: ADText.preview(c: AD.textSecondary)),
+        for (var i = 0; i < rules.length; i++) _availabilityRule(rules, i),
+        TextButton.icon(
+          onPressed: () => widget.patch({'availability_rules': [...rules, {'weekday': 1, 'start_min': 540, 'end_min': 1020}]}),
+          icon: Icon(PhosphorIconsRegular.plus), label: const Text('Add weekly window'),
+        ),
+      ],
+    ]);
+  }
+
+  Widget _availabilityRule(List<Map<String, dynamic>> rules, int index) {
+    final rule = rules[index];
+    final weekday = (rule['weekday'] as num?)?.toInt() ?? 1;
+    final start = (rule['start_min'] as num?)?.toInt() ?? 540;
+    final end = (rule['end_min'] as num?)?.toInt() ?? 1020;
+    String clock(int minutes) => '${((minutes ~/ 60) % 24).toString().padLeft(2, '0')}:${(minutes % 60).toString().padLeft(2, '0')}';
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        Expanded(child: nativeSelect<int>(label: 'Day', value: weekday.clamp(0, 6).toInt(), items: [for (var i = 0; i < _days.length; i++) DropdownMenuItem(value: i, child: Text(_days[i]))], onChanged: (v) { if (v == null) return; final next = [...rules]; next[index] = {...rule, 'weekday': v}; widget.patch({'availability_rules': next}); })),
+        const SizedBox(width: 8),
+        Expanded(child: _PickerField(label: 'Starts', value: clock(start), onTap: () async { final t = await showTimePicker(context: context, initialTime: TimeOfDay(hour: (start ~/ 60) % 24, minute: start % 60)); if (t == null) return; final next = [...rules]; next[index] = {...rule, 'start_min': t.hour * 60 + t.minute}; widget.patch({'availability_rules': next}); })),
+        const SizedBox(width: 8),
+        Expanded(child: _PickerField(label: 'Ends', value: clock(end), onTap: () async { final t = await showTimePicker(context: context, initialTime: TimeOfDay(hour: (end ~/ 60) % 24, minute: end % 60)); if (t == null) return; final next = [...rules]; next[index] = {...rule, 'end_min': t.hour * 60 + t.minute}; widget.patch({'availability_rules': next}); })),
+        IconButton(onPressed: () { final next = [...rules]..removeAt(index); widget.patch({'availability_rules': next}); }, icon: Icon(PhosphorIconsRegular.trash)),
+      ]),
+    );
   }
 
   Widget _timezoneField() {

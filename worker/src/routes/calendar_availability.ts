@@ -1,3 +1,4 @@
+import { gcalAvailabilityReady } from '../cal/gcal_availability';
 // [AVAILABILITY-1] Unified creator schedules and listing-aware availability.
 // Route wiring intentionally lives in index.ts so legacy calendar routes remain
 // independently deployable while clients migrate to this contract.
@@ -177,15 +178,18 @@ export async function listingAvailability(req: Request, env: Env, listingId: str
   const listing = await metaDb(env).prepare("SELECT id,creator_id,status,kind FROM listings WHERE id=?1").bind(listingId).first<{ id: string; creator_id: string; status: string; kind: string }>();
   if (!listing || !["published", "live"].includes(listing.status)) return json({ error: "listing not found" }, 404);
   if (listing.kind && !["consult", "consultation"].includes(listing.kind)) return json({ error: "availability not offered" }, 404);
+  if(!(await gcalAvailabilityReady(env,listing.creator_id)).ready)return json({error:'The creator calendar is refreshing. Please try again shortly.',code:'calendar_refresh_pending'},503);
   const u = new URL(req.url), from = u.searchParams.get("from") ?? "", to = u.searchParams.get("to") ?? "", timezone = u.searchParams.get("timezone") || "UTC";
   if (!validDate(from) || !validDate(to) || dateDiff(from, to) < 0 || dateDiff(from, to) >= MAX_RANGE_DAYS || !isZone(timezone)) return json({ error: "from/to/timezone invalid" }, 400);
   const viewerDates = dateRange(from, to), schedule = await loadUnifiedSchedule(env, listing.creator_id, listingId), shared = await loadUnifiedSchedule(env, listing.creator_id, null), now = Date.now();
   const viewerLo = zonedEpoch(from, 0, timezone), viewerHi = zonedEpoch(to, 1440, timezone);
   const rangeLo = viewerLo - 86_400_000, rangeHi = viewerHi + 86_400_000;
   const dates = dateRange(localParts(viewerLo, schedule.timezone).date, localParts(viewerHi - 1, schedule.timezone).date);
+  const hasFixed = await metaDb(env).prepare('SELECT id FROM listing_slots WHERE listing_id=?1 LIMIT 1').bind(listingId).first();
+  const fixedSlots = hasFixed ? ((await metaDb(env).prepare("SELECT id,starts_at,ends_at,status,capacity,booked_count FROM listing_slots WHERE listing_id=?1 AND starts_at>=?2 AND starts_at<?3 AND status IN ('open','full') ORDER BY starts_at LIMIT 1000").bind(listingId,rangeLo,rangeHi).all()).results??[]) as any[] : [];
   const liveBlocks = await loadFixedLiveCommitments(env,listing.creator_id,rangeLo,rangeHi,listingId);
   const blocks = ((await metaDb(env).prepare("SELECT source_app,source_ref,starts_at,ends_at FROM calendar_blocks WHERE user_id=?1 AND status='busy' AND starts_at<?3 AND ends_at>?2").bind(listing.creator_id, rangeLo, rangeHi).all()).results ?? []) as any[];
-  const reservations = ((await metaDb(env).prepare("SELECT id,listing_id,kind,status,starts_at,ends_at,hold_expires_at FROM availability_reservations WHERE creator_id=?1 AND starts_at<?3 AND ends_at>?2 AND status IN ('held','reserved','confirmed')").bind(listing.creator_id, rangeLo, rangeHi).all()).results ?? []) as any[];
+  const reservations = ((await metaDb(env).prepare("SELECT id,listing_id,kind,status,starts_at,ends_at,hold_expires_at,source_ref FROM availability_reservations WHERE creator_id=?1 AND starts_at<?3 AND ends_at>?2 AND status IN ('held','reserved','confirmed')").bind(listing.creator_id, rangeLo, rangeHi).all()).results ?? []) as any[];
   const bookings = ((await metaDb(env).prepare("SELECT id,starts_at,ends_at,status FROM bookings WHERE creator_id=?1 AND starts_at<?3 AND ends_at>?2 AND status IN ('confirmed','scheduled','pending')").bind(listing.creator_id, rangeLo, rangeHi).all()).results ?? []) as any[];
   const activeReservationIds = new Set(reservations.filter((x) => !(x.status === "held" && x.hold_expires_at && Number(x.hold_expires_at) <= now)).map((x) => String(x.id)));
   const ownExclusiveIds = new Set(reservations.filter((x) => x.kind === "exclusive" && x.listing_id === listingId).map((x) => String(x.id)));
@@ -194,21 +198,28 @@ export async function listingAvailability(req: Request, env: Env, listingId: str
   const slots: any[] = [], emitted = new Set<string>();
   for (const date of dates) {
     const ws = windowsForDate(shared, date, schedule.listing_id ? schedule : undefined), daySlots: any[] = [];
+    const candidates: {start:number;end:number;blocked?:boolean}[]=[];
+    if(hasFixed){for(const row of fixedSlots)if(localParts(Number(row.starts_at),schedule.timezone).date===date)candidates.push({start:Number(row.starts_at),end:Number(row.ends_at),blocked:row.status!=='open'||row.capacity!==1||row.booked_count>=row.capacity});}
+    else {
+      if(schedule.mode==='exclusive')for(const row of reservations)if(row.kind==='exclusive' && row.listing_id===listingId && String(row.source_ref??'').startsWith(`listing:${listingId}:fixed:`) && localParts(Number(row.starts_at),schedule.timezone).date===date)candidates.push({start:Number(row.starts_at),end:Number(row.ends_at)});
+      for(const w of ws)for(let m=w.start_min;m+schedule.duration_min<=w.end_min;m+=schedule.slot_interval_min){const start=zonedEpoch(date,m,schedule.timezone);if(localParts(start,schedule.timezone).minutes===m)candidates.push({start,end:start+schedule.duration_min*60000});}
+    }
     const dayStart = zonedEpoch(date, 0, schedule.timezone), dayEnd = zonedEpoch(date, 1440, schedule.timezone);
     const dayCommitments = new Set<string>();
-    for (const x of conflictingReservations) if (Number(x.starts_at) >= dayStart && Number(x.starts_at) < dayEnd && x.kind !== "exclusive") dayCommitments.add(`${x.starts_at}:${x.ends_at}`);
+    for (const x of conflictingReservations) if (Number(x.starts_at) >= dayStart && Number(x.starts_at) < dayEnd && ["booking","hold"].includes(x.kind)) dayCommitments.add(`${x.starts_at}:${x.ends_at}`);
     for (const x of bookings) if (Number(x.starts_at) >= dayStart && Number(x.starts_at) < dayEnd) dayCommitments.add(`${x.starts_at}:${x.ends_at}`);
     const dayFull = dayCommitments.size >= schedule.max_per_day;
-    for (const w of ws) for (let m = w.start_min; m + schedule.duration_min <= w.end_min; m += schedule.slot_interval_min) {
-      const startAt = zonedEpoch(date, m, schedule.timezone), endAt = startAt + schedule.duration_min * 60_000;
+    for (const candidate of candidates) {
+      const startAt=candidate.start,endAt=candidate.end;
       if (startAt < viewerLo || startAt >= viewerHi || startAt < now + schedule.min_notice_min * 60_000) continue;
       // DST gaps are never silently shifted into another wall-clock slot.
       const actual = localParts(startAt, schedule.timezone);
-      if (actual.date !== date || actual.minutes !== m) continue;
+      if (actual.date !== date) continue;
       const today = localParts(now, schedule.timezone).date;
       if (date < today || dateDiff(today, date) > schedule.horizon_days || endAt > dayEnd) continue;
       const id = `availability:${listingId}:${startAt}:${endAt}`; if (emitted.has(id)) continue; emitted.add(id);
-      const hit = dayFull || [...liveBlocks, ...effectiveBlocks, ...conflictingReservations, ...bookings].find((x) => Number(x.starts_at) < endAt + schedule.buffer_min * 60_000 && Number(x.ends_at) > startAt - schedule.buffer_min * 60_000 && !(x.kind === "exclusive" && x.listing_id === listingId));
+      const closed=[...shared.exceptions,...schedule.exceptions].some(x=>x.date===date&&x.status==='unavailable'&&x.start_min<actual.minutes+(endAt-startAt)/60000&&x.end_min>actual.minutes);
+      const hit = candidate.blocked || closed || dayFull || [...liveBlocks, ...effectiveBlocks, ...conflictingReservations, ...bookings].find((x) => Number(x.starts_at) < endAt + schedule.buffer_min * 60_000 && Number(x.ends_at) > startAt - schedule.buffer_min * 60_000 && !(x.kind === "exclusive" && x.listing_id === listingId));
       const item = { id, start_at: startAt, end_at: endAt, available: !hit, ...(hit ? { reason: dayFull ? "max_per_day" : "unavailable" } : {}) };
       daySlots.push(item); slots.push(item);
     }

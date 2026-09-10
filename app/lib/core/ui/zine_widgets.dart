@@ -232,6 +232,7 @@ class ZineButton extends StatelessWidget {
 class ZineCard extends StatelessWidget {
   final Widget child;
   final Color color;
+  final Color borderColor;
   final EdgeInsetsGeometry padding;
   final double radius;
   final List<BoxShadow> boxShadow;
@@ -240,6 +241,7 @@ class ZineCard extends StatelessWidget {
     super.key,
     required this.child,
     this.color = AD.card,
+    this.borderColor = AD.borderControl,
     this.padding = const EdgeInsets.all(Msg.s4),
     this.radius = Msg.rLg,
     this.boxShadow = Msg.none,
@@ -249,7 +251,7 @@ class ZineCard extends StatelessWidget {
   Widget build(BuildContext context) {
     if (onTap != null) {
       return ZinePressable(
-        onTap: onTap, color: color, padding: padding,
+        onTap: onTap, color: color, borderColor: borderColor, padding: padding,
         pressedColor: color == AD.card ? AD.cardHover : null,
         radius: BorderRadius.circular(radius), boxShadow: boxShadow,
         child: child,
@@ -260,7 +262,7 @@ class ZineCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: AD.borderControl, width: 2),
+        border: Border.all(color: borderColor, width: 2),
         boxShadow: boxShadow,
       ),
       child: child,

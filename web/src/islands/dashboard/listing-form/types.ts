@@ -14,6 +14,8 @@ import { MEDIA_MODE_DEFAULT } from '../../../lib/listingTaxonomy';
 
 export type Kind = 'live_event' | 'consult' | 'ai_agent';
 export type ScheduleMode = 'fixed_date' | 'recurring' | 'on_request' | 'always_on';
+export type AvailabilityMode = 'shared' | 'custom' | 'exclusive';
+export interface AvailabilityRule { weekday: number; start_min: number; end_min: number }
 
 export interface HowItWorksStep { label: string; body: string }
 export interface HouseRule { heading: string; body: string }
@@ -79,6 +81,12 @@ export interface ListingDraft {
   response_time_min: string;
   max_per_booking: number;
   capacity: number; // live events: total seats, 0 = unlimited
+  // Consult availability is a creator-calendar schedule, separate from the
+  // listing's presentation schedule_mode. Shared uses the creator's hours;
+  // custom narrows hours for this listing; exclusive reserves its windows.
+  availability_mode: AvailabilityMode;
+  availability_rules: AvailabilityRule[];
+  availability_version: number;
 
   // Step 5 — How it works
   content_how_it_works: HowItWorksStep[];
@@ -171,6 +179,9 @@ export function emptyDraft(initial?: Partial<ListingDraft>): ListingDraft {
     response_time_min: '',
     max_per_booking: 4,
     capacity: 0,
+    availability_mode: 'shared',
+    availability_rules: [],
+    availability_version: 0,
     content_how_it_works: [],
     content_house_rules_intro: '',
     content_house_rules: [],

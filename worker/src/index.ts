@@ -1,3 +1,4 @@
+import {gcalExportSweep} from "./cal/gcal";
 // AvaTok API Worker — route-based dispatch (one Worker, not one-per-app).
 //
 // Single HARDENED contract: every mutation requires a NIP-98 signature (+ Clerk
@@ -99,7 +100,7 @@ import { guestCreate, guestHandleCheck, guestUpgrade, getIdentityLevel } from ".
 import { createSlot, listSlots, cancelSlot, bookSlot, cancelBooking, listEvents, listBlocks, getRules, putRules, getTime } from "./routes/calendar";
 import { getAvailabilitySchedule, putAvailabilitySchedule, getListingAvailability, previewAvailabilityConflicts } from "./routes/calendar_availability";
 import { listBookings, getPolicies, putPolicies, proposeReschedule, respondReschedule, listReschedules, joinInfo } from "./routes/booking";
-import { gcalConnect, gcalCallback, gcalStatus, gcalDisconnect, gcalWebhook } from "./cal/gcal";
+import { gcalConnect, gcalCallback, gcalStatus, gcalDisconnect, gcalWebhook, gcalCalendars, gcalSaveCalendars } from "./cal/gcal";
 import { payoutSetup, payoutAccounts, payoutRequest, payoutStatus, wiseWebhook } from "./routes/payout";
 import { upiAccount, upiAccountGet, upiPayoutQuote, upiPayoutRequest, upiPayoutRequests, adminUpiPayouts, adminUpiAccountVerify, adminUpiApprove, adminUpiReject, adminUpiPaid, adminUpiReconcile } from "./routes/upi_payout";
 import { olxCreate, olxBrowse, olxGet, olxUpdate, olxDelete, olxUploadFile, olxBuy, olxRefund, olxDownloads, olxDownloadFile } from "./routes/olx";
@@ -404,6 +405,7 @@ export default {
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(
       Promise.all([
+        gcalExportSweep(env).catch(e=>console.error("[gcal-export]",String(e))),
         runAffiliateQualification(env)
           .then((r) => { if (r.scanned) console.log("[affiliate-qualify]", JSON.stringify(r)); })
           .catch((e) => { console.error("[affiliate-qualify] failed:", String(e)); }),
@@ -1320,6 +1322,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/calendar/rules" && req.method === "PUT") return await putRules(req, env);
       if (p === "/api/calendar/gcal/connect" && req.method === "GET") return await gcalConnect(req, env);
       if (p === "/api/calendar/gcal/callback" && req.method === "GET") return await gcalCallback(req, env);
+      if (p === "/api/calendar/gcal/calendars" && req.method === "GET") return await gcalCalendars(req, env);
+      if (p === "/api/calendar/gcal/calendars" && req.method === "PUT") return await gcalSaveCalendars(req, env);
       if (p === "/api/calendar/gcal/status" && req.method === "GET") return await gcalStatus(req, env);
       if (p === "/api/calendar/gcal" && req.method === "DELETE") return await gcalDisconnect(req, env);
       if (p === "/webhooks/gcal" && req.method === "POST") return await gcalWebhook(req, env);
