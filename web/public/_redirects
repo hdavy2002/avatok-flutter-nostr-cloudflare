@@ -1,8 +1,10 @@
-# [WEB-SEO-2 2026-09-10] www.avatok.ai is a CNAME to the same Pages project as the
-# apex, so until now it served a full duplicate of every page (Search Console:
-# "Alternative page with proper canonical tag" x6). A canonical tag is a hint;
-# a 301 is a rule. Cloudflare Pages evaluates this file before _worker.js.
-https://www.avatok.ai/* https://avatok.ai/:splat 301
+# [WEB-SEO-2 2026-09-10] www.avatok.ai -> avatok.ai is NOT here. It was tried as
+#   https://www.avatok.ai/* https://avatok.ai/:splat 301
+# and Cloudflare Pages ignored the host-form rule (www kept answering 200), while
+# the Astro adapter parsed it as a path and emitted a junk "/https:/www.avatok.ai/*"
+# entry in _routes.json. The redirect lives as a zone Redirect Rule in the
+# Cloudflare dashboard instead (Rules -> Redirect Rules, "[WEB-SEO-2] www.avatok.ai
+# -> avatok.ai (301)"), which is the layer that actually sees the hostname.
 
 # [WEB-SEO-2] Retired URLs Google still holds from the pre-pivot site (Search
 # Console "Crawled - currently not indexed", 10 URLs, last crawled Jun/Jul
