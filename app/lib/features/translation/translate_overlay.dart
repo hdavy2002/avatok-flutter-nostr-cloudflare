@@ -175,7 +175,7 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
         padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, 20 + MediaQuery.of(sCtx).viewPadding.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text('Top up Tokens',
-              style: ADText.threadName().copyWith(fontSize: 19)),
+              style: ADText.appTitle().copyWith(fontSize: 19)),
           const SizedBox(height: Msg.s1),
           const ZineSticker('\u20b9300 per hour · 5 tokens / min',
               kind: ZineStickerKind.hint),
@@ -346,7 +346,7 @@ class _LanguageSheetState extends State<_LanguageSheet> {
           const SizedBox(width: Msg.s3),
           Expanded(
               child: Text('Select language',
-                  style: ADText.threadName().copyWith(fontSize: 19))),
+                  style: ADText.appTitle().copyWith(fontSize: 19))),
         ]),
         const SizedBox(height: Msg.s1),
         Text('Incoming voice translated live · \u20b9300 per hour in Tokens',

@@ -164,7 +164,7 @@ class _StatusScreenState extends State<StatusScreen> {
       context: context,
       backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet)),
         side: BorderSide(color: AD.borderHairline, width: 1),
       ),
       builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -214,7 +214,7 @@ class _StatusScreenState extends State<StatusScreen> {
               future: MediaService.downloadAndDecrypt(ChatMedia.fromEnvelope(p.media!)),
               builder: (_, s) => s.hasData
                   ? ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(AD.rImage),
                       child: Image.memory(s.data!, fit: BoxFit.contain),
                     )
                   : const Padding(padding: EdgeInsets.all(Msg.s6),
@@ -306,7 +306,7 @@ class _StatusScreenState extends State<StatusScreen> {
         children: [
           // "My status" — white-ring avatar + orange add circle (dark v2 accent).
           AdCard(
-            radius: 16,
+            radius: AD.rListCard,
             padding: const EdgeInsets.all(Msg.s4),
             onTap: _addSheet,
             child: Row(children: [
@@ -367,7 +367,7 @@ class _StatusScreenState extends State<StatusScreen> {
             ),
           for (final p in _posts) ...[
             AdCard(
-              radius: 16,
+              radius: AD.rListCard,
               padding: const EdgeInsets.all(12),
               onTap: () => _view(p),
               child: Row(children: [

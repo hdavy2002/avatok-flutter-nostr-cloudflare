@@ -95,7 +95,7 @@ class _QuickInfoSheet extends StatelessWidget {
                         Text(
                           card.category.toUpperCase(),
                           style: ADText.preview(c: AD.textSecondary)
-                              .copyWith(fontWeight: FontWeight.w900, letterSpacing: 1.6),
+                              .copyWith(fontWeight: FontWeight.w700, letterSpacing: 1.6),
                         ),
                       const SizedBox(height: Msg.s2),
                       Text(
@@ -103,7 +103,7 @@ class _QuickInfoSheet extends StatelessWidget {
                         style: ADText.rowName().copyWith(
                           fontSize: 22,
                           height: 1.15,
-                          fontWeight: FontWeight.w900,
+                          fontWeight: FontWeight.w700,
                           letterSpacing: 0.6,
                         ),
                       ),
@@ -213,12 +213,12 @@ class _Fact extends StatelessWidget {
         Text(
           label.toUpperCase(),
           style: ADText.preview(c: AD.textSecondary)
-              .copyWith(fontWeight: FontWeight.w900, letterSpacing: 1.6),
+              .copyWith(fontWeight: FontWeight.w700, letterSpacing: 1.6),
         ),
         const SizedBox(height: 2),
         Text(
           value,
-          style: ADText.rowName().copyWith(fontWeight: FontWeight.w800, letterSpacing: 0.5),
+          style: ADText.rowName().copyWith(fontWeight: FontWeight.w700, letterSpacing: 0.5),
         ),
       ],
     );
@@ -238,7 +238,7 @@ class _Section extends StatelessWidget {
         Text(
           label.toUpperCase(),
           style: ADText.preview(c: AD.textSecondary)
-              .copyWith(fontWeight: FontWeight.w900, letterSpacing: 1.6),
+              .copyWith(fontWeight: FontWeight.w700, letterSpacing: 1.6),
         ),
         const SizedBox(height: Msg.s2),
         for (final item in items)

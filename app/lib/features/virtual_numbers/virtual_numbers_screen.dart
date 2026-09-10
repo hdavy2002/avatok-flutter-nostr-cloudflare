@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../avadial/avadial_theme.dart';
 import 'virtual_number_activity_screen.dart';
 import 'virtual_number_add_screen.dart';
@@ -156,7 +157,7 @@ class _VirtualNumbersScreenState extends State<VirtualNumbersScreen> {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: AvaDialTheme.unknown.withValues(alpha: .12),
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(Msg.rMd),
                 border: Border.all(color: AvaDialTheme.unknown),
               ),
               child: Row(children: [
@@ -202,7 +203,7 @@ class _VirtualNumbersScreenState extends State<VirtualNumbersScreen> {
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
           color: AvaDialTheme.surface,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(Msg.rMd),
           border: Border.all(color: AvaDialTheme.border)),
       child: Column(children: [
         Icon(PhosphorIcons.phoneCall(PhosphorIconsStyle.regular), size: 40),
@@ -222,10 +223,10 @@ class _VirtualNumbersScreenState extends State<VirtualNumbersScreen> {
         button: true,
         child: Material(
             color: virtualLineColor(line.colorKey),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(Msg.rMd),
             child: InkWell(
               onTap: () => _open(line),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(Msg.rMd),
               child: Padding(
                   padding: const EdgeInsets.all(14),
                   child: Row(children: [

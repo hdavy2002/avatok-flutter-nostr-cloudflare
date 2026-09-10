@@ -240,7 +240,7 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
               child: Center(child: PhosphorIcon(PhosphorIcons.eye(PhosphorIconsStyle.fill), size: 36, color: Colors.white)),
             ),
             const SizedBox(height: Msg.s4),
-            Text('Create your first AI vision agent', style: ADText.appTitle().copyWith(fontSize: 26, height: 1.08, letterSpacing: -0.52), textAlign: TextAlign.center),
+            Text('Create your first AI vision agent', style: ADText.appTitle().copyWith(fontSize: 26, height: 1.08, letterSpacing: 0.52), textAlign: TextAlign.center),
             const SizedBox(height: Msg.s2),
             Text(
               'Pick a use-case template, give it a personality, choose a voice and vision overlay, set your rate — and publish. You earn 50% of every minute people train with it.',

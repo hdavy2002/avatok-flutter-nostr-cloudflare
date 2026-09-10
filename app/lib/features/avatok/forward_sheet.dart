@@ -279,7 +279,7 @@ class _ForwardSheetState extends State<_ForwardSheet> {
     final on = _selected.containsKey(target._selKey);
     return InkWell(
       onTap: () => _toggle(target),
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AD.rListCard),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: Msg.s2),
         child: Row(children: [

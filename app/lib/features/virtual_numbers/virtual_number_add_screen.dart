@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/ui/messenger_theme.dart';
 import '../avadial/avadial_theme.dart';
 import 'virtual_numbers_api.dart';
 import 'virtual_numbers_widgets.dart';
@@ -123,7 +124,7 @@ class _VirtualNumberAddScreenState extends State<VirtualNumberAddScreen> {
         label: title,
         child: InkWell(
             onTap: () => setState(() => _choice = value),
-            borderRadius: BorderRadius.circular(15),
+            borderRadius: BorderRadius.circular(Msg.rMd),
             child: AnimatedContainer(
                 duration: const Duration(milliseconds: 160),
                 padding: const EdgeInsets.all(14),
@@ -135,7 +136,7 @@ class _VirtualNumberAddScreenState extends State<VirtualNumberAddScreen> {
                             ? AvaDialTheme.accent
                             : AvaDialTheme.border,
                         width: selected ? 2 : 1),
-                    borderRadius: BorderRadius.circular(15)),
+                    borderRadius: BorderRadius.circular(Msg.rMd)),
                 child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -220,7 +221,7 @@ class _VirtualNumberAddScreenState extends State<VirtualNumberAddScreen> {
             decoration: BoxDecoration(
                 color: AvaDialTheme.surface,
                 border: Border.all(color: AvaDialTheme.border),
-                borderRadius: BorderRadius.circular(14)),
+                borderRadius: BorderRadius.circular(Msg.rMd)),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Icon(PhosphorIcons.info(PhosphorIconsStyle.regular), color: AvaDialTheme.unknown),
               const SizedBox(width: 10),

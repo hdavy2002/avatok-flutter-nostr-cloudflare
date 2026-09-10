@@ -93,7 +93,7 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text('You earned', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
                           const SizedBox(height: Msg.s1),
-                          Text(fmtTokens(s.netTokens), style: ADText.appTitle(c: AD.online).copyWith(fontSize: 38, height: 1.0, letterSpacing: -0.76)),
+                          Text(fmtTokens(s.netTokens), style: ADText.appTitle(c: AD.online).copyWith(fontSize: 38, height: 1.0, letterSpacing: 0.76)),
                           const SizedBox(height: Msg.s1),
                           Text(a.isFreeForCallers
                               ? 'Sponsored agent — callers talk free; usage billed to your AvaWallet.'
@@ -170,7 +170,7 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             ZineIconBadge(icon: icon, color: accent, size: 34),
             const SizedBox(height: Msg.s2),
-            Text(value, style: ADText.appTitle().copyWith(fontSize: 26, height: 1.0, letterSpacing: -0.52)),
+            Text(value, style: ADText.appTitle().copyWith(fontSize: 26, height: 1.0, letterSpacing: 0.52)),
             const SizedBox(height: 2),
             Text(label, style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 10, letterSpacing: 0.8)),
           ]),

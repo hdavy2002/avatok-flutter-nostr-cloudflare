@@ -375,7 +375,7 @@ class _SectionHeading extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: GoogleFonts.nunito(
             fontSize: 12,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w700,
             letterSpacing: 1.7, // ~0.14em
             color: AD.terracotta,
           ),

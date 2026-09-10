@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 
 import 'avatok_dark.dart';
 import 'breakpoints.dart'; // [RESP-SMALL-1] chromeScale
+import 'messenger_theme.dart'; // Msg.brPill — pill token, see PillMorseStrip
 
 // [RAJ-SEAMS-1] The handoff file declared these four as raw hex consts. They
 // are re-pointed at the AD tokens (identical values) because
@@ -322,7 +323,7 @@ class PillMorseStrip extends StatelessWidget {
               height: 10,
               decoration: BoxDecoration(
                 color: colors[i % colors.length],
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: Msg.brPill,
                 border: Border.all(color: _ink, width: 2),
               ),
             ),

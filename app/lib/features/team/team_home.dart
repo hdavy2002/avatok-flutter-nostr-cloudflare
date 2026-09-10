@@ -147,7 +147,7 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
             Row(children: [
               ZineIconBadge(icon: PhosphorIcons.buildings(PhosphorIconsStyle.regular), color: AD.newGroup),
               const SizedBox(width: Msg.s3),
-              Expanded(child: Text(t.name, style: ADText.threadName().copyWith(fontSize: 19))),
+              Expanded(child: Text(t.name, style: ADText.appTitle().copyWith(fontSize: 19))),
               if (isOwner)
                 ZineBackButton(icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.regular), onTap: _editTeam),
             ]),
@@ -568,7 +568,7 @@ class _SheetShell extends StatelessWidget {
             // The sheet drag handle is one of the shapes a pill is reserved for.
             Center(child: Container(width: 42, height: 5, decoration: BoxDecoration(color: AD.borderControl, borderRadius: Msg.brPill))),
             const SizedBox(height: Msg.s4),
-            Text(title, style: ADText.threadName().copyWith(fontSize: 19)),
+            Text(title, style: ADText.appTitle().copyWith(fontSize: 19)),
             const SizedBox(height: Msg.s4),
             ...children,
           ]),

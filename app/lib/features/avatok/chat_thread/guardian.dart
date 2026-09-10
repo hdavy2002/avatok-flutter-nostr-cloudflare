@@ -410,8 +410,8 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
           border: Border.all(color: AD.bubbleInInk, width: 2),
           boxShadow: const [],
           borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(16), topRight: Radius.circular(16),
-              bottomLeft: Radius.circular(4), bottomRight: Radius.circular(16)),
+              topLeft: Radius.circular(Msg.rMd), topRight: Radius.circular(Msg.rMd),
+              bottomLeft: Radius.circular(4), bottomRight: Radius.circular(Msg.rMd)),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
           Row(mainAxisSize: MainAxisSize.min, children: [
@@ -520,8 +520,8 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
             border: Border.all(color: AD.borderControl, width: 2),
             boxShadow: const [],
             borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(16), topRight: Radius.circular(16),
-              bottomLeft: Radius.circular(4), bottomRight: Radius.circular(16)),
+              topLeft: Radius.circular(Msg.rMd), topRight: Radius.circular(Msg.rMd),
+              bottomLeft: Radius.circular(4), bottomRight: Radius.circular(Msg.rMd)),
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             Row(mainAxisSize: MainAxisSize.min, children: [
@@ -611,8 +611,8 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
             border: Border.all(color: AD.borderControl, width: 2),
             boxShadow: const [],
             borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(16), topRight: Radius.circular(16),
-              bottomLeft: Radius.circular(4), bottomRight: Radius.circular(16)),
+              topLeft: Radius.circular(Msg.rMd), topRight: Radius.circular(Msg.rMd),
+              bottomLeft: Radius.circular(4), bottomRight: Radius.circular(Msg.rMd)),
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             Row(mainAxisSize: MainAxisSize.min, children: [

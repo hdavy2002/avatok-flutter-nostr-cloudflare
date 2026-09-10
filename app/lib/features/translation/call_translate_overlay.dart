@@ -933,11 +933,11 @@ class _CallTranslationLanguagePickerState extends State<_CallTranslationLanguage
                 hintStyle: ADText.preview(),
                 contentPadding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(AD.rInput),
                   borderSide: BorderSide(color: AD.borderControl, width: 1),
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(AD.rInput),
                   borderSide: BorderSide(color: AD.primaryBadge, width: 1.5),
                 ),
               ),

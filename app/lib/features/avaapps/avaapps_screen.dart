@@ -582,7 +582,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
               width: 64, height: 64,
               decoration: BoxDecoration(
                 color: Colors.white, // white plate makes brand colors pop
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(AD.rImage),
                 border: Border.all(color: AD.borderControl, width: 1),
               ),
               clipBehavior: Clip.antiAlias,

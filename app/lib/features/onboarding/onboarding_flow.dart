@@ -892,7 +892,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                         decoration: BoxDecoration(
                           color: AD.haldi,
-                          borderRadius: BorderRadius.circular(6),
+                          borderRadius: BorderRadius.circular(AD.rChip),
                         ),
                         child: Text('permissions',
                             style: ADText.appTitle(c: AD.onBandInk)
@@ -980,7 +980,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                       width: 26, height: 26,
                       decoration: BoxDecoration(
                         color: _agreedTerms ? AD.primaryBadge : AD.card,
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(AD.rIconButton),
                         border: Border.all(color: _agreedTerms ? AD.primaryBadge : AD.borderControl, width: 1),
                       ),
                       child: _agreedTerms

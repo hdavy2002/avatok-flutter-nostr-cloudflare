@@ -193,7 +193,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
         color: AD.headerFooter,
         elevation: 0,
         shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(AD.rListCard),
             side: const BorderSide(color: AD.textPrimary, width: 2)),
         child: Padding(
             padding: const EdgeInsets.all(14),
@@ -206,7 +206,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                       children: [
                     const Text('SHARE THIS SHOW',
                         style: TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.w900)),
+                            color: Colors.white, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 4),
                     const Text('Copy the link or scan it on another phone.',
                         style: TextStyle(color: AD.card)),
@@ -235,7 +235,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
           color: l.status == 'live'
               ? AD.danger
               : AD.headerFooter,
-          borderRadius: BorderRadius.circular(12)),
+          borderRadius: BorderRadius.circular(AD.rListCard)),
       child: Row(children: [
         Container(width: 10, height: 10,
             decoration: BoxDecoration(shape: BoxShape.circle,
@@ -258,7 +258,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
         decoration: BoxDecoration(
             color: AD.headerFooter,
             border: Border.all(color: AD.textPrimary, width: 3),
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(AD.rHero),
             boxShadow: const [
               BoxShadow(color: AD.textPrimary, offset: Offset(5, 6))
             ]),
@@ -273,8 +273,9 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                 child: Text(l.title.toUpperCase(),
                     textAlign: TextAlign.center,
                     style: const TextStyle(
+                        fontFamily: ADText.display,
                         fontSize: 28,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: FontWeight.w700,
                         color: Colors.white))),
           DecoratedBox(
               decoration: BoxDecoration(
@@ -291,9 +292,10 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
               bottom: 14,
               child: Text(l.title,
                   style: const TextStyle(
+                      fontFamily: ADText.display,
                       color: Colors.white,
                       fontSize: 26,
-                      fontWeight: FontWeight.w900))),
+                      fontWeight: FontWeight.w700))),
           Positioned(
               top: 12,
               left: 12,
@@ -317,7 +319,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
             itemCount: urls.length,
             separatorBuilder: (_, __) => const SizedBox(width: 8),
             itemBuilder: (_, i) => ClipRRect(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(AD.rImage),
                 child: Image.network(urls[i], width: 110, fit: BoxFit.cover))));
   }
 
@@ -338,9 +340,10 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
           const SizedBox(height: 6),
           Text(l.title,
               style: const TextStyle(
+                  fontFamily: ADText.display,
                   fontSize: 34,
                   height: 1,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w700,
                   color: AD.textPrimary)),
           const SizedBox(height: 10),
           Wrap(
@@ -393,7 +396,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
 
   Widget _stat(String value, String label) => Column(children: [
         Text(value,
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+            style: const TextStyle(fontFamily: ADText.display, fontSize: 22, fontWeight: FontWeight.w700)),
         Text(label, style: ADText.sectionLabel(c: AD.textTertiary))
       ]);
   Widget _pill(String text, Color color, {bool dark = false}) => Container(
@@ -403,7 +406,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
       child: Text(text,
           style: TextStyle(
               fontSize: 11,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
               letterSpacing: .3,
               color: dark ? AD.textPrimary : Colors.white)));
 
@@ -411,7 +414,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
       color: AD.card,
       elevation: 0,
       shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(AD.rSheet),
           side: const BorderSide(color: AD.textPrimary, width: 2.5)),
       child: Padding(
           padding: const EdgeInsets.all(18),
@@ -424,7 +427,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                     ? 'FREE'
                     : '${l.priceLabel} / SEAT',
                 style:
-                    const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                    const TextStyle(fontFamily: ADText.display, fontSize: 20, fontWeight: FontWeight.w700)),
             const SizedBox(height: 14),
             Text(
                 l.status == 'live'
@@ -455,7 +458,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
       padding: const EdgeInsets.only(bottom: 24),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(title,
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+            style: const TextStyle(fontFamily: ADText.display, fontSize: 22, fontWeight: FontWeight.w700)),
         const SizedBox(height: 10),
         child
       ]));
@@ -482,7 +485,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
       decoration: BoxDecoration(
           color: AD.card,
           border: Border.all(color: AD.textPrimary, width: 1.5),
-          borderRadius: BorderRadius.circular(14)),
+          borderRadius: BorderRadius.circular(AD.rListCard)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(title, style: ADText.rowName()),
         if (body != null)
@@ -512,7 +515,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                     children: [
                   Text(name,
                       style: const TextStyle(
-                          fontWeight: FontWeight.w900, fontSize: 18)),
+                          fontWeight: FontWeight.w700, fontSize: 18)),
                   Text(
                       '${d.creatorRating?.toStringAsFixed(1) ?? '—'} host rating · ${d.followerCount} followers',
                       style: ADText.preview()),
@@ -520,7 +523,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                     const Text('✓ ID VERIFIED',
                         style: TextStyle(
                             color: AD.headerFooter,
-                            fontWeight: FontWeight.w800))
+                            fontWeight: FontWeight.w700))
                 ]))
           ]),
           if ((c?.bio ?? '').isNotEmpty)
@@ -633,8 +636,11 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                           Expanded(
                             child: l.coverUrl == null
                                 ? ColoredBox(color: AD.headerFooter)
-                                : Image.network(l.coverUrl!,
-                                    width: double.infinity, fit: BoxFit.cover),
+                                : ClipRRect(
+                                    borderRadius: BorderRadius.circular(AD.rImage),
+                                    child: Image.network(l.coverUrl!,
+                                        width: double.infinity, fit: BoxFit.cover),
+                                  ),
                           ),
                           const SizedBox(height: 7),
                           Text(l.title,
@@ -664,11 +670,11 @@ class _TrustTile extends StatelessWidget {
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
           color: AD.cardHover,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(AD.rListCard),
           border: Border.all(color: AD.textPrimary)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(title,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900)),
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
         const SizedBox(height: 4),
         Text(body, style: const TextStyle(fontSize: 11, height: 1.2))
       ]));
@@ -686,7 +692,9 @@ class NativeListingPreview extends StatelessWidget {
               width: 64,
               child: card.coverUrl == null
                   ? ColoredBox(color: AD.headerFooter)
-                  : Image.network(card.coverUrl!, fit: BoxFit.cover)),
+                  : ClipRRect(
+                      borderRadius: BorderRadius.circular(AD.rImage),
+                      child: Image.network(card.coverUrl!, fit: BoxFit.cover))),
           title: Text(card.title),
           subtitle: Text(card.displayPrice)));
 }

@@ -640,7 +640,7 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
       Padding(
         padding: const EdgeInsets.only(bottom: Msg.s3),
         child: AdCard(
-          radius: 14,
+          radius: AD.rListCard,
           padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s3, Msg.s3),
           onTap: onTap,
           child: Row(children: [
@@ -1222,7 +1222,7 @@ class _ThumbTileState extends State<_ThumbTile> {
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             color: AD.card,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(AD.rListCard),
             border: Border.all(color: AD.borderControl, width: 1),
           ),
           child: VoiceNoteTile(
@@ -1241,7 +1241,7 @@ class _ThumbTileState extends State<_ThumbTile> {
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: AD.card,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AD.rListCard),
           border: Border.all(color: AD.borderControl, width: 1),
         ),
         child: Stack(fit: StackFit.expand, children: [

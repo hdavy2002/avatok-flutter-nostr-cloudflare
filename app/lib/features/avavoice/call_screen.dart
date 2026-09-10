@@ -192,7 +192,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
               ),
             ),
             const SizedBox(height: Msg.s5),
-            Text(a.name, textAlign: TextAlign.center, style: ADText.appTitle().copyWith(fontSize: 28, height: 1.08, letterSpacing: -0.56)),
+            Text(a.name, textAlign: TextAlign.center, style: ADText.appTitle().copyWith(fontSize: 28, height: 1.08, letterSpacing: 0.56)),
             const SizedBox(height: Msg.s1),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 32),

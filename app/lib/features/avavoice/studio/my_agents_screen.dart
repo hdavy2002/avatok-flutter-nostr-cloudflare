@@ -218,7 +218,7 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
             ),
             const SizedBox(height: Msg.s4),
             Text('Create your first AI voice agent',
-                style: ADText.appTitle().copyWith(fontSize: 26, height: 1.08, letterSpacing: -0.52), textAlign: TextAlign.center),
+                style: ADText.appTitle().copyWith(fontSize: 26, height: 1.08, letterSpacing: 0.52), textAlign: TextAlign.center),
             const SizedBox(height: Msg.s2),
             Text(
               'Give it a name, a personality and knowledge files, pick a voice, set your hourly rate — and publish. You earn 50% of every minute people talk to it.',

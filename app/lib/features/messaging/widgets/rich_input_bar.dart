@@ -368,7 +368,7 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
             child: DecoratedBox(
               decoration: BoxDecoration(
                 color: backgroundColor ?? Colors.transparent,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(AD.rIconButton),
               ),
               child: Center(child: Icon(icon, color: color, size: 21)),
             ),

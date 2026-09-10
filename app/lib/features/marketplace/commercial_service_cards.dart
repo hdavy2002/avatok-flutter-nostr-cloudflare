@@ -195,7 +195,7 @@ class _CommercialServiceCard extends StatelessWidget {
                                   height: 1.05,
                                   // Never negative on display type — CLAUDE.md.
                                   letterSpacing: 1.2,
-                                  fontWeight: FontWeight.w900,
+                                  fontWeight: FontWeight.w700,
                                   // Hard poster-print drop shadow. Token, not
                                   // a literal — design guard, and it must track
                                   // the ink colour if that ever changes.
@@ -211,7 +211,7 @@ class _CommercialServiceCard extends StatelessWidget {
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                   style: ADText.preview(c: AD.onBandCream).copyWith(
-                                    fontWeight: FontWeight.w800,
+                                    fontWeight: FontWeight.w700,
                                     letterSpacing: 0.6,
                                     shadows: const [
                                       Shadow(offset: Offset(1, 1), color: AD.textPrimary),
@@ -235,7 +235,7 @@ class _CommercialServiceCard extends StatelessWidget {
                         ),
                         child: Text(badge,
                             style: ADText.preview(c: AD.onBand(badgeColor))
-                                .copyWith(fontWeight: FontWeight.w800)),
+                                .copyWith(fontWeight: FontWeight.w700)),
                       ),
                     ),
                     Positioned(

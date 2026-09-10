@@ -204,11 +204,11 @@ class _ListingStep7PhotosPolicyState extends State<ListingStep7PhotosPolicy> {
       decoration: BoxDecoration(
           color: AD.inputField,
           border: Border.all(color: Colors.black),
-          borderRadius: BorderRadius.circular(10)),
+          borderRadius: BorderRadius.circular(AD.rImage)),
       child: url.isEmpty
           ? Center(child: Text(empty, textAlign: TextAlign.center))
           : ClipRRect(
-              borderRadius: BorderRadius.circular(9),
+              borderRadius: BorderRadius.circular(AD.rImage),
               child: Image.network(url,
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) =>

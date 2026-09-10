@@ -218,7 +218,7 @@ class ListingStep8Preview extends StatelessWidget {
       AspectRatio(
           aspectRatio: 2 / 3,
           child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(AD.rHero),
               child: url.isNotEmpty
                   ? Image.network(url,
                       fit: BoxFit.cover,

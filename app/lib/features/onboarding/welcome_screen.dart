@@ -48,10 +48,10 @@ class WelcomeScreen extends StatelessWidget {
                 child: Text.rich(
                   TextSpan(
                     style: const TextStyle(
-                        fontFamily: ADText.family,
+                        fontFamily: ADText.display,
                         fontWeight: FontWeight.w700,
                         fontSize: 22,
-                        letterSpacing: -0.4,
+                        letterSpacing: 0.44,
                         color: AD.textPrimary),
                     children: [
                       const TextSpan(text: 'Ava'),

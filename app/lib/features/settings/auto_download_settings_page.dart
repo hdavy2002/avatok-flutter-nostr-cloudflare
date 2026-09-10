@@ -125,7 +125,7 @@ class _AutoDownloadSettingsPageState extends State<AutoDownloadSettingsPage> {
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: AD.card,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AD.rListCard),
                     border: Border.all(color: AD.borderControl, width: 1),
                   ),
                   child: Row(children: [

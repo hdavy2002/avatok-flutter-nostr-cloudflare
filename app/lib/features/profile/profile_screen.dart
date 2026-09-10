@@ -434,7 +434,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             borderRadius: BorderRadius.circular(AD.rDialog),
             side: const BorderSide(color: AD.borderControl, width: 1),
           ),
-          title: Text('Change email', style: ADText.threadName().copyWith(fontSize: 19)),
+          title: Text('Change email', style: ADText.appTitle().copyWith(fontSize: 19)),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
             AdField(
               controller: emailCtrl,
@@ -513,7 +513,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             borderRadius: BorderRadius.circular(AD.rDialog),
             side: const BorderSide(color: AD.borderControl, width: 1),
           ),
-          title: Text(sent ? 'Set password' : 'Set or change password', style: ADText.threadName().copyWith(fontSize: 19)),
+          title: Text(sent ? 'Set password' : 'Set or change password', style: ADText.appTitle().copyWith(fontSize: 19)),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
             if (!sent)
               Text('We\'ll email a 6-digit code to confirm it\'s you.', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),
@@ -835,7 +835,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Center(child: Container(
                 padding: const EdgeInsets.all(8),
                 // QR stays dark-on-white so it remains scannable.
-                decoration: BoxDecoration(color: AD.inputField, borderRadius: BorderRadius.circular(14), border: Border.all(color: AD.borderControl, width: 1)),
+                decoration: BoxDecoration(color: AD.inputField, borderRadius: BorderRadius.circular(AD.rImage), border: Border.all(color: AD.borderControl, width: 1)),
                 child: QrImageView(data: _shareLink, size: 150, backgroundColor: AD.inputField),
               ))
             else

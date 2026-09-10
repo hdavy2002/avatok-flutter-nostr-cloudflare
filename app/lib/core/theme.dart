@@ -88,10 +88,33 @@ class AvaTheme {
   /// The widgets that used to be left to Material's defaults are now themed
   /// explicitly below, so a future brightness edit can't silently take them
   /// with it.
+  /// [UI-COMFORTAA-1] Routes a text style onto the Comfortaa display face
+  /// while enforcing the two font-file rules: weight is capped at w700 (the
+  /// heaviest cut Comfortaa ships -- anything higher is synthesised and the
+  /// glyphs smear), and negative letterSpacing is flipped to a small positive
+  /// value (~2% of the font size) so the rounded terminals don't touch.
+  static TextStyle _displayFace(TextStyle s) {
+    final size = s.fontSize ?? 14.0;
+    var weight = s.fontWeight;
+    if (weight != null && weight.value > 700) weight = FontWeight.w700;
+    var spacing = s.letterSpacing;
+    if (spacing != null && spacing < 0) spacing = 0.02 * size;
+    return s.copyWith(
+      fontFamily: ADText.display,
+      fontWeight: weight,
+      letterSpacing: spacing,
+    );
+  }
+
   static ThemeData get light {
     final base = ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
+      // [UI-COMFORTAA-1] Systemic default so any TextStyle that doesn't set
+      // its own fontFamily (Material's built-in typescale, third-party
+      // widgets) falls back to the body face rather than the platform
+      // native one. Display styles override this explicitly below.
+      fontFamily: ADText.family,
       colorScheme: const ColorScheme.light(
         primary: AD.primaryBadge,
         // [RAJ-PHASE4-1] CREAM, not ink. This was `AD.textOnInput` (ink
@@ -123,9 +146,9 @@ class AvaTheme {
       ),
       scaffoldBackgroundColor: AD.bg,
       canvasColor: AD.bg,
-      // Leave the family unset so Flutter uses the platform's native UI face:
-      // Roboto on Android, SF on Apple platforms. See ADText — a bundled
-      // display family is Phase 5 and is NOT decided here.
+      // [UI-COMFORTAA-1] fontFamily is set above (ADText.family). The
+      // bundled two-family system (InstrumentSans / Comfortaa) is the
+      // Phase 5 swap this comment used to say was not yet decided.
       //
       // Android uses a brief, non-scaling fade; iOS/macOS retain Cupertino so
       // the interactive edge-swipe back still works.
@@ -142,23 +165,30 @@ class AvaTheme {
       ),
     );
 
-    final textTheme = base.textTheme
-        .apply(
-          bodyColor: AD.textPrimary,
-          displayColor: AD.textPrimary,
-        )
-        .copyWith(
-          displayLarge: ADText.appTitle().copyWith(fontSize: 34),
-          displayMedium: ADText.appTitle().copyWith(fontSize: 28),
-          headlineMedium: ADText.appTitle().copyWith(fontSize: 22),
-          headlineSmall: ADText.appTitle(),
-          titleLarge: ADText.threadName().copyWith(fontSize: 18),
-          titleMedium: ADText.rowName(),
-          bodyLarge: ADText.bubbleBody().copyWith(fontSize: 16),
-          bodyMedium: ADText.bubbleBody(),
-          labelLarge: ADText.rowName().copyWith(fontSize: 15),
-          labelSmall: ADText.sectionLabel(),
-        );
+    final rawTextTheme = base.textTheme.apply(
+      bodyColor: AD.textPrimary,
+      displayColor: AD.textPrimary,
+    );
+
+    final textTheme = rawTextTheme.copyWith(
+      // [UI-COMFORTAA-1] display/headline/titleLarge route to the Comfortaa
+      // face via `_displayFace`, which also enforces the two font-file rules:
+      // no weight above w700, and no negative tracking (Comfortaa's rounded
+      // terminals touch under negative tracking). Everything else keeps the
+      // InstrumentSans body face set globally above.
+      displayLarge: _displayFace(ADText.appTitle().copyWith(fontSize: 34)),
+      displayMedium: _displayFace(ADText.appTitle().copyWith(fontSize: 28)),
+      displaySmall: _displayFace(rawTextTheme.displaySmall ?? const TextStyle()),
+      headlineLarge: _displayFace(rawTextTheme.headlineLarge ?? const TextStyle()),
+      headlineMedium: _displayFace(ADText.appTitle().copyWith(fontSize: 22)),
+      headlineSmall: _displayFace(ADText.appTitle()),
+      titleLarge: _displayFace(ADText.threadName().copyWith(fontSize: 18)),
+      titleMedium: ADText.rowName(),
+      bodyLarge: ADText.bubbleBody().copyWith(fontSize: 16),
+      bodyMedium: ADText.bubbleBody(),
+      labelLarge: ADText.rowName().copyWith(fontSize: 15),
+      labelSmall: ADText.sectionLabel(),
+    );
 
     return base.copyWith(
       textTheme: textTheme,
@@ -210,6 +240,12 @@ class AvaTheme {
             bottom: BorderSide(color: AD.borderDivider, width: 1)),
       ),
 
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(Msg.rMd)),
+        ),
+      ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: AD.primaryBadge,
@@ -243,6 +279,14 @@ class AvaTheme {
         style: TextButton.styleFrom(
           foregroundColor: AD.primaryBadge,
           textStyle: ADText.preview().copyWith(color: AD.primaryBadge),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(Msg.rMd)),
+        ),
+      ),
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: ButtonStyle(
+          shape: WidgetStatePropertyAll(RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(Msg.rMd))),
         ),
       ),
 
@@ -296,7 +340,8 @@ class AvaTheme {
         labelStyle: ADText.statCaption(c: AD.textSecondary),
         secondaryLabelStyle: ADText.statCaption(c: AD.onBandCream),
         side: const BorderSide(color: AD.borderControl, width: AD.wBorder),
-        shape: const StadiumBorder(),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Msg.rSm)),
         showCheckmark: false,
       ),
 
@@ -393,7 +438,15 @@ class AvaTheme {
         surfaceTintColor: Colors.transparent,
         textStyle: ADText.bubbleBody(),
         shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(Msg.rMd)),
+            borderRadius: BorderRadius.circular(Msg.rLg)),
+      ),
+      menuTheme: MenuThemeData(
+        style: MenuStyle(
+          backgroundColor: const WidgetStatePropertyAll(AD.menu),
+          surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+          shape: WidgetStatePropertyAll(RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(Msg.rLg))),
+        ),
       ),
       listTileTheme: const ListTileThemeData(
         textColor: AD.textPrimary,

@@ -249,10 +249,10 @@ class _FilterSheetState extends State<_FilterSheet> {
 
   @override
   Widget build(BuildContext context) => Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: AD.overlaySheet,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
+          borderRadius: Msg.brSheetTop,
+          border: const Border(top: BorderSide(color: AD.borderHairline, width: 1)),
         ),
         padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, 20 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [

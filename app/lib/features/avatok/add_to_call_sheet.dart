@@ -282,7 +282,7 @@ class _AddToCallSheetState extends State<_AddToCallSheet> {
       opacity: selectable ? 1 : 0.45,
       child: InkWell(
         onTap: () => _toggle(c),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AD.rListCard),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: Msg.s2),
           child: Row(children: [

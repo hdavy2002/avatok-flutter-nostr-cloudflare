@@ -141,8 +141,8 @@ class _CompanionHomeState extends State<CompanionHome> {
       context: context,
       backgroundColor: AD.overlaySheet,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      shape: RoundedRectangleBorder(
+          borderRadius: Msg.brSheetTop),
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const SizedBox(height: 12),
@@ -251,9 +251,9 @@ class _CompanionHomeState extends State<CompanionHome> {
       context: context,
       backgroundColor: AD.overlaySheet,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          side: BorderSide(color: AD.borderHairline, width: 1),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      shape: RoundedRectangleBorder(
+          side: const BorderSide(color: AD.borderHairline, width: 1),
+          borderRadius: Msg.brSheetTop),
       builder: (ctx) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s5),
@@ -300,9 +300,9 @@ class _CompanionHomeState extends State<CompanionHome> {
       context: context,
       backgroundColor: AD.overlaySheet,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          side: BorderSide(color: AD.borderHairline, width: 1),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      shape: RoundedRectangleBorder(
+          side: const BorderSide(color: AD.borderHairline, width: 1),
+          borderRadius: Msg.brSheetTop),
       builder: (ctx) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(Msg.s5),
@@ -353,9 +353,9 @@ class _CompanionHomeState extends State<CompanionHome> {
     final action = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: AD.overlaySheet,
-      shape: const RoundedRectangleBorder(
-          side: BorderSide(color: AD.borderHairline, width: 1),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      shape: RoundedRectangleBorder(
+          side: const BorderSide(color: AD.borderHairline, width: 1),
+          borderRadius: Msg.brSheetTop),
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const SizedBox(height: 8),

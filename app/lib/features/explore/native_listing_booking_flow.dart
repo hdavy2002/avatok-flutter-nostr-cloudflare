@@ -359,7 +359,7 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
   Widget _header() =>
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(widget.listing.title,
-            style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w900)),
+            style: const TextStyle(fontFamily: ADText.display, fontSize: 25, fontWeight: FontWeight.w700)),
         const SizedBox(height: 6),
         Text(widget.listing.oneLiner,
             style: const TextStyle(color: AD.textSecondary)),
@@ -398,7 +398,7 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
   Widget _choose() =>
       _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(_isConsult ? 'Choose a date and time' : 'Your ticket',
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+            style: const TextStyle(fontFamily: ADText.display, fontSize: 20, fontWeight: FontWeight.w700)),
         if (_isConsult) ...[
           const SizedBox(height: 14),
           Text('Times shown in $_viewerTimezone',
@@ -475,7 +475,7 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
   Widget _you() =>
       _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('You',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+            style: TextStyle(fontFamily: ADText.display, fontSize: 20, fontWeight: FontWeight.w700)),
         const SizedBox(height: 8),
         const Text('Your account protects the booking and receives reminders.'),
         const SizedBox(height: 18),
@@ -488,7 +488,7 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
   Widget _pay() =>
       _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(_free ? 'Confirm free booking' : 'Review and pay',
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+            style: const TextStyle(fontFamily: ADText.display, fontSize: 20, fontWeight: FontWeight.w700)),
         const SizedBox(height: 12),
         Text(_free
             ? '₹0 · Free entry'
@@ -536,7 +536,7 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
             color: AD.online, size: 52),
         const SizedBox(height: 10),
         const Text('You’re booked',
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
+            style: TextStyle(fontFamily: ADText.display, fontSize: 24, fontWeight: FontWeight.w700)),
         const SizedBox(height: 8),
         Text(_receipt?.bookingId == null
             ? 'Your access is ready.'
@@ -549,7 +549,7 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
       elevation: 0,
       color: AD.card,
       shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(AD.rSheet),
           side: const BorderSide(color: AD.borderDivider)),
       child: Padding(padding: const EdgeInsets.all(20), child: child));
   Widget _primary(String label, VoidCallback? onPressed) => SizedBox(

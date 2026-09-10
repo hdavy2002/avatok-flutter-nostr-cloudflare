@@ -724,7 +724,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                 height: 200,
                 decoration: BoxDecoration(
                   color: AD.mediaPlaceholderBg,
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(AD.rImage),
                   border: Border.all(color: AD.borderControl, width: 1),
                 ),
                 child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -748,7 +748,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
               padding: const EdgeInsets.only(top: Msg.s2),
               child: GestureDetector(
                 onTap: () => _openImageFull(url),
-                child: CachedImage(url, width: 240, radius: BorderRadius.circular(14)),
+                child: CachedImage(url, width: 240, radius: BorderRadius.circular(AD.rImage)),
               ),
             ),
           if (showListen)
@@ -807,7 +807,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                 onTap: () => AvaWalletHook.instance
                     .openTopUp(context, suggestedTokens: kMinTopUpTokens),
                 color: AD.online,
-                radius: BorderRadius.circular(12),
+                radius: BorderRadius.circular(AD.rChip),
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   PhosphorIcon(PhosphorIcons.coins(PhosphorIconsStyle.fill),

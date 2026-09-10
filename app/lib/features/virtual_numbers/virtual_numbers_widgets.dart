@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/ui/messenger_theme.dart';
 import '../avadial/avadial_theme.dart';
 import 'virtual_numbers_models.dart';
 
@@ -58,7 +59,7 @@ class VirtualNumbersUi {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
             color: enabled ? AvaDialTheme.surface : AvaDialTheme.surface2,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(Msg.rMd),
             border: Border.all(
                 color: enabled
                     ? AvaDialTheme.border
@@ -111,7 +112,7 @@ class VirtualNumbersUi {
                 backgroundColor: AvaDialTheme.accent,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14))),
+                    borderRadius: BorderRadius.circular(Msg.rMd))),
           ));
 }
 
@@ -128,7 +129,7 @@ class VirtualLineAvatar extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
               color: virtualLineColor(line.colorKey),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(Msg.rSm),
               border: Border.all(color: AvaDialTheme.border, width: 1.5)),
           child: Text(
               line.label.isEmpty

@@ -41,9 +41,9 @@ Future<bool> showBrainExportSheet(BuildContext context, List<BrainExportItem> it
     context: context,
     backgroundColor: AD.overlaySheet,
     isScrollControlled: true,
-    shape: const RoundedRectangleBorder(
-        side: BorderSide(color: AD.borderHairline, width: 1),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+    shape: RoundedRectangleBorder(
+        side: const BorderSide(color: AD.borderHairline, width: 1),
+        borderRadius: Msg.brSheetTop),
     builder: (ctx) => _BrainExportSheet(items: items),
   );
   return result == true;

@@ -168,10 +168,10 @@ abstract class _CommercialCheckoutSheetState<T extends _CommercialCheckoutSheet>
       );
 
   Widget shell({required List<Widget> children}) => Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: AD.overlaySheet,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border(top: BorderSide(color: AD.borderHairline)),
+          borderRadius: Msg.brSheetTop,
+          border: const Border(top: BorderSide(color: AD.borderHairline)),
         ),
         padding: EdgeInsets.fromLTRB(
           Msg.s5,

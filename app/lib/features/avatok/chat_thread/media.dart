@@ -1893,7 +1893,7 @@ class _AiVideoJobPreviewState extends State<_AiVideoJobPreview> {
                   padding: const EdgeInsets.fromLTRB(8, 4, 10, 4),
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.72),
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(Msg.rLg),
                   ),
                   child: Row(children: [
                     IconButton(

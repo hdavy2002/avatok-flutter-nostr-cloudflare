@@ -1111,7 +1111,7 @@ class _WalletScreenState extends State<WalletScreen> {
             if (bars.isNotEmpty) ...[
               const SizedBox(height: Msg.s4),
               WalletCard(
-                radius: 20,
+                radius: Msg.rMd,
                 padding: const EdgeInsets.all(Msg.s4),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
@@ -1137,7 +1137,7 @@ class _WalletScreenState extends State<WalletScreen> {
             if (byCat.isNotEmpty) ...[
               const SizedBox(height: Msg.s4),
               WalletCard(
-                radius: 20,
+                radius: Msg.rMd,
                 padding: const EdgeInsets.all(Msg.s4),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
@@ -1495,7 +1495,7 @@ class _WalletScreenState extends State<WalletScreen> {
         child: Text(g.label, style: AWText.caption()),
       ));
       out.add(WalletCard(
-        radius: 18,
+        radius: Msg.rMd,
         padding: EdgeInsets.zero,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1661,7 +1661,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 ),
               ]),
               const SizedBox(height: Msg.s3),
-              WalletBadge(icon: _catIcon(cat), color: _catColor(cat), size: 66, radius: 20, glyph: 32),
+              WalletBadge(icon: _catIcon(cat), color: _catColor(cat), size: 66, radius: Msg.rMd, glyph: 32),
               const SizedBox(height: Msg.s5),
               FittedBox(
                 fit: BoxFit.scaleDown,
@@ -1687,7 +1687,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 const SizedBox(height: Msg.s4),
               ],
               WalletCard(
-                radius: 18,
+                radius: Msg.rMd,
                 padding: EdgeInsets.zero,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -1785,12 +1785,12 @@ class _WalletScreenState extends State<WalletScreen> {
       onTap: () => _runExport(sheetCtx, mode),
       child: WalletCard(
         color: AW.surf2,
-        radius: 16,
+        radius: Msg.rSm,
         hardBorder: true,
         shadow: const Offset(3, 3),
         padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
         child: Row(children: [
-          WalletBadge(icon: icon, color: color, size: 38, radius: 11),
+          WalletBadge(icon: icon, color: color, size: 38, radius: Msg.rSm),
           const SizedBox(width: Msg.s4),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [

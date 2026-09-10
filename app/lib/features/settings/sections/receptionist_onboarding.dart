@@ -47,7 +47,7 @@ const String kAgentScopeAll = 'all';
 // counter label deliberately stays at ADText.sectionLabel size.
 TextStyle _wizBody({Color? c}) =>
     ADText.preview(c: c ?? AD.textSecondary).copyWith(fontSize: 16, height: 1.4);
-TextStyle _wizTitle() => ADText.rowName().copyWith(fontSize: 19, height: 1.2);
+TextStyle _wizTitle() => ADText.appTitle().copyWith(fontSize: 19, height: 1.2);
 
 /// Opens the multi-step AI Voice Agent wizard. Returns the chosen scope
 /// ('cell'|'app'|'all') after a successful save, or null when the user backed

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../avadial/avadial_theme.dart';
 import 'virtual_numbers_api.dart';
 import 'virtual_numbers_demo.dart';
@@ -166,7 +167,7 @@ class _VirtualNumberActivityScreenState
           padding: const EdgeInsets.all(13),
           decoration: BoxDecoration(
               color: AvaDialTheme.surface,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(Msg.rMd),
               border: Border.all(
                   color:
                       item.unread ? AvaDialTheme.accent : AvaDialTheme.border,
@@ -178,7 +179,7 @@ class _VirtualNumberActivityScreenState
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                     color: _typeColor(item.type).withValues(alpha: .16),
-                    borderRadius: BorderRadius.circular(11)),
+                    borderRadius: BorderRadius.circular(Msg.rSm)),
                 child: Icon(_typeIcon(item.type),
                     color: _typeColor(item.type), size: 19)),
             const SizedBox(width: 11),

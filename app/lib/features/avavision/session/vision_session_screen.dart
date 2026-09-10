@@ -454,7 +454,7 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
             Text(a.scoreLabel ?? 'Score', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 10, letterSpacing: 0.8)),
             const SizedBox(height: 2),
             Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-              Text(score?.toString() ?? '—', style: ADText.appTitle().copyWith(fontSize: 30, height: 1.08, letterSpacing: -0.6)),
+              Text(score?.toString() ?? '—', style: ADText.appTitle().copyWith(fontSize: 30, height: 1.08, letterSpacing: 0.6)),
               if (a.scoringMode == 'hybrid' && showAgent == false)
                 Padding(
                   padding: const EdgeInsets.only(left: Msg.s2, bottom: Msg.s1),

@@ -120,7 +120,7 @@ class _VerseScreenState extends State<VerseScreen> {
         Row(children: [
           ZineIconBadge(icon: icon, color: accent),
           const SizedBox(width: Msg.s3),
-          Expanded(child: Text(title, style: ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2))),
+          Expanded(child: Text(title, style: ADText.appTitle().copyWith(fontSize: 19, height: 1.1))),
           if (trailing != null) trailing,
         ]),
         const SizedBox(height: 12),
@@ -202,7 +202,7 @@ class _VerseScreenState extends State<VerseScreen> {
         FittedBox(
           fit: BoxFit.scaleDown,
           alignment: Alignment.centerLeft,
-          child: Text(verseInr(s.n(e, 'settled')), style: ADText.appTitle().copyWith(fontSize: 40, height: 1.0, letterSpacing: -0.8)),
+          child: Text(verseInr(s.n(e, 'settled')), style: ADText.appTitle().copyWith(fontSize: 40, height: 1.0, letterSpacing: 0.8)),
         ),
         const SizedBox(height: 2),
         Text('Settled this period', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 10, letterSpacing: 0.8)),
@@ -378,7 +378,7 @@ class _VerseScreenState extends State<VerseScreen> {
           borderRadius: BorderRadius.circular(Msg.rLg),
           side: const BorderSide(color: AD.borderControl, width: 1),
         ),
-        title: Text('Notify followers', style: ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2)),
+        title: Text('Notify followers', style: ADText.appTitle().copyWith(fontSize: 19, height: 1.1)),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           Text('"$title" — followers with notifications on will get a push.',
               style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
@@ -451,7 +451,7 @@ class _VerseScreenState extends State<VerseScreen> {
           borderRadius: BorderRadius.circular(Msg.rLg),
           side: const BorderSide(color: AD.borderControl, width: 1),
         ),
-        title: Text('Reply to ${review['author_name'] ?? 'review'}', style: ADText.threadName().copyWith(fontSize: 18, height: 1.1, letterSpacing: -0.2)),
+        title: Text('Reply to ${review['author_name'] ?? 'review'}', style: ADText.appTitle().copyWith(fontSize: 18, height: 1.1)),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           Text('"${review['body'] ?? ''}"', maxLines: 3, overflow: TextOverflow.ellipsis,
               style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),

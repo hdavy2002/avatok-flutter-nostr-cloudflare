@@ -1711,7 +1711,7 @@ class _CallScreenState extends State<CallScreen> {
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.62),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AD.rListCard),
                   ),
                   child: const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -1733,7 +1733,7 @@ class _CallScreenState extends State<CallScreen> {
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.68),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AD.rListCard),
                   ),
                   child: const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),

@@ -114,17 +114,44 @@ class AWText {
         height: height ?? 1.2,
       );
 
-  /// Screen title ("AvaWallet") — 28 / 700.
+  /// [UI-COMFORTAA-1] Display-face variant of [_s], for the handful of AWText
+  /// styles that are genuine headings (the screen title, section titles) or
+  /// THE hero balance figure — never for a stat tile, a donut centre or any
+  /// other number that has to line up in a column, which stay on [_s] so
+  /// Instrument Sans keeps their tabular figures. Weight is pinned to w700:
+  /// Comfortaa has nothing higher, so every caller here asks for w700 rather
+  /// than repeating the ceiling at each call site. Tracking must be positive
+  /// — negative tracking on a rounded display face makes the letters touch.
+  static TextStyle _d(
+    double size,
+    Color c, {
+    double? spacing,
+    double? height,
+  }) =>
+      ADText.rowName(c: c).copyWith(
+        fontFamily: ADText.display,
+        fontSize: size,
+        fontWeight: FontWeight.w700,
+        letterSpacing: spacing,
+        height: height ?? 1.2,
+      );
+
+  /// Screen title ("AvaWallet") — 28 / 700. Display face — a screen title
+  /// is a heading, not a number.
   static TextStyle walletTitle({Color? c}) =>
-      _s(28, FontWeight.w700, c ?? AW.tx, spacing: -0.6);
+      _d(28, c ?? AW.tx, spacing: 0.6);
 
   /// Small kicker above a block — 11 / 600.
   static TextStyle kicker({Color? c}) =>
       _s(11, FontWeight.w600, c ?? AW.txMute, spacing: 0.9);
 
-  /// Hero balance number — 56 / 700, tight.
+  /// Hero balance number — 56 / 700, tight. [UI-COMFORTAA-1] THE single most
+  /// important display-face site in the app — display face, positive
+  /// tracking. Every OTHER number in the wallet (stat tiles, donut centre,
+  /// row amounts, timestamps) stays on Instrument Sans for its tabular
+  /// figures; only this hero figure earns Comfortaa.
   static TextStyle balanceHuge({Color? c}) =>
-      _s(56, FontWeight.w700, c ?? AW.glyph, spacing: -1.5, height: 0.9);
+      _d(56, c ?? AW.glyph, spacing: 1.1, height: 0.9);
 
   /// Unit suffix next to the hero balance ("AVA") — 18 / 600.
   static TextStyle balanceUnit({Color? c}) =>
@@ -146,13 +173,13 @@ class AWText {
   static TextStyle caption({Color? c}) =>
       _s(11, FontWeight.w500, c ?? AW.txMute, spacing: 0.6);
 
-  /// Small section heading / inline glyph — 15 / 600.
+  /// Small section heading / inline glyph — 15 / 700. Display face.
   static TextStyle sectionHead({Color? c}) =>
-      _s(15, FontWeight.w600, c ?? AW.tx);
+      _d(15, c ?? AW.tx);
 
-  /// Section title — 20 / 700.
+  /// Section title — 20 / 700. Display face.
   static TextStyle sectionTitle({Color? c}) =>
-      _s(20, FontWeight.w700, c ?? AW.tx, spacing: -0.4);
+      _d(20, c ?? AW.tx, spacing: 0.4);
 
   /// Meta line inside a card — 12 / 400.
   static TextStyle cardMeta({Color? c}) =>
