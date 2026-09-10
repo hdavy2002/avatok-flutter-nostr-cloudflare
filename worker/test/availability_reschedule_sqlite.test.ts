@@ -122,7 +122,6 @@ function setup(simulateCasLoss = false) {
       booking_id TEXT, session_version INTEGER NOT NULL, updated_at INTEGER NOT NULL,
       state TEXT NOT NULL, settlement_state TEXT, scheduled_at INTEGER
     );
-    CREATE TABLE commercial_money_claims(order_id TEXT PRIMARY KEY,claim_type TEXT,claim_id TEXT,state TEXT);
     CREATE TABLE gcal_accounts (user_id TEXT PRIMARY KEY);
     CREATE TABLE gcal_calendars (user_id TEXT NOT NULL, selected INTEGER NOT NULL DEFAULT 0, last_success_at INTEGER, last_error TEXT);
   `);
