@@ -132,7 +132,8 @@ export const ORG: OrgConstants = {
     linkedin: 'https://www.linkedin.com/company/avatok',
     // Set when the owner creates these (see marketing/avatok-entity-anchors.md).
     crunchbase: null,
-    wikidata: null,
+    // [WEB-SEO-8] Created 2026-09-10 from the AvaTOK Wikidata account.
+    wikidata: 'https://www.wikidata.org/wiki/Q141409718',
     // Set once a real, resolving Instagram profile exists.
     instagram: null,
     // Closed Alpha — 404s publicly today. Set once the Play listing is public.
