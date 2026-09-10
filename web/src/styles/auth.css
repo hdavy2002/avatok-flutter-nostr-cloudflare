@@ -414,3 +414,122 @@
 @media (min-width: 1280px) { .auth-main--signup .auth-h2 { font-size: 46px; } .auth-main--signup { padding: 44px 56px; } .auth-main--signup .auth-form { gap: 16px; } }
 
 @media (prefers-reduced-motion: reduce) { .auth-btn { transition: none; } }
+
+/* ── [WEB-PHONE-OTP-1 2026-09-10] Inline verification on the sign-up screen ──
+ * Email and phone each carry an inline action (Verify / Send OTP) at the right
+ * edge of the box, like the old Show-password control. The code box slides out
+ * underneath with a grid-rows 0fr -> 1fr transition (animates real height, no
+ * magic max-height). A confirmed field turns green and shows a Verified badge. */
+.auth {
+  --ok: #1f7a45;
+  --ok-soft: #e3f2df;
+}
+.auth-box--action { padding-right: 112px; }
+.auth-form--signup .auth-box--action { padding-right: 112px; }
+.auth-box--prefixed,
+.auth-form--signup .auth-box--prefixed { padding-left: 54px; }
+.auth-box:disabled { opacity: 0.55; cursor: not-allowed; }
+.auth-box[readonly] { cursor: default; }
+
+.auth-prefix {
+  position: absolute;
+  left: 16px;
+  font-family: var(--f-body);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+  pointer-events: none;
+}
+
+.auth-inline-btn {
+  position: absolute;
+  right: 7px;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: var(--signal);
+  color: var(--bone);
+  font-family: var(--f-label);
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.auth-inline-btn--ghost { background: var(--bone); color: var(--ink); }
+.auth-inline-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.auth-inline-btn:focus-visible { outline: 3px solid var(--signal); outline-offset: 2px; }
+
+.auth-box.is-verified {
+  border-color: var(--ok);
+  background: var(--ok-soft);
+  -webkit-box-shadow: 0 0 0 1000px var(--ok-soft) inset;
+}
+.auth-field.is-verified .auth-label { color: var(--ok); }
+.auth-verified {
+  position: absolute;
+  right: 12px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--ok);
+  color: var(--bone);
+  font-family: var(--f-label);
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  animation: auth-pop 260ms ease-out;
+}
+@keyframes auth-pop {
+  from { transform: scale(0.6); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.auth-reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  margin-top: -11px; /* cancels the sign-up form gap while closed */
+  transition: grid-template-rows 240ms ease, opacity 200ms ease, margin-top 240ms ease;
+}
+.auth-reveal.is-open { grid-template-rows: 1fr; opacity: 1; margin-top: -2px; }
+.auth-reveal-inner { overflow: hidden; min-height: 0; }
+.auth-otp {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 2px 0 2px 14px;
+  padding: 12px 14px;
+  border-left: 3px solid var(--signal);
+  background: var(--butter);
+  border-radius: 0 16px 16px 0;
+}
+.auth-otp-sent { margin: 0; font-size: 13px; color: var(--body-brown); }
+.auth-otp-sent strong { color: var(--ink); font-weight: 600; word-break: break-all; }
+.auth-box--otp,
+.auth-form--signup .auth-box--otp {
+  max-width: 220px;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.4em;
+  padding: 10px 14px;
+}
+.auth-box--otp::placeholder { letter-spacing: 0.4em; }
+.auth-otp-foot { margin: 0; font-size: 13px; color: var(--body-brown); }
+.auth-linkbtn {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-family: var(--f-display);
+  font-size: 14px;
+  text-transform: uppercase;
+  color: var(--signal);
+  cursor: pointer;
+}
+.auth-linkbtn:hover { text-decoration: underline; text-underline-offset: 3px; }
+.auth-gatehint { margin: 0; font-size: 13px; color: var(--body-brown); text-align: center; }
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-reveal, .auth-verified { transition: none; animation: none; }
+}

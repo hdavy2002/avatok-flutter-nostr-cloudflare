@@ -48,6 +48,7 @@ import { adminDeleteUser } from "./routes/admin_delete_user"; // [ADMIN-DELETE-U
 import { adminListings, adminListingAction, adminListingDetail, adminEditListing } from "./routes/admin_listings";
 import { listingReview } from "./routes/listing_review";
 import { webAccountBootstrap, webAccountAppOnboarded } from "./routes/web_account";
+import { phoneOtpSend, phoneOtpVerify, phoneOtpStatus } from "./routes/phone_otp"; // [WEB-PHONE-OTP-1]
 import { adminPurgeListing } from "./routes/admin_listing_purge";
 // [AVADIAL-CALL-INTEL-1] Call-intelligence ingest. The ONLY place raw E.164 and the
 // HMAC secret meet — the device never holds the key. See routes/telemetry_calls.ts.
@@ -1275,6 +1276,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // assigns an AvaTOK number — the app's gate does, so the free number
       // survives for the user to actually choose.
       if (p === "/api/account/bootstrap" && req.method === "POST") return await webAccountBootstrap(req, env);
+      // [WEB-PHONE-OTP-1 2026-09-10] SMS OTP (2Factor) for web sign-up phone verification.
+      if (p === "/api/account/phone/send" && req.method === "POST") return await phoneOtpSend(req, env);
+      if (p === "/api/account/phone/verify" && req.method === "POST") return await phoneOtpVerify(req, env);
+      if (p === "/api/account/phone/status" && req.method === "GET") return await phoneOtpStatus(req, env);
       // [WEB-APP-ONBOARD-1] The app reporting that a web-born account has now
       // been through onboarding. This is the only thing that lifts the gate.
       if (p === "/api/account/app-onboarded" && req.method === "POST") return await webAccountAppOnboarded(req, env);

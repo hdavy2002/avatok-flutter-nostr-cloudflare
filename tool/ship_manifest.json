@@ -5001,5 +5001,35 @@
     "flags": [],
     "no_telemetry": "The widgets are ADDED but not yet MOUNTED. Nothing in features/ or shell/ imports core/ui/motion yet, so this commit has zero runtime effect on a user's device and cannot emit anything. Wiring them into screens is a separate change and that change is where a success definition belongs.",
     "_verified_at": "app/lib/core/ui/motion/ - 11 widgets + motion.dart barrel; grep shows no importer outside that directory"
+  },
+  "WEB-PHONE-OTP-1": {
+    "description": "[WEB-PHONE-OTP-1] Web sign-up is one screen: the email code and a +91 SMS OTP (2Factor.in) slide out inline under their fields, both turn green, then the account opens. New Worker routes /api/account/phone/{send,verify,status} (worker/src/routes/phone_otp.ts) write contact_verification.phone_verified; /api/account/bootstrap refuses an unverified phone. Every web sign-in and Google return passes /sign-up?finish=1 so new accounts cannot skip the phone. Owner decision 2026-09-10.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "phone_otp_send",
+        "property": "outcome",
+        "equals": "sent",
+        "min_events": 1,
+        "note": "2Factor accepted the SMS. outcome=provider_error with provider_detail means the key, balance or template is wrong on the 2Factor account, not a client bug."
+      },
+      {
+        "event": "phone_otp_verify",
+        "property": "outcome",
+        "equals": "verified",
+        "min_events": 1,
+        "note": "A real person typed the SMS code and the Worker marked the phone verified. Sends without verifies = SMS not arriving."
+      },
+      {
+        "event": "web_account_bootstrap",
+        "property": "phone_stored",
+        "equals": true,
+        "min_events": 1,
+        "note": "The account opened with the OTP-verified phone. outcome=phone_not_verified on this event means a client sent a phone it never verified."
+      }
+    ],
+    "_verified_at": "worker/src/routes/phone_otp.ts (track phone_otp_send / phone_otp_verify), worker/src/routes/web_account.ts (web_account_bootstrap phone_stored)"
   }
 }

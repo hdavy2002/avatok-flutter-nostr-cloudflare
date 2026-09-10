@@ -284,6 +284,12 @@ export interface Env {
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   GCAL_TOKEN_KEY?: string;         // AES-GCM key material for gcal refresh tokens
+  // [WEB-PHONE-OTP-1 2026-09-10] 2Factor.in SMS OTP for web sign-up phone
+  // verification (routes/phone_otp.ts). Secret — `scripts/cf.sh worker secret put
+  // TWOFACTOR_API_KEY`. Unset => /api/account/phone/send answers 503 otp_unavailable.
+  TWOFACTOR_API_KEY?: string;
+  // Optional DLT-approved OTP template name on the 2Factor account. Unset => 2Factor's default.
+  TWOFACTOR_OTP_TEMPLATE?: string;
   JOIN_LINK_SECRET?: string;       // HMAC for https://avatok.ai/j/<token>
   // [AVADIAL-CALL-INTEL-1] HMAC key for the call-intelligence phone identifier
   // (routes/telemetry_calls.ts). phone_id = HMAC-SHA256(this, E.164), and it is the

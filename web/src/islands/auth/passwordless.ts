@@ -35,7 +35,7 @@
  */
 import { capture } from '../../lib/analytics';
 import { getActiveTokenWaited } from '../../lib/clerk';
-import { request } from '../../lib/apiClient';
+import { request, ApiError } from '../../lib/apiClient';
 
 /** Which half of the flow a code belongs to. Verify must use the same one. */
 export type PwlMode = 'signUp' | 'signIn';
@@ -116,18 +116,67 @@ function isAlreadyExists(e: unknown): boolean {
  */
 export async function bootstrapAccount(body: {
   phone?: string; country?: string; display_name?: string;
-} = {}): Promise<void> {
+} = {}): Promise<{ ok: boolean; message?: string }> {
   try {
     const token = await getActiveTokenWaited();
-    if (!token) return;
+    if (!token) return { ok: false, message: 'Your session isn’t ready yet. Please try again.' };
     await request('/api/account/bootstrap', {
       method: 'POST', auth: token,
       body: { country: 'IN', ...body },
     });
     capture('web_account_bootstrap_client', { outcome: 'ok' });
-  } catch {
+    return { ok: true };
+  } catch (e) {
     capture('web_account_bootstrap_client', { outcome: 'error' });
+    return { ok: false, message: apiMessage(e, 'We couldn’t open your account just now. Please try again.') };
   }
+}
+
+/* ── [WEB-PHONE-OTP-1 2026-09-10] Phone OTP (2Factor, via the Worker) ───── */
+
+/** The human sentence from a Worker error body ({ message }), else `fallback`. */
+export function apiMessage(e: unknown, fallback: string): string {
+  if (e instanceof ApiError) {
+    const b = e.body as { message?: unknown } | null;
+    if (b && typeof b === 'object' && typeof b.message === 'string' && b.message.trim()) return b.message;
+  }
+  return fallback;
+}
+
+/** The Worker's short error code ("phone_taken", "too_soon", …) or ''. */
+export function apiCode(e: unknown): string {
+  return e instanceof ApiError ? e.error : '';
+}
+
+export interface PhoneStatus { verified: boolean; phone: string | null; has_account: boolean; needs_phone: boolean }
+
+async function authed<T>(path: string, method: 'GET' | 'POST', body?: unknown): Promise<T> {
+  const token = await getActiveTokenWaited();
+  if (!token) throw new PasswordlessError('Your session isn’t ready yet. Please try again.', 'no_session');
+  return request<T>(path, { method, auth: token, body });
+}
+
+export function sendPhoneCode(phone: string) {
+  return authed<{ ok: boolean; phone: string; already_verified?: boolean; resend_after_s?: number }>(
+    '/api/account/phone/send', 'POST', { phone },
+  );
+}
+export function verifyPhoneCode(code: string) {
+  return authed<{ ok: boolean; verified: boolean; phone: string }>('/api/account/phone/verify', 'POST', { code });
+}
+export function getPhoneStatus() {
+  return authed<PhoneStatus>('/api/account/phone/status', 'GET');
+}
+
+/**
+ * Every web sign-in lands via /sign-up?finish=1 so a new account (email code on
+ * /sign-in, or Google anywhere) cannot skip phone verification. Existing
+ * accounts pass straight through to `next`; see phoneOtpStatus in the Worker.
+ */
+export function finishUrl(next: string, role?: string): string {
+  const q = new URLSearchParams({ finish: '1', next });
+  if (role) q.set('role', role);
+  return `/sign-up?${q.toString()}`;
 }
 
 /**

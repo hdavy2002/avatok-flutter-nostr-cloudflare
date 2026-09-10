@@ -42,7 +42,7 @@ import {
   type FieldErrors,
 } from './AuthKit';
 import {
-  sendPasswordlessCode, verifyPasswordlessCode, continueWithGoogle, pwlError,
+  sendPasswordlessCode, verifyPasswordlessCode, continueWithGoogle, pwlError, finishUrl,
   type PwlMode, type PwlSignIn, type PwlSignUp,
 } from './passwordless';
 
@@ -147,7 +147,8 @@ function Inner() {
         method: 'email_code', outcome: 'ok', created,
         ms: Date.now() - startRef.current,
       });
-      location.href = nextUrl();
+      // [WEB-PHONE-OTP-1] via the phone gate — a brand-new account made here must verify a phone.
+      location.href = finishUrl(nextUrl());
     } catch (err) {
       const { message, reason } = pwlError(err, 'That code didn’t work. Check it and try again.');
       setFormError(message);
@@ -182,7 +183,7 @@ function Inner() {
     if (!isLoaded || submitting) return;
     setFormError(null);
     try {
-      await continueWithGoogle(signIn as unknown as PwlSignIn, nextUrl());
+      await continueWithGoogle(signIn as unknown as PwlSignIn, finishUrl(nextUrl())); // [WEB-PHONE-OTP-1]
     } catch (err) {
       setFormError(pwlError(err, 'Couldn’t open Google sign-in. Please try again.').message);
     }

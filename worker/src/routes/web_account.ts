@@ -66,6 +66,7 @@ import { requireUser, isFail } from "../authz";
 import { sha256Hex } from "../util";
 import { track } from "../hooks";
 import { ensureHandle } from "../lib/handles";
+import { isVerifiedPhoneFor } from "./phone_otp";
 
 const APP = "avatok";
 
@@ -108,6 +109,18 @@ export async function webAccountBootstrap(req: Request, env: Env): Promise<Respo
       }, 400);
     }
     e164 = norm;
+    // [WEB-PHONE-OTP-1 2026-09-10] A phone is only stored once it has been
+    // proven by SMS OTP (routes/phone_otp.ts). Before this, any well-formed
+    // number was written unverified. Callers that send no phone (checkout) are
+    // unaffected; the sign-up page only sends the number it just verified.
+    if (!(await isVerifiedPhoneFor(env, ctx.uid, e164))) {
+      try { void track(env, ctx.uid, "web_account_bootstrap", APP, { outcome: "phone_not_verified" }); } catch { /* */ }
+      return json({
+        error: "phone_not_verified",
+        message: "Verify your phone number with the SMS code first.",
+        field: "phone",
+      }, 403);
+    }
   }
 
   const now = Date.now();
