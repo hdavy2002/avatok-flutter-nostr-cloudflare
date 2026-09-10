@@ -35,6 +35,17 @@ export interface ListingTileProps {
    * click-to-play here without an actual audio element behind it.
    */
   voiceHighlightUrl?: string | null;
+  /**
+   * [UI-MOTION-1 2026-09-10] Opt in to the "skeleton-reveal" poster fade
+   * (motion.css `.t-skel`). Requires React hydration to swap the placeholder
+   * for the real photo on `onLoad`, so this is only ever passed true by
+   * callers that render inside a `client:*` island (VerticalSection,
+   * LiveNowRail). Left false — the default — for the two call sites that
+   * render this component through plain Astro SSR with no client directive
+   * (BrowseMore.astro, pages/c/[handle].astro): there `onLoad` would never
+   * fire and the placeholder would hide the real poster forever.
+   */
+  enableSkeleton?: boolean;
 }
 
 // ── §2.3 market_card_impression — ONE event per batch, up to 50 entries, flushed
@@ -209,6 +220,7 @@ function paletteFor(id: string): Pal {
  */
 export function ListingTile({
   listing, href, width = 520, className = '', position = 0, section = 'unknown', voiceHighlightUrl = null,
+  enableSkeleton = false,
 }: ListingTileProps) {
   const c = toCardView(listing);
   const target = href ?? listingHref(listing);
@@ -242,6 +254,8 @@ export function ListingTile({
   const posterUrl = c.aiPoster?.variants?.portrait?.url ?? c.aiPoster?.url ?? c.poster;
   const [quickOpen, setQuickOpen] = useState(false);
   const [quickListing, setQuickListing] = useState<Listing | null>(null);
+  // [UI-MOTION-1] "skeleton-reveal" — only meaningful when enableSkeleton.
+  const [posterLoaded, setPosterLoaded] = useState(false);
 
   const onMoreInfo = useCallback((e: MouseEvent<HTMLElement>) => {
     // The whole card is one <a>; without this the click navigates to the detail
@@ -372,13 +386,36 @@ export function ListingTile({
       <div style={posterFirst
         ? { aspectRatio: '2 / 3', background: p.photo, position: 'relative' }
         : { height: 'clamp(230px, 28vw, 360px)', background: p.photo, position: 'relative' }}>
-        {posterUrl && (
+        {posterUrl && !enableSkeleton && (
           <img
             src={cfImage(posterUrl, { width, fit: posterFirst ? 'contain' : 'cover' })}
             alt={posterFirst ? `${c.title} — poster` : c.title}
             loading="lazy"
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
           />
+        )}
+        {/* [UI-MOTION-1 2026-09-10] "skeleton-reveal" (transitions.dev, `.t-*` in
+            styles/motion.css) — a pulsing placeholder the same colour as the
+            card's own palette, replaced by a soft blur-up fade once the real
+            poster decodes. Only ever mounted with hydration guaranteed — see
+            the `enableSkeleton` doc comment above. */}
+        {posterUrl && enableSkeleton && (
+          <div
+            className={['t-skel', posterLoaded && 'is-revealed'].filter(Boolean).join(' ')}
+            style={{ position: 'absolute', inset: 0 }}
+          >
+            <div className="t-skel-skeleton is-pulsing" aria-hidden="true" style={{ background: p.photo }} />
+            <div className="t-skel-content">
+              <img
+                src={cfImage(posterUrl, { width, fit: posterFirst ? 'contain' : 'cover' })}
+                alt={posterFirst ? `${c.title} — poster` : c.title}
+                loading="lazy"
+                onLoad={() => setPosterLoaded(true)}
+                onError={() => setPosterLoaded(true)}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            </div>
+          </div>
         )}
         {/* lettering === 'overlay' means the artwork is deliberately textless
             because the model could not be trusted to spell it — so the title is

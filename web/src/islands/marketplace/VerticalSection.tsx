@@ -148,6 +148,7 @@ export function VerticalSection({
             href={hrefBase ? `${hrefBase}/l/${encodeURIComponent(l.id)}` : undefined}
             position={i}
             section={group.id}
+            enableSkeleton
           />
         ))}
       </div>

@@ -269,10 +269,24 @@
 .ld-rules-baseline-link { margin-left: auto; font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .08em; text-decoration: underline; }
 
 /* ── FAQ ──────────────────────────────────────────────────────────────────── */
+/* [UI-MOTION-1 2026-09-10] "accordion" (transitions.dev, `.t-acc*` in
+   styles/motion.css) drives the expand/collapse; this stays a native
+   <details>/<summary> — keyboard (Enter/Space on summary) and screen-reader
+   semantics are the browser's, untouched. `[open]:not([data-open])` is the
+   NO-JS FALLBACK: native <details> toggling still works with zero script
+   running, just without the animation — see the inline script below. */
 .ld-faq-list { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
 .ld-faq-item { padding: 14px 16px; border-radius: 14px; background: #fdf1d3; border: 1.5px solid #161614; }
-.ld-faq-item summary { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; cursor: pointer; }
-.ld-faq-item p { margin: 8px 0 0; color: #4a3a20; }
+.ld-faq-item summary {
+  font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; cursor: pointer;
+  list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.ld-faq-item summary::-webkit-details-marker { display: none; }
+.ld-faq-item .t-acc-chevron { flex: none; color: #6b4f3f; }
+.ld-faq-item .t-acc-panel-inner { padding-top: 8px; }
+.ld-faq-item p { margin: 0; color: #4a3a20; }
+.ld-faq-item[open]:not([data-open]) .t-acc-panel { grid-template-rows: 1fr; }
+.ld-faq-item[open]:not([data-open]) .t-acc-chevron { transform: scaleY(-1); }
 
 /* ── reviews (Public ki Rai) ─────────────────────────────────────────────── */
 .ld-reviews-row { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }

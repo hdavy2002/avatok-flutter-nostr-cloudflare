@@ -44,6 +44,49 @@ function ErrLine({ err, field }: { err: FieldErr; field: string }) {
   return <p className="mt-1 font-body font-bold text-[13px] text-coral">⚠ {err.message}</p>;
 }
 
+/**
+ * [UI-MOTION-1 2026-09-10] "toggle" (transitions.dev, `.t-toggle*` in
+ * styles/motion.css) — a real settings switch backing a native checkbox
+ * (`sr-only`, not display:none, so it stays in the tab order and keeps
+ * space/enter behaviour). `.is-init` is only added after the first user
+ * press, matching the snippet's intent: the little overshoot bounce plays
+ * when someone flips it, never on mount just because a draft loaded with
+ * this field already true.
+ */
+function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+  const [interacted, setInteracted] = useState(false);
+  return (
+    <label className="flex cursor-pointer items-center gap-3">
+      <span
+        className={['t-toggle', interacted && 'is-init'].filter(Boolean).join(' ')}
+        data-on={checked ? 'true' : 'false'}
+        aria-hidden="true"
+        style={{
+          position: 'relative', display: 'inline-flex', alignItems: 'center', flex: 'none',
+          width: 'calc(var(--toggle-travel) + 22px)', height: 22, borderRadius: 999,
+          border: '2px solid var(--zine-ink, #161614)',
+          background: checked ? 'var(--zine-lime, #c8e85a)' : 'var(--zine-paper2, #f0e4cc)',
+        }}
+      >
+        <span
+          className="t-toggle-thumb"
+          style={{
+            position: 'absolute', left: 2, top: '50%', marginTop: -8, width: 16, height: 16,
+            borderRadius: '50%', border: '2px solid var(--zine-ink, #161614)', background: 'var(--zine-card, #fff)',
+          }}
+        />
+      </span>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => { setInteracted(true); onChange(e.target.checked); }}
+        className="sr-only"
+      />
+      <span className="font-body font-bold text-[14px] text-ink">{label}</span>
+    </label>
+  );
+}
+
 // ── Step 1 — Type ──────────────────────────────────────────────────────────
 const KINDS: { key: Kind; label: string; sub: string; chip: string; disabled?: boolean }[] = [
   { key: 'live_event', label: 'Live event', sub: 'Broadcast to ticket holders', chip: '◐' },
@@ -828,11 +871,7 @@ export function Step7Photos({ draft, patch, err, onUpload, onRemoveCover, upload
         onChange={(e) => patch({ video_url: e.target.value })} />
       <Field label="Location (optional)" placeholder="e.g. Mumbai" value={draft.location}
         onChange={(e) => patch({ location: e.target.value })} />
-      <label className="flex items-center gap-3">
-        <input type="checkbox" checked={draft.adults_only} onChange={(e) => patch({ adults_only: e.target.checked })}
-          className="h-5 w-5 rounded border-zine border-ink" />
-        <span className="font-body font-bold text-[14px] text-ink">This is for adults only (18+)</span>
-      </label>
+      <Toggle checked={draft.adults_only} onChange={(v) => patch({ adults_only: v })} label="This is for adults only (18+)" />
 
       <SectionHeader title="Booking policy" />
       {draft.kind === 'live_event' && (

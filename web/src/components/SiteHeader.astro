@@ -145,7 +145,13 @@ const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false } = Astro.p
   </div>
 </header>
 
-<nav class:list={['avh-mobile', responsiveHome && 'avh-mobile--home']} id="avh-mobile" aria-label="Main (mobile)" hidden>
+{/* [UI-MOTION-1 2026-09-10] "menu-dropdown" (transitions.dev, `.t-dropdown` in
+    styles/motion.css) — fade + scale instead of an instant show/hide. The
+    `hidden` attribute is still the source of truth for accessibility (an
+    open-attribute-only approach would leave the panel in the tab order while
+    invisible); the script below only defers setting it back on close until
+    the exit transition finishes. */}
+<nav class:list={['avh-mobile', 't-dropdown', responsiveHome && 'avh-mobile--home']} id="avh-mobile" aria-label="Main (mobile)" hidden>
   {links.map((l) => <a href={l.href}>{l.label}</a>)}
   {/* [WEB-HEADER-10] Auth moves OUT of the bar and in here below 1100px.
       [WEB-AUTH-STATE-1 2026-08-28] These used to be signed-OUT links on every
@@ -163,20 +169,44 @@ const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false } = Astro.p
 
 <script>
   // Progressive enhancement: the header is fully usable without this — the
-  // mobile list is simply hidden until toggled.
+  // mobile list is simply hidden until toggled. With JS, the show/hide is a
+  // "menu-dropdown" fade+scale (`.t-dropdown`, motion.css) instead of an
+  // instant swap; without it, the plain `hidden` toggle below still works.
   const burger = document.querySelector<HTMLButtonElement>('.avh-burger');
   const panel = document.getElementById('avh-mobile');
+  let avhCloseTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function openMobilePanel() {
+    if (!panel) return;
+    clearTimeout(avhCloseTimer);
+    panel.classList.remove('is-closing');
+    panel.hidden = false;
+    // Two rAFs: lets the browser paint the just-unhidden "closed" frame
+    // (`.t-dropdown`'s base scale/opacity) before `.is-open` lands — one rAF
+    // alone is sometimes coalesced with the `hidden` removal.
+    requestAnimationFrame(() => requestAnimationFrame(() => panel.classList.add('is-open')));
+    burger?.setAttribute('aria-expanded', 'true');
+  }
+
+  function closeMobilePanel() {
+    if (!panel) return;
+    panel.classList.remove('is-open');
+    panel.classList.add('is-closing');
+    burger?.setAttribute('aria-expanded', 'false');
+    const ms = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dropdown-close-dur')) || 150;
+    avhCloseTimer = setTimeout(() => {
+      panel.hidden = true;
+      panel.classList.remove('is-closing');
+    }, ms);
+  }
+
   burger?.addEventListener('click', () => {
     const open = burger.getAttribute('aria-expanded') === 'true';
-    burger.setAttribute('aria-expanded', String(!open));
-    if (panel) panel.hidden = open;
+    if (open) closeMobilePanel(); else openMobilePanel();
   });
 
   panel?.addEventListener('click', (event) => {
-    if ((event.target as Element).closest('a')) {
-      panel.hidden = true;
-      burger?.setAttribute('aria-expanded', 'false');
-    }
+    if ((event.target as Element).closest('a')) closeMobilePanel();
   });
 
   // [WEB-POSTHOG-1] §2.9 nav_click{item}. Contract:

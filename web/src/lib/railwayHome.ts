@@ -1,6 +1,19 @@
 // [WEB-STATION-2] Static homepage: interaction telemetry only.
 import { capture } from './analytics';
 
+// [UI-MOTION-1 2026-09-10] "texts-reveal" for the hero (motion.css `.t-stagger`).
+// Fires on first paint, not on scroll — this is a hero, not a scrolling list.
+// Wrapped in try/catch, and backed by a timeout safety net below, because the
+// hero copy is real content: if this throws, the text must still end up
+// visible rather than stuck at the CSS module's opacity:0 resting state.
+try {
+  const hero = document.querySelector('.t-stagger');
+  if (hero) requestAnimationFrame(() => hero.classList.add('is-shown'));
+} catch { /* the safety-net timeout below still reveals it */ }
+setTimeout(() => {
+  document.querySelectorAll('.t-stagger:not(.is-shown)').forEach((el) => el.classList.add('is-shown'));
+}, 1200);
+
 document.querySelectorAll<HTMLAnchorElement>('[data-home-cta], [data-home-idea]').forEach((link) => {
   link.addEventListener('click', () => {
     const idea = link.dataset.homeIdea;

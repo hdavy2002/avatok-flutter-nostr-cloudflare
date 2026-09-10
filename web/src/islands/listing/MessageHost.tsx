@@ -23,7 +23,7 @@
 // every already-installed app would fail to understand it, and a deep link that
 // silently does nothing is worse than one that opens Add Contact with the
 // number filled in, one tap from the conversation.
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { capture } from '../../lib/analytics';
 
 const PLAY_STORE = 'https://play.google.com/store/apps/details?id=ai.avatok.avatok_call';
@@ -39,6 +39,42 @@ export interface MessageHostProps {
 export default function MessageHost({ listingId, hostName, hostNumber }: MessageHostProps) {
   const [copied, setCopied] = useState(false);
   const first = hostName.split(' ')[0] || hostName;
+  // [UI-MOTION-1 2026-09-10] "card-tilt" (transitions.dev, `.t-tilt*` in
+  // styles/motion.css) — the ONE tilt card on this page: the host's paid
+  // AvaTOK number. Pointer-only by design (mouse only, guarded below) and
+  // flattens under prefers-reduced-motion via the CSS file itself; the vars
+  // are set directly on the DOM node rather than through React state so a
+  // fast mousemove doesn't trigger a re-render per pixel.
+  const tiltCardRef = useRef<HTMLButtonElement | null>(null);
+  function onTiltMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.pointerType !== 'mouse') return;
+    const card = tiltCardRef.current;
+    if (!card) return;
+    const rect = card.getBoundingClientRect();
+    const px = (e.clientX - rect.left) / rect.width;
+    const py = (e.clientY - rect.top) / rect.height;
+    const rx = (0.5 - py) * 12;
+    const ry = (px - 0.5) * 12;
+    card.style.setProperty('--tilt-rx', `${rx}deg`);
+    card.style.setProperty('--tilt-ry', `${ry}deg`);
+    card.style.setProperty('--tilt-gx', `${px * 100}%`);
+    card.style.setProperty('--tilt-gy', `${py * 100}%`);
+  }
+  function onTiltEnter(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.pointerType !== 'mouse') return;
+    e.currentTarget.classList.add('is-hover');
+    tiltCardRef.current?.classList.add('is-tilting');
+  }
+  function onTiltLeave(e: React.PointerEvent<HTMLDivElement>) {
+    e.currentTarget.classList.remove('is-hover');
+    const card = tiltCardRef.current;
+    if (!card) return;
+    card.classList.remove('is-tilting');
+    card.style.setProperty('--tilt-rx', '0deg');
+    card.style.setProperty('--tilt-ry', '0deg');
+    card.style.setProperty('--tilt-gx', '50%');
+    card.style.setProperty('--tilt-gy', '50%');
+  }
   // Digits only for the deep link; the display keeps whatever spacing the
   // creator's number was formatted with.
   const digits = (hostNumber ?? '').replace(/[^0-9]/g, '');
@@ -92,19 +128,48 @@ export default function MessageHost({ listingId, hostName, hostNumber }: Message
     <div style={wrap} data-section="message_host">
       <p style={caption}>MESSAGE {first.toUpperCase()} ON AVATOK</p>
 
-      <button type="button" onClick={() => void copy()}
-        title="Copy this number"
-        style={{
-          alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 10,
-          fontFamily: "'Comfortaa', 'Baloo 2', sans-serif", fontSize: '1.5rem', letterSpacing: '.055em',
-          padding: '8px 14px', borderRadius: 12, border: '2px dashed rgba(22,22,20,.3)',
-          background: '#fdf1d3', color: '#161614', cursor: 'pointer',
-        }}>
-        {hostNumber}
-        <span style={{ fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800, fontSize: '0.6875rem', letterSpacing: '.06em', color: '#5a5a54' }}>
-          {copied ? 'COPIED' : 'TAP TO COPY'}
+      <div
+        className="t-tilt"
+        style={{ position: 'relative', alignSelf: 'flex-start' }}
+        onPointerMove={onTiltMove}
+        onPointerEnter={onTiltEnter}
+        onPointerLeave={onTiltLeave}
+      >
+        <button ref={tiltCardRef} type="button" onClick={() => void copy()}
+          title="Copy this number"
+          className="t-tilt-card"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            fontFamily: "'Comfortaa', 'Baloo 2', sans-serif", fontSize: '1.5rem', letterSpacing: '.055em',
+            padding: '8px 14px', borderRadius: 12, border: '2px dashed rgba(22,22,20,.3)',
+            background: '#fdf1d3', color: '#161614', cursor: 'pointer',
+          }}>
+          {hostNumber}
+          <span style={{ fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800, fontSize: '0.6875rem', letterSpacing: '.06em', color: '#5a5a54' }}>
+            {copied ? 'COPIED' : 'TAP TO COPY'}
+          </span>
+          <span className="t-tilt-glare" aria-hidden="true" />
+        </button>
+        {/* [UI-MOTION-1 2026-09-10] "toast" (transitions.dev, `.t-toast` in
+            styles/motion.css) — first toast on the site; nothing else here
+            confirms a copy transiently, so this isn't a second system.
+            `role="status"`/`aria-live` because the element is always mounted
+            (only `.is-open` toggles), which is what lets the CSS transition
+            play in both directions instead of popping in/out with `display`. */}
+        <span
+          className={['t-toast', copied && 'is-open'].filter(Boolean).join(' ')}
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'absolute', left: 0, top: 'calc(100% + 8px)', zIndex: 1, whiteSpace: 'nowrap',
+            fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 900, fontSize: '0.75rem', letterSpacing: '.04em',
+            padding: '6px 12px', borderRadius: 100, border: '2px solid #161614',
+            background: '#161614', color: '#fdf1d3',
+          }}
+        >
+          Number copied
         </span>
-      </button>
+      </div>
 
       <p style={{ margin: 0, fontWeight: 700, fontSize: '0.8125rem', color: '#3a3a34', lineHeight: 1.5 }}>
         Messages happen in the AvaTOK app. Open it and send {first} a message on this number —

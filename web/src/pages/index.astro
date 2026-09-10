@@ -25,16 +25,30 @@ const ideas = [
   <main class="rail-home" data-design="station-static-2026-09" id="main-content">
     <section class="station-hero" aria-labelledby="rail-title">
       <div class="station-frame">
-        <div class="station-copy">
+        {/* [UI-MOTION-1 2026-09-10] "texts-reveal" (transitions.dev, `.t-*` in
+            styles/motion.css) — headline and supporting line rise in with a
+            staggered blur on first paint. `.t-stagger` goes on `.station-copy`
+            itself, not a new wrapper div, so `h1`/`p` stay its DIRECT children —
+            railway-home.css has `.station-copy > p:not(.station-aside)` rules
+            at every breakpoint that a wrapper div would have broken.
+            CRITICAL: both lines are real, readable text at rest — the
+            <noscript> below forces them visible if JS never runs, and
+            railwayHome.ts's safety-net timeout forces `.is-shown` even if the
+            reveal script itself fails, so nothing is ever permanently parked
+            at opacity:0. */}
+        <noscript><style>.t-stagger .t-stagger-line{opacity:1!important;transform:none!important;filter:none!important}</style></noscript>
+        <div class="station-copy t-stagger" id="hero-reveal">
           <p class="station-kicker">AvaTOK · India’s creator marketplace</p>
-          <h1 id="rail-title">Apna time.<br /><span>Apni kamaai.</span></h1>
-          <p>AvaTOK helps people turn time, skills, and local experiences into bookable conversations and live events.<br />Be a listener. Stream a puja. Host a class.</p>
+          <h1 id="rail-title" class="t-stagger-line">Apna time.<br /><span>Apni kamaai.</span></h1>
+          <p class="t-stagger-line t-stagger-line--2">AvaTOK helps people turn time, skills, and local experiences into bookable conversations and live events.<br />Be a listener. Stream a puja. Host a class.</p>
           <div class="station-actions">
             <a class="rail-button" href="/sign-up" data-home-cta="hero-create">Create free</a>
             <a class="station-outline" href="/ideas" data-home-cta="hero-ideas">Browse ideas</a>
           </div>
           <p class="station-aside">India’s<br />stories travel<br />further here.</p>
         </div>
+        {/* closes the merged .station-copy.t-stagger div opened above (it used
+            to close a plain .station-copy). */}
         <div class="station-art">
           <img src="/assets/railway/approved-ideas.jpg" width="865" height="1819" alt="A creator with her laptop at an Indian railway station, beside a blue train, an Apna Adda sign and a chai stall." fetchpriority="high" decoding="async" />
         </div>
@@ -59,7 +73,18 @@ const ideas = [
           </a>
         ))}
       </div>
-      <a class="rail-explore" href="/marketplace" data-home-cta="explore-categories">Explore all categories <span aria-hidden="true">⟶</span></a>
+      {/* [UI-MOTION-1 2026-09-10] "learn-more-hover" (transitions.dev, `.t-*` in
+          styles/motion.css) — hover-only: the label text alone still says
+          everything, the chevron is decoration. */}
+      <a class="rail-explore t-learn" href="/marketplace" data-home-cta="explore-categories">Explore all categories
+        <span class="t-learn-chevron" aria-hidden="true">
+          <svg width="20" height="16" viewBox="0 0 20 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M2 8H10" />
+            <path class="t-learn-arm t-learn-arm-top" d="M10 8L18 1" />
+            <path class="t-learn-arm t-learn-arm-bot" d="M10 8L18 15" />
+          </svg>
+        </span>
+      </a>
       <p class="rail-note">Listening sessions: adults 18+ · Companionship, not therapy or emergency support.</p>
     </section>
 

@@ -600,7 +600,15 @@ const listingViewProps = {
           <h2 class="ld-section-title">FAQ</h2>
           <div class="ld-faq-list">
             {faq.map((f) => (
-              <details class="ld-faq-item"><summary>{f.q}</summary><p>{f.a}</p></details>
+              <details class="ld-faq-item t-acc">
+                <summary>
+                  {f.q}
+                  <span class="t-acc-chevron" aria-hidden="true">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5l4 4 4-4" /></svg>
+                  </span>
+                </summary>
+                <div class="t-acc-panel"><div class="t-acc-panel-inner"><p>{f.a}</p></div></div>
+              </details>
             ))}
           </div>
         </section>
@@ -699,5 +707,31 @@ const listingViewProps = {
     run();
     const mo = new MutationObserver(run);
     mo.observe(document.body, { childList: true, subtree: true });
+  })();
+
+  // [UI-MOTION-1 2026-09-10] FAQ "accordion" open/close animation. The
+  // <details> element stays the source of truth for open/close — this only
+  // adds a `data-open` attribute so motion.css can animate the transition
+  // between the native open/close states. Without this script, `.ld-faq-item`
+  // still opens and closes correctly (see the `[open]:not([data-open])`
+  // fallback rule in listing-details.css) — it just snaps instead of easing.
+  (function wireFaqAccordion() {
+    document.querySelectorAll('.ld-faq-item.t-acc').forEach((det) => {
+      const summary = det.querySelector('summary');
+      if (!summary) return;
+      if (det.open) det.setAttribute('data-open', 'true');
+      summary.addEventListener('click', (e) => {
+        e.preventDefault();
+        const opening = !det.open;
+        if (opening) {
+          det.open = true;
+          requestAnimationFrame(() => det.setAttribute('data-open', 'true'));
+        } else {
+          det.setAttribute('data-open', 'false');
+          const ms = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--acc-collapse')) || 250;
+          window.setTimeout(() => { if (det.getAttribute('data-open') === 'false') det.open = false; }, ms);
+        }
+      });
+    });
   })();
 </script>

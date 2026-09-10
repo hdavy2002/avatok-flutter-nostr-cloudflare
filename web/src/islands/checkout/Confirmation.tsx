@@ -85,7 +85,21 @@ export function Confirmation({ listing, selection, result }: ConfirmationProps) 
     <div className="flex flex-col gap-4">
       <Card fillClassName="bg-mint" shadow="lg">
         <div className="flex flex-col gap-2">
-          <span className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-ink">Confirmed</span>
+          {/* [UI-MOTION-1 2026-09-10] "success-check" (transitions.dev, `.t-*`
+              in styles/motion.css) — presentation only, no amount/currency
+              here. `data-state="in"` is set on mount, not toggled later: this
+              component only ever renders once a booking is already confirmed,
+              so the mount itself IS the moment to animate; a CSS `@keyframes`
+              animation (unlike a transition) plays correctly from an initial
+              attribute value, no two-frame rAF trick needed. */}
+          <div className="flex items-center gap-2">
+            <span className="t-success-check" data-state="in" aria-hidden="true" style={{ width: 20, height: 20, color: 'inherit' }}>
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+                <path d="M4 12.5l5 5L20 6" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
+            <span className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-ink">Confirmed</span>
+          </div>
           <h2 className="font-display font-semibold text-[24px] leading-tight text-ink">
             You’re booked: {selection.title}
           </h2>

@@ -57,7 +57,7 @@ export function LiveNowRail({ title = 'Live now', hideWhenEmpty = true }: LiveNo
               (232px); narrower than that the buttons wrap. pb-3 is shadow clearance. */}
           {items.map((l, i) => (
             <div key={l.id} className="w-[232px] shrink-0 snap-start sm:w-[248px]">
-              <ListingTile listing={l} href={`/watch/${encodeURIComponent(l.id)}`} width={520} position={i} section="live_now" />
+              <ListingTile listing={l} href={`/watch/${encodeURIComponent(l.id)}`} width={520} position={i} section="live_now" enableSkeleton />
             </div>
           ))}
         </div>

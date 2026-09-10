@@ -45,14 +45,17 @@ const fmt = (d: string) =>
   lead="Notes from the team on earning as a creator, live sessions, privacy and building avaTOK."
   width="wide"
 >
-  <a class="post" href="/ideas"><span class="badge">Creator idea guides</span><h2>115 desi ideas. Your next paid session.</h2><p>Explore individual guides for live streams, 1:1 sessions, group classes and daily-life diaries — with practical preparation and equipment advice.</p><span class="post-date">Browse the illustrated guides →</span></a>
+  {/* [UI-MOTION-1 2026-09-10] "learn-more-hover" — `.t-learn` on the whole
+      card (it already has its own :hover lift), chevron replaces the plain
+      "→" glyph. Hover-only decoration; the link text carries the meaning. */}
+  <a class="post t-learn" href="/ideas"><span class="badge">Creator idea guides</span><h2>115 desi ideas. Your next paid session.</h2><p>Explore individual guides for live streams, 1:1 sessions, group classes and daily-life diaries — with practical preparation and equipment advice.</p><span class="post-date">Browse the illustrated guides <span class="t-learn-chevron" aria-hidden="true"><svg width="20" height="16" viewBox="0 0 20 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 8H10" /><path class="t-learn-arm t-learn-arm-top" d="M10 8L18 1" /><path class="t-learn-arm t-learn-arm-bot" d="M10 8L18 15" /></svg></span></span></a>
   <div class="posts">
     {posts.map((p) => (
-      <a class="post" href={`/blog/${p.slug}`}>
+      <a class="post t-learn" href={`/blog/${p.slug}`}>
         <span class="badge">{p.tag}</span>
         <h3 class="post-title">{p.title}</h3>
         <p class="post-ex">{p.excerpt}</p>
-        <span class="post-date">{fmt(p.date)} · Read →</span>
+        <span class="post-date">{fmt(p.date)} · Read <span class="t-learn-chevron" aria-hidden="true"><svg width="20" height="16" viewBox="0 0 20 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 8H10" /><path class="t-learn-arm t-learn-arm-top" d="M10 8L18 1" /><path class="t-learn-arm t-learn-arm-bot" d="M10 8L18 15" /></svg></span></span>
       </a>
     ))}
   </div>
