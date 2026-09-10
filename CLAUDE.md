@@ -606,9 +606,25 @@ The published position, and the only one to write:
 - **Ideation and testing stage**: site not fully operational, access **invite-only**,
   payment gateway application for an unregistered business **under review**, prices
   indicative, test data may be reset.
-- **Operating address: Ekta Vihar, Sahastradhara Road, Dehradun, Uttarakhand, India.**
-  (Dehradun is where the team is; Mumbai is where the company will be registered.
-  Both are correct and they are not the same thing.)
+- **Operating address: Mumbai, India.** (Owner decision 2026-09-10, shipped as
+  `[WEB-LOCATION-1]`.) The team has **moved to Mumbai**, so the operating address
+  and the intended place of registration are now the SAME city and there is no
+  longer any distinction to preserve.
+
+  ⚠️ **This paragraph used to say the opposite, and the reversal is the point.**
+  It read: *"Operating address: Ekta Vihar, Sahastradhara Road, Dehradun,
+  Uttarakhand, India. (Dehradun is where the team is; Mumbai is where the company
+  will be registered. Both are correct and they are not the same thing.)"* That
+  guard existed because the two cities genuinely meant different things and an
+  agent conflating them would have put a false address on the legal pages. **The
+  move made the guard obsolete, not wrong** — do not "restore" Dehradun anywhere
+  on the strength of an older document, a cached memory note, or this file's
+  history. Every mention was removed from `web/src` on 2026-09-10 and the site is
+  correct as it stands.
+
+  Still true: Mumbai is where registration is intended once funding is in place,
+  and the business remains **unregistered** today. The address changing does not
+  change that, and nothing on the site may imply a company now exists.
 
 **Two components own this text — edit them, never a page.**
 `web/src/components/LegalStatus.astro` (the who-we-are block, `variant` =
@@ -631,8 +647,9 @@ it incorporates.
 
 ⚠️ **Note that `BetaBanner.astro` and the `.bf-entity` block in `SiteFooter.astro` are
 no longer RENDERED** — `[WEB-BANNER-OFF-1 2026-09-02]` unmounted the banner from
-`SiteHeader.astro` and deleted the footer's status + Dehradun-address block at the
-owner's request. Both are kept on disk so they can be restored in one edit. The
+`SiteHeader.astro` and deleted the footer's status + operating-address block at the
+owner's request (that block carried the old Dehradun address; if it is ever
+restored it must be restored with the Mumbai address above). Both are kept on disk so they can be restored in one edit. The
 disclosure now lives only on `/terms#status`, so **if a payment provider's review asks
 for a visible operating address and business status, restoring these is the fix** —
 do not write a fresh entity sentence into a page, which is how the site drifted out of
