@@ -26,8 +26,10 @@
   /* geometry */
   --zine-r: 20px;
   --zine-rSm: 16px;
-  --zine-rField: 16px;
-  --zine-rBadge: 12px;
+  --zine-rField: 20px;
+  --zine-rBadge: 16px;
+  --zine-rLg: 24px;
+  --zine-rXl: 28px;
   --zine-bw: 2.5px;
   --zine-bwLg: 3px;
 

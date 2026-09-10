@@ -35,7 +35,7 @@
 }
 .ld-section-head { display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap; }
 .ld-section-title {
-  font-family: 'Anton', Impact, sans-serif; font-weight: 400; text-transform: uppercase;
+  font-family: 'Comfortaa', 'Baloo 2', sans-serif; font-weight: 400; text-transform: uppercase;
   font-size: clamp(1.75rem, 2.6vw, 2.375rem); letter-spacing: .06em; word-spacing: .22em;
   margin: 0; flex: 1 1 15rem; line-height: 1.05;
 }
@@ -75,7 +75,7 @@
 .ld-live-dot { width: 8px; height: 8px; border-radius: 50%; background: #fdf1d3; animation: ldTokPulse 1.2s ease-in-out infinite; }
 .ld-live-sub { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.75rem; letter-spacing: .1em; color: #ffd0c4; }
 .ld-join-now {
-  margin-left: auto; font-family: 'Anton', Impact, sans-serif; font-size: 0.8125rem; letter-spacing: .06em;
+  margin-left: auto; font-family: 'Comfortaa', 'Baloo 2', sans-serif; font-size: 0.8125rem; letter-spacing: .06em;
   text-transform: uppercase; padding: 8px 20px; border-radius: 100px; border: 2px solid #161614;
   background: #fdf1d3; color: #161614; word-spacing: .22em;
 }
@@ -135,7 +135,7 @@
 /* ── title / meta column ─────────────────────────────────────────────────── */
 .ld-eyebrow-tag { font-family: 'Nunito', system-ui, sans-serif; font-weight: 700; font-size: 0.8125rem; letter-spacing: .16em; color: #b82a19; margin-bottom: 12px; }
 .ld-title {
-  font-family: 'Anton', Impact, sans-serif; font-weight: 400; font-size: clamp(2.25rem, 4.4vw, 3.75rem);
+  font-family: 'Comfortaa', 'Baloo 2', sans-serif; font-weight: 400; font-size: clamp(2.25rem, 4.4vw, 3.75rem);
   line-height: 1.03; letter-spacing: 0; text-transform: uppercase; word-spacing: .22em;
 }
 .ld-title-accent { color: #d93825; }
@@ -155,11 +155,11 @@
   padding: 14px 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr)); gap: 12px;
 }
 .ld-stats-board div { display: flex; flex-direction: column; gap: 2px; }
-.ld-stats-board b { font-family: 'Anton', Impact, sans-serif; font-weight: 400; font-size: 1.375rem; letter-spacing: .06em; word-spacing: .22em; }
+.ld-stats-board b { font-family: 'Comfortaa', 'Baloo 2', sans-serif; font-weight: 400; font-size: 1.375rem; letter-spacing: .06em; word-spacing: .22em; }
 .ld-stats-board span { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.625rem; letter-spacing: .08em; color: #8c6a52; }
 
 .ld-price-row { margin-top: 20px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
-.ld-price-big { font-family: 'Anton', Impact, sans-serif; font-weight: 400; font-size: 2.125rem; letter-spacing: .06em; word-spacing: .22em; }
+.ld-price-big { font-family: 'Comfortaa', 'Baloo 2', sans-serif; font-weight: 400; font-size: 2.125rem; letter-spacing: .06em; word-spacing: .22em; }
 .ld-price-unit { font-size: 1rem; letter-spacing: .04em; }
 .ld-price-note { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .08em; color: #8c6a52; }
 
@@ -206,7 +206,7 @@
 .ld-booking-next-header span { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.75rem; letter-spacing: .1em; color: #fdf1d3; }
 .ld-booking-body { padding: 20px 22px 24px; }
 .ld-booking-title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 16px; }
-.ld-booking-title { font-family: 'Anton', Impact, sans-serif; font-size: 1.5rem; text-transform: uppercase; letter-spacing: .06em; word-spacing: .22em; }
+.ld-booking-title { font-family: 'Comfortaa', 'Baloo 2', sans-serif; font-size: 1.5rem; text-transform: uppercase; letter-spacing: .06em; word-spacing: .22em; }
 .ld-booking-price { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.75rem; color: #8c6a52; }
 .ld-handwriting { margin: 18px 10px 0; font-family: 'Kalam', cursive; font-size: 1.125rem; line-height: 1.35; color: #8c3a2c; transform: rotate(-2deg); }
 
@@ -232,11 +232,11 @@
 .ld-host-photo { display: grid; place-items: center; height: 210px; border: 2.5px solid #161614; border-radius: 18px; background: #1e5f66; position: relative; overflow: hidden; }
 .ld-host-photo img { object-fit: cover; }
 .ld-host-photo-badge { position: absolute; top: 10px; left: 10px; font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.625rem; letter-spacing: .08em; background: #d93825; color: #fdf1d3; border-radius: 100px; padding: 5px 10px; }
-.ld-host-name-big { font-family: 'Anton', Impact, sans-serif; font-size: 1.625rem; text-transform: uppercase; line-height: 1.05; letter-spacing: .06em; word-spacing: .22em; }
+.ld-host-name-big { font-family: 'Comfortaa', 'Baloo 2', sans-serif; font-size: 1.625rem; text-transform: uppercase; line-height: 1.05; letter-spacing: .06em; word-spacing: .22em; }
 .ld-host-meta-line { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .08em; color: #8c6a52; margin-top: 6px; }
 .ld-host-chip-row { display: flex; flex-wrap: wrap; gap: 7px; }
 .ld-host-chip { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .05em; border: 1.5px solid #161614; border-radius: 100px; padding: 6px 10px; }
-.ld-msg-btn { font-family: 'Anton', Impact, sans-serif; font-size: 0.9375rem; letter-spacing: .05em; text-transform: uppercase; padding: 14px; border-radius: 100px; border: 2.5px solid #161614; background: #fdf1d3; box-shadow: 3px 4px 0 #161614; word-spacing: .22em; text-align: center; }
+.ld-msg-btn { font-family: 'Comfortaa', 'Baloo 2', sans-serif; font-size: 0.9375rem; letter-spacing: .05em; text-transform: uppercase; padding: 14px; border-radius: 100px; border: 2.5px solid #161614; background: #fdf1d3; box-shadow: 3px 4px 0 #161614; word-spacing: .22em; text-align: center; }
 .ld-msg-note { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.625rem; letter-spacing: .06em; color: #8c6a52; text-align: center; }
 
 .ld-host-bio-col { flex: 2.2 1 20rem; min-width: min(100%, 18.75rem); padding: 22px 24px; display: flex; flex-direction: column; gap: 22px; }
@@ -250,7 +250,7 @@
 .ld-also-listed-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12.5rem, 1fr)); gap: 12px; margin-top: 10px; }
 .ld-also-listed-card { cursor: pointer; border: 2.5px solid #161614; border-radius: 16px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; box-shadow: 3px 4px 0 #161614; background: #fdf1d3; }
 .ld-also-listed-tag { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.625rem; letter-spacing: .08em; color: #8c6a52; }
-.ld-also-listed-title { font-family: 'Anton', Impact, sans-serif; font-size: 1.0625rem; line-height: 1.1; text-transform: uppercase; letter-spacing: .06em; word-spacing: .22em; }
+.ld-also-listed-title { font-family: 'Comfortaa', 'Baloo 2', sans-serif; font-size: 1.0625rem; line-height: 1.1; text-transform: uppercase; letter-spacing: .06em; word-spacing: .22em; }
 .ld-also-listed-meta { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .05em; color: #8c6a52; }
 
 /* ── house rules ─────────────────────────────────────────────────────────── */
@@ -278,7 +278,7 @@
 .ld-reviews-row { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
 .ld-rating-col { flex: 1 1 13.75rem; max-width: 300px; min-width: 0; }
 .ld-rating-card { padding: 20px; }
-.ld-big-rating { font-family: 'Anton', Impact, sans-serif; font-size: 3.25rem; line-height: 1.02; letter-spacing: .06em; word-spacing: .22em; }
+.ld-big-rating { font-family: 'Comfortaa', 'Baloo 2', sans-serif; font-size: 3.25rem; line-height: 1.02; letter-spacing: .06em; word-spacing: .22em; }
 .ld-rating-sub { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .08em; color: #8c6a52; margin: 6px 0 14px; }
 .ld-hist-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .ld-hist-star { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; width: 22px; }
@@ -303,7 +303,7 @@
 .ld-promises { border: 3px solid #161614; border-radius: 26px; overflow: hidden; background: #2d7180; box-shadow: 6px 7px 0 #161614; }
 .ld-promises-body { padding: clamp(22px, 3vw, 32px); }
 .ld-promises-head { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
-.ld-promises-title { font-family: 'Anton', Impact, sans-serif; font-size: clamp(1.625rem, 2.4vw, 2.25rem); text-transform: uppercase; color: #fdf1d3; text-shadow: 3px 3px 0 #0f3f45; letter-spacing: .06em; word-spacing: .22em; }
+.ld-promises-title { font-family: 'Comfortaa', 'Baloo 2', sans-serif; font-size: clamp(1.625rem, 2.4vw, 2.25rem); text-transform: uppercase; color: #fdf1d3; text-shadow: 3px 3px 0 #0f3f45; letter-spacing: .06em; word-spacing: .22em; }
 .ld-promises-note { font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .1em; color: #c4e3e0; }
 .ld-promises-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14.375rem, 1fr)); gap: 14px; }
 .ld-promise-card { border: 2px solid #fdf1d3; border-radius: 16px; padding: 14px 16px; }

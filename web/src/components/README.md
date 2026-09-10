@@ -13,11 +13,22 @@ missing, build a **local** component inside your own phase island folder and not
 it in your Graphiti episode so Phase Z can promote it.
 
 All styling uses the generated zine tokens only — no hardcoded hex/radius/shadow.
-Tailwind theme keys come from `tailwind.zine.cjs` (generated from `zine.dart`):
+Tailwind theme keys come from `tailwind.zine.cjs` (generated from
+`design/zine-tokens.dart` by `scripts/export-zine-tokens.mjs`):
 colors `paper/paper2/card/ink/inkSoft/inkMute/blue/blueInk/lime/coral/lilac/mint/…`,
-radius `rounded-zine|zineSm|zineField|zineBadge`, border `border-zine|zineLg`,
-shadow `shadow-zine|zine-sm|zine-xs|zine-pressed|zine-focus|zine-error`,
-fonts `font-display|body|mono`, motion `duration-zine|zine-slow`.
+radius `rounded-zineSm(16)|zineField(20)|zine(20)|zineBadge(16)|zineLg(24)|zineXl(28)`
+— chips/tags/badges/icon buttons/segmented controls = 16, buttons/inputs/fields/
+list rows/thumbnails/images = 20, cards/panels/modals/dropdowns = 24, hero cards/
+full-bleed media = 28, avatars/status dots/circular icon buttons = `rounded-full`
+— border `border-zine|zineLg`, shadow `shadow-zine|zine-sm|zine-xs|zine-pressed|
+zine-focus|zine-error`, fonts `font-display` (Comfortaa — titles, headings, the
+wordmark, big figures; 300-700 only, no italic, positive tracking only) |
+`font-body`/`font-sans` (Instrument Sans — body, labels, captions, tabular
+numbers) | `font-mono`/`font-label` (Nunito — small-caps eyebrows), motion
+`duration-zine|zine-slow` for micro-interactions plus the shared `.t-*` motion
+system in `src/styles/motion.css` (transitions.dev snippets, tokens
+`--d-fast|base|slow|event` / `--e-settle|pop|spring`) for state changes,
+reveals and confirmations.
 
 ## Components
 

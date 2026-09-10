@@ -26,8 +26,10 @@ module.exports = {
   "borderRadius": {
     "zine": "20px",
     "zineSm": "16px",
-    "zineField": "16px",
-    "zineBadge": "12px"
+    "zineField": "20px",
+    "zineBadge": "16px",
+    "zineLg": "24px",
+    "zineXl": "28px"
   },
   "borderWidth": {
     "zine": "2.5px",
@@ -43,12 +45,17 @@ module.exports = {
   },
   "fontFamily": {
     "display": [
-      "Anton",
-      "\"Arial Narrow\"",
+      "Comfortaa",
+      "\"Baloo 2\"",
       "system-ui",
       "sans-serif"
     ],
     "body": [
+      "\"Instrument Sans\"",
+      "system-ui",
+      "sans-serif"
+    ],
+    "sans": [
       "\"Instrument Sans\"",
       "system-ui",
       "sans-serif"

@@ -35,7 +35,7 @@ export function Sheet({ open, onClose, title, children, dismissable = true, clas
     >
       <div
         className={[
-          'w-full max-w-[640px] rounded-t-zine border-zineLg border-ink bg-card shadow-zine p-6 pb-8',
+          'w-full max-w-[640px] rounded-t-zineLg border-zineLg border-ink bg-card shadow-zine p-6 pb-8',
           className,
         ].join(' ')}
         onClick={(e) => e.stopPropagation()}

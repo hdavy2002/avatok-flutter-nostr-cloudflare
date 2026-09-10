@@ -1,5 +1,5 @@
 /* Shared account schedule for customer tickets and creator operations. */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ClerkIsland, getActiveTokenWaited as getActiveToken, SignInButton } from '../../lib/clerk';
 import { useAuth } from '@clerk/clerk-react';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/config';
@@ -14,6 +14,7 @@ import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { Spinner } from '../../components/Spinner';
 import { TicketCard } from './TicketCard';
+import { capture } from '../../lib/analytics';
 
 type Role = 'customer' | 'creator';
 
@@ -158,15 +159,70 @@ function CommercialScheduleInner({ role, kind, description, emptyTitle, emptyBod
   return (
     <div className="flex flex-col gap-5">
       {description && <p className="font-body text-[15px] font-bold text-inkSoft">{description}</p>}
-      <div className="flex flex-wrap gap-2" role="tablist" aria-label="Schedule views">
-        {VIEWS.map((item) => <button key={item.value} type="button" role="tab" aria-selected={view === item.value} onClick={() => setView(item.value)} className={`rounded-full border-zine border-ink px-3.5 py-2 font-mono text-[12px] font-bold uppercase tracking-[0.04em] shadow-zine-xs ${view === item.value ? 'bg-lime text-ink' : 'bg-card text-inkSoft'}`}>{item.label}</button>)}
-      </div>
+      <ScheduleTabs view={view} onChange={(next) => { capture('dashboard_schedule_tab_switch', { view: next }); setView(next); }} />
       {error && <div className="rounded-zine border-zine border-coral bg-paper2 p-3 font-body text-[14px] font-bold text-ink" role="alert">⚠ {error}</div>}
       {serverNow && <p className="font-mono text-[11px] font-bold uppercase tracking-[0.04em] text-inkMute">Times shown in your local timezone · schedule checked {new Date(serverNow).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</p>}
       {loading && !rows ? <div className="flex items-center gap-3 p-4"><Spinner size={22} /><span className="font-body font-bold text-inkSoft">Loading your schedule…</span></div>
         : visible.length ? <div className="flex flex-col gap-3">{visible.map((row) => <TicketCard key={rowKey(row)} session={row} past={view === 'past' || view === 'cancelled'} onResend={role === 'customer' ? resend : undefined} />)}</div>
         : !error ? <Card fillClassName="bg-paper2"><p className="font-body text-[15px] font-bold text-inkSoft">{emptyTitle ?? (role === 'customer' ? 'Nothing here yet.' : 'No sessions in this view.')}</p>{emptyBody && <p className="mt-1 font-body text-[14px] font-bold text-inkMute">{emptyBody}</p>}</Card> : null}
       {cursor && <button type="button" onClick={() => token && void loadPage(token, view, cursor, false)} disabled={loadingMore} className="self-start rounded-full border-zine border-ink bg-paper px-4 py-2.5 font-mono text-[13px] font-bold uppercase tracking-[0.04em] text-ink shadow-zine-xs disabled:opacity-50">{loadingMore ? 'Loading…' : 'Load more'}</button>}
+    </div>
+  );
+}
+
+/**
+ * [UI-MOTION-1 2026-09-10] transitions.dev's "tabs-sliding" snippet (`.t-*`
+ * classes, `src/styles/motion.css`). The pill's position/width are measured
+ * off the active tab's DOM node and written inline so the CSS transition
+ * tweens between the previous and next rect; first paint and resize snap
+ * with no transition so the pill never animates in from `left:0`.
+ */
+function ScheduleTabs({ view, onChange }: { view: CommercialScheduleView; onChange: (v: CommercialScheduleView) => void }) {
+  const barRef = useRef<HTMLDivElement>(null);
+  const pillRef = useRef<HTMLSpanElement>(null);
+  const tabRefs = useRef<Partial<Record<CommercialScheduleView, HTMLButtonElement | null>>>({});
+
+  const moveTo = useCallback((animate: boolean) => {
+    const tab = tabRefs.current[view];
+    const pill = pillRef.current;
+    if (!tab || !pill) return;
+    if (!animate) {
+      const prev = pill.style.transition;
+      pill.style.transition = 'none';
+      pill.style.transform = `translateX(${tab.offsetLeft}px)`;
+      pill.style.width = `${tab.offsetWidth}px`;
+      void pill.offsetWidth;
+      pill.style.transition = prev;
+    } else {
+      pill.style.transform = `translateX(${tab.offsetLeft}px)`;
+      pill.style.width = `${tab.offsetWidth}px`;
+    }
+  }, [view]);
+
+  useLayoutEffect(() => { moveTo(true); }, [moveTo]);
+  useEffect(() => {
+    const onResize = () => moveTo(false);
+    requestAnimationFrame(onResize);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [moveTo]);
+
+  return (
+    <div ref={barRef} className="t-tabs" role="tablist" aria-label="Schedule views">
+      <span ref={pillRef} className="t-tabs-pill" aria-hidden="true" />
+      {VIEWS.map((item) => (
+        <button
+          key={item.value}
+          type="button"
+          role="tab"
+          ref={(el) => { tabRefs.current[item.value] = el; }}
+          aria-selected={view === item.value}
+          onClick={() => onChange(item.value)}
+          className="t-tab font-mono text-[12px] font-bold uppercase tracking-[0.04em]"
+        >
+          {item.label}
+        </button>
+      ))}
     </div>
   );
 }

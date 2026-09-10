@@ -10,27 +10,11 @@ html { font-size: clamp(16px, calc(16px + (100vw - 1600px) * 0.0075), 22px); }
  * except via the zine vars. */
 
 /* ----- self-hosted fonts (woff2, converted from app/assets/fonts) ----- */
-@font-face {
-  font-family: 'Fredoka';
-  src: url('/fonts/Fredoka-Medium.woff2') format('woff2');
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Fredoka';
-  src: url('/fonts/Fredoka-SemiBold.woff2') format('woff2');
-  font-weight: 600;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Fredoka';
-  src: url('/fonts/Fredoka-Bold.woff2') format('woff2');
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
+/* [UI-COMFORTAA-1 2026-09-10] Fredoka self-hosted @font-face retired — it was
+   h1-h6's default display face; Comfortaa (loaded via Base.astro's Google
+   Fonts link) took over that role site-wide, per owner decision. Removed the
+   font load along with the swap so the site stops fetching a face it no
+   longer renders (same reasoning as the Anton retirement below). */
 @font-face {
   font-family: 'Nunito';
   src: url('/fonts/Nunito-SemiBold.woff2') format('woff2');
@@ -77,6 +61,7 @@ html { font-size: clamp(16px, calc(16px + (100vw - 1600px) * 0.0075), 22px); }
 /* [WEB-THEME-1] The full semantic token set (--ava-*). Must come before the
    Tailwind layers so component code can use it in @apply-free plain CSS. */
 @import './ava-tokens.css';
+@import './motion.css';
 
 @tailwind base;
 @tailwind components;
@@ -140,12 +125,27 @@ h3,
 h4,
 h5,
 h6 {
-  font-family: 'Fredoka', system-ui, sans-serif;
+  /* [UI-COMFORTAA-1 2026-09-10, owner decision] Comfortaa replaces Fredoka as
+     the sitewide display face — titles, headings, the wordmark, big figures.
+     Baloo 2 is the fallback (already loaded, similarly rounded) ahead of
+     system-ui. */
+  font-family: 'Comfortaa', 'Baloo 2', system-ui, sans-serif;
+  /* Comfortaa ships 300-700 ONLY. font-synthesis:none (above) stops a
+     requested 800/900 from being SMEARED, but it still silently falls back —
+     600 is a real weight so it renders as drawn. Never raise this past 700. */
   font-weight: 600;
-  /* Was -0.02em. Negative tracking on faces that are already drawn tight closes
-     the last of the gap between letters; 0 is the floor for display type here. */
-  letter-spacing: 0;
+  /* Comfortaa's circular stroke terminals mean NEGATIVE tracking makes
+     letters touch — the same trap this file already documented for Anton.
+     0.03em is the middle of the 0.02em-0.05em band positive display tracking
+     wants on this face. */
+  letter-spacing: 0.03em;
   margin: 0;
+}
+
+/* Comfortaa has no italic cut — never let a heading italicise. */
+h1 em, h2 em, h3 em, h4 em, h5 em, h6 em,
+h1 i, h2 i, h3 i, h4 i, h5 i, h6 i {
+  font-style: normal;
 }
 
 a {

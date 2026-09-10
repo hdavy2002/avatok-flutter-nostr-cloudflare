@@ -92,10 +92,12 @@ if (Astro.url.pathname.startsWith('/admin')) {
 
 const heads = heading ?? (title.split(' · ')[0]);
 
-// [WEB-FONT-3 2026-08-26] Owner: every font inside the dashboard is Nunito,
-// EXCEPT the marketplace page, which is being redesigned and must be left as
-// it is. Decided from the route rather than a prop so a new dashboard page
-// gets the right treatment without anyone remembering to pass anything.
+// [UI-COMFORTAA-1 2026-09-10, owner decision] SUPERSEDES [WEB-FONT-3]: every
+// font inside the dashboard is now Comfortaa — heading, label, button AND
+// figure — except /dashboard/marketplace (still being redesigned, left alone)
+// and any `.tabular-nums` numeric column, which stays on Instrument Sans:
+// Comfortaa has no tabular figures, so a balance/count column set in it would
+// visibly jitter as digits of different widths slide past each other.
 const plainType = !Astro.url.pathname.startsWith('/dashboard/marketplace');
 ---
 
@@ -108,7 +110,7 @@ const plainType = !Astro.url.pathname.startsWith('/dashboard/marketplace');
       Everything below that pins itself to the viewport is offset by --avh-h
       (published by SiteHeader) or it slides under the header. */}
   <SiteHeader auth="in" />
-  <div id="dash-root" data-dash-panel={active} class:list={["flex min-h-[calc(100vh-var(--avh-h))] bg-paper", plainType && "dash-nunito"]}>
+  <div id="dash-root" data-dash-panel={active} class:list={["flex min-h-[calc(100vh-var(--avh-h))] bg-paper", plainType && "dash-comfortaa"]}>
     <!-- Scrim (mobile) -->
     <div id="dash-scrim" class="fixed inset-0 z-40 hidden bg-ink/40 lg:hidden"></div>
 
@@ -141,7 +143,7 @@ const plainType = !Astro.url.pathname.startsWith('/dashboard/marketplace');
       <div class="flex items-center gap-2 border-b-zine border-ink px-5 py-4 lg:hidden">
         <a href="/" class="flex items-center gap-2 no-underline" aria-label="avatok.ai home">
           <svg width="26" height="24" viewBox="0 0 26 24" aria-hidden="true"><path d="M3 21 L13 3 L23 21" fill="none" stroke="var(--zine-blueInk)" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="13" cy="16.2" r="1.9" fill="var(--zine-coral)"></circle></svg>
-          <span class="font-display font-semibold text-[21px] leading-none tracking-[-0.4px] text-ink">ava<span class="text-blueInk">TOK</span></span>
+          <span class="font-display font-semibold text-[21px] leading-none tracking-[0.03em] text-ink">ava<span class="text-blueInk">TOK</span></span>
         </a>
         <button id="dash-close" type="button" aria-label="Close menu" class="ml-auto flex h-8 w-8 items-center justify-center rounded-zineBadge border-zine border-ink bg-card shadow-zine-xs lg:hidden">✕</button>
       </div>
@@ -185,7 +187,7 @@ const plainType = !Astro.url.pathname.startsWith('/dashboard/marketplace');
           <h1 class="truncate font-display font-semibold text-[22px] leading-none text-ink">{heads}</h1>
           {subtitle && <p class="mt-1 truncate font-body font-bold text-[13px] text-inkSoft">{subtitle}</p>}
         </div>
-        <a href="/dashboard/listings/new" class="ml-auto inline-flex items-center gap-1.5 rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">+ New</a>
+        <a href="/dashboard/listings/new" class="ml-auto inline-flex items-center gap-1.5 rounded-zine border-zine border-ink bg-lime px-4 py-2 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">+ New</a>
       </header>
 
       <!-- Content -->
@@ -216,21 +218,34 @@ const plainType = !Astro.url.pathname.startsWith('/dashboard/marketplace');
   </script>
 
 <style is:global>
-  /* [WEB-FONT-3] made `font-mono` render in Nunito inside the dashboard only,
-     because `font-mono` was Silkscreen sitewide and only this surface wanted
-     the swap.
+  /* [UI-COMFORTAA-1 2026-09-10, owner decision] "The dashboard should read as
+     all-Comfortaa." Every heading, label, button and figure inside the scope
+     below renders in Comfortaa instead of whatever utility class it carries
+     (`font-display` / `font-mono` / `font-body`) — EXCEPT anything flagged
+     `.tabular-nums` (balance / count columns), which stays on Instrument Sans:
+     Comfortaa ships no tabular figures, so digits of uneven width would make
+     those columns visibly jitter as they update. See CommercialSchedule.tsx,
+     WalletPanel.tsx, Overview.tsx for the tabular-nums call sites this
+     protects.
 
-     [WEB-TYPE-SILKSCREEN-1 2026-08-31] Silkscreen is now retired everywhere and
-     the `mono` token IS Nunito, so the font-family half of this rule is dead.
-     The TRACKING half is not, and that is why the rule survives rather than
-     being deleted: Silkscreen is a pixel face that needs wide tracking to read,
-     so the dashboard's label call sites carry generous values chosen for it.
-     Nunito does not want that much air, and 0.04em pulls them back to what a
-     drawn typeface wants without touching every class string.
-
-     Delete this once the dashboard's own tracking values have been revisited. */
-  .dash-nunito .font-mono {
-    letter-spacing: 0.04em;
+     `:where()` keeps this at zero extra specificity beyond the two classes
+     compounded, so it still loses to a more specific override further down
+     the cascade if one is ever needed — it only needs to beat the bare
+     utility classes it targets. */
+  .dash-comfortaa :where(h1, h2, h3, h4, h5, h6, .font-display, .font-mono, .font-body, button, label, .font-label) {
+    font-family: 'Comfortaa', 'Baloo 2', system-ui, sans-serif;
+  }
+  /* Comfortaa ships 300-700 only — font-synthesis:none (global.css) stops a
+     heavier weight from being SMEARED, but it still silently falls back.
+     Cap the two Tailwind weight utilities that ask for more than Comfortaa
+     has, so every dashboard call site renders the weight it actually asked
+     for. */
+  .dash-comfortaa :where(.font-extrabold, .font-black) {
+    font-weight: 700;
+  }
+  .dash-comfortaa :where(.tabular-nums, [data-tabular]) {
+    font-family: 'Instrument Sans', system-ui, sans-serif;
+    font-variant-numeric: tabular-nums;
   }
 </style>
 </Base>

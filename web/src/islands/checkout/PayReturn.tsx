@@ -48,10 +48,10 @@ function ctaClass(variant: 'lime' | 'blue' = 'lime'): string {
   const fill = variant === 'lime' ? 'bg-lime text-ink' : 'bg-blue text-ink';
   return [
     'inline-flex items-center justify-center gap-2.5 select-none no-underline',
-    'rounded-full border-zine border-ink shadow-zine-sm',
+    'rounded-zine border-zine border-ink shadow-zine-sm',
     fill,
     'transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed',
-    'px-6 py-3.5 font-display font-semibold text-[19px] leading-none tracking-[-0.2px]',
+    'px-6 py-3.5 font-display font-semibold text-[19px] leading-none tracking-[0.02em]',
   ].join(' ');
 }
 

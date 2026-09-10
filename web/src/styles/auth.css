@@ -44,7 +44,7 @@
   --error: #b82a19;
   --card-copy: #4a3a20;
 
-  --f-display: 'Anton', Impact, 'Arial Narrow Bold', sans-serif;
+  --f-display: 'Comfortaa', 'Baloo 2', system-ui, sans-serif; /* [UI-COMFORTAA-1] was Anton */
   --f-serif: 'Playfair Display', Georgia, serif;
   --f-body: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   /* [WEB-TYPE-SILKSCREEN-1 2026-08-31] Was Silkscreen, now retired sitewide. */
@@ -76,7 +76,8 @@
   font-family: var(--f-display);
   font-size: 30px;
   color: var(--ink);
-  letter-spacing: -0.015em;
+  font-weight: 600; /* Comfortaa ships 300-700 only */
+  letter-spacing: 0.03em; /* was -0.015em — Comfortaa's round terminals need positive tracking */
 }
 .auth-wordmark .wm-tok {
   font-family: var(--f-serif);
@@ -117,7 +118,7 @@
   width: 100%;
   background: var(--bone);
   border: 2.5px solid var(--ink);
-  border-radius: 14px;
+  border-radius: 20px; /* [UI-COMFORTAA-1] rounder scale — form field tier */
   padding: 15px 16px;
   font-family: var(--f-body);
   font-size: 16px;
@@ -173,7 +174,7 @@
   color: var(--error);
   background: var(--bone);
   border: 2.5px solid var(--error);
-  border-radius: 12px;
+  border-radius: 16px; /* [UI-COMFORTAA-1] small tier */
   padding: 10px 14px;
   margin: 0;
 }
@@ -185,7 +186,7 @@
   flex: 0 0 auto;
   width: 20px; height: 20px;
   border: 2.5px solid var(--ink);
-  border-radius: 5px;
+  border-radius: 16px; /* [UI-COMFORTAA-1] checkboxes tier */
   background: var(--bone);
   cursor: pointer;
   display: grid;
@@ -218,7 +219,7 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
   padding: 17px 24px;
-  border-radius: 100px;
+  border-radius: 20px; /* [UI-COMFORTAA-1] button tier, was a 100px pill — "rounder, on a scale, not as random pills" */
   border: 2.5px solid var(--ink);
   background: var(--signal);
   color: var(--bone);
@@ -255,7 +256,7 @@
   gap: 6px;
   text-align: left;
   padding: 11px 12px 12px;
-  border-radius: 18px;
+  border-radius: 20px; /* [UI-COMFORTAA-1] list-row tier, was 18 */
   border: 2.5px solid var(--ink);
   background: var(--oat);
   cursor: pointer;
@@ -276,7 +277,7 @@
   line-height: 1;
 }
 .auth-role[aria-checked='true'] .auth-radio { background: var(--signal); color: var(--bone); }
-.auth-role-title { font-family: var(--f-display); font-size: 21px; text-transform: uppercase; letter-spacing: -0.015em; }
+.auth-role-title { font-family: var(--f-display); font-weight: 600; font-size: 21px; text-transform: uppercase; letter-spacing: 0.03em; }
 .auth-role-sub { font-size: 13px; font-weight: 500; color: var(--card-copy); margin: 0; line-height: 1.4; }
 
 /* ── Ornaments (tablet + desktop only) ────────────────────────────────── */
@@ -337,7 +338,7 @@
     display: grid;
     place-content: center;
     padding: 0 22px;
-    border-radius: 100px;
+    border-radius: 16px; /* [UI-COMFORTAA-1] badge tier, was a 100px pill */
     border: 2.5px dashed var(--bone);
     font-family: var(--f-label);
     font-weight: 700;
@@ -387,7 +388,7 @@
   .auth-wordmark .wm-tok { font-size: 33px; }
   .auth-desktop-head { display: flex; flex-direction: column; gap: 8px; }
   .auth-eyebrow { font-family: var(--f-label); font-weight: 700; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--error); margin: 0; }
-  .auth-h2 { font-family: var(--f-display); font-size: 52px; line-height: 1.02; letter-spacing: -0.01em; text-transform: uppercase; margin: 0; }
+  .auth-h2 { font-family: var(--f-display); font-weight: 600; font-size: 52px; line-height: 1.02; letter-spacing: 0.03em; text-transform: uppercase; margin: 0; }
   .auth-form { padding: 0; gap: 18px; }
   .auth-foot { align-items: flex-start; text-align: left; padding: 0; margin-top: 18px; }
 

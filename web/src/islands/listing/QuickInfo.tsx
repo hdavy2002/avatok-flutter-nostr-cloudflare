@@ -43,7 +43,7 @@ const labelStyle = {
   color: '#8a7a63', margin: 0,
 };
 const valueStyle = {
-  fontFamily: 'Anton, Impact, sans-serif', fontWeight: 400,
+  fontFamily: "'Comfortaa', 'Baloo 2', sans-serif", fontWeight: 400,
   fontSize: '1.125rem', letterSpacing: '.045em', textTransform: 'uppercase' as const,
   color: INK, margin: '3px 0 0',
 };
@@ -131,7 +131,7 @@ export function QuickInfo({ card: c, listing, lane, href, onClose, onBook }: Qui
               {c.categoryLabel ?? c.category ?? c.kind ?? 'Listing'}
             </p>
               <h2 style={{
-                fontFamily: 'Anton, Impact, sans-serif', fontWeight: 400, fontSize: '1.75rem',
+                fontFamily: "'Comfortaa', 'Baloo 2', sans-serif", fontWeight: 400, fontSize: '1.75rem',
                 lineHeight: 1.1, letterSpacing: '.055em', wordSpacing: '.1em',
                 textTransform: 'uppercase', color: INK, margin: '6px 0 0',
               }}>{c.title}</h2>

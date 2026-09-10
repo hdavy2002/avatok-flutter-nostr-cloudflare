@@ -77,9 +77,9 @@ export function Confirmation({ listing, selection, result }: ConfirmationProps) 
 
   const ctaClass =
     'inline-flex items-center justify-center gap-2.5 select-none no-underline w-full ' +
-    'rounded-full border-zine border-ink shadow-zine-sm bg-lime text-ink ' +
+    'rounded-zine border-zine border-ink shadow-zine-sm bg-lime text-ink ' +
     'transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed ' +
-    'px-6 py-3.5 font-display font-semibold text-[19px] leading-none tracking-[-0.2px]';
+    'px-6 py-3.5 font-display font-semibold text-[19px] leading-none tracking-[0.02em]';
 
   return (
     <div className="flex flex-col gap-4">

@@ -234,7 +234,7 @@ export function ReviewerOnboarding({ email, sessionId }: ReviewerOnboardingProps
           letter-spacing: 0.14em; color: #1e5f66;
         }
         .ro-title {
-          margin: 0 0 14px; font-family: 'Anton', Impact, sans-serif; font-weight: 400;
+          margin: 0 0 14px; font-family: 'Comfortaa', 'Baloo 2', sans-serif; font-weight: 400;
           font-size: clamp(30px, 5vw, 42px); line-height: 1.02;
           letter-spacing: 0.055em; word-spacing: 0.2em; text-transform: uppercase;
         }

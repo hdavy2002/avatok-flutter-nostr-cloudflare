@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { InputHTMLAttributes, ReactNode } from 'react';
 
 export interface FieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'className'> {
@@ -22,16 +22,35 @@ export function Field({ label, lead, error, trailing, className = '', ...input }
   const shadow = error ? 'shadow-zine-error' : focused ? 'shadow-zine-focus' : 'shadow-zine-sm';
   const lift = focused && !error ? '-translate-x-[1px] -translate-y-[1px]' : '';
 
+  // [UI-MOTION-1 2026-09-10] "error-state-shake" (transitions.dev, .t-* in
+  // src/styles/motion.css): replay the shake every time a NEW error string
+  // arrives (not on every re-render while the same error is still shown).
+  const shakeRef = useRef<HTMLSpanElement>(null);
+  const prevError = useRef<string | null | undefined>(null);
+  useEffect(() => {
+    if (error && error !== prevError.current) {
+      const el = shakeRef.current;
+      if (el) {
+        el.classList.remove('is-shaking');
+        void el.offsetWidth; // force reflow so the shake can replay
+        el.classList.add('is-shaking');
+      }
+    }
+    prevError.current = error;
+  }, [error]);
+
   return (
-    <label className={['block', className].join(' ')}>
+    <label className={['block t-input-wrap', error && 'is-error', className].join(' ')}>
       {label && (
         <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">
           {label}
         </span>
       )}
       <span
+        ref={shakeRef}
         className={[
-          'flex items-stretch overflow-hidden rounded-zineField border-zine border-ink bg-card',
+          'flex items-stretch overflow-hidden rounded-zineField border-zine border-ink bg-card t-input',
+          error && 'is-error',
           'transition-transform duration-zine ease-out',
           shadow,
           lift,
@@ -56,11 +75,9 @@ export function Field({ label, lead, error, trailing, className = '', ...input }
         />
         {trailing && <span className="flex items-center border-l-zine border-ink px-3">{trailing}</span>}
       </span>
-      {error && (
-        <span className="mt-2 block font-mono font-bold uppercase text-[14px] tracking-[0.04em] text-coral">
-          ⚠ {error}
-        </span>
-      )}
+      <span className="t-error-msg mt-2 block font-mono font-bold uppercase text-[14px] tracking-[0.04em] text-coral">
+        ⚠ {error}
+      </span>
     </label>
   );
 }

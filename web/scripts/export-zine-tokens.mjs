@@ -148,7 +148,7 @@ const twColors = {};
 for (const name of Object.keys(colors)) twColors[name] = `var(--zine-${name})`;
 
 // radius / border-width tailwind keys derived from the parsed doubles
-const radiusMap = { r: 'zine', rSm: 'zineSm', rField: 'zineField', rBadge: 'zineBadge' };
+const radiusMap = { r: 'zine', rSm: 'zineSm', rField: 'zineField', rBadge: 'zineBadge', rLg: 'zineLg', rXl: 'zineXl' };
 const borderMap = { bw: 'zine', bwLg: 'zineLg' };
 const borderRadius = {};
 const borderWidth = {};
@@ -195,9 +195,28 @@ const themeExtend = {
   // came with this bumped every `font-mono` call site's size 8/9→11, 10→12,
   // 11→13, 12→14, 13→15px and gave each one an explicit weight (the family
   // carries none). Apply the same table to any new call site.
+  // [UI-COMFORTAA-1 2026-09-10, owner decision] Comfortaa replaces Anton as
+  // the display face (titles, headings, wordmark, big figures); Instrument
+  // Sans is the body face (paragraphs, labels, captions, tabular numbers).
+  // This mirrors app/lib/core/ui/avatok_dark.dart's AD.display / AD.body
+  // split so the web and app read as the same brand.
+  //
+  // TWO HARD RULES (from the font file itself, see avatok_dark.dart):
+  //   1. Comfortaa ships 300-700 ONLY — never request font-bold-and-heavier
+  //      above 700 on a `font-display` element, or the weight is synthesised
+  //      (global.css's `font-synthesis: none` stops the SMEAR, but the
+  //      requested weight still silently falls back — ask for a real one).
+  //   2. Comfortaa has NO italic cut. Never italicise `font-display`.
+  //   Comfortaa's circular stroke terminals also mean NEGATIVE tracking
+  //   makes letters touch — same trap the type rules already document for
+  //   Anton. Display headings want POSITIVE tracking, ~0.02em-0.05em.
   fontFamily: {
-    display: ['Anton', '"Arial Narrow"', 'system-ui', 'sans-serif'],
+    display: ['Comfortaa', '"Baloo 2"', 'system-ui', 'sans-serif'],
     body: ['"Instrument Sans"', 'system-ui', 'sans-serif'],
+    // `sans` is the same stack as `body` — added so new call sites can use
+    // the conventional Tailwind utility name; `body` stays for the many
+    // existing `font-body` call sites.
+    sans: ['"Instrument Sans"', 'system-ui', 'sans-serif'],
     mono: ['Nunito', 'system-ui', 'sans-serif'],
     label: ['Nunito', 'system-ui', 'sans-serif'],
     // Kalam — the handwritten marginalia voice. Already in Base.astro's Google

@@ -96,7 +96,7 @@ export default function MessageHost({ listingId, hostName, hostNumber }: Message
         title="Copy this number"
         style={{
           alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 10,
-          fontFamily: 'Anton, Impact, sans-serif', fontSize: '1.5rem', letterSpacing: '.055em',
+          fontFamily: "'Comfortaa', 'Baloo 2', sans-serif", fontSize: '1.5rem', letterSpacing: '.055em',
           padding: '8px 14px', borderRadius: 12, border: '2px dashed rgba(22,22,20,.3)',
           background: '#fdf1d3', color: '#161614', cursor: 'pointer',
         }}>

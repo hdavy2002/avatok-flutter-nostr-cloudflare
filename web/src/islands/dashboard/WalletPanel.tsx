@@ -4,7 +4,7 @@
  *   • POST /api/wallet/topup        → Stripe checkout url (we redirect)
  * All MASTER §4 endpoints. Read-only display + a top-up redirect.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getActiveTokenWaited as getActiveToken } from '../../lib/clerk';
 import { request, ApiError } from '../../lib/apiClient';
 import { isReviewerMode } from '../../lib/reviewer';
@@ -13,6 +13,44 @@ import { Card } from '../../components/Card';
 import { Spinner } from '../../components/Spinner';
 import type { WalletBalance } from '../checkout/types';
 import { capture, withTrace } from '../../lib/analytics';
+
+/**
+ * [UI-MOTION-1 2026-09-10] "number-pop-in" (transitions.dev, `.t-*` classes
+ * in src/styles/motion.css) on the Tokens balance — replays whenever the
+ * balance actually changes (not on every render while it holds steady).
+ * `tabular-nums` + `data-tabular` opt this figure OUT of the dashboard's
+ * all-Comfortaa scope (Dashboard.astro): Comfortaa has no tabular figures,
+ * so a balance column set in it would visibly jitter as digits update.
+ */
+function AnimatedBalance({ text }: { text: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const prev = useRef<string | null>(null);
+  useEffect(() => {
+    if (prev.current !== null && prev.current !== text) {
+      const el = ref.current;
+      if (el) {
+        el.classList.remove('is-animating');
+        void el.offsetWidth; // force reflow so the animation can replay
+        el.classList.add('is-animating');
+      }
+    }
+    prev.current = text;
+  }, [text]);
+  const chars = text.split('');
+  return (
+    <span ref={ref} className="t-digit-group tabular-nums" data-tabular>
+      {chars.map((ch, i) => (
+        <span
+          key={i}
+          className="t-digit"
+          data-stagger={i === chars.length - 2 ? '1' : i === chars.length - 1 ? '2' : undefined}
+        >
+          {ch}
+        </span>
+      ))}
+    </span>
+  );
+}
 
 interface Tx {
   id?: string;
@@ -97,7 +135,7 @@ function Inner() {
           <div>
             <span className="font-mono font-bold uppercase text-[14px] tracking-[0.08em] text-ink">Balance</span>
             <div className="font-mono font-bold text-[26px] text-ink">
-              {balance != null ? `${balance.toLocaleString()}` : '—'}{' '}
+              <AnimatedBalance text={balance != null ? balance.toLocaleString() : '—'} />{' '}
               <span className="text-[14px]">Tokens</span>
             </div>
           </div>

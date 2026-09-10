@@ -65,14 +65,23 @@ class Zine {
   static const blueMark = Color(0x8CF4D8A0);
 
   // ---- geometry ----
-  /// Default card radius.
+  /// Default radius — buttons, inputs, form fields, list rows, thumbnails,
+  /// images. [UI-COMFORTAA-1 2026-09-10] Was 20 already; unchanged.
   static const double r = 20;
-  /// Small card / tile radius.
+  /// Small radius — chips, tags, small badges, inline icon buttons,
+  /// segmented controls.
   static const double rSm = 16;
-  /// Field radius.
-  static const double rField = 16;
-  /// Icon badge radius.
-  static const double rBadge = 12;
+  /// Field radius. [UI-COMFORTAA-1] Bumped 16 -> 20 to match the "buttons,
+  /// inputs, form fields" tier the app's radius scale defines — fields were
+  /// the odd one out at 16 while everything else in that tier sits at 20.
+  static const double rField = 20;
+  /// Icon badge radius. [UI-COMFORTAA-1] Bumped 12 -> 16 to land on the
+  /// "chips, tags, small badges" tier instead of a bespoke value.
+  static const double rBadge = 16;
+  /// Card / panel / modal / dropdown radius. NEW [UI-COMFORTAA-1].
+  static const double rLg = 24;
+  /// Hero card / full-bleed media radius. NEW [UI-COMFORTAA-1].
+  static const double rXl = 28;
   /// Standard border width on every contained element.
   static const double bw = 2.5;
   /// Heavy border (hero crest, extra-large containers).

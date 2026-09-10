@@ -360,7 +360,7 @@ export function ListingTile({
       className={['group flex flex-col overflow-hidden no-underline', className].join(' ')}
       style={{
         border: `3px solid ${INK}`,
-        borderRadius: 26,
+        borderRadius: 24, // [UI-COMFORTAA-1] cards/panels tier
         background: p.fill,
         boxShadow: `6px 7px 0 ${INK}`,
         transition: 'transform 120ms ease-out, box-shadow 120ms ease-out',
@@ -387,7 +387,7 @@ export function ListingTile({
         {posterFirst && c.aiPoster?.lettering === 'overlay' && (
           <div style={{ position: 'absolute', inset: '12px 12px auto 12px', zIndex: 2, pointerEvents: 'none' }}>
             <p style={{
-              margin: 0, fontFamily: 'Anton, Impact, sans-serif', fontWeight: 400,
+              margin: 0, fontFamily: "'Comfortaa', 'Baloo 2', sans-serif", fontWeight: 400,
               fontSize: '1.5rem', lineHeight: 1.05, letterSpacing: '.055em', wordSpacing: '.1em',
               textTransform: 'uppercase', color: CREAM, textShadow: `3px 3px 0 ${INK}`,
             }}>{c.aiPoster.copy?.title ?? c.title}</p>
@@ -430,7 +430,7 @@ export function ListingTile({
             // which is why it survived a palette change on its own. Red still
             // means LIVE; everything else takes the indigo.
             letterSpacing: '.08em', background: c.live ? '#d93825' : '#2c2f5e', color: CREAM,
-            borderRadius: 100, padding: '6px 11px', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0,
+            borderRadius: 16, padding: '6px 11px', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, // [UI-COMFORTAA-1] chip tier, was a 100px pill
           }}>
             <span style={{
               width: 6, height: 6, borderRadius: '50%', flex: 'none',
@@ -447,7 +447,7 @@ export function ListingTile({
               <span style={{
                 fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800, fontSize: '0.6875rem',
                 background: CREAM, color: INK, border: `1.5px solid ${INK}`,
-                borderRadius: 100, padding: '5px 9px', flex: 'none',
+                borderRadius: 16, padding: '5px 9px', flex: 'none', // [UI-COMFORTAA-1] chip tier
               }}>18+</span>
             )}
             <button
@@ -566,7 +566,7 @@ export function ListingTile({
             style={{
               marginLeft: 'auto', flex: 'none', fontFamily: 'Nunito, system-ui, sans-serif',
               fontWeight: 800, fontSize: '0.75rem', letterSpacing: '.08em',
-              padding: '10px 16px', borderRadius: 100, border: `2px solid ${INK}`,
+              padding: '10px 16px', borderRadius: 20, border: `2px solid ${INK}`, // [UI-COMFORTAA-1] button tier
               background: CREAM, color: INK, cursor: 'pointer',
             }}
           >MORE INFO</button>
@@ -594,7 +594,7 @@ export function ListingTile({
             with the shadow of the first (CLAUDE.md type rules). */}
         <span className="sr-only">{c.title}. {blurb}</span>
         <h4 aria-hidden="true" style={{
-          fontFamily: 'Anton, Impact, sans-serif', fontWeight: 400, fontSize: '1.4375rem',
+          fontFamily: "'Comfortaa', 'Baloo 2', sans-serif", fontWeight: 400, fontSize: '1.4375rem',
           lineHeight: 1.07, textTransform: 'uppercase', color: textCol, margin: 0,
           // Never negative tracking on display type — CLAUDE.md standing rule.
           letterSpacing: '.02em', wordSpacing: '.08em',
@@ -625,7 +625,7 @@ export function ListingTile({
               title={chip}
               style={{
                 minHeight: 26, maxWidth: '48%', padding: '3px 8px', flex: '0 1 auto', display: 'grid', placeItems: 'center',
-                border: `1.5px solid ${chipCol}`, borderRadius: 100, color: chipCol,
+                border: `1.5px solid ${chipCol}`, borderRadius: 16, color: chipCol, // [UI-COMFORTAA-1] chip tier
                 fontFamily: 'Nunito, system-ui, sans-serif', fontSize: '0.625rem', fontWeight: 800,
                 whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
               }}
@@ -639,18 +639,18 @@ export function ListingTile({
           {showSuno && (
             <span data-cta="suno" style={{
               flex: 'none', textAlign: 'center', fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800,
-              fontSize: '0.75rem', letterSpacing: '.08em', padding: '13px 12px', borderRadius: 100,
+              fontSize: '0.75rem', letterSpacing: '.08em', padding: '13px 12px', borderRadius: 20, // [UI-COMFORTAA-1] button tier
               border: `2px solid ${INK}`, background: CREAM, color: INK,
             }}>{ctaExtra.SUNO}</span>
           )}
           <span data-cta={buttons.primaryCta} style={{
             flex: 1, textAlign: 'center', fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800,
-            fontSize: '0.75rem', letterSpacing: '.08em', padding: '13px 8px', borderRadius: 100,
+            fontSize: '0.75rem', letterSpacing: '.08em', padding: '13px 8px', borderRadius: 20, // [UI-COMFORTAA-1] button tier
             border: `2px solid ${INK}`, background: '#d93825', color: CREAM,
           }}>{buttons.primaryLabel}</span>
           <span data-cta={buttons.secondaryCta} style={{
             flex: 1, textAlign: 'center', fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800,
-            fontSize: '0.75rem', letterSpacing: '.08em', padding: '13px 8px', borderRadius: 100,
+            fontSize: '0.75rem', letterSpacing: '.08em', padding: '13px 8px', borderRadius: 20, // [UI-COMFORTAA-1] button tier
             border: `2px solid ${INK}`, background: CREAM, color: INK,
           }}>MORE INFO</span>
         </div>

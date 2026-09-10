@@ -79,7 +79,7 @@ const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false } = Astro.p
     A stylesheet <link> in the body is honoured by every browser. */}
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@0,700;0,900;1,700;1,900&family=Instrument+Sans:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&family=Baloo+2:wght@600;700;800&family=Kalam:wght@400;700&display=swap" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,700;0,900;1,700;1,900&family=Instrument+Sans:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&family=Baloo+2:wght@600;700;800&family=Kalam:wght@400;700&display=swap" />
 
 {/* [WEB-HEADER-5 2026-08-26] Owner: the bazaar band belongs above the site
     header. Inside <header> on purpose — a sticky header that left the band
@@ -208,8 +208,10 @@ const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false } = Astro.p
   :root { --avh-h: 90px; }
   @media (max-width: 620px) { :root { --avh-h: 60px; } }
 
-  /* Header type: Anton matches the poster's condensed hand-lettered caps most
-     closely of the faces already loaded for the auth screens. */
+  /* Header type: [UI-COMFORTAA-1 2026-09-10] Was Anton. The logo itself is a
+     PNG of the hand-drawn wordmark (not set type), so this only ever styled the
+     nav links and auth CTAs — short, uppercase, tracked label text. That is
+     Nunito's job sitewide (CLAUDE.md type rules), not the new display face. */
   /* [WEB-HEADER-5] .avh is now the SHELL: the bazaar band stacked over the bar.
      The row styles moved to .avh-bar — .avh used to be the flex row itself, and
      a band added as one of its children would have sat inline beside the logo. */
@@ -220,7 +222,7 @@ const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false } = Astro.p
     display: block;
     background: var(--avh-cream);
     color: var(--avh-ink);
-    font-family: 'Anton', Impact, 'Arial Narrow Bold', sans-serif;
+    font-family: 'Nunito', system-ui, sans-serif;
   }
 
   .avh-bar {
@@ -262,7 +264,8 @@ const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false } = Astro.p
 
   /* Auth CTAs (island) */
   .avh-cta {
-    font-family: 'Anton', Impact, sans-serif;
+    font-family: 'Nunito', system-ui, sans-serif;
+    font-weight: 800;
     word-spacing: 0.22em;
     font-size: 16px;
     letter-spacing: 0.05em;
@@ -277,7 +280,7 @@ const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false } = Astro.p
   .avh-cta--solid {
     background: var(--avh-red);
     color: #fdf1d3;
-    border-radius: 100px;
+    border-radius: 20px; /* [UI-COMFORTAA-1] button tier, was a 100px pill */
     padding: 12px 26px;
   }
   .avh-cta:focus-visible { outline: 3px solid var(--avh-red); outline-offset: 2px; }
@@ -305,7 +308,7 @@ const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false } = Astro.p
       align-items: center;
       justify-content: center;
       border: 2px solid var(--avh-ink);
-      border-radius: 100px;
+      border-radius: 20px; /* [UI-COMFORTAA-1] button tier */
       background: #fff7e6;
     }
   }

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 
 export interface ModalProps {
@@ -14,7 +14,12 @@ export interface ModalProps {
   className?: string;
 }
 
-/** Centered zine modal — paper-ish card, 3px ink border, big hard shadow. */
+/** Centered zine modal — paper-ish card (rounded-zineLg, 24px), 3px ink
+ * border, big hard shadow. Scales up from center on open via `.t-modal`
+ * (transitions.dev's modal snippet, `src/styles/motion.css`); mounting is
+ * gated on `open` here rather than on `.is-closing`, so there is no exit
+ * animation on unmount yet — a fine default for a component that already
+ * mounts/unmounts cheaply. */
 export function Modal({ open, onClose, title, children, dismissable = true, maxWidth = 440, className = '' }: ModalProps) {
   useEffect(() => {
     if (!open) return;
@@ -24,6 +29,17 @@ export function Modal({ open, onClose, title, children, dismissable = true, maxW
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [open, dismissable, onClose]);
+
+  // [UI-MOTION-1] `.t-modal` needs a "closed" frame in the DOM before
+  // `.is-open` lands, or the CSS transition has nothing to tween from — the
+  // element would just appear already scaled to 1. Mount at scale(--modal-scale),
+  // then flip the class on the next frame.
+  const [entered, setEntered] = useState(false);
+  useEffect(() => {
+    if (!open) { setEntered(false); return; }
+    const id = requestAnimationFrame(() => setEntered(true));
+    return () => cancelAnimationFrame(id);
+  }, [open]);
 
   if (!open) return null;
   return (
@@ -35,7 +51,7 @@ export function Modal({ open, onClose, title, children, dismissable = true, maxW
       aria-modal="true"
     >
       <div
-        className={['flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-zine border-zineLg border-ink bg-card shadow-zine p-6', className].join(' ')}
+        className={['t-modal flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-zineLg border-zineLg border-ink bg-card shadow-zine p-6', entered && 'is-open', className].join(' ')}
         style={{ maxWidth }}
         onClick={(e) => e.stopPropagation()}
       >

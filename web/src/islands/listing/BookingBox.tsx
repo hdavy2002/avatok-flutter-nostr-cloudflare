@@ -203,7 +203,7 @@ function MonthCalendar({
         >
           ‹
         </button>
-        <span style={{ fontFamily: 'Anton, Impact, sans-serif', fontWeight: 400, fontSize: '0.9375rem', textTransform: 'uppercase', letterSpacing: '.03em', wordSpacing: '.1em' }}>
+        <span style={{ fontFamily: "'Comfortaa', 'Baloo 2', sans-serif", fontWeight: 400, fontSize: '0.9375rem', textTransform: 'uppercase', letterSpacing: '.03em', wordSpacing: '.1em' }}>
           {MONTH_NAMES[viewMonth.getMonth()]} {viewMonth.getFullYear()}
         </span>
         <button
