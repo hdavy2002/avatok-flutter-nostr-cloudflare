@@ -210,7 +210,7 @@ export function ReviewerOnboarding({ email, sessionId }: ReviewerOnboardingProps
 
         <p className="ro-foot">
           Questions during your review? <a href="mailto:support@avatok.ai">support@avatok.ai</a> ·
-          Ekta Vihar, Sahastradhara Road, Dehradun, Uttarakhand, India
+          Mumbai, India
         </p>
       </div>
 
