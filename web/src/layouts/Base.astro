@@ -1,6 +1,10 @@
 ---
 import '../styles/tokens.css';
 import '../styles/global.css';
+// [UI-MOTION-1 2026-09-10] Imported HERE, not via @import in global.css — see
+// the long note at that file's old import site. A JS-side import is bundled by
+// Vite unconditionally; a late @import is silently dropped.
+import '../styles/motion.css';
 // [WEB-HEADER-1 2026-08-26] SiteHeader replaces Nav.astro site-wide. Nav's five
 // menu links pointed at homepage anchors deleted in the redesign (#features,
 // #receptionist, #number, #messaging, #faq — all verified absent), so the menu

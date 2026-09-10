@@ -61,7 +61,17 @@ html { font-size: clamp(16px, calc(16px + (100vw - 1600px) * 0.0075), 22px); }
 /* [WEB-THEME-1] The full semantic token set (--ava-*). Must come before the
    Tailwind layers so component code can use it in @apply-free plain CSS. */
 @import './ava-tokens.css';
-@import './motion.css';
+/* [UI-MOTION-1 2026-09-10] `@import './motion.css'` USED TO SIT HERE AND DID
+   NOTHING. The CSS spec allows @import only before any other rule, and this
+   file opens with a real `html { font-size: ... }` at line 1 — so the build
+   drops every @import below it. Verified in production: the deployed bundles
+   contain no `--d-base` and no `.t-*` class.
+   Motion is now imported from Base.astro as a JS-side import, which Vite
+   always bundles. DO NOT move it back here.
+   ⚠️ The `--ava-*` token import above has the SAME problem and is ALSO dead in
+   production (grep the deployed CSS for `--ava-` — zero hits). It has been
+   left alone deliberately: making a whole semantic token set suddenly apply is
+   a visual change that needs to be looked at, not smuggled into a font ship. */
 
 @tailwind base;
 @tailwind components;
