@@ -77,7 +77,12 @@ for (const href of new Set(guideLinks)) {
 assert.doesNotMatch(ideas,/creator-atlas\.jpg/,'No repeated atlas on idea cards');
 console.log('115 unique article routes, hero images, sections and shared chrome passed.');
 
-const sitemap = readFileSync(resolve(root,'sitemap.xml'),'utf8');
+// [WEB-SEO-3] /sitemap.xml is now a sitemapindex; the static page URLs live in
+// /sitemap-pages.xml. Check both exist and that the index points at the pages file.
+const sitemapIndex = readFileSync(resolve(root,'sitemap.xml'),'utf8');
+assert.match(sitemapIndex,/<sitemapindex/,'sitemap.xml is a sitemap index');
+assert(sitemapIndex.includes('https://avatok.ai/sitemap-pages.xml'),'Index lists sitemap-pages.xml');
+const sitemap = readFileSync(resolve(root,'sitemap-pages.xml'),'utf8');
 for (const href of new Set(guideLinks)) assert(sitemap.includes('https://avatok.ai'+href),'Guide missing from sitemap: '+href);
 for (const match of ideas.matchAll(/src="(\/assets\/ideas\/guides\/[^"]+)"/g)) {
  assert(existsSync(resolve(root,match[1].slice(1))),'Missing responsive card image: '+match[1]);
