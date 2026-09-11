@@ -38,7 +38,7 @@ import { commercialRoutePattern } from "./lib/commercial_ids";
 import { commercialDiagnostics, scanCommercialHealth } from "./routes/commercial_diagnostics";
 import { runCommercialSettlements, runCommercialHostNoShowSweep } from "./commercial_settlement";
 import { refreshStaleCreatorStats } from "./lib/creator_stats"; // [LIST-STATS-1]
-import { endDueConsultSessions } from "./lib/commercial_session_clock"; // [SESSION-CLOCK-0]
+import { endDueConsultSessions, backfillCheckedInConsultSessions } from "./lib/commercial_session_clock"; // [SESSION-CLOCK-0]
 import { messengerCallAuthorize, messengerCallPricing, messengerCallReceipt, messengerCallBillingStatus, cancelMessengerCallAuthorization } from "./routes/messenger_call_billing";
 import { brain } from "./routes/brain";
 import { brainDomains } from "./routes/brain_domains";
@@ -425,7 +425,15 @@ export default {
           .catch((e) => { console.error("[commercial-reconciliation] failed:", String(e)); }),
         // [SESSION-CLOCK-0] "The schedule ends a session, never a provider event"
         // (RULEBOOK-PAID-SESSIONS.md §5) -- this is that schedule for 1:1 consults.
-        endDueConsultSessions(env)
+        // [WAITROOM-3] backfillCheckedInConsultSessions runs first: it synthesizes
+        // the missing commercial_sessions row (+ settlement job) for a booking the
+        // creator checked into but the buyer never opened, so that booking is not
+        // invisible to settlement. It must not block endDueConsultSessions on
+        // failure, so its own error is caught before the chain continues.
+        backfillCheckedInConsultSessions(env)
+          .then((r) => { if (r.scanned) console.log("[commercial-consult-checkin-backfill]", JSON.stringify(r)); })
+          .catch((e) => { console.error("[commercial-consult-checkin-backfill] failed:", String(e)); })
+          .then(() => endDueConsultSessions(env))
           .then((r) => { if (r.scanned) console.log("[commercial-consult-session-clock]", JSON.stringify(r)); })
           .catch((e) => { console.error("[commercial-consult-session-clock] failed:", String(e)); }),
         reconcileListingLifecycleProjections(env)
@@ -436,21 +444,30 @@ export default {
           .catch((e) => { console.error("[listing-publication-reconciliation] failed:", String(e)); }),
         recoverEmailOutbox(env)
           .catch(() => { console.error("[commercial-email-recovery] failed"); }),
-        runCommercialHostNoShowSweep(env)
-          .then((r) => { if (r.scanned) console.log("[commercial-host-no-show-sweep]", JSON.stringify(r)); })
-          .catch((e) => { console.error("[commercial-host-no-show-sweep] failed:", String(e)); }),
-        // [LISTING-EXPIRY-1] Buyers of a show nobody ever opened (no session row) —
-        // invisible to the sweep above — are refunded as the host's no-show.
-        runCommercialOrphanNoShowSweep(env)
-          .then((r) => { if (r.scanned) console.log("[commercial-orphan-no-show-sweep]", JSON.stringify(r)); })
-          .catch((e) => { console.error("[commercial-orphan-no-show-sweep] failed:", String(e)); }),
         // [LISTING-EXPIRY-1] Close published shows whose scheduled end has passed.
         expireEndedEventListings(env)
           .then((r) => { if (r.scanned) console.log("[listing-schedule-expiry]", JSON.stringify(r)); })
           .catch((e) => { console.error("[listing-schedule-expiry] failed:", String(e)); }),
-        runCommercialSettlements(env)
-          .then((r) => { if (r.scanned) console.log("[commercial-settlement]", JSON.stringify(r)); })
-          .catch((e) => { console.error("[commercial-settlement] failed:", String(e)); }),
+        // [WAITROOM-3 / reviewer nit 9] Both no-show sweeps run to completion
+        // BEFORE runCommercialSettlements (rather than concurrently with it),
+        // so a no-show refund/strike/settlement-job insert this same tick is
+        // visible to the settlement pass instead of racing it. Sequenced in
+        // their own chain so the rest of this Promise.all stays concurrent.
+        (async () => {
+          await Promise.all([
+            runCommercialHostNoShowSweep(env)
+              .then((r) => { if (r.scanned) console.log("[commercial-host-no-show-sweep]", JSON.stringify(r)); })
+              .catch((e) => { console.error("[commercial-host-no-show-sweep] failed:", String(e)); }),
+            // [LISTING-EXPIRY-1] Buyers of a show nobody ever opened (no session row) —
+            // invisible to the sweep above — are refunded as the host's no-show.
+            runCommercialOrphanNoShowSweep(env)
+              .then((r) => { if (r.scanned) console.log("[commercial-orphan-no-show-sweep]", JSON.stringify(r)); })
+              .catch((e) => { console.error("[commercial-orphan-no-show-sweep] failed:", String(e)); }),
+          ]);
+          await runCommercialSettlements(env)
+            .then((r) => { if (r.scanned) console.log("[commercial-settlement]", JSON.stringify(r)); })
+            .catch((e) => { console.error("[commercial-settlement] failed:", String(e)); });
+        })(),
         scanCommercialHealth(env)
           .then((r) => {
             const warnings = r.alarms.filter((alarm) => alarm.state === "warning");
