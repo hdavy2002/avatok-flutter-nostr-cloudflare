@@ -206,6 +206,12 @@ class MoneyApi {
   static Future<Map<String, dynamic>> ledgerDetail(String id) async =>
       (await _get('$kWalletBase/ledger/$id')).data;
 
+  /// [WALLET-ACTIVITY-DETAIL-1] What one statement row was for: activity, listing,
+  /// creator/buyer, refund reason, time. Returns {activity:{...}}. A query param,
+  /// not a path segment — commercial ids are longer than the ledger route allows.
+  static Future<Map<String, dynamic>> activity(String id) async =>
+      (await _get('$kWalletBase/activity?id=${Uri.encodeQueryComponent(id)}')).data;
+
   /// [WALLET-COCKPIT-1] Human-labeled statement feed (wallet_transactions):
   /// each entry = {id, ts, type, direction, feature_key, label, tokens (signed),
   /// balance_after?, ref}. Keyset cursor pagination, newest first.

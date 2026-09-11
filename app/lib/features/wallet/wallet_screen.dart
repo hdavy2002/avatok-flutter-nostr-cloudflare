@@ -183,6 +183,12 @@ class WalletScreen extends StatefulWidget {
 class _WalletScreenState extends State<WalletScreen> {
   int _balance = 0, _held = 0;
   final List<Map<String, dynamic>> _entries = [];
+
+  // [WALLET-ACTIVITY-DETAIL-1] Tap a row → a panel slides open under it with what the
+  // money was for. One open at a time; each row's detail is fetched once and kept.
+  String? _openTxnId;
+  final Map<String, Map<String, dynamic>> _activity = {};
+  final Set<String> _activityFailed = {};
   String? _cursor;
   bool _loading = false, _exhausted = false, _admin = false;
 
@@ -1518,16 +1524,30 @@ class _WalletScreenState extends State<WalletScreen> {
       final tokens = _tokensOf(e);
       final ts = _tsOf(e);
       final cat = _catOf(e);
-      return WalletTxnRow(
-        icon: _catIcon(cat),
-        color: _catColor(cat),
-        title: _titleOf(e),
-        sub: _catLabel(cat),
-        amountLabel: '${tokens >= 0 ? '+' : '−'}${_tokens(tokens.abs())}',
-        isIn: tokens >= 0,
-        time: _clock(ts),
-        showDivider: !first,
-        onTap: () => _showDetail(e),
+      final id = '${e['id'] ?? ''}';
+      final open = id.isNotEmpty && _openTxnId == id;
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          WalletTxnRow(
+            icon: _catIcon(cat),
+            color: _catColor(cat),
+            title: _titleOf(e),
+            sub: _catLabel(cat),
+            amountLabel: '${tokens >= 0 ? '+' : '−'}${_tokens(tokens.abs())}',
+            isIn: tokens >= 0,
+            time: _clock(ts),
+            showDivider: !first,
+            onTap: () => _toggleActivity(e),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: open ? _activityPanel(e) : const SizedBox(width: double.infinity),
+          ),
+        ],
       );
     } catch (err) {
       Analytics.error(
@@ -1561,6 +1581,116 @@ class _WalletScreenState extends State<WalletScreen> {
     });
     Analytics.capture('wallet_day_filtered', {'day': start.toIso8601String()});
     _applyFilters();
+  }
+
+  // ── [WALLET-ACTIVITY-DETAIL-1] inline slide-out ───────────────────────────
+
+  Future<void> _toggleActivity(Map<String, dynamic> row) async {
+    final id = '${row['id'] ?? ''}';
+    if (id.isEmpty) return _showDetail(row);
+    final opening = _openTxnId != id;
+    setState(() => _openTxnId = opening ? id : null);
+    if (!opening || _activity.containsKey(id)) return;
+    Analytics.capture('wallet_activity_opened', {'type': '${row['type']}', 'surface': 'app'});
+    try {
+      final r = await MoneyApi.activity(id);
+      final a = r['activity'];
+      if (!mounted) return;
+      setState(() {
+        if (a is Map) {
+          _activity[id] = a.cast<String, dynamic>();
+          _activityFailed.remove(id);
+        } else {
+          _activityFailed.add(id);
+        }
+      });
+    } catch (_) {
+      if (mounted) setState(() => _activityFailed.add(id));
+    }
+  }
+
+  /// IST wall clock for a listing time — India is the only market, so a phone set to
+  /// another zone must still show the time the show was advertised at.
+  String _istWhen(int ms, String? tz) {
+    final utc = DateTime.fromMillisecondsSinceEpoch(ms < 100000000000 ? ms * 1000 : ms, isUtc: true);
+    final ist = tz == null || tz.isEmpty || tz == 'Asia/Kolkata' || tz == 'Asia/Calcutta';
+    final d = ist ? utc.add(const Duration(hours: 5, minutes: 30)) : utc.toLocal();
+    final h12 = d.hour % 12 == 0 ? 12 : d.hour % 12;
+    // Built from the shifted fields directly: `d` is a UTC DateTime carrying IST wall
+    // time, so handing its epoch to a local-time formatter would shift it again.
+    return '${d.day} ${_kMonShort[d.month - 1]} ${d.year} · $h12:${d.minute.toString().padLeft(2, '0')} ${d.hour < 12 ? 'AM' : 'PM'}${ist ? ' IST' : ''}';
+  }
+
+  Widget _activityPanel(Map<String, dynamic> row) {
+    final id = '${row['id'] ?? ''}';
+    final a = _activity[id];
+    final failed = _activityFailed.contains(id);
+    if (a == null && !failed) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, Msg.s4),
+        child: Row(children: [
+          const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+          const SizedBox(width: Msg.s2),
+          Text('Loading details…', style: AWText.rowSub(c: AW.txMute)),
+        ]),
+      );
+    }
+    final tokens = (((a?['tokens'] ?? row['tokens'] ?? row['amount']) as num?) ?? 0).toInt();
+    final listing = (a?['listing'] as Map?)?.cast<String, dynamic>();
+    final who = (a?['counterparty'] as Map?)?.cast<String, dynamic>();
+    final whoName = '${who?['name'] ?? ''}'.trim();
+    final whoHandle = '${who?['handle'] ?? ''}'.trim();
+    final status = '${a?['status'] ?? row['status'] ?? ''}';
+    final rows = <({String label, String value})>[
+      (label: 'Activity', value: '${a?['activity'] ?? row['type_label'] ?? _titleOf(row)}'),
+      if (listing != null)
+        (label: listing['kind'] == 'live_event' ? 'Show' : 'Listing', value: '${listing['title'] ?? ''}'),
+      if (listing?['starts_at'] is num)
+        (label: 'Scheduled for', value: _istWhen((listing!['starts_at'] as num).toInt(), listing['timezone']?.toString())),
+      if (whoName.isNotEmpty)
+        (label: who?['role'] == 'buyer' ? 'Buyer' : 'Creator', value: whoHandle.isEmpty ? whoName : '$whoName · @$whoHandle'),
+      (label: 'Date & time', value: _istWhen(_tsOf(a ?? row), null)),
+      (label: 'Amount', value: '${tokens >= 0 ? '+' : '−'}${_tokens(tokens.abs())} tokens (₹${tokens.abs()})'),
+      if ('${a?['refunded_to'] ?? ''}'.isNotEmpty) (label: 'Refunded to', value: '${a!['refunded_to']}'),
+      if (status.isNotEmpty) (label: 'Status', value: status[0].toUpperCase() + status.substring(1)),
+      if (a?['balance_after'] is num) (label: 'Balance after', value: '${_tokens((a!['balance_after'] as num).toInt())} tokens'),
+      if ('${a?['order_id'] ?? ''}'.isNotEmpty) (label: 'Reference', value: '${a!['order_id']}'),
+    ].where((r) => r.value.trim().isNotEmpty).toList();
+    final reason = '${a?['reason'] ?? ''}'.trim();
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: AW.surf2,
+        border: Border(top: BorderSide(color: AW.hair, width: 1)),
+      ),
+      padding: const EdgeInsets.only(bottom: Msg.s2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (reason.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, 0),
+              child: Text(reason, style: AWText.rowSub(c: AW.txSoft)),
+            ),
+          for (var i = 0; i < rows.length; i++)
+            WalletInfoRow(label: rows[i].label, value: rows[i].value, showDivider: i != 0 || reason.isNotEmpty),
+          if (failed)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, 0),
+              child: Text('Couldn\'t load the full details. Pull to refresh and try again.',
+                  style: AWText.rowSub(c: AW.coral)),
+            ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () => _showDetail(row),
+              child: Text('Receipt & more', style: AWText.rowTitle(c: AW.blue)),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   // ── transaction detail ───────────────────────────────────────────────────
