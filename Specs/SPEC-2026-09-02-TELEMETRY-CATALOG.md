@@ -373,3 +373,49 @@ in `Specs/PLAN-2026-09-11-WAITING-ROOM-BUILD.md`. As of this WP that lib is a
 stub (`// WP2 replaces this`) returning a placeholder `room_ws`/`room_token` and
 `check_in_by: startsAt` — no new client-facing telemetry from this change until
 WP2 lands the real grant and WP4/WP6 wire the waiting-room UI against it.
+
+## WP4 [WAITROOM-WEB-1] — paid-consult waiting-room web events
+
+Surfaces: `web/src/islands/consult-gs/ConsultRoomGS.tsx`, `WaitingRoom.tsx`,
+`RoomSocket.ts`. All carry the standard super-properties (`platform`,
+`service_name`, `release`, `app`, `clerk_uid`, `trace_id`) via
+`web/src/lib/analytics.ts`'s `capture()`; `email` is ALSO passed explicitly
+on every event below (not just relied on as a registered super-property),
+because a guest's email can be set after the waiting room has already been
+entered.
+
+`waitroom_enter` {booking_id, role: 'creator'|'buyer', email} — fired when
+the green room hands off into the waiting room (after PreJoin's device
+preflight, before any GetStream participant exists) and again every time a
+live call is left and the same booking's waiting room is re-entered
+(`RULEBOOK-PAID-SESSIONS.md` §3: "back to waiting on leave, keep the
+socket"). Coded against the WP1/WP2 prejoin contract (`room_ws`,
+`check_in_by`, `counterparty`) — when those fields are absent (worker not
+deployed yet, or the commercial lane's flags are off), the client logs a
+`console.warn` and falls back to today's direct-join flow with no waiting
+room and none of the events below.
+
+`waitroom_autojoin` {booking_id, role, email} — fired the moment the
+waiting-room socket's `roster {host, attendee}` message reports BOTH
+present and the client calls the existing commercial `/join` (PLAN
+contract: "Auto-join rule (clients): call the existing `/join` when
+`roster.host && roster.attendee`"). De-duplicated per waiting-room visit
+(`autoJoinFiredRef`) and re-armed on a later re-entry to waiting so a
+retried join after a transient failure can fire again.
+
+`waitroom_noshow_shown` {booking_id, role: 'buyer', email} — fired once, for
+the customer only, the moment `check_in_by` passes with the socket's roster
+still reporting `host: false` — the moment the "X didn't show up — your
+payment is being refunded" line renders in the waiting room. Never computed
+or asserted independently of the server's `roster`/`check_in_by` fields
+(RULEBOOK §5: "Never compute money on the phone or in the browser").
+
+`waitroom_chat_sent` {booking_id, role, email} — fired on every waiting-room
+chat message sent over the `RoomSocket` (`type:"chat"`, ≤ 500 chars per the
+WP2 contract). Message text itself is never sent to PostHog.
+
+Success value for this WP's ship gate: `waitroom_enter` firing with a
+non-empty `room_ws`-backed session (i.e. not the fallback-warned path) is the
+signal the waiting room is actually live for a booking; `waitroom_autojoin`
+firing before any `consult_join_result` event confirms the auto-join rule
+fired ahead of the manual join path it replaces.

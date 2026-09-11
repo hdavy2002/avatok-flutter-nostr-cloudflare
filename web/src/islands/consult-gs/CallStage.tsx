@@ -122,7 +122,7 @@ function CallStageInner({ call, bookingId, jwt, role, peerName, title, endsAt, o
         ) : (
           <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-paper2 text-center">
             <Spinner size={28} />
-            <p className="font-body font-bold text-[15px] text-inkSoft">Waiting for {peerName}…</p>
+            <p className="font-body font-bold text-[15px] text-inkSoft">Connecting you to {peerName}…</p>
           </div>
         )}
 
