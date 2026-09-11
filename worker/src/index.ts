@@ -58,7 +58,7 @@ import { presenceBeat } from "./routes/presence"; // [CALL-PRESENCE-1] device he
 // minted verification without a Didit check. See LEGACY_GONE in the router.
 import { idStatus, idEmailStart, idEmailVerify, idPasswordStart, idPasswordSet } from "./routes/id";
 import { walletTopup, walletTopupIntent, walletTopupPlayVerify, runPlayVoidedPurchaseSweep, stripeWebhook, walletSpend, walletBalance, walletTransactions, walletEarnings, walletLive, walletLedger, walletLedgerDetail, walletReceiptResend } from "./routes/wallet";
-import { walletStatement, walletStatementExport, walletSummary, walletTopupQuote } from "./routes/wallet_statement";
+import { walletStatement, walletStatementExport, walletSummary, walletTopupQuote, walletActivity } from "./routes/wallet_statement";
 import { adminLedger, adminRefund, adminAdjust, adminAccount, adminRecon, adminEscrowHold, adminEscrowRelease, adminTaxExport, adminFailedSettlements, adminRetrySettlement, requireAdmin } from "./routes/admin_money";
 import { adminCommercialClaims, adminResolveCommercialClaim } from "./routes/commercial_admin_claims";
 import { cashfreeCreateOrder, cashfreeWebhook, cashfreeStatus } from "./routes/cashfree";
@@ -1229,6 +1229,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/wallet/transactions" && req.method === "GET") return await walletTransactions(req, env);
       // [WALLET-COCKPIT-1] Cockpit wallet reads: labeled statement + aggregates.
       if (p === "/api/wallet/statement" && req.method === "GET") return await walletStatement(req, env);
+      if (p === "/api/wallet/activity" && req.method === "GET") return await walletActivity(req, env); // [WALLET-ACTIVITY-DETAIL-1]
       // [WALLET-REDESIGN-1] CSV export of the statement (share/save from the app).
       if (p === "/api/wallet/statement/export" && req.method === "GET") return await walletStatementExport(req, env);
       if (p === "/api/wallet/summary" && req.method === "GET") return await walletSummary(req, env);
@@ -1239,9 +1240,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // Double-entry ledger reads + receipts (Phase 2 marketplace plan).
       if (p === "/api/wallet/ledger" && req.method === "GET") return await walletLedger(req, env);
       {
-        const lr = p.match(/^\/api\/wallet\/ledger\/([A-Za-z0-9:._-]{1,80})\/receipt$/);
+        const lr = p.match(/^\/api\/wallet\/ledger\/([A-Za-z0-9:._-]{1,240})\/receipt$/); // [WALLET-ACTIVITY-DETAIL-1] commercial ids are ~99 chars
         if (lr && req.method === "POST") return await walletReceiptResend(req, env, lr[1]);
-        const ld = p.match(/^\/api\/wallet\/ledger\/([A-Za-z0-9:._-]{1,80})$/);
+        const ld = p.match(/^\/api\/wallet\/ledger\/([A-Za-z0-9:._-]{1,240})$/);
         if (ld && req.method === "GET") return await walletLedgerDetail(req, env, ld[1]);
       }
       // Money ops console (Phase 2 A2; admin-only, audit-logged).

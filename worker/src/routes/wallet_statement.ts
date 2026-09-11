@@ -21,6 +21,7 @@ import { track } from "../hooks";
 import { walletOp } from "./wallet";
 import { metaDb } from "../db/shard";
 import { getUsdRate } from "../lib/fx_rates";
+import { activityDetailFor, orderContextFor } from "../lib/wallet_activity";
 
 // Human labels per app_name/feature key. Spends carry the chargeFeature key in
 // app_name (feature_pricing.ts); earns carry the marketplace app. A key missing
@@ -324,6 +325,11 @@ export async function walletStatement(req: Request, env: Env): Promise<Response>
     page.filter((r) => String(r.type || "") === "topup" && r.ref).map((r) => String(r.ref)),
   );
 
+  // [WALLET-ACTIVITY-DETAIL-1] Rows paid against an order get the listing's name in
+  // their label ("Refund · Cooking with Davy"), so the list itself says what the money
+  // was for. One batched lookup for the page; a failure leaves the generic labels.
+  const orderCtx = await orderContextFor(env, ctx.uid, page.map((r) => String(r.ref ?? "")));
+
   const entries = page.map((r) => {
     const amount = Number(r.amount);
     const type = String(r.type || "");
@@ -342,7 +348,9 @@ export async function walletStatement(req: Request, env: Env): Promise<Response>
       type,
       direction: directionFor(type, amount),
       feature_key: app,
-      label: meta.context || typeLabel,
+      label: meta.context || (orderCtx.get(String(r.ref ?? ""))?.title
+        ? `${typeLabel} · ${orderCtx.get(String(r.ref ?? ""))!.title}`
+        : typeLabel),
       type_label: typeLabel,
       tokens: amount, // already signed: +credit / -debit
       ref: r.ref ?? null,
@@ -701,4 +709,35 @@ export async function walletTopupQuote(req: Request, env: Env): Promise<Response
     fx_source: fx.source,
     note: "1 Token = Rs 1 (fixed). Minimum top-up Rs 100 = 100 Tokens.",
   });
+}
+
+
+// GET /api/wallet/activity?id=<wallet_transactions.id>
+// [WALLET-ACTIVITY-DETAIL-1] The tap-to-expand detail for one statement row: activity,
+// listing, creator/buyer, reason, time. A query parameter rather than a path segment
+// because commercial ids (`commercial:refund:commercial-order:<64 hex>`) are longer
+// than the /api/wallet/ledger/:id route's 80-character pattern allows — which is also
+// why the app's existing detail sheet came back empty for exactly these rows.
+export async function walletActivity(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const id = (new URL(req.url).searchParams.get("id") || "").trim();
+  if (!id || id.length > 240) return json({ error: "id required" }, 400);
+  const r = await env.DB_WALLET.withSession("first-unconstrained").prepare(
+    `SELECT id, type, amount, balance_after, app_name, ref, status, created_at, context, counterparty_name
+       FROM wallet_transactions WHERE id=?1 AND uid=?2`,
+  ).bind(id, ctx.uid).first<any>();
+  if (!r) return json({ error: "not found" }, 404);
+  const base = labelFor(String(r.type || ""), r.app_name ? String(r.app_name) : null, Number(r.amount));
+  const detail = await activityDetailFor(env, ctx.uid, {
+    id: String(r.id), type: String(r.type || ""), amount: Number(r.amount),
+    balance_after: r.balance_after == null ? null : Number(r.balance_after),
+    app_name: r.app_name ? String(r.app_name) : null, ref: r.ref ? String(r.ref) : null,
+    status: r.status ? String(r.status) : null, created_at: Number(r.created_at),
+    context: txStr(r.context, 120), counterparty_name: txStr(r.counterparty_name, 120),
+  }, base);
+  track(env, ctx.uid, "wallet_activity_viewed", "avawallet", {
+    type: detail.type, has_listing: !!detail.listing, has_counterparty: !!detail.counterparty, has_reason: !!detail.reason,
+  });
+  return json({ activity: detail });
 }

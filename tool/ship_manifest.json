@@ -5091,5 +5091,37 @@
       }
     ],
     "_verified_at": "worker/src/routes/commercial_lifecycle.ts cancelOne (notifyCommercialUsers buyer/creator split, commercialEvent cancellation)"
+  },
+  "WALLET-ACTIVITY-DETAIL-1": {
+    "description": "[WALLET-ACTIVITY-DETAIL-1] Wallet rows say what the money was for. New GET /api/wallet/activity?id= joins a wallet_transactions row to its order, listing, creator/buyer and refund receipt (reason). /api/wallet/statement labels order rows 'Refund \u00b7 <listing title>'. Web dashboard wallet and the app wallet expand a detail panel under the tapped row (activity, show/listing, creator, date & time IST, amount, refunded to, status, balance after, reference). The /api/wallet/ledger/:id route now accepts the ~99-char commercial ids that used to 404.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "wallet_activity_viewed",
+        "property": "has_listing",
+        "equals": true,
+        "min_events": 1,
+        "note": "A user opened a row that was paid against a listing and the server resolved the listing. has_listing=false on refund/spend rows with an order ref means the META join failed."
+      }
+    ],
+    "_verified_at": "worker/src/routes/wallet_statement.ts walletActivity (track wallet_activity_viewed)"
+  },
+  "WALLET-ACTIVITY-DETAIL-APP-1": {
+    "description": "[WALLET-ACTIVITY-DETAIL-APP-1] App wallet: tapping a transaction slides a detail panel open under the row (activity, show/listing, creator, date & time IST, amount, refunded to, status, balance after, reference) from GET /api/wallet/activity; 'Receipt & more' still opens the existing sheet.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "wallet_activity_opened",
+        "property": "surface",
+        "equals": "app",
+        "min_events": 1,
+        "note": "A user expanded a wallet row on the new build; pair with the server's wallet_activity_viewed for the same person."
+      }
+    ],
+    "_verified_at": "app/lib/features/wallet/wallet_screen.dart _toggleActivity (Analytics.capture wallet_activity_opened)"
   }
 }
