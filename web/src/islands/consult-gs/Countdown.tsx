@@ -53,7 +53,7 @@ export function Countdown({ target, onZero, label = 'Ends in', intervalMs = 1000
   return (
     <span
       className={[
-        'inline-flex items-center gap-2 rounded-zine-badge border-zine px-3 py-1.5',
+        'inline-flex items-center gap-2 rounded-zineBadge border-zine px-3 py-1.5',
         'font-mono font-bold text-[13px] tabular-nums',
         done
           ? 'border-ink bg-paper2 text-inkMute'

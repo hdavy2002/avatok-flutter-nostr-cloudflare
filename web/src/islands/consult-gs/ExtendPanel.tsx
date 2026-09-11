@@ -244,7 +244,7 @@ export function ExtendPanel({ bookingId, jwt, role, onClose, onExtended }: Exten
             </p>
 
             {step === 'waiting' ? (
-              <div className="flex items-center gap-2 rounded-zine-field border-zine border-ink bg-paper2 px-3 py-2.5">
+              <div className="flex items-center gap-2 rounded-zineField border-zine border-ink bg-paper2 px-3 py-2.5">
                 <Spinner size={18} />
                 <span className="font-body font-bold text-[13px] text-inkSoft">
                   {theirConsent(quote)

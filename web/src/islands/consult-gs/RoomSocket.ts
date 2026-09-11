@@ -29,6 +29,13 @@ export interface WelcomeMsg {
   starts_at: number;
   ends_at: number;
   host_live?: boolean;
+  /**
+   * [WAITROOM-WEB-2 fix 6/7] Epoch ms of the creator's first socket open,
+   * server-recorded. ADDITIVE — the worker is adding this field; until it
+   * lands, it is simply absent and callers fall back to observing `roster`
+   * transitions themselves (see ConsultRoomGS's `hostCheckedInAtRef`).
+   */
+  host_checked_in_at?: number;
   [k: string]: unknown;
 }
 
@@ -36,6 +43,8 @@ export interface RosterMsg {
   type: 'roster';
   host: boolean;
   attendee: boolean;
+  /** [WAITROOM-WEB-2 fix 6/7] Same additive field as on `welcome`, above. */
+  host_checked_in_at?: number;
 }
 
 export interface ChatMsg {
@@ -43,6 +52,12 @@ export interface ChatMsg {
   from: string;
   text: string;
   at?: number;
+  /**
+   * [WAITROOM-WEB-2 fix 11] The DO event's sender uid. ADDITIVE — the worker
+   * is adding `uid` to the `chat` event; until it lands this is `undefined`
+   * and callers fall back to matching on `from` (display name).
+   */
+  uid?: string;
 }
 
 export interface RoomEvent {
@@ -70,11 +85,26 @@ export interface RoomSocketHandlers {
   onEvent?: (e: RoomEvent) => void;
   onOpen?: () => void;
   onStatus?: (s: 'connecting' | 'open' | 'reconnecting' | 'closed') => void;
+  /**
+   * [WAITROOM-WEB-2 fix 16] Fired once the socket has failed to reach `open`
+   * `MAX_NEVER_OPENED_RETRIES` times in a row without ever having opened
+   * successfully — the closest signal a browser WebSocket exposes for "the
+   * server is refusing this token with 403", since the WebSocket API never
+   * surfaces the handshake's HTTP status to JS. The socket stops retrying
+   * once this fires; the caller is expected to fall back to a direct join.
+   */
+  onAuthFailed?: () => void;
 }
 
 const BASE_BACKOFF_MS = 800;
 const MAX_BACKOFF_MS = 12_000;
 const CHAT_MAX_LEN = 500; // WP2 contract: chat relayed "(≤ 500 chars)"
+// [WAITROOM-WEB-2 fix 16] Cap consecutive "never even opened" reconnects at 3
+// before giving up and calling `onAuthFailed` — a good token opens on the
+// first or second try; three straight failures-before-open is the bad-token
+// signature, not a network blip (a blip happens AFTER a successful open, and
+// keeps retrying with backoff as before).
+const MAX_NEVER_OPENED_RETRIES = 3;
 
 export class RoomSocket {
   private readonly url: string;
@@ -83,6 +113,10 @@ export class RoomSocket {
   private retries = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private closedByUs = false;
+  // [WAITROOM-WEB-2 fix 16]
+  private hasOpenedOnce = false;
+  private neverOpenedFailures = 0;
+  private authFailed = false;
 
   /** `url` is the server-issued `room_ws` — a full wss URL, token already embedded. */
   constructor(url: string, handlers: RoomSocketHandlers) {
@@ -97,17 +131,29 @@ export class RoomSocket {
 
   private dispatch(e: RoomEvent): void {
     if (e.type === 'roster') {
-      this.h.onRoster?.({ type: 'roster', host: !!e.host, attendee: !!e.attendee });
+      this.h.onRoster?.({
+        type: 'roster',
+        host: !!e.host,
+        attendee: !!e.attendee,
+        host_checked_in_at: typeof e.host_checked_in_at === 'number' ? e.host_checked_in_at : undefined,
+      });
       return;
     }
     if (e.type === 'chat' && typeof e.text === 'string') {
-      this.h.onChat?.({ type: 'chat', from: String(e.from ?? 'Guest'), text: e.text, at: typeof e.at === 'number' ? e.at : undefined });
+      this.h.onChat?.({
+        type: 'chat',
+        from: String(e.from ?? 'Guest'),
+        text: e.text,
+        at: typeof e.at === 'number' ? e.at : undefined,
+        uid: typeof e.uid === 'string' ? e.uid : undefined,
+      });
       return;
     }
     this.h.onEvent?.(e);
   }
 
   private open(): void {
+    if (this.authFailed) return;
     this.h.onStatus?.(this.retries === 0 ? 'connecting' : 'reconnecting');
     let sock: WebSocket;
     try {
@@ -120,6 +166,8 @@ export class RoomSocket {
 
     sock.addEventListener('open', () => {
       this.retries = 0;
+      this.hasOpenedOnce = true;
+      this.neverOpenedFailures = 0;
       this.h.onStatus?.('open');
       this.h.onOpen?.();
     });
@@ -162,7 +210,23 @@ export class RoomSocket {
   }
 
   private scheduleReconnect(): void {
-    if (this.closedByUs) return;
+    if (this.closedByUs || this.authFailed) return;
+    // [WAITROOM-WEB-2 fix 16] Only count failures that never reached `open`
+    // — a drop after a successful open is ordinary network flakiness and
+    // keeps retrying with backoff forever, same as before this fix.
+    if (!this.hasOpenedOnce) {
+      this.neverOpenedFailures += 1;
+      if (this.neverOpenedFailures >= MAX_NEVER_OPENED_RETRIES) {
+        this.authFailed = true;
+        this.h.onStatus?.('closed');
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[WAITROOM-WEB-2 fix 16] waiting-room socket never opened after ${MAX_NEVER_OPENED_RETRIES} tries (likely a rejected/bad token) — giving up and falling back to a direct join.`,
+        );
+        this.h.onAuthFailed?.();
+        return;
+      }
+    }
     this.h.onStatus?.('reconnecting');
     const delay = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * 2 ** this.retries) + Math.random() * 400;
     this.retries += 1;

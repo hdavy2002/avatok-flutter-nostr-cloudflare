@@ -159,7 +159,7 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
   };
 
   const selectClass =
-    'rounded-zine-field border-zine border-ink bg-card px-3 py-2 font-body font-bold text-[14px] text-ink ' +
+    'rounded-zineField border-zine border-ink bg-card px-3 py-2 font-body font-bold text-[14px] text-ink ' +
     'focus:outline-none focus:shadow-zine-focus';
 
   return (
@@ -226,7 +226,7 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
             onClick={toggleMic}
             aria-pressed={!micOn}
             className={[
-              'shrink-0 rounded-zine-field border-zine border-ink px-3 py-2 font-display font-semibold text-[14px]',
+              'shrink-0 rounded-zineField border-zine border-ink px-3 py-2 font-display font-semibold text-[14px]',
               micOn ? 'bg-card text-ink' : 'bg-coral text-white',
             ].join(' ')}
           >
@@ -254,7 +254,7 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
             onClick={toggleCam}
             aria-pressed={!camOn}
             className={[
-              'shrink-0 rounded-zine-field border-zine border-ink px-3 py-2 font-display font-semibold text-[14px]',
+              'shrink-0 rounded-zineField border-zine border-ink px-3 py-2 font-display font-semibold text-[14px]',
               camOn ? 'bg-card text-ink' : 'bg-coral text-white',
             ].join(' ')}
           >

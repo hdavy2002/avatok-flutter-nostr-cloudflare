@@ -44,9 +44,19 @@ export interface WaitingRoomProps {
   camOn: boolean;
   wsStatus: 'connecting' | 'open' | 'reconnecting' | 'closed';
   roster: WaitingRoster;
+  /**
+   * [WAITROOM-WEB-2 fix 7] Epoch ms of the creator's first socket open —
+   * the server's `host_checked_in_at` when known, else the parent's own
+   * roster-history fallback. Null until any evidence exists.
+   */
+  hostCheckedInAt: number | null;
   chat: WaitingChatLine[];
   onSendChat: (text: string) => void;
   onLeave: () => void;
+  /** [WAITROOM-WEB-2 fix 1] True after a deliberate Leave paused auto-join. */
+  autoJoinPaused?: boolean;
+  /** [WAITROOM-WEB-2 fix 1] Manual escape hatch for `autoJoinPaused`. */
+  onRejoin?: () => void;
 }
 
 function fmtHM(ms: number): string {
@@ -69,15 +79,26 @@ export function WaitingRoom({
   camOn,
   wsStatus,
   roster,
+  hostCheckedInAt,
   chat,
   onSendChat,
   onLeave,
+  autoJoinPaused,
+  onRejoin,
 }: WaitingRoomProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  // [WAITROOM-WEB-2 fix 7] see the `checkedInAt` comment below.
+  const localCheckedInAtRef = useRef<number | null>(null);
   const [draft, setDraft] = useState('');
   const [now, setNow] = useState(() => Date.now());
   const peerLabel = counterpartyName ?? (role === 'creator' ? 'your customer' : 'the creator');
+
+  useEffect(() => {
+    if (role === 'creator' && wsStatus === 'open' && localCheckedInAtRef.current == null) {
+      localCheckedInAtRef.current = Date.now();
+    }
+  }, [role, wsStatus]);
 
   useEffect(() => {
     if (videoRef.current) {
@@ -106,11 +127,23 @@ export function WaitingRoom({
     setDraft('');
   };
 
-  // The creator's own presence on THIS socket is the check-in evidence
-  // (RULEBOOK §2/§3) — the phone/browser never decides it, it only shows the
-  // fact that the connection is open.
-  const checkedIn = role === 'creator' && wsStatus === 'open';
-  const iAmCheckedInPeer = role === 'creator' ? roster.host : roster.attendee;
+  // [WAITROOM-WEB-2 fix 7] "You're checked in" is a WINDOW, not just "the
+  // socket happens to be open right now" — a creator whose connection drops
+  // and reopens after `check_in_by` did not check in on time, even though
+  // `wsStatus` would read 'open' again. Creator-only, since only the
+  // creator's check-in has a deadline (RULEBOOK §2/§3). Falls back to this
+  // component's own first-observed-open timestamp only until `hostCheckedInAt`
+  // (server value or the parent's roster-history fallback) is known — a
+  // ref, not `now`, so it latches once and never drifts forward on its own.
+  const checkedInAt = hostCheckedInAt ?? localCheckedInAtRef.current;
+  const checkedInOnTime = role === 'creator' && checkedInAt != null && (checkInBy == null || checkedInAt <= checkInBy);
+  const checkInWindowClosed = role === 'creator' && !checkedInOnTime && checkInBy != null && now > checkInBy;
+  // [WAITROOM-WEB-2 fix 6] The buyer's no-show line: the host is a no-show
+  // the moment `check_in_by` passes without them, by presence alone
+  // (`!roster.host`) — the terminal "no host ever seen" distinction lives in
+  // the parent (ConsultRoomGS), which stops auto-join and starts polling for
+  // the refund once that holds true.
+  const hostIsNoShow = role === 'buyer' && checkInBy != null && now > checkInBy && !roster.host;
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-8">
@@ -147,7 +180,7 @@ export function WaitingRoom({
           </div>
         )}
         {previewStream && !micOn && (
-          <span className="absolute bottom-2 left-2 rounded-zine-badge border-zine border-ink bg-coral px-2 py-1 font-mono font-bold text-[11px] text-white">
+          <span className="absolute bottom-2 left-2 rounded-zineBadge border-zine border-ink bg-coral px-2 py-1 font-mono font-bold text-[11px] text-white">
             Muted
           </span>
         )}
@@ -158,11 +191,13 @@ export function WaitingRoom({
         <div
           className={[
             'mx-auto rounded-zine border-zine px-4 py-2 text-center font-body font-bold text-[13px] shadow-zine-xs',
-            checkedIn ? 'border-ink bg-card text-mintInk' : 'border-ink bg-paper2 text-inkSoft',
+            checkedInOnTime ? 'border-ink bg-card text-mintInk' : 'border-ink bg-paper2 text-inkSoft',
           ].join(' ')}
         >
-          {checkedIn ? (
+          {checkedInOnTime ? (
             "You're checked in ✓ — you'll be paid for this slot"
+          ) : checkInWindowClosed ? (
+            'Check-in window closed'
           ) : checkInBy ? (
             `Check in by ${fmtHM(checkInBy)}`
           ) : (
@@ -170,11 +205,21 @@ export function WaitingRoom({
           )}
         </div>
       ) : (
-        checkInBy != null && now > checkInBy && !iAmCheckedInPeer && (
+        hostIsNoShow && (
           <div className="mx-auto rounded-zine border-zine border-coral bg-card px-4 py-2 text-center font-body font-bold text-[13px] text-coral shadow-zine-error">
             {peerLabel} didn't show up — your payment is being refunded
           </div>
         )
+      )}
+
+      {/* [WAITROOM-WEB-2 fix 1] manual escape hatch after a deliberate Leave */}
+      {autoJoinPaused && onRejoin && (
+        <div className="mx-auto flex flex-col items-center gap-2 rounded-zine border-zine border-ink bg-paper2 px-4 py-3 text-center shadow-zine-xs">
+          <p className="font-body font-bold text-[13px] text-inkSoft">
+            You left the call. We won't rejoin you automatically.
+          </p>
+          <Button variant="lime" label="Rejoin call" onClick={onRejoin} />
+        </div>
       )}
 
       {/* chat */}
@@ -199,7 +244,7 @@ export function WaitingRoom({
             maxLength={500}
             placeholder="Message…"
             aria-label="Chat message"
-            className="min-w-0 flex-1 rounded-zine-field border-zine border-ink bg-paper px-3 py-2 font-body font-bold text-[14px] text-ink focus:outline-none focus:shadow-zine-focus"
+            className="min-w-0 flex-1 rounded-zineField border-zine border-ink bg-paper px-3 py-2 font-body font-bold text-[14px] text-ink focus:outline-none focus:shadow-zine-focus"
           />
           <Button variant="blue" label="Send" onClick={send} />
         </div>
