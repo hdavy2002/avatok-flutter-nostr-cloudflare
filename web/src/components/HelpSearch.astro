@@ -12,20 +12,49 @@
 // box, default is the compact rail box. Both render the same markup/script;
 // only sizing differs via the variant class, so there is exactly one search
 // implementation to keep in sync with search.json's shape.
+//
+// [WEB-HELP-2 2026-09-11] Added `size="hero"` — the true landing-page scale
+// from the approved mockup (design/help-centre/Main.dc.html): an 80px-tall
+// pill with a big red labelled submit button, well past what the existing
+// `variant="hero"` sizing (used by pages/help/index.astro before this pass)
+// drew. Kept as a SEPARATE prop rather than folding into `variant` so
+// `variant`'s existing meaning (which rail vs. hero markup/copy) is
+// untouched for any other caller — `size` only ever adds bigger CSS and one
+// extra visible button label, never changes the DOM structure the script
+// queries (`[data-help-search]`, `[data-help-search-input]`,
+// `.help-search-listbox`, `.help-search-empty`, `.help-search-status`), so
+// the script below needed zero changes.
 export interface Props {
   variant?: 'hero' | 'rail';
   /** Unique id suffix so two instances of this component can exist on one
    *  page (e.g. index.astro's hero + a mobile <details> rail) without id
    *  collisions between their listbox/input pairs. */
   id?: string;
+  /** [WEB-HELP-2] 'hero' renders the big landing search bar
+   *  (help/index.astro's HelpHero only). 'band' renders the mid-size bar for
+   *  the article layout's top band (Help.astro — [WEB-HELP-2 review]).
+   *  Default 'md' keeps every existing caller's sizing. */
+  size?: 'md' | 'hero' | 'band';
 }
 
-const { variant = 'rail', id = variant } = Astro.props;
+const { variant = 'rail', id = variant, size = 'md' } = Astro.props;
 const inputId = `help-search-input-${id}`;
 const listboxId = `help-search-listbox-${id}`;
 ---
 
-<form class={`help-search help-search-${variant}`} action="/help" method="get" role="search" data-help-search>
+<form class={`help-search help-search-${variant} help-search-size-${size}`} action="/help" method="get" role="search" data-help-search>
+  {/* [WEB-HELP-2 review] Leading field icon — hero/band only (CSS-gated,
+      `.help-search-icon` is display:none by default so `variant="rail"`'s
+      existing compact box is unchanged). The mockup's big search bars carry
+      a magnifier INSIDE the pill ahead of the text, separate from the red
+      submit button/icon — two icons that read as "this is a search field"
+      and "click to search" rather than as a redundant pair. */}
+  <span class="help-search-icon" aria-hidden="true">
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="2" />
+      <line x1="13.8" y1="13.8" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+    </svg>
+  </span>
   <label class="sr-only" for={inputId}>Search help centre</label>
   <input
     id={inputId}
@@ -39,12 +68,23 @@ const listboxId = `help-search-listbox-${id}`;
     aria-controls={listboxId}
     aria-autocomplete="list"
     data-help-search-input
+    data-placeholder-full="Search help — try “UPI” or “refund”"
+    data-placeholder-short="Search help"
   />
   <button type="submit" class="help-search-submit" aria-label="Search">
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true" class="help-search-submit-icon">
       <circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="2" />
       <line x1="13.8" y1="13.8" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
     </svg>
+    {/* [WEB-HELP-2] Visible label, hero size only — the mockup's search
+        button carries its own text ("Khojo"). A plain icon button reads
+        fine at the compact rail scale but looks unfinished blown up to the
+        landing hero's 80px pill, so hero size gets a real visible word (and
+        its own icon is hidden in CSS so the pill doesn't show two
+        magnifiers — see `.help-search-size-hero .help-search-submit-icon`).
+        aria-label="Search" above already gives every size the same
+        accessible name; this span is presentational, not a second name. */}
+    {size === 'hero' && <span class="help-search-submit-label" aria-hidden="true">Search</span>}
   </button>
   <ul id={listboxId} class="help-search-listbox" role="listbox" aria-label="Search results" hidden></ul>
   {/* [WEB-HELP-1] The "no results" message used to render as a fake <li>
@@ -61,7 +101,16 @@ const listboxId = `help-search-listbox-${id}`;
 </form>
 
 <style>
+  /* [WEB-HELP-2 review] `--paper`/`--sky`/`--display` (and `--help-brick`,
+     used below) all get a live `--zine-*` fallback so this component works
+     unmodified wherever it's mounted — the article layout (Help.astro)
+     scopes its own `.help-page` block with only `--ink`/`--white`/`--blue`/
+     `--sans` (see that file's own comment on exactly this), never
+     `--paper`/`--sky`/`--display`, so without a fallback those three would
+     resolve to nothing there. `--red` isn't referenced here any more (see
+     the hero/band submit-button rules below), so it needs none. */
   .help-search { position: relative; display: flex; gap: 0.5rem; align-items: center; }
+  .help-search-icon { display: none; flex: none; align-items: center; color: var(--ink); }
   .help-search-input {
     flex: 1;
     min-width: 0;
@@ -76,8 +125,8 @@ const listboxId = `help-search-listbox-${id}`;
   }
   .help-search-input::placeholder { color: rgba(22, 22, 20, 0.55); }
   .help-search-input:focus-visible {
-    outline: 2px solid var(--blue);
-    outline-offset: 2px;
+    outline: 0.125rem solid var(--blue);
+    outline-offset: 0.125rem;
   }
   .help-search-hero .help-search-input { padding: 1rem 1.2rem; font-size: 1.1rem; }
   .help-search-submit {
@@ -89,10 +138,10 @@ const listboxId = `help-search-listbox-${id}`;
     border: 1px solid var(--ink);
     border-radius: 999px;
     background: var(--ink);
-    color: var(--paper);
+    color: var(--paper, var(--zine-paper));
     cursor: pointer;
   }
-  .help-search-submit:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  .help-search-submit:focus-visible { outline: 0.125rem solid var(--blue); outline-offset: 0.125rem; }
   .help-search-listbox {
     position: absolute;
     z-index: 30;
@@ -120,7 +169,7 @@ const listboxId = `help-search-listbox-${id}`;
   }
   .help-search-option + .help-search-option { margin-top: 0.15rem; }
   .help-search-option:hover,
-  .help-search-option[aria-selected='true'] { background: var(--sky); }
+  .help-search-option[aria-selected='true'] { background: var(--sky, var(--zine-blue)); }
   .help-search-option .hs-title { display: block; font-weight: 700; font-size: 0.95rem; }
   .help-search-option .hs-meta { display: block; margin-top: 0.15rem; font-size: 0.8rem; color: rgba(22, 22, 20, 0.7); }
   .help-search-empty {
@@ -140,6 +189,113 @@ const listboxId = `help-search-listbox-${id}`;
   .sr-only {
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+
+  /* [WEB-HELP-2 2026-09-11 / review] size="hero" — landing-page scale
+     lifted from design/help-centre/Main.dc.html (desktop 1440 comp): 80px
+     pill, 3px ink border, 6px/7px hard shadow, 21px input type, a wide
+     labelled submit pill. Phone.dc.html's comp shrinks the same bar to
+     64px/48px, mirrored in the max-width:600px block below. Layered on top
+     of (never replacing) `.help-search-hero` above, which still governs
+     `variant="hero"`.
+
+     Review fixes: the submit background moved from `--red` (#D93825) to
+     `--help-brick` (#B8382A, with its own literal fallback — this
+     component owns no `.help-page` token block of its own to hang a
+     fallback var off) because bone-on-#D93825 measured 4.12:1, short of
+     WCAG AA's 4.5:1 for the button's small caps label; #B8382A clears it.
+     The leading `.help-search-icon` now carries the field's only magnifier
+     at this size — `.help-search-submit-icon` (the button's own copy) is
+     hidden so the pill doesn't show two. The input previously rendered at
+     its own line-height (~25.5px) with no explicit height, well short of
+     the 80px pill around it and short of a 44px touch target — the
+     `align-self: stretch` + `min-height` pair below fixes both. */
+  .help-search-size-hero {
+    gap: 0.875rem;
+    padding: 0.5rem 0.5rem 0.5rem 1.75rem;
+    border: 0.1875rem solid var(--ink);
+    border-radius: 6.25rem;
+    background: var(--white);
+    box-shadow: 0.375rem 0.4375rem 0 var(--ink);
+  }
+  .help-search-size-hero .help-search-icon,
+  .help-search-size-band .help-search-icon { display: flex; }
+  .help-search-size-hero .help-search-input {
+    align-self: stretch;
+    min-height: 3rem;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    font-size: 1.3125rem;
+    font-weight: 600;
+  }
+  .help-search-size-hero .help-search-input::placeholder { color: var(--zine-inkMute); }
+  .help-search-size-hero .help-search-input:focus-visible { outline-color: var(--ink); outline-offset: 0.25rem; }
+  .help-search-size-hero .help-search-submit {
+    width: auto;
+    height: 3.75rem;
+    gap: 0.5rem;
+    padding: 0 2.125rem;
+    border: 0.15625rem solid var(--ink);
+    background: var(--help-brick, #b8382a);
+    color: var(--white);
+  }
+  .help-search-size-hero .help-search-submit-icon { display: none; }
+  .help-search-size-hero .help-search-submit-label {
+    font-family: var(--display, 'Comfortaa', 'Baloo 2', system-ui, sans-serif);
+    font-weight: 700;
+    font-size: 1.0625rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .help-search-size-hero .help-search-listbox,
+  .help-search-size-hero .help-search-empty { top: calc(100% + 0.6rem); }
+  @media (max-width: 600px) {
+    .help-search-size-hero {
+      padding: 0.375rem 0.375rem 0.375rem 1.125rem;
+      border-radius: 5rem;
+      box-shadow: 0.25rem 0.3125rem 0 var(--ink);
+    }
+    .help-search-size-hero .help-search-input { font-size: 1.0625rem; min-height: 2.5rem; }
+    .help-search-size-hero .help-search-submit { height: 3rem; padding: 0 1.25rem; }
+    .help-search-size-hero .help-search-submit-label { font-size: 0.875rem; }
+  }
+
+  /* [WEB-HELP-2 review] size="band" — the article layout's top search band
+     (Help.astro's `.help-band-search`), ~3rem tall: a scaled-down sibling of
+     size="hero" above rather than a copy of the compact rail box — same 3px
+     ink pill border and brick submit button, just smaller, with the leading
+     field icon shared via the `.help-search-size-hero, .help-search-size-band`
+     selector two rules up. The submit button stays icon-only at this size
+     (no room for a text label without wrapping), so its own icon is NOT
+     hidden here the way it is for hero. */
+  .help-search-size-band {
+    gap: 0.5rem;
+    padding: 0.25rem 0.25rem 0.25rem 1rem;
+    border: 0.1875rem solid var(--ink);
+    border-radius: 999px;
+    background: var(--white);
+  }
+  .help-search-size-band .help-search-input {
+    align-self: stretch;
+    min-height: 2.25rem;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+  .help-search-size-band .help-search-input::placeholder { color: var(--zine-inkMute); }
+  .help-search-size-band .help-search-input:focus-visible { outline-color: var(--ink); outline-offset: 0.1875rem; }
+  .help-search-size-band .help-search-submit {
+    width: 2.5rem;
+    height: 2.5rem;
+    border: 0.125rem solid var(--ink);
+    background: var(--help-brick, #b8382a);
+    color: var(--white);
   }
 </style>
 
@@ -232,6 +388,23 @@ const listboxId = `help-search-listbox-${id}`;
     const emptyEl = form.querySelector<HTMLParagraphElement>('.help-search-empty');
     const statusEl = form.querySelector<HTMLParagraphElement>('.help-search-status');
     if (!input || !listbox) return;
+
+    // [WEB-HELP-2 review] Below 600px the full placeholder ("Search help —
+    // try "UPI" or "refund"") gets clipped by ellipsis before the hint
+    // clause ever shows, so it's dead weight at that width — swap to the
+    // short form via `matchMedia` rather than dropping the hint everywhere.
+    // Markup-driven (the two strings live in `data-placeholder-*`, not
+    // hardcoded here) so this stays in sync if either copy changes.
+    const placeholderFull = input.dataset.placeholderFull;
+    const placeholderShort = input.dataset.placeholderShort;
+    if (placeholderFull && placeholderShort) {
+      const narrowQuery = window.matchMedia('(max-width: 600px)');
+      const applyPlaceholder = () => {
+        input!.placeholder = narrowQuery.matches ? placeholderShort : placeholderFull;
+      };
+      applyPlaceholder();
+      narrowQuery.addEventListener('change', applyPlaceholder);
+    }
 
     let results: SearchDoc[] = [];
     let activeIndex = -1;

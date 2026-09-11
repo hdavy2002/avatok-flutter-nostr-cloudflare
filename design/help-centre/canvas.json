@@ -1,0 +1,55 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "title": "Help landing · desktop 1440",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 3540
+    },
+    {
+      "file": "Article.dc.html",
+      "title": "Article · /help/billing/refunds · desktop 1440",
+      "x": 1540,
+      "y": 0,
+      "w": 1440,
+      "h": 1940
+    },
+    {
+      "file": "Phone.dc.html",
+      "title": "Help landing · phone 390",
+      "x": 3080,
+      "y": 0,
+      "w": 390,
+      "h": 3920
+    },
+    {
+      "file": "PhoneArticle.dc.html",
+      "title": "Article · phone 390",
+      "x": 3570,
+      "y": 0,
+      "w": 390,
+      "h": 2300
+    }
+  ],
+  "annotations": [
+    {
+      "id": "direction",
+      "x": 0,
+      "y": -260,
+      "w": 560,
+      "text": "Bold marketplace look: full-bleed terracotta hero with the tassels strip (as /marketplace), search as the primary action, five category tiles in the listing-tile anatomy (3px ink border, 24px radius, 6px 7px hard shadow, card palettes) each with its own truck-art motif. Header and footer are the real SiteHeader / SiteFooter."
+    },
+    {
+      "id": "article-note",
+      "x": 1540,
+      "y": -260,
+      "w": 520,
+      "text": "Body shows the first four sections of refunds.md verbatim; the live page continues through all nine (listed in On this page). Reading region = article + On this page, 1100px at 1440; body measure 74ch at 18px, 22px (1.375rem) paragraph rhythm."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}
