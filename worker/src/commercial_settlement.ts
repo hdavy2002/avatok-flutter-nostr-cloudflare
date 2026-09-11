@@ -629,10 +629,19 @@ async function outageSplit(
        WHERE commercial_session_id=?1 AND account_id=?2
          AND reconciliation_state IN ('closed','reconciled')`,
   ).bind(sessionId, buyerId).all<{ joined_at: number; left_at: number }>();
+  // [SETTLE-CHECKIN-4] fix 2: an outage that was still open (ended_at IS NULL) when the
+  // event ended normally used to COALESCE to started_at, reading as zero-length and
+  // silently un-refunding it. Fall back to the session's own ended_at first (the outage
+  // ran through to when the event actually stopped), and only to the window end if the
+  // session itself has no ended_at yet either.
+  const session = await metaDb(env).prepare(
+    "SELECT ended_at FROM commercial_sessions WHERE commercial_session_id=?1",
+  ).bind(sessionId).first<{ ended_at: number | null }>();
+  const sessionEndedAt = session?.ended_at ?? null;
   const outages = await metaDb(env).prepare(
-    `SELECT started_at,COALESCE(ended_at,started_at) ended_at FROM commercial_live_outages
+    `SELECT started_at,COALESCE(ended_at,?2,?3) ended_at FROM commercial_live_outages
        WHERE commercial_session_id=?1`,
-  ).bind(sessionId).all<{ started_at: number; ended_at: number }>();
+  ).bind(sessionId, sessionEndedAt, windowEnd).all<{ started_at: number; ended_at: number }>();
   let eligible = 0;
   let outageMs = 0;
   for (const iv of intervals.results ?? []) {
@@ -807,7 +816,11 @@ async function settleLiveHostNoReturn(env: Env, job: SettlementJob, authority: S
   );
   await applyPartialCommercialSettlement(env, job, authority, {
     ...parts, reason: "host_no_return",
-    claimId: `host-no-return:${job.settlement_job_id}`,
+    // [SETTLE-CHECKIN-4] fix 1: finishSettlement always completes the claim under
+    // job.settlement_job_id -- a differently-prefixed claimId here left the claim
+    // stuck in state='claimed' forever even after the order settled. Idempotency is
+    // unaffected: retries of this same job still see the same settlement_job_id.
+    claimId: job.settlement_job_id,
     telemetryOutcome: "host_no_return_partial",
   });
 }
@@ -845,7 +858,9 @@ async function settleLiveOutageRefund(env: Env, job: SettlementJob, authority: S
   );
   await applyPartialCommercialSettlement(env, job, authority, {
     ...parts, reason: "host_outage_grace",
-    claimId: `host-outage:${job.settlement_job_id}`,
+    // [SETTLE-CHECKIN-4] fix 1: see settleLiveHostNoReturn -- must match the claimId
+    // finishSettlement completes under, or this claim never leaves state='claimed'.
+    claimId: job.settlement_job_id,
     telemetryOutcome: "host_outage_partial",
   });
 }
