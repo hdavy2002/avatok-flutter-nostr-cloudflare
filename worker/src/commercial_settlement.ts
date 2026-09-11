@@ -13,6 +13,7 @@ import { commercialEvent } from "./lib/commercial_telemetry";
 import { notifyCommercialUsers } from "./lib/commercial_notifications";
 import { claimCommercialMoney, completeCommercialMoneyClaim } from "./commercial_money_claim";
 import { executeCommercialRefund, finalizeCommercialRefund } from "./lib/commercial_refund_rail";
+import { readConfig } from "./routes/config";
 
 type SettlementJob = {
   settlement_job_id: string;
@@ -30,6 +31,7 @@ type SettlementAuthority = {
   creator_id: string;
   session_state: string;
   live_started_at: number | null;
+  scheduled_at: number;
   order_id: string;
   buyer_id: string;
   order_creator_id: string;
@@ -101,7 +103,7 @@ async function markReview(env: Env, jobId: string, reason: string): Promise<void
 async function loadAuthority(env: Env, job: SettlementJob): Promise<SettlementAuthority | null> {
   return await metaDb(env).prepare(
     `SELECT s.kind,s.listing_id,s.booking_id,s.creator_id,s.state session_state,
-      s.live_started_at,
+      s.live_started_at,s.scheduled_at,
       o.id order_id,o.buyer_id,o.creator_id order_creator_id,o.amount order_amount,
       o.status order_status,p.policy_snapshot_id,p.gross_amount,p.currency,
       p.creator_fee_pct,p.settlement_hold_hours,p.platform_fee_amount,p.creator_amount,
@@ -120,7 +122,17 @@ async function loadAuthority(env: Env, job: SettlementJob): Promise<SettlementAu
   ).bind(job.commercial_session_id, job.order_id).first<SettlementAuthority>();
 }
 
+/** [SETTLE-CHECKIN-1] `sessionCreatorCheckInMin` (default 20) replaces the old
+ *  hardcoded 15-minute window — see RULEBOOK-PAID-SESSIONS.md §2 C1/C2. Read via
+ *  readConfig() (KV over DEFAULTS), never assumed from the DEFAULTS literal. */
+async function checkInWindowMs(env: Env): Promise<number> {
+  const cfg = await readConfig(env) as unknown as Record<string, unknown>;
+  const raw = Number(cfg.sessionCreatorCheckInMin);
+  return (Number.isFinite(raw) && raw > 0 ? raw : 20) * 60_000;
+}
+
 async function loadOverdueNoShowAuthorities(env: Env, limit: number): Promise<OverdueNoShowAuthority[]> {
+  const checkInMs = await checkInWindowMs(env);
   const rows = await metaDb(env).prepare(
     `SELECT s.commercial_session_id,s.kind,s.listing_id,s.booking_id,s.creator_id,
       o.buyer_id,o.id order_id,o.status order_status,s.state session_state,s.settlement_state,
@@ -135,7 +147,7 @@ async function loadOverdueNoShowAuthorities(env: Env, limit: number): Promise<Ov
        AND s.scheduled_at <= ?1
      ORDER BY s.scheduled_at ASC
      LIMIT ?2`,
-  ).bind(Date.now() - 15 * 60_000, Math.max(1, Math.min(50, Math.trunc(limit)))).all<OverdueNoShowAuthority>();
+  ).bind(Date.now() - checkInMs, Math.max(1, Math.min(50, Math.trunc(limit)))).all<OverdueNoShowAuthority>();
   return rows.results ?? [];
 }
 
@@ -205,6 +217,60 @@ async function deliveryError(
   return delivered >= minimumMs
     ? null
     : "insufficient signed two-party delivery evidence";
+}
+
+/**
+ * [SETTLE-CHECKIN-1] The check-in decision for a 1:1 consult (RULEBOOK-PAID-SESSIONS.md
+ * §2, contract in Specs/PLAN-2026-09-11-WAITING-ROOM-BUILD.md). Replaces the two-party
+ * GetStream-overlap test (`deliveryError`, still used for live_event) for consults: the
+ * creator is checked in iff a `session_attendance` row with role='host' joined at or
+ * before `starts_at + sessionCreatorCheckInMin` exists for the booking, OR a
+ * `commercial_participant_intervals` row for the creator (role='creator' in
+ * `commercial_session_members`) started in that same window. Whether the BUYER ever
+ * joined is irrelevant to this decision (C1: checked in → full price, no matter when or
+ * whether the customer joins).
+ */
+async function consultCheckInDecision(
+  env: Env,
+  sessionId: string,
+  bookingId: string | null,
+  startsAt: number,
+): Promise<{ checkedIn: boolean; checkedInAt: number | null }> {
+  const checkInMs = await checkInWindowMs(env);
+  const windowEnd = startsAt + checkInMs;
+  if (bookingId) {
+    const att = await metaDb(env).prepare(
+      `SELECT MIN(joined_at) at FROM session_attendance
+        WHERE session_id=?1 AND role='host' AND joined_at<=?2`,
+    ).bind(bookingId, windowEnd).first<{ at: number | null }>();
+    if (att?.at != null) return { checkedIn: true, checkedInAt: Number(att.at) };
+  }
+  const interval = await metaDb(env).prepare(
+    `SELECT MIN(i.joined_at) at
+       FROM commercial_participant_intervals i
+       JOIN commercial_session_members m
+         ON m.commercial_session_id=i.commercial_session_id AND m.account_id=i.account_id
+      WHERE i.commercial_session_id=?1 AND m.role='creator' AND i.joined_at<=?2`,
+  ).bind(sessionId, windowEnd).first<{ at: number | null }>();
+  if (interval?.at != null) return { checkedIn: true, checkedInAt: Number(interval.at) };
+  return { checkedIn: false, checkedInAt: null };
+}
+
+/**
+ * [SETTLE-CHECKIN-1] Mirrors the `account_strikes` insert in money_engine.ts's
+ * `applyAction` "strike" case — same columns, same `source`/`action_taken` shape — so a
+ * creator's strike history reads the same regardless of which engine recorded it.
+ * Best-effort: a strike-write failure must never block or roll back the refund it rides
+ * with (the refund is the money-safety property; the strike is a policy record).
+ */
+async function insertNoShowStrike(env: Env, creatorId: string, sessionId: string): Promise<void> {
+  try {
+    await metaDb(env).prepare(
+      `INSERT INTO account_strikes
+         (id, uid, clerk_user_id, category, evidence_url, ai_confidence, source, action_taken, created_at)
+       VALUES (?1,?2,?2,'marketplace_no_show',?3,NULL,'commercial_settlement','strike',?4)`,
+    ).bind(crypto.randomUUID(), creatorId, sessionId, Date.now()).run();
+  } catch (e) { console.warn("commercial no-show strike write skipped:", String(e)); }
 }
 
 function authorityError(value: SettlementAuthority): string | null {
@@ -350,27 +416,35 @@ async function finishSettlement(
   env: Env,
   job: SettlementJob,
   authority: SettlementAuthority,
+  // [SETTLE-CHECKIN-1] null for live_event (unchanged decision) and for a consult that
+  // somehow reaches this function without check-in evidence having been read (should not
+  // happen — processJob always resolves this before calling in). 'creator_checked_in' is
+  // the only rule this function ever writes; 'creator_no_show' is written on the refund
+  // path instead (see processJob), which never reaches here.
+  checkIn: { rule: "creator_checked_in"; checkedInAt: number } | null = null,
 ): Promise<void> {
   const receiptId = `commercial:receipt:${authority.order_id}`;
   const duration = await connectedMs(env, job.commercial_session_id, authority.buyer_id);
   const now = Date.now();
+  const rule = checkIn?.rule ?? null;
+  const checkedInAt = checkIn?.checkedInAt ?? null;
   await metaDb(env).prepare(
     `INSERT OR IGNORE INTO commercial_receipts
        (receipt_id,commercial_session_id,order_id,listing_id,booking_id,buyer_id,
         creator_id,kind,gross_amount,platform_fee_amount,creator_amount,currency,
-        settlement_state,connected_ms,policy_snapshot_id,issued_at)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,'settled',?13,?14,?15)`,
+        settlement_state,connected_ms,policy_snapshot_id,issued_at,rule,checked_in_at)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,'settled',?13,?14,?15,?16,?17)`,
   ).bind(
     receiptId, job.commercial_session_id, authority.order_id, authority.listing_id,
     authority.booking_id, authority.buyer_id, authority.creator_id, authority.kind,
     authority.gross_amount, authority.platform_fee_amount, authority.creator_amount,
-    authority.currency, duration, authority.policy_snapshot_id, now,
+    authority.currency, duration, authority.policy_snapshot_id, now, rule, checkedInAt,
   ).run();
 
   const receipt = await metaDb(env).prepare(
     `SELECT commercial_session_id,order_id,listing_id,booking_id,buyer_id,creator_id,
       kind,gross_amount,platform_fee_amount,creator_amount,currency,settlement_state,
-      connected_ms,policy_snapshot_id FROM commercial_receipts WHERE receipt_id=?1`,
+      connected_ms,policy_snapshot_id,rule,checked_in_at FROM commercial_receipts WHERE receipt_id=?1`,
   ).bind(receiptId).first<Record<string, unknown>>();
   if (!receipt
     || receipt.commercial_session_id !== job.commercial_session_id
@@ -386,7 +460,9 @@ async function finishSettlement(
     || receipt.currency !== authority.currency
     || receipt.settlement_state !== "settled"
     || Number(receipt.connected_ms) !== duration
-    || receipt.policy_snapshot_id !== authority.policy_snapshot_id) {
+    || receipt.policy_snapshot_id !== authority.policy_snapshot_id
+    || (receipt.rule ?? null) !== rule
+    || (receipt.checked_in_at ?? null) !== checkedInAt) {
     throw new Error("commercial receipt immutable replay mismatch");
   }
   await metaDb(env).batch([
@@ -431,67 +507,85 @@ async function processJob(env: Env, job: SettlementJob): Promise<void> {
   if (!authority) return await markReview(env, job.settlement_job_id, "missing immutable settlement authority");
   const invalid = authorityError(authority);
   if (invalid) return await markReview(env, job.settlement_job_id, invalid);
-  const delivery = await deliveryError(env, job.commercial_session_id, authority);
-  if (delivery) {
-    // [COMM-NOSHOW-1] A delivery failure used to mean review_pending, always — which is
-    // why `creator_no_show` was unreachable from anywhere in the product and money sat
-    // frozen with no screen behind it. Ask WHO failed to deliver, and if it was the
-    // creator, honour the snapshotted creator-cancellation policy automatically.
-    //
-    // Only evidence failures are re-classified. A bad policy snapshot or a config
-    // problem is still a human's problem and still goes to review.
-    const evidenceFailure = delivery.startsWith("insufficient signed")
-      || delivery.startsWith("live event never reached");
-    if (!evidenceFailure) return await markReview(env, job.settlement_job_id, delivery);
 
-    let policy: Record<string, unknown> = {};
-    try { policy = JSON.parse(authority.cancellation_policy_json) as Record<string, unknown>; } catch { /* handled below */ }
-    const minimumMs = Number.isFinite(Number(policy.min_connected_ms))
-      ? Math.trunc(Number(policy.min_connected_ms)) : 60_000;
-    const creatorMs = await creatorConnectedMs(env, job.commercial_session_id, authority.kind);
-
-    if (creatorMs >= minimumMs) {
-      // The creator delivered; the other side did not turn up. `no_show_policy` is
-      // `session_charged`, so this settles normally rather than refunding — the whole
-      // point of that policy is that a creator who showed up gets paid.
-      commercialEvent(env, "settlement", null, { outcome: "buyer_no_show", kind: authority.kind });
-    } else {
-      const pct = Number(policy.creator_cancel_refund_pct);
-      // 100 is the only percentage the refund machinery can express (receipts are
-      // written refunded_amount = gross, remaining = 0). Anything else is a human's call.
-      if (pct !== 100) return await markReview(env, job.settlement_job_id, `creator_no_show:${delivery}`);
-      const gross = Math.trunc(Number(authority.gross_amount));
-      const gstAmount = Math.max(0, Math.trunc(Number(authority.gst_amount ?? 0)));
-      const refundable = gross + gstAmount;
-      const claimed = await claimCommercialMoney(env, {
-        orderId: authority.order_id, claimType: "refund", claimId: `no-show:${job.settlement_job_id}`,
-      });
-      if (!claimed.owned) return await markReview(env, job.settlement_job_id, "money claim held elsewhere");
-      const money = await executeCommercialRefund(env, {
-        orderId: authority.order_id,
-        buyerId: authority.buyer_id,
-        amount: refundable,
-        reason: "creator_no_show",
-      });
-      if (!money.ok) return await markReview(env, job.settlement_job_id, `creator_no_show_refund_failed:${money.error}`);
-      await finalizeCommercialRefund(env, {
-        orderId: authority.order_id,
-        sessionId: job.commercial_session_id,
-        listingId: authority.listing_id,
-        bookingId: authority.booking_id,
-        buyerId: authority.buyer_id,
-        creatorId: authority.creator_id,
-        kind: authority.kind,
-        grossAmount: gross,
-        refundedAmount: refundable,
-        gstAmount,
-        currency: authority.currency,
-        policySnapshotId: authority.policy_snapshot_id,
-        reason: "creator_no_show",
-        actor: "system",
-      });
-      commercialEvent(env, "settlement", null, { outcome: "refunded", reason: "creator_no_show", kind: authority.kind });
+  // [SETTLE-CHECKIN-1] Live events keep the two-party GetStream-overlap decision
+  // (`deliveryError`) untouched — RULEBOOK-PAID-SESSIONS.md §4 is a separate lane
+  // (WP8). Consults use the check-in decision instead: RULEBOOK §2 has exactly two
+  // outcomes, no evidence-quality branching, no policy.min_connected_ms/
+  // auto_release_on_provider_end gate — those belong to deliveryError's world, not
+  // this one.
+  let checkIn: { rule: "creator_checked_in"; checkedInAt: number } | null = null;
+  if (authority.kind === "consult_1to1") {
+    const evidence = await consultCheckInDecision(env, job.commercial_session_id, authority.booking_id, authority.scheduled_at);
+    if (!evidence.checkedIn) {
+      const outcome = await refundCreatorNoShow(env, job, authority);
+      if (outcome === "refunded") await insertNoShowStrike(env, authority.creator_id, job.commercial_session_id);
       return;
+    }
+    checkIn = { rule: "creator_checked_in", checkedInAt: evidence.checkedInAt as number };
+  } else {
+    const delivery = await deliveryError(env, job.commercial_session_id, authority);
+    if (delivery) {
+      // [COMM-NOSHOW-1] A delivery failure used to mean review_pending, always — which is
+      // why `creator_no_show` was unreachable from anywhere in the product and money sat
+      // frozen with no screen behind it. Ask WHO failed to deliver, and if it was the
+      // creator, honour the snapshotted creator-cancellation policy automatically.
+      //
+      // Only evidence failures are re-classified. A bad policy snapshot or a config
+      // problem is still a human's problem and still goes to review.
+      const evidenceFailure = delivery.startsWith("insufficient signed")
+        || delivery.startsWith("live event never reached");
+      if (!evidenceFailure) return await markReview(env, job.settlement_job_id, delivery);
+
+      let policy: Record<string, unknown> = {};
+      try { policy = JSON.parse(authority.cancellation_policy_json) as Record<string, unknown>; } catch { /* handled below */ }
+      const minimumMs = Number.isFinite(Number(policy.min_connected_ms))
+        ? Math.trunc(Number(policy.min_connected_ms)) : 60_000;
+      const creatorMs = await creatorConnectedMs(env, job.commercial_session_id, authority.kind);
+
+      if (creatorMs >= minimumMs) {
+        // The creator delivered; the other side did not turn up. `no_show_policy` is
+        // `session_charged`, so this settles normally rather than refunding — the whole
+        // point of that policy is that a creator who showed up gets paid.
+        commercialEvent(env, "settlement", null, { outcome: "buyer_no_show", kind: authority.kind });
+      } else {
+        const pct = Number(policy.creator_cancel_refund_pct);
+        // 100 is the only percentage the refund machinery can express (receipts are
+        // written refunded_amount = gross, remaining = 0). Anything else is a human's call.
+        if (pct !== 100) return await markReview(env, job.settlement_job_id, `creator_no_show:${delivery}`);
+        const gross = Math.trunc(Number(authority.gross_amount));
+        const gstAmount = Math.max(0, Math.trunc(Number(authority.gst_amount ?? 0)));
+        const refundable = gross + gstAmount;
+        const claimed = await claimCommercialMoney(env, {
+          orderId: authority.order_id, claimType: "refund", claimId: `no-show:${job.settlement_job_id}`,
+        });
+        if (!claimed.owned) return await markReview(env, job.settlement_job_id, "money claim held elsewhere");
+        const money = await executeCommercialRefund(env, {
+          orderId: authority.order_id,
+          buyerId: authority.buyer_id,
+          amount: refundable,
+          reason: "creator_no_show",
+        });
+        if (!money.ok) return await markReview(env, job.settlement_job_id, `creator_no_show_refund_failed:${money.error}`);
+        await finalizeCommercialRefund(env, {
+          orderId: authority.order_id,
+          sessionId: job.commercial_session_id,
+          listingId: authority.listing_id,
+          bookingId: authority.booking_id,
+          buyerId: authority.buyer_id,
+          creatorId: authority.creator_id,
+          kind: authority.kind,
+          grossAmount: gross,
+          refundedAmount: refundable,
+          gstAmount,
+          currency: authority.currency,
+          policySnapshotId: authority.policy_snapshot_id,
+          reason: "creator_no_show",
+          actor: "system",
+        });
+        commercialEvent(env, "settlement", null, { outcome: "refunded", reason: "creator_no_show", kind: authority.kind });
+        return;
+      }
     }
   }
 
@@ -524,7 +618,7 @@ async function processJob(env: Env, job: SettlementJob): Promise<void> {
     return await markReview(env, job.settlement_job_id, `commercial money claim owned by ${owner}`);
   }
   await releaseSnapshot(env, authority);
-  await finishSettlement(env, job, authority);
+  await finishSettlement(env, job, authority, checkIn);
 }
 
 async function refundCreatorNoShow(
@@ -655,6 +749,10 @@ async function finalizeOverdueNoShow(
        WHERE order_id=?1 AND state IN ('reserved','held','active','consumed')`,
     ).bind(authority.order_id, Date.now()),
   ]);
+  // [SETTLE-CHECKIN-1] Same C2 outcome as processJob's check-in-decision branch, just
+  // reached via the "never even got to 'ended'" sweep instead of a settlement job —
+  // strike the creator the same way either path gets here.
+  if (authority.kind === "consult_1to1") await insertNoShowStrike(env, authority.creator_id, authority.commercial_session_id);
   commercialEvent(env, "settlement", null, { outcome: "refunded", reason: "creator_no_show", kind: authority.kind });
   void receiptId;
   return "refunded";
