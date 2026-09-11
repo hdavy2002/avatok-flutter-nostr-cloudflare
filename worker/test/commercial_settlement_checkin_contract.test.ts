@@ -31,7 +31,8 @@ describe("consult settlement uses the check-in decision, not two-party overlap",
     // fix 3: bounded on both sides — a check-in the day before starts_at must not count.
     expect(settlement).toContain("export function consultCheckInWindow(");
     expect(settlement).toContain("joined_at<=?3 AND COALESCE(left_at,?4)>=?5");
-    expect(settlement).toContain("async function checkInWindowMs(env: Env)");
+    // [SETTLE-CHECKIN-3] R10: the shared cfg resolver, not a standalone checkInWindowMs.
+    expect(settlement).toContain("export function resolveConsultCheckInCfg(");
     expect(settlement).toContain("cfg.sessionCreatorCheckInMin");
     expect(settlement).toContain("readConfig(env)");
   });
@@ -42,12 +43,14 @@ describe("consult settlement uses the check-in decision, not two-party overlap",
     expect(settlement).toContain("await finishSettlement(env, job, authority, checkIn);");
     expect(settlement).toContain("const outcome = await refundCreatorNoShow(env, job, authority);");
     expect(settlement).toContain("await insertNoShowStrike(env, authority.creator_id, authority.order_id, job.commercial_session_id);");
-    // refundCreatorNoShow reuses the SAME executeCommercialRefund/finalizeCommercialRefund
-    // primitives as the live-event no-show branch and the overdue sweep — one refund rail,
-    // four call sites (live no-show, refundCreatorNoShow, finalizeOverdueNoShow, and
-    // [LIVE-GRACE-1]'s settleLiveHostNoReturn — the per-ticket unconsumed-share refund).
+    // refundCreatorNoShow reuses the SAME executeCommercialRefund primitive as the
+    // live-event no-show branch, the overdue sweep, and [SETTLE-CHECKIN-3]'s
+    // applyPartialCommercialSettlement (host-no-return + outage-refund, R2/R11) — one
+    // refund rail, four call sites. finalizeCommercialRefund (the FULL-refund state
+    // writer) now has only three: it must NEVER be called for a partial refund (R2
+    // BLOCKER) — that path uses recordPartialRefundReceipt instead.
     expect(settlement.match(/executeCommercialRefund\(env, \{/g)?.length).toBe(4);
-    expect(settlement.match(/finalizeCommercialRefund\(env, \{/g)?.length).toBe(4);
+    expect(settlement.match(/finalizeCommercialRefund\(env, \{/g)?.length).toBe(3);
   });
 
   it("mirrors the account_strikes insert pattern from money_engine.ts, deterministic + idempotent (fix 7)", () => {
@@ -61,8 +64,18 @@ describe("consult settlement uses the check-in decision, not two-party overlap",
 
   it("loadOverdueNoShowAuthorities uses starts_at + check_in_ms via readConfig, not a hardcoded 15 min", () => {
     expect(settlement).not.toContain("Date.now() - 15 * 60_000");
-    expect(settlement).toContain("Date.now() - checkInMs");
-    expect(settlement).toContain("const checkInMs = await checkInWindowMs(env);");
+    expect(settlement).toContain("now - checkInMs");
+    expect(settlement).toContain("const { earlyMs, checkInMs } = resolveConsultCheckInCfg(cfg);");
+  });
+
+  it("R9: a consult_1to1 session with check-in evidence inside the window is excluded from the overdue-no-show scan (not just skipped after selection)", () => {
+    const body = settlement.slice(
+      settlement.indexOf("async function loadOverdueNoShowAuthorities("),
+      settlement.indexOf("async function deliveryError("),
+    );
+    expect(body).toContain("s.kind <> 'consult_1to1'");
+    expect(body).toContain("NOT EXISTS");
+    expect(body).toContain("session_attendance");
   });
 
   it("receipt gains rule + checked_in_at (nullable, additive migration — not applied)", () => {
@@ -86,9 +99,41 @@ describe("consult settlement uses the check-in decision, not two-party overlap",
   });
 
   it("fix 1: the orphan no-show sweep is scoped by SETTLE-CHECKIN-2 (commercial_lifecycle.ts owns the SQL)", () => {
-    expect(lifecycle).toContain("import { consultCheckInWindow } from \"../commercial_settlement\";");
+    expect(lifecycle).toContain("import { consultCheckInWindow, resolveConsultCheckInCfg } from \"../commercial_settlement\";");
     expect(lifecycle).toContain("session_attendance");
     expect(lifecycle).not.toContain("Date.now() - 15 * 60_000;\n  const safeLimit");
+  });
+
+  it("R2 BLOCKER: settleLiveHostNoReturn (and the R11 outage-refund sibling) take ONE settlement claim around both legs, never a separate refund claim", () => {
+    const body = settlement.slice(
+      settlement.indexOf("async function applyPartialCommercialSettlement("),
+      settlement.indexOf("async function ensureFundsVerified("),
+    );
+    expect(body).toContain('claimType: "settlement"');
+    expect(body).not.toContain('claimType: "refund"');
+    expect(body).not.toContain("finalizeCommercialRefund(env, {");
+    expect(settlement).toContain("'partial_refund'");
+    expect(settlement).toContain("async function recordPartialRefundReceipt(");
+  });
+
+  it("R5: the platform's consumed share is derived as the remainder, not an independently rounded fraction", () => {
+    expect(settlement).toContain("const consumedPlatformAmount = Math.max(0, (gross - refundGross) - consumedCreatorAmount);");
+  });
+
+  it("R11: a normal live end with recorded outage rows refunds outage minutes instead of settling at full price", () => {
+    expect(settlement).toContain("async function settleLiveOutageRefund(");
+    expect(settlement).toContain("async function hasRecordedOutage(");
+    const body = settlement.slice(
+      settlement.indexOf('if (authority.end_outcome === "host_no_return") {'),
+      settlement.indexOf("const delivery = await deliveryError("),
+    );
+    expect(body).toContain("hasRecordedOutage");
+    expect(body).toContain("settleLiveOutageRefund");
+  });
+
+  it("R15: watchedEligibleMs clips intervals to the slot window before computing eligible/outage time", () => {
+    expect(settlement).toContain("Math.max(Number(iv.joined_at), windowStart)");
+    expect(settlement).toContain("Math.min(Number(iv.left_at), windowEnd)");
   });
 });
 
@@ -202,5 +247,89 @@ describe("rules.ts R2 pays the creator in full on buyer no-show (no pro-rata)", 
     expect(rules).toContain("{ kind: \"release\", orderId: o.id, gross: o.amount, rule: \"R2\", email: \"settlement_paid\" }");
     expect(rules).toContain("{ kind: \"set_status\", orderId: o.id, status: \"settled\" }");
     expect(rules).not.toContain("prorata");
+  });
+});
+
+// [SETTLE-CHECKIN-3] R2 BLOCKER + R5: behavioral coverage for the money-safety
+// invariant and idempotency the text contracts above can only assert exist in source.
+describe("partialRefundSplit + recordPartialRefundReceipt (node:sqlite)", () => {
+  it("R5: refundGross + consumedCreatorAmount + consumedPlatformAmount always sums to exactly gross, across fractions and odd amounts that would otherwise round adrift", async () => {
+    const { partialRefundSplit } = await import("../src/commercial_settlement");
+    const cases: Array<[number, number, number, number, number]> = [
+      [10000, 800, 8000, 2000, 0.3],   // RULEBOOK example amounts
+      [9999, 333, 7777, 1889, 1 / 3],  // odd amounts, a fraction that never rounds cleanly
+      [1, 0, 0, 1, 0.5],               // a single-token order
+      [12345, 617, 9000, 3345, 0.18],
+      [5000, 250, 4000, 750, 1],       // fully refunded
+      [5000, 250, 4000, 750, 0],       // fully consumed
+    ];
+    for (const [gross, gst, creator, platform, fraction] of cases) {
+      const parts = partialRefundSplit(gross, gst, creator, platform, fraction);
+      expect(parts.refundGross + parts.consumedCreatorAmount + parts.consumedPlatformAmount).toBe(gross);
+      expect(parts.refundGst + parts.consumedGstAmount).toBe(gst);
+      expect(parts.consumedCreatorAmount).toBeGreaterThanOrEqual(0);
+      expect(parts.consumedPlatformAmount).toBeGreaterThanOrEqual(0);
+      expect(parts.refundGross).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("R2: recordPartialRefundReceipt is idempotent — a retry (same order_id) writes no second row and never touches orders/settlement_jobs", async () => {
+    const { createRequire } = await import("node:module");
+    const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite") as { DatabaseSync: new (path: string) => any };
+    const db = new DatabaseSync(":memory:");
+    db.exec(`
+      CREATE TABLE commercial_refund_receipts (
+        refund_receipt_id TEXT PRIMARY KEY, order_id TEXT UNIQUE, commercial_session_id TEXT,
+        listing_id TEXT, booking_id TEXT, buyer_id TEXT, creator_id TEXT, kind TEXT,
+        gross_amount INTEGER, refunded_amount INTEGER, remaining_amount INTEGER,
+        platform_fee_amount INTEGER, creator_amount INTEGER, currency TEXT,
+        settlement_state TEXT, reason TEXT, actor TEXT, policy_snapshot_id TEXT, issued_at INTEGER, gst_amount INTEGER
+      );
+      CREATE TABLE orders (id TEXT PRIMARY KEY, status TEXT);
+      CREATE TABLE commercial_settlement_jobs (settlement_job_id TEXT PRIMARY KEY, state TEXT);
+    `);
+    db.prepare("INSERT INTO orders (id,status) VALUES (?,?)").run("order-partial-1", "held");
+    db.prepare("INSERT INTO commercial_settlement_jobs (settlement_job_id,state) VALUES (?,?)").run("job-1", "processing");
+    function makeStatement(sql: string) {
+      let named = ""; let next = 1; const used = new Set<number>();
+      for (let i = 0; i < sql.length; i++) {
+        if (sql[i] !== "?") { named += sql[i]; continue; }
+        let j = i + 1;
+        while (j < sql.length && /\d/.test(sql[j])) j++;
+        if (j > i + 1) { const index = Number(sql.slice(i + 1, j)); named += `$p${index}`; used.add(index); next = Math.max(next, index + 1); i = j - 1; }
+        else { named += `$p${next}`; used.add(next); next++; }
+      }
+      let params: Record<string, unknown> = {};
+      return {
+        bind(...values: unknown[]) { params = {}; for (const index of used) params[`p${index}`] = values[index - 1] === undefined ? null : values[index - 1]; return this; },
+        async run() { const r = db.prepare(named).run(params); return { meta: { changes: Number(r.changes ?? 0) } }; },
+        async first<T = any>() { return (db.prepare(named).get(params) as T | undefined) ?? null; },
+        async all<T = any>() { return { results: db.prepare(named).all(params) as T[] }; },
+      };
+    }
+    const env = { DB_META: { prepare: makeStatement } } as any;
+    const { recordPartialRefundReceipt } = await import("../src/commercial_settlement");
+    const args = {
+      orderId: "order-partial-1", sessionId: "session-1", listingId: "listing-1", bookingId: null,
+      buyerId: "buyer-1", creatorId: "creator-1", kind: "live_event", grossAmount: 10000, refundedAmount: 3000,
+      consumedCreatorAmount: 5600, consumedPlatformAmount: 1400, consumedGstAmount: 0,
+      currency: "INR", policySnapshotId: "policy-1", reason: "host_no_return",
+    };
+    await recordPartialRefundReceipt(env, args);
+    await recordPartialRefundReceipt(env, args); // simulated retry
+
+    const rows = db.prepare("SELECT COUNT(*) n FROM commercial_refund_receipts WHERE order_id=?").get("order-partial-1") as any;
+    expect(rows.n).toBe(1);
+    const receipt = db.prepare("SELECT settlement_state,refunded_amount,remaining_amount,creator_amount,platform_fee_amount FROM commercial_refund_receipts WHERE order_id=?").get("order-partial-1") as any;
+    expect(receipt.settlement_state).toBe("partial_refund");
+    expect(receipt.refunded_amount).toBe(3000);
+    expect(receipt.remaining_amount).toBe(7000); // 5600 + 1400 + 0 -- the creator's + platform's consumed share
+    expect(receipt.creator_amount).toBe(5600);
+    expect(receipt.platform_fee_amount).toBe(1400);
+    // R2: this helper must never touch order/settlement-job state -- that stays the job's own to write.
+    const order = db.prepare("SELECT status FROM orders WHERE id=?").get("order-partial-1") as any;
+    expect(order.status).toBe("held");
+    const job = db.prepare("SELECT state FROM commercial_settlement_jobs WHERE settlement_job_id=?").get("job-1") as any;
+    expect(job.state).toBe("processing");
   });
 });

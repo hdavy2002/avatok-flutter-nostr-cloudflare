@@ -12,6 +12,7 @@ import { readConfig } from "../routes/config";
 import { commercialEvent } from "./commercial_telemetry";
 import { consumeCommercialEntitlementsOnSessionEnd } from "../routes/commercial_stream_sessions";
 import { commercialProviderIdentity } from "./commercial_stream_sessions";
+import { resolveConsultCheckInCfg } from "../commercial_settlement";
 
 type DueConsultSession = {
   commercial_session_id: string;
@@ -127,12 +128,11 @@ export async function backfillCheckedInConsultSessions(
 ): Promise<{ scanned: number; created: number }> {
   const config = await readConfig(env);
   const lateGraceMs = Math.max(0, Math.trunc(Number(config.commercialConsultJoinLateMin))) * 60_000;
-  const rawCheckInMin = Number(config.sessionCreatorCheckInMin);
-  const rawEarlyMin = Number(config.commercialConsultJoinEarlyMin);
-  const checkInMin = Number.isFinite(rawCheckInMin) && rawCheckInMin > 0 ? rawCheckInMin : 20;
-  const earlyMin = Number.isFinite(rawEarlyMin) && rawEarlyMin >= 0 ? rawEarlyMin : 10;
-  const checkInMs = checkInMin * 60_000;
-  const earlyMs = earlyMin * 60_000;
+  // [SETTLE-CHECKIN-3] R10: one shared helper for the check-in window's minutes ->
+  // ms conversion and defaulting -- the settlement decision (commercial_settlement.ts),
+  // the orphan sweep (commercial_lifecycle.ts) and this backfill all call the SAME
+  // function instead of each keeping their own copy of the maths.
+  const { earlyMs, checkInMs } = resolveConsultCheckInCfg(config as unknown as Record<string, unknown>);
   const now = Date.now();
   const safeLimit = Math.max(1, Math.min(100, Math.trunc(limit)));
   const rows = await metaDb(env).prepare(
@@ -140,9 +140,18 @@ export async function backfillCheckedInConsultSessions(
        FROM bookings b
        JOIN orders o ON o.id = b.order_id
       WHERE b.kind='consult_1to1'
+        AND o.kind='consult_1to1'
         AND b.status='confirmed'
         AND o.status IN ('held','free')
         AND b.ends_at + ?1 <= ?2
+        -- [SETTLE-CHECKIN-3] R8: only a genuinely COMMERCIAL order -- one that actually
+        -- went through commercial checkout and has a policy snapshot -- is eligible. A
+        -- legacy Phase-7 AvaConsult booking shares this same bookings/orders shape
+        -- (kind='consult_1to1' too) but settles through money_engine.ts, not
+        -- commercial_settlement.ts; without this it would get a phantom
+        -- commercial_sessions/settlement_job row that can never find its settlement
+        -- authority (no policy snapshot exists) and sits in review forever.
+        AND EXISTS (SELECT 1 FROM commercial_policy_snapshots p WHERE p.order_id=o.id)
         AND NOT EXISTS (SELECT 1 FROM commercial_sessions sx
                          WHERE sx.kind='consult_1to1' AND sx.booking_id=b.id)
         AND EXISTS (
@@ -164,26 +173,30 @@ export async function backfillCheckedInConsultSessions(
     });
     const sessionId = `consult_${row.booking_id}`;
     const nowForRow = Date.now();
-    const inserted = await metaDb(env).prepare(
-      `INSERT OR IGNORE INTO commercial_sessions
-       (commercial_session_id,kind,listing_id,booking_id,order_id,creator_id,provider,
-        provider_call_type,provider_call_id,session_version,scheduled_at,ended_at,state,state_version,
-        settlement_state,recording_state,replay_state,created_at,updated_at)
-       VALUES (?1,'consult_1to1',?2,?3,?4,?5,?6,?7,?8,1,?9,?10,'ended',1,
-        'pending','disabled','disabled',?10,?10)`,
-    ).bind(
-      sessionId, row.listing_id, row.booking_id, row.order_id, row.creator_id,
-      identity.provider, identity.callType, identity.callId, row.starts_at, nowForRow,
-    ).run();
-    if ((inserted.meta?.changes ?? 0) !== 1) continue;
-    await metaDb(env).prepare(
-      `INSERT OR IGNORE INTO commercial_settlement_jobs
-       (settlement_job_id,commercial_session_id,order_id,state,terminal_event_id,
-        attempts,created_at,updated_at)
-       SELECT 'settlement:' || ?1 || ':' || p.order_id,?1,p.order_id,'pending',?2,0,?3,?3
-       FROM commercial_policy_snapshots p
-       WHERE p.listing_id=?4 AND COALESCE(p.booking_id,'')=?5`,
-    ).bind(sessionId, `backfill:${sessionId}:${nowForRow}`, nowForRow, row.listing_id, row.booking_id).run();
+    // [SETTLE-CHECKIN-3] R8: session insert + job insert in ONE batch -- they are the
+    // same "this booking is now backfilled" fact, not two independently-retriable steps.
+    const [sessionResult] = await metaDb(env).batch([
+      metaDb(env).prepare(
+        `INSERT OR IGNORE INTO commercial_sessions
+         (commercial_session_id,kind,listing_id,booking_id,order_id,creator_id,provider,
+          provider_call_type,provider_call_id,session_version,scheduled_at,ended_at,state,state_version,
+          settlement_state,recording_state,replay_state,created_at,updated_at)
+         VALUES (?1,'consult_1to1',?2,?3,?4,?5,?6,?7,?8,1,?9,?10,'ended',1,
+          'pending','disabled','disabled',?10,?10)`,
+      ).bind(
+        sessionId, row.listing_id, row.booking_id, row.order_id, row.creator_id,
+        identity.provider, identity.callType, identity.callId, row.starts_at, nowForRow,
+      ),
+      metaDb(env).prepare(
+        `INSERT OR IGNORE INTO commercial_settlement_jobs
+         (settlement_job_id,commercial_session_id,order_id,state,terminal_event_id,
+          attempts,created_at,updated_at)
+         SELECT 'settlement:' || ?1 || ':' || p.order_id,?1,p.order_id,'pending',?2,0,?3,?3
+         FROM commercial_policy_snapshots p
+         WHERE p.listing_id=?4 AND COALESCE(p.booking_id,'')=?5`,
+      ).bind(sessionId, `backfill:${sessionId}:${nowForRow}`, nowForRow, row.listing_id, row.booking_id),
+    ]);
+    if ((sessionResult?.meta?.changes ?? 0) !== 1) continue;
     await consumeCommercialEntitlementsOnSessionEnd(env, sessionId);
     commercialEvent(env, "session_clock", null, {
       kind: "consult_1to1", outcome: "backfilled", reason: "creator_checked_in_buyer_absent",

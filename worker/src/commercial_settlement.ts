@@ -130,14 +130,35 @@ async function loadAuthority(env: Env, job: SettlementJob): Promise<SettlementAu
 /** [SETTLE-CHECKIN-1] `sessionCreatorCheckInMin` (default 20) replaces the old
  *  hardcoded 15-minute window — see RULEBOOK-PAID-SESSIONS.md §2 C1/C2. Read via
  *  readConfig() (KV over DEFAULTS), never assumed from the DEFAULTS literal. */
-async function checkInWindowMs(env: Env): Promise<number> {
-  const cfg = await readConfig(env) as unknown as Record<string, unknown>;
-  const raw = Number(cfg.sessionCreatorCheckInMin);
-  return (Number.isFinite(raw) && raw > 0 ? raw : 20) * 60_000;
+/**
+ * [SETTLE-CHECKIN-3] R10: the ONE place `sessionCreatorCheckInMin` /
+ * `commercialConsultJoinEarlyMin` are parsed and defaulted. `consultCheckInDecision`,
+ * the orphan-no-show sweep (commercial_lifecycle.ts) and the C1 backfill
+ * (commercial_session_clock.ts) all call this instead of each re-deriving the same
+ * maths and fallback defaults (20 / 10 minutes) — three copies that could silently
+ * drift apart is exactly how fix 3's bounded window regresses back to unbounded.
+ */
+export function resolveConsultCheckInCfg(cfg: Record<string, unknown>): { earlyMs: number; checkInMs: number } {
+  const rawCheckIn = Number(cfg.sessionCreatorCheckInMin);
+  const rawEarly = Number(cfg.commercialConsultJoinEarlyMin);
+  const checkInMin = Number.isFinite(rawCheckIn) && rawCheckIn > 0 ? rawCheckIn : 20;
+  const earlyMin = Number.isFinite(rawEarly) && rawEarly >= 0 ? rawEarly : 10;
+  return { earlyMs: earlyMin * 60_000, checkInMs: checkInMin * 60_000 };
 }
 
+/**
+ * [SETTLE-CHECKIN-3] R9: a `consult_1to1` session whose creator DID check in (evidence
+ * inside the same window fix 3 uses) but whose state machine never left
+ * scheduled/backstage stays in this result set FOREVER on the old query — every cron
+ * tick it re-occupies a `LIMIT` slot ahead of genuine no-shows, ordered oldest-first, and
+ * starves them. Excluding checked-in sessions here (rather than only skipping them
+ * inside `finalizeOverdueNoShow`, fix 2) means they never take a slot at all.
+ */
 async function loadOverdueNoShowAuthorities(env: Env, limit: number): Promise<OverdueNoShowAuthority[]> {
-  const checkInMs = await checkInWindowMs(env);
+  const cfg = await readConfig(env) as unknown as Record<string, unknown>;
+  const { earlyMs, checkInMs } = resolveConsultCheckInCfg(cfg);
+  const now = Date.now();
+  const safeLimit = Math.max(1, Math.min(50, Math.trunc(limit)));
   const rows = await metaDb(env).prepare(
     `SELECT s.commercial_session_id,s.kind,s.listing_id,s.booking_id,s.creator_id,
       o.buyer_id,o.id order_id,o.status order_status,s.state session_state,s.settlement_state,
@@ -150,9 +171,23 @@ async function loadOverdueNoShowAuthorities(env: Env, limit: number): Promise<Ov
      WHERE s.state IN ('scheduled','backstage')
        AND s.settlement_state NOT IN ('settled','refunded')
        AND s.scheduled_at <= ?1
+       AND (s.kind <> 'consult_1to1' OR (
+         NOT EXISTS (
+           SELECT 1 FROM session_attendance a
+            WHERE a.session_id=s.booking_id AND a.role='host' AND a.user_id=s.creator_id
+              AND a.joined_at<=s.scheduled_at+?2 AND COALESCE(a.left_at,?3)>=s.scheduled_at-?4
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM commercial_participant_intervals i
+            JOIN commercial_session_members m
+              ON m.commercial_session_id=i.commercial_session_id AND m.account_id=i.account_id
+            WHERE i.commercial_session_id=s.commercial_session_id AND m.role='creator' AND i.account_id=s.creator_id
+              AND i.joined_at<=s.scheduled_at+?2 AND COALESCE(i.left_at,?3)>=s.scheduled_at-?4
+         )
+       ))
      ORDER BY s.scheduled_at ASC
-     LIMIT ?2`,
-  ).bind(Date.now() - checkInMs, Math.max(1, Math.min(50, Math.trunc(limit)))).all<OverdueNoShowAuthority>();
+     LIMIT ?5`,
+  ).bind(now - checkInMs, checkInMs, now, earlyMs, safeLimit).all<OverdueNoShowAuthority>();
   return rows.results ?? [];
 }
 
@@ -227,16 +262,19 @@ async function deliveryError(
 /**
  * [SETTLE-CHECKIN-2] fix 3: the check-in window is an OVERLAP test, not a one-sided
  * `joined_at <= closesAt`. Exported so `commercial_lifecycle.ts` (the orphan no-show
- * sweep, fix 1) computes the exact same window instead of re-deriving its own copy.
+ * sweep, fix 1) and `commercial_session_clock.ts` (the C1 backfill) compute the exact
+ * same window instead of re-deriving their own copy.
+ *
+ * [SETTLE-CHECKIN-3] R10: takes already-resolved milliseconds (`resolveConsultCheckInCfg`'s
+ * output), not raw config minutes — the minutes-to-ms conversion and its defaulting
+ * happen in exactly ONE place now, not here too.
  */
 export function consultCheckInWindow(
   startsAt: number,
-  earlyMin: number,
-  checkInMin: number,
+  earlyMs: number,
+  checkInMs: number,
 ): { opensAt: number; closesAt: number } {
-  const early = Math.max(0, Math.trunc(Number(earlyMin))) || 0;
-  const checkIn = Math.max(0, Math.trunc(Number(checkInMin))) || 0;
-  return { opensAt: startsAt - early * 60_000, closesAt: startsAt + checkIn * 60_000 };
+  return { opensAt: startsAt - Math.max(0, Math.trunc(Number(earlyMs))), closesAt: startsAt + Math.max(0, Math.trunc(Number(checkInMs))) };
 }
 
 /**
@@ -259,13 +297,8 @@ export async function consultCheckInDecision(
   creatorId: string,
 ): Promise<{ checkedIn: boolean; checkedInAt: number | null }> {
   const cfg = await readConfig(env) as unknown as Record<string, unknown>;
-  const checkInMinRaw = Number(cfg.sessionCreatorCheckInMin);
-  const earlyMinRaw = Number(cfg.commercialConsultJoinEarlyMin);
-  const { opensAt, closesAt } = consultCheckInWindow(
-    startsAt,
-    Number.isFinite(earlyMinRaw) && earlyMinRaw >= 0 ? earlyMinRaw : 10,
-    Number.isFinite(checkInMinRaw) && checkInMinRaw > 0 ? checkInMinRaw : 20,
-  );
+  const { earlyMs, checkInMs } = resolveConsultCheckInCfg(cfg);
+  const { opensAt, closesAt } = consultCheckInWindow(startsAt, earlyMs, checkInMs);
   const now = Date.now();
   if (bookingId) {
     const att = await metaDb(env).prepare(
@@ -560,8 +593,37 @@ async function slotMsForListing(env: Env, listingId: string): Promise<number> {
  * armed on the host's `participant_left`, closed on rejoin or on the grace
  * alarm firing). A viewer who stayed connected through the whole outage is
  * not charged for it even though their own interval never closed for it.
+ *
+ * [SETTLE-CHECKIN-3] R15: every interval is clipped to `[windowStart, windowEnd]`
+ * (the listing's slot) before any subtraction. An interval that started before the
+ * slot (an early-join grace) or that never closed and is read long after `windowEnd`
+ * must not inflate either the eligible or the outage total beyond what the ticket
+ * actually covers.
  */
-async function watchedEligibleMs(env: Env, sessionId: string, buyerId: string): Promise<number> {
+async function watchedEligibleMs(
+  env: Env, sessionId: string, buyerId: string, windowStart: number, windowEnd: number,
+): Promise<number> {
+  return (await outageSplit(env, sessionId, buyerId, windowStart, windowEnd)).eligibleMs;
+}
+
+/**
+ * [SETTLE-CHECKIN-3] R11: the same clipped intervals, but summing the OUTAGE overlap
+ * instead of subtracting it — this is "how many of this ticket's watched minutes fell
+ * inside a recorded host outage", which RULEBOOK-PAID-SESSIONS.md v2 §4 L4 says must be
+ * refunded pro-rata even when the host returns within grace (a normal end, never routed
+ * through `settleLiveHostNoReturn`). Shares one query pass with `watchedEligibleMs`
+ * (eligible + outage always sum to the clipped connected time) so the two can never
+ * drift apart from independently-rounded or independently-clipped arithmetic.
+ */
+async function outageOverlapMs(
+  env: Env, sessionId: string, buyerId: string, windowStart: number, windowEnd: number,
+): Promise<number> {
+  return (await outageSplit(env, sessionId, buyerId, windowStart, windowEnd)).outageMs;
+}
+
+async function outageSplit(
+  env: Env, sessionId: string, buyerId: string, windowStart: number, windowEnd: number,
+): Promise<{ eligibleMs: number; outageMs: number }> {
   const intervals = await metaDb(env).prepare(
     `SELECT joined_at,COALESCE(left_at,joined_at) left_at FROM commercial_participant_intervals
        WHERE commercial_session_id=?1 AND account_id=?2
@@ -571,17 +633,154 @@ async function watchedEligibleMs(env: Env, sessionId: string, buyerId: string): 
     `SELECT started_at,COALESCE(ended_at,started_at) ended_at FROM commercial_live_outages
        WHERE commercial_session_id=?1`,
   ).bind(sessionId).all<{ started_at: number; ended_at: number }>();
-  let total = 0;
+  let eligible = 0;
+  let outageMs = 0;
   for (const iv of intervals.results ?? []) {
-    let ms = Math.max(0, Number(iv.left_at) - Number(iv.joined_at));
+    const start = Math.max(Number(iv.joined_at), windowStart);
+    const end = Math.min(Number(iv.left_at), windowEnd);
+    if (end <= start) continue;
+    let ivOutage = 0;
     for (const outage of outages.results ?? []) {
-      const overlap = Math.max(0, Math.min(Number(iv.left_at), Number(outage.ended_at))
-        - Math.max(Number(iv.joined_at), Number(outage.started_at)));
-      ms -= overlap;
+      const overlap = Math.max(0, Math.min(end, Number(outage.ended_at))
+        - Math.max(start, Number(outage.started_at)));
+      ivOutage += overlap;
     }
-    total += Math.max(0, ms);
+    ivOutage = Math.min(ivOutage, end - start);
+    eligible += (end - start) - ivOutage;
+    outageMs += ivOutage;
   }
-  return Math.max(0, Math.trunc(total));
+  return { eligibleMs: Math.max(0, Math.trunc(eligible)), outageMs: Math.max(0, Math.trunc(outageMs)) };
+}
+
+/**
+ * [SETTLE-CHECKIN-3] R5: derive the platform's consumed share as the REMAINDER after
+ * the gross refund and the creator's (independently rounded) consumed share, rather
+ * than rounding a third independent fraction. Rounding three shares independently can
+ * drift the sum away from `gross` by ±1 in either direction — over, and the three legs
+ * try to move more than escrow holds; under, and a token is stranded in escrow forever.
+ * This way `refundGross + consumedCreatorAmount + consumedPlatformAmount === gross`,
+ * exactly, every time.
+ */
+export function partialRefundSplit(
+  gross: number, gstAmount: number, creatorAmount: number, platformAmount: number, refundFraction: number,
+): {
+  refundGross: number; refundGst: number; refundable: number;
+  consumedCreatorAmount: number; consumedPlatformAmount: number; consumedGstAmount: number;
+} {
+  const fraction = Math.max(0, Math.min(1, refundFraction));
+  const refundGross = Math.round(gross * fraction);
+  const refundGst = Math.round(gstAmount * fraction);
+  const consumedCreatorAmount = creatorAmount - Math.round(creatorAmount * fraction);
+  const consumedPlatformAmount = Math.max(0, (gross - refundGross) - consumedCreatorAmount);
+  const consumedGstAmount = gstAmount - refundGst;
+  return {
+    refundGross, refundGst, refundable: refundGross + refundGst,
+    consumedCreatorAmount, consumedPlatformAmount, consumedGstAmount,
+  };
+}
+
+/**
+ * [SETTLE-CHECKIN-3] R2 BLOCKER fix: write the refund leg of a PARTIAL commercial
+ * settlement directly into `commercial_refund_receipts` with `settlement_state=
+ * 'partial_refund'` (a state that table's own CHECK constraint already allows — it was
+ * simply never used). This must never go through `finalizeCommercialRefund`: that
+ * helper hardcodes `creator_amount=0`/`remaining_amount=0` and marks the order,
+ * booking, entitlements AND settlement job fully 'refunded' — correct for a 100%
+ * refund, and wrong here, where the creator is still owed his consumed share and the
+ * settlement job that pays it still has to run. `INSERT OR IGNORE` on a receipt id
+ * derived from the order makes a retry's refund-recording idempotent without
+ * re-touching order/job state a second time.
+ */
+export async function recordPartialRefundReceipt(env: Env, args: {
+  orderId: string; sessionId: string | null; listingId: string; bookingId: string | null;
+  buyerId: string; creatorId: string; kind: string; grossAmount: number; refundedAmount: number;
+  consumedCreatorAmount: number; consumedPlatformAmount: number; consumedGstAmount: number;
+  currency: string; policySnapshotId: string; reason: string;
+}): Promise<void> {
+  const remainingAmount = args.consumedCreatorAmount + args.consumedPlatformAmount + args.consumedGstAmount;
+  await metaDb(env).prepare(
+    `INSERT OR IGNORE INTO commercial_refund_receipts
+     (refund_receipt_id,order_id,commercial_session_id,listing_id,booking_id,buyer_id,creator_id,
+      kind,gross_amount,refunded_amount,remaining_amount,platform_fee_amount,creator_amount,
+      currency,settlement_state,reason,actor,policy_snapshot_id,issued_at,gst_amount)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,'partial_refund',?15,'system',?16,?17,?18)`,
+  ).bind(
+    `commercial-refund:${args.orderId}`, args.orderId, args.sessionId, args.listingId, args.bookingId,
+    args.buyerId, args.creatorId, args.kind, args.grossAmount, args.refundedAmount, remainingAmount,
+    args.consumedPlatformAmount, args.consumedCreatorAmount, args.currency, args.reason.slice(0, 200),
+    args.policySnapshotId, Date.now(), args.consumedGstAmount,
+  ).run();
+}
+
+/**
+ * [SETTLE-CHECKIN-3] R2 BLOCKER fix: ONE claim, of type 'settlement', held around BOTH
+ * legs (refund leg + release leg) of a partial commercial settlement. The old
+ * `settleLiveHostNoReturn` took a 'refund' claim for the first leg and completed it,
+ * then tried to take a SEPARATE 'settlement' claim for the second — but
+ * `commercial_money_claims.order_id` is the table's primary key (one claim per order,
+ * ever), so that second claim could never be owned once the first had been. Every
+ * partial refund went to review_pending forever with the creator's share stuck in
+ * escrow, and a retry could not recover it either (the receipt `finalizeCommercialRefund`
+ * wrote already read as a full, terminal refund). Used by both `settleLiveHostNoReturn`
+ * (R2) and the new outage-minutes refund (R11) — one helper, one claim discipline.
+ */
+async function applyPartialCommercialSettlement(
+  env: Env, job: SettlementJob, authority: SettlementAuthority,
+  parts: ReturnType<typeof partialRefundSplit> & { reason: string; claimId: string; telemetryOutcome: string },
+): Promise<void> {
+  const claim = await claimCommercialMoney(env, {
+    orderId: authority.order_id, claimType: "settlement", claimId: parts.claimId,
+  });
+  if (!claim.owned) {
+    const owner = claim.existing ? `${claim.existing.claim_type}:${claim.existing.claim_id}` : "unknown";
+    return await markReview(env, job.settlement_job_id, `commercial money claim owned by ${owner}`);
+  }
+  if (parts.refundable > 0) {
+    const money = await executeCommercialRefund(env, {
+      orderId: authority.order_id, buyerId: authority.buyer_id, amount: parts.refundable, reason: parts.reason,
+    });
+    if (!money.ok) return await markReview(env, job.settlement_job_id, `${parts.reason}_refund_failed:${money.error}`);
+    await recordPartialRefundReceipt(env, {
+      orderId: authority.order_id, sessionId: job.commercial_session_id, listingId: authority.listing_id,
+      bookingId: authority.booking_id, buyerId: authority.buyer_id, creatorId: authority.creator_id,
+      kind: authority.kind, grossAmount: Math.trunc(Number(authority.gross_amount)), refundedAmount: parts.refundable,
+      consumedCreatorAmount: parts.consumedCreatorAmount, consumedPlatformAmount: parts.consumedPlatformAmount,
+      consumedGstAmount: parts.consumedGstAmount, currency: authority.currency,
+      policySnapshotId: authority.policy_snapshot_id, reason: parts.reason,
+    });
+  }
+
+  const consumed: SettlementAuthority = {
+    ...authority,
+    creator_amount: parts.consumedCreatorAmount,
+    platform_fee_amount: parts.consumedPlatformAmount,
+    gst_amount: parts.consumedGstAmount,
+  };
+  if (parts.consumedCreatorAmount > 0 || parts.consumedPlatformAmount > 0 || parts.consumedGstAmount > 0) {
+    await releaseSnapshot(env, consumed);
+  }
+  // [SETTLE-CHECKIN-3] R2: the order only becomes 'settled' HERE, inside
+  // finishSettlement -- once the creator's consumed share has actually been released --
+  // never earlier via a refund-path helper that would mark it 'refunded' while money is
+  // still owed out to the creator.
+  await finishSettlement(env, job, consumed, null);
+  commercialEvent(env, "settlement", null, { outcome: parts.telemetryOutcome, kind: authority.kind });
+}
+
+async function ensureFundsVerified(env: Env, job: SettlementJob, authority: SettlementAuthority): Promise<string | null> {
+  const gross = Math.trunc(Number(authority.gross_amount));
+  const gstAmount = Math.max(0, Math.trunc(Number(authority.gst_amount ?? 0)));
+  const escrowRequired = gross + gstAmount;
+  if (job.funds_verified_at || escrowRequired <= 0) return null;
+  const available = await escrowBalance(env, authority.order_id);
+  if (available < escrowRequired) return "escrow balance below immutable gross";
+  const verifiedAt = Date.now();
+  await metaDb(env).prepare(
+    `UPDATE commercial_settlement_jobs SET funds_verified_at=?2,updated_at=?2
+     WHERE settlement_job_id=?1 AND funds_verified_at IS NULL`,
+  ).bind(job.settlement_job_id, verifiedAt).run();
+  job.funds_verified_at = verifiedAt;
+  return null;
 }
 
 /**
@@ -596,89 +795,66 @@ async function watchedEligibleMs(env: Env, sessionId: string, buyerId: string): 
  * keep vs refund).
  */
 async function settleLiveHostNoReturn(env: Env, job: SettlementJob, authority: SettlementAuthority): Promise<void> {
-  const gross = Math.trunc(Number(authority.gross_amount));
-  const gstAmount = Math.max(0, Math.trunc(Number(authority.gst_amount ?? 0)));
-  const platformAmount = Math.trunc(Number(authority.platform_fee_amount));
-  const creatorAmount = Math.trunc(Number(authority.creator_amount));
-  // [TAX-GST-1] Same sufficiency guard processJob's normal path runs before
-  // ever moving money — escrow holds base + tax in one hold, so both must be
-  // covered before either the refund or the release leg below touches it.
-  const escrowRequired = gross + gstAmount;
-  if (!job.funds_verified_at && escrowRequired > 0) {
-    const available = await escrowBalance(env, authority.order_id);
-    if (available < escrowRequired) {
-      return await markReview(env, job.settlement_job_id, "escrow balance below immutable gross");
-    }
-    const verifiedAt = Date.now();
-    await metaDb(env).prepare(
-      `UPDATE commercial_settlement_jobs SET funds_verified_at=?2,updated_at=?2
-       WHERE settlement_job_id=?1 AND funds_verified_at IS NULL`,
-    ).bind(job.settlement_job_id, verifiedAt).run();
-    job.funds_verified_at = verifiedAt;
-  }
+  const reviewReason = await ensureFundsVerified(env, job, authority);
+  if (reviewReason) return await markReview(env, job.settlement_job_id, reviewReason);
+
   const slotMs = await slotMsForListing(env, authority.listing_id);
-  const watchedMs = await watchedEligibleMs(env, job.commercial_session_id, authority.buyer_id);
-  const unwatchedFraction = slotMs > 0 ? Math.max(0, Math.min(1, (slotMs - watchedMs) / slotMs)) : 1;
-  const refundGross = Math.round(gross * unwatchedFraction);
-  const refundGst = Math.round(gstAmount * unwatchedFraction);
-  const refundable = refundGross + refundGst;
-  const consumedCreatorAmount = creatorAmount - Math.round(creatorAmount * unwatchedFraction);
-  const consumedPlatformAmount = platformAmount - Math.round(platformAmount * unwatchedFraction);
-  const consumedGstAmount = gstAmount - refundGst;
-
-  if (refundable > 0) {
-    const claim = await claimCommercialMoney(env, {
-      orderId: authority.order_id, claimType: "refund", claimId: `host-no-return:${job.settlement_job_id}`,
-    });
-    if (!claim.owned) {
-      const owner = claim.existing ? `${claim.existing.claim_type}:${claim.existing.claim_id}` : "unknown";
-      return await markReview(env, job.settlement_job_id, `commercial money claim owned by ${owner}`);
-    }
-    const money = await executeCommercialRefund(env, {
-      orderId: authority.order_id, buyerId: authority.buyer_id, amount: refundable, reason: "host_no_return",
-    });
-    if (!money.ok) return await markReview(env, job.settlement_job_id, `host_no_return_refund_failed:${money.error}`);
-    await finalizeCommercialRefund(env, {
-      orderId: authority.order_id,
-      sessionId: job.commercial_session_id,
-      listingId: authority.listing_id,
-      bookingId: authority.booking_id,
-      buyerId: authority.buyer_id,
-      creatorId: authority.creator_id,
-      kind: authority.kind,
-      grossAmount: gross,
-      refundedAmount: refundable,
-      gstAmount: refundGst,
-      currency: authority.currency,
-      policySnapshotId: authority.policy_snapshot_id,
-      reason: "host_no_return",
-      actor: "system",
-    });
-    await completeCommercialMoneyClaim(env, {
-      orderId: authority.order_id, claimType: "refund", claimId: `host-no-return:${job.settlement_job_id}`,
-    });
-  }
-
-  const consumed: SettlementAuthority = {
-    ...authority,
-    creator_amount: consumedCreatorAmount,
-    platform_fee_amount: consumedPlatformAmount,
-    gst_amount: consumedGstAmount,
-  };
-  const claim = await claimCommercialMoney(env, {
-    orderId: authority.order_id, claimType: "settlement", claimId: job.settlement_job_id,
+  const watchedMs = await watchedEligibleMs(env, job.commercial_session_id, authority.buyer_id, authority.scheduled_at, authority.scheduled_at + slotMs);
+  const unwatchedFraction = slotMs > 0 ? (slotMs - watchedMs) / slotMs : 1;
+  const parts = partialRefundSplit(
+    Math.trunc(Number(authority.gross_amount)), Math.max(0, Math.trunc(Number(authority.gst_amount ?? 0))),
+    Math.trunc(Number(authority.creator_amount)), Math.trunc(Number(authority.platform_fee_amount)), unwatchedFraction,
+  );
+  await applyPartialCommercialSettlement(env, job, authority, {
+    ...parts, reason: "host_no_return",
+    claimId: `host-no-return:${job.settlement_job_id}`,
+    telemetryOutcome: "host_no_return_partial",
   });
-  if (!claim.owned) {
-    const owner = claim.existing ? `${claim.existing.claim_type}:${claim.existing.claim_id}` : "unknown";
-    return await markReview(env, job.settlement_job_id, `commercial money claim owned by ${owner}`);
-  }
-  if (consumedCreatorAmount > 0 || consumedPlatformAmount > 0 || consumedGstAmount > 0) {
-    await releaseSnapshot(env, consumed);
-  }
-  await finishSettlement(env, job, consumed, null);
-  commercialEvent(env, "settlement", null, {
-    outcome: "host_no_return_partial", kind: authority.kind, refund_pct: Math.round(unwatchedFraction * 100),
+}
+
+/**
+ * [SETTLE-CHECKIN-3] R11: RULEBOOK-PAID-SESSIONS.md v2 §4 L4 -- the host dropped and
+ * RETURNED within grace (this session did NOT end via `settleLiveHostNoReturn`'s
+ * `end_outcome==='host_no_return'` path), so the event itself is a normal, fully
+ * delivered show. But every minute recorded in `commercial_live_outages` for it is a
+ * minute nobody could have been watching ANY host, and RULEBOOK says those minutes are
+ * "not charged: refunded pro-rata to everyone who was waiting" -- not "the whole slot
+ * pays full because the host came back". Reuses the exact same claim/receipt/release
+ * plumbing as R2's host-no-return path (`applyPartialCommercialSettlement`), just with
+ * an outage-overlap fraction instead of an unwatched-from-end fraction.
+ *
+ * Scope: this covers ONLY the money -- refunding the outage minutes once a session with
+ * outage rows ends normally. It does not add any new outage detection (that already
+ * exists: `commercial_live_outages` rows are armed/closed elsewhere, outside this file)
+ * and it bypasses `deliveryError`'s host-delivery-sufficiency check for these sessions,
+ * which is safe by construction: an outage row only ever exists for a host who WAS
+ * live and connected before dropping, so the evidentiary question that check answers is
+ * already settled.
+ */
+async function settleLiveOutageRefund(env: Env, job: SettlementJob, authority: SettlementAuthority): Promise<void> {
+  const reviewReason = await ensureFundsVerified(env, job, authority);
+  if (reviewReason) return await markReview(env, job.settlement_job_id, reviewReason);
+
+  const slotMs = await slotMsForListing(env, authority.listing_id);
+  const windowEnd = authority.scheduled_at + slotMs;
+  const outageMs = await outageOverlapMs(env, job.commercial_session_id, authority.buyer_id, authority.scheduled_at, windowEnd);
+  const outageFraction = slotMs > 0 ? outageMs / slotMs : 0;
+  const parts = partialRefundSplit(
+    Math.trunc(Number(authority.gross_amount)), Math.max(0, Math.trunc(Number(authority.gst_amount ?? 0))),
+    Math.trunc(Number(authority.creator_amount)), Math.trunc(Number(authority.platform_fee_amount)), outageFraction,
+  );
+  await applyPartialCommercialSettlement(env, job, authority, {
+    ...parts, reason: "host_outage_grace",
+    claimId: `host-outage:${job.settlement_job_id}`,
+    telemetryOutcome: "host_outage_partial",
   });
+}
+
+async function hasRecordedOutage(env: Env, sessionId: string): Promise<boolean> {
+  const row = await metaDb(env).prepare(
+    "SELECT 1 ok FROM commercial_live_outages WHERE commercial_session_id=?1 LIMIT 1",
+  ).bind(sessionId).first<{ ok: number }>();
+  return row != null;
 }
 
 async function processJob(env: Env, job: SettlementJob): Promise<void> {
@@ -713,6 +889,13 @@ async function processJob(env: Env, job: SettlementJob): Promise<void> {
     // ticket").
     if (authority.end_outcome === "host_no_return") {
       return await settleLiveHostNoReturn(env, job, authority);
+    }
+    // [SETTLE-CHECKIN-3] R11: the host DID return within grace -- a normal end -- but if
+    // this session recorded any outage window, RULEBOOK-PAID-SESSIONS.md v2 §4 L4 still
+    // owes every ticket a pro-rata refund for the outage minutes. Route to the partial
+    // settlement instead of the full-price `deliveryError` path below.
+    if (await hasRecordedOutage(env, job.commercial_session_id)) {
+      return await settleLiveOutageRefund(env, job, authority);
     }
     const delivery = await deliveryError(env, job.commercial_session_id, authority);
     if (delivery) {

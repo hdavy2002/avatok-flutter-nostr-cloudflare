@@ -106,7 +106,7 @@ function setup() {
       removed_at INTEGER
     );
     CREATE TABLE orders (
-      id TEXT PRIMARY KEY, status TEXT NOT NULL
+      id TEXT PRIMARY KEY, status TEXT NOT NULL, kind TEXT
     );
     CREATE TABLE session_attendance (
       session_id TEXT NOT NULL, order_id TEXT, user_id TEXT NOT NULL, role TEXT NOT NULL,
@@ -254,7 +254,7 @@ describe("backfillCheckedInConsultSessions [SETTLE-CHECKIN-2 fix 1]", () => {
     db.prepare(
       "INSERT INTO bookings (id,listing_id,creator_id,buyer_id,kind,status,starts_at,ends_at,order_id) VALUES (?,?,?,?,?,?,?,?,?)",
     ).run("booking-checkin-1", "listing-1", "creator-1", "buyer-1", "consult_1to1", "confirmed", startsAt, endsAt, "order-checkin-1");
-    db.prepare("INSERT INTO orders (id,status) VALUES (?,?)").run("order-checkin-1", "held");
+    db.prepare("INSERT INTO orders (id,status,kind) VALUES (?,?,?)").run("order-checkin-1", "held", "consult_1to1");
     // Host checked in 18 minutes after starts_at -- inside the default 20-minute
     // sessionCreatorCheckInMin window -- and never left (still connected).
     db.prepare(
@@ -289,7 +289,7 @@ describe("backfillCheckedInConsultSessions [SETTLE-CHECKIN-2 fix 1]", () => {
     db.prepare(
       "INSERT INTO bookings (id,listing_id,creator_id,buyer_id,kind,status,starts_at,ends_at,order_id) VALUES (?,?,?,?,?,?,?,?,?)",
     ).run("booking-checkin-2", "listing-1", "creator-1", "buyer-1", "consult_1to1", "confirmed", startsAt, endsAt, "order-checkin-2");
-    db.prepare("INSERT INTO orders (id,status) VALUES (?,?)").run("order-checkin-2", "held");
+    db.prepare("INSERT INTO orders (id,status,kind) VALUES (?,?,?)").run("order-checkin-2", "held", "consult_1to1");
     // Joined a full day before starts_at and left five minutes later -- long outside
     // [starts_at - earlyMin, starts_at + checkInMin].
     const dayBefore = startsAt - 24 * 60 * 60_000;

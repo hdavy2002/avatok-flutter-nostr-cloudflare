@@ -21,7 +21,7 @@ import {
 import { notifyCommercialUsers } from "../lib/commercial_notifications";
 import { claimCommercialMoney, completeCommercialMoneyClaim } from "../commercial_money_claim";
 import { readConfig } from "./config";
-import { consultCheckInWindow } from "../commercial_settlement";
+import { consultCheckInWindow, resolveConsultCheckInCfg } from "../commercial_settlement";
 
 type Kind = "live_event" | "consult_1to1";
 type Action = "buyer_cancel" | "creator_cancel" | "creator_no_show" | "provider_outage" | "insufficient_delivery_evidence";
@@ -859,17 +859,18 @@ export async function runCommercialOrphanNoShowSweep(
   // via readConfig -- RULEBOOK-PAID-SESSIONS.md §2 C1/C2), not the hardcoded 15-minute
   // window that used to apply to both kinds. live_event keeps its own 15-minute window --
   // §4 is a separate lane with no check-in concept.
+  //
+  // [SETTLE-CHECKIN-3] R10: `resolveConsultCheckInCfg` is the ONE place the config
+  // parsing/defaulting/ms-conversion happens -- the settlement decision, this sweep and
+  // the C1 backfill all call it instead of each keeping their own copy.
   const config = await readConfig(env);
   const now = Date.now();
   const liveCutoff = now - 15 * 60_000;
-  const rawCheckInMin = Number(config.sessionCreatorCheckInMin);
-  const rawEarlyMin = Number(config.commercialConsultJoinEarlyMin);
-  const checkInMin = Number.isFinite(rawCheckInMin) && rawCheckInMin > 0 ? rawCheckInMin : 20;
-  const earlyMin = Number.isFinite(rawEarlyMin) && rawEarlyMin >= 0 ? rawEarlyMin : 10;
-  // consultCheckInWindow(0, earlyMin, checkInMin).closesAt == checkInMin in ms, so
-  // `now - that` is exactly "starts_at more than checkInMin ago" -- the same window
-  // fix 3 uses, just anchored at 0 to get a plain cutoff instead of a per-row bound.
-  const consultCutoff = now - consultCheckInWindow(0, earlyMin, checkInMin).closesAt;
+  const { earlyMs, checkInMs } = resolveConsultCheckInCfg(config as unknown as Record<string, unknown>);
+  // consultCheckInWindow(0, earlyMs, checkInMs).closesAt == checkInMs, so `now - that` is
+  // exactly "starts_at more than checkInMs ago" -- the same window fix 3 uses, just
+  // anchored at 0 to get a plain cutoff instead of a per-row bound.
+  const consultCutoff = now - consultCheckInWindow(0, earlyMs, checkInMs).closesAt;
   const safeLimit = Math.max(1, Math.min(50, Math.trunc(limit)));
   const authorities = await loadAuthorityRows(env,
     `o.status IN ('held','free')
@@ -898,7 +899,7 @@ export async function runCommercialOrphanNoShowSweep(
           ))
       )
      ORDER BY o.created_at ASC LIMIT ${safeLimit}`,
-    [liveCutoff, consultCutoff, checkInMin * 60_000, now, earlyMin * 60_000]);
+    [liveCutoff, consultCutoff, checkInMs, now, earlyMs]);
   const summary = await cancelAuthoritiesAsCreator(env, authorities, "creator_no_show", "system-orphan-no-show");
   if (summary.scanned) commercialEvent(env, "orphan_no_show_sweep", null, { ...summary });
   return summary;
