@@ -266,6 +266,15 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
         acceptPolicy: true,
         idempotencyKey: _idempotencyKey,
       );
+    } else if (widget.listing.kind == 'live_event' && !widget.listing.canBook) {
+      // [LISTING-EXPIRY-1] The screen may have been open since before the show
+      // started. The server refuses too (410); this just avoids the round trip.
+      result = CommercialCheckoutResult(
+          status: 410,
+          ok: false,
+          error: widget.listing.scheduleState == 'cancelled'
+              ? 'listing_cancelled'
+              : (widget.listing.isEnded ? 'event_ended' : 'booking_closed'));
     } else if (widget.listing.kind == 'live_event') {
       result = await CommercialCheckoutApi.liveTicket(
         listingId: widget.listing.id,
@@ -316,8 +325,21 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
       else
         _error = receipt.error == 'insufficient_funds'
             ? 'Your wallet needs more balance before this booking can be confirmed.'
-            : 'Booking could not be completed. Please try again.';
+            : receipt.error == 'event_ended'
+                ? 'This show has ended, so tickets are no longer sold. Nothing was charged.'
+                : receipt.error == 'booking_closed'
+                    ? 'This show has already started, so booking has closed. Nothing was charged.'
+                    : receipt.error == 'listing_cancelled'
+                        ? 'This show was cancelled. Nothing was charged.'
+                        : 'Booking could not be completed. Please try again.';
     });
+    if (!receipt.ok && receipt.status == 410) {
+      Analytics.capture('listing_checkout_refused_closed', {
+        'listing_id': widget.listing.id,
+        'reason': receipt.error ?? 'unknown',
+        'schedule_state': widget.listing.scheduleState,
+      });
+    }
   }
 
   bool _slotWasStolen(CommercialCheckoutResult result) {

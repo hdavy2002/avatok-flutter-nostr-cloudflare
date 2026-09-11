@@ -102,7 +102,7 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
             // Cancelled (deleted) and expired listings live in Archived — keep
             // them OUT of My Listings so they don't appear duplicated (pic 7/9).
             final items = (snap.data ?? const <ListingCard>[])
-                .where((c) => c.status != 'cancelled' && !c.isExpired)
+                .where((c) => c.status != 'cancelled' && !c.isExpired && !c.isEnded) // [LISTING-EXPIRY-1] ended shows live in Archived
                 .toList();
             if (items.isEmpty) {
               return ListView(children: [

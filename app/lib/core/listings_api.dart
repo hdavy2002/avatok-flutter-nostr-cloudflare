@@ -488,6 +488,15 @@ class ListingCard {
   // Defaults to 'audio_video' to match the server column default; THE FIELD
   // ONLY — wiring it into the GetStream call UI is separate work.
   final String mediaMode;
+  // [LISTING-EXPIRY-1 2026-09-11] Where the listing sits in time, decided on the
+  // server (worker/src/lib/listing_schedule.ts): upcoming | starting | live |
+  // ended | cancelled | expired | open | unpublished. Null from a Worker older
+  // than 2026-09-11 — [scheduleState] then derives it with the same rule.
+  final String? scheduleStateRaw;
+  /// Detail endpoint only: the server's "can a buyer book this right now?" —
+  /// the same rule checkout enforces. Null on browse cards.
+  final bool? bookingOpen;
+  final String? bookingClosedReason;
 
   ListingCard.fromJson(Map<String, dynamic> j)
       : id = (j['id'] ?? '').toString(),
@@ -545,7 +554,10 @@ class ListingCard {
             ? CreatorTrustStats.fromJson((j['creator_trust_stats'] as Map).cast<String, dynamic>())
             : null,
         groupId = j['group_id']?.toString(),
-        mediaMode = (j['media_mode'] ?? 'audio_video').toString();
+        mediaMode = (j['media_mode'] ?? 'audio_video').toString(),
+        scheduleStateRaw = j['schedule_state']?.toString(),
+        bookingOpen = j['booking_open'] is bool ? j['booking_open'] as bool : null,
+        bookingClosedReason = j['booking_closed_reason']?.toString();
 
   /// The group this card belongs to — the server's `group_id` when present,
   /// else the offline mirror keyed off `category`. See [groupId] for why the
@@ -576,6 +588,34 @@ class ListingCard {
 
   bool get isMarketplace => (marketType ?? '').isNotEmpty || const ['sell', 'buy', 'social'].contains(kind);
   bool get isExpired => expiresAt != null && expiresAt! < DateTime.now().millisecondsSinceEpoch;
+
+  /// [LISTING-EXPIRY-1] The server's schedule state, or the same rule applied
+  /// locally when an older Worker did not send it. A live event is `ended` once
+  /// start + duration has passed; before that it is `upcoming` or `starting`.
+  String get scheduleState {
+    final raw = scheduleStateRaw;
+    if (raw != null && raw.isNotEmpty) return raw;
+    if (status == 'cancelled') return 'cancelled';
+    if (status == 'completed') return 'ended';
+    if (status != 'published' && status != 'live' && status.isNotEmpty) return 'unpublished';
+    if (isExpired) return 'expired';
+    if (status == 'live') return 'live';
+    final start = startsAt;
+    if (kind != 'live_event' || start == null || start <= 0) return 'open';
+    final startMs = start < 100000000000 ? start * 1000 : start;
+    final endMs = startMs + ((durationMin ?? 60) < 1 ? 60 : (durationMin ?? 60)) * 60000;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now < startMs) return 'upcoming';
+    if (now < endMs) return 'starting';
+    return 'ended';
+  }
+
+  /// A show that is over or was cancelled — never offer to book it.
+  bool get isEnded => const ['ended', 'cancelled', 'expired'].contains(scheduleState);
+
+  /// Whether the booking CTA may be offered. The detail endpoint's
+  /// `booking_open` wins; a browse card falls back to the schedule state.
+  bool get canBook => bookingOpen ?? !isEnded;
   /// Marketplace price shows the listing's own currency in major units
   /// (e.g. "3000 INR"); creator listings keep the USD-cents money() format.
   String get displayPrice => isMarketplace

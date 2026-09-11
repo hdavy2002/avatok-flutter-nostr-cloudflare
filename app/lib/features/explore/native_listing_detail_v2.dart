@@ -5,6 +5,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/analytics.dart';
+import '../../core/availability_time.dart';
 import '../../core/avatar.dart';
 import '../../core/listings_api.dart';
 import '../../core/ui/avatok_dark.dart';
@@ -13,10 +14,42 @@ import '../../core/ui/motion/motion.dart';
 import 'creator_channel.dart';
 import 'native_listing_booking_flow.dart';
 
-String _when(int? epochMs) {
+/// [LISTING-EXPIRY-1 / P1-6] Show time in the LISTING's timezone. India has one
+/// fixed offset (+05:30, no DST), so an IST listing is rendered in IST whatever
+/// zone the phone is set to — the old `toLocal()` showed a traveller a different
+/// time from the website. Other zones fall back to the phone's local time.
+String _when(int? epochMs, [String? timezone]) {
   if (epochMs == null || epochMs <= 0) return 'ON REQUEST';
-  final date = DateTime.fromMillisecondsSinceEpoch(epochMs).toLocal();
-  return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')} · ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+  final ms = epochMs < 100000000000 ? epochMs * 1000 : epochMs;
+  final utc = DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true);
+  final zone = timezone;
+  DateTime date;
+  var ist = false;
+  if (zone == null || zone.isEmpty || zone == 'Asia/Kolkata' || zone == 'Asia/Calcutta') {
+    ist = true;
+    date = utc.add(const Duration(hours: 5, minutes: 30));
+  } else {
+    try {
+      date = AvailabilityTime.inTimezone(utc, zone);
+    } catch (_) {
+      date = utc.toLocal();
+    }
+  }
+  String two(int v) => v.toString().padLeft(2, '0');
+  return '${two(date.day)}/${two(date.month)} · ${two(date.hour)}:${two(date.minute)}${ist ? ' IST' : ''}';
+}
+
+/// [LISTING-EXPIRY-1] The one line a closed listing shows instead of a CTA.
+String _closedLabel(ListingCard l) {
+  switch (l.scheduleState) {
+    case 'cancelled':
+      return 'SHOW CANCELLED';
+    case 'ended':
+    case 'expired':
+      return 'SHOW ENDED';
+    default:
+      return 'BOOKING CLOSED';
+  }
 }
 
 /// The second-generation native listing surface. This is a deliberate replacement
@@ -99,6 +132,19 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
   void _openBooking() {
     final d = detail;
     if (d == null) return;
+    // [LISTING-EXPIRY-1] Never start a checkout for a show that is over. A buyer who
+    // already holds a ticket still gets into their booking (refund status lives there).
+    if (!d.booked && !d.listing.canBook) {
+      Analytics.capture('listing_booking_blocked_closed', {
+        'listing_id': d.listing.id,
+        'schedule_state': d.listing.scheduleState,
+        'reason': d.listing.bookingClosedReason ?? 'none',
+      });
+      showAdToast(context, message: _closedLabel(d.listing) == 'SHOW CANCELLED'
+          ? 'This show was cancelled.'
+          : 'This show is no longer taking bookings.');
+      return;
+    }
     Navigator.push(
         context,
         MaterialPageRoute(
@@ -150,9 +196,11 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
           child: Padding(
               padding: const EdgeInsets.all(12),
               child: FilledButton.icon(
-                  onPressed: _openBooking,
+                  onPressed: d.booked || d.listing.canBook ? _openBooking : null,
             icon: PhosphorIcon(PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold)),
-                  label: Text(d.booked ? 'OPEN BOOKING' : _cta(d.listing))))),
+                  label: Text(d.booked
+                      ? 'OPEN BOOKING'
+                      : (d.listing.canBook ? _cta(d.listing) : _closedLabel(d.listing)))))),
     );
   }
 
@@ -227,7 +275,27 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
             ])));
   }
 
-  Widget _ticker(ListingCard l) => Container(
+  Widget _ticker(ListingCard l) {
+    final state = l.scheduleState;
+    final closed = l.isEnded || !l.canBook;
+    final lead = l.status == 'live'
+        ? 'LIVE NOW · ${l.title.toUpperCase()}'
+        : state == 'cancelled'
+            ? 'THIS SHOW WAS CANCELLED'
+            : (state == 'ended' || state == 'expired')
+                ? 'THIS SHOW HAS ENDED · ${_when(l.startsAt, l.timezone)}'
+                : state == 'starting'
+                    ? 'STARTING NOW · HOST IS GETTING READY'
+                    : 'NEXT SHOW · ${_when(l.startsAt, l.timezone)}';
+    final tail = l.status == 'live'
+        ? 'JOIN NOW'
+        : closed
+            ? 'CLOSED'
+            : 'BOOK AHEAD';
+    return _tickerBar(l, lead, tail);
+  }
+
+  Widget _tickerBar(ListingCard l, String lead, String tail) => Container(
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
@@ -241,12 +309,9 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                 color: l.status == 'live' ? AD.card : AD.bg)),
         const SizedBox(width: 8),
         Expanded(
-            child: Text(
-                l.status == 'live'
-                    ? 'LIVE NOW · ${l.title.toUpperCase()}'
-                    : 'NEXT SHOW · ${_when(l.startsAt)}',
+            child: Text(lead,
             style: ADText.rowName(c: Colors.white))),
-        Text(l.status == 'live' ? 'JOIN NOW' : 'BOOK AHEAD',
+        Text(tail,
             style: ADText.rowName(c: Colors.white))
       ]));
 
@@ -298,7 +363,12 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
           Positioned(
               top: 12,
               left: 12,
-              child: _pill(l.status == 'live' ? '● LIVE' : 'NEXT SHOW',
+              child: _pill(
+                  l.status == 'live'
+                      ? '● LIVE'
+                      : l.isEnded
+                          ? _closedLabel(l)
+                          : (l.scheduleState == 'starting' ? 'STARTING NOW' : 'NEXT SHOW'),
                       AD.danger)),
         ]));
   }
@@ -429,16 +499,24 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                     const TextStyle(fontFamily: ADText.display, fontSize: 20, fontWeight: FontWeight.w700)),
             const SizedBox(height: 14),
             Text(
-                l.status == 'live'
-                    ? 'Book and join instantly.'
-                    : 'Choose your slot and confirm the exact price before payment.',
+                !l.canBook
+                    ? (l.scheduleState == 'cancelled'
+                        ? 'This show was cancelled. Everyone who booked is refunded automatically.'
+                        : (l.isEnded
+                            ? 'This show has ended. If the host did not go live, everyone who booked is refunded automatically.'
+                            : 'The show has already started, so new seats are no longer sold.'))
+                    : l.status == 'live'
+                        ? 'Book and join instantly.'
+                        : 'Choose your slot and confirm the exact price before payment.',
                 style: ADText.preview()),
             const SizedBox(height: 16),
             FilledButton(
-                onPressed: _openBooking,
-                child: Text(l.status == 'live'
-                    ? 'BOOK & JOIN NOW'
-                    : 'CHOOSE DATE & TIME')),
+                onPressed: l.canBook || (detail?.booked ?? false) ? _openBooking : null,
+                child: Text(!l.canBook
+                    ? ((detail?.booked ?? false) ? 'OPEN BOOKING' : _closedLabel(l))
+                    : l.status == 'live'
+                        ? 'BOOK & JOIN NOW'
+                        : 'CHOOSE DATE & TIME')),
             const SizedBox(height: 8),
             Text('No hidden fees · policy shown before payment',
                 textAlign: TextAlign.center,

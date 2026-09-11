@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
+import '../../../core/availability_time.dart';
 import '../../../core/cached_image.dart';
 import '../../../core/listings_api.dart';
 import '../../../core/ui/avatok_dark.dart';
@@ -116,7 +117,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
         _mediaMode = l.mediaMode;
         _scheduleMode = l.scheduleMode ?? _scheduleMode;
         _freeEntry = l.freeEntry;
-        _startsAt.text = _epochToLocal(l.startsAt);
+        _startsAt.text = _epochToLocal(l.startsAt, (l.timezone ?? '').isEmpty ? 'Asia/Kolkata' : l.timezone!);
         _duration.text = '${l.durationMin ?? 60}';
         _capacity.text = '${l.capacity ?? 0}';
         _coverUrls.addAll(l.coverMedia.map((m) => m is Map ? m['url']?.toString() : null).whereType<String>().where((u) => u.isNotEmpty));
@@ -145,11 +146,45 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
     return value?.toString() ?? '';
   }
 
-  static String _epochToLocal(int? epoch) {
+  /// [LISTING-EXPIRY-1 / P1-6] The listing's IANA zone, IST when blank — the
+  /// same default the server's `listings.timezone` column has.
+  String get _zone {
+    final z = _timezone.text.trim();
+    return z.isEmpty ? 'Asia/Kolkata' : z;
+  }
+
+  /// Wall-clock text for the start field, in the LISTING's timezone. It used to
+  /// be `toLocal()`, so the field showed a different time on a phone set to
+  /// another zone than the time the buyer page advertises.
+  static String _epochToLocal(int? epoch, [String timezone = 'Asia/Kolkata']) {
     if (epoch == null || epoch == 0) return '';
-    final d = DateTime.fromMillisecondsSinceEpoch(epoch < 100000000000 ? epoch * 1000 : epoch).toLocal();
+    final instant = DateTime.fromMillisecondsSinceEpoch(epoch < 100000000000 ? epoch * 1000 : epoch, isUtc: true);
+    DateTime d;
+    try {
+      d = AvailabilityTime.inTimezone(instant, timezone);
+    } catch (_) {
+      d = instant.toLocal();
+    }
     String p(int n) => n.toString().padLeft(2, '0');
     return '${d.year}-${p(d.month)}-${p(d.day)}T${p(d.hour)}:${p(d.minute)}';
+  }
+
+  /// The typed start time read AS the listing's wall clock. `DateTime.tryParse`
+  /// alone read it in the phone's zone — on a phone set to UTC, "21:12" became
+  /// 02:42 IST, which is how the prod "Cooking with Davy" show got its time.
+  int? _startsAtEpoch() {
+    final text = _startsAt.text.trim();
+    final parsed = DateTime.tryParse(text);
+    if (parsed == null) return null;
+    try {
+      return AvailabilityTime.wallTimeToUtc(
+        date: DateTime(parsed.year, parsed.month, parsed.day),
+        minutes: parsed.hour * 60 + parsed.minute,
+        timezone: _zone,
+      ).millisecondsSinceEpoch;
+    } catch (_) {
+      return parsed.millisecondsSinceEpoch;
+    }
   }
 
   Map<String, dynamic> _body() => {
@@ -164,7 +199,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
         'video_url': _videoUrl.text.trim(),
         'timezone': _timezone.text.trim().isEmpty ? null : _timezone.text.trim(),
         'schedule_mode': _scheduleMode,
-        'starts_at': DateTime.tryParse(_startsAt.text)?.millisecondsSinceEpoch,
+        'starts_at': _startsAtEpoch(),
         'duration_min': int.tryParse(_duration.text) ?? 60,
         'capacity': int.tryParse(_capacity.text) ?? 0,
         'media_mode': _mediaMode,
@@ -189,7 +224,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   String? _validate() {
     if (_step == 1 && (_title.text.trim().isEmpty || _description.text.trim().isEmpty)) return 'Add a title and description.';
     if (_step == 2 && !_freeEntry && (int.tryParse(_price.text.trim()) ?? 0) <= 0) return 'Enter a price greater than zero, or choose a free show.';
-    if (_step == 3 && _kind == 'live_event' && (DateTime.tryParse(_startsAt.text)?.isAfter(DateTime.now()) != true)) return 'Choose a future date and time.';
+    if (_step == 3 && _kind == 'live_event' && ((_startsAtEpoch() ?? 0) <= DateTime.now().millisecondsSinceEpoch)) return 'Choose a future date and time.';
     if (_step == 6 && (_coverUrls.isEmpty || _faceUrl == null || _faceUrl!.isEmpty)) return 'Add a cover photo and private face photo.';
     if (_step == 7 && !_copyReviewed) return 'Review the copy before submitting.';
     return null;

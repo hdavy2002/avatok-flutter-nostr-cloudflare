@@ -81,13 +81,20 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
         msg = r['ok'] == true ? 'You are LIVE — followers notified' : 'Failed';
       case 'complete':
         final r = await ListingsApi.setStatus(l.id, 'completed');
-        msg = r['ok'] == true ? 'Marked completed' : 'Failed';
+        // [LISTING-EXPIRY-1] The server now refuses to complete a show that has not
+        // happened while seats are sold, and says why — show that, not "Failed".
+        msg = r['ok'] == true
+            ? 'Marked completed'
+            : (r['message']?.toString() ?? 'Failed');
       case 'duplicate':
         final id = await ListingsApi.duplicate(l.id);
         msg =
             id != null ? 'Duplicated as a draft — set the new date' : 'Failed';
       case 'cancel':
-        msg = await ListingsApi.cancel(l.id) ? 'Cancelled' : 'Failed';
+        // [LISTING-EXPIRY-1] Cancelling now refunds every booked seat first.
+        msg = await ListingsApi.cancel(l.id)
+            ? 'Cancelled — anyone who booked is refunded automatically'
+            : 'Could not cancel yet — refunds are still going through. Try again in a minute.';
     }
     if (!mounted) return;
     if (msg != null) showAdToast(context, message: msg);
@@ -251,7 +258,9 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
                   _act(l, 'complete');
                 }),
               item(PhosphorIcons.copy(PhosphorIconsStyle.bold),
-                  'Duplicate listing', () {
+                  // [LISTING-EXPIRY-1 / P1-8] For a show that is over, duplicating IS
+                  // "run it again": a draft copy with the date cleared.
+                  l.kind == 'live_event' && l.isEnded ? 'Run again (new date)' : 'Duplicate listing', () {
                 Navigator.pop(s);
                 _act(l, 'duplicate');
               }),
@@ -331,7 +340,8 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
                             .copyWith(fontWeight: FontWeight.w600)),
                     const SizedBox(height: Msg.s1),
                     Row(children: [
-                      ZineSticker(l.status, kind: _stickerKind(l.status)),
+                      ZineSticker(l.kind == 'live_event' && l.isEnded && l.status != 'cancelled' ? 'ended' : l.status,
+                          kind: _stickerKind(l.status)),
                       const SizedBox(width: Msg.s2),
                       Flexible(
                         child: Text(

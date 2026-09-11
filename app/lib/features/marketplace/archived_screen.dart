@@ -32,7 +32,10 @@ class _ArchivedScreenState extends State<ArchivedScreen> {
 
   bool _isArchived(ListingCard c) =>
       c.status == 'cancelled' || c.status == 'completed' || c.status == 'sold' ||
-      (c.status != 'draft' && c.isExpired);
+      (c.status != 'draft' && c.isExpired) ||
+      // [LISTING-EXPIRY-1] A live show whose date has passed is archived even
+      // before the server's expiry cron flips it to completed.
+      (c.status != 'draft' && c.isEnded);
 
   @override
   Widget build(BuildContext context) {
@@ -99,6 +102,8 @@ class _Row extends StatelessWidget {
   String get _label {
     if (draft) return 'Draft';
     if (card.status == 'cancelled') return 'Removed';
+    // [LISTING-EXPIRY-1] A completed SHOW ended; only a goods listing is "Sold".
+    if (card.kind == 'live_event' && (card.status == 'completed' || card.isEnded)) return 'Ended';
     if (card.status == 'completed' || card.status == 'sold') return 'Sold';
     if (card.isExpired) return 'Expired';
     return card.status;
