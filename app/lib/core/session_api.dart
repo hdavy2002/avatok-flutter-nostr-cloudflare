@@ -130,6 +130,10 @@ class RoomChannel {
   int _backoff = 1;
   bool _everConnected = false;
   int _failedAttempts = 0;
+  // [WAITROOM-APP-4] B: a failed handshake fires BOTH onError and onDone on
+  // the same stream subscription — without this guard `_retry` ran twice per
+  // attempt, double-counting `_failedAttempts` and scheduling two reconnects.
+  bool _retriedThisAttempt = false;
 
   RoomChannel(this.uri, this.onEvent, {this.onState, this.onFailure}) {
     _connect();
@@ -137,6 +141,7 @@ class RoomChannel {
 
   void _connect() {
     if (_closed) return;
+    _retriedThisAttempt = false;
     try {
       final ch = WebSocketChannel.connect(uri);
       _ch = ch;
@@ -162,12 +167,19 @@ class RoomChannel {
   }
 
   void _retry() {
+    // [WAITROOM-APP-4] B: only the first of the (up to two) calls per failed
+    // attempt does anything.
+    if (_retriedThisAttempt) return;
+    _retriedThisAttempt = true;
     onState?.call(false);
     if (_closed) return;
     // [WAITROOM-APP-3] A12: never having delivered a single message after 3
     // attempts means the token/route was rejected, not a transient network
-    // blip — stop retrying forever and surface it once instead.
-    if (!_everConnected) {
+    // blip — stop retrying forever and surface it once instead. Gated on
+    // `onFailure != null` ([WAITROOM-APP-4] A) so callers that never opted
+    // into this (every legacy RoomChannel user — live viewer/host, the
+    // legacy consult room) keep reconnecting forever exactly as before.
+    if (onFailure != null && !_everConnected) {
       _failedAttempts++;
       if (_failedAttempts >= 3) {
         _closed = true;

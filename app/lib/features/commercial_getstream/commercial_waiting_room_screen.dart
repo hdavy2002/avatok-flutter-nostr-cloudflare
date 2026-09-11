@@ -96,6 +96,10 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
   // message, so a buyer opening right after `check_in_by` would see a
   // permanent no-show even though the creator is actually present.
   bool _rosterSeen = false;
+  // [WAITROOM-APP-4] C: once the socket itself has given up (RoomChannel's
+  // onFailure), it will never report roster presence again — auto-join must
+  // stop waiting for it or every later retry/"Rejoin call" attempt sticks.
+  bool _socketFailed = false;
   bool _autoJoinPaused = false;
   ({bool host, bool attendee})? _pausedRosterSnapshot;
 
@@ -212,6 +216,12 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
   /// client and fall back to a direct join rather than sit in a dead lobby.
   void _onChannelFailure() {
     if (!mounted || _ended) return;
+    // [WAITROOM-APP-4] C: a dead socket never reports `roster.host &&
+    // roster.attendee` — without this, `_maybeAutoJoin`'s roster check kept
+    // every later attempt (425 retry, "Rejoin call", a pre-opens_at retry)
+    // stuck forever even though this immediate direct-join attempt is
+    // already firing below.
+    _socketFailed = true;
     Analytics.capture('waitroom_socket_failed', {
       'booking_id': widget.bookingId,
       'role': widget.isCreator ? 'creator' : 'buyer',
@@ -348,7 +358,11 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
   /// so a missed event can never leave both parties stuck.
   void _maybeAutoJoin() {
     if (!mounted || _ended || _joining || _autoJoinPaused || _callScreenOnTop) return;
-    if (!(_rosterHost && _rosterAttendee)) return;
+    // [WAITROOM-APP-4] C: a socket that has already given up will never
+    // report roster presence again — skip that check (opens_at/ends_at still
+    // apply) so a 425 retry, "Rejoin call", or a pre-opens_at failure is not
+    // stuck waiting on a dead socket forever.
+    if (!_socketFailed && !(_rosterHost && _rosterAttendee)) return;
     final now = DateTime.now().millisecondsSinceEpoch;
     // [WAITROOM-APP-3] A15: the slot is over — never start a fresh join past
     // ends_at (the end-of-slot exit in `_onTick` owns that transition).
