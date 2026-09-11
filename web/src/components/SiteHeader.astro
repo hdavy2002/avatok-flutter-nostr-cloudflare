@@ -325,9 +325,12 @@ const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false } = Astro.p
     .avh-burger { display: block; margin-left: auto; }
     .avh-mobile-auth { grid-column: 1 / -1; }
     .avh-mobile-auth--solid { background: var(--avh-red); color: #fdf1d3; }
+    /* [WEB-MOBILE-MENU-1 2026-09-11] One column: every item stacked, full width.
+       The two-column grid left "Ideas" stranded beside an empty cell and read as
+       a broken layout on a phone. */
     .avh-mobile:not([hidden]) {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: minmax(0, 1fr);
       gap: 8px;
       padding: 0 16px 14px;
       background: var(--avh-cream);
