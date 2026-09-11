@@ -1,11 +1,12 @@
 import type { APIRoute } from 'astro';
+import { sendMail } from '../../lib/sendMail';
 
 // On-demand (SSR) endpoint — runs in the avatok-app Pages worker on the Cloudflare
 // edge. POST /api/waitlist adds the email to Brevo (list via BREVO_LIST_ID) and
-// sends a branded welcome email via Brevo's transactional API. Ported from the
-// standalone marketing site's _worker.js so the homepage waitlist form works on
-// avatok-app. The Brevo key lives only as the BREVO_API_KEY secret on this Pages
-// project (same pattern as api/contact.ts).
+// sends a branded welcome email via sendMail() — Cloudflare Email Service REST
+// API first, Brevo as fallback (Specs/PLAN-2026-09-11-EMAIL-CLOUDFLARE-PRIMARY-
+// BREVO-FALLBACK.md §3.4). The Brevo contacts list-add is unchanged and out of
+// scope for the email-provider migration — only the thank-you email moved.
 export const prerender = false;
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -39,25 +40,32 @@ async function sendWelcome(env: Record<string, string | undefined>, email: strin
     email: env.BREVO_SENDER_EMAIL || 'hello@avatok.ai',
   };
   try {
-    const r = await fetch('https://api.brevo.com/v3/smtp/email', {
-      method: 'POST',
-      headers: { 'api-key': env.BREVO_API_KEY as string, 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({
-        sender,
-        to: [{ email }],
-        replyTo: { email: 'hello@avatok.ai', name: 'avaTOK' },
+    const out = await sendMail(
+      {
+        to: email,
         subject: "You're on the avaTOK waitlist 🎉",
-        htmlContent: welcomeHtml(),
-      }),
-    });
-    return r.status;
+        html: welcomeHtml(),
+        from: sender,
+        replyTo: { email: 'hello@avatok.ai', name: 'avaTOK' },
+      },
+      env,
+    );
+    if (!out.ok) {
+      console.error(JSON.stringify({ event: 'waitlist_welcome_send_failed', provider: out.provider, fallbackUsed: out.fallbackUsed, status: out.error }));
+      return 'error';
+    }
+    // Preserve the old "HTTP-status-ish" shape of this field (previously the
+    // raw Brevo response status, e.g. 201) — nothing in the frontend reads it,
+    // but keep it a stable success sentinel rather than leaking provider detail.
+    return 200;
   } catch {
     return 'error';
   }
 }
 
 export const POST: APIRoute = async (context) => {
-  // Cloudflare runtime env (BREVO_API_KEY, BREVO_LIST_ID, …) via locals.runtime.env.
+  // Cloudflare runtime env (BREVO_API_KEY, BREVO_LIST_ID, CF_ACCOUNT_ID,
+  // CF_EMAIL_API_TOKEN, …) via locals.runtime.env.
   const env = ((context.locals as any)?.runtime?.env ?? {}) as Record<string, string | undefined>;
 
   let email = '';
@@ -70,6 +78,9 @@ export const POST: APIRoute = async (context) => {
     return json({ error: 'bad_request' }, 400);
   }
   if (!EMAIL_RE.test(email) || email.length > 254) return json({ error: 'invalid_email' }, 400);
+  // The Brevo contacts list-add below is unchanged (out of scope for this
+  // migration), so it still needs BREVO_API_KEY specifically — not the email
+  // policy's "either provider configured" check.
   if (!env.BREVO_API_KEY) return json({ error: 'not_configured' }, 503);
 
   const payload: Record<string, unknown> = {

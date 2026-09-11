@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { sendMail } from '../../lib/sendMail';
 
 export const prerender = false;
 
@@ -45,7 +46,9 @@ export const POST: APIRoute = async (context) => {
   }
 
   const env = ((context.locals as any)?.runtime?.env ?? {}) as Record<string, string | undefined>;
-  if (!env.BREVO_API_KEY) return json({ ok: false, error: 'Applications are temporarily unavailable. Please email support@avatok.ai.' }, 503);
+  if (!env.BREVO_API_KEY && !env.CF_EMAIL_API_TOKEN) {
+    return json({ ok: false, error: 'Applications are temporarily unavailable. Please email support@avatok.ai.' }, 503);
+  }
 
   let form: FormData;
   try {
@@ -73,12 +76,11 @@ export const POST: APIRoute = async (context) => {
   const bytes = new Uint8Array(await resume.arrayBuffer());
   let binary = '';
   for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  const attachment = { name: safeFilename(resume.name), content: btoa(binary) };
+  const attachment = { filename: safeFilename(resume.name), content: btoa(binary), type: resume.type };
   const sender = {
     name: env.BREVO_SENDER_NAME || 'avaTOK Careers',
     email: env.BREVO_SENDER_EMAIL || 'hello@avatok.ai',
   };
-  const headers = { 'api-key': env.BREVO_API_KEY, 'content-type': 'application/json', accept: 'application/json' };
 
   const internalHtml = `
     <div style="font-family:Arial,sans-serif;font-size:15px;color:#231b14">
@@ -91,36 +93,39 @@ export const POST: APIRoute = async (context) => {
     </div>`;
 
   try {
-    const internal = await fetch('https://api.brevo.com/v3/smtp/email', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        sender,
-        to: [{ email: 'support@avatok.ai', name: 'avaTOK Careers' }],
-        replyTo: { email, name },
+    const internal = await sendMail(
+      {
+        to: 'support@avatok.ai',
         subject: `[avaTOK Careers] ${role} — ${name}`,
-        htmlContent: internalHtml,
-        textContent: `New application for ${role}\n\nName: ${name}\nEmail: ${email}\nPortfolio: ${portfolio || '(none)'}\n\n${note || ''}`,
-        attachment: [attachment],
+        html: internalHtml,
+        text: `New application for ${role}\n\nName: ${name}\nEmail: ${email}\nPortfolio: ${portfolio || '(none)'}\n\n${note || ''}`,
+        from: sender,
+        replyTo: { email, name },
+        attachments: [attachment],
         tags: ['website-careers'],
-      }),
-    });
-    if (!internal.ok) return json({ ok: false, error: 'We could not send your application. Please try again.' }, 502);
+      },
+      env,
+    );
+    if (!internal.ok) {
+      console.error(JSON.stringify({ event: 'careers_internal_send_failed', provider: internal.provider, fallbackUsed: internal.fallbackUsed, status: internal.error }));
+      return json({ ok: false, error: 'We could not send your application. Please try again.' }, 502);
+    }
 
-    const acknowledgement = await fetch('https://api.brevo.com/v3/smtp/email', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        sender,
-        to: [{ email, name }],
-        replyTo: { email: 'support@avatok.ai', name: 'avaTOK Careers' },
+    const acknowledgement = await sendMail(
+      {
+        to: email,
         subject: 'We received your avaTOK application',
-        htmlContent: acknowledgementHtml(name, role),
-        textContent: `Hi ${name},\n\nThank you for applying for the ${role} role at avaTOK. We’ve received your resume and our team will review it carefully. If your experience is a match for the next step, we’ll be in touch. If not, we still wish you every success in what comes next.\n\nWarmly,\nThe avaTOK team`,
+        html: acknowledgementHtml(name, role),
+        text: `Hi ${name},\n\nThank you for applying for the ${role} role at avaTOK. We’ve received your resume and our team will review it carefully. If your experience is a match for the next step, we’ll be in touch. If not, we still wish you every success in what comes next.\n\nWarmly,\nThe avaTOK team`,
+        from: sender,
+        replyTo: { email: 'support@avatok.ai', name: 'avaTOK Careers' },
         tags: ['website-careers-acknowledgement'],
-      }),
-    });
-    if (!acknowledgement.ok) console.error(JSON.stringify({ event: 'brevo_careers_ack_failed', status: acknowledgement.status }));
+      },
+      env,
+    );
+    if (!acknowledgement.ok) {
+      console.error(JSON.stringify({ event: 'careers_ack_send_failed', provider: acknowledgement.provider, fallbackUsed: acknowledgement.fallbackUsed, status: acknowledgement.error }));
+    }
     return json({ ok: true });
   } catch (error) {
     console.error(JSON.stringify({ event: 'careers_apply_endpoint_error', message: error instanceof Error ? error.message : 'unknown' }));

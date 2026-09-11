@@ -1,9 +1,11 @@
 import type { APIRoute } from 'astro';
+import { sendMail } from '../../lib/sendMail';
 
 // On-demand (SSR) endpoint — runs in the avatok-app Pages worker on the Cloudflare
 // edge. Receives the /contact form and sends the message to support@avatok.ai via
-// Brevo's transactional email API. Requires the BREVO_API_KEY secret on the
-// avatok-app Pages project (same key pattern as the consumers worker).
+// sendMail() — Cloudflare Email Service REST API first, Brevo as fallback (see
+// Specs/PLAN-2026-09-11-EMAIL-CLOUDFLARE-PRIMARY-BREVO-FALLBACK.md §3.4). Requires
+// CF_EMAIL_API_TOKEN and/or BREVO_API_KEY on the avatok-app Pages project.
 export const prerender = false;
 
 const json = (data: unknown, status = 200) =>
@@ -29,7 +31,6 @@ export const POST: APIRoute = async (context) => {
   // Cloudflare runtime env is exposed by the Astro adapter at locals.runtime.env.
   type RuntimeLocals = { runtime?: { env?: Record<string, string | undefined> } };
   const env = (context.locals as unknown as RuntimeLocals).runtime?.env ?? {};
-  const brevoApiKey = env.BREVO_API_KEY;
 
   let body: Record<string, unknown> = {};
   try {
@@ -60,7 +61,7 @@ export const POST: APIRoute = async (context) => {
     return json({ ok: false, error: 'Please enter a valid email address.' }, 400);
   }
 
-  if (!brevoApiKey) {
+  if (!env.BREVO_API_KEY && !env.CF_EMAIL_API_TOKEN) {
     // Don't fail silently in a way that loses the message; surface a clear error.
     return json(
       { ok: false, error: 'Email is not configured yet. Please email support@avatok.ai directly.' },
@@ -92,29 +93,21 @@ export const POST: APIRoute = async (context) => {
     </div>`;
 
   try {
-    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
-      method: 'POST',
-      headers: {
-        'api-key': brevoApiKey,
-        'content-type': 'application/json',
-        accept: 'application/json',
-      },
-      body: JSON.stringify({
-        sender: {
-          name: env.BREVO_SENDER_NAME || 'avaTOK Website',
-          email: env.BREVO_SENDER_EMAIL || 'hello@avatok.ai',
-        },
-        to: [{ email: 'support@avatok.ai', name: 'avaTOK Support' }],
-        replyTo: { email, name },
+    const out = await sendMail(
+      {
+        to: 'support@avatok.ai',
         subject: subjectLine,
-        htmlContent,
-        textContent,
+        html: htmlContent,
+        text: textContent,
+        from: { name: env.BREVO_SENDER_NAME || 'avaTOK Website', email: env.BREVO_SENDER_EMAIL || 'hello@avatok.ai' },
+        replyTo: { email, name },
         tags: ['website-contact'],
-      }),
-    });
+      },
+      env,
+    );
 
-    if (!res.ok) {
-      console.error(JSON.stringify({ event: 'brevo_contact_send_failed', status: res.status }));
+    if (!out.ok) {
+      console.error(JSON.stringify({ event: 'contact_send_failed', provider: out.provider, fallbackUsed: out.fallbackUsed, status: out.error }));
       return json({ ok: false, error: 'Could not send your message. Please try again.' }, 502);
     }
 

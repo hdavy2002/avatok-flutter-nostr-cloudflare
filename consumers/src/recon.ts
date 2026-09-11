@@ -16,6 +16,7 @@
 // Results → recon_runs(date, ok, diff_json); mismatches → Brevo email to
 // ALERT_EMAIL (default hdavy2005@gmail.com) with the diff.
 import type { Env } from "./types";
+import { sendWithPolicy } from "./email_provider";
 
 const WATERMARK_MS = 5 * 60_000;
 const USER_SCAN_WINDOW_MS = 48 * 3_600_000;
@@ -129,7 +130,6 @@ export async function reconWallet(env: Env): Promise<void> {
 }
 
 async function alertEmail(env: Env, date: string, diffs: Diff[]): Promise<void> {
-  if (!env.BREVO_API_KEY) { console.error("[recon] MISMATCH but BREVO_API_KEY unset:", JSON.stringify(diffs)); return; }
   const to = env.ALERT_EMAIL || "hdavy2005@gmail.com";
   // Drill mode: the A2 acceptance test seeds a mismatch via a manual UPDATE on a
   // known account. If EVERY diff is on a RECON_DRILL_ACCOUNTS entry, this is that
@@ -152,10 +152,15 @@ async function alertEmail(env: Env, date: string, diffs: Diff[]): Promise<void> 
     Runs are stored in <code>recon_runs</code>; inspect via <code>GET /api/admin/recon</code>.</p>
   </div>`;
   try {
-    await fetch("https://api.brevo.com/v3/smtp/email", {
-      method: "POST",
-      headers: { "api-key": env.BREVO_API_KEY, "Content-Type": "application/json", accept: "application/json" },
-      body: JSON.stringify({ sender: { name: "AvaTok Ops", email: "noreply@avatok.ai" }, to: [{ email: to }], subject: `${tag} Wallet recon ${isDrill ? "drill" : "mismatch"} — ${date} (${diffs.length})`, htmlContent: html }),
-    });
+    const out = await sendWithPolicy(
+      {
+        to,
+        subject: `${tag} Wallet recon ${isDrill ? "drill" : "mismatch"} — ${date} (${diffs.length})`,
+        html,
+        from: "AvaTok Ops <noreply@avatok.ai>",
+      },
+      env,
+    );
+    if (!out.ok) console.error("[recon] alert email failed:", out.error);
   } catch (e) { console.error("[recon] alert email failed:", String(e)); }
 }

@@ -32,6 +32,16 @@ RealtimeKit org key) live only in Cloudflare Worker secrets / the gitignored
 ## Bunny.net Stream
 - Library ID: `553793` · CDN: `vz-837d504e-6a8.b-cdn.net` · Pull zone: `vz-837d504e-6a8`
 
+## Email
+- Primary: Cloudflare Email Service via the `EMAIL` send_email binding in avatok-consumers
+  (REST API from the web Pages functions). Fallback: Brevo (`BREVO_API_KEY`). Switch: consumer
+  var `EMAIL_PROVIDER` (`brevo` | `cloudflare` | `cloudflare_then_brevo`).
+- Sending domain `avatok.ai` onboarded to Email Sending 2026-09-06. Zone: `ae74ddf95ebf8c401d254ae3d308d4b5`.
+- Delivery events: Queue `email-events` (`675d68f675a44a5195eedd98c2c5e6d9`, event subscription
+  `3ca78989f397496ab3a12f460f61d14b`) → `email_outbox.delivered_at`/`bounced_at` + `email_suppressions`.
+  Only one event subscription is allowed per sending domain, so `email-events-staging` gets no
+  delivery events.
+
 ## App
 - Android applicationId: `ai.avatok.avatok_call`
 - Direct test APK: GitHub release `calltest-latest`

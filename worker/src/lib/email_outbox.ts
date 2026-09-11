@@ -2,8 +2,11 @@ import type { Env } from "../types";
 
 /**
  * Durable email hand-off shared by checkout, lifecycle mail and future reminder
- * producers. `provider_accepted` means Brevo accepted the request; it is not a
- * delivery receipt. Only a signed provider callback may move a row to delivered.
+ * producers. Transport is Cloudflare Email Service (Brevo fallback);
+ * `provider_accepted` means the sending provider accepted the request, it is
+ * not a delivery receipt. Only a provider event (Cloudflare's `email-events`
+ * queue consumer for Cloudflare sends; no webhook exists for Brevo) may move
+ * a row to delivered.
  */
 export type EmailDeliveryStatus = "queued" | "sending" | "provider_accepted" | "delivered" | "failed" | "bounced";
 export type EmailQueueStatus = EmailDeliveryStatus | "unavailable";

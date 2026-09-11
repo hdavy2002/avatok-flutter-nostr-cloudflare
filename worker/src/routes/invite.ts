@@ -5,8 +5,8 @@
 // deep-links (the user taps Send in that app). EMAIL is the only channel that is
 // truly auto-sent from the server, on behalf of the user:
 //
-//   • Sender stays the VERIFIED Brevo address (noreply@avatok.ai) so deliverability
-//     holds, but the display name reads "<Name> via AvaTOK".
+//   • Sender stays the verified sending domain address (noreply@avatok.ai) so
+//     deliverability holds, but the display name reads "<Name> via AvaTOK".
 //   • Reply-To is the INVITER's own email, so a reply reaches them, not us.
 //   • The CTA link carries the inviter's @handle (kInviteBase + handle) so the
 //     existing referral claim credits them when the invitee joins.
@@ -55,7 +55,8 @@ function inviteHtml(inviterName: string, link: string): string {
 
 // POST /api/invite/email  { to_email, to_name?, from_name? }
 // Auth required. Sends ONE invite email to an arbitrary external address on the
-// authenticated user's behalf. Best-effort delivery via Q_EMAIL → Brevo.
+// authenticated user's behalf. Best-effort delivery via Q_EMAIL → Cloudflare
+// Email Service (Brevo fallback).
 export async function inviteEmail(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);

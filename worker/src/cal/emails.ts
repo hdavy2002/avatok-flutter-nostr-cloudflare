@@ -1,7 +1,8 @@
-// Phase 5 — THE platform email matrix (PHASE-05 §Notifications). Brevo via
-// Q_EMAIL (consumer renders attachments), addresses resolved from Clerk
-// (D1 stores only hashes). Phases 6/7 REUSE these templates — no phase invents
-// its own email path. Every sender is best-effort: never blocks money/booking ops.
+// Phase 5 — THE platform email matrix (PHASE-05 §Notifications). Cloudflare
+// Email Service (Brevo fallback) via Q_EMAIL (consumer renders attachments),
+// addresses resolved from Clerk (D1 stores only hashes). Phases 6/7 REUSE
+// these templates — no phase invents its own email path. Every sender is
+// best-effort: never blocks money/booking ops.
 import type { Env } from "../types";
 import { clerkEmail } from "../ledger";
 import { buildIcs, icsB64, joinUrlFor, signJoinToken } from "./ics";

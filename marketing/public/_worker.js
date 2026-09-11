@@ -1,7 +1,23 @@
 // Cloudflare Pages advanced-mode worker.
-// POST /api/waitlist -> adds the email to Brevo (list via BREVO_LIST_ID) and, for
-// brand-new signups, sends a branded thank-you email via Brevo transactional API.
-// The Brevo API key lives ONLY here as an encrypted env var (BREVO_API_KEY).
+// POST /api/waitlist -> adds the email to Brevo (list via BREVO_LIST_ID; unchanged,
+// out of scope for the email-provider migration) and, for brand-new signups, sends
+// a branded thank-you email.
+//
+// Thank-you email transport (only the transactional send, not the list-add):
+// Cloudflare Email Sending REST API first, Brevo transactional API as fallback.
+// See Specs/PLAN-2026-09-11-EMAIL-CLOUDFLARE-PRIMARY-BREVO-FALLBACK.md (row F, S3.4).
+//   - CF_ACCOUNT_ID / CF_EMAIL_API_TOKEN unset -> Brevo only (today's behaviour).
+//   - Cloudflare throws / returns a non-2xx or success:false for any reason other
+//     than a suppressed recipient -> fall back to Brevo (same policy as
+//     web/src/lib/sendMail.ts: a lost welcome email is worse than masking a CF
+//     config bug, which is still logged as mail_send_failed).
+//   - Cloudflare succeeds -> Brevo is never called for that message.
+//   - Recipient is in Cloudflare's permanent_bounces -> do NOT fall back to Brevo
+//     (sending a known-dead address through another provider only hurts
+//     reputation); the signup still succeeds from the caller's point of view.
+// The Brevo API key lives ONLY here as an encrypted env var (BREVO_API_KEY); the
+// Cloudflare token (CF_EMAIL_API_TOKEN) is likewise an encrypted env var, scoped
+// to Account -> Email Sending -> Edit only.
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -29,11 +45,85 @@ function welcomeHtml() {
   </div></body></html>`;
 }
 
-async function sendWelcome(env, email) {
-  const sender = {
-    name: env.BREVO_SENDER_NAME || "AvaTOK Joinlist",
-    email: env.BREVO_SENDER_EMAIL || "hello@avatok.ai",
-  };
+const WELCOME_SUBJECT = "You're on the avaTOK waitlist 🎉";
+const WELCOME_TEXT =
+  "You're on the avaTOK waitlist! We're letting people in gradually and will " +
+  "email you the moment your spot opens so you can claim your @handle.";
+
+// Structured event logs for the two failure/fallback signals this endpoint can
+// produce. Cloudflare Pages ships console output to the dashboard's real-time
+// logs / any connected log sink, so keep these one-line JSON objects.
+function logMailEvent(event, fields) {
+  try {
+    console.log(JSON.stringify({ event, ...fields }));
+  } catch {
+    // logging must never break the request
+  }
+}
+
+// REST API error messages are keys like "email.sending.error.throttled" (429)
+// or "email.sending.error.internal_server" (500). Used for log attribution only;
+// the fallback decision below is "anything but a suppressed/bounced recipient".
+const CF_RETRYABLE_CODE_RE = /THROTTLED|RATE_LIMIT|DAILY_LIMIT|INTERNAL/i;
+
+async function sendViaCloudflare(env, email, sender) {
+  let r;
+  try {
+    r = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/email/sending/send`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${env.CF_EMAIL_API_TOKEN}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          to: email,
+          // REST API shape: `from` is a bare address or { address, name };
+          // "Name <addr>" strings are not a documented form. Reply-To is
+          // snake_case `reply_to` on REST (camelCase only on the binding).
+          from: { address: sender.email, name: sender.name },
+          reply_to: { address: "hello@avatok.ai", name: "avaTOK" },
+          subject: WELCOME_SUBJECT,
+          html: welcomeHtml(),
+          text: WELCOME_TEXT,
+        }),
+      }
+    );
+  } catch (err) {
+    return { ok: false, status: "network_error", retryable: true, errors: [String((err && err.message) || err)] };
+  }
+
+  let data = {};
+  try {
+    data = await r.json();
+  } catch {
+    // non-JSON body; fall through with data = {}
+  }
+
+  const result = data && data.result;
+  const errs = data && Array.isArray(data.errors) ? data.errors : [];
+  const permanentBounce =
+    !!(
+      result &&
+      Array.isArray(result.permanent_bounces) &&
+      result.permanent_bounces.some((a) => String(a).toLowerCase() === email.toLowerCase())
+    ) || errs.some((e) => /suppress/i.test(String((e && e.message) || "")));
+  if (permanentBounce) {
+    return { ok: false, status: r.status, permanentBounce: true, errors: data && data.errors };
+  }
+
+  if (r.ok && data && data.success === true) {
+    return { ok: true, status: r.status, messageId: (result && result.message_id) || null };
+  }
+
+  const errors = (data && Array.isArray(data.errors) ? data.errors : []) || [];
+  const codes = errors.map((e) => String((e && (e.code || e.message)) || ""));
+  const retryable = r.status === 429 || r.status >= 500 || codes.some((c) => CF_RETRYABLE_CODE_RE.test(c));
+  return { ok: false, status: r.status, retryable, errors };
+}
+
+async function sendViaBrevo(env, email, sender) {
   try {
     const r = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
@@ -42,7 +132,7 @@ async function sendWelcome(env, email) {
         sender,
         to: [{ email }],
         replyTo: { email: "hello@avatok.ai", name: "avaTOK" },
-        subject: "You're on the avaTOK waitlist 🎉",
+        subject: WELCOME_SUBJECT,
         htmlContent: welcomeHtml(),
       }),
     });
@@ -50,6 +140,45 @@ async function sendWelcome(env, email) {
   } catch {
     return "error";
   }
+}
+
+async function sendWelcome(env, email) {
+  const sender = {
+    name: env.BREVO_SENDER_NAME || "AvaTOK Joinlist",
+    email: env.BREVO_SENDER_EMAIL || "hello@avatok.ai",
+  };
+  const cfConfigured = !!(env.CF_EMAIL_API_TOKEN && env.CF_ACCOUNT_ID);
+
+  if (!cfConfigured) {
+    // Cloudflare not set up yet on this environment -- today's Brevo-only path.
+    return sendViaBrevo(env, email, sender);
+  }
+
+  const cf = await sendViaCloudflare(env, email, sender);
+  if (cf.ok) {
+    // Cloudflare succeeded: Brevo must never be sent for this message.
+    return `cloudflare:${cf.status}`;
+  }
+
+  if (cf.permanentBounce) {
+    logMailEvent("mail_send_failed", {
+      provider: "cloudflare",
+      reason: "permanent_bounce",
+      status: cf.status,
+    });
+    return "cloudflare:permanent_bounce";
+  }
+
+  logMailEvent("mail_send_failed", {
+    provider: "cloudflare",
+    status: cf.status,
+    retryable: !!cf.retryable,
+    errors: cf.errors,
+  });
+
+  logMailEvent("mail_fallback_used", { from: "cloudflare", to: "brevo", cfStatus: cf.status });
+  const brevoStatus = await sendViaBrevo(env, email, sender);
+  return `brevo:${brevoStatus}`;
 }
 
 // --- Phase 5 (A1): join-link web fallback -----------------------------------

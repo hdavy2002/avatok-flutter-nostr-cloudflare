@@ -4204,7 +4204,8 @@ export async function listFavorites(req: Request, env: Env): Promise<Response> {
 
 // POST /api/listings/:id/book { slot?: {start_at,end_at}, promo_code? }
 // Shared by "Book" and the live "Join & pay" popup. Creates orders row +
-// booking + wallet escrow hold + joined_count bump + Brevo confirmation.
+// booking + wallet escrow hold + joined_count bump + confirmation email
+// (Cloudflare Email Service, Brevo fallback).
 export async function bookListing(req: Request, env: Env, id: string): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);

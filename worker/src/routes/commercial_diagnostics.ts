@@ -30,7 +30,13 @@ type EmailAttemptRef = {
   delivery_status: string;
   attempts: number;
   max_attempts: number;
+  provider: string | null;
+  fallback_used: boolean;
+  last_event: string | null;
+  last_event_at: number | null;
   provider_message_id: string | null;
+  delivered_at: number | null;
+  bounced_at: number | null;
   queue_accepted: boolean;
   updated_at: number | null;
 };
@@ -72,11 +78,23 @@ async function emailDiagnostics(env: Env): Promise<CommercialHealthSummary["emai
       // This is a bounded support view. It deliberately omits recipient addresses,
       // payloads and provider credentials while retaining stable refs for a retry.
       metaDb(env).prepare(
-        `SELECT outbox_key,order_id,delivery_status,attempts,max_attempts,provider_message_id,
+        `SELECT outbox_key,order_id,delivery_status,attempts,max_attempts,provider,fallback_used,
+           last_event,last_event_at,provider_message_id,delivered_at,bounced_at,
            CASE WHEN queue_accepted_at IS NULL THEN 0 ELSE 1 END queue_accepted,updated_at
          FROM email_outbox
          ORDER BY updated_at DESC LIMIT 100`,
-      ).all<EmailAttemptRef>(),
+      ).all<EmailAttemptRef>().catch(() =>
+        // 2026-09-11-email-provider.sql (provider/fallback_used/last_event*) may
+        // lag this worker revision; keep the support view working on the
+        // 2026-09-09 column set instead of blanking the whole email section.
+        metaDb(env).prepare(
+          `SELECT outbox_key,order_id,delivery_status,attempts,max_attempts,provider_message_id,
+             delivered_at,bounced_at,
+             CASE WHEN queue_accepted_at IS NULL THEN 0 ELSE 1 END queue_accepted,updated_at
+           FROM email_outbox
+           ORDER BY updated_at DESC LIMIT 100`,
+        ).all<EmailAttemptRef>(),
+      ),
     ]);
     return {
       states: (stateRows.results ?? []).map((row) => ({
@@ -89,7 +107,13 @@ async function emailDiagnostics(env: Env): Promise<CommercialHealthSummary["emai
         delivery_status: String(row.delivery_status),
         attempts: Math.max(0, Number(row.attempts ?? 0)),
         max_attempts: Math.max(0, Number(row.max_attempts ?? 0)),
+        provider: row.provider == null ? null : String(row.provider),
+        fallback_used: Number(row.fallback_used ?? 0) === 1,
+        last_event: row.last_event == null ? null : String(row.last_event),
+        last_event_at: row.last_event_at == null ? null : Number(row.last_event_at),
         provider_message_id: row.provider_message_id == null ? null : String(row.provider_message_id),
+        delivered_at: row.delivered_at == null ? null : Number(row.delivered_at),
+        bounced_at: row.bounced_at == null ? null : Number(row.bounced_at),
         queue_accepted: Number(row.queue_accepted ?? 0) === 1,
         updated_at: row.updated_at == null ? null : Number(row.updated_at),
       })),
