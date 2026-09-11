@@ -39,6 +39,7 @@ import { commercialDiagnostics, scanCommercialHealth } from "./routes/commercial
 import { runCommercialSettlements, runCommercialHostNoShowSweep } from "./commercial_settlement";
 import { refreshStaleCreatorStats } from "./lib/creator_stats"; // [LIST-STATS-1]
 import { endDueConsultSessions, backfillCheckedInConsultSessions } from "./lib/commercial_session_clock"; // [SESSION-CLOCK-0]
+import { sweepExpiredLiveGrace } from "./lib/live_grace"; // [WAITROOM-4 / R3]
 import { messengerCallAuthorize, messengerCallPricing, messengerCallReceipt, messengerCallBillingStatus, cancelMessengerCallAuthorization } from "./routes/messenger_call_billing";
 import { brain } from "./routes/brain";
 import { brainDomains } from "./routes/brain_domains";
@@ -436,6 +437,12 @@ export default {
           .then(() => endDueConsultSessions(env))
           .then((r) => { if (r.scanned) console.log("[commercial-consult-session-clock]", JSON.stringify(r)); })
           .catch((e) => { console.error("[commercial-consult-session-clock] failed:", String(e)); }),
+        // [WAITROOM-4 / R3] Cron safety net for the DO `live_grace` alarm —
+        // see sweepExpiredLiveGrace's own doc comment for why this exists
+        // alongside the alarm rather than instead of it.
+        sweepExpiredLiveGrace(env)
+          .then((r) => { if (r.scanned) console.log("[commercial-live-grace-sweep]", JSON.stringify(r)); })
+          .catch((e) => { console.error("[commercial-live-grace-sweep] failed:", String(e)); }),
         reconcileListingLifecycleProjections(env)
           .then((r) => { if (r.scanned) console.log("[listing-lifecycle-reconciliation]", JSON.stringify(r)); })
           .catch((e) => { console.error("[listing-lifecycle-reconciliation] failed:", String(e)); }),

@@ -495,7 +495,13 @@ async function authorizeProviderJoin(args: {
     // session row already agrees the slot is over ('ending'/'ended'), refuse
     // 410 so the client returns to the waiting room instead of getting handed
     // a brand-new call for a session that is already done.
-    if (providerNotFound) {
+    // [WAITROOM-4 / R14] A 404 does NOT override an 'ending' row either — the
+    // schedule already decided this slot is closing (RULEBOOK §5: "the
+    // schedule ends a session, never a provider event"), so a 404 here just
+    // means the provider has already cleaned the call up on its own; refuse
+    // the same way as an 'ended' row rather than spinning up a fresh call for
+    // a session that's already on its way out.
+    if (providerNotFound && existing.state !== "ending") {
       const members = args.kind === "consult_1to1"
         ? [args.creatorId, args.uid]
         : [args.creatorId];
@@ -515,7 +521,10 @@ async function authorizeProviderJoin(args: {
         startsAt: args.startsAt,
       })) return refused("provider_call_unavailable", { error: "provider call unavailable" }, 502);
       commercialEvent(args.env, "join", args.uid, { kind: args.kind, outcome: "rejoin_recreated_call" });
-    } else if (providerEndedAt && ["ending", "ended"].includes(existing.state)) {
+    } else if (
+      (providerNotFound && existing.state === "ending")
+      || (providerEndedAt && ["ending", "ended"].includes(existing.state))
+    ) {
       return refused("session_terminal", { error: "session unavailable" }, 410);
     }
   }
@@ -1547,7 +1556,25 @@ export async function commercialLiveState(req: Request, env: Env): Promise<Respo
   const auth = await requireUser(req, env);
   if (isFail(auth)) return json({ error: auth.error }, auth.status);
   const session = await sessionByListing(env, listingId);
-  if (!session) return json({ error: "session unavailable" }, 404);
+  if (!session) {
+    // [WAITROOM-4 / C8] No commercial_sessions row yet — nobody has called
+    // prepare-host/go-live for this listing (or it never existed). The old
+    // blanket 404 gave the host's own "go live" page, a ticket holder
+    // checking in before start, and a stranger the exact same opaque error.
+    // Look the listing up and answer each caller correctly instead.
+    const row = await listing(env, listingId);
+    if (!row || row.kind !== "live_event") return json({ error: "listing unavailable" }, 404);
+    const startsAt = row.starts_at != null ? Number(row.starts_at) : null;
+    if (auth.uid === row.creator_id) {
+      return json({ ok: true, state: "scheduled", starts_at: startsAt, listing_id: listingId });
+    }
+    // Viewer path: a ticket holder must still get a sensible pre-start state
+    // rather than a 403/404, so their waiting-room UI can render normally
+    // before the creator has gone live even once.
+    const ticket = await entitlement(env, { kind: "live_event", listingId, uid: auth.uid, role: "viewer" });
+    if (!ticket) return json({ error: "not entitled" }, 403);
+    return json({ ok: true, state: "scheduled", starts_at: startsAt, listing_id: listingId });
+  }
   if (!await canViewSession(env, session, auth.uid)) return json({ error: "not entitled" }, 403);
   return json({ ok: true, ...safeSessionState(session) });
 }
@@ -2057,12 +2084,19 @@ export async function recordCommercialStreamEvent(
       }, input.occurredAt);
     }
   } else if (left && member && input.actorId) {
+    // [WAITROOM-4 / R4] A GetStream reconnect delivers join(new session) then
+    // left(old session) — sometimes in that order, sometimes racing. Matching
+    // the newest open interval by uid alone (no provider_session_id filter)
+    // could close the interval the reconnect JUST opened instead of the one
+    // that actually ended, and then arm the grace window while the host is
+    // still live. Match this `left` to ITS OWN provider session id.
+    const providerSessionId = input.providerSessionId ?? "default";
     const open = await metaDb(env).prepare(
       `SELECT interval_id,joined_at FROM commercial_participant_intervals
-       WHERE commercial_session_id=?1 AND provider_user_id=?2
-         AND reconciliation_state='open' AND joined_at<=?3
+       WHERE commercial_session_id=?1 AND provider_user_id=?2 AND provider_session_id=?3
+         AND reconciliation_state='open' AND joined_at<=?4
        ORDER BY joined_at DESC LIMIT 1`,
-    ).bind(session.commercial_session_id, input.actorId, input.occurredAt)
+    ).bind(session.commercial_session_id, input.actorId, providerSessionId, input.occurredAt)
       .first<{ interval_id: string; joined_at: number }>();
     if (open) {
       await metaDb(env).prepare(
@@ -2081,12 +2115,22 @@ export async function recordCommercialStreamEvent(
     // 'ended'/'cancelled' session never reaches here). armLiveGrace itself is
     // idempotent (only arms once per grace window) so a replayed webhook is
     // safe.
+    // [WAITROOM-4 / R4] Only arm if the host has NO OTHER open interval —
+    // i.e. this really was their last connection, not the "old" half of a
+    // join(new)-then-left(old) reconnect race where the new interval is
+    // already open by the time this `left` lands.
     if (input.callType === "avatok_livestream" && member.role === "host") {
-      await armLiveGrace(env, {
-        commercialSessionId: session.commercial_session_id,
-        listingId: session.listing_id,
-        creatorId: session.creator_id,
-      }, input.occurredAt);
+      const stillConnected = await metaDb(env).prepare(
+        `SELECT 1 ok FROM commercial_participant_intervals
+           WHERE commercial_session_id=?1 AND provider_user_id=?2 AND reconciliation_state='open' LIMIT 1`,
+      ).bind(session.commercial_session_id, input.actorId).first<{ ok: number }>();
+      if (!stillConnected) {
+        await armLiveGrace(env, {
+          commercialSessionId: session.commercial_session_id,
+          listingId: session.listing_id,
+          creatorId: session.creator_id,
+        }, input.occurredAt);
+      }
     }
   }
 

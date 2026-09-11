@@ -57,6 +57,29 @@ describe("StreamSessionDO roster message", () => {
   });
 });
 
+describe("StreamSessionDO live_grace listing_id [WAITROOM-4 / R3]", () => {
+  it("live_grace_arm stores listing_id (and backfills sid/kind) instead of relying on `schedule` ever having run", () => {
+    const armCase = methodSource(DO, 'case "live_grace_arm":', 'case "live_grace_clear":');
+    expect(armCase).toContain("body.listing_id");
+    expect(armCase).toContain("UPDATE session SET listing_id=?1");
+    expect(armCase).toContain("await this.armAlarm(Number(body.t)");
+  });
+
+  it("migrates the session table in place for DOs created before listing_id existed", () => {
+    expect(DO).toContain("ALTER TABLE session ADD COLUMN listing_id TEXT");
+  });
+
+  it("alarm() passes listing_id (falling back to sid) to endLiveOnHostNoReturn, not sid alone", () => {
+    const alarm = methodSource(DO, "async alarm(): Promise<void>", "private async flushGifts");
+    expect(alarm).toContain("const graceListingId = s.listing_id || s.sid;");
+    expect(alarm).toMatch(/if \(d\.kind === "live_grace" && graceListingId\)/);
+    expect(alarm).toContain("endLiveOnHostNoReturn(this.env, String(graceListingId));");
+    // The old bug: gating solely on s.sid, which the commercial live lane
+    // (never calling `schedule` on this DO) would leave permanently empty.
+    expect(alarm).not.toMatch(/d\.kind === "live_grace" && s\.sid/);
+  });
+});
+
 describe("StreamSessionDO chat relay", () => {
   it("relays chat as {from, text, at, uid} distinct from the flying-message wire shape", () => {
     const wsMessage = methodSource(DO, "async webSocketMessage", "async webSocketClose");

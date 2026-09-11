@@ -115,6 +115,12 @@ function setup() {
       order_id TEXT, account_id TEXT NOT NULL, role TEXT NOT NULL, state TEXT NOT NULL,
       starts_at INTEGER, ends_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
     );
+    CREATE TABLE commercial_session_members (
+      commercial_session_id TEXT NOT NULL, account_id TEXT NOT NULL, entitlement_id TEXT NOT NULL,
+      provider_user_id TEXT NOT NULL, role TEXT NOT NULL, order_id TEXT,
+      added_at INTEGER NOT NULL, removed_at INTEGER,
+      PRIMARY KEY (commercial_session_id, account_id)
+    );
   `);
   return { db, env: { DB_META: d1(db) } };
 }
@@ -168,7 +174,7 @@ describe("armLiveGrace [LIVE-GRACE-1]", () => {
     expect(notifyCommercialUserMock.mock.calls[0][2]).toMatchObject({ type: "commercial_reconnect", listingId: "listing-1" });
   });
 
-  it("is idempotent — a replayed left webhook does not re-arm or double-push", async () => {
+  it("is idempotent — a replayed left webhook does not double-write the DB or double-push", async () => {
     const { db, env } = setup();
     currentDb = db;
     const leftAt = Date.now();
@@ -178,10 +184,33 @@ describe("armLiveGrace [LIVE-GRACE-1]", () => {
 
     const session = db.prepare("SELECT reconnect_deadline_ms FROM commercial_sessions WHERE commercial_session_id=?").get("session-2") as any;
     expect(Number(session.reconnect_deadline_ms)).toBe(leftAt + 10 * 60_000); // unchanged
-    expect(sessionOpMock).not.toHaveBeenCalled();
+    // [WAITROOM-4 / R7] The DO is (re-)armed unconditionally, BEFORE the D1
+    // guard runs — a replay may re-arm the DO's alarm (harmless: the DO's own
+    // (t,kind) primary key makes a second arm at the same deadline a no-op,
+    // and even a slightly different deadline just means an extra alarm fire
+    // that endLiveOnHostNoReturn's own idempotent checks absorb). What must
+    // NOT double-fire is the one-time side effects below the D1 guard.
+    expect(sessionOpMock).toHaveBeenCalledTimes(1);
     expect(notifyCommercialUserMock).not.toHaveBeenCalled();
     const outages = db.prepare("SELECT COUNT(*) n FROM commercial_live_outages WHERE commercial_session_id=?").get("session-2") as any;
     expect(outages.n).toBe(0);
+  });
+
+  // [WAITROOM-4 / R7]
+  it("R7: arms the DO before writing reconnect_deadline_ms — a DO failure leaves D1 untouched", async () => {
+    const { db, env } = setup();
+    currentDb = db;
+    insertSession(db, { id: "session-2b", listingId: "listing-2b", state: "live" });
+    sessionOpMock.mockImplementationOnce(async () => { throw new Error("DO unreachable"); });
+
+    await expect(
+      lib.armLiveGrace(env as any, { commercialSessionId: "session-2b", listingId: "listing-2b", creatorId: "creator-1" }, Date.now()),
+    ).rejects.toThrow("DO unreachable");
+
+    // If the DB write had gone first (the old ordering), this row would now
+    // show a deadline even though the DO alarm was never actually armed.
+    const session = db.prepare("SELECT reconnect_deadline_ms FROM commercial_sessions WHERE commercial_session_id=?").get("session-2b") as any;
+    expect(session.reconnect_deadline_ms).toBeNull();
   });
 });
 
@@ -280,5 +309,90 @@ describe("endLiveOnHostNoReturn [LIVE-GRACE-1]", () => {
     await lib.endLiveOnHostNoReturn(env as any, "listing-7");
     const session = db.prepare("SELECT end_outcome FROM commercial_sessions WHERE commercial_session_id=?").get("session-7") as any;
     expect(session.end_outcome).toBeNull();
+  });
+
+  // [WAITROOM-4 / R6]
+  it("R6: does NOT end a session whose grace deadline is armed but still in the future", async () => {
+    const { db, env } = setup();
+    currentDb = db;
+    // Before R6 this only checked `reconnect_deadline_ms == null` — an armed
+    // session with a deadline that simply hasn't passed yet would have been
+    // ended immediately by any premature/duplicate alarm fire.
+    insertSession(db, { id: "session-8", listingId: "listing-8", state: "live", reconnectDeadlineMs: Date.now() + 5 * 60_000 });
+    await lib.endLiveOnHostNoReturn(env as any, "listing-8");
+    const session = db.prepare("SELECT state,end_outcome,reconnect_deadline_ms FROM commercial_sessions WHERE commercial_session_id=?").get("session-8") as any;
+    expect(session.state).toBe("live");
+    expect(session.end_outcome).toBeNull();
+    expect(session.reconnect_deadline_ms).not.toBeNull();
+  });
+
+  // [WAITROOM-4 / R4 re-check]
+  it("R4: clears the deadline instead of ending when the host still has an open provider interval", async () => {
+    const { db, env } = setup();
+    currentDb = db;
+    const deadline = Date.now() - 1000; // already expired
+    insertSession(db, { id: "session-9", listingId: "listing-9", state: "live", reconnectDeadlineMs: deadline });
+    // The host's own interval is still open — a join webhook landed (real
+    // reconnect) even though clearLiveGrace, for whatever reason, never ran.
+    db.prepare(
+      `INSERT INTO commercial_session_members (commercial_session_id,account_id,entitlement_id,provider_user_id,role,order_id,added_at)
+       VALUES (?,?,?,?,?,?,?)`,
+    ).run("session-9", "creator-1", "host:listing-9", "creator-1", "host", null, Date.now());
+    db.prepare(
+      `INSERT INTO commercial_participant_intervals
+       (interval_id,commercial_session_id,account_id,provider_user_id,provider_session_id,
+        joined_event_id,joined_at,reconciliation_state,created_at,updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    ).run("interval-host", "session-9", "creator-1", "creator-1", "sess-new", "evt-join", Date.now(), "open", Date.now(), Date.now());
+
+    await lib.endLiveOnHostNoReturn(env as any, "listing-9");
+
+    const session = db.prepare("SELECT state,end_outcome,reconnect_deadline_ms FROM commercial_sessions WHERE commercial_session_id=?").get("session-9") as any;
+    expect(session.state).toBe("live"); // never ended
+    expect(session.end_outcome).toBeNull();
+    expect(session.reconnect_deadline_ms).toBeNull(); // stale deadline cleared
+  });
+});
+
+describe("sweepExpiredLiveGrace [WAITROOM-4 / R3]", () => {
+  it("ends a live session whose grace deadline has passed", async () => {
+    const { db, env } = setup();
+    currentDb = db;
+    const deadline = Date.now() - 1000;
+    insertSession(db, { id: "session-10", listingId: "listing-10", state: "live", reconnectDeadlineMs: deadline });
+
+    const result = await lib.sweepExpiredLiveGrace(env as any);
+
+    expect(result.scanned).toBe(1);
+    expect(result.ended).toBe(1);
+    const session = db.prepare("SELECT state,end_outcome FROM commercial_sessions WHERE commercial_session_id=?").get("session-10") as any;
+    expect(session.state).toBe("ended");
+    expect(session.end_outcome).toBe("host_no_return");
+  });
+
+  it("does not touch a session whose deadline is still in the future", async () => {
+    const { db, env } = setup();
+    currentDb = db;
+    insertSession(db, { id: "session-11", listingId: "listing-11", state: "live", reconnectDeadlineMs: Date.now() + 60_000 });
+
+    const result = await lib.sweepExpiredLiveGrace(env as any);
+
+    expect(result.scanned).toBe(0);
+    expect(result.ended).toBe(0);
+    const session = db.prepare("SELECT state FROM commercial_sessions WHERE commercial_session_id=?").get("session-11") as any;
+    expect(session.state).toBe("live");
+  });
+
+  it("scans an already-ended session (idempotent) without double-counting it as newly ended", async () => {
+    const { db, env } = setup();
+    currentDb = db;
+    // A session the DO alarm already ended, but whose row briefly still
+    // matched a race window — sweepExpiredLiveGrace's own state='live' filter
+    // means this shouldn't normally be picked up, but guard the counting
+    // logic anyway in case of a state transition mid-sweep.
+    insertSession(db, { id: "session-12", listingId: "listing-12", state: "ended", reconnectDeadlineMs: Date.now() - 1000 });
+    const result = await lib.sweepExpiredLiveGrace(env as any);
+    expect(result.scanned).toBe(0); // state='live' filter excludes it
+    expect(result.ended).toBe(0);
   });
 });

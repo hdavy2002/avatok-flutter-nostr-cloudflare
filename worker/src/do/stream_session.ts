@@ -50,12 +50,14 @@ export class StreamSessionDO {
     this.sql.exec("INSERT OR IGNORE INTO meta (k, creator_uid, pending, total, gifters) VALUES (1, NULL, 0, 0, 0)");
     // Phase 7 session + room state (DO storage — survives hibernation).
     this.sql.exec(
-      "CREATE TABLE IF NOT EXISTS session (k INTEGER PRIMARY KEY, sid TEXT, kind TEXT, starts_at INTEGER, ends_at INTEGER, host_id TEXT, wait_min INTEGER NOT NULL DEFAULT 20, slow_mode_sec INTEGER NOT NULL DEFAULT 0, pinned TEXT, donations_total INTEGER NOT NULL DEFAULT 0, donations_count INTEGER NOT NULL DEFAULT 0, host_live INTEGER NOT NULL DEFAULT 0, commercial INTEGER NOT NULL DEFAULT 0, host_checked_in_at INTEGER)",
+      "CREATE TABLE IF NOT EXISTS session (k INTEGER PRIMARY KEY, sid TEXT, kind TEXT, starts_at INTEGER, ends_at INTEGER, host_id TEXT, wait_min INTEGER NOT NULL DEFAULT 20, slow_mode_sec INTEGER NOT NULL DEFAULT 0, pinned TEXT, donations_total INTEGER NOT NULL DEFAULT 0, donations_count INTEGER NOT NULL DEFAULT 0, host_live INTEGER NOT NULL DEFAULT 0, commercial INTEGER NOT NULL DEFAULT 0, host_checked_in_at INTEGER, listing_id TEXT)",
     );
     // [WAITROOM-1] In-place migration for DOs created before the `commercial` column existed.
     try { this.sql.exec("ALTER TABLE session ADD COLUMN commercial INTEGER NOT NULL DEFAULT 0"); } catch { /* already migrated / fresh DO */ }
     // [WAITROOM-2 / C11] In-place migration for DOs created before this column existed.
     try { this.sql.exec("ALTER TABLE session ADD COLUMN host_checked_in_at INTEGER"); } catch { /* already migrated / fresh DO */ }
+    // [WAITROOM-4 / R3] In-place migration for DOs created before this column existed.
+    try { this.sql.exec("ALTER TABLE session ADD COLUMN listing_id TEXT"); } catch { /* already migrated / fresh DO */ }
     this.sql.exec("INSERT OR IGNORE INTO session (k) VALUES (1)");
     this.sql.exec("CREATE TABLE IF NOT EXISTS modlist (uid TEXT PRIMARY KEY, state TEXT NOT NULL)"); // muted|banned
     this.sql.exec("CREATE TABLE IF NOT EXISTS alarms (t INTEGER NOT NULL, kind TEXT NOT NULL, PRIMARY KEY (t, kind))");
@@ -107,7 +109,18 @@ export class StreamSessionDO {
       // recordCommercialStreamEvent's participant_left/participant_joined
       // branches for the host of a live event; `alarm()` below fires
       // `endLiveOnHostNoReturn` if nobody clears it in time.
-      case "live_grace_arm": { // {t: deadline_ms}
+      case "live_grace_arm": { // {t: deadline_ms, listing_id, sid?, kind?}
+        // [WAITROOM-4 / R3] The commercial live lane never calls this DO's
+        // `schedule` op (that's the legacy AvaLive path — routes/live.ts),
+        // so `sid`/`kind` would otherwise stay empty on this DO instance
+        // forever and the alarm below would have no listing id to act on.
+        // `armLiveGrace` (lib/live_grace.ts) always sends `listing_id`.
+        if (body.listing_id) {
+          this.sql.exec(
+            "UPDATE session SET listing_id=?1, sid=COALESCE(NULLIF(sid,''),?1), kind=COALESCE(NULLIF(kind,''),?2) WHERE k=1",
+            String(body.listing_id), String(body.kind || "live_event"),
+          );
+        }
         await this.armAlarm(Number(body.t), "live_grace");
         return json({ ok: true });
       }
@@ -310,12 +323,17 @@ export class StreamSessionDO {
     for (const d of due) {
       try {
         if (d.kind === "gift_flush") await this.flushGifts();
-        if (d.kind === "live_grace" && s.sid) {
-          // Best-effort from the DO's side: the sweep in
-          // commercial_settlement.ts / a cron re-check is the safety net if
-          // this throws (see the catch below) -- this alarm firing at all is
-          // itself the durable signal that the grace window elapsed.
-          await endLiveOnHostNoReturn(this.env, String(s.sid));
+        // [WAITROOM-4 / R3] `listing_id` is set explicitly by `live_grace_arm`
+        // (the commercial live lane never calls `schedule`, so `s.sid` alone
+        // used to stay empty forever here); fall back to `s.sid` for a DO
+        // instance that also went through `schedule` (legacy AvaLive).
+        const graceListingId = s.listing_id || s.sid;
+        if (d.kind === "live_grace" && graceListingId) {
+          // Best-effort from the DO's side: sweepExpiredLiveGrace (cron,
+          // lib/live_grace.ts) is the safety net if this throws (see the
+          // catch below) -- this alarm firing at all is itself the durable
+          // signal that the grace window elapsed.
+          await endLiveOnHostNoReturn(this.env, String(graceListingId));
         }
         if ((d.kind === "money_noshow" || d.kind === "money_end") && s.sid) {
           // [WAITROOM-1] Commercial bookings (bookings.kind='consult_1to1') are
