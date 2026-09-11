@@ -24,7 +24,7 @@ import AuthBridgeIsland from '../islands/auth/AuthBridge';
 import LeaveReviewIsland from '../islands/listing/LeaveReview';
 import { inrOrFree } from '../lib/money';
 import { API_BASE, cfImage } from '../lib/config';
-import { durationLabel, languageLabel, recurrenceLabel, timePillLabel } from '../lib/card';
+import { durationLabel, languageLabel, recurrenceLabel, timePillLabel, scheduleStateOf } from '../lib/card';
 import type { Listing, ReviewList, ListingSlot, Card, Creator } from '../lib/types';
 
 interface Props {
@@ -205,8 +205,30 @@ const mediaBadge = isSessionKind
   ? (listing.media_mode === 'audio_only' ? '🎧 AUDIO ONLY · NO CAMERA' : '🎥 ON CAMERA · AUDIO AND VIDEO')
   : null;
 
+// [LISTING-EXPIRY-1] Where this show sits in time — the server's `schedule_state`,
+// the same rule checkout enforces. A finished or cancelled show keeps its page (a
+// shared link must never become a bare 404) but loses its countdown, its calendar and
+// its Book button, and says plainly what happened.
+const scheduleState = scheduleStateOf(listing);
+const showEnded = scheduleState === 'ended' || scheduleState === 'expired';
+const showCancelled = scheduleState === 'cancelled';
+const showStarting = scheduleState === 'starting' && !isLive;
+const bookingOpen = listing.booking_open ?? !(showEnded || showCancelled);
+const closedTitle = showCancelled ? 'This show was cancelled.'
+  : showEnded ? 'This show has ended.'
+    : 'Booking has closed.';
+const closedLine = showCancelled
+  ? 'Everyone who booked is refunded automatically — nothing to do on your side.'
+  : showEnded
+    ? 'If the host did not go live, everyone who booked is refunded automatically.'
+    : 'The show has already started, so new seats are no longer sold.';
+const countdownActive = !isLive && scheduleState === 'upcoming';
+
 const scheduleLabel = isLive
   ? 'LIVE NOW'
+  : showCancelled ? 'CANCELLED'
+  : showEnded ? 'ENDED'
+  : showStarting ? 'STARTING NOW'
   : recurrenceLabel(listing.recurrence_days ?? null, listing.recurrence_time ?? null) ??
     (listing.starts_at ? timePillLabel(listing.starts_at, { timeZone: listing.timezone || 'Asia/Kolkata' }) : 'ON REQUEST');
 
@@ -334,9 +356,37 @@ const stills = ([1, 2, 3]
 const breadcrumbId = `LISTING #${listing.id}`;
 
 const timezone = listing.timezone ?? 'Asia/Kolkata';
+// [LISTING-EXPIRY-1 / P1-9] A live ticket is only ever sold for the listing's own
+// start (checkout refuses any other date), so the calendar offers exactly that one
+// slot for a live event — never extra dates the buyer could pick and not get. Past
+// slots are dropped everywhere, and a closed listing offers none at all.
+const nowMs = Date.now();
+const offeredSlots = !bookingOpen
+  ? []
+  : listing.kind !== 'live_event' && (slots ?? []).length > 0
+    ? (slots ?? []).filter((s) => Number(s.starts_at) > nowMs)
+      .map((s) => ({ id: s.id, startsAt: s.starts_at, endsAt: s.ends_at, label: s.label ?? '', capacity: s.capacity, taken: s.booked_count, status: s.status }))
+    : listing.starts_at
+      ? [{
+          id: 'default',
+          startsAt: listing.starts_at,
+          endsAt: listing.starts_at + (listing.duration_min ?? 60) * 60000,
+          label: 'MAIN SHOW',
+          // capacity null = the creator set no cap: unlimited, never HOUSEFULL.
+          capacity: listing.capacity ?? 0,
+          unlimited: listing.capacity == null,
+          // [SEATS-COUNT-1] Same source as bookedCount above — the countdown
+          // strip said "0 SEATS ALREADY BOOKED" under a card that had one.
+          taken: listing.capacity == null ? bookedCount : Math.max(0, listing.capacity - (listing.seats_left ?? listing.capacity)),
+          status: soldOut ? 'full' : 'open',
+        }]
+      : [];
+
 const clientConfig = {
   ctaColor,
   isLive,
+  countdownActive,
+  bookingOpen,
   soldOut,
   free: isFree,
   showUrl: SHOW_URL,
@@ -354,23 +404,7 @@ const clientConfig = {
   apiBase: API_BASE,
   favorited: listing.favorited === true,
   favouritesCount,
-  slots: (slots ?? []).length > 0
-    ? (slots ?? []).map((s) => ({ id: s.id, startsAt: s.starts_at, endsAt: s.ends_at, label: s.label ?? '', capacity: s.capacity, taken: s.booked_count, status: s.status }))
-    : listing.starts_at
-      ? [{
-          id: 'default',
-          startsAt: listing.starts_at,
-          endsAt: listing.starts_at + (listing.duration_min ?? 60) * 60000,
-          label: 'MAIN SHOW',
-          // capacity null = the creator set no cap: unlimited, never HOUSEFULL.
-          capacity: listing.capacity ?? 0,
-          unlimited: listing.capacity == null,
-          // [SEATS-COUNT-1] Same source as bookedCount above — the countdown
-          // strip said "0 SEATS ALREADY BOOKED" under a card that had one.
-          taken: listing.capacity == null ? bookedCount : Math.max(0, listing.capacity - (listing.seats_left ?? listing.capacity)),
-          status: soldOut ? 'full' : 'open',
-        }]
-      : [],
+  slots: offeredSlots,
 };
 const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null };
 ---
@@ -387,7 +421,14 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
     </div>
   </nav>
 
-  {isLive ? (
+  {(showEnded || showCancelled || showStarting || !bookingOpen) && !isLive ? (
+    <div class="ticker ticker--countdown">
+      <div class="ticker__inner">
+        <span class="ticker__lead"><span class="ticker__dot"></span>{showCancelled ? 'THIS SHOW WAS CANCELLED' : showEnded ? 'THIS SHOW HAS ENDED' : 'STARTING NOW — THE HOST IS GETTING READY'}</span>
+        {listing.starts_at && <span class="ticker__sub">{timePillLabel(listing.starts_at, { timeZone: listing.timezone || 'Asia/Kolkata' })}</span>}
+      </div>
+    </div>
+  ) : isLive ? (
     <div class="ticker ticker--live">
       <div class="ticker__inner">
         <span class="ticker__lead"><span class="ticker__dot ticker__dot--pulse"></span>LIVE NOW — {(listing.title ?? '').toUpperCase()}</span>
@@ -457,7 +498,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
           {!heroBase && <span class="player-card__center-label">LIVE STAGE · HOST CAMERA<br />16:9 STREAM DROPS HERE</span>}
           {isLive ? (
             <button type="button" class="btn btn--cta js-join-btn player-card__cta" style={`background:${ctaColor}`}>▸ Join now</button>
-          ) : (
+          ) : !countdownActive ? null : (
             <div class="countdown">
               <span class="countdown__unit"><span id="cd-d">00</span><em>DAYS</em></span>
               <span class="countdown__unit"><span id="cd-h">00</span><em>HRS</em></span>
@@ -595,6 +636,15 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
             <span class="booking-card__unit-price">{priceLine}{!isFree && priceUnitLabel}</span>
           </div>
 
+          {!bookingOpen && (
+            <div class="show-closed" role="status">
+              <p class="show-closed__title">{closedTitle}</p>
+              <p class="show-closed__line">{closedLine}</p>
+              {hostHref && <a class="btn btn--cta btn--block show-closed__cta" href={hostHref} style={`background:${ctaColor}`}>More from {hostName}</a>}
+              <a class="link-btn show-closed__browse" href="/marketplace">Browse shows on avaTOK →</a>
+            </div>
+          )}
+          <div class="booking-controls" style={bookingOpen ? undefined : 'display:none'}>
           <div class="calendar">
             <div class="calendar__nav">
               <button type="button" id="cal-prev" class="round-btn">‹</button>
@@ -630,6 +680,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
           <div id="book-cta-area">
             <button type="button" id="book-btn" class="btn btn--cta btn--block"></button>
             <div class="book-cta-area__footnote">FREE CANCEL UP TO 24 HRS BEFORE THE SHOW<br />NO AUTO-RENEW · NO HIDDEN FEES</div>
+          </div>
           </div>
 
           <div id="booked-panel" class="booked-panel">
@@ -933,7 +984,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
   }
   function nextShowDate(now) {
     const upcoming = (CONFIG.slots || []).map((s) => s.startsAt).filter((t) => t > now).sort((a, b) => a - b);
-    return new Date(upcoming[0] || CONFIG.startsAt || now);
+    return new Date(upcoming[0] || (CONFIG.startsAt > now ? CONFIG.startsAt : now));
   }
 
   function renderCalendar() {
@@ -1258,7 +1309,9 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
   let resizeT;
   window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(renderBrowse, 150); });
 
-  if (!CONFIG.isLive) {
+  // [LISTING-EXPIRY-1] Only an UPCOMING show counts down. A show that is starting,
+  // over or cancelled has no countdown element on the page at all.
+  if (CONFIG.countdownActive && document.getElementById('next-show-label')) {
     const tick = () => {
       const target = nextShowDate(Date.now());
       let diff = Math.max(0, target.getTime() - Date.now());
@@ -1581,6 +1634,12 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
 
   #book-cta-area { margin-top: 16px; }
   .book-cta-area__footnote { margin-top: 12px; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.625rem; letter-spacing: .06em; color: #8c6a52; text-align: center; line-height: 1.8; }
+  /* [LISTING-EXPIRY-1] The closed-show panel in place of the booking controls. */
+  .show-closed { margin-top: 14px; border: 2.5px solid #161614; border-radius: 18px; background: #fff7e6; padding: 18px 20px; box-shadow: 4px 5px 0 #161614; }
+  .show-closed__title { margin: 0; font-family: 'Anton', 'Comfortaa', sans-serif; font-size: 1.5rem; line-height: 1.15; letter-spacing: .05em; text-transform: uppercase; color: #161614; }
+  .show-closed__line { margin: 10px 0 16px; font-family: 'Instrument Sans', sans-serif; font-size: 15px; line-height: 1.5; color: #3d3226; }
+  .show-closed__cta { display: flex; text-decoration: none; }
+  .show-closed__browse { display: inline-block; margin-top: 12px; font-weight: 700; color: #b82a19; }
   .booked-panel { display: none; margin-top: 16px; border: 2.5px solid #161614; border-radius: 18px; background: #2d7180; padding: 18px 20px; box-shadow: 4px 5px 0 #161614; }
   .booked-panel__title { font-family: 'Comfortaa', 'Baloo 2', sans-serif; letter-spacing: .06em; font-size: 1.375rem; text-transform: uppercase; color: #fdf1d3; text-shadow: 2px 2px 0 #0f3f45; word-spacing: .22em; }
   .booked-panel__line { margin: 8px 0 0; font-size: 0.8125rem; font-weight: 500; line-height: 1.55; color: #d6ecee; }

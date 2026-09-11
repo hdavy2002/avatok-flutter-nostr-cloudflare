@@ -25,6 +25,13 @@
 
 /** What the user should do about each refusal. Keys are the worker's `error` values. */
 const MESSAGES: Record<string, string> = {
+  // --- [LISTING-EXPIRY-1] a show that is over, closed or taken down ---
+  event_ended: 'This show has ended, so tickets are no longer sold. Nothing was charged.',
+  booking_closed: 'This show has already started, so booking has closed. Nothing was charged.',
+  listing_cancelled: 'This show was cancelled, so tickets are no longer sold. Nothing was charged.',
+  live_slot_mismatch: 'Tickets for this show are only sold for its listed date. Refresh the page and try again.',
+  refunds_incomplete: 'We could not refund every booking on this listing yet, so it is still up. Try again in a minute.',
+  show_not_over: 'This show has not happened yet and has booked seats. Cancel it instead — your buyers are refunded automatically.',
   // --- identity, both gates ---
   identity_required:
     'We need to verify it’s really you before you can create a listing. This takes about a minute with your camera.',

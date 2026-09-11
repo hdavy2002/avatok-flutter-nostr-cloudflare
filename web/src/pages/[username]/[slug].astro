@@ -9,6 +9,7 @@
 export const prerender = false;
 
 import Base from '../../layouts/Base.astro';
+import { scheduleStateOf } from '../../lib/card';
 import ListingDetailsComp from '../../components/ListingDetailsComp.astro';
 import { getListingBySlug, getListingReviews, getListingSlots, getExplore, getCreator, ApiError } from '../../lib/apiClient';
 import { listingOg, listingJsonLd, listingBreadcrumbLd } from '../../lib/og';
@@ -35,6 +36,9 @@ if (notFound || !listing) return new Response('Listing not found', { status: 404
 
 Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
 const og = listingOg(listing);
+// [LISTING-EXPIRY-1] A finished or cancelled show keeps a readable page for anyone
+// holding the link, but is no longer something to rank in search.
+const closedListing = ['ended', 'cancelled', 'expired'].includes(scheduleStateOf(listing));
 // [LISTING-SEO-1 2026-09-06] Same Event + breadcrumb graph as /l/<id>.
 // All three listing URLs render the same component, so they must carry the
 // same structured data — a listing that describes itself differently
@@ -64,7 +68,7 @@ const creatorListings: Card[] = creatorProfile?.listings ?? [];
 const isOwner = Boolean(listing.viewer?.is_owner);
 ---
 
-<Base title={og.title} description={og.description} image={og.image}>
+<Base title={og.title} description={og.description} image={og.image} noindex={closedListing}>
   <Fragment slot="head">
     {og.extra.map((m) => (m.property ? <meta property={m.property} content={m.content} /> : <meta name={m.name} content={m.content} />))}
     <script type="application/ld+json" set:html={JSON.stringify(eventLd)} />

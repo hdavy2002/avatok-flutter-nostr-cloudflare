@@ -22,7 +22,7 @@
  * Legacy aliases are still read where they existed, so a caller that hand-built a Card
  * (the mockup pages do) keeps working.
  */
-import type { AiPoster, Card, CardView, CoverMedia, CreatorRef } from './types';
+import type { AiPoster, Card, CardView, CoverMedia, CreatorRef, ScheduleState } from './types';
 import { chips as chipCopy, cta, statusPill, laneBadge, laneName, laneBlurbFallback, spotsLeft, seatsBaakiUrgent, earlyBird, regularsHeart, chatsCount, AI_INSTANT, responseTime, billingUnitLabel, liveWatching, pillExtra } from './copy';
 
 /** [POSTER-FIRST-1 2026-09-05] Find the generated poster, from whichever of the
@@ -99,6 +99,32 @@ function num(value: unknown): number | null {
 }
 
 /**
+ * [LISTING-EXPIRY-1] Where a listing sits in time. The Worker decides this
+ * (worker/src/lib/listing_schedule.ts) and ships it as `schedule_state`; this mirror
+ * only runs when a response predates that field, and uses the SAME rule so an old
+ * cached response can never call a finished show "upcoming".
+ */
+export function scheduleStateOf(card: Pick<Card, 'schedule_state' | 'status' | 'kind' | 'starts_at' | 'duration_min' | 'expires_at'>, now = Date.now()): ScheduleState {
+  if (card.schedule_state) return card.schedule_state;
+  const status = String(card.status ?? '');
+  if (status === 'cancelled') return 'cancelled';
+  if (status === 'completed') return 'ended';
+  if (status !== 'published' && status !== 'live' && status !== '') return 'unpublished';
+  const expiresRaw = Number(card.expires_at ?? 0);
+  const expires = expiresRaw > 0 ? (expiresRaw < 1e11 ? expiresRaw * 1000 : expiresRaw) : null;
+  if (expires !== null && expires <= now) return 'expired';
+  if (status === 'live') return 'live';
+  if (card.kind !== 'live_event') return 'open';
+  const raw = Number(card.starts_at ?? 0);
+  if (!(raw > 0)) return 'open';
+  const start = raw < 1e11 ? raw * 1000 : raw;
+  const end = start + Math.max(1, Number(card.duration_min ?? 60) || 60) * 60_000;
+  if (now < start) return 'upcoming';
+  if (now < end) return 'starting';
+  return 'ended';
+}
+
+/**
  * Normalize one card from `/api/explore`, `/api/explore/search`, `/api/explore/live-now`
  * or `/api/listings/:id` into the shape components render from.
  *
@@ -150,6 +176,7 @@ export function toCardView(card: Card): CardView {
     watching: card.watching == null ? null : num(card.watching),
 
     status: (card.status ?? null) as string | null,
+    scheduleState: scheduleStateOf(card),
     live: Boolean(card.live || card.joinable || card.status === 'live'),
     favorited: Boolean(card.favorited),
     createdAt: num(card.created_at),
@@ -317,7 +344,9 @@ export function timePillLabel(startsAt: number | null, opts: { prefixNext?: bool
   const time = d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone }).toUpperCase();
   const dayKey = (x: Date) => x.toLocaleDateString('en-CA', { timeZone });
   const now = new Date();
-  if (dayKey(d) === dayKey(now)) return `TONIGHT ${time}`;
+  // [LISTING-EXPIRY-1] A time already gone today is not "TONIGHT" — that label sold
+  // a 9 AM show as an evening one at 6 PM the same day.
+  if (dayKey(d) === dayKey(now)) return d.getTime() < now.getTime() ? `STARTED ${time}` : `TONIGHT ${time}`;
   const days = Math.round((d.getTime() - now.getTime()) / 86_400_000);
   if (days > 0 && days < 7) {
     const wk = d.toLocaleDateString('en-IN', { weekday: 'short', timeZone }).toUpperCase();
@@ -341,13 +370,15 @@ export function pillLabel(lane: ListingLane, card: Card, c: CardView): string {
       return statusPill.ALWAYS_ON;
     case 'consult':
       if (card.schedule_mode === 'on_request') return pillExtra.ON_REQUEST;
-      if (!c.startsAt) return pillExtra.AVAILABLE_NOW;
+      // A consult has no fixed show time; a stale starts_at in the past is not a date to advertise.
+      if (!c.startsAt || c.startsAt < Date.now()) return pillExtra.AVAILABLE_NOW;
       return timePillLabel(c.startsAt, { prefixNext: true });
     case 'adda': {
       const rec = recurrenceLabel(
         parseArrayMaybe<number>(card.recurrence_days) ?? undefined,
         card.recurrence_time,
       );
+      if (c.scheduleState === 'ended' || c.scheduleState === 'cancelled') return c.scheduleState === 'ended' ? 'ENDED' : 'CANCELLED';
       if (rec) return rec;
       return c.live ? 'LIVE' : timePillLabel(c.startsAt);
     }
@@ -355,6 +386,10 @@ export function pillLabel(lane: ListingLane, card: Card, c: CardView): string {
     case 'live':
     default: {
       if (c.live) return c.watching ? liveWatching(c.watching) : statusPill.LIVE;
+      // [LISTING-EXPIRY-1] Never a date pill for a show that is over.
+      if (c.scheduleState === 'ended' || c.scheduleState === 'expired') return 'ENDED';
+      if (c.scheduleState === 'cancelled') return 'CANCELLED';
+      if (c.scheduleState === 'starting') return 'STARTING NOW';
       if (c.seatsLeft === 0) return statusPill.SOLD_OUT;
       if (!c.startsAt) return isNew(c.createdAt) ? statusPill.NEW : pillExtra.AVAILABLE_NOW;
       return timePillLabel(c.startsAt);

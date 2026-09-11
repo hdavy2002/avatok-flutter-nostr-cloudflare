@@ -9,7 +9,7 @@ import { Card } from '../../../components/Card';
 import { Button } from '../../../components/Button';
 import { CopyReview } from './CopyReview';
 import { TwoFieldListEditor, StringListEditor, ChatLineEditor, labelCls, inputCls, textareaCls, SectionHeader, charCount } from './Editors';
-import { REFUND_WINDOWS, BOOKING_NOTICE_HOURS } from './wizardLogic';
+import { REFUND_WINDOWS, BOOKING_NOTICE_HOURS, localToEpoch } from './wizardLogic';
 import type { ReadinessCheck, ListingReviewResult } from './wizardLogic';
 import { defaultsFor } from '../../../lib/listingDefaults';
 import { cfImage } from '../../../lib/config';
@@ -594,8 +594,12 @@ export function Step4Time({ draft, patch, err, slotsSupported, onAddSlot, onRemo
                 </label>
                 <Button variant="blue" label="Add slot" loading={slotBusy} className="sm:col-span-2"
                   onClick={() => {
-                    const ms = new Date(slotDraft.starts_at).getTime();
-                    if (!Number.isFinite(ms)) return;
+                    // [LISTING-EXPIRY-1 / P1-6] Read the typed time in the LISTING's timezone,
+                    // like the main start time already is — `new Date(value)` used the
+                    // browser's zone, so a creator on a laptop set to UTC saved every extra
+                    // slot 5h30 late.
+                    const ms = localToEpoch(slotDraft.starts_at, draft.timezone);
+                    if (ms == null || !Number.isFinite(ms)) return;
                     onAddSlot({ starts_at: ms, duration_min: slotDraft.duration_min, label: slotDraft.label, capacity: slotDraft.capacity });
                     setSlotDraft({ starts_at: '', duration_min: 60, label: '', capacity: draft.kind === 'consult' ? 1 : 10 });
                   }} />

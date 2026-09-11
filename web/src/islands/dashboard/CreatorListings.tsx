@@ -40,6 +40,7 @@ const STATUS_TONE: Record<string, string> = {
   published: 'bg-mint text-ink',
   live: 'bg-coral text-paper',
   completed: 'bg-blue text-ink',
+  ended: 'bg-tape text-ink',
   cancelled: 'bg-paper2 text-inkMute line-through',
 };
 
@@ -55,6 +56,7 @@ const STATUS_LABEL: Record<string, string> = {
   published: 'Published',
   live: 'Live',
   completed: 'Completed',
+  ended: 'Ended',
   cancelled: 'Cancelled',
 };
 
@@ -133,7 +135,7 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
    * reason is right there. `transition_not_allowed` also carries `status_now`
    * and the allowed targets, which is what turns "it won't delete" into "this
    * listing is completed and can no longer be archived". */
-  function actionError(verb: 'archive' | 'remove', e: unknown): string {
+  function actionError(verb: 'archive' | 'remove' | 'run again', e: unknown): string {
     const err = e as { status?: number; message?: string; body?: any };
     const body = err?.body ?? {};
     const reason = String(body.reason ?? body.error ?? err?.message ?? 'unknown error');
@@ -143,6 +145,20 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
       : '';
     const code = err?.status ? ` [${err.status}]` : '';
     return `Could not ${verb} this listing${code}: ${reason}${now}.${allowed}`;
+  }
+
+  /* [LISTING-EXPIRY-1 / P1-8] "Run it again". A show that has ended is completed and
+   * closed to edits; the only honest way to give it a new date is the existing
+   * archive-restore path (completed → draft), then the editor. The date change is a
+   * reviewed field, so it goes back through review like any other material edit. */
+  async function runAgain(id: string) {
+    if (!token) return;
+    setBusy(id);
+    try {
+      await withTrace(() => request(`/api/listings/${id}/status`, { method: 'POST', auth: token, body: { status: 'draft' } }));
+      capture('listing_run_again', { listing_id: id });
+      window.location.href = `/dashboard/listings/new?id=${encodeURIComponent(id)}&rerun=1`;
+    } catch (e) { alert(actionError('run again', e)); setBusy(null); }
   }
 
   async function archive(id: string) {
@@ -230,8 +246,11 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {filtered.map((l) => {
-            const st = (l.status ?? 'draft') as string;
             const view = toCardView(l);
+            // [LISTING-EXPIRY-1] A published show whose date has passed reads "Ended",
+            // not "Published" — the marketplace already stopped showing it.
+            const ended = l.kind === 'live_event' && (view.scheduleState === 'ended' || (l.status ?? '') === 'completed');
+            const st = (ended ? 'ended' : (l.status ?? 'draft')) as string;
             return (
               <div key={l.id} className="flex flex-col overflow-hidden rounded-zine border-zine border-ink bg-card shadow-zine-sm transition-transform duration-zine hover:-translate-y-[2px]">
                 <div className="relative aspect-[16/10] w-full border-b-zine border-ink bg-paper2">
@@ -259,8 +278,11 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
                     {st === 'draft' && (
                       <a href={`/dashboard/listings/publish?id=${encodeURIComponent(l.id)}`} className="flex-1 rounded-zineField border-zine border-ink bg-lime px-2 py-1.5 text-center font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">Finish</a>
                     )}
+                    {ended && l.status === 'completed' && (
+                      <button type="button" disabled={busy === l.id} onClick={() => runAgain(l.id)} className="flex-1 rounded-zineField border-zine border-ink bg-lime px-2 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-ink shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50">Run again</button>
+                    )}
                     <a href={`/dashboard/listings/new?id=${encodeURIComponent(l.id)}`} className="flex-1 rounded-zineField border-zine border-ink bg-paper px-2 py-1.5 text-center font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">Edit</a>
-                    {st !== 'cancelled' && (
+                    {st !== 'cancelled' && !ended && (
                       <button type="button" disabled={busy === l.id} onClick={() => archive(l.id)} className="flex-1 rounded-zineField border-zine border-ink bg-paper2 px-2 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-inkSoft shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50">Archive</button>
                     )}
                     <button type="button" disabled={busy === l.id} onClick={() => remove(l.id)} className="rounded-zineField border-zine border-ink bg-paper px-2.5 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-coral shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50" aria-label="Delete">✕</button>

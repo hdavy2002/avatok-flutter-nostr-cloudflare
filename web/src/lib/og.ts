@@ -7,6 +7,7 @@
 
 import { cfImage } from './config';
 import type { Creator, Listing } from './types';
+import { scheduleStateOf } from './card';
 
 /** The shape Base.astro consumes, plus optional extra tags for the head slot. */
 export interface OgMeta {
@@ -131,7 +132,13 @@ export function listingJsonLd(listing: Listing, canonicalUrl: string): Record<st
   if (image) event.image = [image];
   if (starts) event.startDate = starts;
   if (ends) event.endDate = ends;
-  if (listing.status === 'live') event.eventStatus = 'https://schema.org/EventScheduled';
+  // [LISTING-EXPIRY-1] Say what actually happened to the show. schema.org has no
+  // "completed" status, so an ended show carries no eventStatus and — below — no
+  // purchasable offer, instead of a past startDate still marked InStock.
+  const state = scheduleStateOf(listing);
+  if (state === 'cancelled') event.eventStatus = 'https://schema.org/EventCancelled';
+  else if (state === 'live' || state === 'upcoming' || state === 'starting') event.eventStatus = 'https://schema.org/EventScheduled';
+  const sellable = listing.booking_open ?? !['ended', 'cancelled', 'expired'].includes(state);
 
   if (listing.price != null) {
     event.offers = {
@@ -139,8 +146,10 @@ export function listingJsonLd(listing: Listing, canonicalUrl: string): Record<st
       price: String(listing.price),
       priceCurrency: (listing.currency ?? 'INR').toUpperCase(),
       url: canonicalUrl,
-      availability: 'https://schema.org/InStock',
-      ...(starts ? { validFrom: new Date().toISOString() } : {}),
+      availability: sellable
+        ? (listing.seats_left === 0 ? 'https://schema.org/SoldOut' : 'https://schema.org/InStock')
+        : 'https://schema.org/Discontinued',
+      ...(starts && sellable ? { validFrom: new Date().toISOString() } : {}),
     };
   }
 

@@ -16,6 +16,8 @@
  * Do not read these fields directly in a component. Run the card through `toCardView()`
  * in lib/card.ts, which resolves the aliases and derives the poster from the cover array.
  */
+export type ScheduleState = 'upcoming' | 'starting' | 'live' | 'ended' | 'cancelled' | 'expired' | 'open' | 'unpublished';
+
 export interface Card {
   id: string;
   kind?: ListingKind;
@@ -69,6 +71,12 @@ export interface Card {
   /** Live state hint when applicable. */
   live?: boolean;
   status?: string | null;
+  /** [LISTING-EXPIRY-1] Server-decided position in time (worker lib/listing_schedule.ts):
+   *  upcoming | starting | live | ended | cancelled | expired | open | unpublished.
+   *  Absent on responses from a Worker older than 2026-09-11. */
+  schedule_state?: ScheduleState | null;
+  /** Marketplace (sell/buy/social) paid-window end, epoch ms. */
+  expires_at?: number | null;
   starts_at?: number | null;
   ends_at?: number | null;
   duration_min?: number | null;
@@ -268,6 +276,8 @@ export interface CardView {
   seatsLeft: number | null;
   watching: number | null;
   status: string | null;
+  /** [LISTING-EXPIRY-1] See Card.schedule_state; derived client-side when absent. */
+  scheduleState: ScheduleState;
   live: boolean;
   favorited: boolean;
   /** [LIST-TRUST-1] Epoch ms the listing was created, null when unknown. Backs
@@ -285,6 +295,10 @@ export interface CardView {
 /** Full listing detail from /api/listings/:id. */
 export interface Listing extends Card {
   description?: string | null;
+  /** [LISTING-EXPIRY-1] The server's answer to "can a buyer book this right now?" —
+   *  the same rule checkout enforces. Detail response only. */
+  booking_open?: boolean;
+  booking_closed_reason?: 'event_ended' | 'booking_closed' | 'listing_cancelled' | 'listing_unavailable' | null;
   creator_stats?: CreatorStats | null;
   reviews?: Review[];
   viewer?: {

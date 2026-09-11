@@ -70,16 +70,20 @@ function minutesLabel(min: number | null): string | null {
   return m ? `${h} hr ${m} min` : `${h} hour${h === 1 ? '' : 's'}`;
 }
 
-function whenLabel(startsAt: number | null): string | null {
+function whenLabel(startsAt: number | null, timeZone: string | null | undefined): string | null {
   if (!startsAt) return null;
   try {
     // Seconds vs milliseconds: rows carry both historically, and reading a
     // seconds value as ms lands the date in 1970 — visibly wrong, silently
     // produced. Anything below ~year 2001 in ms must have been seconds.
     const ms = startsAt < 1e11 ? startsAt * 1000 : startsAt;
-    return new Date(ms).toLocaleString(undefined, {
-      weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit',
+    // [LISTING-EXPIRY-1 / P1-6] In the LISTING's zone (IST by default), never the
+    // browser's: a buyer in Dubai was shown a different show time from the card.
+    const zone = timeZone || 'Asia/Kolkata';
+    const text = new Date(ms).toLocaleString('en-IN', {
+      weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: zone,
     });
+    return `${text} ${zone === 'Asia/Kolkata' || zone === 'Asia/Calcutta' ? 'IST' : zone}`;
   } catch { return null; }
 }
 
@@ -107,7 +111,14 @@ export function QuickInfo({ card: c, listing, lane, href, onClose, onBook }: Qui
   // than the tile that opened it.
   const price = priceLabel(c.price, listing?.price_semantics ?? null, listing?.billing_unit ?? null);
   const duration = minutesLabel(c.durationMin);
-  const when = whenLabel(c.startsAt);
+  const when = whenLabel(c.startsAt, listing?.timezone ?? null);
+  // [LISTING-EXPIRY-1] Same rule checkout enforces — never a live BOOK NOW on a show
+  // that is over. `booking_open` arrives with the detail row; until then the card's
+  // own schedule state decides.
+  const closedLabel = c.scheduleState === 'ended' || c.scheduleState === 'expired' ? 'SHOW ENDED'
+    : c.scheduleState === 'cancelled' ? 'CANCELLED'
+      : listing?.booking_open === false ? (listing.booking_closed_reason === 'event_ended' ? 'SHOW ENDED' : 'BOOKING CLOSED')
+        : null;
   const language = languageLabel(c.spokenLang);
   // [SESSION-MEDIA-1] Only stated for the kinds where it IS a promise. A
   // marketplace item has no session, so a row saying "Audio and video" there
@@ -188,11 +199,12 @@ export function QuickInfo({ card: c, listing, lane, href, onClose, onBook }: Qui
         <div style={{
           display: 'flex', gap: 10, padding: '14px 22px 20px', borderTop: `1px solid ${RULE}`,
         }}>
-          <button type="button" onClick={onBook} style={{
+          <button type="button" onClick={closedLabel ? undefined : onBook} disabled={Boolean(closedLabel)} style={{
             flex: 1, fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 900,
             fontSize: '0.8125rem', letterSpacing: '.08em', padding: '13px 8px', borderRadius: 100,
-            border: `2px solid ${INK}`, background: RED, color: PAPER, cursor: 'pointer',
-          }}>BOOK NOW</button>
+            border: `2px solid ${INK}`, background: closedLabel ? '#b39c82' : RED, color: PAPER,
+            cursor: closedLabel ? 'not-allowed' : 'pointer',
+          }}>{closedLabel ?? 'BOOK NOW'}</button>
           <a href={href} style={{
             flex: 1, textAlign: 'center', textDecoration: 'none',
             fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 900,

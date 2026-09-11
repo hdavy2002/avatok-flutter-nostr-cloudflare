@@ -32,6 +32,7 @@ import { Pill } from '../../components/Pill';
 import { Field } from '../../components/Field';
 import { Spinner } from '../../components/Spinner';
 import { inrOrFree } from '../../lib/money';
+import { scheduleStateOf } from '../../lib/card';
 import { capture } from '../../lib/analytics';
 import type { BookSelection, CalendarSlot } from './types';
 import { getListingAvailability } from '../../lib/availability';
@@ -165,6 +166,29 @@ export function SlotPicker({ listing, token, onNeedAuth, onSelect }: SlotPickerP
  *  routes to CommercialPayStep → POST /api/commercial/live/:id/checkout. */
 function LiveTicket({ listing, onSelect }: { listing: Listing; onSelect: (s: BookSelection) => void }) {
   const price = Math.trunc(Number(listing.price ?? listing.effective_price ?? 0));
+  // [LISTING-EXPIRY-1] The checkout page can be reached from an old link or a tab left
+  // open overnight. Checkout itself refuses a finished show (410), but the buyer should
+  // be told here, before choosing a payment method, not after.
+  const state = scheduleStateOf(listing);
+  const closed = listing.booking_open === false || state === 'ended' || state === 'cancelled' || state === 'expired';
+  useEffect(() => {
+    if (closed) capture('checkout_listing_closed', { listing_id: listing.id, schedule_state: state, reason: listing.booking_closed_reason ?? null });
+  }, [closed, listing.id, state, listing.booking_closed_reason]);
+  if (closed) {
+    return (
+      <Card>
+        <div className="flex flex-col gap-3">
+          <p className="font-display font-semibold text-[18px] text-ink">
+            {state === 'cancelled' ? 'This show was cancelled.' : state === 'ended' || state === 'expired' ? 'This show has ended.' : 'Booking for this show has closed.'}
+          </p>
+          <p className="font-body text-[15px] text-inkSoft">
+            Tickets are no longer sold for <span className="text-ink">{listing.title}</span>. Anyone who booked a show that did not happen is refunded automatically.
+          </p>
+          <a className="font-body font-bold text-[15px] underline" href="/marketplace">Browse other shows →</a>
+        </div>
+      </Card>
+    );
+  }
   return (
     <Card>
       <div className="flex flex-col gap-4">
