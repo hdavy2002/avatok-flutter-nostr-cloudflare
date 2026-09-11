@@ -301,3 +301,75 @@ Contract note: `reconnecting`/`reconnect_deadline_ms`/`outcome` on
 `GET /api/commercial/live/:id/state` land with WP8 (wave 2). Until then these
 fields are simply absent and every branch above is inert — coded against the
 contract now so no follow-up web change is needed when WP8 ships.
+
+## WP3 [SETTLE-CHECKIN-1] — consult settlement decision telemetry
+
+Surfaces: `worker/src/commercial_settlement.ts`, `worker/src/money_engine.ts`. No new
+event NAMES — the existing `commercialEvent(env, "settlement", null, {...})` call sites
+(worker-side, scalar-only, redacted per `lib/commercial_telemetry.ts`) now carry the
+check-in decision instead of the two-party GetStream-overlap one for `consult_1to1`:
+
+- `commercialEvent(env, "settlement", null, { kind: "consult_1to1", outcome: "settled" })`
+  — fires from the existing `finishSettlement()` path whenever
+  `consultCheckInDecision()` found the creator checked in (RULEBOOK-PAID-SESSIONS.md §2
+  C1). The receipt row it corresponds to now also carries `rule: 'creator_checked_in'`
+  and `checked_in_at` (epoch ms) — read those off `commercial_receipts`, not off the
+  event, for the audit trail; the event itself stays scalar/aggregate.
+- `commercialEvent(env, "settlement", null, { outcome: "refunded", reason:
+  "creator_no_show", kind: "consult_1to1" })` — fires from `refundCreatorNoShow()` (main
+  settlement path) or `finalizeOverdueNoShow()` (the "never reached 'ended'" sweep) when
+  the creator did NOT check in within `sessionCreatorCheckInMin` (C2). Both paths now also
+  write an `account_strikes` row (`category: 'marketplace_no_show'`, `source:
+  'commercial_settlement'`) — success value for this WP: every `creator_no_show` refund
+  event has a matching strike row with the same `commercial_session_id` as evidence_url.
+
+Not telemetry, but worth a dashboard eye: `money_engine.ts`'s delegation guard logs
+`console.log('[money_engine] delegation guard: ...')` (worker logs, not PostHog) whenever
+a stale Q_MONEY job for a `bookings.kind='consult_1to1'` order reaches the legacy Phase-7
+engine — it should be rare-to-never post-cutover; a sustained rate means something is
+still enqueueing legacy money jobs for commercial bookings.
+
+## WP1 [SESSION-CLOCK-0] — consult session clock, waiting-room prejoin grant, call rejoin
+
+Surface: `worker/src/routes/commercial_stream_sessions.ts`,
+`worker/src/lib/commercial_session_clock.ts`. All emitted via
+`commercialEvent(env, event, uid, props)` (`worker/src/lib/commercial_telemetry.ts`),
+which stamps `lane: 'commercial'`, `schema_version`, and routes through the shared
+`track()`/`metric()` sinks — same super-property contract as every other commercial
+event in this catalog.
+
+`commercial_provider_event` {kind: 'consult_1to1', outcome: 'applied',
+event_class: 'interval_close_only'} — fired from `recordCommercialStreamEvent` when
+a GetStream `session_ended`/`call.ended`/`live_stopped` webhook arrives for a 1:1
+consult. Per RULEBOOK-PAID-SESSIONS.md §5 ("the schedule ends a session, never a
+provider event"), this path now ONLY closes any open
+`commercial_participant_intervals` rows — it never marks `commercial_sessions`
+ended and never queues a settlement job. `live_event` webhooks are unaffected and
+keep firing the pre-existing `outcome: 'ended'`/settlement-queuing path.
+
+`commercial_session_clock` {kind: 'consult_1to1', outcome: 'ended',
+reason: 'schedule_due'} — fired once per session by the new 5-minute cron sweep
+`endDueConsultSessions` (`worker/src/lib/commercial_session_clock.ts`, wired into
+the existing `scheduled()` handler in `worker/src/index.ts` next to
+`reconcileCommercialSessions`) when a `kind='consult_1to1'` session's booking
+`ends_at + commercialConsultJoinLateMin` has passed and the session is not already
+ended/cancelled. This is the ONLY thing (besides the explicit
+`POST /api/commercial/consult/:id/end` route) that ends a consult session. Success
+value: this event firing for a session whose `commercial_settlement_jobs` row also
+exists (settlement was actually queued, not just the flag flipped).
+
+`commercial_join` {kind, outcome: 'rejoin_recreated_call'} — fired from
+`authorizeProviderJoin` when a valid, in-window participant rejoins a session whose
+GetStream call the provider reports as ended or missing (404) and the call is
+recreated via `createProviderCall` rather than refusing the join. Distinguishes a
+genuine rejoin-after-drop from the normal first-join path (which emits no extra
+event beyond the existing `commercial_join {outcome:'refused', ...}` refusal
+events already in this catalog).
+
+Contract note: `commercialConsultPrejoin`'s response now includes `room_ws`,
+`room_token`, `check_in_by` from WP2's `buildWaitingRoomGrant`
+(`worker/src/lib/commercial_waiting_room.ts`) per the shared waiting-room contract
+in `Specs/PLAN-2026-09-11-WAITING-ROOM-BUILD.md`. As of this WP that lib is a
+stub (`// WP2 replaces this`) returning a placeholder `room_ws`/`room_token` and
+`check_in_by: startsAt` — no new client-facing telemetry from this change until
+WP2 lands the real grant and WP4/WP6 wire the waiting-room UI against it.
