@@ -10,7 +10,16 @@ export type CommercialNotificationType =
   | "commercial_broadcast_started"
   | "commercial_broadcast_ended"
   | "commercial_refund"
-  | "commercial_receipt";
+  | "commercial_receipt"
+  // [LIVE-GRACE-1] Host push when the DO reports the creator disconnected
+  // mid-broadcast (RULEBOOK-PAID-SESSIONS.md v2 §4 L4/L5). Routed through
+  // notifyCommercialUser -> notifyUser like every other commercial type here,
+  // so it hits consumers/src/fcm.ts's `commercialType` branch (any
+  // `commercial_*` type), which forwards `type` + `listing_id` on the FCM data
+  // payload -- unlike a bare notifyUser() call, which the FCM `notify` branch
+  // does NOT special-case (it drops everything but a stable subset of chat
+  // fields, not this notice's listing_id).
+  | "commercial_reconnect";
 
 type Event = {
   type: CommercialNotificationType;

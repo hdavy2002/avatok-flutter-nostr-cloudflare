@@ -19,6 +19,7 @@
 // Instance naming: `live:<listingId>` (AvaLive) | `consult:<bookingId>`.
 import type { Env } from "../types";
 import { json } from "../util";
+import { endLiveOnHostNoReturn } from "../lib/live_grace";
 
 const FLUSH_MS = 5_000;
 const GIFT_COMMISSION = 0.30;          // legacy gifts path (§10.1)
@@ -97,6 +98,21 @@ export class StreamSessionDO {
         const wait = (Math.trunc(Number(body.wait_min ?? 20)) || 20) * 60_000;
         await this.armAlarm(Number(body.starts_at) + wait, "money_noshow");
         await this.armAlarm(Number(body.ends_at) + END_GRACE_MS, "money_end");
+        return json({ ok: true });
+      }
+      // [LIVE-GRACE-1] RULEBOOK-PAID-SESSIONS.md v2 §4 L4/L5. The Worker
+      // (lib/live_grace.ts) arms/clears this alarm from
+      // recordCommercialStreamEvent's participant_left/participant_joined
+      // branches for the host of a live event; `alarm()` below fires
+      // `endLiveOnHostNoReturn` if nobody clears it in time.
+      case "live_grace_arm": { // {t: deadline_ms}
+        await this.armAlarm(Number(body.t), "live_grace");
+        return json({ ok: true });
+      }
+      case "live_grace_clear": { // host rejoined before the deadline
+        this.sql.exec("DELETE FROM alarms WHERE kind='live_grace'");
+        const next = this.sql.exec("SELECT MIN(t) AS t FROM alarms").one() as any;
+        if (next?.t) await this.state.storage.setAlarm(Number(next.t));
         return json({ ok: true });
       }
       case "host-live": { // stream webhook: connected/disconnected (A4 overlay)
@@ -281,6 +297,13 @@ export class StreamSessionDO {
     for (const d of due) {
       try {
         if (d.kind === "gift_flush") await this.flushGifts();
+        if (d.kind === "live_grace" && s.sid) {
+          // Best-effort from the DO's side: the sweep in
+          // commercial_settlement.ts / a cron re-check is the safety net if
+          // this throws (see the catch below) -- this alarm firing at all is
+          // itself the durable signal that the grace window elapsed.
+          await endLiveOnHostNoReturn(this.env, String(s.sid));
+        }
         if ((d.kind === "money_noshow" || d.kind === "money_end") && s.sid) {
           // [WAITROOM-1] Commercial bookings (bookings.kind='consult_1to1') are
           // settled ONLY by the commercial settlement engine (check-in decision,

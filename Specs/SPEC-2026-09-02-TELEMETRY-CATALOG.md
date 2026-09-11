@@ -539,3 +539,63 @@ with a non-null `room_ws` confirms the app is on the new waiting-room path
 rather than the fallback; `waitroom_autojoin` appearing before the existing
 `consult_room_entered`/join telemetry on the same booking+device confirms the
 auto-join rule fired ahead of the manual "Join consultation" tap it replaces.
+
+## WP8 [LIVE-GRACE-1] — live host disconnect grace window, worker-side
+
+Surface: `worker/src/routes/commercial_stream_sessions.ts` (live branches of
+`recordCommercialStreamEvent`), `worker/src/lib/live_grace.ts`,
+`worker/src/do/stream_session.ts` (alarm kind `live_grace`),
+`worker/src/commercial_settlement.ts` (live `host_no_return` branch). All
+worker-side events emitted via `commercialEvent(env, event, uid, props)`
+(`worker/src/lib/commercial_telemetry.ts`) — same `lane: 'commercial'`,
+`schema_version` super-property contract as every other commercial event in
+this catalog.
+
+`commercial_live_grace` {kind: 'live_event', outcome: 'armed'} — fired from
+`armLiveGrace` when a GetStream `participant_left` webhook for the live
+event's `host` member arrives while `commercial_sessions.state='live'`
+(RULEBOOK-PAID-SESSIONS.md v2 §4 L4/L5). Idempotent: a replayed webhook for an
+already-armed window fires nothing (the D1 write it gates on reports zero
+rows changed).
+
+`commercial_live_grace` {kind: 'live_event', outcome: 'rejoined'} — fired
+from `clearLiveGrace` when the host's `participant_joined` webhook arrives
+before the grace deadline. Same idempotency guard.
+
+`commercial_live_grace` {kind: 'live_event', outcome: 'host_no_return'} —
+fired from `endLiveOnHostNoReturn`, called from the DO's `live_grace` alarm
+(`do/stream_session.ts`) when nobody cleared the window in time. Session row
+gets `state='ended', end_outcome='host_no_return'`; open participant
+intervals and the open `commercial_live_outages` row are closed; one
+`commercial_settlement_jobs` row is queued per order on the listing.
+
+`commercial_settlement` {outcome: 'host_no_return_partial', kind:
+'live_event', refund_pct} — fired from `settleLiveHostNoReturn`
+(`commercial_settlement.ts`) once per settled order: `refund_pct` is the
+unwatched-fraction of the ticket's slot, rounded to a whole percent
+(`gross × (slot_ms − watched_eligible_ms) / slot_ms`, `watched_eligible_ms`
+excluding overlap with any `commercial_live_outages` row). The consumed
+remainder is released through the pre-existing `releaseSnapshot` /
+`finishSettlement` rails with the creator/platform amounts scaled by the
+watched fraction; the unconsumed share goes out through the pre-existing
+`executeCommercialRefund` / `finalizeCommercialRefund` refund rail with
+`reason: 'host_no_return'`.
+
+`commercial_reconnect` push (via `notifyCommercialUser`,
+`worker/src/lib/commercial_notifications.ts`) — sent to the creator only,
+`data: {kind:'commercial', type:'commercial_reconnect', listing_id,
+session_id, deeplink}`. Routed through `consumers/src/fcm.ts`'s
+`commercialType` branch (any `commercial_*` type forwards `type` +
+`listing_id`/`session_id`/`deeplink` on the FCM data payload) rather than a
+bare `notifyUser()` call, whose `notify` branch does not carry those fields —
+this is the "preserves data" path WP7's push handler
+(`app/lib/push/push_service.dart`) reads `listing_id` off.
+
+Contract note: `GET /api/commercial/live/:id/state` (`commercialLiveState`)
+now exposes `state:'reconnecting'` (projected — see
+`migrations/2026-09-11-live-grace-alter.sql` for why the underlying `state`
+column never stores that literal), `reconnect_deadline_ms` while the window
+is open, `starts_at` unconditionally, and `outcome:'host_no_return'` once the
+session has ended that way. No new telemetry from the state route itself —
+WP5 (web) and WP7 (app) poll it and own the client-side events for what the
+viewer/host sees.

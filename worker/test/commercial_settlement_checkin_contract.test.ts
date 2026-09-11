@@ -40,9 +40,10 @@ describe("consult settlement uses the check-in decision, not two-party overlap",
     expect(settlement).toContain("await insertNoShowStrike(env, authority.creator_id, job.commercial_session_id);");
     // refundCreatorNoShow reuses the SAME executeCommercialRefund/finalizeCommercialRefund
     // primitives as the live-event no-show branch and the overdue sweep — one refund rail,
-    // three call sites (live no-show, refundCreatorNoShow, finalizeOverdueNoShow).
-    expect(settlement.match(/executeCommercialRefund\(env, \{/g)?.length).toBe(3);
-    expect(settlement.match(/finalizeCommercialRefund\(env, \{/g)?.length).toBe(3);
+    // four call sites (live no-show, refundCreatorNoShow, finalizeOverdueNoShow, and
+    // [LIVE-GRACE-1]'s settleLiveHostNoReturn — the per-ticket unconsumed-share refund).
+    expect(settlement.match(/executeCommercialRefund\(env, \{/g)?.length).toBe(4);
+    expect(settlement.match(/finalizeCommercialRefund\(env, \{/g)?.length).toBe(4);
   });
 
   it("mirrors the account_strikes insert pattern from money_engine.ts", () => {

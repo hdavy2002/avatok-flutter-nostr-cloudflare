@@ -49,6 +49,11 @@ type SettlementAuthority = {
   policy_version: string;
   // [TAX-GST-1] Nullable so a snapshot written before the gst migration still loads.
   gst_amount: number | null;
+  // [LIVE-GRACE-1] Nullable — NULL for every consult_1to1 and for a live_event
+  // that ended normally. 'host_no_return' is the only value that routes here
+  // (RULEBOOK-PAID-SESSIONS.md v2 §4 L5) to settleLiveHostNoReturn instead of
+  // the two-party deliveryError() decision.
+  end_outcome: string | null;
 };
 
 type OverdueNoShowAuthority = {
@@ -103,7 +108,7 @@ async function markReview(env: Env, jobId: string, reason: string): Promise<void
 async function loadAuthority(env: Env, job: SettlementJob): Promise<SettlementAuthority | null> {
   return await metaDb(env).prepare(
     `SELECT s.kind,s.listing_id,s.booking_id,s.creator_id,s.state session_state,
-      s.live_started_at,s.scheduled_at,
+      s.live_started_at,s.scheduled_at,s.end_outcome,
       o.id order_id,o.buyer_id,o.creator_id order_creator_id,o.amount order_amount,
       o.status order_status,p.policy_snapshot_id,p.gross_amount,p.currency,
       p.creator_fee_pct,p.settlement_hold_hours,p.platform_fee_amount,p.creator_amount,
@@ -502,6 +507,147 @@ async function finishSettlement(
   commercialEvent(env, "settlement", null, { kind: authority.kind, outcome: "settled" });
 }
 
+/**
+ * [LIVE-GRACE-1] RULEBOOK-PAID-SESSIONS.md v2 §4 L5 — the slot is the
+ * listing's scheduled duration, starting at `scheduled_at`. `duration_min`
+ * missing or non-positive (should not happen for a published live_event) is
+ * a defensive 60-minute fallback, not a silent zero-refund.
+ */
+async function slotMsForListing(env: Env, listingId: string): Promise<number> {
+  const row = await metaDb(env).prepare(
+    "SELECT duration_min FROM listings WHERE id=?1",
+  ).bind(listingId).first<{ duration_min: number | null }>();
+  const min = Number(row?.duration_min);
+  return (Number.isFinite(min) && min > 0 ? min : 60) * 60_000;
+}
+
+/**
+ * [LIVE-GRACE-1] This ticket holder's connected time inside the slot, minus
+ * whatever overlaps a recorded host outage window (commercial_live_outages —
+ * armed on the host's `participant_left`, closed on rejoin or on the grace
+ * alarm firing). A viewer who stayed connected through the whole outage is
+ * not charged for it even though their own interval never closed for it.
+ */
+async function watchedEligibleMs(env: Env, sessionId: string, buyerId: string): Promise<number> {
+  const intervals = await metaDb(env).prepare(
+    `SELECT joined_at,COALESCE(left_at,joined_at) left_at FROM commercial_participant_intervals
+       WHERE commercial_session_id=?1 AND account_id=?2
+         AND reconciliation_state IN ('closed','reconciled')`,
+  ).bind(sessionId, buyerId).all<{ joined_at: number; left_at: number }>();
+  const outages = await metaDb(env).prepare(
+    `SELECT started_at,COALESCE(ended_at,started_at) ended_at FROM commercial_live_outages
+       WHERE commercial_session_id=?1`,
+  ).bind(sessionId).all<{ started_at: number; ended_at: number }>();
+  let total = 0;
+  for (const iv of intervals.results ?? []) {
+    let ms = Math.max(0, Number(iv.left_at) - Number(iv.joined_at));
+    for (const outage of outages.results ?? []) {
+      const overlap = Math.max(0, Math.min(Number(iv.left_at), Number(outage.ended_at))
+        - Math.max(Number(iv.joined_at), Number(outage.started_at)));
+      ms -= overlap;
+    }
+    total += Math.max(0, ms);
+  }
+  return Math.max(0, Math.trunc(total));
+}
+
+/**
+ * [LIVE-GRACE-1] RULEBOOK-PAID-SESSIONS.md v2 §4 L5: `refund = gross ×
+ * (slot_ms − watched_eligible_ms) / slot_ms` for this ticket, gst pro-rated
+ * the same way. The consumed remainder (gross/gst/creator/platform amounts
+ * scaled by the watched fraction) is released through the SAME
+ * releaseSnapshot()/finishSettlement() rails a normal settlement uses — "the
+ * rest" of the RULEBOOK sentence — just with the reduced creator/platform
+ * split; the receipt keeps the ORIGINAL `gross_amount` for audit (the ticket
+ * price never changes, only how much of it the creator/platform actually
+ * keep vs refund).
+ */
+async function settleLiveHostNoReturn(env: Env, job: SettlementJob, authority: SettlementAuthority): Promise<void> {
+  const gross = Math.trunc(Number(authority.gross_amount));
+  const gstAmount = Math.max(0, Math.trunc(Number(authority.gst_amount ?? 0)));
+  const platformAmount = Math.trunc(Number(authority.platform_fee_amount));
+  const creatorAmount = Math.trunc(Number(authority.creator_amount));
+  // [TAX-GST-1] Same sufficiency guard processJob's normal path runs before
+  // ever moving money — escrow holds base + tax in one hold, so both must be
+  // covered before either the refund or the release leg below touches it.
+  const escrowRequired = gross + gstAmount;
+  if (!job.funds_verified_at && escrowRequired > 0) {
+    const available = await escrowBalance(env, authority.order_id);
+    if (available < escrowRequired) {
+      return await markReview(env, job.settlement_job_id, "escrow balance below immutable gross");
+    }
+    const verifiedAt = Date.now();
+    await metaDb(env).prepare(
+      `UPDATE commercial_settlement_jobs SET funds_verified_at=?2,updated_at=?2
+       WHERE settlement_job_id=?1 AND funds_verified_at IS NULL`,
+    ).bind(job.settlement_job_id, verifiedAt).run();
+    job.funds_verified_at = verifiedAt;
+  }
+  const slotMs = await slotMsForListing(env, authority.listing_id);
+  const watchedMs = await watchedEligibleMs(env, job.commercial_session_id, authority.buyer_id);
+  const unwatchedFraction = slotMs > 0 ? Math.max(0, Math.min(1, (slotMs - watchedMs) / slotMs)) : 1;
+  const refundGross = Math.round(gross * unwatchedFraction);
+  const refundGst = Math.round(gstAmount * unwatchedFraction);
+  const refundable = refundGross + refundGst;
+  const consumedCreatorAmount = creatorAmount - Math.round(creatorAmount * unwatchedFraction);
+  const consumedPlatformAmount = platformAmount - Math.round(platformAmount * unwatchedFraction);
+  const consumedGstAmount = gstAmount - refundGst;
+
+  if (refundable > 0) {
+    const claim = await claimCommercialMoney(env, {
+      orderId: authority.order_id, claimType: "refund", claimId: `host-no-return:${job.settlement_job_id}`,
+    });
+    if (!claim.owned) {
+      const owner = claim.existing ? `${claim.existing.claim_type}:${claim.existing.claim_id}` : "unknown";
+      return await markReview(env, job.settlement_job_id, `commercial money claim owned by ${owner}`);
+    }
+    const money = await executeCommercialRefund(env, {
+      orderId: authority.order_id, buyerId: authority.buyer_id, amount: refundable, reason: "host_no_return",
+    });
+    if (!money.ok) return await markReview(env, job.settlement_job_id, `host_no_return_refund_failed:${money.error}`);
+    await finalizeCommercialRefund(env, {
+      orderId: authority.order_id,
+      sessionId: job.commercial_session_id,
+      listingId: authority.listing_id,
+      bookingId: authority.booking_id,
+      buyerId: authority.buyer_id,
+      creatorId: authority.creator_id,
+      kind: authority.kind,
+      grossAmount: gross,
+      refundedAmount: refundable,
+      gstAmount: refundGst,
+      currency: authority.currency,
+      policySnapshotId: authority.policy_snapshot_id,
+      reason: "host_no_return",
+      actor: "system",
+    });
+    await completeCommercialMoneyClaim(env, {
+      orderId: authority.order_id, claimType: "refund", claimId: `host-no-return:${job.settlement_job_id}`,
+    });
+  }
+
+  const consumed: SettlementAuthority = {
+    ...authority,
+    creator_amount: consumedCreatorAmount,
+    platform_fee_amount: consumedPlatformAmount,
+    gst_amount: consumedGstAmount,
+  };
+  const claim = await claimCommercialMoney(env, {
+    orderId: authority.order_id, claimType: "settlement", claimId: job.settlement_job_id,
+  });
+  if (!claim.owned) {
+    const owner = claim.existing ? `${claim.existing.claim_type}:${claim.existing.claim_id}` : "unknown";
+    return await markReview(env, job.settlement_job_id, `commercial money claim owned by ${owner}`);
+  }
+  if (consumedCreatorAmount > 0 || consumedPlatformAmount > 0 || consumedGstAmount > 0) {
+    await releaseSnapshot(env, consumed);
+  }
+  await finishSettlement(env, job, consumed, null);
+  commercialEvent(env, "settlement", null, {
+    outcome: "host_no_return_partial", kind: authority.kind, refund_pct: Math.round(unwatchedFraction * 100),
+  });
+}
+
 async function processJob(env: Env, job: SettlementJob): Promise<void> {
   const authority = await loadAuthority(env, job);
   if (!authority) return await markReview(env, job.settlement_job_id, "missing immutable settlement authority");
@@ -524,6 +670,17 @@ async function processJob(env: Env, job: SettlementJob): Promise<void> {
     }
     checkIn = { rule: "creator_checked_in", checkedInAt: evidence.checkedInAt as number };
   } else {
+    // [LIVE-GRACE-1] RULEBOOK-PAID-SESSIONS.md v2 §4 L5: a live event that
+    // ended because the host never returned within the grace window is its
+    // own outcome, decided once (in lib/live_grace.ts, at end time) and
+    // stamped on the session row — never re-derived from delivery evidence
+    // here, and never routed through deliveryError()'s two-party overlap
+    // test (that test answers "did the host deliver enough to be paid at
+    // all", not "how much of the slot was actually delivered to THIS
+    // ticket").
+    if (authority.end_outcome === "host_no_return") {
+      return await settleLiveHostNoReturn(env, job, authority);
+    }
     const delivery = await deliveryError(env, job.commercial_session_id, authority);
     if (delivery) {
       // [COMM-NOSHOW-1] A delivery failure used to mean review_pending, always — which is

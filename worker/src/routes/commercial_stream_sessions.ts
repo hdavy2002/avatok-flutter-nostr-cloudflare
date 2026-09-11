@@ -14,6 +14,7 @@ import {
 import { commercialIdFromPath } from "../lib/commercial_ids";
 import { commercialEvent } from "../lib/commercial_telemetry";
 import { buildWaitingRoomGrant } from "../lib/commercial_waiting_room"; // [SESSION-CLOCK-0] WP2 owns this lib
+import { armLiveGrace, clearLiveGrace } from "../lib/live_grace"; // [LIVE-GRACE-1]
 // [LIST-APPROVAL-AUTH-1] Read-only import of the system-actor listing transition
 // landed in fa44bc21. This file only CALLS it from the provider-confirmed webhook
 // path below — it does not own or edit listings.ts.
@@ -1153,13 +1154,19 @@ type SessionAuthority = {
   scheduled_at: number;
   live_started_at: number | null;
   ended_at: number | null;
+  // [LIVE-GRACE-1] Nullable — pre-migration rows and every consult_1to1 row
+  // read NULL here. `state` itself never becomes the literal 'reconnecting'
+  // (see migrations/2026-09-11-live-grace-alter.sql); safeSessionState()
+  // projects it from this pair instead.
+  reconnect_deadline_ms: number | null;
+  end_outcome: string | null;
 };
 
 async function sessionByListing(env: Env, listingId: string): Promise<SessionAuthority | null> {
   return await metaDb(env).prepare(
     `SELECT commercial_session_id,kind,listing_id,booking_id,order_id,creator_id,
       provider_call_type,provider_call_id,state,settlement_state,scheduled_at,
-      live_started_at,ended_at FROM commercial_sessions
+      live_started_at,ended_at,reconnect_deadline_ms,end_outcome FROM commercial_sessions
       WHERE kind='live_event' AND listing_id=?1 ORDER BY session_version DESC LIMIT 1`,
   ).bind(listingId).first<SessionAuthority>();
 }
@@ -1168,7 +1175,7 @@ async function sessionByBooking(env: Env, bookingId: string): Promise<SessionAut
   return await metaDb(env).prepare(
     `SELECT commercial_session_id,kind,listing_id,booking_id,order_id,creator_id,
       provider_call_type,provider_call_id,state,settlement_state,scheduled_at,
-      live_started_at,ended_at FROM commercial_sessions
+      live_started_at,ended_at,reconnect_deadline_ms,end_outcome FROM commercial_sessions
       WHERE kind='consult_1to1' AND booking_id=?1 ORDER BY session_version DESC LIMIT 1`,
   ).bind(bookingId).first<SessionAuthority>();
 }
@@ -1453,16 +1460,30 @@ export async function consumeCommercialEntitlementsOnSessionEnd(env: Env, sessio
 }
 
 function safeSessionState(session: SessionAuthority): Record<string, unknown> {
+  // [LIVE-GRACE-1] `state` on the row itself never becomes the literal
+  // 'reconnecting' (SQLite CHECK constraint — see the migration file); this
+  // is the single place that projects it from
+  // (kind='live_event' AND state='live' AND an unexpired reconnect_deadline_ms).
+  // GET /api/commercial/live/:id/state (commercialLiveState) is the only
+  // caller that can ever see it — a consult_1to1 row's reconnect_deadline_ms
+  // is always NULL.
+  const reconnecting = session.kind === "live_event"
+    && session.state === "live"
+    && session.reconnect_deadline_ms != null
+    && Number(session.reconnect_deadline_ms) > Date.now();
   return {
     session_id: session.commercial_session_id,
     kind: session.kind,
     listing_id: session.listing_id,
     booking_id: session.booking_id,
-    state: session.state,
+    state: reconnecting ? "reconnecting" : session.state,
     settlement_state: session.settlement_state,
+    starts_at: Number(session.scheduled_at),
     scheduled_at: Number(session.scheduled_at),
     live_started_at: session.live_started_at,
     ended_at: session.ended_at,
+    ...(reconnecting ? { reconnect_deadline_ms: Number(session.reconnect_deadline_ms) } : {}),
+    ...(session.end_outcome ? { outcome: session.end_outcome } : {}),
   };
 }
 
@@ -1485,7 +1506,7 @@ export async function commercialReceipt(req: Request, env: Env): Promise<Respons
   const session = await metaDb(env).prepare(
     `SELECT commercial_session_id,kind,listing_id,booking_id,order_id,creator_id,
       provider_call_type,provider_call_id,state,settlement_state,scheduled_at,
-      live_started_at,ended_at FROM commercial_sessions WHERE commercial_session_id=?1`,
+      live_started_at,ended_at,reconnect_deadline_ms,end_outcome FROM commercial_sessions WHERE commercial_session_id=?1`,
   ).bind(match[1]).first<SessionAuthority>();
   if (!session) return json({ error: "session unavailable" }, 404);
   if (!await canViewSession(env, session, auth.uid)) return json({ error: "not entitled" }, 403);
@@ -1802,7 +1823,8 @@ export async function recordCommercialStreamEvent(
   }
   const payloadHash = await sha256Hex(input.rawJson);
   const session = await metaDb(env).prepare(
-    `SELECT commercial_session_id,state,ended_at,listing_id,kind,creator_id FROM commercial_sessions
+    `SELECT commercial_session_id,state,ended_at,listing_id,kind,creator_id,reconnect_deadline_ms
+      FROM commercial_sessions
       WHERE provider='getstream' AND provider_call_type=?1 AND provider_call_id=?2`,
   ).bind(input.callType, input.callId).first<{
     commercial_session_id: string;
@@ -1811,6 +1833,7 @@ export async function recordCommercialStreamEvent(
     listing_id: string;
     kind: string;
     creator_id: string;
+    reconnect_deadline_ms: number | null;
   }>();
   const inserted = await metaDb(env).prepare(
     `INSERT OR IGNORE INTO commercial_provider_events
@@ -1904,9 +1927,9 @@ export async function recordCommercialStreamEvent(
   }
 
   const member = input.actorId ? await metaDb(env).prepare(
-    `SELECT account_id FROM commercial_session_members
+    `SELECT account_id,role FROM commercial_session_members
       WHERE commercial_session_id=?1 AND provider_user_id=?2 AND removed_at IS NULL`,
-  ).bind(session.commercial_session_id, input.actorId).first<{ account_id: string }>() : null;
+  ).bind(session.commercial_session_id, input.actorId).first<{ account_id: string; role: string }>() : null;
   const joined = eventLower.includes("participant_joined") || eventLower.includes("participant.joined");
   const left = eventLower.includes("participant_left") || eventLower.includes("participant.left");
   if ((joined || left) && !member) {
@@ -1968,6 +1991,17 @@ export async function recordCommercialStreamEvent(
       });
       return { handled: true, reviewPending: true };
     }
+    // [LIVE-GRACE-1] RULEBOOK-PAID-SESSIONS.md v2 §4 L4/L5: the host rejoining
+    // during the grace window puts the event back to a normal live session —
+    // gated on member.role (the live_event host row, not a consult_1to1
+    // creator/buyer row) so this never fires for the 1:1 consult lane.
+    if (input.callType === "avatok_livestream" && member.role === "host") {
+      await clearLiveGrace(env, {
+        commercialSessionId: session.commercial_session_id,
+        listingId: session.listing_id,
+        creatorId: session.creator_id,
+      }, input.occurredAt);
+    }
   } else if (left && member && input.actorId) {
     const open = await metaDb(env).prepare(
       `SELECT interval_id,joined_at FROM commercial_participant_intervals
@@ -1985,6 +2019,20 @@ export async function recordCommercialStreamEvent(
         open.interval_id, input.webhookId, input.occurredAt,
         Math.max(0, input.occurredAt - Number(open.joined_at)), Date.now(),
       ).run();
+    }
+    // [LIVE-GRACE-1] Host `participant_left` while the event is live: arm the
+    // reconnect grace window (RULEBOOK-PAID-SESSIONS.md v2 §4 L4/L5). Gated on
+    // member.role — the live_event host row — and on the terminal-event check
+    // above already having let this webhook through (a `left` on an already
+    // 'ended'/'cancelled' session never reaches here). armLiveGrace itself is
+    // idempotent (only arms once per grace window) so a replayed webhook is
+    // safe.
+    if (input.callType === "avatok_livestream" && member.role === "host") {
+      await armLiveGrace(env, {
+        commercialSessionId: session.commercial_session_id,
+        listingId: session.listing_id,
+        creatorId: session.creator_id,
+      }, input.occurredAt);
     }
   }
 
