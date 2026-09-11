@@ -321,6 +321,19 @@ export class StreamSessionDO {
     this.sql.exec("DELETE FROM alarms WHERE t<=?1", now + 1000);
     const s = this.sess();
     for (const d of due) {
+      // [WAITROOM-5 / follow-up 4] The SELECT/DELETE above tolerate the DO
+      // alarm firing up to 1s early (Cloudflare's own alarm jitter/coalescing
+      // — harmless slack for most kinds). But `endLiveOnHostNoReturn` requires
+      // `reconnect_deadline_ms<=now` (R6), computed fresh with its own
+      // `Date.now()`; an early fire would silently no-op there, and this row
+      // is already gone from `alarms`, so the grace window would only
+      // actually end via the cron sweep (up to 5 min later) instead of
+      // promptly. Re-arm a live_grace row that fired early rather than
+      // processing or dropping it.
+      if (d.kind === "live_grace" && Number(d.t) > now) {
+        await this.armAlarm(Number(d.t), "live_grace");
+        continue;
+      }
       try {
         if (d.kind === "gift_flush") await this.flushGifts();
         // [WAITROOM-4 / R3] `listing_id` is set explicitly by `live_grace_arm`

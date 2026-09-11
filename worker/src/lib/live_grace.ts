@@ -158,20 +158,31 @@ export async function endLiveOnHostNoReturn(env: Env, listingId: string): Promis
        WHERE commercial_session_id=?1 AND state NOT IN ('ended','cancelled')
          AND reconnect_deadline_ms IS NOT NULL AND reconnect_deadline_ms<=?4`,
     ).bind(session.commercial_session_id, now, now, now),
+    // [WAITROOM-5 / follow-up 1] These three statements used to run
+    // unconditionally, even when the guarded UPDATE above changed 0 rows (a
+    // race with a rejoin/another ender). Gate each on the session ACTUALLY
+    // being in the state that UPDATE would have just produced, so a losing
+    // race does the real no-op it looks like instead of closing intervals,
+    // closing the outage and inserting a settlement job for a session this
+    // call didn't end.
     metaDb(env).prepare(
       `UPDATE commercial_participant_intervals
          SET left_at=?2,connected_ms=MAX(0,?2-joined_at),reconciliation_state='closed',updated_at=?3
-       WHERE commercial_session_id=?1 AND reconciliation_state='open'`,
+       WHERE commercial_session_id=?1 AND reconciliation_state='open'
+         AND EXISTS(SELECT 1 FROM commercial_sessions WHERE commercial_session_id=?1 AND state='ended' AND end_outcome='host_no_return')`,
     ).bind(session.commercial_session_id, now, now),
     metaDb(env).prepare(
       `UPDATE commercial_live_outages SET ended_at=COALESCE(ended_at,?2),updated_at=?3
-         WHERE commercial_session_id=?1 AND ended_at IS NULL`,
+         WHERE commercial_session_id=?1 AND ended_at IS NULL
+           AND EXISTS(SELECT 1 FROM commercial_sessions WHERE commercial_session_id=?1 AND state='ended' AND end_outcome='host_no_return')`,
     ).bind(session.commercial_session_id, now, now),
     metaDb(env).prepare(
       `INSERT OR IGNORE INTO commercial_settlement_jobs
        (settlement_job_id,commercial_session_id,order_id,state,terminal_event_id,attempts,created_at,updated_at)
        SELECT 'settlement:' || ?1 || ':' || p.order_id,?1,p.order_id,'pending','live_grace:' || ?1,0,?2,?2
-       FROM commercial_policy_snapshots p WHERE p.listing_id=?3 AND p.booking_id IS NULL`,
+       FROM commercial_policy_snapshots p
+       WHERE p.listing_id=?3 AND p.booking_id IS NULL
+         AND EXISTS(SELECT 1 FROM commercial_sessions WHERE commercial_session_id=?1 AND state='ended' AND end_outcome='host_no_return')`,
     ).bind(session.commercial_session_id, now, listingId),
   ]);
   if ((results[0]?.meta?.changes ?? 0) === 0) return; // raced with a rejoin/another ender

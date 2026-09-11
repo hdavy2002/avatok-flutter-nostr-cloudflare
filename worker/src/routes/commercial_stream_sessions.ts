@@ -1710,7 +1710,11 @@ export async function commercialSessionsMine(req: Request, env: Env): Promise<Re
              CASE WHEN e.state IN ('refunded','revoked') OR o.status IN ('refunded','cancelled','canceled','canceled_user','canceled_creator','cancelled_user','cancelled_creator','no_show_user','no_show_creator')
                     OR b.status IN ('cancelled','canceled','canceled_user','canceled_creator','cancelled_user','cancelled_creator','no_show_user','no_show_creator','refunded') OR l.status='cancelled'
                     OR COALESCE(s.state,'')='cancelled'
-                    OR (SELECT 1 FROM commercial_refund_receipts rr WHERE rr.order_id=e.order_id LIMIT 1) IS NOT NULL
+                    -- [WAITROOM-5 / follow-up 3] settlement_state='refunded' only —
+                    -- a 'partial_refund' receipt means the ticket was PARTLY
+                    -- refunded (e.g. an outage's unconsumed minutes), not that
+                    -- the whole order was cancelled; it must not show as cancelled.
+                    OR (SELECT 1 FROM commercial_refund_receipts rr WHERE rr.order_id=e.order_id AND rr.settlement_state='refunded' LIMIT 1) IS NOT NULL
                   THEN 1 ELSE 0 END cancelled_flag
            FROM commercial_entitlements e
            JOIN listings l ON l.id=e.listing_id
@@ -2220,7 +2224,12 @@ export async function recordCommercialStreamEvent(
     }
     await metaDb(env).batch([
       metaDb(env).prepare(
+        // [WAITROOM-5 / follow-up 2] Clear reconnect_deadline_ms here too — a
+        // normal end (creator pressed End, or the provider closed the call)
+        // must not leave a stale armed grace window behind for
+        // sweepExpiredLiveGrace / a lingering DO alarm to act on later.
         `UPDATE commercial_sessions SET state='ended',ended_at=COALESCE(ended_at,?2),
+          reconnect_deadline_ms=NULL,
           settlement_state=CASE WHEN settlement_state='not_ready' THEN 'pending' ELSE settlement_state END,
           state_version=state_version+1,updated_at=?3
          WHERE commercial_session_id=?1 AND state NOT IN ('ended','cancelled')`,
@@ -2229,6 +2238,15 @@ export async function recordCommercialStreamEvent(
         `UPDATE commercial_participant_intervals
          SET left_at=?2,connected_ms=MAX(0,?2-joined_at),reconciliation_state='closed',updated_at=?3
          WHERE commercial_session_id=?1 AND reconciliation_state='open'`,
+      ).bind(session.commercial_session_id, input.occurredAt, Date.now()),
+      // [WAITROOM-5 / follow-up 2] Close any still-open outage row on this
+      // NORMAL end path too — not just the host-no-return grace path
+      // (endLiveOnHostNoReturn) — so a live event that ends while an outage
+      // was open (host dropped, then the show ended before the grace window
+      // elapsed) doesn't leave that outage open forever.
+      metaDb(env).prepare(
+        `UPDATE commercial_live_outages SET ended_at=COALESCE(ended_at,?2),updated_at=?3
+         WHERE commercial_session_id=?1 AND ended_at IS NULL`,
       ).bind(session.commercial_session_id, input.occurredAt, Date.now()),
       metaDb(env).prepare(
         `INSERT OR IGNORE INTO commercial_settlement_jobs
