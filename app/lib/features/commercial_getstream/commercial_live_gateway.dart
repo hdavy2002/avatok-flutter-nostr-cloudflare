@@ -74,7 +74,11 @@ class CommercialLiveState {
       liveStartedAt: (json['live_started_at'] as num?)?.toInt(),
       endedAt: (json['ended_at'] as num?)?.toInt(),
       endsAt: (json['ends_at'] as num?)?.toInt(),
-      startsAt: (json['starts_at'] as num?)?.toInt(),
+      // [WAITROOM-APP-2] Fix 13: some deployments still key the scheduled
+      // time as `scheduled_at` rather than `starts_at` — fall back so the
+      // backstage countdown and waiting-room `opens_at` gate never go null
+      // on those.
+      startsAt: (json['starts_at'] as num?)?.toInt() ?? (json['scheduled_at'] as num?)?.toInt(),
       reconnectDeadlineMs: (json['reconnect_deadline_ms'] as num?)?.toInt(),
       outcome: json['outcome']?.toString(),
     );

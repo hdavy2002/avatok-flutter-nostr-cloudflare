@@ -107,12 +107,17 @@ sealed class CommercialWaitingRoomEvent {
 class CommercialWaitingRoomWelcome extends CommercialWaitingRoomEvent {
   final int startsAt, endsAt;
   final bool hostLive;
-  const CommercialWaitingRoomWelcome({required this.startsAt, required this.endsAt, required this.hostLive});
+  // [WAITROOM-APP-2] Fix 6/7: server-authoritative check-in evidence, when the
+  // worker sends it. Null on deployments that haven't landed it yet — callers
+  // fall back to locally observed roster history.
+  final int? hostCheckedInAt;
+  const CommercialWaitingRoomWelcome({required this.startsAt, required this.endsAt, required this.hostLive, this.hostCheckedInAt});
 }
 
 class CommercialWaitingRoomRoster extends CommercialWaitingRoomEvent {
   final bool host, attendee;
-  const CommercialWaitingRoomRoster({required this.host, required this.attendee});
+  final int? hostCheckedInAt;
+  const CommercialWaitingRoomRoster({required this.host, required this.attendee, this.hostCheckedInAt});
 }
 
 class CommercialWaitingRoomPresence extends CommercialWaitingRoomEvent {
@@ -125,7 +130,10 @@ class CommercialWaitingRoomPresence extends CommercialWaitingRoomEvent {
 class CommercialWaitingRoomChat extends CommercialWaitingRoomEvent {
   final String from, text;
   final int at;
-  const CommercialWaitingRoomChat({required this.from, required this.text, required this.at});
+  // [WAITROOM-APP-2] Fix 11: "mine" is decided by uid when the DO sends one;
+  // null on older deployments, where the caller falls back to name match.
+  final String? uid;
+  const CommercialWaitingRoomChat({required this.from, required this.text, required this.at, this.uid});
 }
 
 class CommercialWaitingRoomEnded extends CommercialWaitingRoomEvent {
@@ -142,25 +150,36 @@ class CommercialWaitingRoomChannel {
   late final RoomChannel _room;
 
   CommercialWaitingRoomChannel(Uri uri) {
-    _room = RoomChannel(uri, _dispatch, onState: (c) => _connected.add(c));
+    // [WAITROOM-APP-2] Fix 9: RoomChannel can call onState(false) from a
+    // retry that was already in flight when close() ran (its _retry() calls
+    // onState before checking _closed) — guard so we never add to a
+    // controller this class has already closed.
+    _room = RoomChannel(uri, _dispatch, onState: (c) {
+      if (!_connected.isClosed) _connected.add(c);
+    });
   }
 
   Stream<CommercialWaitingRoomEvent> get events => _events.stream;
   Stream<bool> get connectionState => _connected.stream;
 
   void _dispatch(Map<String, dynamic> e) {
+    // [WAITROOM-APP-2] Fix 9: a message can arrive from the underlying socket
+    // after close() has already closed _events (close() does not close the
+    // RoomChannel synchronously-only — see the guard above).
+    if (_events.isClosed) return;
     switch (e['type']) {
       case 'welcome':
         final startsAt = (e['starts_at'] as num?)?.toInt();
         final endsAt = (e['ends_at'] as num?)?.toInt();
         if (startsAt != null && endsAt != null) {
           _events.add(CommercialWaitingRoomWelcome(
-              startsAt: startsAt, endsAt: endsAt, hostLive: e['host_live'] == true));
+              startsAt: startsAt, endsAt: endsAt, hostLive: e['host_live'] == true,
+              hostCheckedInAt: (e['host_checked_in_at'] as num?)?.toInt()));
         }
         // Some deployments fold the initial roster into welcome — handle both.
-        if (e['roster'] is Map) _emitRoster(e['roster'] as Map);
+        if (e['roster'] is Map) _emitRoster(e['roster'] as Map, hostCheckedInAt: (e['host_checked_in_at'] as num?)?.toInt());
       case 'roster':
-        _emitRoster(e);
+        _emitRoster(e, hostCheckedInAt: (e['host_checked_in_at'] as num?)?.toInt());
       case 'presence':
         _events.add(CommercialWaitingRoomPresence(
           uid: e['uid']?.toString(),
@@ -174,6 +193,7 @@ class CommercialWaitingRoomChannel {
             from: e['from']?.toString() ?? '',
             text: text,
             at: (e['at'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch,
+            uid: e['uid']?.toString(),
           ));
         }
       case 'session_ended':
@@ -181,11 +201,12 @@ class CommercialWaitingRoomChannel {
     }
   }
 
-  void _emitRoster(Map e) {
+  void _emitRoster(Map e, {int? hostCheckedInAt}) {
     final roster = e['roster'] is Map ? e['roster'] as Map : e;
     _events.add(CommercialWaitingRoomRoster(
       host: roster['host'] == true,
       attendee: roster['attendee'] == true,
+      hostCheckedInAt: hostCheckedInAt ?? (roster['host_checked_in_at'] as num?)?.toInt(),
     ));
   }
 

@@ -47,9 +47,6 @@ class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultati
   NetProbe? _network;
   bool _cameraOn = true, _microphoneOn = true, _checking = true, _joining = false;
   String? _error;
-  /// True once [_deviceController] ownership has been handed to the waiting
-  /// room screen — this state's [dispose] must not tear it down then.
-  bool _controllerHandedOff = false;
   late final CommercialDeviceCheckController _deviceController;
   final _speaker = CommercialSpeakerTestController();
   bool _devicesReady = false;
@@ -94,12 +91,13 @@ class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultati
       }
       if (!mounted) return;
       if (grant != null && grant.isComplete && grant.isCreator == widget.isCreator) {
-        // Waiting room owns the device controller from here — do not release
-        // or dispose it in this screen; it keeps previewing until the
-        // waiting room hands off to the GetStream call.
+        // [WAITROOM-APP-2] Fix 5: the waiting room now creates and owns ITS
+        // OWN device controller — no handoff. Release this screen's preview
+        // (same rule as the direct-join path below) and let `dispose()`
+        // dispose it unconditionally, exactly like the direct-join path.
+        await _deviceController.release();
         await _speaker.stop();
         if (!mounted) return;
-        _controllerHandedOff = true;
         await Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
           builder: (_) => CommercialWaitingRoomScreen(
             listingId: widget.listingId,
@@ -109,7 +107,6 @@ class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultati
             connector: widget.connector,
             isCreator: widget.isCreator,
             grant: grant!,
-            deviceController: _deviceController,
             cameraOn: _cameraOn,
             microphoneOn: _microphoneOn,
             selfUid: AccountScope.id ?? '',
@@ -156,7 +153,9 @@ class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultati
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    if (!_controllerHandedOff) unawaited(_deviceController.dispose());
+    // [WAITROOM-APP-2] Fix 5: prejoin always disposes its own controller now
+    // — the waiting room never reuses it.
+    unawaited(_deviceController.dispose());
     unawaited(_speaker.dispose());
     super.dispose();
   }
@@ -215,14 +214,35 @@ class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultati
   );
 }
 
+/// [WAITROOM-APP-2] Fix 2: how [CommercialConsultationRoomScreen] pops back
+/// when `returnToWaitingRoom` is true — the waiting room (still holding the
+/// DO socket) decides what happens next from this, instead of the room
+/// screen deciding on its own to end the session.
+enum CommercialConsultExit {
+  /// The user pressed Leave. The session is NOT ended; the waiting room
+  /// resumes with auto-join paused until the roster changes.
+  leftManually,
+
+  /// `_refresh` observed the server session has ended. The waiting room
+  /// should go straight to the completion/receipt screen.
+  ended,
+}
+
 class CommercialConsultationRoomScreen extends StatefulWidget {
-  const CommercialConsultationRoomScreen({super.key, required this.listingId, required this.bookingId, required this.title, required this.gateway, required this.connector, required this.handoff, required this.session, required this.cameraEnabled, required this.microphoneEnabled, required this.isCreator});
+  const CommercialConsultationRoomScreen({super.key, required this.listingId, required this.bookingId, required this.title, required this.gateway, required this.connector, required this.handoff, required this.session, required this.cameraEnabled, required this.microphoneEnabled, required this.isCreator, this.returnToWaitingRoom = false});
   final String listingId, bookingId, title;
   final CommercialConsultGateway gateway;
   final CommercialGetStreamConnector connector;
   final CommercialGetStreamJoinHandoff handoff;
   final CommercialGetStreamSession session;
   final bool cameraEnabled, microphoneEnabled, isCreator;
+  /// [WAITROOM-APP-2] Fix 2: true when this screen was pushed ON TOP of the
+  /// waiting room (the WP6 auto-join path) rather than reached directly
+  /// (the pre-WP6 fallback, when the server has not landed the waiting-room
+  /// grant yet). When true, Leave must NOT end the consultation or show the
+  /// completion screen — it pops back to the still-open waiting room, which
+  /// owns those decisions. Old direct-join behaviour is unchanged when false.
+  final bool returnToWaitingRoom;
   @override State<CommercialConsultationRoomScreen> createState() => _CommercialConsultationRoomScreenState();
 }
 
@@ -256,7 +276,19 @@ class _CommercialConsultationRoomScreenState extends State<CommercialConsultatio
       final s = await widget.gateway.consultState(widget.bookingId);
       if (!mounted) return;
       setState(() => _state = s);
-      if (s.state == LiveServerState.ended || s.state == LiveServerState.reconciliationPending) await _finish('Session ended');
+      if (s.state == LiveServerState.ended || s.state == LiveServerState.reconciliationPending) {
+        if (widget.returnToWaitingRoom) {
+          // [WAITROOM-APP-2] Fix 2: the waiting room opens Completion itself —
+          // this screen just reports that the server session ended.
+          if (_ending) return;
+          _ending = true; _timer?.cancel();
+          await _session.leave();
+          if (!mounted) return;
+          Navigator.of(context).pop(CommercialConsultExit.ended);
+          return;
+        }
+        await _finish('Session ended');
+      }
     } catch (_) { if (mounted) setState(() => _error = 'Session status is temporarily unavailable.'); }
   }
 
@@ -299,8 +331,20 @@ class _CommercialConsultationRoomScreenState extends State<CommercialConsultatio
 
   Future<void> _leave() async {
     if (_ending) return;
-    final confirm = await showDialog<bool>(context: context, builder: (c) => AlertDialog(title: const Text('Leave consultation?'), content: const Text('The session remains governed by the booking and provider evidence.'), actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Stay')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Leave'))]));
+    final confirm = await showDialog<bool>(context: context, builder: (c) => AlertDialog(title: const Text('Leave consultation?'), content: Text(widget.returnToWaitingRoom ? 'You can rejoin from the waiting room while the slot is still open.' : 'The session remains governed by the booking and provider evidence.'), actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Stay')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Leave'))]));
     if (confirm != true) return;
+    if (widget.returnToWaitingRoom) {
+      // [WAITROOM-APP-2] Fix 2: a deliberate Leave here must NOT end the
+      // session — the slot is prepaid and still running (RULEBOOK §2/§3).
+      // No `endConsultation`, no completion screen: just leave the GetStream
+      // call and hand control back to the waiting room.
+      if (_ending) return;
+      _ending = true; _timer?.cancel();
+      await _session.leave();
+      if (!mounted) return;
+      Navigator.of(context).pop(CommercialConsultExit.leftManually);
+      return;
+    }
     try { await widget.gateway.endConsultation(widget.bookingId); } catch (_) {}
     await _finish('You left the consultation');
   }

@@ -579,8 +579,15 @@ String? _commercialReconnectListingId(Map<String, dynamic> data) {
       data.containsKey('call_id') ||
       data.containsKey('callId') ||
       data.containsKey('call_cid')) return null;
+  // [WAITROOM-APP-2] Fix 14: same allowlist as `CommercialNotificationPayload._stable`
+  // (core/commercial_notification.dart) — an id outside this shape is refused
+  // rather than carried into a deep link or a route argument.
   final listingId = (data['listing_id'] ?? data['listingId'])?.toString().trim();
-  return (listingId == null || listingId.isEmpty) ? null : listingId;
+  if (listingId == null || listingId.isEmpty || listingId.length > 160 ||
+      !RegExp(r'^[A-Za-z0-9_:-]{1,160}$').hasMatch(listingId)) {
+    return null;
+  }
+  return listingId;
 }
 
 /// [LIVE-GRACE-APP-1] Host dropped mid live broadcast; the server pushes

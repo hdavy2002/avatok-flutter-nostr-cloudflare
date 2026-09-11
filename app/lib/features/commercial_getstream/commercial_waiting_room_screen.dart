@@ -1,4 +1,11 @@
 // [WAITROOM-APP-1] Commercial 1:1 consult waiting room.
+// [WAITROOM-APP-2] Applies the Opus client-review fixes: auto-join that
+// cannot get stuck (fix 1), a Leave from the call that does not end the
+// session (fix 2, in commercial_consult_screens.dart), this screen's OWN
+// device preview controller (fix 5), a terminal no-show state for the buyer
+// (fix 6), a check-in line gated on connection state + evidence (fix 7), a
+// guard against ending the slot while the call screen is on top (fix 8), and
+// chat "mine" by uid (fix 11).
 //
 // This is the pre-call lobby (Specs/RULEBOOK-PAID-SESSIONS.md §3): opening the
 // appointment connects to the session DO socket only — counterparty avatar,
@@ -19,10 +26,11 @@ import '../../core/avatar.dart';
 import '../../core/commercial_waiting_room_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
-import 'commercial_consult_screens.dart' show CommercialConsultationRoomScreen, CommercialConsultationCompletionScreen;
+import 'commercial_consult_screens.dart'
+    show CommercialConsultationRoomScreen, CommercialConsultationCompletionScreen, CommercialConsultExit;
 import 'commercial_device_check.dart' show CommercialDeviceCheckController;
 import 'commercial_getstream_handoff.dart';
-import 'commercial_live_gateway.dart' show CommercialConsultGateway;
+import 'commercial_live_gateway.dart' show CommercialConsultGateway, CommercialLiveState, CommercialLiveGatewayError;
 
 class _ChatLine {
   final String from;
@@ -41,7 +49,6 @@ class CommercialWaitingRoomScreen extends StatefulWidget {
     required this.connector,
     required this.isCreator,
     required this.grant,
-    required this.deviceController,
     required this.cameraOn,
     required this.microphoneOn,
     required this.selfUid,
@@ -52,9 +59,6 @@ class CommercialWaitingRoomScreen extends StatefulWidget {
   final CommercialGetStreamConnector connector;
   final bool isCreator;
   final CommercialWaitingRoomGrant grant;
-  /// The SAME controller the prejoin screen warmed up. Reused here so the
-  /// waiting room's own preview never opens a second camera.
-  final CommercialDeviceCheckController deviceController;
   final bool cameraOn, microphoneOn;
   final String selfUid;
 
@@ -65,16 +69,49 @@ class CommercialWaitingRoomScreen extends StatefulWidget {
 class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScreen> {
   late CommercialWaitingRoomChannel _channel;
   StreamSubscription<CommercialWaitingRoomEvent>? _sub;
+  StreamSubscription<bool>? _connSub;
   Timer? _tick;
+  Timer? _autoJoinTimer;
+  Timer? _opensAtRetryTimer;
+  Timer? _noShowPoll;
   final _chatController = TextEditingController();
   final _chatScroll = ScrollController();
   final List<_ChatLine> _chat = [];
 
+  // [WAITROOM-APP-2] Fix 5: this screen creates and owns its OWN device
+  // preview controller — it is never handed one from the prejoin screen, and
+  // it never enables the microphone recorder (camera preview only).
+  final CommercialDeviceCheckController _deviceController = CommercialDeviceCheckController();
+  bool _devicePrimed = false;
+
   int? _startsAt, _endsAt;
+
+  // [WAITROOM-APP-2] Fix 1: roster state kept explicitly so the auto-join
+  // decision never depends solely on catching the exact roster event.
   bool _rosterHost = false;
+  bool _rosterAttendee = false;
+  bool _autoJoinPaused = false;
+  ({bool host, bool attendee})? _pausedRosterSnapshot;
+
+  // [WAITROOM-APP-2] Fix 6/7: check-in evidence. `_hostCheckedInAt` is the
+  // server-authoritative value once the worker sends it; `_hostSeenAtLocal`
+  // is the fallback — the first time THIS client's roster ever reported the
+  // host present.
+  int? _hostCheckedInAt;
+  int? _hostSeenAtLocal;
+
+  // [WAITROOM-APP-2] Fix 7: the creator's check-in line is gated on the
+  // socket actually being connected, and on the FIRST connect time.
+  bool _connected = false;
+  int? _firstConnectedAt;
+
   bool _warned5 = false;
   bool _noShow = false;
+  CommercialLiveState? _noShowState;
   bool _joining = false;
+  // [WAITROOM-APP-2] Fix 8: true only while the GetStream call screen is
+  // pushed on top of this one — the end-of-slot auto-exit must not fire then.
+  bool _callScreenOnTop = false;
   bool _ended = false;
   String? _error;
 
@@ -85,7 +122,12 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
     _endsAt = widget.grant.endsAt;
     _channel = CommercialWaitingRoomChannel(widget.grant.roomWs!);
     _sub = _channel.events.listen(_onEvent);
+    _connSub = _channel.connectionState.listen(_onConnectionState);
     _tick = Timer.periodic(const Duration(seconds: 1), (_) => _onTick());
+    // [WAITROOM-APP-2] Fix 1: a periodic backstop, independent of the roster
+    // event stream, so a missed/late roster message can never leave both
+    // parties stuck staring at the lobby.
+    _autoJoinTimer = Timer.periodic(const Duration(seconds: 5), (_) => _maybeAutoJoin());
     Analytics.capture('waitroom_enter', {
       'booking_id': widget.bookingId,
       'role': widget.isCreator ? 'creator' : 'buyer',
@@ -93,18 +135,58 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // [WAITROOM-APP-2] Fix 5: prime the OWN preview only after the push
+    // transition that brought this screen in has finished, so the camera
+    // never opens mid-animation.
+    if (_devicePrimed) return;
+    _devicePrimed = true;
+    final route = ModalRoute.of(context);
+    final animation = route?.animation;
+    if (animation == null || animation.isCompleted) {
+      unawaited(_primeDevicePreview());
+    } else {
+      late final AnimationStatusListener listener;
+      listener = (status) {
+        if (status != AnimationStatus.completed) return;
+        animation.removeStatusListener(listener);
+        unawaited(_primeDevicePreview());
+      };
+      animation.addStatusListener(listener);
+    }
+  }
+
+  Future<void> _primeDevicePreview() async {
+    if (!mounted) return;
+    _deviceController.resume();
+    try {
+      await _deviceController.setCameraEnabled(widget.cameraOn);
+    } catch (_) {}
+    if (mounted) setState(() {});
+  }
+
+  @override
   void dispose() {
     _tick?.cancel();
+    _autoJoinTimer?.cancel();
+    _opensAtRetryTimer?.cancel();
+    _noShowPoll?.cancel();
     _sub?.cancel();
+    _connSub?.cancel();
     _channel.close();
-    // This screen is the sole owner of the device controller from the
-    // handoff onward (the prejoin screen deliberately skips disposing it —
-    // see [_controllerHandedOff] there). dispose() is idempotent even when
-    // [_autoJoin] already released it for the GetStream call.
-    unawaited(widget.deviceController.dispose());
+    // [WAITROOM-APP-2] Fix 5: this screen owns its device controller
+    // unconditionally now — no handoff to track.
+    unawaited(_deviceController.dispose());
     _chatController.dispose();
     _chatScroll.dispose();
     super.dispose();
+  }
+
+  void _onConnectionState(bool connected) {
+    if (!mounted) return;
+    setState(() => _connected = connected);
+    if (connected) _firstConnectedAt ??= DateTime.now().millisecondsSinceEpoch;
   }
 
   void _onEvent(CommercialWaitingRoomEvent e) {
@@ -112,15 +194,28 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
     switch (e) {
       case CommercialWaitingRoomWelcome w:
         setState(() { _startsAt = w.startsAt; _endsAt = w.endsAt; });
+        if (w.hostCheckedInAt != null) _hostCheckedInAt ??= w.hostCheckedInAt;
       case CommercialWaitingRoomRoster r:
-        setState(() => _rosterHost = r.host);
-        if (r.host && r.attendee) unawaited(_autoJoin());
+        setState(() { _rosterHost = r.host; _rosterAttendee = r.attendee; });
+        if (r.hostCheckedInAt != null) _hostCheckedInAt ??= r.hostCheckedInAt;
+        if (r.host) _hostSeenAtLocal ??= DateTime.now().millisecondsSinceEpoch;
+        // [WAITROOM-APP-2] Fix 1: any roster change ends a deliberate-leave
+        // pause — "pause auto-join until the roster changes".
+        final snap = _pausedRosterSnapshot;
+        if (_autoJoinPaused && snap != null && (snap.host != r.host || snap.attendee != r.attendee)) {
+          _autoJoinPaused = false;
+          _pausedRosterSnapshot = null;
+        }
+        _maybeAutoJoin();
       case CommercialWaitingRoomPresence _:
         // Roster events are the source of truth for auto-join; presence is
         // informational only here (no per-peer UI beyond the roster line).
         break;
       case CommercialWaitingRoomChat c:
-        setState(() => _chat.add(_ChatLine(from: c.from, text: c.text, mine: c.from == widget.selfUid)));
+        // [WAITROOM-APP-2] Fix 11: "mine" by uid when the DO sends one,
+        // falling back to the previous name-match comparison otherwise.
+        final mine = c.uid != null ? c.uid == widget.selfUid : c.from == widget.selfUid;
+        setState(() => _chat.add(_ChatLine(from: c.from, text: c.text, mine: mine)));
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (_chatScroll.hasClients) {
             _chatScroll.animateTo(_chatScroll.position.maxScrollExtent,
@@ -130,6 +225,15 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
       case CommercialWaitingRoomEnded _:
         if (!_ended) _leave(auto: true);
     }
+  }
+
+  /// True once evidence (server `host_checked_in_at`, or the first roster
+  /// sighting of the host as a fallback) places the creator's check-in at or
+  /// before `check_in_by`.
+  bool _hostCheckedInOnTime(int? checkInBy) {
+    final evidence = _hostCheckedInAt ?? _hostSeenAtLocal;
+    if (evidence == null || checkInBy == null) return false;
+    return evidence <= checkInBy;
   }
 
   void _onTick() {
@@ -151,18 +255,48 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
         ));
       }
     }
-    if (!widget.isCreator && !_rosterHost && checkInBy != null && now > checkInBy && !_noShow) {
+
+    // [WAITROOM-APP-2] Fix 6: terminal no-show — the check-in window passed
+    // with no evidence the host was ever seen. Stop auto-join and start
+    // polling the server for the refund outcome.
+    if (!widget.isCreator && !_noShow && checkInBy != null && now > checkInBy && !_hostCheckedInOnTime(checkInBy)) {
       _noShow = true;
+      _autoJoinPaused = true;
       Analytics.capture('waitroom_noshow_shown', {
         'booking_id': widget.bookingId,
         'role': 'buyer',
       });
+      _noShowPoll?.cancel();
+      _noShowPoll = Timer.periodic(const Duration(seconds: 5), (_) => _pollNoShowState());
+      unawaited(_pollNoShowState());
     }
-    if (endsAt != null && now >= endsAt + 2 * 60_000 && !_ended) {
+    // [WAITROOM-APP-2] Fix 8: never auto-exit the slot while a join is in
+    // flight or the call screen is on top of this one — that screen's own
+    // `_refresh`/end-of-slot handling owns the session in that state.
+    if (endsAt != null && now >= endsAt + 2 * 60_000 && !_ended && !_joining && !_callScreenOnTop) {
       _leave(auto: true);
       return;
     }
     setState(() {});
+  }
+
+  Future<void> _pollNoShowState() async {
+    if (!mounted) return;
+    try {
+      final s = await widget.gateway.consultState(widget.bookingId);
+      if (mounted) setState(() => _noShowState = s);
+    } catch (_) {/* keep polling; the notice already shows the fact of the no-show */}
+  }
+
+  /// [WAITROOM-APP-2] Fix 1: the single gate every auto-join attempt goes
+  /// through — called from the roster event AND from the 5 s backstop timer,
+  /// so a missed event can never leave both parties stuck.
+  void _maybeAutoJoin() {
+    if (!mounted || _ended || _joining || _autoJoinPaused || _callScreenOnTop) return;
+    if (!(_rosterHost && _rosterAttendee)) return;
+    final opensAt = widget.grant.startsAt ?? _startsAt;
+    if (opensAt != null && DateTime.now().millisecondsSinceEpoch < opensAt) return;
+    unawaited(_autoJoin());
   }
 
   Future<void> _autoJoin() async {
@@ -175,7 +309,7 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
     try {
       // Release the waiting-room preview before the SDK opens its own camera
       // and microphone — same rule the prejoin screen follows.
-      await widget.deviceController.release();
+      await _deviceController.release();
       final handoff = await widget.gateway.authorize(CommercialGetStreamJoinRequest(
         listingId: widget.listingId,
         product: CommercialGetStreamProduct.consultation,
@@ -189,28 +323,70 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
               handoff, cameraEnabled: widget.cameraOn, microphoneEnabled: widget.microphoneOn)
           : await widget.connector.connect(handoff);
       if (!mounted) { await session.leave(); return; }
-      await Navigator.of(context).push(MaterialPageRoute<void>(
+      _callScreenOnTop = true;
+      final exit = await Navigator.of(context).push<CommercialConsultExit>(MaterialPageRoute<CommercialConsultExit>(
         builder: (_) => CommercialConsultationRoomScreen(
           listingId: widget.listingId, bookingId: widget.bookingId, title: widget.title,
           gateway: widget.gateway, connector: widget.connector, handoff: handoff, session: session,
           cameraEnabled: widget.cameraOn, microphoneEnabled: widget.microphoneOn, isCreator: widget.isCreator,
+          returnToWaitingRoom: true,
         ),
       ));
-      // Back from the call: resume the local preview (best-effort) while the
-      // socket — never closed — keeps reporting roster/chat/meter.
-      if (mounted && !_ended) {
-        widget.deviceController.resume();
-        try {
-          await widget.deviceController.setCameraEnabled(widget.cameraOn);
-          await widget.deviceController.setMicrophoneEnabled(widget.microphoneOn);
-        } catch (_) {}
-        if (mounted) setState(() {});
+      _callScreenOnTop = false;
+      if (!mounted) return;
+      if (exit == CommercialConsultExit.ended) {
+        // [WAITROOM-APP-2] Fix 2: the room screen already left the call; go
+        // straight to the same completion flow the end-of-slot path uses.
+        if (!_ended) await _leave(auto: true);
+        return;
       }
+      // [WAITROOM-APP-2] Fix 1: a deliberate Leave (exit == leftManually, or
+      // a bare back-pop) pauses auto-join until the roster changes, and the
+      // "Rejoin call" button lets the user override that manually.
+      _autoJoinPaused = true;
+      _pausedRosterSnapshot = (host: _rosterHost, attendee: _rosterAttendee);
+      await _resumePreviewAfterCall();
+    } on CommercialLiveGatewayError catch (e) {
+      _callScreenOnTop = false;
+      if (e.status == 425) {
+        // Too early per the server clock — retry precisely at opens_at
+        // instead of just waiting for the next 5 s backstop tick.
+        final opensAt = widget.grant.startsAt ?? _startsAt;
+        if (opensAt != null) {
+          final delayMs = (opensAt - DateTime.now().millisecondsSinceEpoch).clamp(0, 1 << 31);
+          _opensAtRetryTimer?.cancel();
+          _opensAtRetryTimer = Timer(Duration(milliseconds: delayMs) + const Duration(milliseconds: 250), _maybeAutoJoin);
+        }
+      } else if (mounted) {
+        setState(() => _error = 'Could not connect. Waiting to try again…');
+      }
+      await _resumePreviewAfterCall();
     } catch (e) {
+      _callScreenOnTop = false;
       if (mounted) setState(() => _error = 'Could not connect. Waiting to try again…');
+      await _resumePreviewAfterCall();
     } finally {
       _joining = false;
     }
+  }
+
+  /// [WAITROOM-APP-2] Fix 5: resume the OWN preview (camera only, never the
+  /// mic recorder) whether the call ended normally, the user left manually,
+  /// or the join attempt itself failed.
+  Future<void> _resumePreviewAfterCall() async {
+    if (!mounted || _ended) return;
+    _deviceController.resume();
+    try {
+      await _deviceController.setCameraEnabled(widget.cameraOn);
+    } catch (_) {}
+    if (mounted) setState(() {});
+  }
+
+  void _rejoinNow() {
+    _autoJoinPaused = false;
+    _pausedRosterSnapshot = null;
+    unawaited(_maybeAutoJoin());
+    setState(() {});
   }
 
   void _sendChat() {
@@ -267,6 +443,8 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
     final counterparty = widget.grant.counterparty;
     final counterpartyName = (counterparty?.name.isNotEmpty ?? false) ? counterparty!.name : 'the other person';
     final checkInBy = widget.grant.checkInBy;
+    final windowClosed = checkInBy != null && now > checkInBy;
+    final checkedInOnTime = _hostCheckedInOnTime(checkInBy);
 
     String meterLabel;
     String meterValue;
@@ -279,6 +457,27 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
     } else {
       meterLabel = 'Session';
       meterValue = '—:—';
+    }
+
+    // [WAITROOM-APP-2] Fix 7: the check-in line is creator-only, gated on the
+    // socket being connected right now, and on evidence at-or-before
+    // check_in_by; after the window with no evidence it says the window is
+    // closed instead. The buyer never sees "Check in by" at all.
+    Widget? creatorNotice;
+    if (widget.isCreator) {
+      if (_connected && checkedInOnTime) {
+        creatorNotice = _Notice(
+          icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
+          iconColor: AD.online,
+          text: "You're checked in ✓ — you'll be paid for this slot",
+        );
+      } else if (windowClosed && !checkedInOnTime) {
+        creatorNotice = _Notice(
+          icon: PhosphorIcons.warningCircle(PhosphorIconsStyle.regular),
+          iconColor: AD.textTertiary,
+          text: 'Check-in window is closed.',
+        );
+      }
     }
 
     return PopScope(
@@ -313,37 +512,37 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
             ]),
           ),
           const SizedBox(height: Msg.s4),
-          // Own preview — reuses the SAME preflight controller (no second camera).
+          // Own preview — this screen's OWN controller (fix 5), camera only.
           ClipRRect(
             borderRadius: Msg.brLg,
             child: ColoredBox(
               color: Colors.black,
               child: AspectRatio(
                 aspectRatio: 16 / 10,
-                child: widget.deviceController.cameraTrack != null
-                    ? VideoTrackRenderer(videoTrack: widget.deviceController.cameraTrack!, mirror: true)
+                child: _deviceController.cameraTrack != null
+                    ? VideoTrackRenderer(videoTrack: _deviceController.cameraTrack!, mirror: true)
                     : Center(child: Icon(PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold), color: Colors.white, size: 40)),
               ),
             ),
           ),
           const SizedBox(height: Msg.s3),
-          if (widget.isCreator)
-            _Notice(
-              icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
-              iconColor: AD.online,
-              text: "You're checked in ✓ — you'll be paid for this slot",
-            )
-          else if (checkInBy != null)
-            _Notice(
-              icon: PhosphorIcons.clock(PhosphorIconsStyle.regular),
-              iconColor: AD.textTertiary,
-              text: 'Check in by ${TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(checkInBy)).format(context)}',
-            ),
+          if (creatorNotice != null) creatorNotice,
           if (_noShow)
             _Notice(
               icon: PhosphorIcons.warning(PhosphorIconsStyle.fill),
               iconColor: AD.danger,
-              text: "$counterpartyName hasn't checked in yet. If they don't, you'll be refunded automatically.",
+              text: _noShowState?.settlementState == 'refunded'
+                  ? "$counterpartyName didn't check in. You've been refunded."
+                  : "$counterpartyName didn't check in. You'll be refunded automatically.",
+            ),
+          if (_autoJoinPaused && !_noShow)
+            Padding(
+              padding: const EdgeInsets.only(top: Msg.s2),
+              child: OutlinedButton.icon(
+                onPressed: _rejoinNow,
+                icon: Icon(PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold)),
+                label: const Text('Rejoin call'),
+              ),
             ),
           if (_error != null) Padding(
             padding: const EdgeInsets.only(top: Msg.s2),
