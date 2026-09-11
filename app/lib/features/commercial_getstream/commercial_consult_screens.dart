@@ -364,6 +364,14 @@ class _CommercialConsultationRoomScreenState extends State<CommercialConsultatio
     if (_ending) return;
     _ending = true; _timer?.cancel(); await _session.leave();
     if (!mounted) return;
+    if (widget.returnToWaitingRoom) {
+      // [WAITROOM-APP-3] A7: `_reportNoShow` also routes through here — when
+      // pushed on top of the waiting room, ending the session must pop back
+      // to it (which opens Completion itself) rather than pushReplacement
+      // over a route the waiting room doesn't know was replaced.
+      Navigator.of(context).pop(CommercialConsultExit.ended);
+      return;
+    }
     Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => CommercialConsultationCompletionScreen(title: widget.title, sessionId: _state?.sessionId ?? widget.handoff.sessionId, gateway: widget.gateway, heading: heading, creator: widget.isCreator)));
   }
 

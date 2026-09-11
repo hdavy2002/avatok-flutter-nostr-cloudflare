@@ -33,6 +33,7 @@ class CommercialWaitingRoomGrant {
     this.startsAt,
     this.endsAt,
     this.checkInBy,
+    this.opensAt,
     this.counterparty,
     this.role,
   });
@@ -42,6 +43,10 @@ class CommercialWaitingRoomGrant {
   final int? startsAt;
   final int? endsAt;
   final int? checkInBy;
+  // [WAITROOM-APP-3] A14: the server's join-open time (`starts_at` minus the
+  // join-early minutes, same as web) — gate auto-join on THIS, not on
+  // `startsAt` directly, when the worker sends it.
+  final int? opensAt;
   final CommercialWaitingRoomCounterparty? counterparty;
   final String? role; // 'creator' | 'buyer'
 
@@ -75,6 +80,7 @@ class CommercialWaitingRoomGrant {
       startsAt: (json['starts_at'] as num?)?.toInt(),
       endsAt: (json['ends_at'] as num?)?.toInt(),
       checkInBy: (json['check_in_by'] as num?)?.toInt(),
+      opensAt: (json['opens_at'] as num?)?.toInt(),
       counterparty: counterparty,
       role: json['role']?.toString(),
     );
@@ -147,6 +153,10 @@ class CommercialWaitingRoomEnded extends CommercialWaitingRoomEvent {
 class CommercialWaitingRoomChannel {
   final _events = StreamController<CommercialWaitingRoomEvent>.broadcast();
   final _connected = StreamController<bool>.broadcast();
+  // [WAITROOM-APP-3] A12: relays RoomChannel.onFailure — fires once if the
+  // socket never delivers a single message after repeated attempts (a
+  // rejected token), so a caller can fall back to a direct join.
+  final _failed = StreamController<void>.broadcast();
   late final RoomChannel _room;
 
   CommercialWaitingRoomChannel(Uri uri) {
@@ -156,11 +166,14 @@ class CommercialWaitingRoomChannel {
     // controller this class has already closed.
     _room = RoomChannel(uri, _dispatch, onState: (c) {
       if (!_connected.isClosed) _connected.add(c);
+    }, onFailure: () {
+      if (!_failed.isClosed) _failed.add(null);
     });
   }
 
   Stream<CommercialWaitingRoomEvent> get events => _events.stream;
   Stream<bool> get connectionState => _connected.stream;
+  Stream<void> get failures => _failed.stream;
 
   void _dispatch(Map<String, dynamic> e) {
     // [WAITROOM-APP-2] Fix 9: a message can arrive from the underlying socket
@@ -222,5 +235,6 @@ class CommercialWaitingRoomChannel {
     _room.close();
     unawaited(_events.close());
     unawaited(_connected.close());
+    unawaited(_failed.close());
   }
 }

@@ -196,6 +196,7 @@ class AuthenticatedCommercialConsultGateway
       throw CommercialLiveGatewayError(
         response.statusCode,
         json['error']?.toString() ?? 'Consultation join failed',
+        body: json,
       );
     }
     final role = switch (json['role']) {
@@ -217,7 +218,7 @@ class AuthenticatedCommercialConsultGateway
     final decoded = jsonDecode(response.body);
     final json = decoded is Map ? decoded.cast<String, dynamic>() : <String, dynamic>{};
     if (response.statusCode >= 300) {
-      throw CommercialLiveGatewayError(response.statusCode, json['error']?.toString() ?? 'Consultation request failed');
+      throw CommercialLiveGatewayError(response.statusCode, json['error']?.toString() ?? 'Consultation request failed', body: json);
     }
     return json;
   }
@@ -227,7 +228,7 @@ class AuthenticatedCommercialConsultGateway
     final response = await ApiAuth.getSigned('$kApiBase/commercial/consult/${Uri.encodeComponent(bookingId)}/state');
     final decoded = jsonDecode(response.body);
     final json = decoded is Map ? decoded.cast<String, dynamic>() : <String, dynamic>{};
-    if (response.statusCode >= 300) throw CommercialLiveGatewayError(response.statusCode, json['error']?.toString() ?? 'Consultation state unavailable');
+    if (response.statusCode >= 300) throw CommercialLiveGatewayError(response.statusCode, json['error']?.toString() ?? 'Consultation state unavailable', body: json);
     return CommercialLiveState.fromJson(json);
   }
 
@@ -260,9 +261,13 @@ class AuthenticatedCommercialConsultGateway
 }
 
 class CommercialLiveGatewayError implements Exception {
-  const CommercialLiveGatewayError(this.status, this.message);
+  const CommercialLiveGatewayError(this.status, this.message, {this.body});
   final int status;
   final String message;
+  // [WAITROOM-APP-3] A13: the decoded error response body, when the caller
+  // has it — a 425 "too early" response can carry the server's authoritative
+  // `opens_at` so a retry waits for the right time instead of guessing.
+  final Map<String, dynamic>? body;
   @override
   String toString() => message;
 }
@@ -308,6 +313,7 @@ class AuthenticatedCommercialLiveGateway
       throw CommercialLiveGatewayError(
         response.statusCode,
         json['error']?.toString() ?? 'Commercial live request failed',
+        body: json,
       );
     }
     return json;
@@ -320,6 +326,7 @@ class AuthenticatedCommercialLiveGateway
       throw CommercialLiveGatewayError(
         response.statusCode,
         json['error']?.toString() ?? 'Commercial live request failed',
+        body: json,
       );
     }
     return json;

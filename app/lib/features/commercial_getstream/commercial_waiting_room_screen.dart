@@ -70,6 +70,7 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
   late CommercialWaitingRoomChannel _channel;
   StreamSubscription<CommercialWaitingRoomEvent>? _sub;
   StreamSubscription<bool>? _connSub;
+  StreamSubscription<void>? _failSub;
   Timer? _tick;
   Timer? _autoJoinTimer;
   Timer? _opensAtRetryTimer;
@@ -90,6 +91,11 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
   // decision never depends solely on catching the exact roster event.
   bool _rosterHost = false;
   bool _rosterAttendee = false;
+  // [WAITROOM-APP-3] A2: true once ANY welcome/roster message has arrived.
+  // The 1 s tick can otherwise run before the socket delivers its first
+  // message, so a buyer opening right after `check_in_by` would see a
+  // permanent no-show even though the creator is actually present.
+  bool _rosterSeen = false;
   bool _autoJoinPaused = false;
   ({bool host, bool attendee})? _pausedRosterSnapshot;
 
@@ -112,6 +118,11 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
   // [WAITROOM-APP-2] Fix 8: true only while the GetStream call screen is
   // pushed on top of this one — the end-of-slot auto-exit must not fire then.
   bool _callScreenOnTop = false;
+  // [WAITROOM-APP-3] A6: `session_ended` can arrive from the DO while the
+  // call screen is on top — never `pushReplacement` over it; remember the
+  // fact and act on it exactly like `CommercialConsultExit.ended` once that
+  // screen returns.
+  bool _pendingEnded = false;
   bool _ended = false;
   String? _error;
 
@@ -123,6 +134,7 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
     _channel = CommercialWaitingRoomChannel(widget.grant.roomWs!);
     _sub = _channel.events.listen(_onEvent);
     _connSub = _channel.connectionState.listen(_onConnectionState);
+    _failSub = _channel.failures.listen((_) => _onChannelFailure());
     _tick = Timer.periodic(const Duration(seconds: 1), (_) => _onTick());
     // [WAITROOM-APP-2] Fix 1: a periodic backstop, independent of the roster
     // event stream, so a missed/late roster message can never leave both
@@ -159,6 +171,11 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
 
   Future<void> _primeDevicePreview() async {
     if (!mounted) return;
+    // [WAITROOM-APP-3] A5: a slow route-animation completion can land after
+    // auto-join has already started (or finished) releasing the preview and
+    // handing the camera to the call SDK — priming here then would double-
+    // open the camera underneath it.
+    if (_joining || _callScreenOnTop || _ended) return;
     _deviceController.resume();
     try {
       await _deviceController.setCameraEnabled(widget.cameraOn);
@@ -174,6 +191,7 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
     _noShowPoll?.cancel();
     _sub?.cancel();
     _connSub?.cancel();
+    _failSub?.cancel();
     _channel.close();
     // [WAITROOM-APP-2] Fix 5: this screen owns its device controller
     // unconditionally now — no handoff to track.
@@ -189,14 +207,27 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
     if (connected) _firstConnectedAt ??= DateTime.now().millisecondsSinceEpoch;
   }
 
+  /// [WAITROOM-APP-3] A12: the waiting-room socket never delivered a single
+  /// message after repeated attempts (a rejected token) — mirror the web
+  /// client and fall back to a direct join rather than sit in a dead lobby.
+  void _onChannelFailure() {
+    if (!mounted || _ended) return;
+    Analytics.capture('waitroom_socket_failed', {
+      'booking_id': widget.bookingId,
+      'role': widget.isCreator ? 'creator' : 'buyer',
+    });
+    unawaited(_autoJoin());
+  }
+
   void _onEvent(CommercialWaitingRoomEvent e) {
     if (!mounted) return;
     switch (e) {
       case CommercialWaitingRoomWelcome w:
-        setState(() { _startsAt = w.startsAt; _endsAt = w.endsAt; });
+        setState(() { _startsAt = w.startsAt; _endsAt = w.endsAt; _rosterSeen = true; });
         if (w.hostCheckedInAt != null) _hostCheckedInAt ??= w.hostCheckedInAt;
+        _reconsiderNoShow();
       case CommercialWaitingRoomRoster r:
-        setState(() { _rosterHost = r.host; _rosterAttendee = r.attendee; });
+        setState(() { _rosterHost = r.host; _rosterAttendee = r.attendee; _rosterSeen = true; });
         if (r.hostCheckedInAt != null) _hostCheckedInAt ??= r.hostCheckedInAt;
         if (r.host) _hostSeenAtLocal ??= DateTime.now().millisecondsSinceEpoch;
         // [WAITROOM-APP-2] Fix 1: any roster change ends a deliberate-leave
@@ -206,6 +237,7 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
           _autoJoinPaused = false;
           _pausedRosterSnapshot = null;
         }
+        _reconsiderNoShow();
         _maybeAutoJoin();
       case CommercialWaitingRoomPresence _:
         // Roster events are the source of truth for auto-join; presence is
@@ -223,7 +255,13 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
           }
         });
       case CommercialWaitingRoomEnded _:
-        if (!_ended) _leave(auto: true);
+        // [WAITROOM-APP-3] A6: never `pushReplacement` over the call screen
+        // — defer to when `_autoJoin` sees the pushed route return.
+        if (_callScreenOnTop) {
+          _pendingEnded = true;
+        } else if (!_ended) {
+          _leave(auto: true);
+        }
     }
   }
 
@@ -234,6 +272,23 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
     final evidence = _hostCheckedInAt ?? _hostSeenAtLocal;
     if (evidence == null || checkInBy == null) return false;
     return evidence <= checkInBy;
+  }
+
+  /// [WAITROOM-APP-3] A2: fresh evidence (a late `host_checked_in_at`, or a
+  /// late roster sighting) can arrive AFTER `_noShow` was already latched —
+  /// undo the terminal state instead of leaving the buyer stuck on a no-show
+  /// notice for a creator who is actually present and on time.
+  void _reconsiderNoShow() {
+    if (!_noShow) return;
+    if (!_hostCheckedInOnTime(widget.grant.checkInBy)) return;
+    _noShowPoll?.cancel();
+    _noShowPoll = null;
+    setState(() {
+      _noShow = false;
+      _noShowState = null;
+    });
+    _autoJoinPaused = false;
+    _maybeAutoJoin();
   }
 
   void _onTick() {
@@ -259,7 +314,7 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
     // [WAITROOM-APP-2] Fix 6: terminal no-show — the check-in window passed
     // with no evidence the host was ever seen. Stop auto-join and start
     // polling the server for the refund outcome.
-    if (!widget.isCreator && !_noShow && checkInBy != null && now > checkInBy && !_hostCheckedInOnTime(checkInBy)) {
+    if (!widget.isCreator && !_noShow && _rosterSeen && checkInBy != null && now > checkInBy && !_hostCheckedInOnTime(checkInBy)) {
       _noShow = true;
       _autoJoinPaused = true;
       Analytics.capture('waitroom_noshow_shown', {
@@ -294,8 +349,17 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
   void _maybeAutoJoin() {
     if (!mounted || _ended || _joining || _autoJoinPaused || _callScreenOnTop) return;
     if (!(_rosterHost && _rosterAttendee)) return;
-    final opensAt = widget.grant.startsAt ?? _startsAt;
-    if (opensAt != null && DateTime.now().millisecondsSinceEpoch < opensAt) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    // [WAITROOM-APP-3] A15: the slot is over — never start a fresh join past
+    // ends_at (the end-of-slot exit in `_onTick` owns that transition).
+    final endsAt = _endsAt;
+    if (endsAt != null && now >= endsAt) return;
+    // [WAITROOM-APP-3] A14: gate on the server's join-open time
+    // (`opens_at` = starts_at − join-early minutes, same as web), not on
+    // `startsAt` directly — `startsAt` falls back only when the worker
+    // hasn't sent `opens_at` yet.
+    final opensAt = widget.grant.opensAt ?? widget.grant.startsAt ?? _startsAt;
+    if (opensAt != null && now < opensAt) return;
     unawaited(_autoJoin());
   }
 
@@ -334,9 +398,12 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
       ));
       _callScreenOnTop = false;
       if (!mounted) return;
-      if (exit == CommercialConsultExit.ended) {
-        // [WAITROOM-APP-2] Fix 2: the room screen already left the call; go
-        // straight to the same completion flow the end-of-slot path uses.
+      if (exit == CommercialConsultExit.ended || _pendingEnded) {
+        // [WAITROOM-APP-2] Fix 2 / [WAITROOM-APP-3] A6: the room screen
+        // already left the call (either it saw `ended` itself, or the DO's
+        // `session_ended` arrived while it was on top) — go straight to the
+        // same completion flow the end-of-slot path uses.
+        _pendingEnded = false;
         if (!_ended) await _leave(auto: true);
         return;
       }
@@ -349,14 +416,17 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
     } on CommercialLiveGatewayError catch (e) {
       _callScreenOnTop = false;
       if (e.status == 425) {
-        // Too early per the server clock — retry precisely at opens_at
-        // instead of just waiting for the next 5 s backstop tick.
-        final opensAt = widget.grant.startsAt ?? _startsAt;
-        if (opensAt != null) {
-          final delayMs = (opensAt - DateTime.now().millisecondsSinceEpoch).clamp(0, 1 << 31);
-          _opensAtRetryTimer?.cancel();
-          _opensAtRetryTimer = Timer(Duration(milliseconds: delayMs) + const Duration(milliseconds: 250), _maybeAutoJoin);
-        }
+        // [WAITROOM-APP-3] A13: prefer the server's own `opens_at` from the
+        // 425 body (authoritative) over the client-side grant, and always
+        // wait at least 5 s — a clock a few ms off must not spin-retry.
+        final opensAtFromBody = (e.body?['opens_at'] as num?)?.toInt();
+        final opensAt = opensAtFromBody ?? widget.grant.opensAt ?? widget.grant.startsAt ?? _startsAt;
+        final rawDelayMs = opensAt != null
+            ? (opensAt - DateTime.now().millisecondsSinceEpoch)
+            : 5000;
+        final delayMs = rawDelayMs.clamp(5000, 1 << 31).toInt();
+        _opensAtRetryTimer?.cancel();
+        _opensAtRetryTimer = Timer(Duration(milliseconds: delayMs), _maybeAutoJoin);
       } else if (mounted) {
         setState(() => _error = 'Could not connect. Waiting to try again…');
       }
@@ -385,7 +455,9 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
   void _rejoinNow() {
     _autoJoinPaused = false;
     _pausedRosterSnapshot = null;
-    unawaited(_maybeAutoJoin());
+    // [WAITROOM-APP-3] A1: `_maybeAutoJoin` returns void, not a Future —
+    // wrapping it in `unawaited` was a compile error.
+    _maybeAutoJoin();
     setState(() {});
   }
 
