@@ -1,0 +1,402 @@
+---
+// [WEB-HELP-1 2026-09-11] The help centre search box, shared by the sidebar
+// rail (Help.astro) and the landing hero (pages/help/index.astro). Plan §6:
+// zero-dependency client search. Progressive by design — with JS disabled
+// this is a plain GET form to /help?q=, which the landing page reads and
+// renders the section index around (no server-side search in phase 1). With
+// JS on, first focus lazily fetches /help/search.json (built by
+// buildSearchIndex() in lib/help.ts) and scores it client-side: title match
+// beats keyword match beats heading match beats body match, per the plan.
+//
+// One box, two mount points: pass `variant="hero"` for the larger landing
+// box, default is the compact rail box. Both render the same markup/script;
+// only sizing differs via the variant class, so there is exactly one search
+// implementation to keep in sync with search.json's shape.
+export interface Props {
+  variant?: 'hero' | 'rail';
+  /** Unique id suffix so two instances of this component can exist on one
+   *  page (e.g. index.astro's hero + a mobile <details> rail) without id
+   *  collisions between their listbox/input pairs. */
+  id?: string;
+}
+
+const { variant = 'rail', id = variant } = Astro.props;
+const inputId = `help-search-input-${id}`;
+const listboxId = `help-search-listbox-${id}`;
+---
+
+<form class={`help-search help-search-${variant}`} action="/help" method="get" role="search" data-help-search>
+  <label class="sr-only" for={inputId}>Search help centre</label>
+  <input
+    id={inputId}
+    class="help-search-input"
+    type="search"
+    name="q"
+    autocomplete="off"
+    placeholder="Search help — try “UPI” or “refund”"
+    role="combobox"
+    aria-expanded="false"
+    aria-controls={listboxId}
+    aria-autocomplete="list"
+    data-help-search-input
+  />
+  <button type="submit" class="help-search-submit" aria-label="Search">
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="2" />
+      <line x1="13.8" y1="13.8" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+    </svg>
+  </button>
+  <ul id={listboxId} class="help-search-listbox" role="listbox" aria-label="Search results" hidden></ul>
+  {/* [WEB-HELP-1] The "no results" message used to render as a fake <li>
+      inside the listbox, so a screen reader announced it as a selectable
+      option among zero options. It's a status message, not an option — a
+      sibling <p>, outside the listbox, visually positioned like the
+      dropdown. No aria-live here: the sr-only status element below already
+      announces the result count (including zero), so this would double up. */}
+  <p class="help-search-empty" hidden></p>
+  {/* [WEB-HELP-1] Visually-hidden live region announcing the result count,
+      since the listbox's own aria-expanded/hidden toggling is silent to
+      screen readers until a user tabs into it. */}
+  <p class="help-search-status sr-only" aria-live="polite"></p>
+</form>
+
+<style>
+  .help-search { position: relative; display: flex; gap: 0.5rem; align-items: center; }
+  .help-search-input {
+    flex: 1;
+    min-width: 0;
+    padding: 0.7rem 0.9rem;
+    border: 1px solid var(--ink);
+    border-radius: 999px;
+    background: var(--white);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 0.95rem;
+    font-weight: 500;
+  }
+  .help-search-input::placeholder { color: rgba(22, 22, 20, 0.55); }
+  .help-search-input:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 2px;
+  }
+  .help-search-hero .help-search-input { padding: 1rem 1.2rem; font-size: 1.1rem; }
+  .help-search-submit {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 2.4rem;
+    height: 2.4rem;
+    border: 1px solid var(--ink);
+    border-radius: 999px;
+    background: var(--ink);
+    color: var(--paper);
+    cursor: pointer;
+  }
+  .help-search-submit:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  .help-search-listbox {
+    position: absolute;
+    z-index: 30;
+    top: calc(100% + 0.4rem);
+    left: 0;
+    right: 0;
+    margin: 0;
+    padding: 0.35rem;
+    list-style: none;
+    border: 1px solid var(--ink);
+    border-radius: 1rem;
+    background: var(--white);
+    box-shadow: 6px 6px 0 var(--blue);
+    max-height: min(60vh, 26rem);
+    overflow-y: auto;
+  }
+  .help-search-listbox[hidden] { display: none; }
+  .help-search-option {
+    display: block;
+    padding: 0.6rem 0.7rem;
+    border-radius: 0.7rem;
+    text-decoration: none;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .help-search-option + .help-search-option { margin-top: 0.15rem; }
+  .help-search-option:hover,
+  .help-search-option[aria-selected='true'] { background: var(--sky); }
+  .help-search-option .hs-title { display: block; font-weight: 700; font-size: 0.95rem; }
+  .help-search-option .hs-meta { display: block; margin-top: 0.15rem; font-size: 0.8rem; color: rgba(22, 22, 20, 0.7); }
+  .help-search-empty {
+    position: absolute;
+    z-index: 30;
+    top: calc(100% + 0.4rem);
+    left: 0;
+    right: 0;
+    border: 1px solid var(--ink);
+    border-radius: 1rem;
+    background: var(--white);
+    padding: 0.75rem 1rem;
+    font-size: 0.85rem;
+    color: rgba(22, 22, 20, 0.7);
+  }
+  .help-search-empty[hidden] { display: none; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+</style>
+
+<script>
+  // [WEB-HELP-1 2026-09-11] Vanilla client search — no framework, per plan
+  // §6. Runs once per <form data-help-search> on the page (rail + hero can
+  // both be present). Index is fetched lazily and cached on `window` so two
+  // boxes on one page (e.g. desktop rail + mobile <details> rail) share one
+  // fetch.
+  import { capture, captureException } from '../lib/analytics';
+
+  type SearchDoc = {
+    url: string;
+    title: string;
+    section: string;
+    description: string;
+    keywords: string[];
+    headings: string[];
+    body: string;
+  };
+
+  let indexPromise: Promise<SearchDoc[]> | null = null;
+  function loadIndex(): Promise<SearchDoc[]> {
+    if (!indexPromise) {
+      indexPromise = fetch('/help/search.json')
+        .then((r) => {
+          if (!r.ok) {
+            captureException(new Error(`help search.json ${r.status}`), { surface: 'help_search' });
+            return [];
+          }
+          return r.json();
+        })
+        .catch((err) => {
+          captureException(err, { surface: 'help_search' });
+          return [];
+        });
+    }
+    return indexPromise;
+  }
+
+  // [WEB-HELP-1] Sum every field a term hits rather than taking the max —
+  // taking the max meant a term appearing in BOTH the title and the body of
+  // one doc scored the same (10) as a term appearing only in the title of
+  // another, so a body-heavy doc with an incidental title mention could
+  // outrank the doc whose title is actually about the term (e.g. "UPI"
+  // ranked tokens-explained above the payouts article, which says UPI in
+  // its title). Still AND across terms: a doc must hit every term in at
+  // least one field or it scores 0 and is dropped.
+  function score(doc: SearchDoc, terms: string[]): number {
+    const title = doc.title.toLowerCase();
+    const keywords = doc.keywords.join(' ').toLowerCase();
+    const headings = doc.headings.join(' ').toLowerCase();
+    const description = doc.description.toLowerCase();
+    const body = doc.body.toLowerCase();
+    let total = 0;
+    for (const term of terms) {
+      let hit = 0;
+      if (title.includes(term)) hit += 10;
+      if (keywords.includes(term)) hit += 6;
+      if (headings.includes(term)) hit += 4;
+      if (description.includes(term)) hit += 3;
+      if (body.includes(term)) hit += 1;
+      if (hit === 0) return 0; // multi-term AND: every term must hit something
+      total += hit;
+    }
+    return total;
+  }
+
+  function search(docs: SearchDoc[], query: string): SearchDoc[] {
+    const terms = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
+    if (terms.length === 0) return [];
+    return docs
+      .map((doc) => ({ doc, s: score(doc, terms) }))
+      .filter((r) => r.s > 0)
+      .sort((a, b) => b.s - a.s)
+      .slice(0, 8)
+      .map((r) => r.doc);
+  }
+
+  // [WEB-HELP-1] Only ever navigate within the help centre — a doc.url that
+  // somehow isn't a /help/ path (a stale/corrupt search.json entry) is never
+  // followed, client-side or via the no-JS fallback.
+  function isHelpUrl(url: string): boolean {
+    return url.startsWith('/help/');
+  }
+
+  function initForm(form: HTMLFormElement) {
+    const input = form.querySelector<HTMLInputElement>('[data-help-search-input]');
+    const listbox = form.querySelector<HTMLUListElement>('.help-search-listbox');
+    const emptyEl = form.querySelector<HTMLParagraphElement>('.help-search-empty');
+    const statusEl = form.querySelector<HTMLParagraphElement>('.help-search-status');
+    if (!input || !listbox) return;
+
+    let results: SearchDoc[] = [];
+    let activeIndex = -1;
+
+    function go(url: string, rank: number) {
+      if (!isHelpUrl(url)) return;
+      capture('help_search_select', { rank });
+      window.location.href = url;
+    }
+
+    function setExpanded(expanded: boolean) {
+      input!.setAttribute('aria-expanded', String(expanded));
+    }
+
+    function render() {
+      if (!listbox) return;
+      listbox.innerHTML = '';
+      const hasQuery = Boolean(input!.value.trim());
+
+      if (results.length === 0) {
+        listbox.hidden = true;
+        if (emptyEl) {
+          if (hasQuery) {
+            emptyEl.textContent = 'No results — try a different word.';
+            emptyEl.hidden = false;
+          } else {
+            emptyEl.hidden = true;
+            emptyEl.textContent = '';
+          }
+        }
+        setExpanded(false);
+        if (statusEl) statusEl.textContent = hasQuery ? 'No results' : '';
+        return;
+      }
+
+      if (emptyEl) {
+        emptyEl.hidden = true;
+        emptyEl.textContent = '';
+      }
+      results.forEach((doc, i) => {
+        const li = document.createElement('li');
+        li.id = `${listbox.id}-opt-${i}`;
+        li.className = 'help-search-option';
+        li.setAttribute('role', 'option');
+        li.tabIndex = -1;
+        li.setAttribute('aria-selected', String(i === activeIndex));
+        const titleEl = document.createElement('span');
+        titleEl.className = 'hs-title';
+        titleEl.textContent = doc.title;
+        const metaEl = document.createElement('span');
+        metaEl.className = 'hs-meta';
+        metaEl.textContent = `${doc.section} · ${doc.description}`;
+        li.append(titleEl, metaEl);
+        li.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          go(doc.url, i);
+        });
+        listbox.append(li);
+      });
+      listbox.hidden = false;
+      setExpanded(true);
+      if (statusEl) statusEl.textContent = `${results.length} result${results.length === 1 ? '' : 's'}`;
+    }
+
+    // [WEB-HELP-1] `help_search` fires 600ms after the query settles (not on
+    // every keystroke) and never carries the raw query text — only its
+    // length and the outcome, per the telemetry catalog's "never send the
+    // raw query" rule for search surfaces.
+    let telemetryHandle: number | undefined;
+    function scheduleSearchTelemetry(q: string) {
+      window.clearTimeout(telemetryHandle);
+      telemetryHandle = window.setTimeout(() => {
+        capture('help_search', {
+          q_len: q.trim().length,
+          result_count: results.length,
+          zero_result: results.length === 0,
+        });
+      }, 600);
+    }
+
+    async function runSearch() {
+      const q = input!.value;
+      if (!q.trim()) {
+        window.clearTimeout(telemetryHandle);
+        results = [];
+        activeIndex = -1;
+        input!.removeAttribute('aria-activedescendant');
+        render();
+        return;
+      }
+      const docs = await loadIndex();
+      results = search(docs, q);
+      activeIndex = -1;
+      input!.removeAttribute('aria-activedescendant');
+      render();
+      scheduleSearchTelemetry(q);
+    }
+
+    let debounceHandle: number | undefined;
+    input.addEventListener('input', () => {
+      window.clearTimeout(debounceHandle);
+      debounceHandle = window.setTimeout(runSearch, 120);
+    });
+
+    input.addEventListener('focus', () => {
+      loadIndex();
+      if (input!.value.trim()) runSearch();
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        // [WEB-HELP-1] Escape just closes the open listbox/empty-state — it
+        // used to call render() with the existing (non-empty) query, which
+        // re-opened the box and showed "No results" instead of dismissing.
+        listbox!.hidden = true;
+        if (emptyEl) emptyEl.hidden = true;
+        setExpanded(false);
+        input!.removeAttribute('aria-activedescendant');
+        return;
+      }
+      if (results.length === 0) return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        activeIndex = (activeIndex + 1) % results.length;
+        render();
+        input!.setAttribute('aria-activedescendant', `${listbox.id}-opt-${activeIndex}`);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        activeIndex = (activeIndex - 1 + results.length) % results.length;
+        render();
+        input!.setAttribute('aria-activedescendant', `${listbox.id}-opt-${activeIndex}`);
+      } else if (e.key === 'Enter') {
+        // [WEB-HELP-1] With results on screen but none highlighted, Enter
+        // used to fall through to the native form submit (a full GET
+        // navigation to /help?q=) even though a perfectly good client-side
+        // result list was showing. Take the highlighted result, or the top
+        // result when none is highlighted; only let the native submit go
+        // through when there are truly zero results (the no-JS fallback) —
+        // or when Escape just hid the listbox: `results` is still non-empty
+        // then (Escape only hides, it doesn't clear), so without this check
+        // Enter would silently re-navigate to the dismissed dropdown's top
+        // result instead of letting the form submit normally.
+        if (listbox!.hidden) return;
+        e.preventDefault();
+        const target = results[activeIndex >= 0 ? activeIndex : 0];
+        if (target) go(target.url, activeIndex >= 0 ? activeIndex : 0);
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!form.contains(e.target as Node)) {
+        listbox!.hidden = true;
+        if (emptyEl) emptyEl.hidden = true;
+        setExpanded(false);
+      }
+    });
+
+    // Prefill + auto-run from ?q= when JS is on and this box sits on /help.
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get('q');
+    if (q && !input.value) {
+      input.value = q;
+      runSearch();
+    }
+  }
+
+  document.querySelectorAll<HTMLFormElement>('form[data-help-search]').forEach(initForm);
+</script>

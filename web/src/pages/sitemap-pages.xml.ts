@@ -25,15 +25,22 @@
 //       hardcoded list that silently goes stale.
 //
 // Keep in sync with src/pages/ when a public page is added.
+// [WEB-HELP-1 2026-09-11] Exception: help-centre article routes are NOT
+// hardcoded here — they come from the `help` content collection via
+// getHelpEntries()/helpUrl() (src/lib/help.ts) and are appended in GET
+// below, alongside the static '/help' landing-page entry.
 import type { APIRoute } from 'astro';
 import { creatorIdeas } from '../lib/creatorIdeas';
+// [WEB-HELP-1 2026-09-11] Help routes: '/help' plus one entry per
+// non-draft help article, appended in GET() since collection reads are async.
+import { getHelpEntries, helpUrl } from '../lib/help';
 
 export const prerender = true;
 
 const SITE = 'https://avatok.ai';
 
 /** [path, changefreq, priority] */
-const ROUTES: Array<[string, string, string]> = [
+const ROUTES: Array<[string, string, string, string?]> = [
   ['/', 'daily', '1.0'],
   ['/marketplace', 'daily', '0.9'],
   ['/explore', 'daily', '0.9'],
@@ -68,13 +75,33 @@ const ROUTES: Array<[string, string, string]> = [
   ['/biometric-retention', 'yearly', '0.3'],
 ];
 
-export const GET: APIRoute = () => {
+export const GET: APIRoute = async () => {
   const lastmod = new Date().toISOString().slice(0, 10);
-  const urls = ROUTES.map(
-    ([path, changefreq, priority]) =>
+  // [WEB-HELP-1 2026-09-11] '/help' plus one entry per non-draft help
+  // article, built at request time from the content collection so this list
+  // can never go stale the way a hardcoded one would. Each article carries
+  // its own frontmatter `updated` date as this row's lastmod (4th tuple
+  // element, optional — every other route in ROUTES falls back to today's
+  // build date below) rather than the build date, so lastmod actually
+  // reflects when the content changed.
+  const helpEntries = await getHelpEntries();
+  const helpRoutes: Array<[string, string, string, string?]> = [
+    ['/help', 'weekly', '0.8'],
+    ...helpEntries.map(
+      (entry) =>
+        [helpUrl(entry), 'monthly', '0.6', entry.data.updated.toISOString().slice(0, 10)] as [
+          string,
+          string,
+          string,
+          string,
+        ],
+    ),
+  ];
+  const urls = [...ROUTES, ...helpRoutes].map(
+    ([path, changefreq, priority, rowLastmod]) =>
       `  <url>\n` +
       `    <loc>${SITE}${path}</loc>\n` +
-      `    <lastmod>${lastmod}</lastmod>\n` +
+      `    <lastmod>${rowLastmod ?? lastmod}</lastmod>\n` +
       `    <changefreq>${changefreq}</changefreq>\n` +
       `    <priority>${priority}</priority>\n` +
       `  </url>`,

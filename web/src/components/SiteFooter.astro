@@ -30,6 +30,8 @@ const year = new Date().getFullYear();
 // [WEB-FOOTER-4] Slim compliance link row — see note above. Keep in this
 // order; it's the order the owner specified.
 const legalLinks = [
+  // [WEB-HELP-1 2026-09-11] Help centre listed first in the policy strip per plan §8.
+  { href: '/help', label: 'Help centre' },
   { href: '/terms', label: 'Terms' },
   { href: '/privacy', label: 'Privacy' },
   { href: '/cookies', label: 'Cookies' },
@@ -70,6 +72,8 @@ const columns = [
     title: 'Company',
     links: [
       { href: '/about', label: 'About' },
+      // [WEB-HELP-1 2026-09-11] Help centre listed right after About per plan §8.
+      { href: '/help', label: 'Help centre' },
       { href: '/careers', label: 'Careers' },
       { href: '/contact', label: 'Contact' },
       { href: '/terms', label: 'Terms of Service' },

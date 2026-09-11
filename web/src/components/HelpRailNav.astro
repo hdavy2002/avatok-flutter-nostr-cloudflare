@@ -1,0 +1,72 @@
+---
+// [WEB-HELP-1 2026-09-11] Shared section/article nav list for Help.astro's
+// rail — extracted into its own component so the desktop and mobile
+// renderings of the rail (Help.astro renders this twice, once per
+// breakpoint, to fix the closed-<details> display:none bug in
+// Chromium/WebKit) render from one source and can't diverge.
+import { helpUrl, type HelpEntry, type HelpTreeSection } from '../lib/help';
+
+export interface Props {
+  tree: HelpTreeSection[];
+  entry: HelpEntry;
+}
+
+const { tree, entry } = Astro.props;
+---
+
+<nav class="help-rail-nav" aria-label="Help sections">
+  {tree.map((s) => (
+    <div class="help-rail-section">
+      <a class="help-rail-section-label" href={`/help#${s.id}`}>{s.label}</a>
+      <ul>
+        {s.entries.map((e) => {
+          const isCurrent = e.id === entry.id;
+          return (
+            <li>
+              <a href={helpUrl(e)} aria-current={isCurrent ? 'page' : undefined}>
+                {e.data.title}
+              </a>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  ))}
+</nav>
+
+<style>
+  /* [WEB-HELP-1 2026-09-11] Moved here from Help.astro's scoped <style> —
+     Astro's per-component CSS scoping means a parent's scoped rules never
+     reach a child component's own markup, so these rules did nothing while
+     they lived in Help.astro. Same tokens as Help.astro (--ink/--blue/
+     --paper), rem/px units unchanged from the original. */
+  .help-rail-nav { display: flex; flex-direction: column; gap: 1.1rem; }
+  .help-rail-section-label {
+    display: block;
+    margin-bottom: 0.4rem;
+    font-family: var(--display);
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--blue);
+    text-decoration: none;
+  }
+  .help-rail-section-label:hover { text-decoration: underline; }
+  .help-rail-section ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+  .help-rail-section a { text-decoration: none; font-size: 0.95rem; }
+  .help-rail-section li > a {
+    display: block;
+    padding: 0.4rem 0.55rem;
+    border-radius: 0.6rem;
+    color: var(--ink);
+  }
+  .help-rail-section li > a:hover { background: rgba(22, 22, 20, 0.06); }
+  .help-rail-section li > a[aria-current='page'] {
+    background: var(--ink);
+    color: var(--paper);
+    font-weight: 700;
+  }
+  .help-rail-section li > a:focus-visible,
+  .help-rail-section-label:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+</style>

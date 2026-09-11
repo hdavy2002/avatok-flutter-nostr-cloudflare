@@ -23,3 +23,11 @@ These are creator business ideas, not employment vacancies, salaried jobs or gua
 - [Contact](https://avatok.ai/contact): Support and enquiries.
 
 Language: English (India). Public article text is available in server-rendered HTML without signing in or running JavaScript. The sitemap is https://avatok.ai/sitemap.xml. Authenticated dashboards and administration are not public discovery content.
+
+## Help centre
+- [Help centre](https://avatok.ai/help): Searchable how-to articles grouped into five sections.
+- [Getting started](https://avatok.ai/help#getting-started): What avaTOK is, how to sign up, and web versus app.
+- [Booking & paying](https://avatok.ai/help#booking-and-paying): Finding a creator, booking a session, tokens and payments.
+- [For creators](https://avatok.ai/help#creators): Building a listing, getting it approved, pricing it, running a live session.
+- [Billing & payouts](https://avatok.ai/help#billing): The platform fee, refunds, withdrawing earnings, and tax basics.
+- [Account & safety](https://avatok.ai/help#account-and-safety): Verification, recording and consent, reporting a problem, deleting your account.

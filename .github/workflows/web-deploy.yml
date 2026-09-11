@@ -96,6 +96,12 @@ jobs:
         working-directory: web
         run: node scripts/check-homepage.mjs
 
+      # [WEB-HELP-1 2026-09-11] Help centre post-build smoke check — same
+      # working-directory pattern as the homepage check above it.
+      - name: Check help centre
+        working-directory: web
+        run: node scripts/check-help.mjs
+
       - name: Deploy to Cloudflare Pages (avatok-app)
         uses: cloudflare/wrangler-action@v3
         with:

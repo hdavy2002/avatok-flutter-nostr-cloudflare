@@ -1,0 +1,41 @@
+---
+// [WEB-HELP-1 2026-09-11] One static route for every non-draft help
+// article. Fully prerendered (plan §1 — zero runtime cost, no SSR touched).
+// entry.id is the glob-loader path relative to src/content/help (e.g.
+// "billing/platform-fee"), which is exactly the slug lib/help.ts's helpUrl()
+// builds routes from — using entry.id as `params.slug` here keeps those two
+// in lockstep without a second mapping to maintain.
+export const prerender = true;
+
+import { render } from 'astro:content';
+import Help from '../../layouts/Help.astro';
+import { getHelpEntries, getHelpTree, getPrevNext } from '../../lib/help';
+
+export async function getStaticPaths() {
+  // [WEB-HELP-1] Was its own `getCollection('help', (entry) => !entry.data.draft)`
+  // call, duplicating the draft filter that lib/help.ts's getHelpEntries()
+  // already owns — a second place that could drift from the real rule (e.g.
+  // if a future agent adds a second draft condition there and forgets this
+  // copy). Route paths from the same source everything else in the help
+  // centre (nav, search index, sitemap, prev/next) already uses.
+  const entries = await getHelpEntries();
+  return entries.map((entry) => ({
+    params: { slug: entry.id },
+    props: { entry },
+  }));
+}
+
+const { entry } = Astro.props;
+const { Content: Body } = await render(entry);
+
+// [WEB-HELP-1] tree/prev/next are derived here (not in Help.astro) so the
+// layout stays a pure renderer of whatever props it's given — every agent
+// touching ordering only has to look at lib/help.ts.
+const allEntries = await getHelpEntries();
+const tree = await getHelpTree();
+const { prev, next } = getPrevNext(allEntries, entry);
+---
+
+<Help entry={entry} tree={tree} prev={prev} next={next}>
+  <Body />
+</Help>

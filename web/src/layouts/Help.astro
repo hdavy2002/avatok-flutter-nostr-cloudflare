@@ -1,0 +1,280 @@
+---
+// [WEB-HELP-1 2026-09-11] Layout for a single help article. Wraps
+// Content.astro (same editorial header/footer/tone tokens as the rest of the
+// site — see Specs/HELP-CENTER-PLAN-2026-09-11.md §2) and adds the two-column
+// help shell: a left rail (section + article nav, plus the search box) that
+// is sticky on desktop and collapses into a <details> on narrow screens, the
+// article body in the slot, prev/next links within the section, and — for
+// billing and booking-and-paying articles only — a short "Related policies"
+// line. Breadcrumb JSON-LD only; per the plan, FAQPage JSON-LD lives on
+// /help alone (see pages/help/index.astro), never repeated per article.
+//
+// Props come straight from pages/help/[...slug].astro, which computes `tree`
+// and `prev`/`next` via lib/help.ts — this layout does not query the
+// collection itself so there is exactly one place (help.ts) that decides
+// ordering.
+import Content from './Content.astro';
+import HelpSearch from '../components/HelpSearch.astro';
+import HelpRailNav from '../components/HelpRailNav.astro';
+import { SECTIONS, helpUrl, type HelpEntry, type HelpTreeSection, type HelpSectionId } from '../lib/help';
+import { ORG } from '../lib/org';
+
+export interface Props {
+  entry: HelpEntry;
+  tree: HelpTreeSection[];
+  prev?: HelpEntry;
+  next?: HelpEntry;
+}
+
+const { entry, tree, prev, next } = Astro.props;
+const sectionId = entry.data.section as HelpSectionId;
+const section = SECTIONS[sectionId];
+
+// [WEB-HELP-1] Related-policy links only make sense where the article is the
+// plain-English cousin of an actual policy page (plan §5/§7) — billing and
+// booking-and-paying. Every other section (getting started, creators,
+// account & safety) has no single matching policy, so the line is omitted
+// there rather than forced.
+const RELATED_POLICIES: { href: string; label: string }[] = [
+  { href: '/tokens', label: 'Tokens' },
+  { href: '/refunds', label: 'Refunds' },
+  { href: '/payouts', label: 'Payouts' },
+  { href: '/marketplace-terms', label: 'Marketplace terms' },
+];
+const showRelatedPolicies = sectionId === 'billing' || sectionId === 'booking-and-paying';
+
+const breadcrumbLd = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Help', item: `${ORG.url}help` },
+    { '@type': 'ListItem', position: 2, name: section.label, item: `${ORG.url}help#${sectionId}` },
+    { '@type': 'ListItem', position: 3, name: entry.data.title, item: `${ORG.url}${helpUrl(entry).slice(1)}` },
+  ],
+};
+// [WEB-HELP-1] JSON-LD must never let a literal "</script" close the tag
+// early if a title/field ever contains it — escape '<' per the plan's JSON-LD
+// rule (mirrors index.astro's faqLd).
+const breadcrumbLdJson = JSON.stringify(breadcrumbLd).replace(/</g, '\\u003c');
+---
+
+<Content
+  width="wide"
+  kicker={section.label}
+  title={entry.data.title}
+  description={entry.data.description}
+  updated={entry.data.updated.toISOString()}
+  tone={section.tone}
+>
+  {/* Content.astro has no named "head" slot for callers to fill (only
+      EntityFaq-style in-body JSON-LD works here) — in-body JSON-LD is valid
+      and is what EntityFaq.astro already does on /about. */}
+  <script type="application/ld+json" set:html={breadcrumbLdJson} />
+
+  <div class="help-shell">
+    <aside class="help-rail" aria-label="Help navigation">
+      {/* [WEB-HELP-1] Desktop (>=1024px) rail: a plain, always-visible <div>.
+          Rendering the rail as a closed <details> and trying to force it
+          open with `:not([open]) { display: block }` does not work in
+          Chromium/WebKit — the UA stylesheet's
+          `details:not([open]) > *:not(summary){display:none}` wins over an
+          author `display:block` override on the same element, so the whole
+          rail was invisible on desktop Chrome/Safari. Rendering it twice
+          (this div + the <details> below) from the same `tree`/`entry`
+          props via HelpRailNav avoids the two ever diverging. */}
+      <div class="help-rail-desktop">
+        <div class="help-rail-search">
+          <HelpSearch variant="rail" id="rail-desktop" />
+        </div>
+        <div class="help-rail-nav-scroll">
+          <HelpRailNav tree={tree} entry={entry} />
+        </div>
+      </div>
+
+      {/* Mobile (<1024px) rail: the collapsible accordion. */}
+      <details class="help-rail-toggle">
+        <summary>Browse help</summary>
+        <div class="help-rail-body">
+          <div class="help-rail-search">
+            <HelpSearch variant="rail" id="rail-mobile" />
+          </div>
+          <HelpRailNav tree={tree} entry={entry} />
+        </div>
+      </details>
+    </aside>
+
+    <div class="help-main">
+      <article class="help-article">
+        <slot />
+      </article>
+
+      <nav class="help-prevnext" aria-label="More in this section">
+        {prev && (
+          <a class="help-prevnext-link help-prev" href={helpUrl(prev)}>
+            <span class="help-prevnext-dir">← Previous</span>
+            <span class="help-prevnext-title">{prev.data.title}</span>
+          </a>
+        )}
+        {next && (
+          <a class="help-prevnext-link help-next" href={helpUrl(next)}>
+            <span class="help-prevnext-dir">Next →</span>
+            <span class="help-prevnext-title">{next.data.title}</span>
+          </a>
+        )}
+      </nav>
+
+      {showRelatedPolicies && (
+        <p class="help-related">
+          Related policies:{' '}
+          {RELATED_POLICIES.map((p, i) => (
+            <>
+              {i > 0 && ', '}
+              <a href={p.href}>{p.label}</a>
+            </>
+          ))}.
+        </p>
+      )}
+    </div>
+  </div>
+</Content>
+
+<style>
+  /* [WEB-HELP-1 2026-09-11] Scoped to this layout only — uses the existing
+     .editorial-page tokens (--paper/--ink/--blue/--sky/--lime/--pink/--sans/
+     --serif/--display) verbatim, rem units, no new colours or fonts. */
+
+  /* [WEB-HELP-1] Content.astro's .editorial-page sets `overflow:hidden`
+     (it clips the decorative circle in .content::before), which also
+     silently defeats `position:sticky` on any descendant — the sticky rail
+     below never engaged because its nearest scrolling ancestor clipped
+     overflow. `overflow:clip` keeps the same visual clipping without
+     disabling sticky positioning, and is scoped to help pages only via
+     :has() so no other editorial page's behaviour changes. */
+  :global(.editorial-page:has(.help-shell)) { overflow: clip; }
+
+  .help-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    margin-top: 2.5rem;
+  }
+
+  .help-rail-desktop { display: none; }
+
+  .help-rail-toggle {
+    border: 1px solid var(--ink);
+    border-radius: 1.1rem;
+    background: var(--white);
+    padding: 0.2rem 1rem;
+  }
+  .help-rail-toggle summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 0.85rem 0.2rem;
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 1rem;
+    letter-spacing: 0.02em;
+  }
+  .help-rail-toggle summary::-webkit-details-marker { display: none; }
+  .help-rail-toggle summary::after {
+    /* [WEB-HELP-1] Plain `content:'▾'` first as a fallback for browsers that
+       don't support the `/ ''` alt-text syntax; the second declaration wins
+       in browsers that do, giving the pseudo-element an empty accessible
+       alternative text — without it some screen readers announce the raw
+       glyph ("up down triangle") on every article page. */
+    content: '▾';
+    content: '▾' / '';
+    float: right;
+    transition: transform 0.15s ease;
+  }
+  .help-rail-toggle[open] summary::after { transform: rotate(180deg); }
+  .help-rail-body { padding: 0 0.2rem 1.1rem; }
+  .help-rail-search { margin-bottom: 1.1rem; }
+
+  /* [WEB-HELP-1] .help-rail-nav / .help-rail-section* rules moved into
+     HelpRailNav.astro's own <style> — this scoped block never reached that
+     child component's markup (Astro's CSS scoping is per-component via a
+     data attribute, and Help.astro's data attribute was never applied to
+     HelpRailNav's rendered elements), so the section/article nav was
+     unstyled. Keep only rules for elements Help.astro itself renders. */
+  .help-main { min-width: 0; }
+  .help-article :global(> :first-child) { margin-top: 0; }
+  /* [WEB-HELP-1] Tailwind-style preflight (via the global base styles) sets
+     `p{margin:0}` and Content.astro's `.prose > * + *` rhythm only reaches
+     DIRECT children of .prose — but article bodies render one level deeper,
+     inside .help-article, so every paragraph/heading/list collapsed onto its
+     neighbour with no vertical space. Re-establish the same rhythm scoped to
+     the article, and restore list markers/indent preflight strips. */
+  .help-article :global(> * + *) { margin-top: 1.375rem; }
+  .help-article :global(ul),
+  .help-article :global(ol) { padding-left: 1.25rem; }
+  .help-article :global(ul) { list-style: disc; }
+  .help-article :global(ol) { list-style: decimal; }
+
+  .help-prevnext {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--ink);
+  }
+  .help-prevnext-link {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--ink);
+    border-radius: 1rem;
+    text-decoration: none;
+    color: var(--ink);
+  }
+  .help-prevnext-link:hover { background: rgba(22, 22, 20, 0.05); }
+  .help-prevnext-link:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  .help-next { grid-column: 2; text-align: right; align-items: flex-end; }
+  .help-prevnext-dir { font-size: 0.8rem; font-weight: 700; color: var(--blue); text-transform: uppercase; letter-spacing: 0.05em; }
+  .help-prevnext-title { font-family: var(--display); font-size: 1.05rem; font-weight: 700; }
+
+  .help-related {
+    margin-top: 1.5rem;
+    font-size: 0.9rem;
+    color: rgba(22, 22, 20, 0.75);
+  }
+  .help-related a { color: var(--blue); font-weight: 700; }
+
+  /* Desktop: sticky rail beside the article, per the plan (≥1024px). */
+  @media (min-width: 1024px) {
+    .help-shell { flex-direction: row; align-items: flex-start; gap: 3rem; }
+    .help-rail { flex: 0 0 16.5rem; }
+    .help-rail-desktop {
+      display: block;
+      /* [WEB-HELP-1] SiteHeader's sticky bar (.avh--sticky, top:0) exposes no
+         CSS var for its own height, so this is a fixed rem estimate (~92px
+         bar + a little breathing room) rather than a var(--header-height). */
+      position: sticky;
+      top: 6rem;
+      align-self: flex-start;
+    }
+    /* [WEB-HELP-1] Scroll only the nav list, not the container that also
+       holds the search box — putting overflow/max-height on the outer
+       container clipped the search listbox's dropdown. */
+    .help-rail-nav-scroll { max-height: calc(100vh - 9rem); overflow-y: auto; }
+    .help-rail-toggle { display: none; }
+    .help-main { flex: 1 1 auto; }
+  }
+
+  @media (max-width: 480px) {
+    .help-prevnext { grid-template-columns: 1fr; }
+    .help-next { grid-column: 1; text-align: left; align-items: flex-start; }
+
+    /* [WEB-HELP-1] Content.astro's h1 is clamp(68px,9vw,132px) — at 400px
+       wide, 9vw is only 36px, well under the 68px floor, so a long help
+       article title (e.g. a whole sentence-length H1) can clip against the
+       viewport edge or overlap the decorative circle. Help pages only. */
+    :global(.editorial-page .content-head h1) {
+      font-size: clamp(2.4rem, 11vw, 3.6rem);
+      overflow-wrap: anywhere;
+    }
+  }
+</style>

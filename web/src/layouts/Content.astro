@@ -21,6 +21,16 @@ export interface Props {
    * used to ship as "About avaTOK · avaTOK".
    */
   ogTitle?: string;
+  /**
+   * [WEB-HELP-1 2026-09-11] Optional deep link to the plain-English help
+   * centre article for this policy page (plan §8). When set, renders a
+   * small "Read the help centre" callout right after the lead/updated line.
+   * The ONLY sanctioned way for a page to add this cross-link — do not
+   * hand-roll a `<p class="help-crosslink">` in a page's own slot, it steals
+   * `.prose > p:first-child`'s callout styling from the real lead paragraph.
+   */
+  helpHref?: string;
+  helpLabel?: string;
 }
 
 const {
@@ -34,6 +44,8 @@ const {
   tone,
   image = '/og-editorial.png',
   ogTitle,
+  helpHref,
+  helpLabel,
 } = Astro.props;
 
 const updatedLabel = updated
@@ -80,6 +92,12 @@ const routeTone = tone ?? (
         <h1>{title}</h1>
         {lead && <p class="lead">{lead}</p>}
         {updatedLabel && <p class="updated">Last updated {updatedLabel}</p>}
+        {helpHref && (
+          <p class="help-crosslink">
+            Looking for the plain-English version?{' '}
+            <a href={helpHref}>{helpLabel ?? 'Read the help centre'} →</a>
+          </p>
+        )}
       </header>
       <article class="prose">
         <slot />
@@ -134,6 +152,11 @@ const routeTone = tone ?? (
   .content-head h1::first-letter { font-family:var(--serif); font-style:italic; color:var(--blue); }
   .content-head .lead { max-width:800px; margin:30px 0 0; font-size:clamp(24px,2.3vw,34px); line-height:1.32; font-weight:500; text-wrap:pretty; }
   .content-head .updated { display:inline-block; margin:24px 0 0; padding:9px 13px; border:1px solid var(--ink); border-radius:16px; background:var(--white); font-size:14px; font-weight:700; letter-spacing:.05em; }
+  /* [WEB-HELP-1 2026-09-11] `helpHref`/`helpLabel` callout — small and
+     muted, matches `.updated` above rather than the lead paragraph. rem
+     units per the plan's help-centre CSS convention. */
+  .content-head .help-crosslink { margin:0.9rem 0 0; font-size:0.95rem; color:rgba(22,22,20,.7); }
+  .content-head .help-crosslink a { color:var(--blue); font-weight:700; }
   .content .prose { position:relative; z-index:1; margin-top:54px; font-size:20px; line-height:1.72; color:rgba(24,24,22,.82); }
   .content .prose > * + * { margin-top:22px; }
   .content .prose > p:first-child { padding:28px 30px; border:1px solid var(--ink); border-radius:22px; background:var(--white); box-shadow:10px 10px 0 var(--blue); color:var(--ink); font-size:22px; }

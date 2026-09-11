@@ -1,0 +1,192 @@
+---
+// [WEB-HELP-1 2026-09-11] The help centre landing page: hero search, the
+// five section cards (plan §5/§7), an FAQ accordion assembled from every
+// article's `faq:` frontmatter, and a short policy link row. This is the
+// ONLY page in the help centre that emits FAQPage JSON-LD — articles
+// themselves never do (see Help.astro's comment and [WEB-SEO-6], which set
+// the same "one FAQPage per entity page, not one per article" rule for
+// EntityFaq.astro on /about).
+export const prerender = true;
+
+import Content from '../../layouts/Content.astro';
+import HelpSearch from '../../components/HelpSearch.astro';
+import { getHelpTree, helpUrl } from '../../lib/help';
+import { ORG } from '../../lib/org';
+
+const tree = await getHelpTree();
+
+type FaqItem = { q: string; a: string; source: string };
+const faqItems: FaqItem[] = tree.flatMap((section) =>
+  section.entries.flatMap((entry) =>
+    entry.data.faq.map((f) => ({ ...f, source: helpUrl(entry) })),
+  ),
+);
+
+const faqLd =
+  faqItems.length > 0
+    ? {
+        '@context': 'https://schema.org',
+        '@type': 'FAQPage',
+        '@id': `${ORG.url}help#faq`,
+        mainEntity: faqItems.map((f) => ({
+          '@type': 'Question',
+          name: f.q,
+          acceptedAnswer: { '@type': 'Answer', text: f.a },
+        })),
+      }
+    : null;
+
+const POLICY_LINKS = [
+  { href: '/terms', label: 'Terms of service' },
+  { href: '/privacy', label: 'Privacy policy' },
+  { href: '/tokens', label: 'Tokens' },
+  { href: '/refunds', label: 'Refunds' },
+  { href: '/payouts', label: 'Payouts' },
+  { href: '/pricing-fees', label: 'Pricing & fees' },
+  { href: '/marketplace-terms', label: 'Marketplace terms' },
+];
+---
+
+<Content
+  width="wide"
+  kicker="Help centre"
+  title="How avaTOK works"
+  description="Guides for booking, paying, creating and getting paid on avaTOK — search or browse by topic."
+  lead="Plain-English answers to how booking, paying, creating and getting paid actually work on avaTOK."
+  tone="cream"
+>
+  {faqLd && <script type="application/ld+json" set:html={JSON.stringify(faqLd).replace(/</g, '\\u003c')} />}
+
+  <div class="help-hero">
+    <HelpSearch variant="hero" id="hero" />
+  </div>
+
+  <div class="help-sections">
+    {tree.map((section) => {
+      const preview = section.entries.slice(0, 3);
+      const remaining = section.entries.length - preview.length;
+      return (
+        <section class="help-card" id={section.id} aria-labelledby={`help-card-${section.id}-title`}>
+          <h2 id={`help-card-${section.id}-title`}>{section.label}</h2>
+          <p class="help-card-blurb">{section.blurb}</p>
+          <ul class="help-card-list">
+            {preview.map((entry) => (
+              <li><a href={helpUrl(entry)}>{entry.data.title}</a></li>
+            ))}
+          </ul>
+          {remaining > 0 && (
+            // There is no separate "section index" route in phase 1 (plan
+            // §3/§7 name no such page) — the full section list already lives
+            // in every article's sidebar (Help.astro), so "All N articles"
+            // opens the first article, where that complete list is one click
+            // away, rather than link to a page that doesn't exist.
+            <a class="help-card-all" href={helpUrl(preview[0])}>
+              All {section.entries.length} articles →
+            </a>
+          )}
+          {remaining <= 0 && section.entries.length > 0 && (
+            <span class="help-card-count">{section.entries.length} article{section.entries.length === 1 ? '' : 's'}</span>
+          )}
+        </section>
+      );
+    })}
+  </div>
+
+  {faqItems.length > 0 && (
+    <section class="help-faq" aria-labelledby="help-faq-title">
+      <h2 id="help-faq-title">Frequently asked</h2>
+      <div class="help-faq-list">
+        {faqItems.map((f) => (
+          <details class="help-faq-item">
+            <summary>{f.q}</summary>
+            <p>
+              {f.a}{' '}
+              <a class="help-faq-source" href={f.source}>Read more →</a>
+            </p>
+          </details>
+        ))}
+      </div>
+    </section>
+  )}
+
+  <nav class="help-policies" aria-label="Policies">
+    <span class="help-policies-label">Policies:</span>
+    {POLICY_LINKS.map((p, i) => (
+      <>
+        {i > 0 && <span aria-hidden="true"> · </span>}
+        <a href={p.href}>{p.label}</a>
+      </>
+    ))}
+  </nav>
+</Content>
+
+<style>
+  /* [WEB-HELP-1 2026-09-11] Same token set as Help.astro — no new colours,
+     rem units, works down to 400px (single-column cards + accordion). */
+  .help-hero { margin: 2rem 0 3rem; max-width: 40rem; }
+
+  .help-sections {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15.5rem, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 3rem;
+  }
+  .help-card {
+    display: flex;
+    flex-direction: column;
+    padding: 1.5rem;
+    border: 1px solid var(--ink);
+    border-radius: 1.2rem;
+    background: var(--white);
+  }
+  .help-card h2 {
+    margin: 0 0 0.5rem;
+    font-family: var(--display);
+    font-size: 1.4rem;
+    line-height: 1.15;
+  }
+  .help-card h2::before { content: none; } /* override Content.astro's ✦ prefix — too busy at card scale */
+  .help-card-blurb { margin: 0 0 1rem; font-size: 0.92rem; line-height: 1.5; color: rgba(22, 22, 20, 0.75); }
+  .help-card-list { list-style: none; margin: 0 0 0.9rem; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; flex: 1 1 auto; }
+  .help-card-list a {
+    display: block;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--ink);
+  }
+  .help-card-list a:hover { color: var(--blue); text-decoration: underline; }
+  .help-card-all { align-self: flex-start; font-weight: 700; font-size: 0.9rem; color: var(--blue); text-decoration: none; }
+  .help-card-all:hover { text-decoration: underline; }
+  .help-card-count { font-size: 0.8rem; color: rgba(22, 22, 20, 0.6); }
+
+  .help-faq { margin-bottom: 3rem; }
+  .help-faq-list { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 1rem; }
+  .help-faq-item {
+    padding: 0.9rem 1.1rem;
+    border: 1px solid var(--ink);
+    border-radius: 1rem;
+    background: var(--white);
+  }
+  .help-faq-item summary {
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 1rem;
+    list-style: none;
+  }
+  .help-faq-item summary::-webkit-details-marker { display: none; }
+  .help-faq-item summary::before { content: '+ '; color: var(--blue); font-weight: 700; }
+  .help-faq-item[open] summary::before { content: '– '; }
+  .help-faq-item p { margin: 0.6rem 0 0; font-size: 0.95rem; line-height: 1.55; }
+  .help-faq-source { color: var(--blue); font-weight: 700; }
+  .help-faq-item summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+  .help-policies { font-size: 0.9rem; }
+  .help-policies-label { font-weight: 700; margin-right: 0.4rem; }
+  .help-policies a { color: var(--blue); font-weight: 700; text-decoration: none; }
+  .help-policies a:hover { text-decoration: underline; }
+
+  @media (max-width: 480px) {
+    .help-sections { grid-template-columns: 1fr; }
+  }
+</style>
