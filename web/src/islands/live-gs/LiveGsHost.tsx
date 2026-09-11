@@ -495,6 +495,22 @@ function LiveGsHostInner({ listingId, title = 'Live event' }: LiveGsHostProps) {
           try { capture('live_host_authz_refused', { listing_id: listingId, reason: 'not_found', status: e.status }); } catch { /* best-effort */ }
           return;
         }
+        // [WAITROOM-WEB-4 NIT] Routing every non-listing-level 404 straight
+        // to `preview` (above) sent a non-creator with a valid link into the
+        // host preview for a listing that hasn't started, with nothing at
+        // this "session not created yet" stage to check ownership against.
+        // If the worker's response for this state ever carries a `role`
+        // (it may not yet — guarded, absent is not an error), a non-host
+        // value routes to `not_creator` instead of `preview`.
+        const bodyRole =
+          e.body && typeof e.body === 'object' && 'role' in (e.body as Record<string, unknown>)
+            ? (e.body as { role?: unknown }).role
+            : undefined;
+        if (typeof bodyRole === 'string' && bodyRole !== 'host' && bodyRole !== 'creator') {
+          setPhase('not_creator');
+          try { capture('live_host_authz_refused', { listing_id: listingId, reason: 'not_creator', status: e.status }); } catch { /* best-effort */ }
+          return;
+        }
         setPhase('preview');
         try { capture('live_host_authz_ok', { listing_id: listingId, reason: 'not_started_yet' }); } catch { /* best-effort */ }
         return;
