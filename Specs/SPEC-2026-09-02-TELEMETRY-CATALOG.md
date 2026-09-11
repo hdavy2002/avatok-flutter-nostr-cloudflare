@@ -263,8 +263,7 @@ event is sent back.
 ## WP5 [LIVE-GRACE-WEB-1] — live host/viewer grace-period web events
 
 Surfaces: `web/src/islands/live-gs/LiveGsHost.tsx`, `LiveGsViewer.tsx`,
-`LiveStage.tsx`. All four carry the standard super-properties (`platform`,
-`service_name`, `release`, `app`, `email`, `clerk_uid`, `trace_id`) via
+`LiveStage.tsx`. All four carry the shared super-property contract (§1.1) via
 `web/src/lib/analytics.ts`'s `capture()` — `email` is registered once at
 sign-in (`identify()`) and does not need to be repeated per-call.
 
@@ -377,8 +376,7 @@ WP2 lands the real grant and WP4/WP6 wire the waiting-room UI against it.
 ## WP4 [WAITROOM-WEB-1] — paid-consult waiting-room web events
 
 Surfaces: `web/src/islands/consult-gs/ConsultRoomGS.tsx`, `WaitingRoom.tsx`,
-`RoomSocket.ts`. All carry the standard super-properties (`platform`,
-`service_name`, `release`, `app`, `clerk_uid`, `trace_id`) via
+`RoomSocket.ts`. All carry the shared super-property contract (§1.1) via
 `web/src/lib/analytics.ts`'s `capture()`; `email` is ALSO passed explicitly
 on every event below (not just relied on as a registered super-property),
 because a guest's email can be set after the waiting room has already been
@@ -425,8 +423,8 @@ fired ahead of the manual join path it replaces.
 Surfaces: `app/lib/features/commercial_getstream/commercial_live_screens.dart`
 (`LiveBroadcastScreen`, `LiveViewerScreen`), `commercial_live_gateway.dart`,
 the commercial branch of `app/lib/push/push_service.dart`. All events go
-through `Analytics.capture` and always carry `listing_id`, `role`
-(`'host'`|`'viewer'`) and `email` (`Analytics.currentEmail`).
+through `Analytics.capture` (shared super-property contract, §1.1) and always
+additionally carry `listing_id` and `role` (`'host'`|`'viewer'`).
 
 `live_reconnecting_shown` {listing_id, role, email} — fired once per outage
 (de-duplicated until the state clears) the first time a `GET
@@ -503,10 +501,10 @@ have the shape documented above."
 Surfaces: `app/lib/features/commercial_getstream/commercial_waiting_room_screen.dart`
 (new), `commercial_consult_screens.dart` (`CommercialConsultationPrejoinFlow._join`),
 `app/lib/core/commercial_waiting_room_api.dart` (new). All go through
-`Analytics.capture`, which stamps the standard envelope (`platform`,
-`service_name`, `release`, `app`, `email`, `clerk_uid`, `trace_id`) on every
-call automatically — `email` is never omitted here, it just isn't repeated as
-an explicit property since `Analytics.capture`'s `_base()` already attaches it.
+`Analytics.capture`, which stamps the shared super-property contract (§1.1) on
+every call automatically — `email` is never omitted here, it just isn't
+repeated as an explicit property since `Analytics.capture`'s `_base()` already
+attaches it.
 
 `waitroom_enter` {booking_id, role: 'creator'|'buyer'} — fired in
 `CommercialWaitingRoomScreen.initState`, i.e. once the prejoin flow's `_join`
