@@ -497,3 +497,47 @@ Success value for this WP: `worker/test/commercial_waiting_room.test.ts` and
 `worker/test/stream_session_do_waitroom_contract.test.ts` are the checkable
 proxy for "the contract fields WP4/WP6 telemetry depends on actually exist and
 have the shape documented above."
+
+## WP6 [WAITROOM-APP-1] — paid-consult waiting-room app events
+
+Surfaces: `app/lib/features/commercial_getstream/commercial_waiting_room_screen.dart`
+(new), `commercial_consult_screens.dart` (`CommercialConsultationPrejoinFlow._join`),
+`app/lib/core/commercial_waiting_room_api.dart` (new). All go through
+`Analytics.capture`, which stamps the standard envelope (`platform`,
+`service_name`, `release`, `app`, `email`, `clerk_uid`, `trace_id`) on every
+call automatically — `email` is never omitted here, it just isn't repeated as
+an explicit property since `Analytics.capture`'s `_base()` already attaches it.
+
+`waitroom_enter` {booking_id, role: 'creator'|'buyer'} — fired in
+`CommercialWaitingRoomScreen.initState`, i.e. once the prejoin flow's `_join`
+has fetched a COMPLETE `CommercialWaitingRoomApi.prejoin` grant (`room_ws`,
+`room_token`, `starts_at`, `ends_at` all present, `role` matching this
+screen's `isCreator`) and pushed the waiting room. `Leave` from the in-call
+`CommercialConsultationRoomScreen` pops back to the SAME waiting-room screen
+instance (socket kept per RULEBOOK §3) rather than re-creating it, so a
+re-entry does not double-fire this event within one visit. When the prejoin
+grant is absent or partial (worker not deployed yet, or flags off), `_join`
+silently falls back to the pre-WP6 direct-join flow and none of these events
+fire — the app never breaks on an old server.
+
+`waitroom_autojoin` {booking_id, role} — fired at the top of `_autoJoin`, the
+moment the waiting-room socket's `roster {host, attendee}` event reports BOTH
+present (PLAN contract: "call the existing `/join` when `roster.host &&
+roster.attendee`"). Guarded by `_joining`/`_ended` so a retried roster event
+before the first join attempt finishes cannot double-fire.
+
+`waitroom_noshow_shown` {booking_id, role: 'buyer'} — fired once per visit,
+customer-side only, in `_onTick` the moment `check_in_by` passes with the
+roster still reporting no host present (`!_rosterHost`). Read straight off
+the server's `check_in_by`/`roster` fields, never computed locally from a
+hardcoded wait window (RULEBOOK §5).
+
+`waitroom_chat_sent` {booking_id, role} — fired on every waiting-room chat
+send (`CommercialWaitingRoomChannel.sendChat`, ≤ 500 chars per the WP2 DO
+contract). Message text itself never reaches PostHog.
+
+Success value for this WP's ship gate: `waitroom_enter` on a real booking
+with a non-null `room_ws` confirms the app is on the new waiting-room path
+rather than the fallback; `waitroom_autojoin` appearing before the existing
+`consult_room_entered`/join telemetry on the same booking+device confirms the
+auto-join rule fired ahead of the manual "Join consultation" tap it replaces.

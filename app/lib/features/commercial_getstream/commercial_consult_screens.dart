@@ -10,12 +10,15 @@ import 'package:stream_video_flutter/stream_video_flutter.dart';
 import '../../core/listings_api.dart';
 import '../../core/remote_config.dart';
 import '../../core/session_api.dart';
+import '../../core/commercial_waiting_room_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../identity/identity.dart' show AccountScope;
 import 'commercial_getstream_handoff.dart';
 import 'commercial_live_gateway.dart';
 import 'commercial_device_check.dart';
 import 'commercial_speaker_test.dart';
+import 'commercial_waiting_room_screen.dart';
 
 class CommercialConsultationPrejoinFlow extends StatefulWidget {
   const CommercialConsultationPrejoinFlow({
@@ -44,6 +47,9 @@ class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultati
   NetProbe? _network;
   bool _cameraOn = true, _microphoneOn = true, _checking = true, _joining = false;
   String? _error;
+  /// True once [_deviceController] ownership has been handed to the waiting
+  /// room screen — this state's [dispose] must not tear it down then.
+  bool _controllerHandedOff = false;
   late final CommercialDeviceCheckController _deviceController;
   final _speaker = CommercialSpeakerTestController();
   bool _devicesReady = false;
@@ -76,6 +82,41 @@ class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultati
     if (!_ready || _joining) return;
     setState(() { _joining = true; _devicesReady = false; _error = null; });
     try {
+      // [WAITROOM-APP-1] Ask the server for a waiting-room grant first. A
+      // missing/partial response (worker not deployed yet, feature off) is
+      // NOT an error here: it just means today's direct-join flow runs below,
+      // unchanged, so this screen never breaks on an old server.
+      CommercialWaitingRoomGrant? grant;
+      try {
+        grant = await CommercialWaitingRoomApi.prejoin(widget.bookingId);
+      } catch (_) {
+        grant = null;
+      }
+      if (!mounted) return;
+      if (grant != null && grant.isComplete && grant.isCreator == widget.isCreator) {
+        // Waiting room owns the device controller from here — do not release
+        // or dispose it in this screen; it keeps previewing until the
+        // waiting room hands off to the GetStream call.
+        await _speaker.stop();
+        if (!mounted) return;
+        _controllerHandedOff = true;
+        await Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
+          builder: (_) => CommercialWaitingRoomScreen(
+            listingId: widget.listingId,
+            bookingId: widget.bookingId,
+            title: widget.title,
+            gateway: widget.gateway,
+            connector: widget.connector,
+            isCreator: widget.isCreator,
+            grant: grant!,
+            deviceController: _deviceController,
+            cameraOn: _cameraOn,
+            microphoneOn: _microphoneOn,
+            selfUid: AccountScope.id ?? '',
+          ),
+        ));
+        return;
+      }
       // Preview capture is local-only. Release every native track before the
       // gateway or SDK is touched so the join cannot race the preview.
       await _deviceController.release();
@@ -115,7 +156,7 @@ class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultati
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    unawaited(_deviceController.dispose());
+    if (!_controllerHandedOff) unawaited(_deviceController.dispose());
     unawaited(_speaker.dispose());
     super.dispose();
   }
@@ -293,10 +334,10 @@ class _CommercialConsultationRoomScreenState extends State<CommercialConsultatio
       backgroundColor: AD.bg,
       appBar: AppBar(backgroundColor: AD.headerFooter, foregroundColor: AD.onBand(AD.headerFooter), title: Text(widget.title), actions: [IconButton(onPressed: _reconnect, icon: Icon(PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold))), if (_extensionAvailable) IconButton(onPressed: _extend, icon: Icon(PhosphorIcons.clock(PhosphorIconsStyle.bold))), IconButton(onPressed: _reportNoShow, icon: Icon(PhosphorIcons.warning(PhosphorIconsStyle.bold)))]),
       body: Column(children: [
-        Padding(padding: const EdgeInsets.all(Msg.s3), child: Row(children: [Text(_state?.state == LiveServerState.live ? 'CONNECTED' : 'WAITING', style: ADText.sectionLabel(c: AD.online)), const Spacer(), if (remaining != null && remaining > 0) Text('${(remaining ~/ 60000)} min remaining', style: ADText.sectionLabel())])),
+        Padding(padding: const EdgeInsets.all(Msg.s3), child: Row(children: [Text(_state?.state == LiveServerState.live ? 'CONNECTED' : 'CONNECTING', style: ADText.sectionLabel(c: AD.online)), const Spacer(), if (remaining != null && remaining > 0) Text('${(remaining ~/ 60000)} min remaining', style: ADText.sectionLabel())])),
         if (_error != null) Padding(padding: const EdgeInsets.symmetric(horizontal: Msg.s4), child: Text(_error!, style: ADText.preview(c: AD.danger))),
         Expanded(child: Stack(children: [
-          if (other.isEmpty) Center(child: Text('Waiting for the other participant…', style: ADText.preview())) else StreamVideoRenderer(call: _call, participant: other.first, videoTrackType: SfuTrackType.video),
+          if (other.isEmpty) const Center(child: CircularProgressIndicator()) else StreamVideoRenderer(call: _call, participant: other.first, videoTrackType: SfuTrackType.video),
           Positioned(right: Msg.s3, bottom: Msg.s3, width: 120, height: 170, child: Container(color: Colors.black, child: _call.state.value.localParticipant == null ? const SizedBox() : StreamVideoRenderer(call: _call, participant: _call.state.value.localParticipant!, videoTrackType: SfuTrackType.video))),
         ])),
         Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [IconButton(onPressed: _toggleMic, icon: Icon(_microphoneOn ? PhosphorIcons.microphone(PhosphorIconsStyle.bold) : PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold))), IconButton(onPressed: _toggleCamera, icon: Icon(_cameraOn ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold) : PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold))), FilledButton.icon(onPressed: _leave, icon: Icon(PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.bold)), label: const Text('Leave'))]),
