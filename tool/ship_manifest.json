@@ -5075,5 +5075,21 @@
       }
     ],
     "_verified_at": "app/lib/features/explore/native_listing_detail_v2.dart (_openBooking Analytics.capture)"
+  },
+  "REFUND-NOTICE-1": {
+    "description": "[REFUND-NOTICE-1] A commercial cancellation/refund sends one notice per person: the buyer gets 'Refund issued \u00b7 \u20b9X' saying where the money went (wallet, or back to the original payment method); the creator gets 'Booking cancelled' saying their buyer was refunded. Both notices used to go to both sides, so the host account read 'Your commercial order has been refunded' for money that went to the buyer's account.",
+    "two_sided": true,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "commercial_cancellation",
+        "property": "outcome",
+        "equals": "refunded",
+        "min_events": 1,
+        "note": "A cancellation refunded its buyer; the notices are sent right after this event in cancelOne()."
+      }
+    ],
+    "_verified_at": "worker/src/routes/commercial_lifecycle.ts cancelOne (notifyCommercialUsers buyer/creator split, commercialEvent cancellation)"
   }
 }

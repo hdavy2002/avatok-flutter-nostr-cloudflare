@@ -34,6 +34,7 @@ type Authority = {
   // [TAX-GST-1] Nullable so a snapshot written before the gst migration still loads.
   gst_amount: number | null;
   event_starts_at: number | null;
+  listing_title: string | null;
   buyer_entitlement_id: string | null;
   booking_starts_at: number | null; booking_ends_at: number | null; booking_status: string | null;
   booking_reschedule_count: number | null;
@@ -149,6 +150,7 @@ async function loadAuthorityRows(env: Env, where: string, binds: unknown[]): Pro
         o.amount order_amount,o.status order_status,
         p.policy_snapshot_id,p.currency,p.cancellation_policy_json,p.creator_fee_pct,
         p.platform_fee_amount,p.creator_amount,p.gst_amount,l.starts_at event_starts_at,
+        l.title listing_title,
         (SELECT e.entitlement_id FROM commercial_entitlements e
           WHERE e.order_id=o.id AND e.account_id=o.buyer_id
             AND e.state IN ('reserved','held','active','consumed') LIMIT 1) buyer_entitlement_id,
@@ -436,24 +438,48 @@ async function cancelOne(env: Env, authority: Authority, uid: string, idem: stri
   // is a promise the system cannot keep.
   const response = { ok: true, state: refundState, order_id: authority.order_id, refund_receipt_id: receiptId, refunded_amount: refundable, gst_amount: gstAmount };
   await finishOperation(env, operationId, "completed", response);
-  await notifyCommercialUsers(env, [authority.buyer_id, authority.creator_id], {
-    type: "commercial_session_cancelled",
-    eventId: receiptId,
-    listingId: authority.listing_id,
-    bookingId: authority.booking_id,
-    sessionId: authority.session_id,
-    title: "Commercial session cancelled",
-    body: "The commercial session was cancelled.",
-  });
-  await notifyCommercialUsers(env, [authority.buyer_id, authority.creator_id], {
+  // [REFUND-NOTICE-1 2026-09-11] One notice per person, worded for THEIR side of the order.
+  // Both notices used to go to buyer AND creator, so the creator's phone said "Your
+  // commercial order has been refunded" — money that was never theirs. On a shared phone
+  // the owner read that on the host account, opened its wallet, and found nothing,
+  // because the refund had correctly gone to the buyer account. The buyer now hears the
+  // amount and where it went; the creator hears that their buyer was refunded.
+  const showTitle = (authority.listing_title ?? "").trim().slice(0, 80) || "your booking";
+  const quoted = showTitle === "your booking" ? showTitle : `"${showTitle}"`;
+  const where = refundable <= 0
+    ? "Your free ticket has been cancelled."
+    : refundState === "refunded"
+      ? `₹${refundable} is back in your avaTOK wallet.`
+      : `₹${refundable} is on its way back to your original payment method.`;
+  const buyerWhy = action === "buyer_cancel"
+    ? `You cancelled ${quoted}.`
+    : action === "creator_no_show"
+      ? `The host didn't start ${quoted}, so it was cancelled.`
+      : `${quoted[0].toUpperCase()}${quoted.slice(1)} was cancelled by the host.`;
+  await notifyCommercialUsers(env, [authority.buyer_id], {
     type: "commercial_refund",
     eventId: receiptId,
     listingId: authority.listing_id,
     bookingId: authority.booking_id,
     sessionId: authority.session_id,
-    title: "Commercial refund issued",
-    body: "Your commercial order has been refunded.",
+    title: refundable <= 0 ? "Booking cancelled" : `Refund issued · ₹${refundable}`,
+    body: `${buyerWhy} ${where}`,
   });
+  if (authority.creator_id !== authority.buyer_id) {
+    await notifyCommercialUsers(env, [authority.creator_id], {
+      type: "commercial_session_cancelled",
+      eventId: receiptId,
+      listingId: authority.listing_id,
+      bookingId: authority.booking_id,
+      sessionId: authority.session_id,
+      title: "Booking cancelled",
+      body: action === "buyer_cancel"
+        ? `A buyer cancelled their booking for ${quoted}${refundable > 0 ? ` and was refunded ₹${refundable}` : ""}.`
+        : action === "creator_no_show"
+          ? `${quoted[0].toUpperCase()}${quoted.slice(1)} didn't start, so its buyer${refundable > 0 ? ` was refunded ₹${refundable}` : "'s booking was cancelled"}.`
+          : `A booking for ${quoted} was cancelled${refundable > 0 ? ` and the buyer refunded ₹${refundable}` : ""}.`,
+    });
+  }
   commercialEvent(env, "cancellation", uid, { kind: authority.kind, outcome: "refunded", reason: decision.reason });
   return json(response);
 }
