@@ -11,6 +11,7 @@ import { metaDb } from "../db/shard";
 import { readConfig } from "../routes/config";
 import { commercialEvent } from "./commercial_telemetry";
 import { consumeCommercialEntitlementsOnSessionEnd } from "../routes/commercial_stream_sessions";
+import { commercialProviderIdentity } from "./commercial_stream_sessions";
 
 type DueConsultSession = {
   commercial_session_id: string;
@@ -31,9 +32,11 @@ type DueConsultSession = {
  *
  * Deliberately scoped to sessions that already have a `commercial_sessions`
  * row (i.e. somebody joined at least once and a provider call was created).
- * A booking nobody ever opened has no session row at all and is handled by
- * the orphan no-show sweep (`runCommercialOrphanNoShowSweep`,
- * [LISTING-EXPIRY-1]) -- not this function.
+ * A booking nobody ever opened has no session row at all: if the creator
+ * never checked in either, it is handled by the orphan no-show sweep
+ * (`runCommercialOrphanNoShowSweep`, [LISTING-EXPIRY-1]); if the creator DID
+ * check in but the buyer's room view never opened, `backfillCheckedInConsultSessions`
+ * below (fix 1, [SETTLE-CHECKIN-2]) handles it instead -- not this function.
  */
 export async function endDueConsultSessions(
   env: Env,
@@ -90,4 +93,102 @@ export async function endDueConsultSessions(
     ended++;
   }
   return { scanned: (rows.results ?? []).length, ended };
+}
+
+
+type OrphanCheckedInBooking = {
+  booking_id: string;
+  listing_id: string;
+  creator_id: string;
+  order_id: string | null;
+  starts_at: number;
+  ends_at: number;
+};
+
+/**
+ * [SETTLE-CHECKIN-2] fix 1: C1 ("creator present, buyer never came") when the buyer
+ * never even opened the waiting room -- so no `commercial_sessions` row was ever
+ * created (rows are created on `/join`, see commercial_stream_sessions.ts) -- but the
+ * creator's own check-in evidence (`session_attendance` role='host', or a creator
+ * `commercial_participant_intervals` row, inside the fix-3 window) proves he was there.
+ *
+ * Without this pass those bookings would never settle: `runCommercialOrphanNoShowSweep`
+ * now SKIPS any booking with host check-in evidence in that window (it is not a
+ * no-show), and nothing else looks at a booking with no session row. This synthesizes
+ * the missing `commercial_sessions` row -- already 'ended', using the same provider
+ * identity contract (`commercialProviderIdentity`) the real `/join` path uses, so the
+ * row is indistinguishable from one a real join would have produced -- and its
+ * settlement job, so the normal check-in-decision settlement path
+ * (`consultCheckInDecision` in commercial_settlement.ts) pays the creator in full.
+ */
+export async function backfillCheckedInConsultSessions(
+  env: Env,
+  limit = 25,
+): Promise<{ scanned: number; created: number }> {
+  const config = await readConfig(env);
+  const lateGraceMs = Math.max(0, Math.trunc(Number(config.commercialConsultJoinLateMin))) * 60_000;
+  const rawCheckInMin = Number(config.sessionCreatorCheckInMin);
+  const rawEarlyMin = Number(config.commercialConsultJoinEarlyMin);
+  const checkInMin = Number.isFinite(rawCheckInMin) && rawCheckInMin > 0 ? rawCheckInMin : 20;
+  const earlyMin = Number.isFinite(rawEarlyMin) && rawEarlyMin >= 0 ? rawEarlyMin : 10;
+  const checkInMs = checkInMin * 60_000;
+  const earlyMs = earlyMin * 60_000;
+  const now = Date.now();
+  const safeLimit = Math.max(1, Math.min(100, Math.trunc(limit)));
+  const rows = await metaDb(env).prepare(
+    `SELECT b.id booking_id, b.listing_id, b.creator_id, b.order_id, b.starts_at, b.ends_at
+       FROM bookings b
+       JOIN orders o ON o.id = b.order_id
+      WHERE b.kind='consult_1to1'
+        AND b.status='confirmed'
+        AND o.status IN ('held','free')
+        AND b.ends_at + ?1 <= ?2
+        AND NOT EXISTS (SELECT 1 FROM commercial_sessions sx
+                         WHERE sx.kind='consult_1to1' AND sx.booking_id=b.id)
+        AND EXISTS (
+          SELECT 1 FROM session_attendance a
+           WHERE a.session_id=b.id AND a.role='host' AND a.user_id=b.creator_id
+             AND a.joined_at<=b.starts_at+?3 AND COALESCE(a.left_at,?2)>=b.starts_at-?4
+        )
+      ORDER BY b.ends_at ASC
+      LIMIT ?5`,
+  ).bind(lateGraceMs, now, checkInMs, earlyMs, safeLimit).all<OrphanCheckedInBooking>();
+
+  let created = 0;
+  for (const row of rows.results ?? []) {
+    const identity = commercialProviderIdentity({
+      kind: "consult_1to1",
+      listingId: row.listing_id,
+      bookingId: row.booking_id,
+      sessionVersion: 1,
+    });
+    const sessionId = `consult_${row.booking_id}`;
+    const nowForRow = Date.now();
+    const inserted = await metaDb(env).prepare(
+      `INSERT OR IGNORE INTO commercial_sessions
+       (commercial_session_id,kind,listing_id,booking_id,order_id,creator_id,provider,
+        provider_call_type,provider_call_id,session_version,scheduled_at,ended_at,state,state_version,
+        settlement_state,recording_state,replay_state,created_at,updated_at)
+       VALUES (?1,'consult_1to1',?2,?3,?4,?5,?6,?7,?8,1,?9,?10,'ended',1,
+        'pending','disabled','disabled',?10,?10)`,
+    ).bind(
+      sessionId, row.listing_id, row.booking_id, row.order_id, row.creator_id,
+      identity.provider, identity.callType, identity.callId, row.starts_at, nowForRow,
+    ).run();
+    if ((inserted.meta?.changes ?? 0) !== 1) continue;
+    await metaDb(env).prepare(
+      `INSERT OR IGNORE INTO commercial_settlement_jobs
+       (settlement_job_id,commercial_session_id,order_id,state,terminal_event_id,
+        attempts,created_at,updated_at)
+       SELECT 'settlement:' || ?1 || ':' || p.order_id,?1,p.order_id,'pending',?2,0,?3,?3
+       FROM commercial_policy_snapshots p
+       WHERE p.listing_id=?4 AND COALESCE(p.booking_id,'')=?5`,
+    ).bind(sessionId, `backfill:${sessionId}:${nowForRow}`, nowForRow, row.listing_id, row.booking_id).run();
+    await consumeCommercialEntitlementsOnSessionEnd(env, sessionId);
+    commercialEvent(env, "session_clock", null, {
+      kind: "consult_1to1", outcome: "backfilled", reason: "creator_checked_in_buyer_absent",
+    });
+    created++;
+  }
+  return { scanned: (rows.results ?? []).length, created };
 }

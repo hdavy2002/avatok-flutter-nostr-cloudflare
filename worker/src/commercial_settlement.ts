@@ -225,29 +225,54 @@ async function deliveryError(
 }
 
 /**
+ * [SETTLE-CHECKIN-2] fix 3: the check-in window is an OVERLAP test, not a one-sided
+ * `joined_at <= closesAt`. Exported so `commercial_lifecycle.ts` (the orphan no-show
+ * sweep, fix 1) computes the exact same window instead of re-deriving its own copy.
+ */
+export function consultCheckInWindow(
+  startsAt: number,
+  earlyMin: number,
+  checkInMin: number,
+): { opensAt: number; closesAt: number } {
+  const early = Math.max(0, Math.trunc(Number(earlyMin))) || 0;
+  const checkIn = Math.max(0, Math.trunc(Number(checkInMin))) || 0;
+  return { opensAt: startsAt - early * 60_000, closesAt: startsAt + checkIn * 60_000 };
+}
+
+/**
  * [SETTLE-CHECKIN-1] The check-in decision for a 1:1 consult (RULEBOOK-PAID-SESSIONS.md
  * §2, contract in Specs/PLAN-2026-09-11-WAITING-ROOM-BUILD.md). Replaces the two-party
  * GetStream-overlap test (`deliveryError`, still used for live_event) for consults: the
- * creator is checked in iff a `session_attendance` row with role='host' joined at or
- * before `starts_at + sessionCreatorCheckInMin` exists for the booking, OR a
- * `commercial_participant_intervals` row for the creator (role='creator' in
- * `commercial_session_members`) started in that same window. Whether the BUYER ever
- * joined is irrelevant to this decision (C1: checked in → full price, no matter when or
+ * creator is checked in iff a `session_attendance` row with role='host' for THIS creator
+ * overlaps `[starts_at - commercialConsultJoinEarlyMin, starts_at + sessionCreatorCheckInMin]`
+ * (fix 3 -- a one-sided `joined_at <= closesAt` test let a check-in from the day before
+ * count), OR a `commercial_participant_intervals` row for the creator (role='creator' in
+ * `commercial_session_members`) overlaps the same window. Whether the BUYER ever joined
+ * is irrelevant to this decision (C1: checked in → full price, no matter when or
  * whether the customer joins).
  */
-async function consultCheckInDecision(
+export async function consultCheckInDecision(
   env: Env,
   sessionId: string,
   bookingId: string | null,
   startsAt: number,
+  creatorId: string,
 ): Promise<{ checkedIn: boolean; checkedInAt: number | null }> {
-  const checkInMs = await checkInWindowMs(env);
-  const windowEnd = startsAt + checkInMs;
+  const cfg = await readConfig(env) as unknown as Record<string, unknown>;
+  const checkInMinRaw = Number(cfg.sessionCreatorCheckInMin);
+  const earlyMinRaw = Number(cfg.commercialConsultJoinEarlyMin);
+  const { opensAt, closesAt } = consultCheckInWindow(
+    startsAt,
+    Number.isFinite(earlyMinRaw) && earlyMinRaw >= 0 ? earlyMinRaw : 10,
+    Number.isFinite(checkInMinRaw) && checkInMinRaw > 0 ? checkInMinRaw : 20,
+  );
+  const now = Date.now();
   if (bookingId) {
     const att = await metaDb(env).prepare(
       `SELECT MIN(joined_at) at FROM session_attendance
-        WHERE session_id=?1 AND role='host' AND joined_at<=?2`,
-    ).bind(bookingId, windowEnd).first<{ at: number | null }>();
+        WHERE session_id=?1 AND role='host' AND user_id=?2
+          AND joined_at<=?3 AND COALESCE(left_at,?4)>=?5`,
+    ).bind(bookingId, creatorId, closesAt, now, opensAt).first<{ at: number | null }>();
     if (att?.at != null) return { checkedIn: true, checkedInAt: Number(att.at) };
   }
   const interval = await metaDb(env).prepare(
@@ -255,8 +280,9 @@ async function consultCheckInDecision(
        FROM commercial_participant_intervals i
        JOIN commercial_session_members m
          ON m.commercial_session_id=i.commercial_session_id AND m.account_id=i.account_id
-      WHERE i.commercial_session_id=?1 AND m.role='creator' AND i.joined_at<=?2`,
-  ).bind(sessionId, windowEnd).first<{ at: number | null }>();
+      WHERE i.commercial_session_id=?1 AND m.role='creator' AND i.account_id=?2
+        AND i.joined_at<=?3 AND COALESCE(i.left_at,?4)>=?5`,
+  ).bind(sessionId, creatorId, closesAt, now, opensAt).first<{ at: number | null }>();
   if (interval?.at != null) return { checkedIn: true, checkedInAt: Number(interval.at) };
   return { checkedIn: false, checkedInAt: null };
 }
@@ -268,13 +294,16 @@ async function consultCheckInDecision(
  * Best-effort: a strike-write failure must never block or roll back the refund it rides
  * with (the refund is the money-safety property; the strike is a policy record).
  */
-async function insertNoShowStrike(env: Env, creatorId: string, sessionId: string): Promise<void> {
+export async function insertNoShowStrike(env: Env, creatorId: string, orderId: string, sessionId: string): Promise<void> {
   try {
+    // [SETTLE-CHECKIN-2] fix 7: deterministic id keyed by order_id + INSERT OR IGNORE —
+    // a retried settlement job (or the overdue sweep racing the settlement job on the
+    // same order) must strike the creator at most once per order, not once per attempt.
     await metaDb(env).prepare(
-      `INSERT INTO account_strikes
+      `INSERT OR IGNORE INTO account_strikes
          (id, uid, clerk_user_id, category, evidence_url, ai_confidence, source, action_taken, created_at)
        VALUES (?1,?2,?2,'marketplace_no_show',?3,NULL,'commercial_settlement','strike',?4)`,
-    ).bind(crypto.randomUUID(), creatorId, sessionId, Date.now()).run();
+    ).bind(`strike:no-show:${orderId}`, creatorId, sessionId, Date.now()).run();
   } catch (e) { console.warn("commercial no-show strike write skipped:", String(e)); }
 }
 
@@ -466,8 +495,12 @@ async function finishSettlement(
     || receipt.settlement_state !== "settled"
     || Number(receipt.connected_ms) !== duration
     || receipt.policy_snapshot_id !== authority.policy_snapshot_id
-    || (receipt.rule ?? null) !== rule
-    || (receipt.checked_in_at ?? null) !== checkedInAt) {
+    // [SETTLE-CHECKIN-2] fix 6: a receipt written before this migration has rule=NULL
+    // forever (receipts are immutable) — that must never read as a mismatch against a
+    // job that now computes a real rule, or a retried pre-migration job throws and
+    // never settles. Only a receipt that already carries a rule must match exactly.
+    || ((receipt.rule ?? null) !== null
+      && ((receipt.rule ?? null) !== rule || (receipt.checked_in_at ?? null) !== checkedInAt))) {
     throw new Error("commercial receipt immutable replay mismatch");
   }
   await metaDb(env).batch([
@@ -662,10 +695,10 @@ async function processJob(env: Env, job: SettlementJob): Promise<void> {
   // this one.
   let checkIn: { rule: "creator_checked_in"; checkedInAt: number } | null = null;
   if (authority.kind === "consult_1to1") {
-    const evidence = await consultCheckInDecision(env, job.commercial_session_id, authority.booking_id, authority.scheduled_at);
+    const evidence = await consultCheckInDecision(env, job.commercial_session_id, authority.booking_id, authority.scheduled_at, authority.creator_id);
     if (!evidence.checkedIn) {
       const outcome = await refundCreatorNoShow(env, job, authority);
-      if (outcome === "refunded") await insertNoShowStrike(env, authority.creator_id, job.commercial_session_id);
+      if (outcome === "refunded") await insertNoShowStrike(env, authority.creator_id, authority.order_id, job.commercial_session_id);
       return;
     }
     checkIn = { rule: "creator_checked_in", checkedInAt: evidence.checkedInAt as number };
@@ -837,7 +870,23 @@ async function finalizeOverdueNoShow(
   env: Env,
   authority: OverdueNoShowAuthority,
   claimId: string,
-): Promise<"refunded" | "review_pending"> {
+): Promise<"refunded" | "review_pending" | "skipped"> {
+  // [SETTLE-CHECKIN-2] fix 2: this sweep only sees sessions whose state machine never
+  // reached 'ended' by the check-in deadline -- but the creator may still have actually
+  // checked in (session_attendance / commercial_participant_intervals evidence) while
+  // the DO/state transition stalled. Refunding him here would apply the C2 outcome to a
+  // C1 fact pattern. Ask the same question consultCheckInDecision asks for the normal
+  // settlement path, and if he checked in, leave the session alone: endDueConsultSessions
+  // ends it once ends_at+grace passes, and the normal settlement path pays him in full.
+  if (authority.kind === "consult_1to1") {
+    const evidence = await consultCheckInDecision(
+      env, authority.commercial_session_id, authority.booking_id, authority.scheduled_at, authority.creator_id,
+    );
+    if (evidence.checkedIn) {
+      commercialEvent(env, "settlement", null, { outcome: "skipped_checked_in", kind: authority.kind });
+      return "skipped";
+    }
+  }
   const policy = safeJson(authority.cancellation_policy_json);
   if (!policy) return "review_pending";
   const pct = Number(policy.creator_cancel_refund_pct);
@@ -909,7 +958,7 @@ async function finalizeOverdueNoShow(
   // [SETTLE-CHECKIN-1] Same C2 outcome as processJob's check-in-decision branch, just
   // reached via the "never even got to 'ended'" sweep instead of a settlement job —
   // strike the creator the same way either path gets here.
-  if (authority.kind === "consult_1to1") await insertNoShowStrike(env, authority.creator_id, authority.commercial_session_id);
+  if (authority.kind === "consult_1to1") await insertNoShowStrike(env, authority.creator_id, authority.order_id, authority.commercial_session_id);
   commercialEvent(env, "settlement", null, { outcome: "refunded", reason: "creator_no_show", kind: authority.kind });
   void receiptId;
   return "refunded";
@@ -965,8 +1014,11 @@ export async function runCommercialHostNoShowSweep(
   for (const authority of rows) {
     const claimId = `no-show:${authority.commercial_session_id}:${authority.order_id}`;
     try {
-      if ((await finalizeOverdueNoShow(env, authority, claimId)) === "refunded") refunded++;
-      else reviewPending++;
+      const outcome = await finalizeOverdueNoShow(env, authority, claimId);
+      if (outcome === "refunded") refunded++;
+      else if (outcome === "review_pending") reviewPending++;
+      // "skipped" (fix 2: creator actually checked in) touches neither tally --
+      // it is neither a refund nor something waiting on a human.
     } catch (error) {
       await metaDb(env).prepare(
         `UPDATE commercial_sessions SET settlement_state='review_pending',updated_at=?2

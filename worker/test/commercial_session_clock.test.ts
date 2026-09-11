@@ -105,6 +105,13 @@ function setup() {
       provider_user_id TEXT NOT NULL, role TEXT NOT NULL, order_id TEXT, added_at INTEGER NOT NULL,
       removed_at INTEGER
     );
+    CREATE TABLE orders (
+      id TEXT PRIMARY KEY, status TEXT NOT NULL
+    );
+    CREATE TABLE session_attendance (
+      session_id TEXT NOT NULL, order_id TEXT, user_id TEXT NOT NULL, role TEXT NOT NULL,
+      joined_at INTEGER NOT NULL, left_at INTEGER
+    );
   `);
   return { db, env: { DB_META: d1(db), TOKENS: { get: async () => null } } };
 }
@@ -232,5 +239,71 @@ describe("endDueConsultSessions [SESSION-CLOCK-0]", () => {
     const jobs = db.prepare("SELECT COUNT(*) n FROM commercial_settlement_jobs WHERE commercial_session_id=?")
       .get("session-4") as any;
     expect(jobs.n).toBe(1);
+  });
+});
+
+// [SETTLE-CHECKIN-2] fix 1: the C1 backfill pass for a booking nobody ever joined
+// (no commercial_sessions row) but whose creator DID check in.
+describe("backfillCheckedInConsultSessions [SETTLE-CHECKIN-2 fix 1]", () => {
+  it("creator checked in at minute 18, buyer never joined -> backfills an ended session + settlement job (paid in full)", async () => {
+    const { db, env } = setup();
+    currentDb = db;
+    const now = Date.now();
+    const startsAt = now - 80 * 60_000;
+    const endsAt = startsAt + 60 * 60_000; // ends_at + 2min late grace is well in the past
+    db.prepare(
+      "INSERT INTO bookings (id,listing_id,creator_id,buyer_id,kind,status,starts_at,ends_at,order_id) VALUES (?,?,?,?,?,?,?,?,?)",
+    ).run("booking-checkin-1", "listing-1", "creator-1", "buyer-1", "consult_1to1", "confirmed", startsAt, endsAt, "order-checkin-1");
+    db.prepare("INSERT INTO orders (id,status) VALUES (?,?)").run("order-checkin-1", "held");
+    // Host checked in 18 minutes after starts_at -- inside the default 20-minute
+    // sessionCreatorCheckInMin window -- and never left (still connected).
+    db.prepare(
+      "INSERT INTO session_attendance (session_id,order_id,user_id,role,joined_at,left_at) VALUES (?,?,?,?,?,?)",
+    ).run("booking-checkin-1", "order-checkin-1", "creator-1", "host", startsAt + 18 * 60_000, null);
+    insertPolicySnapshot(db, { orderId: "order-checkin-1", listingId: "listing-1", bookingId: "booking-checkin-1" });
+
+    const result = await clock.backfillCheckedInConsultSessions(env as any);
+    expect(result).toMatchObject({ scanned: 1, created: 1 });
+
+    const session = db.prepare(
+      "SELECT state,settlement_state,creator_id FROM commercial_sessions WHERE commercial_session_id=?",
+    ).get("consult_booking-checkin-1") as any;
+    expect(session).toBeTruthy();
+    expect(session.state).toBe("ended");
+    expect(session.settlement_state).toBe("pending");
+    expect(session.creator_id).toBe("creator-1");
+
+    const job = db.prepare(
+      "SELECT state FROM commercial_settlement_jobs WHERE commercial_session_id=? AND order_id=?",
+    ).get("consult_booking-checkin-1", "order-checkin-1") as any;
+    expect(job).toBeTruthy();
+    expect(job.state).toBe("pending");
+  });
+
+  it("creator opened the room the day before starts_at only -> not checked in, nothing backfilled", async () => {
+    const { db, env } = setup();
+    currentDb = db;
+    const now = Date.now();
+    const startsAt = now - 80 * 60_000;
+    const endsAt = startsAt + 60 * 60_000;
+    db.prepare(
+      "INSERT INTO bookings (id,listing_id,creator_id,buyer_id,kind,status,starts_at,ends_at,order_id) VALUES (?,?,?,?,?,?,?,?,?)",
+    ).run("booking-checkin-2", "listing-1", "creator-1", "buyer-1", "consult_1to1", "confirmed", startsAt, endsAt, "order-checkin-2");
+    db.prepare("INSERT INTO orders (id,status) VALUES (?,?)").run("order-checkin-2", "held");
+    // Joined a full day before starts_at and left five minutes later -- long outside
+    // [starts_at - earlyMin, starts_at + checkInMin].
+    const dayBefore = startsAt - 24 * 60 * 60_000;
+    db.prepare(
+      "INSERT INTO session_attendance (session_id,order_id,user_id,role,joined_at,left_at) VALUES (?,?,?,?,?,?)",
+    ).run("booking-checkin-2", "order-checkin-2", "creator-1", "host", dayBefore, dayBefore + 5 * 60_000);
+    insertPolicySnapshot(db, { orderId: "order-checkin-2", listingId: "listing-1", bookingId: "booking-checkin-2" });
+
+    const result = await clock.backfillCheckedInConsultSessions(env as any);
+    expect(result).toMatchObject({ scanned: 0, created: 0 });
+
+    const session = db.prepare(
+      "SELECT 1 ok FROM commercial_sessions WHERE commercial_session_id=?",
+    ).get("consult_booking-checkin-2") as any;
+    expect(session).toBeFalsy();
   });
 });
