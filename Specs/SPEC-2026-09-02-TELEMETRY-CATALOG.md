@@ -419,3 +419,48 @@ non-empty `room_ws`-backed session (i.e. not the fallback-warned path) is the
 signal the waiting room is actually live for a booking; `waitroom_autojoin`
 firing before any `consult_join_result` event confirms the auto-join rule
 fired ahead of the manual join path it replaces.
+
+## WP7 [LIVE-GRACE-APP-1] — app-side live host-reconnect / viewer grace events
+
+Surfaces: `app/lib/features/commercial_getstream/commercial_live_screens.dart`
+(`LiveBroadcastScreen`, `LiveViewerScreen`), `commercial_live_gateway.dart`,
+the commercial branch of `app/lib/push/push_service.dart`. All events go
+through `Analytics.capture` and always carry `listing_id`, `role`
+(`'host'`|`'viewer'`) and `email` (`Analytics.currentEmail`).
+
+`live_reconnecting_shown` {listing_id, role, email} — fired once per outage
+(de-duplicated until the state clears) the first time a `GET
+/api/commercial/live/:id/state` poll reports `state:'reconnecting'`, on
+either the host's `LiveBroadcastScreen` or a `LiveViewerScreen`. The host
+side also fires an out-of-band state poll the instant the GetStream SDK's
+own `CallStatus` reports `isReconnecting`/`isDisconnected`, so this can beat
+the normal 3 s poll tick; the event and its payload are unchanged either way
+— the server's `state`/`reconnect_deadline_ms` remain the only source of
+truth for what is shown (RULEBOOK §5: never compute this client-side).
+
+`live_host_rejoin` {listing_id, role: 'host', email, source:
+'in_app_banner'|'push'} — fired when the host asks to rejoin: either
+tapping Rejoin on the in-broadcast reconnect banner, or opening the app via
+a `commercial_reconnect` push (`push_service.dart`). Both paths land on
+`LiveReadinessScreen`, which re-runs `prepareHost` — this event marks the
+INTENT to rejoin, not confirmation that the SDK reconnected.
+
+`live_no_return_shown` {listing_id, role: 'viewer', email} — fired once,
+viewer-side only, the moment a state poll reports `state:'ended',
+outcome:'host_no_return'` and the "The creator couldn't return — the unused
+part of your ticket is being refunded" message renders.
+
+Contract note: `reconnect_deadline_ms`, `outcome` and the `'reconnecting'`
+value of `state` are WP8 (wave 2, worker `live_grace`) fields — this WP only
+consumes them. `CommercialLiveState` parses all three as nullable/optional
+so every event and UI path above degrades to "never fires / never shows"
+rather than throwing until WP8 ships. `commercial_reconnect` push payloads
+are allowlisted the same way as `CommercialNotificationPayload` (refused if
+they carry any provider token/call id; require a stable `listing_id`) before
+either `push_shown` or the notification tap is honoured.
+
+Success value for this WP's ship gate: once WP8 ships, `live_reconnecting_shown`
+appearing on BOTH the host's and a viewer's device for the same `listing_id`
+within the same outage window is the signal the grace period is visible to
+both sides; `live_host_rejoin` followed by the state poll leaving
+`reconnecting` confirms the rejoin actually worked.

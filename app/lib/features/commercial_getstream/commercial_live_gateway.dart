@@ -14,6 +14,7 @@ enum LiveServerState {
   starting,
   backstage,
   live,
+  reconnecting,
   ending,
   ended,
   reconciliationPending,
@@ -25,6 +26,10 @@ LiveServerState liveServerStateFromJson(Object? value) => switch (value) {
       'starting' => LiveServerState.starting,
       'backstage' => LiveServerState.backstage,
       'live' => LiveServerState.live,
+      // [LIVE-GRACE-APP-1] Host dropped mid-broadcast; server pairs this with
+      // `reconnect_deadline_ms` on the same state response (WP8, wave 2). Not
+      // present until WP8 ships — guarded as null everywhere it is read.
+      'reconnecting' => LiveServerState.reconnecting,
       'ending' => LiveServerState.ending,
       'ended' => LiveServerState.ended,
       'reconciliation_pending' => LiveServerState.reconciliationPending,
@@ -39,6 +44,9 @@ class CommercialLiveState {
     this.liveStartedAt,
     this.endedAt,
     this.endsAt,
+    this.startsAt,
+    this.reconnectDeadlineMs,
+    this.outcome,
   });
 
   final String sessionId;
@@ -47,6 +55,14 @@ class CommercialLiveState {
   final int? liveStartedAt;
   final int? endedAt;
   final int? endsAt;
+  // [LIVE-GRACE-APP-1] Scheduled start (used to cap the backstage countdown at
+  // `commercialLiveBackstageEarlyMin`). `reconnectDeadlineMs`/`outcome` back the
+  // host reconnect banner and the viewer no-return refund line; both come from
+  // WP8 (wave 2, not yet shipped) and are null until then — every read site
+  // guards for that.
+  final int? startsAt;
+  final int? reconnectDeadlineMs;
+  final String? outcome;
 
   factory CommercialLiveState.fromJson(Map<String, dynamic> json) {
     final sessionId = json['session_id']?.toString() ?? '';
@@ -58,6 +74,9 @@ class CommercialLiveState {
       liveStartedAt: (json['live_started_at'] as num?)?.toInt(),
       endedAt: (json['ended_at'] as num?)?.toInt(),
       endsAt: (json['ends_at'] as num?)?.toInt(),
+      startsAt: (json['starts_at'] as num?)?.toInt(),
+      reconnectDeadlineMs: (json['reconnect_deadline_ms'] as num?)?.toInt(),
+      outcome: json['outcome']?.toString(),
     );
   }
 }

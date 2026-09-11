@@ -75,6 +75,8 @@ import '../features/avatok/contacts.dart' show ContactsStore;
 import '../features/avatok/incoming_business_call_screen.dart';
 import '../features/booking/commercial_customer_screens.dart'
     show MySessionsScreen;
+import '../features/commercial_getstream/commercial_live_screens.dart'
+    show LiveReadinessScreen; // [LIVE-GRACE-APP-1] commercial_reconnect push
 import '../features/explore/listing_detail.dart' show ListingDetailScreen;
 // [GCALL-W4-RING] group-call ring: busy check + accept destination
 import '../features/conference/cloudflare_conference_controller.dart'
@@ -422,6 +424,14 @@ void _onNotifTap(String? payload) {
   final payloadKind =
       payload.contains(':') ? '${payload.split(':').first}:' : payload;
   Analytics.capture('push_notif_tapped', {'payload_kind': payloadKind});
+  // [LIVE-GRACE-APP-1] `commercial_reconnect:<listingId>` is a dedicated
+  // payload shape, distinct from `commercial:{...}` (CommercialNotification-
+  // Payload) below — this one always opens the HOST flow for that listing.
+  if (payload.startsWith('commercial_reconnect:')) {
+    final listingId = payload.substring('commercial_reconnect:'.length);
+    if (listingId.isNotEmpty) unawaited(_openCommercialReconnect(listingId));
+    return;
+  }
   final commercial = CommercialNotificationPayload.fromPayload(payload);
   if (commercial != null) {
     unawaited(_openCommercialNotification(commercial));
@@ -557,6 +567,86 @@ Future<void> _showCommercialNotif(Map<String, dynamic> data) async {
     'has_listing_id': payload.listingId != null,
     'has_booking_id': payload.bookingId != null,
   });
+}
+
+/// [LIVE-GRACE-APP-1] Extract the stable listing id from a `commercial_reconnect`
+/// FCM payload, applying the same allowlist as `CommercialNotificationPayload`
+/// above: a payload carrying any provider credential/call id is refused, and a
+/// payload with no stable id renders nothing.
+String? _commercialReconnectListingId(Map<String, dynamic> data) {
+  if (data.containsKey('provider_token') ||
+      data.containsKey('token') ||
+      data.containsKey('call_id') ||
+      data.containsKey('callId') ||
+      data.containsKey('call_cid')) return null;
+  final listingId = (data['listing_id'] ?? data['listingId'])?.toString().trim();
+  return (listingId == null || listingId.isEmpty) ? null : listingId;
+}
+
+/// [LIVE-GRACE-APP-1] Host dropped mid live broadcast; the server pushes
+/// `type: 'commercial_reconnect', listing_id` (contract in
+/// PLAN-2026-09-11-WAITING-ROOM-BUILD.md) so the host can get back in even if
+/// the app was backgrounded or killed. Tapping opens the host flow directly
+/// (`_openCommercialReconnect`), not My Sessions like other commercial pushes.
+Future<void> _showCommercialReconnectNotif(Map<String, dynamic> data) async {
+  final listingId = _commercialReconnectListingId(data);
+  if (listingId == null) {
+    await _track('commercial_push_rejected', {
+      'reason': 'missing_stable_id_or_provider_credential',
+      'type': 'commercial_reconnect',
+    });
+    return;
+  }
+  final count = await _bumpBadge('commercial');
+  await _ensureLocalInit();
+  const title = 'Reconnect to your live event';
+  const body = 'Viewers are waiting for you to rejoin before the grace window ends.';
+  await _local.show(
+    8600 + (listingId.hashCode.abs() % 1000),
+    title,
+    body,
+    NotificationDetails(
+      android: AndroidNotificationDetails(
+        _commercialChannel.id,
+        _commercialChannel.name,
+        channelDescription: _commercialChannel.description,
+        icon: _kNotifIcon,
+        color: _kNotifAccent,
+        importance: Importance.high,
+        priority: Priority.high,
+        number: count,
+        ticker: title,
+        category: AndroidNotificationCategory.status,
+      ),
+    ),
+    payload: 'commercial_reconnect:$listingId',
+  );
+  await _track('push_shown', {
+    'channel': 'commercial',
+    'type': 'commercial_reconnect',
+    'has_listing_id': true,
+  });
+}
+
+/// [LIVE-GRACE-APP-1] Open the host flow for the listing named by a
+/// `commercial_reconnect` push. Reuses [LiveReadinessScreen] (device check ->
+/// `prepareHost` -> backstage/broadcast) rather than any bespoke rejoin path.
+Future<void> _openCommercialReconnect(String listingId) async {
+  final nav = navigatorKey.currentState;
+  if (nav == null) return;
+  nav.popUntil((r) => r.isFirst);
+  Analytics.capture('live_host_rejoin', {
+    'listing_id': listingId,
+    'role': 'host',
+    'email': Analytics.currentEmail ?? '',
+    'source': 'push',
+  });
+  nav.push(MaterialPageRoute<void>(
+    builder: (_) => LiveReadinessScreen(
+      listingId: listingId,
+      title: 'Live event',
+    ),
+  ));
 }
 
 /// [NOTIF-STYLE-1] Deep link for a tap on one conversation's message
@@ -847,6 +937,13 @@ Future<void> _handleBackgroundMessage(RemoteMessage message) async {
       // [BUSY-CARD-1] A callee we asked to be notified about is now free →
       // surface the tap-to-call banner even when backgrounded/killed.
       await _showNowFreeNotif(d);
+    } else if (type == 'commercial_reconnect') {
+      // [LIVE-GRACE-APP-1] Host dropped mid-broadcast; server wants the host
+      // back before `reconnect_deadline_ms` (contract in
+      // PLAN-2026-09-11-WAITING-ROOM-BUILD.md). Distinct branch from the
+      // generic CommercialNotificationPayload dispatch below because a tap
+      // must open the HOST flow for this listing, not My Sessions.
+      await _showCommercialReconnectNotif(d);
     } else if (CommercialNotificationPayload.fromData(d) != null) {
       // Commercial delivery is server-owned. This branch only renders a
       // notification when the payload contains stable listing/booking ids.
@@ -5201,6 +5298,14 @@ class PushService {
         final b = int.tryParse((d['build'] ?? '').toString()) ?? 0;
         Analytics.capture('app_update_push_fg', {'build': b});
         unawaited(UpdateService.onUpdatePush(build: b));
+        return;
+      }
+      if (d['type'] == 'commercial_reconnect') {
+        // [LIVE-GRACE-APP-1] Same host-reconnect push as the background
+        // branch; the foreground path still surfaces a local notification
+        // (rather than force-navigating away from whatever the host is
+        // doing) — tapping it opens the host flow via `_onNotifTap`.
+        unawaited(_showCommercialReconnectNotif(d));
         return;
       }
       if (CommercialNotificationPayload.fromData(d) != null) {
