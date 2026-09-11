@@ -1703,7 +1703,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/consult/probe/blob" && req.method === "GET") return consultProbeBlob();
       {
         if (/^\/api\/consult\/[A-Za-z0-9-]{1,64}\/sfu(\/|$)/.test(p)) return await consultSfu(req, env);
-        const cn = p.match(/^\/api\/consult\/[A-Za-z0-9-]{1,64}\/(join|room|complete|cancel|extend)$/);
+        // [WAITROOM-1] Commercial booking ids are `commercial-booking-<sha256hex>`
+        // (worker/src/routes/commercial_checkout.ts) — up to 96 chars, longer than
+        // the plain crypto.randomUUID() ids the legacy 1:1 consult path uses.
+        const cn = p.match(/^\/api\/consult\/[A-Za-z0-9-]{1,96}\/(join|room|complete|cancel|extend)$/);
         if (cn) {
           const act = cn[1];
           if (act === "join" && req.method === "GET") return await consultJoin(req, env);

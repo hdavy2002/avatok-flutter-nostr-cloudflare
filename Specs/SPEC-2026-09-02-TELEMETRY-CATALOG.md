@@ -464,3 +464,36 @@ appearing on BOTH the host's and a viewer's device for the same `listing_id`
 within the same outage window is the signal the grace period is visible to
 both sides; `live_host_rejoin` followed by the state poll leaving
 `reconnecting` confirms the rejoin actually worked.
+
+## WP2
+
+[WAITROOM-1] WP2 is worker plumbing (`worker/src/lib/commercial_waiting_room.ts`,
+`worker/src/do/stream_session.ts`, `worker/src/routes/consult.ts`,
+`worker/src/routes/config.ts`) — it has no screen/path of its own, so it emits no
+new `Analytics.capture`/`commercialEvent` events. It is the wire layer WP4
+(web) and WP6 (app) build their waiting-room telemetry (`waitroom_enter`,
+`waitroom_autojoin`, `waitroom_noshow_shown`) on top of:
+
+- `buildWaitingRoomGrant(env, …)` returns `{room_ws, room_token, check_in_by}`
+  (`check_in_by = starts_at + sessionCreatorCheckInMin·60000`) and arms the
+  session DO (`consult:<bookingId>`) via `sessionOp(..., {op:"schedule", ...,
+  commercial:true})`. Clients read `check_in_by` to decide when to show the
+  no-show state — never compute it locally from a hardcoded 20.
+- The DO's WS now emits `roster {host:boolean, attendee:boolean}` on `welcome`
+  and after every `presence` change — this is the exact signal WP4/WP6's
+  `waitroom_autojoin` should fire alongside (auto-`/join` when
+  `roster.host && roster.attendee`), and `chat {from, text, at}` (≤500 chars)
+  for the waiting-room chat surface.
+- New flags (`worker/src/routes/config.ts`): `sessionCreatorCheckInMin`
+  (default 20) and `liveHostGraceMin` (default 10) — both declared in
+  `PlatformConfig`, `DEFAULTS` and `numericKeys` (CLAUDE.md "FAKE flag" rule).
+- Commercial bookings (`commercial:true` on `schedule`) make the DO's own
+  `money_noshow`/`money_end` alarms a no-op (`session_ended` still fires) —
+  WP3's `commercial_settlement.ts` / the WP1 cron are the only money movers
+  for these sessions (RULEBOOK-PAID-SESSIONS.md v2 §5). No telemetry implication;
+  noted here so a future reader doesn't mistake the silent alarm for a bug.
+
+Success value for this WP: `worker/test/commercial_waiting_room.test.ts` and
+`worker/test/stream_session_do_waitroom_contract.test.ts` are the checkable
+proxy for "the contract fields WP4/WP6 telemetry depends on actually exist and
+have the shape documented above."

@@ -50,8 +50,12 @@ async function nameOf(env: Env, uid: string): Promise<string> {
   } catch { return "Someone"; }
 }
 
+// [WAITROOM-1] consultRoom must accept commercial booking ids
+// (`commercial-booking-<sha256hex>`, worker/src/routes/commercial_checkout.ts —
+// up to 96 chars), not just the shorter crypto.randomUUID() ids the legacy
+// 1:1 consult path mints. Matches the widened dispatch regex in index.ts.
 const bid = (req: Request): string | null => {
-  const m = new URL(req.url).pathname.match(/^\/api\/consult\/([A-Za-z0-9-]{1,64})(?:\/|$)/);
+  const m = new URL(req.url).pathname.match(/^\/api\/consult\/([A-Za-z0-9-]{1,96})(?:\/|$)/);
   return m ? m[1] : null;
 };
 
