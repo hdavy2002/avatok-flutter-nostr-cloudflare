@@ -21,6 +21,7 @@ import { DeviceChecks } from '../../components/DeviceChecks';
 import { ClerkIsland, getActiveToken, requireGuestAuth } from '../../lib/clerk';
 import { IslandBoundary } from '../../components/IslandBoundary';
 import { capture, captureException } from '../../lib/analytics';
+import { ApiError } from '../../lib/apiClient';
 import {
   commercialLiveHostState,
   endCommercialLive,
@@ -32,6 +33,12 @@ import {
 } from '../../lib/commercialHost';
 import { streamClientFor } from '../../lib/getstream';
 
+// [LIVE-GRACE-WEB-1] The server contract (Specs/PLAN-2026-09-11-WAITING-ROOM-BUILD.md
+// "Contracts shared by all WPs") adds a `reconnecting` state and
+// `reconnect_deadline_ms` to `GET .../live/:id/state`, landing with WP8. Widen
+// the shape locally rather than editing the shared lib (owned by another WP) —
+// the extra fields are always optional/absent until WP8 ships.
+
 export interface LiveGsHostProps {
   listingId: string;
   title?: string;
@@ -40,8 +47,26 @@ export interface LiveGsHostProps {
   endsAt?: number | null;
 }
 
-type Phase = 'preview' | 'preparing' | 'backstage' | 'starting' | 'live' | 'ending' | 'ended' | 'refused';
+type Phase =
+  | 'authorizing'
+  | 'not_found'
+  | 'not_creator'
+  | 'rejoin'
+  | 'preview'
+  | 'preparing'
+  | 'backstage'
+  | 'starting'
+  | 'live'
+  | 'ending'
+  | 'ended'
+  | 'refused';
 type JoinPrefs = { micOn: boolean; camOn: boolean; micId: string; camId: string };
+
+/** Widened `CommercialHostState` — see the import-site comment above. */
+export type HostServerState = Omit<CommercialHostState, 'state'> & {
+  state: CommercialHostState['state'] | 'reconnecting';
+  reconnect_deadline_ms?: number;
+};
 
 function stopTracks(stream: MediaStream | null): void {
   stream?.getTracks().forEach((track) => track.stop());
@@ -276,6 +301,40 @@ function HostStage({
   );
 }
 
+function Authorizing() {
+  return <div className="flex min-h-[calc(100dvh-5rem)] items-center justify-center px-4 py-10"><div className="flex flex-col items-center gap-3 text-center"><Spinner size={28} /><p className="font-body font-bold text-[14px] text-inkSoft">Checking host access…</p></div></div>;
+}
+
+function NotFound({ listingId: _listingId }: { listingId: string }) {
+  return <div className="flex min-h-[calc(100dvh-5rem)] items-center justify-center px-4 py-10"><div className="flex w-full max-w-md flex-col items-center gap-5 text-center"><span className="font-mono text-[13px] font-bold uppercase tracking-[0.1em] text-coral">Host access unavailable</span><h1 className="font-display text-[27px] font-semibold text-ink">Event not found.</h1><p className="font-body text-[15px] font-bold leading-relaxed text-inkSoft">We could not find a live event for this listing. It may have been removed or the link is wrong.</p><a href="/dashboard" className="no-underline"><Button variant="lime" label="Dashboard" /></a></div></div>;
+}
+
+function NotCreator({ listingId }: { listingId: string }) {
+  return <div className="flex min-h-[calc(100dvh-5rem)] items-center justify-center px-4 py-10"><div className="flex w-full max-w-md flex-col items-center gap-5 text-center"><span className="font-mono text-[13px] font-bold uppercase tracking-[0.1em] text-coral">Host access unavailable</span><h1 className="font-display text-[27px] font-semibold text-ink">Not your event.</h1><p className="font-body text-[15px] font-bold leading-relaxed text-inkSoft">This backstage room belongs to a different creator account. Sign in as the creator who scheduled it.</p><div className="flex gap-3"><a href={`/live/${encodeURIComponent(listingId)}`} className="no-underline"><Button variant="ghost" label="View event" /></a><a href="/dashboard" className="no-underline"><Button variant="lime" label="Dashboard" /></a></div></div></div>;
+}
+
+function RejoinLive({ title, deadlineMs, onRejoin }: { title: string; deadlineMs?: number; onRejoin: () => void }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+  const remainingS = typeof deadlineMs === 'number' ? Math.max(0, Math.round((deadlineMs - now) / 1000)) : null;
+  const mmss = remainingS != null ? `${String(Math.floor(remainingS / 60)).padStart(2, '0')}:${String(remainingS % 60).padStart(2, '0')}` : null;
+  return (
+    <div className="flex min-h-[calc(100dvh-5rem)] items-center justify-center px-4 py-10">
+      <div className="flex w-full max-w-md flex-col items-center gap-5 text-center">
+        <span className="rounded-zine-badge border-zine border-coral bg-coral px-3 py-1.5 font-mono text-[12px] font-bold uppercase text-white">Reconnecting</span>
+        <h1 className="font-display text-[27px] font-semibold text-ink">{title} is waiting for you.</h1>
+        <p className="font-body text-[15px] font-bold leading-relaxed text-inkSoft">
+          Your stream dropped. Ticket holders are still in their seats{mmss ? ` — you have ${mmss} to rejoin before the event ends for everyone` : ''}.
+        </p>
+        <Button variant="lime" label="Rejoin your live" onClick={onRejoin} />
+      </div>
+    </div>
+  );
+}
+
 function Ended({ title, listingId }: { title: string; listingId: string }) {
   return <div className="flex min-h-[calc(100dvh-5rem)] items-center justify-center px-4 py-10"><div className="flex w-full max-w-md flex-col items-center gap-5 text-center"><span className="font-mono text-[13px] font-bold uppercase tracking-[0.1em] text-blueInk">Broadcast complete</span><h1 className="font-display text-[28px] font-semibold text-ink">{title} has ended.</h1><p className="font-body text-[15px] font-bold leading-relaxed text-inkSoft">The server confirmed the event is over. Your ticket holders can find their receipt from their account.</p><div className="flex gap-3"><a href={`/live/${encodeURIComponent(listingId)}`} className="no-underline"><Button variant="ghost" label="View event" /></a><a href="/dashboard" className="no-underline"><Button variant="lime" label="Dashboard" /></a></div></div></div>;
 }
@@ -285,9 +344,9 @@ function Refused({ listingId, detail, retry }: { listingId: string; detail: stri
 }
 
 function LiveGsHostInner({ listingId, title = 'Live event' }: LiveGsHostProps) {
-  const [phase, setPhase] = useState<Phase>('preview');
+  const [phase, setPhase] = useState<Phase>('authorizing');
   const [error, setError] = useState<string | null>(null);
-  const [serverState, setServerState] = useState<CommercialHostState | null>(null);
+  const [serverState, setServerState] = useState<HostServerState | null>(null);
   const [creds, setCreds] = useState<CommercialHostCredentials | null>(null);
   const [call, setCall] = useState<Call | null>(null);
   const [streamClient, setStreamClient] = useState<unknown>(null);
@@ -364,7 +423,7 @@ function LiveGsHostInner({ listingId, title = 'Live event' }: LiveGsHostProps) {
     const token = await refreshJwt(false);
     if (!token) return;
     try {
-      const next = await commercialLiveHostState(listingId, token);
+      const next = (await commercialLiveHostState(listingId, token)) as HostServerState;
       setServerState(next);
       if (next.state === 'ended' || next.state === 'cancelled') finish();
       else if (next.state === 'live' && phase !== 'ending') setPhase('live');
@@ -386,6 +445,62 @@ function LiveGsHostInner({ listingId, title = 'Live event' }: LiveGsHostProps) {
       pollRef.current = null;
     };
   }, [call, jwt, syncState]);
+
+  // [LIVE-GRACE-WEB-1] Authorise BEFORE ever requesting the camera/mic.
+  // Confirms the listing exists and the signed-in user is its creator via the
+  // existing `/state` endpoint (a read — no media credentials minted yet).
+  // `reconnecting` (server contract, WP8) routes to a distinct "Rejoin your
+  // live" screen instead of the normal preview, since the host already has a
+  // live event in flight and only needs to re-enter it.
+  const authorize = useCallback(async () => {
+    if (!mountedRef.current) return;
+    setError(null);
+    setPhase('authorizing');
+    try {
+      const token = await refreshJwt(true);
+      if (!token) {
+        setPhase('refused');
+        setError('Sign-in is required to host this event.');
+        return;
+      }
+      const next = (await commercialLiveHostState(listingId, token)) as HostServerState;
+      if (!mountedRef.current) return;
+      setServerState(next);
+      if (next.state === 'ended' || next.state === 'cancelled') {
+        setPhase('ended');
+        return;
+      }
+      if (next.state === 'reconnecting') {
+        setPhase('rejoin');
+        try { capture('live_reconnecting_shown', { listing_id: listingId, surface: 'host' }); } catch { /* best-effort */ }
+        return;
+      }
+      setPhase('preview');
+    } catch (e) {
+      if (!mountedRef.current) return;
+      if (e instanceof ApiError && e.status === 404) {
+        setPhase('not_found');
+        try { capture('live_host_authz_refused', { listing_id: listingId, reason: 'not_found', status: e.status }); } catch { /* best-effort */ }
+        return;
+      }
+      if (e instanceof ApiError && e.status === 403) {
+        setPhase('not_creator');
+        try { capture('live_host_authz_refused', { listing_id: listingId, reason: 'not_creator', status: e.status }); } catch { /* best-effort */ }
+        return;
+      }
+      setPhase('refused');
+      setError(safeError(e, 'Could not verify host access. Please try again.'));
+      try { capture('live_host_authz_refused', { listing_id: listingId, reason: 'error', status: e instanceof ApiError ? e.status : 0 }); } catch { /* best-effort */ }
+      try { captureException(e, { code: 'commercial_host_authz_failed', listing_id: listingId }); } catch { /* best-effort */ }
+    }
+  }, [listingId, refreshJwt]);
+
+  useEffect(() => {
+    void authorize();
+    // Runs once on mount only — re-authorization after a rejoin/refusal is
+    // triggered explicitly (RejoinLive/Refused retry), never automatically.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const prepare = useCallback(async (stream: MediaStream, prefs: JoinPrefs) => {
     const generation = ++operationGenerationRef.current;
@@ -491,8 +606,23 @@ function LiveGsHostInner({ listingId, title = 'Live event' }: LiveGsHostProps) {
     try { await current.join(); } catch { setError('Still could not reconnect. Check your connection and try again.'); }
   }, []);
 
+  if (phase === 'authorizing') return <Authorizing />;
+  if (phase === 'not_found') return <NotFound listingId={listingId} />;
+  if (phase === 'not_creator') return <NotCreator listingId={listingId} />;
+  if (phase === 'rejoin') {
+    return (
+      <RejoinLive
+        title={title}
+        deadlineMs={serverState?.reconnect_deadline_ms}
+        onRejoin={() => {
+          try { capture('live_host_rejoin', { listing_id: listingId }); } catch { /* best-effort */ }
+          setPhase('preview');
+        }}
+      />
+    );
+  }
   if (phase === 'ended') return <Ended title={title} listingId={listingId} />;
-  if (phase === 'refused') return <Refused listingId={listingId} detail={error ?? 'Host access is unavailable.'} retry={() => { setError(null); setPhase('preview'); }} />;
+  if (phase === 'refused') return <Refused listingId={listingId} detail={error ?? 'Host access is unavailable.'} retry={() => void authorize()} />;
   if (call && creds && jwt && streamClient && ['backstage', 'starting', 'live', 'ending'].includes(phase)) {
     const stagePhase = phase as 'backstage' | 'starting' | 'live' | 'ending';
     return <StreamVideo client={streamClient as any}><StreamCall call={call}><HostStage title={title} phase={stagePhase} serverState={serverState?.state ?? 'backstage'} error={error} onStart={() => void start()} onEnd={() => void end()} onRetry={() => void retry()} /></StreamCall></StreamVideo>;

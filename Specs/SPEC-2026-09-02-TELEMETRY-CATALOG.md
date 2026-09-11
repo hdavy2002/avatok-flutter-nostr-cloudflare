@@ -142,6 +142,12 @@ outcome} · `listing_cancel` · `listing_status_change` {to} ·
 `waitlist_submit` {outcome} · `cta_click` {name, location} · `legal_page_view`
 {page} · `beta_banner_dismiss` · `nav_click` {item}.
 
+[WEB-HELP-1 2026-09-11] Help centre search (`components/HelpSearch.astro`):
+`help_search` {q_len, result_count, zero_result} — fires 600ms after the
+query settles, never the raw query text · `help_search_select` {rank} — on
+navigating to a result. Index-load failures go through the shared
+`captureException` with `{surface: 'help_search'}`, not a bespoke event.
+
 ### 2.10 Admin (`islands/admin`)
 
 `admin_action` {action, target, outcome} for every write (adjust, refund,
@@ -253,3 +259,45 @@ Every spec gets a **Telemetry** section listing: the events (from this file or
 added here), the success value per the ship gate, and which dashboard shows it.
 A PR that adds a fetch, a form, a player, or a money step without the matching
 event is sent back.
+
+## WP5 [LIVE-GRACE-WEB-1] — live host/viewer grace-period web events
+
+Surfaces: `web/src/islands/live-gs/LiveGsHost.tsx`, `LiveGsViewer.tsx`,
+`LiveStage.tsx`. All four carry the standard super-properties (`platform`,
+`service_name`, `release`, `app`, `email`, `clerk_uid`, `trace_id`) via
+`web/src/lib/analytics.ts`'s `capture()` — `email` is registered once at
+sign-in (`identify()`) and does not need to be repeated per-call.
+
+`live_host_authz_refused` {listing_id, reason: 'not_found'|'not_creator'|'error',
+status} — emitted by `LiveGsHost.tsx`'s `authorize()` when the pre-media
+`GET .../live/:id/state` check fails, BEFORE `getUserMedia` is ever requested.
+`reason` distinguishes a 404 (listing/event does not exist — "Event not
+found") from a 403 (signed-in user is not the event's creator — "Not your
+event") from any other transport/server failure.
+
+`live_reconnecting_shown` {listing_id, surface: 'host'|'viewer'} — fired once
+per reconnect episode, the moment either side learns (via the `/state` poll)
+that `state:'reconnecting'` is in effect. Host: shown when opening the host
+page lands on "Rejoin your live" instead of the normal preview. Viewer: shown
+when the "Creator reconnecting · mm:ss" overlay first appears over the live
+stage. De-duplicated per episode (resets when the state moves off
+`reconnecting`), so a still-reconnecting session does not re-fire on every
+3s poll tick.
+
+`live_host_rejoin` {listing_id} — fired when the creator taps "Rejoin your
+live" on the host page's reconnecting screen, immediately before the normal
+prepare-host/getUserMedia/join flow re-runs against the same server-issued
+call id (the client never mints a new one).
+
+`live_no_return_shown` {listing_id} — fired once for a ticket holder when the
+live state poll reports `state:'ended'` with `outcome:'host_no_return'`
+(server contract, WP8) — the moment the "The creator couldn't return — the
+unused part of your ticket is being refunded" card is shown in place of the
+generic ended card. Success value for this WP's viewer-side refund
+messaging: this event firing with a non-empty `listing_id` on a session that
+actually ended with `host_no_return`.
+
+Contract note: `reconnecting`/`reconnect_deadline_ms`/`outcome` on
+`GET /api/commercial/live/:id/state` land with WP8 (wave 2). Until then these
+fields are simply absent and every branch above is inert — coded against the
+contract now so no follow-up web change is needed when WP8 ships.

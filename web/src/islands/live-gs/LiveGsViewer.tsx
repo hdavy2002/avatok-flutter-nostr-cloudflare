@@ -27,10 +27,9 @@ import {
   commercialSessionState,
   streamClientFor,
   type CommercialJoinCredentials,
-  type CommercialSessionState,
   type JoinRefusal,
 } from '../../lib/getstream';
-import { LiveStage } from './LiveStage';
+import { LiveStage, type LiveServerState } from './LiveStage';
 
 export interface LiveGsViewerProps {
   listingId: string;
@@ -75,8 +74,13 @@ function Inner({ listingId, title, poster, price, creatorName, creatorHandle, cr
   const jwtRef = useRef<string | null>(null);
   const [client, setClient] = useState<Awaited<ReturnType<typeof streamClientFor>> | null>(null);
   const [call, setCall] = useState<Call | null>(null);
-  const [serverState, setServerState] = useState<CommercialSessionState | null>(null);
+  const [serverState, setServerState] = useState<LiveServerState | null>(null);
   const [serverEnded, setServerEnded] = useState(false);
+  // [LIVE-GRACE-WEB-1] true when the session ended with outcome `host_no_return`
+  // (server contract, WP8) — swaps the generic "ended" card for the refund line.
+  const [noReturn, setNoReturn] = useState(false);
+  const reconnectingShownRef = useRef(false);
+  const noReturnShownRef = useRef(false);
   const callRef = useRef<Call | null>(null);
   const operationGenerationRef = useRef(0);
   // [WEB-POSTHOG-1] §2.6 live_leave `watched_s` — set the moment the call is
@@ -205,11 +209,27 @@ function Inner({ listingId, title, poster, price, creatorName, creatorHandle, cr
     const sync = async () => {
       try {
         const jwt = await freshAppJwt();
-        const next = await commercialSessionState('live', listingId, jwt);
+        const next = (await commercialSessionState('live', listingId, jwt)) as LiveServerState;
         if (disposed) return;
         setServerState(next);
+        if (next.state === 'reconnecting') {
+          // Keep the seat/stream object alive — do not leave the call.
+          if (!reconnectingShownRef.current) {
+            reconnectingShownRef.current = true;
+            try { capture('live_reconnecting_shown', { listing_id: listingId, surface: 'viewer' }); } catch { /* best-effort */ }
+          }
+        } else {
+          reconnectingShownRef.current = false;
+        }
         if (next.state === 'ended' || next.state === 'cancelled') {
           setServerEnded(true);
+          if (next.outcome === 'host_no_return') {
+            setNoReturn(true);
+            if (!noReturnShownRef.current) {
+              noReturnShownRef.current = true;
+              try { capture('live_no_return_shown', { listing_id: listingId }); } catch { /* best-effort */ }
+            }
+          }
           callRef.current?.leave().catch(() => {});
           dispatch({ t: 'left' });
         }
@@ -257,7 +277,15 @@ function Inner({ listingId, title, poster, price, creatorName, creatorHandle, cr
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (state.phase === 'left') {
-    return <EndedCard title={title} creatorHref={creatorHref} ended={serverEnded} rejoin={() => { setServerEnded(false); setServerState(null); dispatch({ t: 'reset' }); }} />;
+    return (
+      <EndedCard
+        title={title}
+        creatorHref={creatorHref}
+        ended={serverEnded}
+        refund={noReturn}
+        rejoin={() => { setServerEnded(false); setNoReturn(false); setServerState(null); dispatch({ t: 'reset' }); }}
+      />
+    );
   }
 
   if (state.phase === 'refused' && state.refusal) {
@@ -351,20 +379,29 @@ function PosterGate({
   );
 }
 
-function EndedCard({ title, creatorHref, ended, rejoin }: { title?: string; creatorHref: string; ended: boolean; rejoin: () => void }) {
+function EndedCard({ title, creatorHref, ended, refund, rejoin }: { title?: string; creatorHref: string; ended: boolean; refund: boolean; rejoin: () => void }) {
   return (
     <div className="mx-auto max-w-2xl px-4 py-16 text-center">
       <div className="rounded-zine border-zine border-ink bg-card p-10 shadow-zine">
-        <p className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">{ended ? 'Session ended' : 'You left the stream'}</p>
+        <p className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">
+          {refund ? 'Refund on the way' : ended ? 'Session ended' : 'You left the stream'}
+        </p>
         <h1 className="mt-3 font-display font-semibold text-[26px] leading-tight text-ink">{title ?? 'Live session'}</h1>
+        {refund && (
+          <p className="mt-2 font-body font-bold text-[15px] leading-relaxed text-inkSoft">
+            The creator couldn't return — the unused part of your ticket is being refunded.
+          </p>
+        )}
         <div className="mt-6 flex items-center justify-center gap-3">
-          <button
-            type="button"
-            onClick={rejoin}
-            className="inline-flex rounded-full border-zine border-ink bg-lime px-7 py-3.5 font-display font-semibold text-[18px] text-ink shadow-zine-sm transition-transform duration-zine active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
-          >
-            {ended ? 'Check again' : 'Rejoin'}
-          </button>
+          {!refund && (
+            <button
+              type="button"
+              onClick={rejoin}
+              className="inline-flex rounded-full border-zine border-ink bg-lime px-7 py-3.5 font-display font-semibold text-[18px] text-ink shadow-zine-sm transition-transform duration-zine active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
+            >
+              {ended ? 'Check again' : 'Rejoin'}
+            </button>
+          )}
           <a href={creatorHref} className="inline-flex rounded-full border-zine border-ink bg-card px-7 py-3.5 font-display font-semibold text-[18px] text-ink no-underline shadow-zine-sm">
             View the creator
           </a>
