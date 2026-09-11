@@ -50,6 +50,15 @@ export interface WaitingRoomProps {
    * roster-history fallback. Null until any evidence exists.
    */
   hostCheckedInAt: number | null;
+  /**
+   * [WAITROOM-WEB-3 C10] The buyer's terminal no-show state, computed by
+   * the parent (which also gates it on `rosterSeenRef` and clears it if
+   * late evidence shows an on-time check-in — see ConsultRoomGS's tick
+   * effect). NOT derived from `!roster.host` here: presence alone flickers
+   * false on any brief host disconnect after `check_in_by`, which must not
+   * flash the refund line for someone who genuinely checked in on time.
+   */
+  noShow: boolean;
   chat: WaitingChatLine[];
   onSendChat: (text: string) => void;
   onLeave: () => void;
@@ -80,6 +89,7 @@ export function WaitingRoom({
   wsStatus,
   roster,
   hostCheckedInAt,
+  noShow,
   chat,
   onSendChat,
   onLeave,
@@ -138,12 +148,13 @@ export function WaitingRoom({
   const checkedInAt = hostCheckedInAt ?? localCheckedInAtRef.current;
   const checkedInOnTime = role === 'creator' && checkedInAt != null && (checkInBy == null || checkedInAt <= checkInBy);
   const checkInWindowClosed = role === 'creator' && !checkedInOnTime && checkInBy != null && now > checkInBy;
-  // [WAITROOM-WEB-2 fix 6] The buyer's no-show line: the host is a no-show
-  // the moment `check_in_by` passes without them, by presence alone
-  // (`!roster.host`) — the terminal "no host ever seen" distinction lives in
-  // the parent (ConsultRoomGS), which stops auto-join and starts polling for
-  // the refund once that holds true.
-  const hostIsNoShow = role === 'buyer' && checkInBy != null && now > checkInBy && !roster.host;
+  // [WAITROOM-WEB-3 C10] The buyer's no-show/refund line renders from the
+  // parent's `noShow` prop, not a local `!roster.host` recompute — presence
+  // alone flickers false on any brief host disconnect after `check_in_by`
+  // even when the host genuinely checked in on time, which would flash the
+  // refund line for no reason. `noShow` is the parent's durable, gated
+  // (`rosterSeenRef`) and clearable (on late on-time-checkin evidence) call.
+  const hostIsNoShow = role === 'buyer' && noShow;
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-8">
@@ -186,7 +197,14 @@ export function WaitingRoom({
         )}
       </div>
 
-      {/* creator check-in / customer no-show line */}
+      {/*
+       * Creator check-in line and buyer no-show line, guaranteed mutually
+       * exclusive by construction: this is a single `role === 'creator' ?
+       * A : B` ternary (never two independent `if`s), so exactly one of
+       * "You're checked in"/"Check-in window closed" or the no-show/refund
+       * line can ever render for a given viewer — never both, never neither
+       * unless B's own `hostIsNoShow` condition is false.
+       */}
       {role === 'creator' ? (
         <div
           className={[

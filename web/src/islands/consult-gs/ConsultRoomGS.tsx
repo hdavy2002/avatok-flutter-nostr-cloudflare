@@ -152,7 +152,20 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
   // to this client's own first observation of `roster.host === true` when
   // that field is absent.
   const hostCheckedInAtRef = useRef<number | null>(null);
+  // [WAITROOM-WEB-3 C3] True once we've heard ANYTHING from the socket
+  // (welcome or roster) at least once. `phase` flips to 'waiting' — and the
+  // no-show tick effect starts running — before the socket has actually
+  // opened; without this gate, the tick's very first run saw the default
+  // `roster.host === false` and no `hostCheckedInAtRef` yet, called that a
+  // no-show, and `noShowRef` (with nothing left to ever clear it) stuck the
+  // visitor there for good even once the real roster arrived seconds later.
+  const rosterSeenRef = useRef(false);
   const noShowShownRef = useRef(false);
+  // [WAITROOM-WEB-3 C11] Set once the waiting-room socket gives up for good
+  // (RoomSocket's `onAuthFailed`, fix 16) — from then on there is no socket
+  // left to report roster presence, so auto-join retries must stop waiting
+  // for `roster.host && roster.attendee` and go by the join window alone.
+  const socketAbandonedRef = useRef(false);
   // [WAITROOM-WEB-2 fix 6] Terminal: `check_in_by` passed with the host
   // never checked in. Stops auto-join for good and starts polling the
   // server consult state for the refund/cancellation outcome.
@@ -363,18 +376,37 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
         } catch {
           /* best-effort */
         }
-        // A refused re-join from the waiting room (e.g. the window closed
-        // while we waited) still deserves the waiting room back, not a dead
-        // end — only fall through to the hard refusal screen when there is
-        // no waiting room to return to.
+        // [WAITROOM-WEB-3 C9] Only a refusal the waiting room can genuinely
+        // recover from goes back to it — everything else was quietly
+        // swallowed into "back to waiting" before, which hid a real
+        // `needs_ticket`/`not_yours`/`disabled`/`not_found` refusal (or a
+        // 410 the session is actually over) behind an endless silent retry.
         if (waitingRoomSupported && phaseRef.current === 'joining') {
-          // [WAITROOM-WEB-2 fix 1] A 425 means the join window genuinely
-          // hasn't opened yet — re-arm the 5s auto-join timer to wait for
-          // `opens_at` instead of hammering `/join` again immediately.
-          if (res.reason === 'too_early' && typeof res.opens_at === 'number') {
-            opensAtRef.current = res.opens_at;
+          // 425: the join window genuinely hasn't opened yet — re-arm the
+          // 5s auto-join timer to wait for `opens_at`.
+          if (res.reason === 'too_early') {
+            if (typeof res.opens_at === 'number') opensAtRef.current = res.opens_at;
+            setPhase('waiting');
+            return;
           }
-          setPhase('waiting');
+          // A transient network/server hiccup (status 0, or a 5xx the
+          // server's own catch-all folds into 'unavailable') — worth one
+          // more try, not a hard stop.
+          if (res.reason === 'unavailable' && (res.status === 0 || res.status >= 500)) {
+            setPhase('waiting');
+            return;
+          }
+          // 410 — the window closed or the session is over (`too_late` /
+          // `session_terminal` both land here). There is nothing left to
+          // retry: finalize instead of bouncing back to a waiting room for
+          // a slot that no longer exists.
+          if (res.reason === 'too_late') {
+            finalizeEnded('This session has ended.');
+            return;
+          }
+          // needs_ticket / not_yours / disabled / not_found, or a
+          // non-transient 'unavailable' — a real refusal, not a hiccup.
+          showRefusal(res);
           return;
         }
         showRefusal(res);
@@ -471,7 +503,7 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
         }
       }
     },
-    [booking, bootstrap, freshAppJwt, prejoin, reacquirePreviewIfNeeded, releasePreview, teardownCall, waitingRoomSupported],
+    [booking, bootstrap, finalizeEnded, freshAppJwt, prejoin, reacquirePreviewIfNeeded, releasePreview, teardownCall, waitingRoomSupported],
   );
 
   // ── waiting-room socket lifecycle ───────────────────────────────────────
@@ -487,9 +519,18 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
     (r: WaitingRoster) => {
       if (phaseRef.current !== 'waiting') return;
       if (noShowRef.current || autoJoinPausedRef.current || joinInFlightRef.current) return;
-      if (!(r.host && r.attendee)) return;
+      // [WAITROOM-WEB-3 C4] Once the slot's own end time has passed, never
+      // auto-join again — the server still accepts `/join` until
+      // `ends_at + 2min`, so without this a leave right at `endsAt`
+      // ("Time is up.") re-entered waiting, this immediately rejoined, the
+      // Countdown fired `onZero` again instantly, and the cycle repeated.
+      if (endsAt != null && Date.now() >= endsAt) return;
       const opensAt = opensAtRef.current;
       if (opensAt != null && Date.now() < opensAt) return;
+      // [WAITROOM-WEB-3 C11] With no working socket left (`onAuthFailed`
+      // gave up on it), there is no roster to wait on — retry by the join
+      // window alone. With a live socket, still wait for both parties.
+      if (!socketAbandonedRef.current && !(r.host && r.attendee)) return;
       joinInFlightRef.current = true;
       try {
         capture('waitroom_autojoin', { booking_id: booking, role: prejoin?.role ?? null, email });
@@ -500,15 +541,24 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
         joinInFlightRef.current = false;
       });
     },
-    [attemptJoin, booking, email, prejoin?.role],
+    [attemptJoin, booking, email, endsAt, prejoin?.role],
   );
 
   const ensureRoomSocket = useCallback(() => {
     if (roomSocketRef.current || !roomWs) return;
     const myRole = prejoin?.role === 'creator' ? 'host' : 'attendee';
+    // [WAITROOM-WEB-3 C11] A FRESH socket gets a fresh chance at reporting
+    // roster presence — only a socket that itself gives up 3x should make
+    // auto-join stop waiting on it.
+    socketAbandonedRef.current = false;
     const sock = new RoomSocket(roomWs, {
       onWelcome: (m) => {
         if (!mountedRef.current) return;
+        // [WAITROOM-WEB-3 C3] `welcome` is the first thing the socket ever
+        // sends — hearing it at all means the no-show tick can trust
+        // `roster.host`/`hostCheckedInAtRef` from now on instead of the
+        // pre-connect defaults.
+        rosterSeenRef.current = true;
         if (typeof m.ends_at === 'number') setEndsAt(m.ends_at);
         // [WAITROOM-WEB-2 fix 6/7] Prefer the server's own record.
         if (typeof m.host_checked_in_at === 'number') {
@@ -517,6 +567,7 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
       },
       onRoster: (m: RosterMsg) => {
         if (!mountedRef.current) return;
+        rosterSeenRef.current = true;
         const next = { host: m.host, attendee: m.attendee };
         const prev = rosterRef.current;
         rosterRef.current = next;
@@ -569,6 +620,10 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
         // [WAITROOM-WEB-2 fix 16] The socket gave up after repeatedly
         // failing to open — fall back to a direct join rather than leaving
         // the visitor stuck facing a socket that will never connect.
+        // [WAITROOM-WEB-3 C11] There is no socket left to report roster
+        // presence from this point on — `tryAutoJoin`'s 5s retry must stop
+        // waiting on it and go by the join window alone.
+        socketAbandonedRef.current = true;
         if (!mountedRef.current) return;
         closeRoomSocket();
         if (phaseRef.current === 'waiting' && !joinInFlightRef.current) {
@@ -650,6 +705,18 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
       } finally {
         joinedAtRef.current = null;
       }
+      // [WAITROOM-WEB-3 C4] Once the slot's own end time has passed, do not
+      // loop back into the waiting room at all — the server still accepts
+      // `/join` until `ends_at + 2min`, so returning to waiting here just
+      // fed a join/leave loop: "Time is up." (CallStage's Countdown, or the
+      // SDK's own CallingState.LEFT) re-entered waiting, auto-join rejoined
+      // immediately, the Countdown fired `onZero` again the instant it
+      // rendered, repeat. This applies to EVERY `leaveLive` reason,
+      // deliberate or not — a slot that is over is over.
+      if (endsAt != null && Date.now() >= endsAt) {
+        finalizeEnded(reason);
+        return;
+      }
       teardownCall();
       if (waitingRoomSupported && roomSocketRef.current) {
         if (deliberate) {
@@ -666,7 +733,7 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
         setPhase('ended');
       }
     },
-    [closeRoomSocket, enterWaitingRoom, teardownCall, waitingRoomSupported],
+    [closeRoomSocket, endsAt, enterWaitingRoom, finalizeEnded, teardownCall, waitingRoomSupported],
   );
 
   // [WAITROOM-WEB-2 fix 1] "Rejoin call" — the manual escape hatch from a
@@ -730,12 +797,28 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
       // server's `host_checked_in_at` when present, else this client's own
       // first observed `roster.host === true` (roster-history fallback).
       const hostCheckedInAt = hostCheckedInAtRef.current;
+      const onTimeCheckIn = checkInBy != null && hostCheckedInAt != null && hostCheckedInAt <= checkInBy;
+      // [WAITROOM-WEB-3 C3] `roster.host === false` and `hostCheckedInAtRef
+      // === null` are ALSO this tick's pre-connect defaults — without
+      // `rosterSeenRef`, the very first tick right after `phase` flips to
+      // 'waiting' (before the socket has even opened) read exactly like a
+      // no-show and, with nothing to ever clear it, got stuck there even
+      // once the real roster arrived a moment later.
       const isNoShow =
+        rosterSeenRef.current &&
         prejoin?.role === 'buyer' &&
         checkInBy != null &&
         now > checkInBy &&
         !roster.host &&
-        (hostCheckedInAt == null || hostCheckedInAt > checkInBy);
+        !onTimeCheckIn;
+      // [WAITROOM-WEB-3 C3] New evidence that the host actually DID check
+      // in on time (a delayed `host_checked_in_at`, or this client's own
+      // roster-history fallback recording it) always wins over an earlier,
+      // premature no-show call — clear it and let auto-join resume.
+      if (noShowRef.current && onTimeCheckIn) {
+        noShowRef.current = false;
+        setNoShow(false);
+      }
       if (isNoShow && !noShowShownRef.current) {
         noShowShownRef.current = true;
         try {
@@ -841,6 +924,7 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
         wsStatus={wsStatus}
         roster={roster}
         hostCheckedInAt={hostCheckedInAtRef.current}
+        noShow={noShow}
         chat={chatLines}
         onSendChat={sendWaitingChat}
         onLeave={leaveFromWaiting}

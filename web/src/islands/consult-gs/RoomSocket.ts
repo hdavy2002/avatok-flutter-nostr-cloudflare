@@ -86,12 +86,13 @@ export interface RoomSocketHandlers {
   onOpen?: () => void;
   onStatus?: (s: 'connecting' | 'open' | 'reconnecting' | 'closed') => void;
   /**
-   * [WAITROOM-WEB-2 fix 16] Fired once the socket has failed to reach `open`
-   * `MAX_NEVER_OPENED_RETRIES` times in a row without ever having opened
-   * successfully — the closest signal a browser WebSocket exposes for "the
-   * server is refusing this token with 403", since the WebSocket API never
-   * surfaces the handshake's HTTP status to JS. The socket stops retrying
-   * once this fires; the caller is expected to fall back to a direct join.
+   * [WAITROOM-WEB-2 fix 16 / WAITROOM-WEB-3 C16] Fired once the socket has
+   * failed to reach `open` `MAX_CONSECUTIVE_RECONNECT_FAILURES` times in a
+   * row (counted since the LAST successful open, not just ever) — the
+   * closest signal a browser WebSocket exposes for "the server is refusing
+   * this token with 403", since the WebSocket API never surfaces the
+   * handshake's HTTP status to JS. The socket stops retrying once this
+   * fires; the caller is expected to fall back to a direct join.
    */
   onAuthFailed?: () => void;
 }
@@ -99,12 +100,15 @@ export interface RoomSocketHandlers {
 const BASE_BACKOFF_MS = 800;
 const MAX_BACKOFF_MS = 12_000;
 const CHAT_MAX_LEN = 500; // WP2 contract: chat relayed "(≤ 500 chars)"
-// [WAITROOM-WEB-2 fix 16] Cap consecutive "never even opened" reconnects at 3
-// before giving up and calling `onAuthFailed` — a good token opens on the
-// first or second try; three straight failures-before-open is the bad-token
-// signature, not a network blip (a blip happens AFTER a successful open, and
-// keeps retrying with backoff as before).
-const MAX_NEVER_OPENED_RETRIES = 3;
+// [WAITROOM-WEB-2 fix 16 / WAITROOM-WEB-3 C16] Cap consecutive failed
+// reconnects (attempts that never reached `open`) at 3 before giving up and
+// calling `onAuthFailed` — a good token opens on the first or second try, so
+// three straight failures is the bad-token signature. This applies to ANY
+// run of 3 in a row, not just a run starting from the very first connect: a
+// token that goes bad mid-session (e.g. after a server-side rotation) fails
+// the exact same way a bad token from the start does, and deserves the same
+// fallback. The counter resets to 0 on every successful `open`.
+const MAX_CONSECUTIVE_RECONNECT_FAILURES = 3;
 
 export class RoomSocket {
   private readonly url: string;
@@ -113,9 +117,10 @@ export class RoomSocket {
   private retries = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private closedByUs = false;
-  // [WAITROOM-WEB-2 fix 16]
-  private hasOpenedOnce = false;
-  private neverOpenedFailures = 0;
+  // [WAITROOM-WEB-2 fix 16 / WAITROOM-WEB-3 C16] Consecutive reconnect
+  // attempts that failed before reaching `open`, since the last successful
+  // open (or since construction, if it has never opened).
+  private consecutiveFailedOpens = 0;
   private authFailed = false;
 
   /** `url` is the server-issued `room_ws` — a full wss URL, token already embedded. */
@@ -166,8 +171,11 @@ export class RoomSocket {
 
     sock.addEventListener('open', () => {
       this.retries = 0;
-      this.hasOpenedOnce = true;
-      this.neverOpenedFailures = 0;
+      // [WAITROOM-WEB-3 C16] Reset on EVERY successful open, not just the
+      // first — a socket that opened fine 10 times and then starts failing
+      // (e.g. a token rotated mid-session) still deserves its own fresh 3
+      // tries before giving up, not credit carried over from a lifetime ago.
+      this.consecutiveFailedOpens = 0;
       this.h.onStatus?.('open');
       this.h.onOpen?.();
     });
@@ -211,21 +219,22 @@ export class RoomSocket {
 
   private scheduleReconnect(): void {
     if (this.closedByUs || this.authFailed) return;
-    // [WAITROOM-WEB-2 fix 16] Only count failures that never reached `open`
-    // — a drop after a successful open is ordinary network flakiness and
-    // keeps retrying with backoff forever, same as before this fix.
-    if (!this.hasOpenedOnce) {
-      this.neverOpenedFailures += 1;
-      if (this.neverOpenedFailures >= MAX_NEVER_OPENED_RETRIES) {
-        this.authFailed = true;
-        this.h.onStatus?.('closed');
-        // eslint-disable-next-line no-console
-        console.warn(
-          `[WAITROOM-WEB-2 fix 16] waiting-room socket never opened after ${MAX_NEVER_OPENED_RETRIES} tries (likely a rejected/bad token) — giving up and falling back to a direct join.`,
-        );
-        this.h.onAuthFailed?.();
-        return;
-      }
+    // [WAITROOM-WEB-2 fix 16 / WAITROOM-WEB-3 C16] Count every reconnect
+    // attempt that failed before its OWN `open` fired — whether this socket
+    // has never opened at all, or opened fine before and just dropped. Only
+    // a successful `open` resets the counter (above), so a run of 3
+    // straight failures always trips this, not just one starting from the
+    // very first connect.
+    this.consecutiveFailedOpens += 1;
+    if (this.consecutiveFailedOpens >= MAX_CONSECUTIVE_RECONNECT_FAILURES) {
+      this.authFailed = true;
+      this.h.onStatus?.('closed');
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[WAITROOM-WEB-2 fix 16] waiting-room socket failed to (re)open ${MAX_CONSECUTIVE_RECONNECT_FAILURES} times in a row (likely a rejected/bad token) — giving up and falling back to a direct join.`,
+      );
+      this.h.onAuthFailed?.();
+      return;
     }
     this.h.onStatus?.('reconnecting');
     const delay = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * 2 ** this.retries) + Math.random() * 400;
