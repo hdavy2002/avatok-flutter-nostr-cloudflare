@@ -289,3 +289,85 @@ describe("Phase 2 commercial lane contracts", () => {
     expect(routes).not.toContain("releaseSnapshot");
   });
 });
+
+describe("WAITROOM-2 reviewer fixes", () => {
+  const consult = readFileSync(resolve(root, "src/routes/consult.ts"), "utf8");
+  const waitingRoom = readFileSync(resolve(root, "src/lib/commercial_waiting_room.ts"), "utf8");
+
+  it("W4: only the `room` action accepts the wide commercial-booking id length", () => {
+    const normalizedRouter = router.replaceAll("\\/", "/");
+    expect(normalizedRouter).toContain('/^\\/api\\/consult\\/[A-Za-z0-9-]{1,96}\\/room$/'.replaceAll("\\/", "/"));
+    expect(normalizedRouter).toContain("/^/api/consult/[A-Za-z0-9-]{1,64}/(join|complete|cancel|extend)$/");
+    expect(consult).toContain("maxLen: 64 | 96 = 64");
+    expect(consult).toContain("bid(req, 96)");
+  });
+
+  it("W4: consultJoin/Complete/Cancel/Extend refuse a commercial (consult_1to1) booking", () => {
+    expect(consult).toContain('function refuseCommercialBooking(bk: Bk)');
+    expect(consult).toContain('bk.kind === "consult_1to1" ? json({ error: "commercial_booking" }, 409)');
+    for (const name of ["consultJoin", "consultComplete", "consultCancel", "consultExtend"]) {
+      const start = consult.indexOf(`export async function ${name}(`);
+      const body = consult.slice(start, start + 700);
+      expect(body).toContain("refuseCommercialBooking(bk)");
+    }
+  });
+
+  it("W8: rejoin recreates the provider call only on a 404, and refuses 410 on a terminal ended call", () => {
+    expect(routes).toContain("let providerNotFound = false;");
+    expect(routes).toContain("let providerEndedAt: string | null = null;");
+    expect(routes).toContain("if (providerNotFound) {");
+    expect(routes).toContain('} else if (providerEndedAt && ["ending", "ended"].includes(existing.state)) {');
+    expect(routes).toContain('return refused("session_terminal", { error: "session unavailable" }, 410);');
+  });
+
+  it("W8: commercialConsultEnd never sends mark_ended before ends_at", () => {
+    const start = routes.indexOf("export async function commercialConsultEnd");
+    const end = routes.indexOf("export async function commercialConsultState");
+    const body = routes.slice(start, end);
+    expect(body).toContain("RULEBOOK-PAID-SESSIONS.md v2 §3");
+    expect(body).toContain("Date.now() < Number(row.ends_at)");
+    expect(body).toContain("recorded_intent");
+    // The provider `mark_ended` path (runControl) is only reached below the
+    // early-return, never before it.
+    const guardIdx = body.indexOf("Date.now() < Number(row.ends_at)");
+    const runControlIdx = body.indexOf("await runControl(");
+    expect(runControlIdx).toBeGreaterThan(guardIdx);
+  });
+
+  it("W10: buildWaitingRoomGrant accepts a shared config so prejoin calls readConfig once", () => {
+    expect(waitingRoom).toContain("config?: PlatformConfig");
+    expect(waitingRoom).toContain("p.config ?? await readConfig(env)");
+    const prejoinStart = routes.indexOf("export async function commercialConsultPrejoin");
+    const prejoinEnd = routes.indexOf("async function commercialConsultJoinUnsafe");
+    const prejoin = routes.slice(prejoinStart, prejoinEnd);
+    expect((prejoin.match(/await readConfig\(env\)/g) ?? []).length).toBe(1);
+    expect(prejoin).toContain("config,\n    });");
+  });
+
+  it("W10: a failed waiting-room grant logs and degrades instead of 500ing", () => {
+    const prejoinStart = routes.indexOf("export async function commercialConsultPrejoin");
+    const prejoinEnd = routes.indexOf("async function commercialConsultJoinUnsafe");
+    const prejoin = routes.slice(prejoinStart, prejoinEnd);
+    expect(prejoin).toContain("try {");
+    expect(prejoin).toContain("waiting_room_grant_failed");
+    expect(prejoin).toContain("commercialEvent(env, \"prejoin\"");
+    expect(prejoin).toContain("...(grant ? { room_ws: grant.room_ws, room_token: grant.room_token, check_in_by: grant.check_in_by } : {})");
+  });
+
+  it("WP8 follow-up: go-live accepts a reconnecting host and exposes starts_at in live state", () => {
+    const goLiveStart = routes.indexOf("export async function commercialLiveGoLive");
+    const goLiveEnd = routes.indexOf("export async function commercialLiveEnd");
+    const goLive = routes.slice(goLiveStart, goLiveEnd);
+    expect(goLive).toContain('session.state === "live"');
+    expect(goLive).toContain("session.reconnect_deadline_ms != null");
+    expect(goLive).toContain("reconnecting");
+    expect(routes).toContain("starts_at: Number(session.scheduled_at)");
+  });
+
+  it("C11: DO chat carries uid, and welcome/roster carry host_checked_in_at", () => {
+    const doSource = readFileSync(resolve(root, "src/do/stream_session.ts"), "utf8");
+    expect(doSource).toContain('this.queue({ type: "chat", from: meta.name, text, at: now, uid: meta.uid });');
+    expect(doSource).toContain("host_checked_in_at: s.host_checked_in_at != null ? Number(s.host_checked_in_at) : null,");
+    expect(doSource).toContain("ALTER TABLE session ADD COLUMN host_checked_in_at INTEGER");
+  });
+});

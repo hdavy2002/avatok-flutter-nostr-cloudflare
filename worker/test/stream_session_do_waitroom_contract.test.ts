@@ -36,14 +36,31 @@ describe("StreamSessionDO roster message", () => {
     expect(flags).toMatch(/host\s*=\s*true/);
     expect(flags).toMatch(/attendee\s*=\s*true/);
     expect(flags).toContain("if (ws === excludeWs) continue;");
-    expect(flags).toMatch(/return\s*{\s*host,\s*attendee\s*}/);
+    expect(flags).toMatch(/return\s*{\s*host,\s*attendee,\s*host_checked_in_at/);
+  });
+
+  it("welcome and every roster message carry host_checked_in_at", () => {
+    const handleWs = methodSource(DO, "private handleWs(req: Request)", "async webSocketMessage");
+    expect(handleWs).toMatch(/type:\s*"welcome"[\s\S]{0,400}host_checked_in_at:/);
+    const flags = methodSource(DO, "private rosterFlags(", "\n  }");
+    expect(flags).toContain("host_checked_in_at");
+  });
+
+  it("records the first host socket open time once, idempotently", () => {
+    const handleWs = methodSource(DO, "private handleWs(req: Request)", "async webSocketMessage");
+    expect(handleWs).toMatch(/if \(role === "host"\)[\s\S]{0,200}host_checked_in_at/);
+    expect(handleWs).toContain("if (!already.host_checked_in_at)");
+  });
+
+  it("migrates the session table in place for DOs created before host_checked_in_at existed", () => {
+    expect(DO).toContain("ALTER TABLE session ADD COLUMN host_checked_in_at INTEGER");
   });
 });
 
 describe("StreamSessionDO chat relay", () => {
-  it("relays chat as {from, text, at} distinct from the flying-message wire shape", () => {
+  it("relays chat as {from, text, at, uid} distinct from the flying-message wire shape", () => {
     const wsMessage = methodSource(DO, "async webSocketMessage", "async webSocketClose");
-    expect(wsMessage).toMatch(/t === "chat"[\s\S]{0,1000}this\.queue\(\{\s*type:\s*"chat",\s*from:\s*meta\.name,\s*text,\s*at:\s*now\s*\}\)/);
+    expect(wsMessage).toMatch(/t === "chat"[\s\S]{0,1000}this\.queue\(\{\s*type:\s*"chat",\s*from:\s*meta\.name,\s*text,\s*at:\s*now,\s*uid:\s*meta\.uid\s*\}\)/);
   });
 
   it("caps chat at 500 chars (not the 120-char flying-message cap)", () => {

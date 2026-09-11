@@ -5,7 +5,9 @@ import { bustConfigMemo } from "../src/routes/config";
 // Minimal KV fake — mirrors the pattern in test/ai_free_budget.test.ts.
 class FakeKv {
   private store = new Map<string, string>();
+  gets = 0;
   async get(key: string, type?: string) {
+    this.gets += 1;
     const v = this.store.get(key);
     if (v === undefined) return null;
     return type === "json" ? JSON.parse(v) : v;
@@ -32,7 +34,7 @@ function makeEnv(overrides: Record<string, unknown> = {}) {
       }),
     },
   };
-  return { env, scheduleCalls };
+  return { env, scheduleCalls, kv };
 }
 
 const BASE_PARAMS = {
@@ -100,6 +102,25 @@ describe("buildWaitingRoomGrant", () => {
     expect(payload.name).toBe("Someone");
     expect(payload.role).toBe("attendee");
     expect(payload.sid).toBe(BASE_PARAMS.bookingId);
+  });
+});
+
+describe("buildWaitingRoomGrant honors a caller-supplied config (W10)", () => {
+  it("skips its own readConfig call when the caller already fetched config", async () => {
+    const { env, kv } = makeEnv({ sessionCreatorCheckInMin: 7 });
+    kv.gets = 0; // reset after the makeEnv setup read, if any
+    const config = { sessionCreatorCheckInMin: 7 } as any;
+    const grant = await buildWaitingRoomGrant(env, { ...BASE_PARAMS, config });
+    expect(grant.check_in_by).toBe(BASE_PARAMS.startsAt + 7 * 60_000);
+    expect(kv.gets).toBe(0); // no extra readConfig KV read — the shared config was used
+  });
+
+  it("still falls back to readConfig(env) when no config is supplied (direct callers)", async () => {
+    const { env, kv } = makeEnv({ sessionCreatorCheckInMin: 9 });
+    kv.gets = 0;
+    const grant = await buildWaitingRoomGrant(env, BASE_PARAMS);
+    expect(grant.check_in_by).toBe(BASE_PARAMS.startsAt + 9 * 60_000);
+    expect(kv.gets).toBeGreaterThan(0);
   });
 });
 

@@ -50,10 +50,12 @@ export class StreamSessionDO {
     this.sql.exec("INSERT OR IGNORE INTO meta (k, creator_uid, pending, total, gifters) VALUES (1, NULL, 0, 0, 0)");
     // Phase 7 session + room state (DO storage — survives hibernation).
     this.sql.exec(
-      "CREATE TABLE IF NOT EXISTS session (k INTEGER PRIMARY KEY, sid TEXT, kind TEXT, starts_at INTEGER, ends_at INTEGER, host_id TEXT, wait_min INTEGER NOT NULL DEFAULT 20, slow_mode_sec INTEGER NOT NULL DEFAULT 0, pinned TEXT, donations_total INTEGER NOT NULL DEFAULT 0, donations_count INTEGER NOT NULL DEFAULT 0, host_live INTEGER NOT NULL DEFAULT 0, commercial INTEGER NOT NULL DEFAULT 0)",
+      "CREATE TABLE IF NOT EXISTS session (k INTEGER PRIMARY KEY, sid TEXT, kind TEXT, starts_at INTEGER, ends_at INTEGER, host_id TEXT, wait_min INTEGER NOT NULL DEFAULT 20, slow_mode_sec INTEGER NOT NULL DEFAULT 0, pinned TEXT, donations_total INTEGER NOT NULL DEFAULT 0, donations_count INTEGER NOT NULL DEFAULT 0, host_live INTEGER NOT NULL DEFAULT 0, commercial INTEGER NOT NULL DEFAULT 0, host_checked_in_at INTEGER)",
     );
     // [WAITROOM-1] In-place migration for DOs created before the `commercial` column existed.
     try { this.sql.exec("ALTER TABLE session ADD COLUMN commercial INTEGER NOT NULL DEFAULT 0"); } catch { /* already migrated / fresh DO */ }
+    // [WAITROOM-2 / C11] In-place migration for DOs created before this column existed.
+    try { this.sql.exec("ALTER TABLE session ADD COLUMN host_checked_in_at INTEGER"); } catch { /* already migrated / fresh DO */ }
     this.sql.exec("INSERT OR IGNORE INTO session (k) VALUES (1)");
     this.sql.exec("CREATE TABLE IF NOT EXISTS modlist (uid TEXT PRIMARY KEY, state TEXT NOT NULL)"); // muted|banned
     this.sql.exec("CREATE TABLE IF NOT EXISTS alarms (t INTEGER NOT NULL, kind TEXT NOT NULL, PRIMARY KEY (t, kind))");
@@ -190,6 +192,16 @@ export class StreamSessionDO {
     // Attendance evidence (refund engine). Host rows carry order_id NULL.
     this.attendance(uid, role === "host" ? "host" : "attendee", meta.orderId, "join");
 
+    // [WAITROOM-2 / C11] First host socket open — record it once, so clients
+    // can show a truthful "creator checked in at …" line instead of trusting
+    // their own clock. Idempotent: only the first host connection writes it.
+    if (role === "host") {
+      const already = this.sess();
+      if (!already.host_checked_in_at) {
+        this.sql.exec("UPDATE session SET host_checked_in_at=?1 WHERE k=1", Date.now());
+      }
+    }
+
     // Initial state straight to the new socket (not coalesced).
     const s = this.sess();
     try {
@@ -197,6 +209,7 @@ export class StreamSessionDO {
         type: "welcome", watching: this.state.getWebSockets().length,
         slow_mode_sec: Number(s.slow_mode_sec), pinned: s.pinned,
         ends_at: s.ends_at, starts_at: s.starts_at, host_live: Number(s.host_live) === 1,
+        host_checked_in_at: s.host_checked_in_at != null ? Number(s.host_checked_in_at) : null,
         roster: this.rosterFlags(),
         ...this.donations(),
       }));
@@ -252,7 +265,7 @@ export class StreamSessionDO {
         if (now - Number(last) < slow) { try { ws.send(JSON.stringify({ type: "warn", reason: `slow mode: 1 message per ${slow / 1000}s` })); } catch { /* ignore */ } return; }
         this.sql.exec("INSERT INTO last_msg (uid, t) VALUES (?1,?2) ON CONFLICT(uid) DO UPDATE SET t=?2", meta.uid, now);
       }
-      this.queue({ type: "chat", from: meta.name, text, at: now });
+      this.queue({ type: "chat", from: meta.name, text, at: now, uid: meta.uid });
       return;
     }
     if (t === "track" && typeof m.track === "string" && m.track.length < 256) {
@@ -367,7 +380,7 @@ export class StreamSessionDO {
    * clients wait for (RULEBOOK §3: both must be present before /join).
    * `excludeWs` lets `dropped()` compute the flags as-of-close, since the
    * closing socket can still appear in `getWebSockets()` at that point. */
-  private rosterFlags(excludeWs?: WebSocket): { host: boolean; attendee: boolean } {
+  private rosterFlags(excludeWs?: WebSocket): { host: boolean; attendee: boolean; host_checked_in_at: number | null } {
     let host = false, attendee = false;
     for (const ws of this.state.getWebSockets()) {
       if (ws === excludeWs) continue;
@@ -376,7 +389,12 @@ export class StreamSessionDO {
       if (m.role === "host") host = true;
       else if (m.role === "attendee") attendee = true;
     }
-    return { host, attendee };
+    // [WAITROOM-2 / C11] Every roster message (welcome's embedded roster and
+    // each standalone {type:"roster"} broadcast) carries the first host
+    // check-in time, so clients show a server-truthful check-in line instead
+    // of inferring it from `host` flipping true/false across reconnects.
+    const s = this.sess();
+    return { host, attendee, host_checked_in_at: s.host_checked_in_at != null ? Number(s.host_checked_in_at) : null };
   }
 
   private kick(uid: string): void {

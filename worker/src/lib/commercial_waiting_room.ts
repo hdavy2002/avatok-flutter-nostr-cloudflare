@@ -7,7 +7,7 @@
 // (web/app waiting-room UIs) all consume this.
 import type { Env } from "../types";
 import { signSessionToken, sessionOp } from "../routes/live";
-import { readConfig } from "../routes/config";
+import { readConfig, type PlatformConfig } from "../routes/config";
 
 export interface WaitingRoomParams {
   bookingId: string;
@@ -21,6 +21,11 @@ export interface WaitingRoomParams {
   startsAt: number;
   endsAt: number;
   creatorId: string;
+  // [WAITROOM-2 / W10] Optional: the caller's own `readConfig(env)` result, so
+  // a route that already fetched config (e.g. commercialConsultPrejoin) does
+  // not pay for a second KV read here. Falls back to reading it itself so
+  // every existing/direct caller keeps working unchanged.
+  config?: PlatformConfig;
 }
 
 export interface WaitingRoomGrant {
@@ -42,7 +47,7 @@ function apiHost(env: Env): string {
  * allowed to move money for a commercial booking (RULEBOOK §5).
  */
 export async function buildWaitingRoomGrant(env: Env, p: WaitingRoomParams): Promise<WaitingRoomGrant> {
-  const cfg = await readConfig(env);
+  const cfg = p.config ?? await readConfig(env);
   const waitMin = Math.trunc(Number(cfg.sessionCreatorCheckInMin)) || 20;
 
   const token = await signSessionToken(env, {

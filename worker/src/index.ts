@@ -1706,11 +1706,19 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
         // [WAITROOM-1] Commercial booking ids are `commercial-booking-<sha256hex>`
         // (worker/src/routes/commercial_checkout.ts) — up to 96 chars, longer than
         // the plain crypto.randomUUID() ids the legacy 1:1 consult path uses.
-        const cn = p.match(/^\/api\/consult\/[A-Za-z0-9-]{1,96}\/(join|room|complete|cancel|extend)$/);
+        // [WAITROOM-2 / W4] The wide {1,96} id length is for `room` ONLY — that's
+        // the waiting-room DO socket, which a commercial booking legitimately
+        // opens. join/complete/cancel/extend are the legacy money/P2P path and
+        // must stay {1,64} (the legacy crypto.randomUUID() id length) so a
+        // commercial booking id can never match them; consultJoin/consultCancel/
+        // consultExtend/consultComplete additionally 409 on bk.kind==='consult_1to1'
+        // as a second, independent guard (see consult.ts).
+        const cnRoom = p.match(/^\/api\/consult\/[A-Za-z0-9-]{1,96}\/room$/);
+        if (cnRoom) return await consultRoom(req, env);
+        const cn = p.match(/^\/api\/consult\/[A-Za-z0-9-]{1,64}\/(join|complete|cancel|extend)$/);
         if (cn) {
           const act = cn[1];
           if (act === "join" && req.method === "GET") return await consultJoin(req, env);
-          if (act === "room") return await consultRoom(req, env);
           if (act === "complete" && req.method === "POST") return await consultComplete(req, env);
           if (act === "cancel" && req.method === "POST") return await consultCancel(req, env);
           if (act === "extend" && req.method === "POST") return await consultExtend(req, env);

@@ -466,30 +466,36 @@ async function authorizeProviderJoin(args: {
     // the call object is gone. Probe the provider and recreate the call — never
     // the commercial_sessions/session-authority rows, which stay exactly as they
     // were — when it reports ended or missing.
-    let providerEnded = false;
+    let providerNotFound = false;
+    let providerEndedAt: string | null = null;
     try {
       const probe = await fetch(providerUrl(args.env, identity.callType, identity.callId), {
         method: "GET",
         headers: { Authorization: tokens.server, "stream-auth-type": "jwt" },
       });
       if (probe.status === 404) {
-        providerEnded = true;
+        providerNotFound = true;
       } else if (probe.ok) {
         const raw = await probe.text();
         try {
           const body = JSON.parse(raw) as { call?: { ended_at?: string | null } };
-          providerEnded = Boolean(body?.call?.ended_at);
+          providerEndedAt = body?.call?.ended_at ?? null;
         } catch {
-          providerEnded = false;
+          providerEndedAt = null;
         }
       }
     } catch {
-      // Provider unreachable: leave providerEnded false — this is a rejoin
+      // Provider unreachable: leave both flags unset — this is a rejoin
       // convenience, not a fresh authorization decision, so we do not refuse
       // the join over a probe failure.
-      providerEnded = false;
     }
-    if (providerEnded) {
+    // [WAITROOM-2 / W8] Recreate the call ONLY on a genuine 404 — the one case
+    // where "recreate" cannot possibly resurrect a call GetStream itself still
+    // considers live. If the provider instead reports `ended_at` and our own
+    // session row already agrees the slot is over ('ending'/'ended'), refuse
+    // 410 so the client returns to the waiting room instead of getting handed
+    // a brand-new call for a session that is already done.
+    if (providerNotFound) {
       const members = args.kind === "consult_1to1"
         ? [args.creatorId, args.uid]
         : [args.creatorId];
@@ -509,6 +515,8 @@ async function authorizeProviderJoin(args: {
         startsAt: args.startsAt,
       })) return refused("provider_call_unavailable", { error: "provider call unavailable" }, 502);
       commercialEvent(args.env, "join", args.uid, { kind: args.kind, outcome: "rejoin_recreated_call" });
+    } else if (providerEndedAt && ["ending", "ended"].includes(existing.state)) {
+      return refused("session_terminal", { error: "session unavailable" }, 410);
     }
   }
 
@@ -767,15 +775,31 @@ export async function commercialConsultPrejoin(req: Request, env: Env): Promise<
   // `buildWaitingRoomGrant`, which signs the session token and arms the
   // StreamSessionDO schedule. `role` here stays the existing 'creator'|'buyer'
   // wire contract — the host/attendee vocabulary is internal to the grant builder.
-  const grant = await buildWaitingRoomGrant(env, {
-    bookingId: row.id,
-    uid: auth.uid,
-    role: isCreator ? "host" : "attendee",
-    name: isCreator ? creatorName : buyerName,
-    startsAt: Number(row.starts_at),
-    endsAt: Number(row.ends_at),
-    creatorId: row.creator_id,
-  });
+  // [WAITROOM-2 / W10] buildWaitingRoomGrant talks to the StreamSessionDO
+  // (sessionOp → a DO fetch) and signs a token; either can throw. A prejoin
+  // is otherwise pure read-only lookups the client needs regardless (title,
+  // counterparty, join window), so a DO/signing hiccup must degrade to "no
+  // room grant yet" — never a 500 that hides all of that from the client.
+  // `config` is passed through so buildWaitingRoomGrant does not re-fetch it
+  // (readConfig is called exactly once per prejoin, here).
+  let grant: { room_ws: string; room_token: string; check_in_by: number } | null = null;
+  try {
+    grant = await buildWaitingRoomGrant(env, {
+      bookingId: row.id,
+      uid: auth.uid,
+      role: isCreator ? "host" : "attendee",
+      name: isCreator ? creatorName : buyerName,
+      startsAt: Number(row.starts_at),
+      endsAt: Number(row.ends_at),
+      creatorId: row.creator_id,
+      config,
+    });
+  } catch (err) {
+    commercialEvent(env, "prejoin", auth.uid, {
+      kind: "consult_1to1", outcome: "waiting_room_grant_failed",
+      reason: String((err as Error)?.message ?? err).slice(0, 160),
+    });
+  }
   return json({
     ok: true, lane: "commercial", kind: "consult_1to1", booking_id: row.id,
     listing_id: row.listing_id, title: row.title, starts_at: Number(row.starts_at),
@@ -793,9 +817,7 @@ export async function commercialConsultPrejoin(req: Request, env: Env): Promise<
     counterparty: counterparty,
     join_enabled: config.commercialConsultJoinEnabled === true,
     role: isCreator ? "creator" : "buyer",
-    room_ws: grant.room_ws,
-    room_token: grant.room_token,
-    check_in_by: grant.check_in_by,
+    ...(grant ? { room_ws: grant.room_ws, room_token: grant.room_token, check_in_by: grant.check_in_by } : {}),
   });
 }
 
@@ -1310,7 +1332,26 @@ export async function commercialLiveGoLive(req: Request, env: Env): Promise<Resp
   if (!row || row.creator_id !== auth.uid || row.kind !== "live_event") return json({ error: "not your live event" }, 403);
   const session = await sessionByListing(env, listingId);
   if (!session) return json({ error: "prepare host first" }, 409);
-  if (!["scheduled", "backstage"].includes(session.state)) return json({ error: "session cannot go live", state: session.state }, 409);
+  // [WAITROOM-2 / WP8 follow-up] A host who dropped mid-broadcast and is
+  // rejoining within the grace window (raw state 'live' with an unexpired
+  // reconnect_deadline_ms — safeSessionState projects this as 'reconnecting',
+  // RULEBOOK §4 L4) must be able to come back through this same prepare-host
+  // → go-live → join flow, not get a 409 because the row never left 'live'.
+  const reconnecting = session.state === "live"
+    && session.reconnect_deadline_ms != null
+    && Number(session.reconnect_deadline_ms) > Date.now();
+  if (!["scheduled", "backstage"].includes(session.state) && !reconnecting) {
+    return json({ error: "session cannot go live", state: session.state }, 409);
+  }
+  if (reconnecting) {
+    // Already live on the provider side — nothing to re-arm there. The
+    // actual grace-clear happens when the host's rejoin produces a real
+    // `participant_joined` webhook (recordCommercialStreamEvent →
+    // clearLiveGrace); this just lets the client's go-live call succeed
+    // instead of bouncing off a stale state check.
+    commercialEvent(env, "broadcast", auth.uid, { kind: "live_event", outcome: "replay", action: "go_live", reason: "reconnecting" });
+    return json({ ok: true, idempotent_replay: true, state: "live", reconnecting: true });
+  }
   // [LIST-FREE-1] Free lane creator hold — spec §E.2. This runs BEFORE the broadcast
   // starts, i.e. before anyone can join and start consuming metered attendee-minutes.
   // Insufficient creator balance refuses the go-live outright (402, dual error codes) —
@@ -1366,6 +1407,19 @@ export async function commercialConsultEnd(req: Request, env: Env): Promise<Resp
   const session = await sessionByBooking(env, bookingId);
   if (!session) return json({ error: "session unavailable" }, 404);
   if (session.state === "ended") return json({ ok: true, idempotent_replay: true, state: "ended" });
+  // [WAITROOM-2 / W8] RULEBOOK-PAID-SESSIONS.md v2 §3: "The DO's alarms are the
+  // clock authority ... A leave, a crash or a provider webhook never ends the
+  // slot." A consult's price is for the whole reserved slot regardless of who
+  // is present (§2), so sending `mark_ended` to the provider before `ends_at`
+  // would let either party's Leave terminate the OTHER party's billed time
+  // early. Before `ends_at` this only records the caller's intent to end and
+  // returns the current (still-open) state — it never touches the provider.
+  // The DO's own `ends_at + grace` alarm (`money_end`) is what actually closes
+  // the slot; after that point this falls through to the real provider call.
+  if (Date.now() < Number(row.ends_at)) {
+    commercialEvent(env, "broadcast", auth.uid, { kind: "consult_1to1", outcome: "recorded_intent", action: "end" });
+    return json({ ok: true, state: session.state, recorded_intent: true });
+  }
   return await runControl({ req, env, actorId: auth.uid, session, action: "end" });
 }
 
