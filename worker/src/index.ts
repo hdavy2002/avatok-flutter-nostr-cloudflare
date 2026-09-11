@@ -38,6 +38,7 @@ import { commercialRoutePattern } from "./lib/commercial_ids";
 import { commercialDiagnostics, scanCommercialHealth } from "./routes/commercial_diagnostics";
 import { runCommercialSettlements, runCommercialHostNoShowSweep } from "./commercial_settlement";
 import { refreshStaleCreatorStats } from "./lib/creator_stats"; // [LIST-STATS-1]
+import { endDueConsultSessions } from "./lib/commercial_session_clock"; // [SESSION-CLOCK-0]
 import { messengerCallAuthorize, messengerCallPricing, messengerCallReceipt, messengerCallBillingStatus, cancelMessengerCallAuthorization } from "./routes/messenger_call_billing";
 import { brain } from "./routes/brain";
 import { brainDomains } from "./routes/brain_domains";
@@ -422,6 +423,11 @@ export default {
         reconcileCommercialSessions(env)
           .then((r) => { if (r.scanned) console.log("[commercial-reconciliation]", JSON.stringify(r)); })
           .catch((e) => { console.error("[commercial-reconciliation] failed:", String(e)); }),
+        // [SESSION-CLOCK-0] "The schedule ends a session, never a provider event"
+        // (RULEBOOK-PAID-SESSIONS.md §5) -- this is that schedule for 1:1 consults.
+        endDueConsultSessions(env)
+          .then((r) => { if (r.scanned) console.log("[commercial-consult-session-clock]", JSON.stringify(r)); })
+          .catch((e) => { console.error("[commercial-consult-session-clock] failed:", String(e)); }),
         reconcileListingLifecycleProjections(env)
           .then((r) => { if (r.scanned) console.log("[listing-lifecycle-reconciliation]", JSON.stringify(r)); })
           .catch((e) => { console.error("[listing-lifecycle-reconciliation] failed:", String(e)); }),

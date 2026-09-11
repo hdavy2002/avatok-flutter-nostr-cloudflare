@@ -13,6 +13,7 @@ import {
 } from "../lib/commercial_stream_sessions";
 import { commercialIdFromPath } from "../lib/commercial_ids";
 import { commercialEvent } from "../lib/commercial_telemetry";
+import { buildWaitingRoomGrant } from "../lib/commercial_waiting_room"; // [SESSION-CLOCK-0] WP2 owns this lib
 // [LIST-APPROVAL-AUTH-1] Read-only import of the system-actor listing transition
 // landed in fa44bc21. This file only CALLS it from the provider-confirmed webhook
 // path below — it does not own or edit listings.ts.
@@ -453,6 +454,61 @@ async function authorizeProviderJoin(args: {
       args.config.commercialRecordingEnabled ? "requested" : "disabled",
       args.config.commercialReplayEnabled ? "processing" : "disabled", insertedAt,
     ).run();
+  } else if (!["ended", "cancelled"].includes(existing.state)) {
+    // [SESSION-CLOCK-0] Rejoin after a drop. RULEBOOK-PAID-SESSIONS.md §5: a
+    // provider event never ends a session; only the schedule does. So a
+    // commercial_sessions row can sit in a non-terminal DB state while the
+    // GetStream call itself has actually ended (e.g. everyone left and GetStream
+    // auto-closed it) or 404s (never actually created, or provider-side cleanup).
+    // A valid participant joining inside the join window must be able to get
+    // back into a working call rather than being permanently locked out because
+    // the call object is gone. Probe the provider and recreate the call — never
+    // the commercial_sessions/session-authority rows, which stay exactly as they
+    // were — when it reports ended or missing.
+    let providerEnded = false;
+    try {
+      const probe = await fetch(providerUrl(args.env, identity.callType, identity.callId), {
+        method: "GET",
+        headers: { Authorization: tokens.server, "stream-auth-type": "jwt" },
+      });
+      if (probe.status === 404) {
+        providerEnded = true;
+      } else if (probe.ok) {
+        const raw = await probe.text();
+        try {
+          const body = JSON.parse(raw) as { call?: { ended_at?: string | null } };
+          providerEnded = Boolean(body?.call?.ended_at);
+        } catch {
+          providerEnded = false;
+        }
+      }
+    } catch {
+      // Provider unreachable: leave providerEnded false — this is a rejoin
+      // convenience, not a fresh authorization decision, so we do not refuse
+      // the join over a probe failure.
+      providerEnded = false;
+    }
+    if (providerEnded) {
+      const members = args.kind === "consult_1to1"
+        ? [args.creatorId, args.uid]
+        : [args.creatorId];
+      for (const memberId of new Set(members)) {
+        if (!await upsertProviderUser(args.env, tokens.server, memberId)) {
+          return refused("provider_user_unavailable", { error: "provider user unavailable" }, 502);
+        }
+      }
+      if (!await createProviderCall({
+        env: args.env,
+        serverToken: tokens.server,
+        callType: identity.callType,
+        callId: identity.callId,
+        creatorId: args.creatorId,
+        kind: args.kind,
+        memberIds: [...new Set(members)],
+        startsAt: args.startsAt,
+      })) return refused("provider_call_unavailable", { error: "provider call unavailable" }, 502);
+      commercialEvent(args.env, "join", args.uid, { kind: args.kind, outcome: "rejoin_recreated_call" });
+    }
   }
 
   // INSERT OR IGNORE is only an idempotency primitive. Read the durable row
@@ -705,6 +761,20 @@ export async function commercialConsultPrejoin(req: Request, env: Env): Promise<
   const counterparty = isCreator
     ? { id: row.buyer_id, name: buyerName, avatar_url: buyer?.avatar_url ?? null }
     : { id: row.creator_id, name: creatorName, avatar_url: creator?.avatar_url ?? null };
+  // [SESSION-CLOCK-0] Waiting-room contract fields (PLAN-2026-09-11-WAITING-ROOM-BUILD.md
+  // "Contracts shared by all WPs"): room_ws/room_token/check_in_by come from WP2's
+  // `buildWaitingRoomGrant`, which signs the session token and arms the
+  // StreamSessionDO schedule. `role` here stays the existing 'creator'|'buyer'
+  // wire contract — the host/attendee vocabulary is internal to the grant builder.
+  const grant = await buildWaitingRoomGrant(env, {
+    bookingId: row.id,
+    uid: auth.uid,
+    role: isCreator ? "host" : "attendee",
+    name: isCreator ? creatorName : buyerName,
+    startsAt: Number(row.starts_at),
+    endsAt: Number(row.ends_at),
+    creatorId: row.creator_id,
+  });
   return json({
     ok: true, lane: "commercial", kind: "consult_1to1", booking_id: row.id,
     listing_id: row.listing_id, title: row.title, starts_at: Number(row.starts_at),
@@ -722,6 +792,9 @@ export async function commercialConsultPrejoin(req: Request, env: Env): Promise<
     counterparty: counterparty,
     join_enabled: config.commercialConsultJoinEnabled === true,
     role: isCreator ? "creator" : "buyer",
+    room_ws: grant.room_ws,
+    room_token: grant.room_token,
+    check_in_by: grant.check_in_by,
   });
 }
 
@@ -1337,7 +1410,7 @@ async function canViewSession(env: Env, session: SessionAuthority, uid: string):
   return Boolean(anyGrant);
 }
 
-async function consumeCommercialEntitlementsOnSessionEnd(env: Env, sessionId: string): Promise<void> {
+export async function consumeCommercialEntitlementsOnSessionEnd(env: Env, sessionId: string): Promise<void> {
   const session = await metaDb(env).prepare(
     `SELECT s.kind, s.listing_id, s.booking_id, p.cancellation_policy_json
        FROM commercial_sessions s
@@ -1976,6 +2049,29 @@ export async function recordCommercialStreamEvent(
       kind: input.callType === "avatok_livestream" ? "live_event" : "consult_1to1",
       outcome: "ended",
     });
+    if (input.callType === "avatok_consult_1to1") {
+      // [SESSION-CLOCK-0] RULEBOOK-PAID-SESSIONS.md §5 / §3: "the schedule ends a
+      // session, never a provider event." A GetStream `session_ended`/`call.ended`
+      // for a 1:1 consult must never mark commercial_sessions ended or queue
+      // settlement — only `endDueConsultSessions` (the cron, keyed off
+      // `ends_at + commercialConsultJoinLateMin`) or the explicit
+      // `POST .../consult/:id/end` route may do that. A creator who steps out of
+      // an otherwise-idle call must not close the door on a customer who joins
+      // later, nor get paid as if the customer no-showed. Close any still-open
+      // participant intervals (attendance evidence must stay accurate) and stop.
+      await metaDb(env).prepare(
+        `UPDATE commercial_participant_intervals
+         SET left_at=?2,connected_ms=MAX(0,?2-joined_at),reconciliation_state='closed',updated_at=?3
+         WHERE commercial_session_id=?1 AND reconciliation_state='open'`,
+      ).bind(session.commercial_session_id, input.occurredAt, Date.now()).run();
+      await metaDb(env).prepare(
+        "UPDATE commercial_provider_events SET processing_state='applied',processed_at=?2 WHERE provider_event_id=?1",
+      ).bind(input.webhookId, Date.now()).run();
+      commercialEvent(env, "provider_event", null, {
+        kind: "consult_1to1", outcome: "applied", event_class: "interval_close_only",
+      });
+      return { handled: true };
+    }
     await metaDb(env).batch([
       metaDb(env).prepare(
         `UPDATE commercial_sessions SET state='ended',ended_at=COALESCE(ended_at,?2),
