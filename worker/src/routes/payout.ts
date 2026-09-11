@@ -25,8 +25,9 @@ function payoutEnabled(env: Env): boolean {
   return env.PAYOUT_ENABLED === "1" && wiseConfigured(env); // legal gate + creds
 }
 
-// Brevo status email (best-effort; address resolved from Clerk — D1 stores
-// only email hashes). Phase 3 acceptance: status emails on sent/failed.
+// Status email via Cloudflare Email Service (Brevo fallback) (best-effort;
+// address resolved from Clerk — D1 stores only email hashes). Phase 3
+// acceptance: status emails on sent/failed.
 async function payoutEmail(env: Env, uid: string, subject: string, lines: string[]): Promise<void> {
   try {
     const email = await clerkEmail(env, uid);

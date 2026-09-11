@@ -49,6 +49,9 @@ export interface Env {
   // secrets
   FCM_SERVICE_ACCOUNT?: string;
   BREVO_API_KEY?: string;        // transactional email (replaces Resend)
+  EMAIL?: SendEmail;             // Cloudflare Email Service send binding (Phase 1, EMAIL-CF-1)
+  EMAIL_PROVIDER?: string;       // "brevo" (default) | "cloudflare" | "cloudflare_then_brevo"
+  EMAIL_FROM_DEFAULT?: string;   // overrides the "AvaTok <noreply@avatok.ai>" default sender
   POSTHOG_API_KEY?: string;
   // APNs (iOS push) — gated; if unset, APNs tokens are skipped (Android-first).
   APNS_KEY_ID?: string;

@@ -347,7 +347,8 @@ const String kIdBase = '$kApiBase/id';            // AvaID verification (Phase 1
 
 // ── Onboarding verification (age/gender + phone OTP + email OTP) ─────────────
 // Phone OTP is handled client-side by Firebase Auth; these are the email-OTP
-// + phone-confirm endpoints the Worker must expose (email sent via Brevo).
+// + phone-confirm endpoints the Worker must expose (email sent via Cloudflare
+// Email Service, Brevo fallback).
 const String kEmailOtpStartUrl = '$kIdBase/email/start';   // POST {email}
 const String kEmailOtpVerifyUrl = '$kIdBase/email/verify'; // POST {email, code}
 // Password set/change — emails the signed-in user a secure link to set a

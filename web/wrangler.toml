@@ -15,3 +15,18 @@ pages_build_output_dir = "./dist"
 [[kv_namespaces]]
 binding = "SESSION"
 id = "831f68e696d443cb923f2d7afbd7e750"
+
+# Cloudflare Email Service (Specs/PLAN-2026-09-11-EMAIL-CLOUDFLARE-PRIMARY-BREVO-
+# FALLBACK.md §3.4). Pages Functions use the REST API (no send_email binding on
+# Pages), so this var + a secret are all that's needed:
+#   CF_ACCOUNT_ID       — public, safe to commit (matches calls/wrangler.toml).
+#   CF_EMAIL_API_TOKEN  — Pages secret set in the Cloudflare dashboard (Pages
+#                          project → Settings → Environment variables), token
+#                          scoped to Account → Email Sending: Edit only. Not in
+#                          this file or in secrets/deploy.sh (that script only
+#                          drives the three Workers, not Pages).
+# BREVO_API_KEY / BREVO_SENDER_* / BREVO_LIST_ID remain in the Pages dashboard
+# env as the fallback transport (and the waitlist contacts-list add, which
+# stays on Brevo — out of scope for this migration).
+[vars]
+CF_ACCOUNT_ID = "fd3dbf43f8e6d8bf65bd36b02eb0abb0"

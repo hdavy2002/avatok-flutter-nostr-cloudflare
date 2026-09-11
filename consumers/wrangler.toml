@@ -89,6 +89,12 @@ namespace = "default"
 binding = "ANALYTICS"
 dataset = "avatok_metrics"
 
+# Cloudflare Email Service primary send binding (Specs/PLAN-2026-09-11-EMAIL-
+# CLOUDFLARE-PRIMARY-BREVO-FALLBACK.md §3.4). env.EMAIL.send({...}) -> {messageId}.
+# Brevo (BREVO_API_KEY secret) is the fallback transport, unchanged.
+[[send_email]]
+name = "EMAIL"
+
 # --- Queue consumers (one Worker, dispatch on batch.queue) ---
 [[queues.consumers]]
 queue = "moderation"
@@ -106,6 +112,16 @@ max_retries = 5
 queue = "email"
 max_batch_size = 10
 max_batch_timeout = 10
+max_retries = 3
+
+# Cloudflare Email Service delivery events (§5): message.delivered/deferred/
+# bounced/complained/rejected, published by the Email Sending event
+# subscription on avatok.ai. Fills email_outbox.delivered_at/bounced_at, which
+# nothing wrote before this (no Brevo webhook route exists).
+[[queues.consumers]]
+queue = "email-events"
+max_batch_size = 25
+max_batch_timeout = 5
 max_retries = 3
 
 [[queues.consumers]]
@@ -253,7 +269,9 @@ crons = ["* * * * *", "*/15 * * * *", "0 */6 * * *"]  # minute = Phase 7 money s
 
 # Secrets (wrangler secret put):
 #   FCM_SERVICE_ACCOUNT  — Firebase service-account JSON (Android push)
-#   BREVO_API_KEY        — transactional email (Brevo; replaced Resend)
+#   BREVO_API_KEY        — transactional email FALLBACK (Brevo; replaced Resend).
+#                          Cloudflare Email Service (EMAIL send_email binding)
+#                          is primary per EMAIL_PROVIDER — see [vars] above.
 #   POSTHOG_API_KEY      — analytics capture (+ POSTHOG_HOST var)
 #   APNS_KEY_ID / APNS_TEAM_ID / APNS_PRIVATE_KEY / APNS_BUNDLE_ID  — iOS push
 #                          (gated: unset → APNs tokens skipped, Android-first)
@@ -285,6 +303,11 @@ DEMO_MUTE_NONCALL_PUSH = "0"
 # when ai_spend.calls exceeds this.
 AI_DAILY_CALL_BUDGET = "5000"
 ALERT_EMAIL = "hdavy2005@gmail.com"
+# Email provider policy (Specs/PLAN-2026-09-11-EMAIL-CLOUDFLARE-PRIMARY-BREVO-FALLBACK.md).
+# "brevo" | "cloudflare" | "cloudflare_then_brevo". Stays "brevo" until a later
+# deploy flips prod to "cloudflare_then_brevo" per the phased rollout (§4).
+EMAIL_PROVIDER = "cloudflare_then_brevo"
+EMAIL_FROM_DEFAULT = "AvaTok <noreply@avatok.ai>"
 # AVA CORE (Phase 0, AVA-CORE-4): the ONE reasoner slot behind avaReason()
 # (src/ava_reason.ts). Per-call overrides (BRAIN_EXTRACT_MODEL etc.) still WIN.
 AVA_REASONER = "@cf/google/gemma-4-26b-a4b-it"
@@ -306,9 +329,18 @@ BRAIN_VISION_MODEL = "@cf/google/gemma-4-26b-a4b-it"        # Gemma 4 multimodal
 #   wrangler deploy --env staging   → avatok-consumers-staging
 # Consumes the -staging queues, writes the -staging D1s/R2s. Secrets per env:
 # Brevo real key but [STG]-prefixed templates; Stripe TEST; Wise sandbox.
+# Email: Cloudflare Email Service is primary (EMAIL_PROVIDER="cloudflare_then_
+# brevo", destination capped to hdavy2005@gmail.com below); Brevo is the fallback.
 # ═══════════════════════════════════════════════════════════════════════════
 [env.staging]
 name = "avatok-consumers-staging"
+
+
+# Cloudflare Email Service — staging is hard-capped to the owner's inbox so a
+# staging bug can never mail a real user (§3.4).
+[[env.staging.send_email]]
+name = "EMAIL"
+allowed_destination_addresses = ["hdavy2005@gmail.com"]
 
 [env.staging.observability]
 enabled = true
@@ -393,6 +425,12 @@ max_retries = 5
 queue = "email-staging"
 max_batch_size = 10
 max_batch_timeout = 10
+max_retries = 3
+
+[[env.staging.queues.consumers]]
+queue = "email-events-staging"
+max_batch_size = 25
+max_batch_timeout = 5
 max_retries = 3
 
 [[env.staging.queues.consumers]]
@@ -527,6 +565,10 @@ ENVIRONMENT_NAME = "staging"
 FCM_PROJECT = "avatok-staging"
 AI_DAILY_CALL_BUDGET = "5000"
 ALERT_EMAIL = "hdavy2005@gmail.com"
+# Email provider policy — staging cuts over to Cloudflare right away (owner-only
+# destination cap above); prod stays "brevo" until a later deploy flips it.
+EMAIL_PROVIDER = "cloudflare_then_brevo"
+EMAIL_FROM_DEFAULT = "AvaTok <noreply@avatok.ai>"
 AVA_REASONER = "@cf/google/gemma-4-26b-a4b-it"        # AVA CORE Phase 0 (see top-level [vars])
 AVA_REASONER_ALT = "google/gemini-2.5-flash-lite"
 MODERATION_MODEL = "@cf/google/gemma-4-26b-a4b-it"

@@ -1247,8 +1247,9 @@ export async function buildParentDigest(env: Env, parentUid: string, windowDays 
 /**
  * Delivery HOOK — reuse the existing push queue to notify the parent their weekly
  * digest is ready. Best-effort (mirrors P7's alert push). A richer channel (email
- * via the consumers' BREVO path, or an in-app digest card) can replace this body;
- * the digest itself is built by buildParentDigest and readable via the route.
+ * via the consumers' Cloudflare Email Service path, Brevo fallback, or an
+ * in-app digest card) can replace this body; the digest itself is built by
+ * buildParentDigest and readable via the route.
  */
 async function deliverDigest(env: Env, parentUid: string, digest: ParentDigest): Promise<boolean> {
   try {

@@ -19,6 +19,7 @@ import { moneySweep } from "./money_sweep";
 import { sweepListingExpiry } from "./listing_expiry"; // PLAN §5 — marketplace listing-expiry lifecycle (notify T−3d / expire T / archive T+30d)
 import { sweepUncommittedMedia, UNCOMMITTED_TTL_MS } from "./media_sweep"; // [SPEC-SEND-2 / WS-33] collect speculatively-uploaded media the user never sent
 import { sendEmailDurably } from "./email_delivery";
+import { handleEmailEvent, type EmailSendingEvent } from "./email_events";
 
 export default {
   // Queue consumer — dispatch by queue name; ack on success, retry on transient error.
@@ -39,6 +40,7 @@ export default {
           // them; cron callers below request an exception so reminder flags do
           // not advance when mail was unavailable or rejected.
           case "email": await sendEmailDurably(msg.body as EmailMsg, env, { throwOnPermanent: false }); break;
+          case "email-events": await handleEmailEvent(msg.body as EmailSendingEvent, env); break;
           case "brain-events": await handleBrain(msg.body as BrainMsg, env); break;
           case "account-deletions": await handleDeletion(msg.body as DeletionMsg, env); break;
           case "wallet-transactions": await handleWalletTx(msg.body as WalletTxMsg, env); break;

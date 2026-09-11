@@ -144,7 +144,8 @@ NCII hash-matching (StopNCII) planned alongside the CSAM source.
 | **Bunny.net Stream** | All video storage/transcode/HLS | keys pending wiring |
 | **Firebase FCM** | Android push | wired (service account set) |
 | **APNs** | iOS push | gated (key pending) |
-| **Brevo** (Sendinblue) | Transactional email (replaced Resend) | key pending |
+| **Cloudflare Email Service** | Transactional email — primary, via `EMAIL` send_email binding (avatok-consumers) / REST API (web) | domain `avatok.ai` onboarded 2026-09-06 |
+| **Brevo** (Sendinblue) | Transactional email — fallback (switch: consumer var `EMAIL_PROVIDER`) | key pending |
 | **PostHog** | Product analytics + `investigate()` reads | key pending |
 | **LiveKit** | Group-call SFU for AvaTalk groups (≤25) — `routes/conference.ts` | in use (paid tiers) |
 | **RealtimeKit** | ~~Group-call SFU (AvaConsult)~~ — **superseded** by Cloudflare Realtime SFU/Calls (`routes/consult.ts`) + LiveKit | legacy; app exists, org key never wired |

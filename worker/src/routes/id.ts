@@ -208,8 +208,8 @@ export async function idStatus(req: Request, env: Env): Promise<Response> {
 // any jurisdiction, so it bought no safety at Twilio cost. Do NOT reintroduce.
 //
 // Email OTP is fully server-issued: /email/start mints a 6-digit code, stores
-// only its hash in KV (10-min TTL), and emails it via Q_EMAIL → Brevo;
-// /email/verify checks it. All dual-auth.
+// only its hash in KV (10-min TTL), and emails it via Q_EMAIL → Cloudflare
+// Email Service (Brevo fallback); /email/verify checks it. All dual-auth.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const OTP_TTL_S = 600;            // 10 minutes

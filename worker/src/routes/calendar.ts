@@ -151,7 +151,7 @@ export async function bookSlot(req: Request, env: Env): Promise<Response> {
     metaDb(env).prepare("UPDATE calendar_slots SET booked_count=booked_count+1, status=CASE WHEN booked_count+1>=capacity THEN 'closed' ELSE 'open' END WHERE id=?1").bind(slotId),
   ]);
 
-  // Email matrix (Brevo + ICS + join link) + in-app/push + brain hooks + gcal.
+  // Email matrix (Cloudflare Email Service, Brevo fallback + ICS + join link) + in-app/push + brain hooks + gcal.
   const [creatorName, buyerName] = await Promise.all([nameOf(env, slot.host_uid), nameOf(env, ctx.uid)]);
   try {
     await emailBookingConfirmed(env, { bookingId, title: slot.title, start: slot.start_at, end: slot.end_at, price, creatorId: slot.host_uid, buyerId: ctx.uid, creatorName, buyerName });

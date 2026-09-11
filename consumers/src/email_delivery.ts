@@ -1,15 +1,9 @@
 import type { Env, EmailMsg } from "./types";
+import { sendWithPolicy } from "./email_provider";
 
 type DeliveryStatus = "queued" | "sending" | "provider_accepted" | "delivered" | "failed" | "bounced";
 const LEASE_MS = 5 * 60_000;
 const MAX_ATTEMPTS = 5;
-
-function sender(from?: string): { name: string; email: string } {
-  const fallback = { name: "AvaTok", email: "noreply@avatok.ai" };
-  if (!from) return fallback;
-  const match = from.match(/^\s*(.*?)\s*<\s*([^>]+)\s*>\s*$/);
-  return match ? { name: (match[1] || fallback.name).trim(), email: match[2].trim() } : { name: fallback.name, email: from.trim() };
-}
 
 async function digest(value: string): Promise<string> {
   const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
@@ -43,7 +37,7 @@ async function markFailure(env: Env, key: string, message: string, attempts: num
   } catch { return false; }
 }
 
-/** Brevo queue handler. Provider acceptance is recorded separately from delivery. */
+/** Provider-agnostic email queue handler (Cloudflare primary / Brevo fallback via sendWithPolicy). Provider acceptance is recorded separately from delivery. */
 export async function sendEmailDurably(msg: EmailMsg, env: Env, opts?: { throwOnPermanent?: boolean }): Promise<void> {
   const key = await keyFor(msg);
   const now = Date.now();
@@ -98,59 +92,66 @@ export async function sendEmailDurably(msg: EmailMsg, env: Env, opts?: { throwOn
     throw error;
   }
 
-  if (!env.BREVO_API_KEY) {
-    if (!await markFailure(env, key, "BREVO_API_KEY is not configured", attempts)) throw new Error("email failure could not be recorded");
-    if (opts?.throwOnPermanent) throw new Error("email delivery unavailable: BREVO_API_KEY is not configured");
-    return;
-  }
+  const out = await sendWithPolicy(
+    {
+      to: msg.to,
+      subject: msg.subject,
+      html: msg.html,
+      from: msg.from,
+      replyTo: msg.replyTo,
+      attachments: msg.attachments,
+      headers: { "X-AvaTOK-Outbox-Key": key, "X-AvaTOK-Kind": msg.kind ?? "email" },
+    },
+    env,
+  );
 
-  let response: Response;
-  let responseText = "";
-  try {
-    response = await fetch("https://api.brevo.com/v3/smtp/email", {
-      method: "POST",
-      headers: { "api-key": env.BREVO_API_KEY, "Content-Type": "application/json", accept: "application/json" },
-      body: JSON.stringify({
-        sender: sender(msg.from),
-        to: [{ email: msg.to }],
-        ...(msg.replyTo?.email ? { replyTo: { email: msg.replyTo.email, ...(msg.replyTo.name ? { name: msg.replyTo.name } : {}) } } : {}),
-        subject: msg.subject,
-        htmlContent: msg.html,
-        ...(msg.attachments?.length ? { attachment: msg.attachments.map((item) => ({ name: item.name, content: item.content })) } : {}),
-      }),
-    });
-    // Read exactly once. The old implementation attempted response.text() twice,
-    // so support received an empty error body after the first read.
-    responseText = (await response.text()).slice(0, 2000);
-  } catch (error) {
-    if (!await markFailure(env, key, String(error), attempts)) throw new Error("email failure could not be recorded");
-    if (attempts < maxAttempts) throw error;
-    if (opts?.throwOnPermanent) throw new Error("email delivery retry budget exhausted");
-    return;
-  }
-
-  if (!response.ok) {
-    // HTTP errors are failures until a provider callback proves a bounce.
-    const retryable = response.status === 429 || response.status >= 500;
-    if (!await markFailure(env, key, `Brevo ${response.status}: ${responseText}`, attempts, retryable)) {
-      throw new Error("email failure could not be recorded");
+  if (out.ok) {
+    const acceptedAt = Date.now();
+    let changes = 0;
+    try {
+      const accepted = await env.DB_META.prepare(
+        `UPDATE email_outbox SET state='sent',delivery_status='provider_accepted',sent_at=?2,
+           accepted_at=?2,provider_message_id=?3,provider=?5,fallback_used=?6,error_message=NULL,lease_expires_at=NULL,updated_at=?2
+         WHERE outbox_key=?1 AND delivery_status='sending' AND attempts=?4`,
+      ).bind(key, acceptedAt, out.messageId, attempts, out.provider, out.fallbackUsed ? 1 : 0).run();
+      changes = accepted.meta?.changes ?? 0;
+    } catch {
+      // [EMAIL-CF-5] The mail is already out. If the 2026-09-11 provider columns
+      // are missing (consumer deployed before the migration), record acceptance
+      // with the pre-migration columns instead of leaving the row 'sending' -
+      // lease expiry would otherwise re-send it on every recovery sweep.
+      try {
+        const accepted = await env.DB_META.prepare(
+          `UPDATE email_outbox SET state='sent',delivery_status='provider_accepted',sent_at=?2,
+             accepted_at=?2,provider_message_id=?3,error_message=NULL,lease_expires_at=NULL,updated_at=?2
+           WHERE outbox_key=?1 AND delivery_status='sending' AND attempts=?4`,
+        ).bind(key, acceptedAt, out.messageId, attempts).run();
+        changes = accepted.meta?.changes ?? 0;
+      } catch { throw new Error("email acceptance could not be recorded"); }
     }
-    if (!retryable && opts?.throwOnPermanent) throw new Error(`email delivery rejected: Brevo ${response.status}`);
-    if (attempts < maxAttempts && retryable) throw new Error(`Brevo send failed: ${response.status}`);
-    if (retryable && opts?.throwOnPermanent) throw new Error("email delivery retry budget exhausted");
+    if (changes === 0) throw new Error("email acceptance could not be recorded");
     return;
   }
 
-  let providerMessageId: string | null = null;
-  try { providerMessageId = (JSON.parse(responseText) as { messageId?: string }).messageId ?? null; } catch { /* Brevo may return an empty 2xx body */ }
-  try {
-    const accepted = await env.DB_META.prepare(
-      `UPDATE email_outbox SET state='sent',delivery_status='provider_accepted',sent_at=?2,
-         accepted_at=?2,provider_message_id=?3,error_message=NULL,lease_expires_at=NULL,updated_at=?2
+  if (out.terminal === "bounced") {
+    const bouncedAt = Date.now();
+    const bounced = await env.DB_META.prepare(
+      `UPDATE email_outbox SET state='failed',delivery_status='bounced',bounced_at=?2,error_message=?3,
+         attempts=?4,updated_at=?2,next_attempt_at=NULL,lease_expires_at=NULL
        WHERE outbox_key=?1 AND delivery_status='sending' AND attempts=?4`,
-    ).bind(key, Date.now(), providerMessageId, attempts).run();
-    if ((accepted.meta?.changes ?? 0) === 0) throw new Error("email acceptance claim was lost");
-  } catch { throw new Error("email acceptance could not be recorded"); }
+    ).bind(key, bouncedAt, out.error.slice(0, 500), attempts).run();
+    if ((bounced.meta?.changes ?? 0) === 0) throw new Error("email failure could not be recorded");
+    if (opts?.throwOnPermanent) throw new Error("email delivery bounced");
+    return;
+  }
+
+  if (!await markFailure(env, key, out.error, attempts, out.retryable)) {
+    throw new Error("email failure could not be recorded");
+  }
+  if (!out.retryable && opts?.throwOnPermanent) throw new Error(`email delivery rejected: ${out.error}`);
+  if (attempts < maxAttempts && out.retryable) throw new Error(`email send failed: ${out.error}`);
+  if (out.retryable && opts?.throwOnPermanent) throw new Error("email delivery retry budget exhausted");
+  return;
 }
 
 export function emailDeliveryStatusFromRow(row: { delivery_status?: string | null; state?: string | null } | null): DeliveryStatus {

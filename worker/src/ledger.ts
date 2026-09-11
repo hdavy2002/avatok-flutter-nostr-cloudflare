@@ -250,8 +250,9 @@ export async function adjust(env: Env, uid: string, amount: number, reason: stri
 }
 
 // ---------------------------------------------------------------------------
-// Receipts (A4) — Brevo email via Q_EMAIL. The user's email comes from Clerk
-// (D1 stores only email hashes). Best-effort: failures never block money ops.
+// Receipts (A4) — Cloudflare Email Service (Brevo fallback) via Q_EMAIL. The
+// user's email comes from Clerk (D1 stores only email hashes). Best-effort:
+// failures never block money ops.
 // ---------------------------------------------------------------------------
 export async function clerkEmail(env: Env, uid: string): Promise<string | null> {
   if (!env.CLERK_SECRET_KEY) return null;

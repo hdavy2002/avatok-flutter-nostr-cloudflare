@@ -94,11 +94,27 @@ a plain `<a href>` — don't build the target.
 
 ## Website email
 
-`POST /api/contact` sends contact-form messages to `support@avatok.ai` through
-Brevo. `POST /api/waitlist` also uses Brevo for list membership and welcome
-mail. The Cloudflare Pages project must provide `BREVO_API_KEY` as an encrypted
-secret. `BREVO_SENDER_EMAIL` and `BREVO_SENDER_NAME` are optional; the sender
-address must be verified in Brevo. Never commit the real API key.
+`POST /api/contact`, `POST /api/careers-apply`, and the `POST /api/waitlist`
+thank-you email all send through `src/lib/sendMail.ts`: Cloudflare Email
+Service REST API first, Brevo as an automatic fallback on any Cloudflare
+failure (rate limit, 5xx, not configured, auth, >5 MiB message such as a large
+resume) — never after a Cloudflare success and never on a permanent bounce /
+suppressed recipient — see
+`Specs/PLAN-2026-09-11-EMAIL-CLOUDFLARE-PRIMARY-BREVO-FALLBACK.md` §3.4. The
+waitlist's Brevo contacts list-add (`BREVO_LIST_ID`) is unchanged and out of
+scope for this migration.
+
+The Cloudflare Pages project must provide `CF_ACCOUNT_ID` (already in
+`wrangler.toml [vars]`, public) and the `CF_EMAIL_API_TOKEN` encrypted secret
+(scope: Account → Email Sending: Edit only) for the primary path, and/or
+`BREVO_API_KEY` as an encrypted secret for the fallback / list-add.
+`BREVO_SENDER_EMAIL` and `BREVO_SENDER_NAME` are optional and are reused as
+the default Cloudflare sender identity too (no separate `CF_SENDER_*` vars).
+The sender address must be verified in Brevo and the sending domain onboarded
+to Cloudflare Email Sending. `EMAIL_PROVIDER` (`cloudflare_then_brevo` |
+`brevo` | `cloudflare`) can force the policy; it defaults to
+`cloudflare_then_brevo` whenever `CF_EMAIL_API_TOKEN` is set, else `brevo`.
+Never commit real API keys or tokens.
 
 ## Auth + GuestGate
 
