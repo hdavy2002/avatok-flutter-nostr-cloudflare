@@ -33,7 +33,7 @@ import {
 } from "./routes/commercial_stream_sessions";
 import { commercialCheckout, commercialHold, resendCommercialConfirmation } from "./routes/commercial_checkout";
 import { recoverEmailOutbox } from "./lib/email_outbox";
-import { commercialLifecycle } from "./routes/commercial_lifecycle";
+import { commercialLifecycle, runCommercialOrphanNoShowSweep } from "./routes/commercial_lifecycle";
 import { commercialRoutePattern } from "./lib/commercial_ids";
 import { commercialDiagnostics, scanCommercialHealth } from "./routes/commercial_diagnostics";
 import { runCommercialSettlements, runCommercialHostNoShowSweep } from "./commercial_settlement";
@@ -214,7 +214,7 @@ import {
   myListings, listingPromotions, deletePromotion, exploreBrowse, exploreLiveNow, exploreSearch,
   exploreCategories, getListing, getListingBySlug, getCreator, updateMyChannel, followCreator, unfollowCreator,
   blockCreator, report, bookListing,
-  listingFeeQuote, reconcileListingLifecycleProjections, reconcileListingPublicationEffects,
+  listingFeeQuote, reconcileListingLifecycleProjections, reconcileListingPublicationEffects, expireEndedEventListings,
 } from "./routes/listings";
 import { listingStats, creatorStats } from "./routes/insights";
 import {
@@ -433,6 +433,15 @@ export default {
         runCommercialHostNoShowSweep(env)
           .then((r) => { if (r.scanned) console.log("[commercial-host-no-show-sweep]", JSON.stringify(r)); })
           .catch((e) => { console.error("[commercial-host-no-show-sweep] failed:", String(e)); }),
+        // [LISTING-EXPIRY-1] Buyers of a show nobody ever opened (no session row) —
+        // invisible to the sweep above — are refunded as the host's no-show.
+        runCommercialOrphanNoShowSweep(env)
+          .then((r) => { if (r.scanned) console.log("[commercial-orphan-no-show-sweep]", JSON.stringify(r)); })
+          .catch((e) => { console.error("[commercial-orphan-no-show-sweep] failed:", String(e)); }),
+        // [LISTING-EXPIRY-1] Close published shows whose scheduled end has passed.
+        expireEndedEventListings(env)
+          .then((r) => { if (r.scanned) console.log("[listing-schedule-expiry]", JSON.stringify(r)); })
+          .catch((e) => { console.error("[listing-schedule-expiry] failed:", String(e)); }),
         runCommercialSettlements(env)
           .then((r) => { if (r.scanned) console.log("[commercial-settlement]", JSON.stringify(r)); })
           .catch((e) => { console.error("[commercial-settlement] failed:", String(e)); }),

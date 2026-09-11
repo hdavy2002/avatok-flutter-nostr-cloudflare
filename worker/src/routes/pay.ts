@@ -39,6 +39,7 @@ import { resolveGateway, listEnabledMethods, gatewayFlagOn } from "../lib/paymen
 import type { GatewayAdapter } from "../lib/payments/types";
 import { track, trackException } from "../hooks";
 import { payAffiliateBountyOnPurchase } from "./affiliate";
+import { bookability } from "../lib/listing_schedule";
 
 const APP = "avapay";
 
@@ -127,6 +128,16 @@ export async function payCreateOrder(req: Request, env: Env, gatewayId: string):
   if (listing.creator_id === auth.uid) return json({ error: "cannot buy your own service" }, 400);
 
   const kind = listing.kind === "live_event" ? "live_event" : "consult_1to1";
+  // [LISTING-EXPIRY-1] Refuse BEFORE a gateway order exists — the cheapest place to stop
+  // a payment for a show that is over. provisionFromGatewayPurchase re-checks, because a
+  // buyer can sit on the payment page past the start time.
+  if (kind === "live_event") {
+    const sellable = bookability(listing, Date.now());
+    if (!sellable.ok) {
+      commercialEvent(env, "checkout", auth.uid, { kind, outcome: "refused", reason: sellable.reason, rail: adapter.id });
+      return json({ error: sellable.reason, reason: sellable.reason, message: sellable.message, schedule_state: sellable.state }, 410);
+    }
+  }
   const config = await readConfig(env);
   if (commercialLaneState(config, kind) !== "on") {
     return json({ error: "checkout unavailable", reason: "lane_not_open" }, 503);
@@ -422,10 +433,15 @@ async function payWebhookInner(req: Request, env: Env, gatewayId: string): Promi
     const detail = await provisioned.clone().text().catch(() => "");
     await db.prepare("UPDATE gateway_orders SET last_error=?2,updated_at=?3 WHERE order_id=?1")
       .bind(row.order_id, `provision failed: ${detail}`.slice(0, 300), Date.now()).run();
-    if(provisioned.status===409 && /hold|slot|availability|conflict/.test(detail)){
+    // [LISTING-EXPIRY-1] 410 = the show ended (or the listing closed) while the buyer was
+    // paying. Same answer as a lost appointment: never provision, refund through the
+    // provider that took the money, idempotently.
+    if(provisioned.status===410 || (provisioned.status===409 && /hold|slot|availability|conflict/.test(detail))){
       // A late payment can arrive after the reservation expired. Never grant a
       // conflicting booking; refund through the same provider, idempotently.
-      const refund=await adapter.refund(env,{gatewayOrderId:row.gateway_order_id,amountPaise:row.amount_paise,reason:'Selected appointment is no longer available',opId:`availability-refund:${row.order_id}`});
+      const ended=provisioned.status===410;
+      const refund=await adapter.refund(env,{gatewayOrderId:row.gateway_order_id,amountPaise:row.amount_paise,reason:ended?'This show ended before the payment completed':'Selected appointment is no longer available',opId:`availability-refund:${row.order_id}`});
+      if(ended) commercialEvent(env,"checkout",row.uid,{kind:row.kind,outcome:"refunded_after_payment",reason:"event_ended",rail:adapter.id,refund_accepted:refund.accepted});
       await db.prepare("UPDATE gateway_orders SET status='review_pending',last_error=?2,updated_at=?3 WHERE order_id=?1").bind(row.order_id,refund.accepted?'availability refund pending':`availability refund retry: ${refund.error??'provider unavailable'}`,Date.now()).run();
       if(!refund.accepted)return json({error:'refund retry required',retry:true},500);
       return json({ok:true,refund_pending:true});

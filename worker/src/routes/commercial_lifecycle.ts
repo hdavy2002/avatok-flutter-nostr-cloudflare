@@ -137,6 +137,13 @@ async function loadAuthorities(env: Env, args: { kind: Kind; id: string; uid: st
   const where = args.kind === "live_event"
     ? "o.kind='live_event' AND o.listing_id=?1 AND o.booking_id IS NULL AND (o.buyer_id=?2 OR o.creator_id=?2)"
     : "o.kind='consult_1to1' AND o.booking_id=?1 AND (o.buyer_id=?2 OR o.creator_id=?2)";
+  return await loadAuthorityRows(env, where, [args.id, args.uid]);
+}
+
+// [LISTING-EXPIRY-1] Same authority row, selected by an arbitrary WHERE. Shared by the
+// buyer/creator route above and the system callers below so all of them cancel through
+// ONE query and ONE cancelOne() — never a second copy of the refund rules.
+async function loadAuthorityRows(env: Env, where: string, binds: unknown[]): Promise<Authority[]> {
   const rows = await metaDb(env).prepare(
     `SELECT o.id order_id,o.listing_id,o.booking_id,o.buyer_id,o.creator_id,o.kind,
         o.amount order_amount,o.status order_status,
@@ -159,7 +166,7 @@ async function loadAuthorities(env: Env, args: { kind: Kind; id: string; uid: st
         ORDER BY s2.session_version DESC,s2.updated_at DESC LIMIT 1
      )
      WHERE ${where}`,
-  ).bind(args.id, args.uid).all<Authority>();
+  ).bind(...binds).all<Authority>();
   return rows.results ?? [];
 }
 
@@ -724,4 +731,123 @@ export async function commercialLifecycle(req: Request, env: Env): Promise<Respo
     if (!response.ok && authorities.length === 1) return response;
   }
   return json({ ok: responses.every((item) => item.ok === true), results: responses }, responses.every((item) => item.ok === true) ? 200 : 202);
+}
+
+
+// ---------------------------------------------------------------------------
+// [LISTING-EXPIRY-1] System-initiated cancellations.
+//
+// Both run the SAME cancelOne() a buyer or creator reaches through the route above:
+// the immutable policy snapshot decides refund / no_refund / review_pending, money moves
+// through executeCommercialRefund (back the way it came in), the refund receipt and the
+// money claim are written exactly once. The only thing that differs is who is recorded
+// as acting: the creator (their cancellation, or their no-show).
+// ---------------------------------------------------------------------------
+
+type SystemCancelSummary = {
+  scanned: number;
+  refunded: number;
+  no_refund: number;
+  review_pending: number;
+  failed: number;
+};
+
+async function cancelAuthoritiesAsCreator(
+  env: Env,
+  authorities: Authority[],
+  action: "creator_cancel" | "creator_no_show",
+  idem: string,
+): Promise<SystemCancelSummary> {
+  const summary: SystemCancelSummary = { scanned: authorities.length, refunded: 0, no_refund: 0, review_pending: 0, failed: 0 };
+  for (const authority of authorities) {
+    try {
+      const response = await cancelOne(env, authority, authority.creator_id, idem, action);
+      const body = await response.clone().json().catch(() => ({})) as Record<string, unknown>;
+      const state = String(body.state ?? "");
+      if (response.ok && (state === "refunded" || state === "refund_pending")) summary.refunded++;
+      else if (response.ok && state === "no_refund") summary.no_refund++;
+      else if (response.status === 202 || state === "review_pending") summary.review_pending++;
+      else summary.failed++;
+    } catch (error) {
+      summary.failed++;
+      console.error("[system-cancel] failed", JSON.stringify({ order_id: authority.order_id, action, error: String(error).slice(0, 200) }));
+    }
+  }
+  return summary;
+}
+
+/**
+ * [LISTING-EXPIRY-1 / P1-7] Refund every open order on a listing because its creator
+ * (or an admin) is taking it down. Called BEFORE the listing's status is written, so a
+ * listing never reads "cancelled" while buyers still hold paid, unusable tickets.
+ *
+ * Returns the per-outcome counts. `review_pending` is not a failure to hide: that order's
+ * money stays frozen in escrow with a record, exactly as a creator's own cancel would
+ * leave it, and the admin commercial-health screen already lists it.
+ */
+export async function refundOpenOrdersForListing(
+  env: Env,
+  listingId: string,
+  reason: "listing_cancelled" | "listing_deleted" | "listing_rejected",
+): Promise<SystemCancelSummary> {
+  if (!await schemaReady(env)) return { scanned: 0, refunded: 0, no_refund: 0, review_pending: 0, failed: 0 };
+  // Only orders for a session that never HAPPENED. An order whose show ran (session
+  // `ended`) or is already in settlement is owed to the creator; taking the listing down
+  // afterwards — archiving a finished show — must never claw that money back.
+  const authorities = await loadAuthorityRows(env,
+    `o.listing_id=?1 AND o.kind IN ('live_event','consult_1to1') AND o.status IN ('held','free')
+      AND NOT EXISTS (SELECT 1 FROM commercial_sessions sx
+                       WHERE sx.kind=o.kind AND sx.listing_id=o.listing_id
+                         AND COALESCE(sx.booking_id,'')=COALESCE(o.booking_id,'')
+                         AND sx.state='ended')
+      AND NOT EXISTS (SELECT 1 FROM commercial_settlement_jobs jx WHERE jx.order_id=o.id)`,
+    [listingId]);
+  const summary = await cancelAuthoritiesAsCreator(env, authorities, "creator_cancel", `system-${reason}`);
+  if (summary.scanned) {
+    commercialEvent(env, "listing_takedown_refunds", null, { reason, ...summary });
+  }
+  return summary;
+}
+
+/**
+ * [LISTING-EXPIRY-1 / P0-2] Host no-show when NOBODY ever opened the room.
+ *
+ * runCommercialHostNoShowSweep (commercial_settlement.ts) only sees orders that have a
+ * commercial_sessions row, and that row is created when someone JOINS. A show nobody
+ * joined had no row, so its buyers were never refunded and their money sat in escrow
+ * indefinitely — the prod "Cooking with Davy" order was exactly this.
+ *
+ * This sweep keys on the ORDER: an open order whose scheduled start is more than 15
+ * minutes gone (the same window the session sweep uses) with no session row at all, and
+ * no cancel operation already recorded for it. Each one is cancelled as the creator's
+ * no-show, which the snapshot's creator_cancel_refund_pct decides.
+ */
+export async function runCommercialOrphanNoShowSweep(
+  env: Env,
+  limit = 10,
+): Promise<SystemCancelSummary> {
+  if (!await schemaReady(env)) return { scanned: 0, refunded: 0, no_refund: 0, review_pending: 0, failed: 0 };
+  const cutoff = Date.now() - 15 * 60_000;
+  const safeLimit = Math.max(1, Math.min(50, Math.trunc(limit)));
+  const authorities = await loadAuthorityRows(env,
+    `o.status IN ('held','free')
+      AND l.status <> 'live'
+      AND NOT EXISTS (SELECT 1 FROM commercial_lifecycle_operations op
+                       WHERE op.order_id=o.id AND op.operation_type='cancel')
+      AND (
+        (o.kind='live_event' AND o.booking_id IS NULL
+          AND COALESCE(l.starts_at,0) > 0 AND l.starts_at <= ?1
+          AND NOT EXISTS (SELECT 1 FROM commercial_sessions sx
+                           WHERE sx.kind='live_event' AND sx.listing_id=o.listing_id))
+        OR
+        (o.kind='consult_1to1' AND o.booking_id IS NOT NULL
+          AND b.status='confirmed' AND COALESCE(b.starts_at,0) > 0 AND b.starts_at <= ?1
+          AND NOT EXISTS (SELECT 1 FROM commercial_sessions sx
+                           WHERE sx.kind='consult_1to1' AND sx.booking_id=o.booking_id))
+      )
+     ORDER BY o.created_at ASC LIMIT ${safeLimit}`,
+    [cutoff]);
+  const summary = await cancelAuthoritiesAsCreator(env, authorities, "creator_no_show", "system-orphan-no-show");
+  if (summary.scanned) commercialEvent(env, "orphan_no_show_sweep", null, { ...summary });
+  return summary;
 }

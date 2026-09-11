@@ -15,6 +15,7 @@ import { listingBlockers } from "../lib/listing_blockers";
 // see item 4: `reject_listing` used to flip ANY status straight to 'rejected'
 // with no source-status guard at all.
 import { checkTransition } from "../lib/listing_transitions";
+import { refundOpenOrdersForListing } from "./commercial_lifecycle";
 
 // Admin-only moderation queue. Poster metadata is kept in listings.attrs so this
 // remains compatible with the existing schema and does not alter creator data.
@@ -618,6 +619,15 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
         listing_id: id, from: row.status, to: "rejected", reason: check.reason, action,
       });
       return json({ error: "transition_not_allowed", reason: check.reason, status_now: row.status, allowed_targets: check.allowedTargets }, 409);
+    }
+    // [LISTING-EXPIRY-1 / P1-7] Pulling a public listing refunds its buyers first, same
+    // rule as a creator cancelling it. Nothing to refund on a listing that never sold.
+    if (["published", "live"].includes(String(row.status))) {
+      const refunds = await refundOpenOrdersForListing(env, id, "listing_rejected");
+      safeTrack(env, a.uid, "listing_reject_refunds", { listing_id: id, ...refunds });
+      if (refunds.failed > 0) {
+        return json({ error: "refunds_incomplete", refunds, message: "Some tickets could not be refunded yet; the listing is still up. Try again." }, 503);
+      }
     }
     next = "rejected";
   }

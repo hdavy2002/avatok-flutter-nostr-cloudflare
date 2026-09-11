@@ -5031,5 +5031,49 @@
       }
     ],
     "_verified_at": "worker/src/routes/phone_otp.ts (track phone_otp_send / phone_otp_verify), worker/src/routes/web_account.ts (web_account_bootstrap phone_stored)"
+  },
+  "LISTING-EXPIRY-1": {
+    "description": "[LISTING-EXPIRY-1] Past live events expire. lib/listing_schedule.ts decides upcoming/starting/live/ended/cancelled once; live checkout, the gateway order route and gateway provisioning refuse a finished show (410, webhook refunds a late payment); marketplace/search/sitemap/creator/favourites hide ended shows; a 5-min cron completes published shows past end+15min; an orphan no-show sweep refunds orders whose show never had a session; creator/admin takedown refunds open orders first; public getListing keeps ended/cancelled pages readable with schedule_state + booking_open. Owner decision 2026-09-11 (AUDIT-2026-09-11-listing-expiry.md).",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "listing_status_changed",
+        "property": "cause",
+        "equals": "schedule_ended",
+        "min_events": 1,
+        "note": "The expiry cron closed a published show whose end had passed. Prod's 'Cooking with Davy' (8 Sept) should produce this on the first tick after deploy."
+      },
+      {
+        "event": "commercial_orphan_no_show_sweep",
+        "property": "failed",
+        "equals": 0,
+        "min_events": 1,
+        "note": "Buyers of a show nobody opened were cancelled as the host's no-show; failed>0 means a refund threw and the order is still held."
+      }
+    ],
+    "_verified_at": "worker/src/routes/listings.ts (systemMarkListingCompleted track cause), worker/src/routes/commercial_lifecycle.ts (runCommercialOrphanNoShowSweep commercialEvent)"
+  },
+  "LISTING-EXPIRY-APP-1": {
+    "description": "[LISTING-EXPIRY-APP-1] App listing detail reads schedule_state/booking_open: an ended, cancelled or started show shows its state and never offers BOOK; the live booking flow maps 410 event_ended/booking_closed/listing_cancelled to plain copy; show times render in the listing's timezone (IST); the native wizard reads the start time in the listing's timezone instead of the phone's; ended shows move to Archived with 'Ended' and 'Run again (new date)'.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "listing_booking_blocked_closed",
+        "property": "schedule_state",
+        "in": [
+          "ended",
+          "cancelled",
+          "starting",
+          "expired"
+        ],
+        "min_events": 1,
+        "note": "A buyer opened a finished show in the app and was stopped before checkout. Absent entirely = nobody has opened an ended listing on the new build yet, not a failure."
+      }
+    ],
+    "_verified_at": "app/lib/features/explore/native_listing_detail_v2.dart (_openBooking Analytics.capture)"
   }
 }

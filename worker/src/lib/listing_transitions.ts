@@ -81,9 +81,11 @@ export type Actor = "creator" | "admin" | "system";
  *   - "provider_confirmed"  — published -> live and live -> completed only after the
  *                              media provider (GetStream) has actually confirmed the
  *                              session state; never on a bare client request.
+ *   - "schedule_ended"      — published -> completed by the system only after the fixed-date
+ *                              show's scheduled end has passed (lib/listing_schedule.ts).
  *   - "none"                — actor authorization alone is sufficient.
  */
-export type TransitionCheck = "publish_gate" | "provider_confirmed" | "none";
+export type TransitionCheck = "publish_gate" | "provider_confirmed" | "schedule_ended" | "none";
 
 export type TransitionRule = {
   from: ListingStatus;
@@ -148,6 +150,12 @@ export const TRANSITIONS: readonly TransitionRule[] = [
   // "live" anywhere in this table — do not add one.
   { from: "published", to: "live", actors: ["system"], requires: "provider_confirmed", id: "system_go_live" },
   { from: "live", to: "completed", actors: ["system"], requires: "provider_confirmed", id: "system_complete" },
+  // [LISTING-EXPIRY-1] The clock, not a person, closes a published show that never went
+  // live: once its scheduled end (+ END_GRACE_MS) has passed, expireEndedEventListings
+  // moves it to completed. `requires: "schedule_ended"` names the check the CALLER must
+  // have made (listing_schedule.ts scheduleState === "ended"); it is not "none" because
+  // a bare system request to complete a future show would strand every ticket holder.
+  { from: "published", to: "completed", actors: ["system"], requires: "schedule_ended", id: "system_schedule_ended" },
 
   // --- system: review binding ([LIST-REVIEW-BINDING-1]) ---
   // Every OTHER row in this table models a human decision. These three model a fact:

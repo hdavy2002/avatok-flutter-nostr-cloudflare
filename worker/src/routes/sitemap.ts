@@ -14,6 +14,7 @@
 import type { Env } from "../types";
 import { json } from "../util";
 import { metaDb } from "../db/shard";
+import { notEndedSql } from "../lib/listing_schedule";
 
 const MAX_ROWS = 45000;
 
@@ -24,6 +25,7 @@ export async function sitemapListings(env: Env): Promise<Response> {
        FROM listings l LEFT JOIN users u ON u.uid = l.creator_id
       WHERE l.status IN ('published','live')
         AND (l.expires_at IS NULL OR l.expires_at > ?1)
+        AND ${notEndedSql("l", "?1")} -- [LISTING-EXPIRY-1] no ended shows in the sitemap
       ORDER BY l.updated_at DESC
       LIMIT ?2`,
   ).bind(Date.now(), MAX_ROWS).all<any>();
@@ -43,6 +45,7 @@ export async function sitemapCreators(env: Env): Promise<Response> {
        FROM listings l JOIN users u ON u.uid = l.creator_id
       WHERE l.status IN ('published','live')
         AND (l.expires_at IS NULL OR l.expires_at > ?1)
+        AND ${notEndedSql("l", "?1")}
         AND u.handle IS NOT NULL
       GROUP BY u.handle
       ORDER BY updated_at DESC

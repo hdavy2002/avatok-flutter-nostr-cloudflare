@@ -31,6 +31,7 @@ import { freeSessionPolicy, countFreeEntitlements } from "../lib/free_session"; 
 import { queueCommercialConfirmation, COMMERCIAL_CONFIRMATION_VERSION } from "../cal/emails";
 import { rateLimit } from "../money";
 import { commercialEmailKey, type EmailQueueStatus } from "../lib/email_outbox";
+import { bookability } from "../lib/listing_schedule";
 
 type CheckoutKind = "live_event" | "consult_1to1";
 
@@ -658,6 +659,18 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
       || startsAt <= 0 || endsAt <= startsAt)) {
     return json({ error: "event schedule unavailable" }, 409);
   }
+  // [LISTING-EXPIRY-1 / P1-9] A live ticket is ALWAYS for the listing's own starts_at —
+  // entitlements, the GetStream call id and the no-show sweep all key on it. A client
+  // that names a different date (a multi-date picker) must be refused, never silently
+  // sold the original date the buyer did not pick.
+  if (route.kind === "live_event") {
+    const rawSlot = body.slot && typeof body.slot === "object" && !Array.isArray(body.slot) ? body.slot as Record<string, unknown> : null;
+    const askedStart = rawSlot?.start_at ?? body.start_at;
+    if (askedStart !== undefined && askedStart !== null && Math.trunc(Number(askedStart)) !== startsAt) {
+      commercialEvent(env, "checkout", auth.uid, { kind: route.kind, outcome: "refused", reason: "live_slot_mismatch" });
+      return json({ error: "live_slot_mismatch", message: "Tickets for this show are only sold for its listed date." }, 409);
+    }
+  }
 
   let slotStart: number | null = null;
   let slotEnd: number | null = null;
@@ -721,6 +734,22 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
   if (operation.state === "failed") {
     commercialEvent(env, "checkout", auth.uid, { kind: route.kind, outcome: "replay_failed" });
     return json({ ...(safeResponse(operation.response_json) ?? { error: "checkout failed" }), idempotent_replay: true }, 409);
+  }
+
+  // [LISTING-EXPIRY-1] Never sell a seat for a show that is over. Checked AFTER the
+  // replay branches on purpose: a buyer whose purchase completed a minute before the
+  // show started must still get their original success response on a retry, not a
+  // 410. A fresh attempt is recorded as a failed operation so a retry with the same
+  // Idempotency-Key replays the same refusal instead of racing the clock again.
+  // Consultations are unaffected here — their future-slot check below is the guard.
+  if (route.kind === "live_event") {
+    const sellable = bookability(listing, Date.now());
+    if (!sellable.ok) {
+      const refusal = { error: sellable.reason, reason: sellable.reason, message: sellable.message, schedule_state: sellable.state };
+      await finishOperation(env, operationId, "failed", refusal);
+      commercialEvent(env, "checkout", auth.uid, { kind: route.kind, outcome: "refused", reason: sellable.reason });
+      return json(refusal, 410);
+    }
   }
 
   const existingEntitlement = await metaDb(env).prepare(
@@ -1408,6 +1437,19 @@ export async function provisionFromGatewayPurchase(env: Env, args: {
   if (args.kind === "live_event"
     && (startsAt === null || endsAt === null || !Number.isSafeInteger(startsAt) || startsAt <= 0 || endsAt <= startsAt)) {
     return json({ error: "event schedule unavailable" }, 409);
+  }
+  // [LISTING-EXPIRY-1] The gateway lane is the one place a payment can land AFTER a
+  // show is over (the buyer sat on the payment page). Refuse to provision, with a 410
+  // the webhook recognises and turns into a provider refund — see routes/pay.ts.
+  // This also closes the old gap where this function never re-checked status at all.
+  if (args.kind === "live_event") {
+    const sellable = bookability(listing, Date.now());
+    if (!sellable.ok) {
+      commercialEvent(env, "checkout", args.uid, { kind: args.kind, outcome: "refused", reason: sellable.reason, rail: gateway });
+      return json({ error: sellable.reason, reason: sellable.reason, message: sellable.message, schedule_state: sellable.state }, 410);
+    }
+  } else if (!["published", "live"].includes(String(listing.status))) {
+    return json({ error: "listing_unavailable", reason: "listing_unavailable" }, 410);
   }
   const slotStart = args.kind === "consult_1to1" ? Math.trunc(Number(args.slot?.start_at)) : null;
   const slotEnd = args.kind === "consult_1to1" ? Math.trunc(Number(args.slot?.end_at)) : null;

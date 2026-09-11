@@ -58,6 +58,8 @@ import { emailBookingConfirmed } from "../cal/emails";
 // flag check (identityGatingEnabled) and the fail-closed posture.
 import { gatePublicAction, emailOf, type PublicAction } from "../lib/identity_gate";
 import { commercialLaneState, commercialLaneFlags, type CommercialLaneState } from "../lib/commercial_lane";
+import { scheduleState, bookability, eventWindow, endMsSql, notEndedSql, notStuckLiveSql, END_GRACE_MS } from "../lib/listing_schedule";
+import { refundOpenOrdersForListing } from "./commercial_lifecycle";
 // [AVA-MKT-VERT-1] Taxonomy: verticals, pinned category versions, attrs validation.
 // Spec: Specs/PLAN-2026-07-17-ai-listing-creation-DRAFT.md §2.0, §2.2, §2.3, §2.4.
 import { DEFAULT_VERTICAL, resolveCategoryVersion, validateAttrs } from "./categories";
@@ -695,6 +697,11 @@ function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set
     cover_media: parseJson(r.cover_media, [] as unknown[]),
     starts_at: r.starts_at ?? null, duration_min: r.duration_min ?? null,
     capacity: r.capacity ?? null, status: r.status,
+    // [LISTING-EXPIRY-1] Where the listing sits in time, decided once on the server
+    // (lib/listing_schedule.ts) so the web page, the cards and the app never compute
+    // "is this show over?" three different ways. Additive; old clients ignore it.
+    schedule_state: scheduleState(r, now),
+    ends_at: eventWindow(r)?.end ?? null,
     expires_at: r.expires_at ?? null, expiry_days: r.expiry_days ?? null,
     market_type: r.market_type ?? null, social_sub: r.social_sub ?? null, location: r.location ?? null,
     translation_enabled: !!r.translation_enabled, spoken_lang: r.spoken_lang ?? null,
@@ -2878,7 +2885,7 @@ export async function setListingStatus(req: Request, env: Env, id: string): Prom
   // immediately below.
   if (!["live", "completed", "cancelled", "draft"].includes(to)) return json({ error: "status must be live|completed|cancelled|draft" }, 400);
   const db = metaDb(env);
-  const l = await db.prepare("SELECT creator_id, status, title, kind, authority_version FROM listings WHERE id=?1").bind(id).first<any>();
+  const l = await db.prepare("SELECT creator_id, status, title, kind, starts_at, duration_min, expires_at, authority_version FROM listings WHERE id=?1").bind(id).first<any>();
   if (!l || l.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
 
   const check = checkTransition(String(l.status), to, "creator");
@@ -2928,6 +2935,33 @@ export async function setListingStatus(req: Request, env: Env, id: string): Prom
     return json({ ok: true, status: "draft" });
   }
 
+  // [LISTING-EXPIRY-1 / P1-7] A creator taking a listing down refunds its buyers FIRST.
+  // Cancelling used to release calendar holds and refund nobody, leaving paid tickets
+  // for a show that would never happen. Refunds run before the status write so the
+  // listing can never read "cancelled" while money is still held against it; an order
+  // whose refund could not even be attempted blocks the cancel (retry is safe — every
+  // refund is idempotent on the order).
+  if (to === "cancelled") {
+    const refunds = await refundOpenOrdersForListing(env, id, "listing_cancelled");
+    track(env, ctx.uid, "listing_cancel_refunds", APP, { listing_id: id, ...refunds });
+    if (refunds.failed > 0) {
+      return json({
+        error: "refunds_incomplete", refunds,
+        message: "We could not refund every ticket for this listing yet, so it is still up. Try again in a minute.",
+      }, 503);
+    }
+  }
+  // "Mark completed" is for a show that happened. Doing it before the show, with seats
+  // sold, would strand those buyers with no refund path — they must be cancelled instead.
+  if (to === "completed" && l.kind === "live_event" && !["ended"].includes(scheduleState(l))) {
+    const sold = await hasSoldEntitlements(env, id);
+    if (sold !== false) {
+      return json({
+        error: "show_not_over", schedule_state: scheduleState(l),
+        message: "This show has not happened yet and has booked seats. Cancel it instead — your buyers are refunded automatically.",
+      }, 409);
+    }
+  }
   const res = await db.prepare(
     "UPDATE listings SET status=?2, updated_at=?3 WHERE id=?1 AND status=?4 AND authority_version=?5",
   ).bind(id, to, Date.now(), l.status, Number(l.authority_version ?? 0)).run();
@@ -3003,10 +3037,12 @@ export async function systemMarkListingLive(env: Env, listingId: string): Promis
 export async function systemMarkListingCompleted(
   env: Env,
   listingId: string,
+  opts: { cause?: "provider_ended" | "schedule_ended" } = {},
 ): Promise<{ ok: boolean; reason?: string }> {
   const db = metaDb(env);
+  const cause = opts.cause ?? "provider_ended";
   const row = await db.prepare(
-    "SELECT status,creator_id,authority_version,publication_version FROM listings WHERE id=?1",
+    "SELECT status,kind,title,starts_at,duration_min,expires_at,creator_id,authority_version,publication_version FROM listings WHERE id=?1",
   ).bind(listingId).first<any>();
   if (!row) return { ok: false, reason: "not_found" };
   if (String(row.status) === "live") {
@@ -3014,6 +3050,17 @@ export async function systemMarkListingCompleted(
     if (!check.ok) return { ok: false, reason: check.reason };
     const res = await db.prepare(
       "UPDATE listings SET status='completed', updated_at=?2 WHERE id=?1 AND status='live' AND authority_version=?3",
+    ).bind(listingId, Date.now(), Number(row.authority_version ?? 0)).run();
+    if (!(res.meta?.changes ?? 0)) return { ok: false, reason: "conflict" };
+  } else if (String(row.status) === "published" && cause === "schedule_ended") {
+    // [LISTING-EXPIRY-1] The clock closes a show that never went live. The caller's
+    // word is not enough — re-derive "ended" from the row itself, so a bug upstream
+    // can never complete a future show out from under its ticket holders.
+    if (scheduleState(row) !== "ended") return { ok: false, reason: "schedule_not_ended" };
+    const check = checkTransition("published", "completed", "system");
+    if (!check.ok) return { ok: false, reason: check.reason };
+    const res = await db.prepare(
+      "UPDATE listings SET status='completed', updated_at=?2 WHERE id=?1 AND status='published' AND authority_version=?3",
     ).bind(listingId, Date.now(), Number(row.authority_version ?? 0)).run();
     if (!(res.meta?.changes ?? 0)) return { ok: false, reason: "conflict" };
   } else if (String(row.status) !== "completed") {
@@ -3031,9 +3078,57 @@ export async function systemMarkListingCompleted(
   ).bind(`listing:${listingId}:completed-effects:${Number(row.publication_version ?? 0)}`, listingId, Date.now()).run();
   void partyEmit(env, `listing:${listingId}`, { t: "listing_update", status: "completed" });
   track(env, String(row.creator_id ?? "system"), "listing_status_changed", APP, {
-    to: "completed", actor: "system",
+    to: "completed", actor: "system", cause, listing_id: listingId, kind: String(row.kind ?? ""),
   });
   return { ok: true };
+}
+
+/**
+ * [LISTING-EXPIRY-1] Cron: close fixed-date shows whose scheduled end (+ END_GRACE_MS)
+ * has passed while the listing is still `published` — i.e. the host never went live.
+ *
+ * Money is NOT handled here. Ticket holders of a show that never started are refunded
+ * by the orphan no-show sweep (routes/commercial_lifecycle.ts runCommercialOrphanNoShowSweep),
+ * which keys on orders, not on this status, and runs in the same cron tick. Keeping the
+ * two apart means a failure in either can never block the other.
+ *
+ * A listing with a backstage/live commercial session is skipped: that is a show the
+ * provider says is running, and its end belongs to the provider webhook.
+ */
+export async function expireEndedEventListings(
+  env: Env,
+  limit = 25,
+): Promise<{ scanned: number; completed: number }> {
+  const now = Date.now();
+  const rows = await metaDb(env).prepare(
+    `SELECT l.id, l.creator_id, l.title FROM listings l
+      WHERE l.kind='live_event' AND l.status='published' AND COALESCE(l.starts_at,0) > 0
+        AND ${endMsSql("l")} + ?2 <= ?1
+        AND NOT EXISTS (
+          SELECT 1 FROM commercial_sessions s
+           WHERE s.kind='live_event' AND s.listing_id=l.id AND s.state IN ('backstage','live')
+        )
+      ORDER BY l.starts_at ASC LIMIT ?3`,
+  ).bind(now, END_GRACE_MS, Math.max(1, Math.min(100, Math.trunc(limit)))).all<{ id: string; creator_id: string; title: string | null }>();
+  let completed = 0;
+  for (const row of rows.results ?? []) {
+    const result = await systemMarkListingCompleted(env, String(row.id), { cause: "schedule_ended" });
+    if (!result.ok) {
+      track(env, String(row.creator_id ?? "system"), "listing_schedule_expiry_skipped", APP, {
+        listing_id: String(row.id), reason: result.reason ?? "unknown",
+      });
+      continue;
+    }
+    completed++;
+    // Tell the host, once (deterministic id), and point them at "run it again".
+    await notifyUser(env, String(row.creator_id), {
+      type: "system",
+      title: "Your show has ended",
+      body: `"${String(row.title ?? "Your show").slice(0, 80)}" is over and has left the marketplace. Run it again with a new date from your listings.`,
+      data: { deeplink: "/dashboard/listings", listing_id: String(row.id) },
+    }, { id: `listing-schedule-ended:${row.id}` }).catch(() => undefined);
+  }
+  return { scanned: (rows.results ?? []).length, completed };
 }
 
 export async function reconcileListingPublicationEffects(
@@ -3240,6 +3335,21 @@ export async function cancelListing(req: Request, env: Env, id: string): Promise
   ).bind(id).first<any>();
   if (!l || l.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
   const permanent = new URL(req.url).searchParams.get("permanent") === "true";
+  // [LISTING-EXPIRY-1 / P1-7] Refund every open ticket/booking before the listing goes —
+  // soft archive or permanent delete. Deleting the row while orders still pointed at it
+  // would also have orphaned those orders from every later refund path.
+  if (["published", "live", "completed", "cancelled", "approved"].includes(String(l.status))) {
+    const refunds = await refundOpenOrdersForListing(env, id, permanent ? "listing_deleted" : "listing_cancelled");
+    track(env, ctx.uid, "listing_cancel_refunds", APP, { listing_id: id, permanent, ...refunds });
+    if (refunds.failed > 0 || (permanent && refunds.review_pending > 0)) {
+      return json({
+        error: "refunds_incomplete", refunds,
+        message: refunds.failed > 0
+          ? "We could not refund every ticket for this listing yet, so it is still here. Try again in a minute."
+          : "Some bookings on this listing are waiting for a refund review, so it can't be deleted permanently yet. Archive it instead.",
+      }, refunds.failed > 0 ? 503 : 409);
+    }
+  }
   if (permanent) {
     // DELETE CASCADE — remove the listing from every side: search index, slot
     // blocks, negotiation ledger, R2 cover media (best-effort), then the D1 row
@@ -3388,6 +3498,9 @@ export async function exploreBrowse(req: Request, env: Env): Promise<Response> {
   // Hide expired marketplace listings (creator listings have no expiry → null shows).
   binds.push(Date.now());
   where.push(`(l.expires_at IS NULL OR l.expires_at > ?${binds.length})`);
+  // [LISTING-EXPIRY-1] …and fixed-date shows whose scheduled end has passed. The cron
+  // closes them within minutes; this makes the marketplace right in the meantime.
+  where.push(notEndedSql("l", `?${binds.length}`));
   // [AVA-MKT-VERT-1] §2.0 — the cross-vertical rule, on the main browse. Defaults to
   // commerce, so today's callers (which send no ?vertical) see today's rows.
   const vertical = verticalFilter(req, binds, where);
@@ -3469,6 +3582,7 @@ async function sectionCountsFor(env: Env, req: Request, uid: string | null): Pro
     const binds: unknown[] = [];
     binds.push(Date.now());
     where.push(`(l.expires_at IS NULL OR l.expires_at > ?${binds.length})`);
+    where.push(notEndedSql("l", `?${binds.length}`)); // [LISTING-EXPIRY-1] counts match the grid
     verticalFilter(req, binds, where);
     blockFilter(uid, binds, where);
     const rs = await metaSession(env).prepare(
@@ -3491,6 +3605,10 @@ export async function exploreLiveNow(req: Request, env: Env): Promise<Response> 
   const uid = await maybeUid(req, env);
   const where = ["l.status='live'"];
   const binds: unknown[] = [];
+  // [LISTING-EXPIRY-1] A `live` row hours past its scheduled end is a stuck projection
+  // (the provider's "ended" webhook never landed), not a show anyone can join.
+  binds.push(Date.now());
+  where.push(notStuckLiveSql("l", `?${binds.length}`));
   // [AVA-MKT-VERT-1] §2.0 — the live rail is a listing read like any other, and it is
   // the one that renders unbidden at the top of the shell. Defaults to commerce.
   const vertical = verticalFilter(req, binds, where);
@@ -3579,6 +3697,9 @@ export async function exploreSearch(req: Request, env: Env): Promise<Response> {
   if (to > 0) { binds.push(to); where.push(`l.starts_at <= ?${binds.length}`); }
   const minRating = Number(u.get("minRating") || 0);
   if (minRating > 0) { binds.push(minRating); where.push(`l.rating_avg >= ?${binds.length}`); }
+  // [LISTING-EXPIRY-1] Search hides ended fixed-date shows exactly like browse.
+  binds.push(Date.now());
+  where.push(notEndedSql("l", `?${binds.length}`));
   // Marketplace-only + hide expired listings from search.
   if (isMarket) {
     where.push("l.kind IN ('sell','buy','social')");
@@ -3629,7 +3750,17 @@ export async function getListing(req: Request, env: Env, id: string): Promise<Re
   // the dashboard, but pending, rejected, or otherwise unpublished listings
   // must not leak through a guessed `/l/:id` URL.
   if (!isOwner && !["published", "live"].includes(String(r.status))) {
-    return json({ error: "not found" }, 404);
+    // [LISTING-EXPIRY-1] A show that WAS public stays readable after it ends or is
+    // cancelled, so a shared link says "this show has ended" instead of a bare 404.
+    // Only for rows that actually reached the marketplace (publication_version > 0):
+    // a draft the creator cancelled before review never became public and must not
+    // start leaking through its URL now. Everything else keeps the old 404.
+    const closed = ["completed", "cancelled"].includes(String(r.status));
+    const wasPublic = closed
+      ? Number((await metaSession(env).prepare("SELECT publication_version FROM listings WHERE id=?1")
+        .bind(id).first<{ publication_version: number | null }>())?.publication_version ?? 0) > 0
+      : false;
+    if (!wasPublic) return json({ error: "not found" }, 404);
   }
   const promos = await promosFor(env, [id]);
   const cardStats = await cardStatsFor(env, [id]);
@@ -3742,10 +3873,15 @@ export async function getListing(req: Request, env: Env, id: string): Promise<Re
     booked24h = Number(row24?.n ?? 0);
   } catch { /* commercial migration not applied — no 24h count, not an error */ }
 
+  // [LISTING-EXPIRY-1] The server's answer to "can I book this right now?", so the page
+  // and the app hide the booking card with the same rule checkout enforces.
+  const sellable = bookability(r);
   return json({
     listing: {
       ...card, description: r.description ?? "",
       intent, detail_template: detailTemplate, price_semantics: priceSemantics,
+      booking_open: sellable.ok,
+      booking_closed_reason: sellable.ok ? null : sellable.reason,
     },
     creator_stats: { rating_avg: prof?.rating_avg ?? null, rating_count: prof?.rating_count ?? 0, follower_count: prof?.follower_count ?? 0 },
     // [LIST-CONTENT-2] new, additive keys — see the comments above for why the trust
@@ -3798,8 +3934,9 @@ export async function getCreator(req: Request, env: Env, id: string): Promise<Re
   const vertical = vertOf(new URL(req.url).searchParams.get("vertical"));
   const ls = await metaSession(env).prepare(
     `${CARD_SELECT} WHERE l.creator_id=?1 AND l.vertical=?2 AND l.status IN ('published','live')
+        AND ${notEndedSql("l", "?3")}
       ORDER BY (l.status='live') DESC, COALESCE(l.starts_at, 4102444800000) ASC LIMIT 50`,
-  ).bind(id, vertical).all();
+  ).bind(id, vertical, Date.now()).all();
   const lrows = (ls.results ?? []) as any[];
   const promos = await promosFor(env, lrows.map((r) => r.id));
   const cardStats = await cardStatsFor(env, lrows.map((r) => r.id));
@@ -4051,8 +4188,9 @@ export async function listFavorites(req: Request, env: Env): Promise<Response> {
     `${CARD_SELECT}
        JOIN listing_favorites f ON f.listing_id = l.id
       WHERE f.uid=?1 AND l.vertical=?2 AND l.status IN ('published','live')
+        AND ${notEndedSql("l", "?3")}
       ORDER BY f.created_at DESC LIMIT 100`,
-  ).bind(ctx.uid, vertical).all();
+  ).bind(ctx.uid, vertical, Date.now()).all();
   const rows = (rs.results ?? []) as any[];
   const promos = await promosFor(env, rows.map((r) => r.id));
   const cardStats = await cardStatsFor(env, rows.map((r) => r.id));
