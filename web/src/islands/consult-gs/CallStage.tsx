@@ -14,6 +14,11 @@
  *     success via `onEndsAtChange`.
  *   - a "Reconnecting…" banner driven by the SDK's own `CallingState`, with
  *     a manual retry once it gives up (`RECONNECTING_FAILED`).
+ *   - [APP-ONLY-TX-1 2026-09-12] the SAME side chat the waiting room shows
+ *     (SessionChat), on the same `StreamSessionDO` socket the parent owns, so
+ *     the conversation and its file attachments do not restart when media
+ *     opens. RULEBOOK-PAID-SESSIONS §7: the customer's browser may view,
+ *     listen, talk, chat and upload.
  *
  * Imports the SDK's stylesheet — required for `ParticipantView` video
  * sizing/object-fit. This island is the only page that hydrates this
@@ -31,6 +36,8 @@ import {
 import { Spinner } from '../../components';
 import { Countdown } from './Countdown';
 import { ExtendPanel } from './ExtendPanel';
+import { SessionChat, type SessionChatLine } from './SessionChat';
+import type { ChatAttachment } from '../../lib/sessionUpload';
 
 export interface CallStageProps {
   call: Call;
@@ -43,6 +50,9 @@ export interface CallStageProps {
   onEndsAtChange: (ms: number) => void;
   /** Called once, when the user (or a fatal state) ends the call. */
   onLeave: (reason: string) => void;
+  /** [APP-ONLY-TX-1] Side chat — same lines and same sender as the waiting room. */
+  chat: SessionChatLine[];
+  onSendChat: (text: string, attachment?: ChatAttachment | null) => void;
 }
 
 const HUD: Record<string, { label: string; cls: string } | null> = {
@@ -52,7 +62,7 @@ const HUD: Record<string, { label: string; cls: string } | null> = {
   [CallingState.RECONNECTING_FAILED]: { label: 'Connection lost', cls: 'border-coral bg-card text-coral shadow-zine-error' },
 };
 
-function CallStageInner({ call, bookingId, jwt, role, peerName, title, endsAt, onEndsAtChange, onLeave }: CallStageProps) {
+function CallStageInner({ call, bookingId, jwt, role, peerName, title, endsAt, onEndsAtChange, onLeave, chat, onSendChat }: CallStageProps) {
   const { useLocalParticipant, useRemoteParticipants, useCameraState, useMicrophoneState, useCallCallingState } =
     useCallStateHooks();
   const local = useLocalParticipant();
@@ -93,7 +103,8 @@ function CallStageInner({ call, bookingId, jwt, role, peerName, title, endsAt, o
   };
 
   return (
-    <div className="relative mx-auto flex h-[calc(100dvh-4rem)] max-w-6xl flex-col gap-3 px-3 py-3">
+    <div className="relative mx-auto grid h-[calc(100dvh-4rem)] max-w-6xl grid-cols-1 gap-3 px-3 py-3 md:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="flex min-h-0 flex-col gap-3">
       {/* top bar */}
       <div className="flex flex-wrap items-center gap-2.5">
         <h1 className="mr-auto font-display font-semibold text-[18px] text-ink">{title}</h1>
@@ -208,6 +219,18 @@ function CallStageInner({ call, bookingId, jwt, role, peerName, title, endsAt, o
           Leave
         </button>
       </div>
+      </div>
+
+      {/* side chat — stacks below the stage on phones (RULEBOOK §7) */}
+      <aside className="min-h-0 md:h-full">
+        <SessionChat
+          lines={chat}
+          onSend={onSendChat}
+          jwt={jwt}
+          fill
+          context={{ bookingId, surface: 'consult_call', role }}
+        />
+      </aside>
     </div>
   );
 }

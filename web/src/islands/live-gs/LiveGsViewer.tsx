@@ -320,6 +320,8 @@ function Inner({ listingId, title, poster, price, creatorName, creatorHandle, cr
             chatChannelType={state.creds.chat?.channel_type}
             serverState={serverState}
             onLeave={leave}
+            getJwt={freshAppJwt}
+            listingId={listingId}
           />
         </StreamCall>
       </StreamVideo>

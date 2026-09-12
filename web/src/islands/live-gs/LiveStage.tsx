@@ -42,6 +42,13 @@ export interface LiveStageProps {
   /** Worker-authoritative lifecycle; transport state is insufficient. */
   serverState: LiveServerState | null;
   onLeave: () => void;
+  /**
+   * [APP-ONLY-TX-1 2026-09-12] Session JWT getter for chat file uploads.
+   * RULEBOOK-PAID-SESSIONS §7: the customer's browser may view, listen, talk,
+   * chat AND upload. Omit and the attach button is simply absent.
+   */
+  getJwt?: () => Promise<string | null>;
+  listingId?: string | null;
 }
 
 function fmtCount(n: number): string {
@@ -82,6 +89,8 @@ export function LiveStage({
   chatChannelType,
   serverState,
   onLeave,
+  getJwt,
+  listingId,
 }: LiveStageProps) {
   const call = useCall();
   const { useCallCallingState, useIsCallLive, useCallStartedAt, useParticipantCount, useRemoteParticipants } =
@@ -276,7 +285,8 @@ export function LiveStage({
         </div>
       </div>
 
-      {/* Chat (sidebar on desktop, stacked on mobile) */}
+      {/* Chat (side panel on desktop, stacked below the stage on phones).
+          [APP-ONLY-TX-1 2026-09-12] now carries file attachments — RULEBOOK §7. */}
       <aside className="flex h-[60vh] min-h-0 flex-col bg-card md:h-auto md:rounded-zine md:border-zine md:border-ink md:overflow-hidden md:shadow-zine-sm">
         <div className="border-b-zine border-ink px-3 py-2 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-inkSoft">
           Live chat
@@ -290,6 +300,8 @@ export function LiveStage({
             channelType={chatChannelType}
             myName={myName}
             disabled={connectionLost || serverEnded}
+            getJwt={getJwt}
+            listingId={listingId}
           />
         </div>
       </aside>

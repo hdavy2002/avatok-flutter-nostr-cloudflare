@@ -13,12 +13,15 @@
  *    { type:"roster", host:boolean, attendee:boolean }      (WP2, on welcome
  *                                                             + every presence change)
  *    { type:"presence", uid, name, role:'host'|'attendee', joined }
- *    { type:"chat", from, text, at }                         (WP2, ≤500 chars)
+ *    { type:"chat", from, text, at, attachment? }             (WP2, ≤500 chars;
+ *                                                             `attachment` added by
+ *                                                             [APP-ONLY-TX-1 2026-09-12])
  *    { type:"session_ended" }
  *    { type:"batch", events:[ … one of the above … ] }
  *
  *  → client → server
- *    { type:"chat", text }
+ *    { type:"chat", text, attachment? }   — `attachment` is {url,name,size,mime};
+ *      the DO validates it (`sanitizeChatAttachment`) and relays it or drops it.
  *
  * The client never decides check-in or billing from any of this — it is
  * display only (RULEBOOK-PAID-SESSIONS §3, §5).
@@ -47,10 +50,21 @@ export interface RosterMsg {
   host_checked_in_at?: number;
 }
 
+/** [APP-ONLY-TX-1 2026-09-12] In-session file attachment (RULEBOOK §7). Bytes
+ *  live in R2 via `/upload/public`; only this descriptor crosses the socket. */
+export interface ChatAttachmentMsg {
+  url: string;
+  name: string;
+  size: number;
+  mime: string;
+}
+
 export interface ChatMsg {
   type: 'chat';
   from: string;
   text: string;
+  /** Present only when the sender attached a file. */
+  attachment?: ChatAttachmentMsg | null;
   at?: number;
   /**
    * [WAITROOM-WEB-2 fix 11] The DO event's sender uid. ADDITIVE — the worker
@@ -120,6 +134,20 @@ const MAX_NEVER_OPENED_FAILURES = 3;
 // "ended"). This is a separate, much more tolerant counter for that case.
 const MAX_POST_OPEN_FAILURES = 8;
 
+/** Defensive re-read of the DO's `attachment` field. Null for anything odd. */
+function readAttachment(raw: unknown): ChatAttachmentMsg | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const a = raw as Record<string, unknown>;
+  const url = typeof a.url === 'string' ? a.url : '';
+  if (!/^https:\/\//i.test(url)) return null;
+  return {
+    url,
+    name: typeof a.name === 'string' && a.name ? a.name.slice(0, 120) : 'file',
+    size: typeof a.size === 'number' && Number.isFinite(a.size) ? a.size : 0,
+    mime: typeof a.mime === 'string' ? a.mime.slice(0, 128) : '',
+  };
+}
+
 export class RoomSocket {
   private readonly url: string;
   private readonly h: RoomSocketHandlers;
@@ -157,13 +185,16 @@ export class RoomSocket {
       });
       return;
     }
-    if (e.type === 'chat' && typeof e.text === 'string') {
+    if (e.type === 'chat' && (typeof e.text === 'string' || e.attachment)) {
       this.h.onChat?.({
         type: 'chat',
         from: String(e.from ?? 'Guest'),
-        text: e.text,
+        text: typeof e.text === 'string' ? e.text : '',
         at: typeof e.at === 'number' ? e.at : undefined,
         uid: typeof e.uid === 'string' ? e.uid : undefined,
+        // The DO already validated the shape; re-read it defensively anyway —
+        // this renders as a clickable link.
+        attachment: readAttachment(e.attachment),
       });
       return;
     }
@@ -296,9 +327,12 @@ export class RoomSocket {
     }
   }
 
-  chat(text: string): void {
+  chat(text: string, attachment?: ChatAttachmentMsg | null): void {
     const t = text.trim().slice(0, CHAT_MAX_LEN);
-    if (t) this.send({ type: 'chat', text: t });
+    // [APP-ONLY-TX-1] An attachment with no caption is a legitimate message;
+    // an empty message with no attachment is not.
+    if (!t && !attachment) return;
+    this.send(attachment ? { type: 'chat', text: t, attachment } : { type: 'chat', text: t });
   }
 
   close(): void {

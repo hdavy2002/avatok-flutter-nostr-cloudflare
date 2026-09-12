@@ -17,12 +17,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { Avatar, Button, Spinner } from '../../components';
 import { Countdown } from './Countdown';
+import { SessionChat } from './SessionChat';
+import type { ChatAttachment } from '../../lib/sessionUpload';
 
+/* [APP-ONLY-TX-1 2026-09-12] The chat is now a SIDE panel (stacked below the
+ * stage on phones) and carries file attachments — RULEBOOK-PAID-SESSIONS §7,
+ * "view, listen, talk, chat, upload". The panel itself lives in SessionChat so
+ * the waiting room and the call render the same conversation. */
 export interface WaitingChatLine {
   id: string;
   from: string;
   text: string;
   mine: boolean;
+  attachment?: ChatAttachment | null;
 }
 
 export interface WaitingRoster {
@@ -60,7 +67,11 @@ export interface WaitingRoomProps {
    */
   noShow: boolean;
   chat: WaitingChatLine[];
-  onSendChat: (text: string) => void;
+  onSendChat: (text: string, attachment?: ChatAttachment | null) => void;
+  /** Session JWT — the chat panel uploads attachments as this customer. */
+  jwt: string | null;
+  /** For `session_chat_attachment_sent`. */
+  bookingId: string;
   onLeave: () => void;
   /** [WAITROOM-WEB-2 fix 1] True after a deliberate Leave paused auto-join. */
   autoJoinPaused?: boolean;
@@ -92,15 +103,15 @@ export function WaitingRoom({
   noShow,
   chat,
   onSendChat,
+  jwt,
+  bookingId,
   onLeave,
   autoJoinPaused,
   onRejoin,
 }: WaitingRoomProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const chatEndRef = useRef<HTMLDivElement | null>(null);
   // [WAITROOM-WEB-2 fix 7] see the `checkedInAt` comment below.
   const localCheckedInAtRef = useRef<number | null>(null);
-  const [draft, setDraft] = useState('');
   const [now, setNow] = useState(() => Date.now());
   const peerLabel = counterpartyName ?? (role === 'creator' ? 'your customer' : 'the creator');
 
@@ -122,10 +133,6 @@ export function WaitingRoom({
     return () => window.clearInterval(id);
   }, []);
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ block: 'nearest' });
-  }, [chat.length]);
-
   // [AV-AUDIO-ONLY-1] An audio-only visitor (Bluetooth mic, no camera) has a
   // live preview stream that carries no video track. Treat that as a
   // placeholder tile, not as "camera off" — the wording differs because there
@@ -134,13 +141,6 @@ export function WaitingRoom({
   const started = now >= startsAt;
   const meterTarget = started ? endsAt : startsAt;
   const meterLabel = started ? 'Time left' : 'Starts in';
-
-  const send = () => {
-    const t = draft.trim();
-    if (!t) return;
-    onSendChat(t);
-    setDraft('');
-  };
 
   // [WAITROOM-WEB-2 fix 7] "You're checked in" is a WINDOW, not just "the
   // socket happens to be open right now" — a creator whose connection drops
@@ -162,7 +162,8 @@ export function WaitingRoom({
   const hostIsNoShow = role === 'buyer' && noShow;
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-8">
+    <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-4 px-4 py-8 md:grid-cols-[minmax(0,1fr)_340px] md:items-start">
+      <div className="flex flex-col gap-4">
       <div className="flex flex-col items-center gap-3 text-center">
         <Avatar src={counterpartyAvatar} name={counterpartyName} size={64} />
         <div>
@@ -246,37 +247,20 @@ export function WaitingRoom({
         </div>
       )}
 
-      {/* chat */}
-      <div className="flex flex-col gap-2 rounded-zine border-zine border-ink bg-card p-3 shadow-zine-xs">
-        <div className="flex max-h-40 min-h-[3.5rem] flex-col gap-1 overflow-y-auto">
-          {chat.length === 0 ? (
-            <p className="font-body text-[13px] text-inkMute">No messages yet.</p>
-          ) : (
-            chat.map((l) => (
-              <p key={l.id} className="font-body text-[13px] text-inkSoft">
-                <span className={`font-bold ${l.mine ? 'text-blueInk' : 'text-ink'}`}>{l.from}:</span> {l.text}
-              </p>
-            ))
-          )}
-          <div ref={chatEndRef} />
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && send()}
-            maxLength={500}
-            placeholder="Message…"
-            aria-label="Chat message"
-            className="min-w-0 flex-1 rounded-zineField border-zine border-ink bg-paper px-3 py-2 font-body font-bold text-[14px] text-ink focus:outline-none focus:shadow-zine-focus"
-          />
-          <Button variant="blue" label="Send" onClick={send} />
-        </div>
-      </div>
-
       <div className="flex justify-center pt-1">
         <Button variant="ghost" label="Leave" onClick={onLeave} />
       </div>
+      </div>
+
+      {/* side chat (stacks below the stage on phones) */}
+      <aside className="md:sticky md:top-4">
+        <SessionChat
+          lines={chat}
+          onSend={onSendChat}
+          jwt={jwt}
+          context={{ bookingId, surface: 'consult_waiting_room', role }}
+        />
+      </aside>
     </div>
   );
 }

@@ -44,7 +44,9 @@ import { PreJoin } from './PreJoin';
 import { Countdown } from './Countdown';
 import { CallStage } from './CallStage';
 import { WaitingRoom, type WaitingChatLine, type WaitingRoster } from './WaitingRoom';
+import { StartInApp } from '../../components/StartInApp';
 import { RoomSocket, type RosterMsg, type ChatMsg, type RoomEvent } from './RoomSocket';
+import type { ChatAttachment } from '../../lib/sessionUpload';
 import { capture, captureException } from '../../lib/analytics';
 import {
   joinCommercialSession,
@@ -57,7 +59,11 @@ import {
 } from '../../lib/getstream';
 import type { StreamVideoClient, Call } from '@stream-io/video-react-sdk';
 
-type Phase = 'loading' | 'refused' | 'prejoin' | 'waiting' | 'joining' | 'live' | 'ended';
+// [APP-ONLY-TX-1 2026-09-12] `app_only` is the creator's terminal phase here.
+// RULEBOOK-PAID-SESSIONS §7: all transmission is from the app, so a creator
+// who opens /session/<booking> in a browser gets a hand-off screen and NOTHING
+// else — no PreJoin (no getUserMedia), no DO socket, no GetStream join.
+type Phase = 'loading' | 'refused' | 'prejoin' | 'waiting' | 'joining' | 'live' | 'ended' | 'app_only';
 
 interface JoinPrefs {
   micOn: boolean;
@@ -300,6 +306,13 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
     }
     setPrejoin(res);
     setEndsAt(res.ends_at);
+    // [APP-ONLY-TX-1 2026-09-12] The creator's browser is not a transmitting
+    // surface (RULEBOOK §7). Stop BEFORE PreJoin — reaching 'prejoin' would
+    // pop a camera/mic permission prompt for someone who must use the app.
+    if (res.role === 'creator') {
+      setPhase('app_only');
+      return;
+    }
     setPhase('prejoin');
   }, [booking, freshAppJwt]);
 
@@ -619,7 +632,12 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
             : counterpartyName != null
               ? m.from !== counterpartyName
               : false;
-        setChatLines((prev) => [...prev.slice(-60), { id: `${Date.now()}-${Math.random()}`, from: m.from, text: m.text, mine }]);
+        // [APP-ONLY-TX-1 2026-09-12] `attachment` is optional and additive —
+        // a DO that has not shipped it simply sends no field (RULEBOOK §7).
+        setChatLines((prev) => [
+          ...prev.slice(-60),
+          { id: `${Date.now()}-${Math.random()}`, from: m.from, text: m.text, mine, attachment: m.attachment ?? null },
+        ]);
       },
       onEvent: (e: RoomEvent) => {
         if (!mountedRef.current) return;
@@ -666,15 +684,21 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
   }, [booking, email, ensureRoomSocket, prejoin?.role, reacquirePreviewIfNeeded]);
 
   const sendWaitingChat = useCallback(
-    (text: string) => {
+    (text: string, attachment?: ChatAttachment | null) => {
       const t = text.trim().slice(0, 500);
-      if (!t) return;
+      // [APP-ONLY-TX-1 2026-09-12] A file with no caption is a real message.
+      if (!t && !attachment) return;
       // [WAITROOM-WEB-2 fix 11] No local echo — the DO broadcasts `chat` to
       // every socket in the room, sender included, so pushing our own copy
       // here just duplicated the line once the real one arrived.
-      roomSocketRef.current?.chat(t);
+      roomSocketRef.current?.chat(t, attachment ?? null);
       try {
-        capture('waitroom_chat_sent', { booking_id: booking, role: prejoin?.role ?? null, email });
+        capture('waitroom_chat_sent', {
+          booking_id: booking,
+          role: prejoin?.role ?? null,
+          email,
+          has_attachment: Boolean(attachment),
+        });
       } catch {
         /* best-effort */
       }
@@ -888,6 +912,23 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
     };
   }, [booking, finalizeEnded, freshAppJwt, noShow, phase]);
 
+  // phase === 'app_only' (creator) -----------------------------------------
+  // [APP-ONLY-TX-1 2026-09-12] RULEBOOK-PAID-SESSIONS §7.
+  if (phase === 'app_only') {
+    return (
+      <StartInApp
+        kind="consult_1to1"
+        title={counterpartyName ? `1:1 with ${counterpartyName}` : 'Your 1:1 session'}
+        bookingId={booking}
+        startsAt={prejoin?.starts_at ?? null}
+        endsAt={prejoin?.ends_at ?? null}
+        backHref="/dashboard/consult"
+        backLabel="My 1:1 sessions"
+        from="consult_room_creator"
+      />
+    );
+  }
+
   // phase === 'ended' -----------------------------------------------------
   if (phase === 'ended') {
     return (
@@ -922,6 +963,8 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
         endsAt={endsAt}
         onEndsAtChange={setEndsAt}
         onLeave={leaveLive}
+        chat={chatLines}
+        onSendChat={sendWaitingChat}
       />
     );
   }
@@ -945,6 +988,8 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
         noShow={noShow}
         chat={chatLines}
         onSendChat={sendWaitingChat}
+        jwt={jwt}
+        bookingId={booking}
         onLeave={leaveFromWaiting}
         autoJoinPaused={autoJoinPaused}
         onRejoin={rejoinCall}
