@@ -37,6 +37,8 @@ import { commercialLifecycle, runCommercialOrphanNoShowSweep } from "./routes/co
 import { commercialRoutePattern } from "./lib/commercial_ids";
 import { commercialSessionAttachmentUpload } from "./routes/commercial_session_attachment";
 import { commercialDiagnostics, scanCommercialHealth } from "./routes/commercial_diagnostics";
+// [STREAM-CALLTYPES-1] Provision the provider call types the commercial lane mints.
+import { ensureStreamCallTypes } from "./routes/admin_stream_calltypes";
 import { runCommercialSettlements, runCommercialHostNoShowSweep } from "./commercial_settlement";
 import { refreshStaleCreatorStats } from "./lib/creator_stats"; // [LIST-STATS-1]
 import { endDueConsultSessions, backfillCheckedInConsultSessions } from "./lib/commercial_session_clock"; // [SESSION-CLOCK-0]
@@ -1283,6 +1285,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/admin/adjust" && req.method === "POST") return await adminAdjust(req, env);
       if (p === "/api/admin/recon" && req.method === "GET") return await adminRecon(req, env);
       if (p === "/api/admin/commercial/diagnostics" && req.method === "GET") return await commercialDiagnostics(req, env);
+      // [STREAM-CALLTYPES-1] Idempotently create avatok_livestream / avatok_consult_1to1
+      // on the GetStream app. Admin-only; creates nothing that already exists.
+      if (p === "/api/admin/stream/calltypes/ensure" && req.method === "POST") return await ensureStreamCallTypes(req, env);
       // [COMM-REFUND-POL-1] The screen behind review_pending. Before this there was no
       // route anywhere that could move a commercial settlement job out of that state.
       if (p === "/api/admin/commercial/claims" && req.method === "GET") return await adminCommercialClaims(req, env);
