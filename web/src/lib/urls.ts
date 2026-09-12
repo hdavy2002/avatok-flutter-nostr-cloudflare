@@ -56,3 +56,40 @@ export function appSessionDeepLink(opts: {
   if (opts.listingId) return `avatok://session?listing_id=${encodeURIComponent(opts.listingId)}`;
   return null;
 }
+
+/**
+ * [JOIN-LINK-1] `?return=<path>` — where checkout should send the buyer once he
+ * has paid, so "Pay and join" really does end in the room he was trying to enter
+ * rather than in a bookings list.
+ *
+ * This value rides in a URL and comes back through a payment gateway, so it is
+ * attacker-controlled by construction. Only a room path on THIS origin is ever
+ * honoured: no scheme, no host, no protocol-relative `//evil.example`, no query
+ * or fragment. Anything else returns null and the caller falls back to its own
+ * default — an open redirect out of a checkout confirmation is exactly the kind
+ * of thing a phishing page is built on.
+ */
+const RETURN_RE = /^\/(?:live|session|consult)\/[A-Za-z0-9._~:-]{1,128}$/;
+
+export function safeReturnPath(raw: string | null | undefined): string | null {
+  const v = (raw ?? '').trim();
+  if (!v || v.startsWith('//')) return null;
+  return RETURN_RE.test(v) ? v : null;
+}
+
+/** The validated `?return=` of the page currently open, or null. */
+export function readReturnParam(): string | null {
+  try {
+    if (typeof location === 'undefined') return null;
+    return safeReturnPath(new URLSearchParams(location.search).get('return'));
+  } catch {
+    return null;
+  }
+}
+
+/** Checkout URL for a listing, carrying the room to come back to. */
+export function payAndJoinPath(listingId: string, returnTo?: string | null): string {
+  const ret = safeReturnPath(returnTo);
+  const base = `/book/${encodeURIComponent(listingId)}`;
+  return ret ? `${base}?return=${encodeURIComponent(ret)}` : base;
+}

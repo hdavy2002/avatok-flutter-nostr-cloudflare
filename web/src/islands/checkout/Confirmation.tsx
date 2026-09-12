@@ -10,7 +10,7 @@
  */
 import { useState } from 'react';
 import type { Listing } from '../../lib/types';
-import { livePath, sessionPath } from '../../lib/urls';
+import { livePath, sessionPath, readReturnParam } from '../../lib/urls';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { Pill } from '../../components/Pill';
@@ -66,6 +66,17 @@ export function Confirmation({ listing, selection, result }: ConfirmationProps) 
   } else {
     viewerHref = '/dashboard';
     viewerLabel = 'View in my dashboard';
+  }
+
+  // [JOIN-LINK-1] `?return=<room>` — set by the "Pay and join" panel a visitor
+  // hits at a bare /live/:id he has no ticket for. Honouring it is what makes
+  // that panel a single flow instead of "pay, then go and find the room again".
+  // `readReturnParam` only ever yields a room path on this origin, so this can
+  // never become an open redirect out of a payment confirmation.
+  const returnTo = readReturnParam();
+  if (returnTo) {
+    viewerHref = returnTo;
+    viewerLabel = returnTo.startsWith('/live/') ? 'Watch live' : 'Go to your session';
   }
 
   const when =

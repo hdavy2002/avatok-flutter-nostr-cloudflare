@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { StreamVideo, StreamCall, type Call } from '@stream-io/video-react-sdk';
 import { ClerkIsland, getActiveToken, requireGuestAuth } from '../../lib/clerk';
+import { livePath, payAndJoinPath } from '../../lib/urls';
 import { IslandBoundary } from '../../components/IslandBoundary';
 import { cfImage } from '../../lib/config';
 import { inrOrFree } from '../../lib/money';
@@ -88,7 +89,10 @@ function Inner({ listingId, title, poster, price, creatorName, creatorHandle, cr
   const joinedAtRef = useRef<number | null>(null);
   const hasTicket = typeof price === 'number';
 
-  const bookHref = `/book/${encodeURIComponent(listingId)}`;
+  // [JOIN-LINK-1] "Pay and join" — checkout, then straight back into THIS room.
+  // Without `?return=` the confirmation sent the buyer to a bookings list after
+  // he had paid to watch a stream that was already running.
+  const bookHref = payAndJoinPath(listingId, livePath(listingId));
   const creatorHref = creatorHandle ? `/c/${encodeURIComponent(creatorHandle)}` : '/explore';
 
   const freshAppJwt = useCallback(async (): Promise<string> => {
@@ -298,6 +302,7 @@ function Inner({ listingId, title, poster, price, creatorName, creatorHandle, cr
         creatorName={creatorName}
         creatorHref={creatorHref}
         bookHref={bookHref}
+        listingId={listingId}
         onRetry={() => dispatch({ t: 'reset' })}
         onJoin={attemptJoin}
       />
@@ -419,11 +424,11 @@ function EndedCard({ title, creatorHref, ended, refund, rejoin }: { title?: stri
  * an error, so it gets a CTA into checkout rather than a generic failure card.
  */
 function RefusalScreen({
-  refusal, title, poster, price, creatorName, creatorHref, bookHref, onRetry, onJoin,
+  refusal, title, poster, price, creatorName, creatorHref, bookHref, listingId, onRetry, onJoin,
 }: {
   refusal: JoinRefusal;
   title?: string; poster?: string | null; price?: number | null; creatorName?: string | null;
-  creatorHref: string; bookHref: string; onRetry: () => void; onJoin: () => void;
+  creatorHref: string; bookHref: string; listingId: string; onRetry: () => void; onJoin: () => void;
 }) {
   // [WEB-POSTHOG-1] §2.6 live_refusal_shown — once per distinct refusal
   // actually rendered to the viewer (the free-lane branches below resolve to
@@ -437,6 +442,8 @@ function RefusalScreen({
           : refusal.reason;
     try {
       capture('live_refusal_shown', { reason });
+      // [JOIN-LINK-1] §2.6 pay_and_join_shown — the one refusal a payment fixes.
+      if (reason === 'needs_ticket') capture('pay_and_join_shown', { listing_id: listingId, kind: 'live' });
     } catch {
       /* best-effort */
     }

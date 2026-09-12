@@ -33,7 +33,7 @@ import { Card } from '../../components/Card';
 import { Spinner } from '../../components/Spinner';
 import { inr } from '../../lib/money';
 import { capture } from '../../lib/analytics';
-import { livePath } from '../../lib/urls';
+import { livePath, safeReturnPath } from '../../lib/urls';
 import type { GatewayId, PayStatusResponse } from './types';
 import type { Listing } from '../../lib/types';
 
@@ -61,6 +61,14 @@ interface StashedReturn {
   gateway?: string;
   orderId?: string;
   listingId?: string;
+  /**
+   * [JOIN-LINK-1] The room the buyer was trying to enter when he was told he
+   * needed a ticket (`?return=` on /book/:id). It has to travel in the stash
+   * rather than the URL: the gateway sends him back to a URL the WORKER builds
+   * (`/pay/return?gateway=&order_id=&ok=`), so any query param we put on the
+   * checkout page is gone by the time he lands here.
+   */
+  returnPath?: string;
 }
 
 const STASH_KEY = 'avatok_pay_return';
@@ -93,7 +101,14 @@ function fmtWhen(ms?: number | null): string | null {
   }
 }
 
-function viewerFor(listing: Listing | null, orderId: string): { href: string; label: string } {
+function viewerFor(
+  listing: Listing | null, orderId: string, returnPath?: string | null,
+): { href: string; label: string } {
+  // [JOIN-LINK-1] A "Pay and join" buyer named the room he wants; it beats every
+  // guess below. Re-validated here (not trusted from storage) because a stash is
+  // as writable as a query string.
+  const back = safeReturnPath(returnPath);
+  if (back) return { href: back, label: back.startsWith('/live/') ? 'Watch live' : 'Go to your session' };
   // The status endpoint never returns a booking id (see PayStatusResponse's header
   // in types.ts) — for a consult there is nothing to build a direct room link from
   // here, so send them to their bookings list, where the confirmed session appears.
@@ -246,7 +261,7 @@ export function PayReturn({ gateway, orderId }: PayReturnProps) {
 
   // ── confirmed ──────────────────────────────────────────────────────────────
   if (phase === 'confirmed') {
-    const viewer = viewerFor(listing, orderId);
+    const viewer = viewerFor(listing, orderId, stash.current.returnPath);
     const when = fmtWhen(listing?.starts_at ?? null);
     const title = listing?.title ?? 'your booking';
     return (

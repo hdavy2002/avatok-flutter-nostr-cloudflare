@@ -28,6 +28,7 @@ import { inr } from '../../lib/money';
 import { listingErrorMessage } from '../../lib/listingErrors';
 import { openGatewaySheet, createStripeElements, confirmStripePayment } from './gatewaySheet';
 import { stashPayReturn } from './PayReturn';
+import { readReturnParam } from '../../lib/urls';
 import { capture } from '../../lib/analytics';
 import type { StripeElementsHandle } from './gatewaySheet';
 import type { GatewayId, GatewayOrderResponse, PayMethod, PayMethodsResponse, PayStatusResponse } from './types';
@@ -266,7 +267,13 @@ export function GatewayPicker({
         // still the source of truth for gateway/order_id, this is only the
         // "back to the listing on failure" nicety (see PayReturn.tsx header).
         onRedirecting: () => {
-          stashPayReturn({ gateway: selected, orderId: created.order_id, listingId });
+          // [JOIN-LINK-1] `returnPath` rides along: the buyer came here from a
+          // room he had no ticket for, and the worker's return URL cannot carry
+          // that (see StashedReturn in PayReturn.tsx).
+          stashPayReturn({
+            gateway: selected, orderId: created.order_id, listingId,
+            ...(readReturnParam() ? { returnPath: readReturnParam()! } : {}),
+          });
         },
       });
     } catch (e) {

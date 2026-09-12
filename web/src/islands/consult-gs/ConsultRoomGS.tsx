@@ -48,6 +48,7 @@ import { StartInApp } from '../../components/StartInApp';
 import { RoomSocket, type RosterMsg, type ChatMsg, type RoomEvent } from './RoomSocket';
 import type { ChatAttachment } from '../../lib/sessionUpload';
 import { capture, captureException } from '../../lib/analytics';
+import { payAndJoinPath } from '../../lib/urls';
 import {
   joinCommercialSession,
   consultPrejoin,
@@ -1042,7 +1043,31 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
   );
 }
 
+/**
+ * [JOIN-LINK-1] "Pay and join". Rule (b): someone who reaches a bare
+ * /session/:id from a shared link or a typed URL signs in, and if that account
+ * has no ticket he is offered the listing's existing checkout instead of a dead
+ * end. The worker's two consult 403s now carry `listing_id`, which is the only
+ * thing that makes the offer possible from a booking id.
+ *
+ * No `?return=` here, and that is deliberate: paying for a 1:1 creates a NEW
+ * booking with its OWN room, so returning to the booking id in the URL bar
+ * would put him back in a room he still has no entitlement for. Checkout's own
+ * Confirmation already links to the room it just created.
+ */
+function PayAndJoin({ listingId, kind }: { listingId: string; kind: 'needs_ticket' | 'not_yours' }) {
+  useEffect(() => {
+    try { capture('pay_and_join_shown', { listing_id: listingId, kind: 'consult', refusal: kind }); } catch { /* best-effort */ }
+  }, [listingId, kind]);
+  return (
+    <a href={payAndJoinPath(listingId)} className="no-underline">
+      <Button variant="lime" label="Pay and join" />
+    </a>
+  );
+}
+
 function RefusalScreen({ refusal, onRetry }: { refusal: JoinRefusal; onRetry: () => void }) {
+  const payListing = refusal.listing_id ?? null;
   switch (refusal.reason) {
     case 'too_early':
       return (
@@ -1084,10 +1109,13 @@ function RefusalScreen({ refusal, onRetry }: { refusal: JoinRefusal; onRetry: ()
           <div className="flex w-full max-w-md flex-col items-center gap-5 text-center">
             <h1 className="font-display font-semibold text-[26px] text-ink">This isn't your booking</h1>
             <p className="font-body font-bold text-[15px] text-inkSoft">
-              This consultation is booked for someone else. Signed in with the wrong account?
+              {payListing
+                ? 'This slot belongs to someone else \u2014 but you can book your own session with the same host now.'
+                : 'This consultation is booked for someone else. Signed in with the wrong account?'}
             </p>
-            <a href="/dashboard" className="no-underline">
-              <Button variant="lime" label="My bookings" />
+            {payListing && <PayAndJoin listingId={payListing} kind="not_yours" />}
+            <a href="/dashboard" className="font-mono text-[14px] uppercase tracking-[0.06em] text-blueInk underline font-bold">
+              My bookings
             </a>
           </div>
         </Centered>
@@ -1098,10 +1126,13 @@ function RefusalScreen({ refusal, onRetry }: { refusal: JoinRefusal; onRetry: ()
           <div className="flex w-full max-w-md flex-col items-center gap-5 text-center">
             <h1 className="font-display font-semibold text-[26px] text-ink">You'll need to book this first</h1>
             <p className="font-body font-bold text-[15px] text-inkSoft">
-              This session isn't in your bookings yet.
+              {payListing
+                ? "This session isn't in your bookings yet. Book a slot and we'll take you straight in."
+                : "This session isn't in your bookings yet."}
             </p>
-            <a href="/dashboard" className="no-underline">
-              <Button variant="lime" label="Go to my bookings" />
+            {payListing && <PayAndJoin listingId={payListing} kind="needs_ticket" />}
+            <a href="/dashboard" className="font-mono text-[14px] uppercase tracking-[0.06em] text-blueInk underline font-bold">
+              Go to my bookings
             </a>
           </div>
         </Centered>

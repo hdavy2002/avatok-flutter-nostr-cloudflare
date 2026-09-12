@@ -1,53 +1,40 @@
 ---
-// Legacy email join link resolver.
+// [JOIN-LINK-1] The link in every booking/ticket email.
 //
-// Older invites pointed at /j/<token>. The browser should land on the
-// canonical session URL when possible so shared links still work without the
-// app.
+// This page used to resolve the token server-side and 302 to /live/<id> or
+// /session/<id>. That redirect carried the DESTINATION and dropped the
+// IDENTITY, so the customer landed on a gated room and was asked to sign in to
+// a session he had already paid for — the exact thing
+// RULEBOOK-PAID-SESSIONS §7 forbids ("He never logs into a dashboard").
+//
+// The token is now exchanged by the JoinLink island for a Clerk sign-in ticket
+// (POST /api/join-link/:token/session), redeemed in the browser, and only then
+// does it navigate to the room — so the room's own `freshAppJwt()` finds a real
+// session and never opens the gate. Arriving at a bare /live/:id or /session/:id
+// from anywhere else still meets the email-code gate; that is rule (b) and it is
+// deliberately untouched.
 export const prerender = false;
 
-import { API_BASE } from '../../lib/config';
-import { sessionPath } from '../../lib/urls';
+import Base from '../../layouts/Base.astro';
+import JoinLink from '../../islands/join/JoinLink.tsx';
 
-Astro.response.headers.set('Cache-Control', 'no-store');
 const { token } = Astro.params;
-const joinInfoUrl = `${API_BASE}/api/join-info/${encodeURIComponent(token!)}`;
 
-let bookingId: string | null = null;
-let destinationPath: string | null = null;
-let error = false;
-try {
-  const res = await fetch(joinInfoUrl, { headers: { accept: 'application/json' } });
-  if (res.ok) {
-    const data = await res.json() as {
-      booking_id?: string;
-      destination?: { path?: string } | null;
-      error?: string;
-    };
-    if (typeof data.booking_id === 'string' && data.booking_id) bookingId = data.booking_id;
-    else error = true;
-    if (typeof data.destination?.path === 'string' && /^\/(?:live|session|consult)\/[^/?#]+$/.test(data.destination.path)) {
-      destinationPath = data.destination.path;
-    }
-  } else {
-    error = true;
-  }
-} catch {
-  error = true;
+if (!token) {
+  return new Response('Join link required', { status: 400 });
 }
 
-if (bookingId) {
-  // New Worker responses identify the exact commercial or legacy room. Keep
-  // the session fallback for an older deployment that only returned
-  // `booking_id`, while preserving query parameters used by app-link recovery.
-  const path = destinationPath ?? sessionPath(bookingId);
-  return Astro.redirect(`${path}${Astro.url.search}`, 302);
-}
-
-Astro.response.status = 404;
+// A join link is personal and single-person: never cache it, never index it.
+Astro.response.headers.set('Cache-Control', 'no-store');
 ---
-<html lang="en">
-  <body>
-    <p>That booking link is invalid or expired.</p>
-  </body>
-</html>
+
+<Base headerAuth="static"
+  title="Joining your session · avatok.ai"
+  description="Opening your booked avaTOK session."
+  navStatic={true}
+>
+  <meta name="robots" content="noindex, nofollow" slot="head" />
+  <main class="mx-auto max-w-lg px-4 py-10">
+    <JoinLink client:load token={token} />
+  </main>
+</Base>

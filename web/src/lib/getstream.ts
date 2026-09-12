@@ -104,6 +104,14 @@ export interface JoinRefusal {
   detail: string;
   /** Present on `too_early`: epoch ms the join window opens. */
   opens_at?: number;
+  /**
+   * [JOIN-LINK-1] Present on the consult 403s (`not your booking`, `booking
+   * entitlement required`). It is the listing behind the booking, and it is the
+   * only thing that makes a "Pay and join" panel possible — without it the
+   * browser knows a booking id it cannot sell, so the screen had to say "go to
+   * my bookings" to someone who was willing to pay.
+   */
+  listing_id?: string;
 }
 
 export type JoinResult =
@@ -114,6 +122,7 @@ function refusalFor(e: ApiError): JoinRefusal {
   const detail = e.error || 'join refused';
   const body = (e.body && typeof e.body === 'object' ? e.body : {}) as Record<string, unknown>;
   const opensAt = typeof body.opens_at === 'number' ? body.opens_at : undefined;
+  const listingId = typeof body.listing_id === 'string' && body.listing_id ? body.listing_id : undefined;
 
   // The server distinguishes these by status first, message second. Status is
   // the load-bearing half: 425 and 410 are chosen deliberately in
@@ -142,9 +151,9 @@ function refusalFor(e: ApiError): JoinRefusal {
     // buyer who simply hasn't paid that the session belongs to someone else —
     // a dead end instead of a checkout. Match the ownership refusal on its own
     // distinctive phrase, and let everything else fall through to the buy path.
-    if (/not your/i.test(detail)) return { ok: false, reason: 'not_yours', status: e.status, detail };
-    if (/ticket|entitlement/i.test(detail)) return { ok: false, reason: 'needs_ticket', status: e.status, detail };
-    return { ok: false, reason: 'needs_ticket', status: e.status, detail };
+    if (/not your/i.test(detail)) return { ok: false, reason: 'not_yours', status: e.status, detail, listing_id: listingId };
+    if (/ticket|entitlement/i.test(detail)) return { ok: false, reason: 'needs_ticket', status: e.status, detail, listing_id: listingId };
+    return { ok: false, reason: 'needs_ticket', status: e.status, detail, listing_id: listingId };
   }
   return { ok: false, reason: 'unavailable', status: e.status, detail };
 }
