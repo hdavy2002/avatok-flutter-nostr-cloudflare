@@ -4,8 +4,10 @@
 // + blue + coral accents). Left rail grouped Featured / Studio / Apps / Account,
 // colour-chipped icon rows with an active state, a sticky page header with the
 // page title + a New-listing CTA, and the auth/profile card (SidebarUser) pinned
-// to the bottom. Customers recover purchases here; creators can host live
-// events and appointments from the browser alongside their listing tools.
+// to the bottom. Customers recover purchases here; creators manage and schedule
+// their live events and appointments here, but [APP-ONLY-TX-1 2026-09-12,
+// RULEBOOK-PAID-SESSIONS §7] never TRANSMIT from the browser — every creator
+// "start" action deep-links into the avaTOK app.
 import Base from './Base.astro';
 import SiteHeader from '../components/SiteHeader.astro';
 import SidebarUser from '../islands/shell/SidebarUser.tsx';
