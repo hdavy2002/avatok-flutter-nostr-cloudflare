@@ -37,6 +37,12 @@ interface TileArt {
   imgW: number;
   imgH: number;
   badge?: { src: string; alt: string; w: number; h: number };
+  /* [WEB-HELP-3 2026-09-12] Die-cut sticker art (transparent PNG) instead of
+     a photo: rendered straight on the band with no card frame, contained not
+     cropped, so the cut edge is the shape. Tablet/phone shrink the media slot
+     hard, and a cropped poster thumbnail loses its caption there — a sticker
+     scales down whole and still reads. */
+  sticker?: boolean;
   bg: string;
   band: string;
   text: 'ink' | 'bone';
@@ -45,28 +51,44 @@ interface TileArt {
 
 const ART: Record<HelpSectionId, TileArt> = {
   'getting-started': {
-    img: '/help/art/chal-nikal.jpg',
-    imgAlt: 'Illustrated rider pulling away on a scooter — "chal nikal", let’s go.',
-    imgW: 720, imgH: 900,
+    // [WEB-HELP-3 2026-09-12] was chal-nikal.jpg (a "get lost" arrow, and a
+    // portrait poster that cropped to an unreadable sliver on phone/tablet).
+    // Sourced from design/desi-art/ — a welcome-in motif, and already die-cut,
+    // so it is the tile that runs the sticker treatment.
+    img: '/help/art/thoko-taali.png',
+    imgAlt: 'Die-cut sticker of a grinning sardar ji clapping — "thoko taali", welcome aboard.',
+    imgW: 640, imgH: 854,
+    sticker: true,
     bg: 'var(--sky)', band: 'var(--help-tan)', text: 'ink', truck: 'jhalar',
   },
   'booking-and-paying': {
-    img: '/help/art/tu-paise-kab-dega.jpg',
-    imgAlt: 'Illustrated scene captioned "tu paise kab dega" — when’s my payment landing.',
-    imgW: 517, imgH: 900,
+    // [WEB-HELP-3 2026-09-12] was tu-paise-kab-dega.jpg (a white card that
+    // cropped to a sliver on phone). Same money joke, die-cut — the cream
+    // lettering carries its own contrast against the indigo band.
+    img: '/help/art/uthale-re-baba-sticker.png',
+    imgAlt: 'Die-cut sticker captioned "uthale re Baba!" — pay up, pick it up.',
+    imgW: 640, imgH: 737,
+    sticker: true,
     bg: 'var(--help-indigo)', band: 'var(--help-indigo-deep)', text: 'bone', truck: 'lotus',
   },
   creators: {
-    img: '/help/art/girl-boss.jpg',
-    imgAlt: 'Illustrated creator in a confident girl-boss pose.',
-    imgW: 507, imgH: 900,
-    badge: { src: '/help/art/desi-swag.png', alt: '', w: 220, h: 156 },
+    // [WEB-HELP-3 2026-09-12] was girl-boss.jpg. Cut out of design/desi-art —
+    // teal/orange reads loud against brick, at thumbnail size too. The
+    // desi-swag badge went with the frame: a badge pinned to the corner of a
+    // die-cut shape has no corner to sit on (see .help-tile-sticker rules).
+    img: '/help/art/tension-uncle.png',
+    imgAlt: 'Die-cut sticker of a smiling uncle in a teal nehru jacket, hand out mid-pitch.',
+    imgW: 482, imgH: 916,
+    sticker: true,
     bg: 'var(--help-brick)', band: 'var(--help-brick-deep)', text: 'bone', truck: 'eyes',
   },
   billing: {
-    img: '/help/art/uthale-re-baba.jpg',
-    imgAlt: 'Illustrated auto-rickshaw scene captioned "uthale re baba" — billing and payouts.',
-    imgW: 600, imgH: 600,
+    // [WEB-HELP-3 2026-09-12] was uthale-re-baba.jpg — booking-and-paying now
+    // runs that character as its sticker, and the same face twice in one grid
+    // reads as a mistake. pani-puri keeps billing's framed-poster treatment.
+    img: '/help/art/pani-puri.jpg',
+    imgAlt: 'Vintage stamp-style poster of pani puri — snacks, bills and small change.',
+    imgW: 600, imgH: 900,
     bg: 'var(--lav)', band: 'var(--help-tan-deep)', text: 'ink', truck: 'chai',
   },
   'account-and-safety': {
@@ -90,7 +112,7 @@ const SPLIT_FROM = 3;
     return (
       <article
         id={section.id}
-        class={`help-tile ${split ? 'help-tile-split' : 'help-tile-stack'} help-tile-${art.text}`}
+        class={`help-tile ${split ? 'help-tile-split' : 'help-tile-stack'} help-tile-${art.text}${art.sticker ? ' help-tile-sticker' : ''}`}
         style={`--tile-bg:${art.bg}; --tile-band:${art.band};`}
         aria-labelledby={`help-tile-${section.id}-title`}
       >
@@ -197,6 +219,36 @@ const SPLIT_FROM = 3;
     background: var(--white);
     transform: rotate(-2deg);
   }
+  /* [WEB-HELP-3 2026-09-12] Sticker tiles (getting-started): the art is a
+     transparent die-cut PNG, so it drops the photo card entirely — no border,
+     no hard offset shadow, no crop — and sits a little larger than the framed
+     photo would, because a cut-out without a frame reads lighter at the same
+     box size. `contain` is the whole contract: the sticker is never cropped,
+     at any breakpoint. The drop-shadow keeps the zine offset-print feel the
+     framed tiles get from their box-shadow, following the cut edge instead. */
+  .help-tile-sticker .help-tile-photo-frame {
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .help-tile-sticker .help-tile-photo {
+    width: auto;
+    max-width: 100%;
+    height: 18.25rem;
+    object-fit: contain;
+    object-position: 50% 50%;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    transform: rotate(-3deg);
+    filter: drop-shadow(0.3125rem 0.375rem 0 rgba(22, 22, 20, 0.38));
+  }
+
+  .help-tile-sticker .help-tile-badge { display: none; } /* nothing to pin a badge to on a die-cut edge */
   .help-tile-badge {
     position: absolute;
     right: -3.9375rem;
@@ -279,6 +331,11 @@ const SPLIT_FROM = 3;
   @media (max-width: 899px) {
     .help-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: -2.5rem; }
     .help-tile-stack, .help-tile-split { grid-column: span 1; }
+
+    /* [WEB-HELP-3] Two columns squeeze the media band; the framed tiles just
+       crop harder, but the sticker can grow into the extra height it now has
+       and still show whole — which is the point of using one here. */
+    .help-tile-sticker .help-tile-photo { height: 16rem; }
   }
 
   /* [WEB-HELP-2 review] <600px: Phone.dc.html's compact tile — a header row
@@ -330,5 +387,28 @@ const SPLIT_FROM = 3;
     .help-tile-blurb { grid-area: blurb; }
     .help-tile-list { grid-area: list; margin-top: 0; }
     .help-tile-body { padding: 0; } /* moot once display:contents, kept so nothing peeks through pre-hydration */
+
+    /* [WEB-HELP-3] The compact row's 5.5rem square is a crop box — right for a
+       photo, wrong for a sticker, which would sit letterboxed inside it with
+       a border drawn round empty space. The sticker tile widens its own thumb
+       column instead and lets the art fill it edge to edge, uncropped. */
+    .help-tile-sticker.help-tile-stack, .help-tile-sticker.help-tile-split {
+      grid-template-columns: 6.75rem 1fr;
+    }
+    .help-tile-sticker .help-tile-photo-wrap {
+      width: 6.75rem;
+      height: 6.75rem;
+      background: transparent; /* no band behind a cut-out in the compact row */
+    }
+    .help-tile-sticker .help-tile-photo-frame { width: 6.75rem; height: 6.75rem; }
+    .help-tile-sticker .help-tile-photo {
+      width: 6.75rem;
+      height: 6.75rem;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+      transform: rotate(-3deg);
+      filter: drop-shadow(0.125rem 0.1875rem 0 rgba(22, 22, 20, 0.35));
+    }
   }
 </style>
