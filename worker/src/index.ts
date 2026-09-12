@@ -35,6 +35,7 @@ import { commercialCheckout, commercialHold, resendCommercialConfirmation } from
 import { recoverEmailOutbox } from "./lib/email_outbox";
 import { commercialLifecycle, runCommercialOrphanNoShowSweep } from "./routes/commercial_lifecycle";
 import { commercialRoutePattern } from "./lib/commercial_ids";
+import { commercialSessionAttachmentUpload } from "./routes/commercial_session_attachment";
 import { commercialDiagnostics, scanCommercialHealth } from "./routes/commercial_diagnostics";
 import { runCommercialSettlements, runCommercialHostNoShowSweep } from "./commercial_settlement";
 import { refreshStaleCreatorStats } from "./lib/creator_stats"; // [LIST-STATS-1]
@@ -1594,6 +1595,12 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       }
       if (/^\/api\/commercial\/session\/[A-Za-z0-9_:-]{1,160}\/receipt$/.test(p) && req.method === "GET") {
         return await commercialReceipt(req, env);
+      }
+      // [APP-ONLY-TX-WORKER-RELAY-1] Session chat file upload (RULEBOOK §7) --
+      // accepts a normal account OR the session's own room token (see the
+      // route file's header comment for why that is today's guest lane).
+      if (/^\/api\/commercial\/session\/(live|consult)\/[A-Za-z0-9][A-Za-z0-9-]{0,159}\/attachment$/.test(p) && req.method === "POST") {
+        return await commercialSessionAttachmentUpload(req, env);
       }
       if (/^\/api\/commercial\/refund-receipt\/[A-Za-z0-9_:-]{1,160}$/.test(p) && req.method === "GET") {
         return await commercialRefundReceipt(req, env);

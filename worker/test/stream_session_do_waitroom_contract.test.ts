@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { sanitizeChatAttachment } from "../src/do/stream_session";
 
 // [WAITROOM-1] Source-level contract tests for StreamSessionDO's new
 // waiting-room message shapes, matching this codebase's convention for DO
@@ -83,7 +84,9 @@ describe("StreamSessionDO live_grace listing_id [WAITROOM-4 / R3]", () => {
 describe("StreamSessionDO chat relay", () => {
   it("relays chat as {from, text, at, uid} distinct from the flying-message wire shape", () => {
     const wsMessage = methodSource(DO, "async webSocketMessage", "async webSocketClose");
-    expect(wsMessage).toMatch(/t === "chat"[\s\S]{0,1000}this\.queue\(\{\s*type:\s*"chat",\s*from:\s*meta\.name,\s*text,\s*at:\s*now,\s*uid:\s*meta\.uid\s*\}\)/);
+    // [APP-ONLY-TX-1] The no-attachment branch must stay byte-identical to the
+    // shape every already-shipped client was written against.
+    expect(wsMessage).toMatch(/t === "chat"[\s\S]{0,1600}: \{\s*type:\s*"chat",\s*from:\s*meta\.name,\s*text,\s*at:\s*now,\s*uid:\s*meta\.uid\s*\}\)/);
   });
 
   it("caps chat at 500 chars (not the 120-char flying-message cap)", () => {
@@ -101,6 +104,95 @@ describe("StreamSessionDO chat relay", () => {
     expect(chatBlock).toContain("slow_mode_sec");
     expect(chatBlock).toContain("last_msg");
     expect(chatBlock).toContain("PROFANITY.test(text)");
+  });
+
+  // ── [APP-ONLY-TX-1 2026-09-12] attachment pass-through (RULEBOOK §7) ──
+  it("relays an optional attachment object alongside the chat line", () => {
+    const wsMessage = methodSource(DO, "async webSocketMessage", "async webSocketClose");
+    const chatBlock = wsMessage.slice(wsMessage.indexOf('t === "chat"'));
+    expect(chatBlock).toContain("sanitizeChatAttachment(m.attachment)");
+    expect(chatBlock).toMatch(/type:\s*"chat",\s*from:\s*meta\.name,\s*text,\s*at:\s*now,\s*uid:\s*meta\.uid,\s*attachment/);
+  });
+
+  it("accepts an attachment-only line (no caption) but never an empty one", () => {
+    const wsMessage = methodSource(DO, "async webSocketMessage", "async webSocketClose");
+    const chatBlock = wsMessage.slice(wsMessage.indexOf('t === "chat"'));
+    expect(chatBlock).toContain("if (!text && !attachment) return;");
+  });
+
+  it("sanitizeChatAttachment enforces https, a 1 KB envelope, a 25 MB size cap and an allow-list of types", () => {
+    expect(DO).toContain("const ATTACH_MAX_JSON = 1024;");
+    expect(DO).toContain("const ATTACH_MAX_BYTES = 25 * 1024 * 1024;");
+    const fn = methodSource(DO, "export function sanitizeChatAttachment", "\n}");
+    expect(fn).toContain("/^https:\\/\\//i.test(url)");
+    expect(fn).toContain("ATTACH_MIME_OK.test(mime)");
+    expect(fn).toContain("size > ATTACH_MAX_BYTES");
+    expect(fn).toContain("JSON.stringify(out).length > ATTACH_MAX_JSON");
+  });
+
+  // [APP-ONLY-TX-WORKER-1] The attachment URL must point at our own CDN/R2
+  // public read host (RULEBOOK §7 file-upload work) — never a foreign URL a
+  // client could smuggle in and have relayed as if avaTOK hosted it.
+  it("sanitizeChatAttachment rejects a URL whose host is not our own blossom CDN", () => {
+    const fn = methodSource(DO, "export function sanitizeChatAttachment", "\n}");
+    expect(fn).toContain("ATTACH_HOST_OK.test(parsed.hostname)");
+    expect(DO).toMatch(/ATTACH_HOST_OK = \/\^\(blossom\(-staging\)\?\\\.avatok\\\.ai\)\$\/i;/);
+  });
+});
+
+// [APP-ONLY-TX-WORKER-1] Runtime (not just source-text) coverage of the
+// exported validator — sanitizeChatAttachment is a pure function, so this
+// runs it for real rather than pattern-matching its source.
+describe("sanitizeChatAttachment (runtime)", () => {
+  const base = { url: "https://blossom.avatok.ai/u/1/public/deadbeef", name: "notes.pdf", size: 1024, mime: "application/pdf" };
+
+  it("accepts a well-formed descriptor on our own blossom host (prod)", () => {
+    expect(sanitizeChatAttachment(base)).toEqual(base);
+  });
+
+  it("accepts the staging blossom host too", () => {
+    const staged = { ...base, url: "https://blossom-staging.avatok.ai/u/1/public/deadbeef" };
+    expect(sanitizeChatAttachment(staged)).toEqual(staged);
+  });
+
+  it("rejects a foreign host masquerading as our CDN", () => {
+    expect(sanitizeChatAttachment({ ...base, url: "https://evil.example.com/x" })).toBeNull();
+    expect(sanitizeChatAttachment({ ...base, url: "https://blossom.avatok.ai.evil.com/x" })).toBeNull();
+    expect(sanitizeChatAttachment({ ...base, url: "https://notblossom.avatok.ai/x" })).toBeNull();
+  });
+
+  it("rejects http (non-https)", () => {
+    expect(sanitizeChatAttachment({ ...base, url: "http://blossom.avatok.ai/x" })).toBeNull();
+  });
+
+  it("rejects a disallowed mime type", () => {
+    expect(sanitizeChatAttachment({ ...base, mime: "application/x-msdownload" })).toBeNull();
+  });
+
+  it("rejects a size over the 25 MB cap", () => {
+    expect(sanitizeChatAttachment({ ...base, size: 25 * 1024 * 1024 + 1 })).toBeNull();
+  });
+
+  it("accepts exactly the 25 MB cap", () => {
+    expect(sanitizeChatAttachment({ ...base, size: 25 * 1024 * 1024 })).not.toBeNull();
+  });
+
+  it("rejects a negative or non-numeric size", () => {
+    expect(sanitizeChatAttachment({ ...base, size: -1 })).toBeNull();
+    expect(sanitizeChatAttachment({ ...base, size: "big" })).toBeNull();
+  });
+
+  it("rejects a missing/garbage url", () => {
+    expect(sanitizeChatAttachment({ ...base, url: "" })).toBeNull();
+    expect(sanitizeChatAttachment({ ...base, url: "not a url" })).toBeNull();
+    expect(sanitizeChatAttachment(null)).toBeNull();
+    expect(sanitizeChatAttachment("string")).toBeNull();
+  });
+
+  it("defaults and truncates the file name", () => {
+    expect(sanitizeChatAttachment({ ...base, name: undefined }).name).toBe("file");
+    const long = sanitizeChatAttachment({ ...base, name: "a".repeat(500) });
+    expect(long.name.length).toBe(120);
   });
 });
 

@@ -28,6 +28,48 @@ const FLY_RATE_MS = 2_000;             // flying messages: 1 per 2 s per user
 const END_GRACE_MS = 2 * 60_000;       // session auto-end grace
 const PROFANITY = /\b(fuck|shit|cunt|nigger|faggot|bitch)\b/i; // drop+warn hook (full pipeline = Q_MODERATION)
 
+// [APP-ONLY-TX-1 2026-09-12] In-session chat attachments (RULEBOOK-PAID-SESSIONS
+// §7: the customer's browser may "view, listen, talk, chat, upload"). The DO is
+// a RELAY, not a store: bytes never touch it. The client uploads to
+// `POST /upload/public` (routes/media.ts — sha256 dedup, blocklist gate, async
+// Workers-AI scan) and sends only the descriptor the route handed back. This
+// validator is the whole trust boundary: anything not matching the shape below
+// is dropped and the chat line is relayed without it.
+const ATTACH_MAX_JSON = 1024;                 // ≤ 1 KB serialized, per the spec
+// Exported so the upload route (routes/commercial_session_attachment.ts) checks
+// the SAME size cap and mime allow-list server-side, at upload time — one
+// source of truth instead of two constants that could drift apart.
+export const ATTACH_MAX_BYTES = 25 * 1024 * 1024;    // client-side cap, restated here
+export const ATTACH_MIME_OK =
+  /^(image\/(jpeg|png|gif|webp|heic|heif)|application\/pdf|text\/plain|application\/(msword|vnd\.openxmlformats-officedocument\.(wordprocessingml\.document|spreadsheetml\.sheet|presentationml\.presentation)|vnd\.ms-excel|vnd\.ms-powerpoint))$/i;
+// Our own CDN/R2 public read host, both environments (wrangler.toml
+// BLOSSOM_BASE_URL) — an attachment descriptor pointing anywhere else is a
+// forged/foreign URL and must never be relayed as if we hosted it.
+const ATTACH_HOST_OK = /^(blossom(-staging)?\.avatok\.ai)$/i;
+
+export interface ChatAttachment { url: string; name: string; size: number; mime: string }
+
+/** Validate a client-sent attachment descriptor. Returns null for anything odd. */
+export function sanitizeChatAttachment(raw: unknown): ChatAttachment | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const a = raw as Record<string, unknown>;
+  const url = typeof a.url === "string" ? a.url.trim() : "";
+  // https only — the descriptor is rendered as a link on three clients.
+  if (!url || url.length > 512 || !/^https:\/\//i.test(url)) return null;
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { return null; }
+  if (!ATTACH_HOST_OK.test(parsed.hostname)) return null;
+  const mime = typeof a.mime === "string" ? a.mime.trim().slice(0, 128) : "";
+  if (!ATTACH_MIME_OK.test(mime)) return null;
+  const size = typeof a.size === "number" && Number.isFinite(a.size) ? Math.floor(a.size) : -1;
+  if (size < 0 || size > ATTACH_MAX_BYTES) return null;
+  const name = (typeof a.name === "string" ? a.name : "file")
+    .replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 120) || "file";
+  const out: ChatAttachment = { url, name, size, mime };
+  if (JSON.stringify(out).length > ATTACH_MAX_JSON) return null;
+  return out;
+}
+
 interface SockMeta { uid: string; role: string; name: string; orderId: string | null }
 
 export class StreamSessionDO {
@@ -266,9 +308,13 @@ export class StreamSessionDO {
     // socket"). Reuses the flying-messages profanity + slow-mode/mod checks
     // above (mute/ban already gates this whole handler) but its own 500-char
     // cap and wire shape: {from, text, at}.
-    if (t === "chat" && typeof m.text === "string") {
-      const text = String(m.text).slice(0, 500).trim();
-      if (!text) return;
+    if (t === "chat" && (typeof m.text === "string" || m.attachment)) {
+      const text = typeof m.text === "string" ? String(m.text).slice(0, 500).trim() : "";
+      // [APP-ONLY-TX-1] A chat line may now carry an attachment descriptor; a
+      // line with an attachment and no caption is legitimate, so "empty" only
+      // rejects when there is nothing at all to relay.
+      const attachment = sanitizeChatAttachment(m.attachment);
+      if (!text && !attachment) return;
       // Profanity hook: drop + warn (full async scan stays on the report path).
       if (PROFANITY.test(text)) { try { ws.send(JSON.stringify({ type: "warn", reason: "message blocked" })); } catch { /* ignore */ } return; }
       const now = Date.now();
@@ -278,7 +324,11 @@ export class StreamSessionDO {
         if (now - Number(last) < slow) { try { ws.send(JSON.stringify({ type: "warn", reason: `slow mode: 1 message per ${slow / 1000}s` })); } catch { /* ignore */ } return; }
         this.sql.exec("INSERT INTO last_msg (uid, t) VALUES (?1,?2) ON CONFLICT(uid) DO UPDATE SET t=?2", meta.uid, now);
       }
-      this.queue({ type: "chat", from: meta.name, text, at: now, uid: meta.uid });
+      // `attachment` is omitted entirely when absent, so every already-shipped
+      // client keeps reading the exact wire shape it was written against.
+      this.queue(attachment
+        ? { type: "chat", from: meta.name, text, at: now, uid: meta.uid, attachment }
+        : { type: "chat", from: meta.name, text, at: now, uid: meta.uid });
       return;
     }
     if (t === "track" && typeof m.track === "string" && m.track.length < 256) {
