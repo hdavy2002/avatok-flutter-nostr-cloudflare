@@ -32,6 +32,7 @@ import { queueCommercialConfirmation, COMMERCIAL_CONFIRMATION_VERSION } from "..
 import { rateLimit } from "../money";
 import { commercialEmailKey, type EmailQueueStatus } from "../lib/email_outbox";
 import { bookability } from "../lib/listing_schedule";
+import { sessionSplitFor } from "../lib/session_pricing"; // [SETTLE-FEE-1]
 
 type CheckoutKind = "live_event" | "consult_1to1";
 
@@ -1024,14 +1025,46 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
       if (!converted) throw new Error("availability hold expired");
     }
 
-    const creatorFeePct = Math.trunc(Number(config.commercialCreatorFeePct));
+    const configCreatorFeePct = Math.trunc(Number(config.commercialCreatorFeePct));
     const settlementHoldHours = Math.trunc(Number(config.commercialSettlementHoldHours));
-    if (!Number.isInteger(creatorFeePct) || creatorFeePct < 0 || creatorFeePct > 100
+    if (!Number.isInteger(configCreatorFeePct) || configCreatorFeePct < 0 || configCreatorFeePct > 100
       || !Number.isInteger(settlementHoldHours) || settlementHoldHours < 0 || settlementHoldHours > 365 * 24) {
       throw new Error("commercial settlement configuration invalid");
     }
-    const creatorAmount = Math.round(price * creatorFeePct / 100);
+    // [SETTLE-FEE-1] The snapshot is what settlement pays out of, so it must carry the
+    // SAME split the creator was shown in the listing wizard (₹25 flat per participant
+    // per hour + 20% of the remainder — lib/session_pricing.ts), not the older flat
+    // 80/20 `commercialCreatorFeePct`. A creator shown "you keep ₹460 of ₹600" was being
+    // settled ₹480 off a different rule; see memory note avatok-fee-not-wired-to-settlement.
+    //
+    // Scope, deliberately narrow: only PAID consult/live orders. A free (₹0) order keeps
+    // the old path byte-for-byte — both legs are 0 either way, and its stored
+    // creator_fee_pct stays the config value so nothing about free checkout moves. Rows
+    // written before this change are never revisited: the snapshot is immutable and
+    // settlement reads whatever its own order froze.
+    //
+    // `sessionFeeRuleEnabled` is the rollback switch. It is read defensively (absent ⇒
+    // true) because config.ts is another agent's file this slice may not edit; the
+    // DEFAULTS entry is in this commit's report for the coordinator to land.
+    const sessionFeeRuleEnabled = (config as unknown as Record<string, unknown>).sessionFeeRuleEnabled !== false;
+    const useSessionFeeRule = sessionFeeRuleEnabled && price > 0
+      && (route.kind === "consult_1to1" || route.kind === "live_event");
+    // The listing's own slot length, not the caller-supplied slot: the flat fee is a
+    // per-hour charge on what the creator published and priced, and a client must not be
+    // able to change the creator's fee by asking for a longer end_at.
+    const listingDurationMin = Math.max(1, Math.trunc(Number(listing.duration_min ?? 60)));
+    const sessionSplit = useSessionFeeRule ? sessionSplitFor(price, listingDurationMin) : null;
+    const creatorFeePct = sessionSplit ? sessionSplit.creatorFeePct : configCreatorFeePct;
+    const creatorAmount = sessionSplit ? sessionSplit.creatorAmount : Math.round(price * configCreatorFeePct / 100);
     const platformFeeAmount = price - creatorAmount;
+    // Defence in depth: settlement's authorityError() refuses any snapshot whose legs do
+    // not add up to gross, or whose stored percentage does not reproduce creator_amount.
+    // Catch that here, where the order can still be failed cleanly, instead of at payout.
+    if (creatorAmount < 0 || platformFeeAmount < 0 || creatorAmount + platformFeeAmount !== price
+      || !Number.isFinite(creatorFeePct) || creatorFeePct < 0 || creatorFeePct > 100
+      || Math.round(price * creatorFeePct / 100) !== creatorAmount) {
+      throw new Error("commercial split authority invalid");
+    }
     const policySnapshotId = `commercial-policy:${orderId}`;
     const policyJson = JSON.stringify(policy);
     const now = Date.now();

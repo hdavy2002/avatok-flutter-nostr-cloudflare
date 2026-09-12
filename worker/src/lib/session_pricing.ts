@@ -56,6 +56,55 @@ export function sessionFeeForHours(price: number, hours: number): SessionFee {
   return { fee: one.fee * h, creator: one.creator * h };
 }
 
+/** [SETTLE-FEE-1] The split a checkout freezes into `commercial_policy_snapshots`. */
+export type SessionSplit = {
+  /** What the buyer paid and what the two legs below must add up to, exactly. */
+  grossAmount: number;
+  /** Tokens the creator is owed at settlement. */
+  creatorAmount: number;
+  /** Tokens avaTOK keeps. */
+  platformFeeAmount: number;
+  /**
+   * The EFFECTIVE creator percentage this split works out to, e.g. 76.666… for
+   * ₹600/hr. It is derived from `creatorAmount`, never the other way round: the
+   * amounts are the authority and the percentage is a label on them. Stored so
+   * `commercial_settlement.ts`'s authorityError() — which asserts
+   * `creatorAmount === Math.round(gross * pct / 100)` — keeps holding, which is
+   * why it is NOT rounded to an integer here.
+   */
+  creatorFeePct: number;
+};
+
+/**
+ * [SETTLE-FEE-1] The one function checkout uses to freeze a paid session's split,
+ * so what settlement pays out is the same arithmetic the listing wizard showed the
+ * creator (`step_3_money.dart`: "At ₹600/hr, avaTOK takes ₹140 and you keep ₹460").
+ *
+ * `gross` is the whole amount the buyer is charged for this order (one seat / one
+ * ticket) — which in the current checkout IS the listing's per-hour price, since
+ * nothing multiplies it by the slot length. `durationMin` is the listing's slot
+ * length: it is passed through sessionFeeForHours(), whose hour count floors and
+ * clamps at 1, so a 30-minute slot bills one full hour exactly as the wizard says
+ * ("A session shorter than an hour still bills the full hour") and a 2-hour slot
+ * bills the flat ₹25 twice.
+ *
+ * The fee is clamped to `gross` so a grandfathered listing priced under the ₹49
+ * floor can never produce a negative creator amount or break the
+ * `creator + platform === gross` invariant settlement asserts.
+ */
+export function sessionSplitFor(gross: number, durationMin: number): SessionSplit {
+  const g = Math.max(0, Math.trunc(Number(gross) || 0));
+  const minutes = Math.max(1, Math.trunc(Number(durationMin) || 60));
+  const fee = Math.min(g, sessionFeeForHours(g, minutes / 60).fee);
+  const creatorAmount = g - fee;
+  return {
+    grossAmount: g,
+    creatorAmount,
+    platformFeeAmount: fee,
+    creatorFeePct: g > 0 ? creatorAmount * 100 / g : 0,
+  };
+}
+
 /**
  * Null when `price` clears the floor (or the listing is free_entry, which
  * bypasses price entirely — that is a different lane, see free_entry_gate.ts),
