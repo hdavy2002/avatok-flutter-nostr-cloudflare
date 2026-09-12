@@ -290,22 +290,51 @@ class AvaTheme {
         ),
       ),
 
-      // NO default box. The design wraps every input in its own bordered
-      // container (AdField, the chat composer, search bars), so a themed
-      // filled+outlined box here drew a SECOND bar inside that container (the
-      // "double bar" bug). Keep the theme borderless/unfilled; containers
-      // supply the visual. (2026-06-18)
+      // [UI-FIELD-VISIBLE-1 2026-09-12] A BARE INPUT NOW DRAWS ITS OWN 2px INK
+      // OUTLINE. Read the whole comment before touching this block — it has
+      // been wrong in both directions.
+      //
+      // The old rule (2026-06-18) was "NO default box": every border was
+      // `InputBorder.none` because the design wrapped every input in its own
+      // bordered container (AdField, the chat composer, the search docks), and
+      // a themed box drew a SECOND bar inside that container — the "double
+      // bar" bug. That reasoning held while the palette was near-black, where
+      // an unbordered fill still separated from the page.
+      //
+      // On CREAM it does not. `AD.inputField` (#FFFAF0) against `AD.bg`
+      // (#FBF3E2) is paper on paper — roughly a 3% luminance step — so any
+      // screen that used a plain `TextField` / `DropdownButtonFormField`
+      // without building its own container rendered a field with NO edge and
+      // no usable fill contrast. The owner's report (2026-09-12) was simply
+      // "the white is almost blended with the yellow background and I cannot
+      // see a thing", on the Create-listing wizard, whose fields are raw
+      // `TextField(decoration: InputDecoration(labelText: …, filled: true))`.
+      //
+      // THE DOUBLE-BAR GUARD IS THE SHAPE OF THIS BLOCK, NOT THE ABSENCE OF A
+      // BORDER: only `border` is set, and the per-state borders are
+      // deliberately LEFT NULL. Flutter resolves each state as
+      // `<state>Border ?? decoration.border`, so a field that sets
+      // `border: InputBorder.none` itself still wins in EVERY state — which is
+      // exactly what the ~35 wrapped inputs (composer.dart, rich_input_bar,
+      // zine_widgets' ZineField, the search docks, every bottom sheet) already
+      // do. **Do not add `enabledBorder` / `focusedBorder` here.** The moment
+      // a per-state border is non-null it beats those fields' own
+      // `InputBorder.none` and the double bar comes back app-wide — losing the
+      // focus-colour change is the price of that safety, and it is the right
+      // trade.
+      //
+      // `filled` stays FALSE for the same reason: a themed fill would paint
+      // inside all those containers too. A bare field is defined by its
+      // outline; a field that wants a fill passes its own `fillColor`.
       inputDecorationTheme: InputDecorationTheme(
         filled: false,
         isDense: true,
         hintStyle: ADText.bubbleBody(c: AD.textTertiary).copyWith(fontSize: 16),
         labelStyle: ADText.sectionLabel(),
-        border: InputBorder.none,
-        enabledBorder: InputBorder.none,
-        focusedBorder: InputBorder.none,
-        disabledBorder: InputBorder.none,
-        errorBorder: InputBorder.none,
-        focusedErrorBorder: InputBorder.none,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AD.rInput),
+          borderSide: const BorderSide(color: AD.borderControl, width: AD.wBorder),
+        ),
       ),
 
       cardTheme: CardThemeData(
