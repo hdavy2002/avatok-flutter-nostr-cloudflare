@@ -405,7 +405,7 @@ class _CommercialConsultationRoomScreenState extends State<CommercialConsultatio
           // placeholder tile the rest of this lane already uses
           // (commercial_live_screens.dart) instead of an empty renderer.
           if (other.isEmpty) const Center(child: CircularProgressIndicator()) else _ParticipantTile(call: _call, participant: other.first, avatarSize: 96),
-          Positioned(right: Msg.s3, bottom: Msg.s3, width: 120, height: 170, child: Container(color: Colors.black, child: _call.state.value.localParticipant == null ? const SizedBox() : _ParticipantTile(call: _call, participant: _call.state.value.localParticipant!, avatarSize: 40))),
+          Positioned(right: Msg.s3, bottom: Msg.s3, width: 120, height: 170, child: Container(color: Colors.black, child: _call.state.value.localParticipant == null ? const SizedBox() : _ParticipantTile(call: _call, participant: _call.state.value.localParticipant!, avatarSize: 40, onDark: true))),
         ])),
         Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [IconButton(onPressed: _toggleMic, icon: Icon(_microphoneOn ? PhosphorIcons.microphone(PhosphorIconsStyle.bold) : PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold))), IconButton(onPressed: _toggleCamera, icon: Icon(_cameraOn ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold) : PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold))), FilledButton.icon(onPressed: _leave, icon: Icon(PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.bold)), label: const Text('Leave'))]),
         const SizedBox(height: Msg.s3),
@@ -433,10 +433,17 @@ class _CommercialConsultationCompletionScreenState extends State<CommercialConsu
 /// their name and a mic state icon — the same rule the live lane already
 /// applies (`publishedTracks.containsKey(SfuTrackType.video)`).
 class _ParticipantTile extends StatelessWidget {
-  const _ParticipantTile({required this.call, required this.participant, required this.avatarSize});
+  const _ParticipantTile({required this.call, required this.participant, required this.avatarSize, this.onDark = false});
   final Call call;
   final CallParticipantState participant;
   final double avatarSize;
+
+  /// [AV-AUDIO-ONLY-2] True when this tile is painted on the black self-view
+  /// surface. The whole `AD.text*` ramp is INK ON CREAM, so using it there
+  /// paints near-black glyphs onto black and the name and mic icon vanish —
+  /// the exact trap `AD.onMediaFaint` documents (avatok_dark.dart) and that
+  /// `commercial_live_screens.dart` already routes around.
+  final bool onDark;
 
   bool get _large => avatarSize >= 96;
 
@@ -466,13 +473,13 @@ class _ParticipantTile extends StatelessWidget {
         SizedBox(height: _large ? Msg.s3 : Msg.s2),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: Msg.s2),
-          child: Text(_name, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: ADText.preview(c: AD.textPrimary)),
+          child: Text(_name, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: ADText.preview(c: onDark ? AD.onBandCream : AD.textPrimary)),
         ),
         const SizedBox(height: Msg.s1),
         Icon(
           audioOn ? PhosphorIcons.microphone(PhosphorIconsStyle.fill) : PhosphorIcons.microphoneSlash(PhosphorIconsStyle.fill),
           size: _large ? 22 : 16,
-          color: audioOn ? AD.online : AD.textTertiary,
+          color: audioOn ? AD.online : (onDark ? AD.onMediaFaint : AD.textTertiary),
         ),
       ]),
     );
