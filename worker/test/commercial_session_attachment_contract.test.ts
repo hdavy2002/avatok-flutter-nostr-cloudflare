@@ -192,6 +192,48 @@ describe("POST /api/commercial/session/:kind/:id/attachment", () => {
     expect(blocked.status).toBe(429);
   });
 
+  it("accepts a multipart/form-data body with a 'file' part (the app client's shape)", async () => {
+    const env = makeEnv({ entitled: true });
+    const token = await tokenFor(env);
+    const form = new FormData();
+    const file = new File([new Uint8Array([1, 2, 3])], "photo.png", { type: "image/png" });
+    form.append("file", file);
+    const res = await commercialSessionAttachmentUpload(
+      new Request(URL_BASE, { method: "POST", headers: { "x-session-token": token }, body: form }),
+      env,
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.mime).toBe("image/png");
+    expect(body.size).toBe(3);
+    expect(body.name).toBe("photo.png");
+    expect((env.BLOBS as any).puts).toHaveLength(1);
+  });
+
+  it("rejects multipart/form-data with no 'file' part", async () => {
+    const env = makeEnv({ entitled: true });
+    const token = await tokenFor(env);
+    const form = new FormData();
+    form.append("caption", "hello");
+    const res = await commercialSessionAttachmentUpload(
+      new Request(URL_BASE, { method: "POST", headers: { "x-session-token": token }, body: form }),
+      env,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a multipart file part with a disallowed mime type", async () => {
+    const env = makeEnv({ entitled: true });
+    const token = await tokenFor(env);
+    const form = new FormData();
+    form.append("file", new File([new Uint8Array([1])], "app.exe", { type: "application/x-msdownload" }));
+    const res = await commercialSessionAttachmentUpload(
+      new Request(URL_BASE, { method: "POST", headers: { "x-session-token": token }, body: form }),
+      env,
+    );
+    expect(res.status).toBe(415);
+  });
+
   it("404s on a malformed path", async () => {
     const env = makeEnv({ entitled: true });
     const res = await commercialSessionAttachmentUpload(

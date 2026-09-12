@@ -161,6 +161,19 @@ describe("sanitizeChatAttachment (runtime)", () => {
     expect(sanitizeChatAttachment({ ...base, url: "https://notblossom.avatok.ai/x" })).toBeNull();
   });
 
+  // [APP-ONLY-TX-WORKER-2] /upload/public (routes/media.ts, the web client's
+  // S4 upload path) also returns `${env.BLOSSOM_BASE_URL}/${r2Key}` -- the
+  // SAME host this validator already allows -- so a URL shaped exactly like
+  // its output must not be silently stripped.
+  it("accepts a /upload/public-shaped URL (same blossom host, u/<uid>/public/<hash> key)", () => {
+    const uploadPublicShaped = {
+      ...base,
+      url: "https://blossom.avatok.ai/u/creator-1/public/deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+      mime: "image/jpeg",
+    };
+    expect(sanitizeChatAttachment(uploadPublicShaped)).toEqual(uploadPublicShaped);
+  });
+
   it("rejects http (non-https)", () => {
     expect(sanitizeChatAttachment({ ...base, url: "http://blossom.avatok.ai/x" })).toBeNull();
   });

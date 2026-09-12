@@ -6,8 +6,12 @@
 //   POST /api/commercial/session/:kind/:id/attachment
 //     kind: "live" | "consult" -- matches the DO instance naming
 //     (`live:<listingId>` | `consult:<bookingId>`); :id is that listing/booking id.
-//     Body: raw file bytes. Headers: x-file-name, x-content-type (or
-//     content-type). Response: {url, name, size, mime} -- the exact shape
+//     Body -- either shape is accepted:
+//       - `multipart/form-data` with a `file` part (name/type read off the
+//         part itself) -- what the app client (S5) sends.
+//       - raw file bytes, with `x-file-name` / `x-content-type` (or plain
+//         `content-type`) headers -- this route's original shape.
+//     Response: {url, name, size, mime} -- the exact shape
 //     `sanitizeChatAttachment` (do/stream_session.ts) accepts as a chat
 //     `attachment`, so the client sends this response straight back on its
 //     next `{type:'chat', ...}` socket message.
@@ -108,22 +112,47 @@ export async function commercialSessionAttachmentUpload(req: Request, env: Env):
   const rl = await rateLimit(env, `attach:${kind}:${id}:${grant.uid}`, ATTACH_RL_MAX, ATTACH_RL_WINDOW_SEC);
   if (rl) return rl;
 
-  const mime = (req.headers.get("x-content-type") || req.headers.get("content-type") || "").trim().split(";")[0];
+  // [APP-ONLY-TX-WORKER-2] Two request shapes on the wire, both valid: the app
+  // client (S5) posts `multipart/form-data` with a `file` part (name/type come
+  // from the part itself); the raw-body path below is what this route was
+  // originally written against (bytes + x-file-name/x-content-type headers).
+  // Branch on content-type only -- everything after this extracts the same
+  // three values (mime, bytes, a raw file-name hint) either way.
+  const reqContentType = req.headers.get("content-type") || "";
+  let mime: string;
+  let bytes: ArrayBuffer;
+  let rawName: string | null;
+  if (/^multipart\/form-data/i.test(reqContentType)) {
+    let form: FormData;
+    try { form = await req.formData(); } catch { return json({ error: "bad multipart body" }, 400); }
+    const part = form.get("file");
+    // A Workers `File` is a `Blob` with `.name`/`.type`; a plain string field
+    // (or a missing part) is not an upload.
+    if (!part || typeof part === "string" || typeof (part as Blob).arrayBuffer !== "function") {
+      return json({ error: "multipart 'file' part required" }, 400);
+    }
+    const filePart = part as File;
+    mime = (filePart.type || "").trim().split(";")[0];
+    bytes = await filePart.arrayBuffer();
+    rawName = filePart.name || null;
+  } else {
+    mime = (req.headers.get("x-content-type") || reqContentType || "").trim().split(";")[0];
+    const declaredLen = Number(req.headers.get("content-length") || "0");
+    if (declaredLen > ATTACH_MAX_BYTES) return json({ error: "file too large", max: ATTACH_MAX_BYTES }, 413);
+    bytes = await req.arrayBuffer();
+    rawName = req.headers.get("x-file-name");
+  }
+
   if (!ATTACH_MIME_OK.test(mime)) return json({ error: "unsupported file type" }, 415);
-
-  const declaredLen = Number(req.headers.get("content-length") || "0");
-  if (declaredLen > ATTACH_MAX_BYTES) return json({ error: "file too large", max: ATTACH_MAX_BYTES }, 413);
-
-  const bytes = await req.arrayBuffer();
   if (!bytes.byteLength) return json({ error: "empty body" }, 400);
   if (bytes.byteLength > ATTACH_MAX_BYTES) return json({ error: "file too large", max: ATTACH_MAX_BYTES }, 413);
 
-  const name = safeFileName(req.headers.get("x-file-name"));
+  const name = safeFileName(rawName);
   const key = `sessions/${id}/${crypto.randomUUID()}-${name}`;
   await env.BLOBS.put(key, bytes, { httpMetadata: { contentType: mime } });
   const url = `${env.BLOSSOM_BASE_URL}/${key}`;
 
   commercialEvent(env, "chat_attachment", grant.uid, { kind, mime, bytes: bytes.byteLength });
 
-  return json({ url, name: req.headers.get("x-file-name")?.slice(0, 120) || name, size: bytes.byteLength, mime });
+  return json({ url, name: rawName?.slice(0, 120) || name, size: bytes.byteLength, mime });
 }
