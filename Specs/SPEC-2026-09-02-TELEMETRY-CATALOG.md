@@ -614,3 +614,23 @@ is open, `starts_at` unconditionally, and `outcome:'host_no_return'` once the
 session has ended that way. No new telemetry from the state route itself —
 WP5 (web) and WP7 (app) poll it and own the client-side events for what the
 viewer/host sees.
+
+## APP-ONLY-TX
+
+Owner decision 2026-09-12 (rulebook §7): all transmission is from the app; the
+browser is customer-only. Two events cover the browser-side surfaces this adds.
+
+`web_creator_redirected_to_app {listing_id|booking_id, role}` — fired when a
+creator's browser hits a retired hosting surface (`/live/:id/host`, the old
+`ConsultRoomGS` entry, or the dashboard "Host" affordance) and is shown the
+"Start this event/session from the avaTOK app" deep link instead. `role` is
+always `'creator'` here (viewer/customer traffic never fires this event).
+Exactly one of `listing_id` (live event) or `booking_id` (1:1 consult) is set.
+
+`session_chat_attachment_sent {booking_id|listing_id, role, mime, bytes}` —
+fired by web or app when a chat message with a file attachment is sent inside a
+live/booked session (the side chat described in rulebook §3/§7). `role` is
+`'creator'` or `'customer'`; `mime` and `bytes` describe the uploaded file (not
+the ≤ 1 KB JSON descriptor that actually rides the chat socket). Exactly one of
+`listing_id`/`booking_id` is set, matching whichever lane the session is in.
+

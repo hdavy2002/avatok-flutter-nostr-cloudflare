@@ -112,6 +112,12 @@ wants back, with GetStream as the media:
 - **[RULE]** Chat in the waiting room reuses the same socket (the DO already
   carries messages/reactions) or the per-session Stream Chat channel; either is
   fine, pick one.
+- **[RULE] The customer's browser session carries a side chat with file
+  uploads.** Alongside his own preview and the "Waiting for <creator>…" / live
+  video state, the customer's browser shows a chat panel next to the video that
+  accepts file attachments (see §7). This is the same session chat, not a
+  separate feature — it dies with the session and never becomes standing
+  buyer↔creator messaging (`web-has-no-messaging` still stands).
 
 **[TODAY]** The commercial lane never arms the DO (`op: "schedule"` is called only
 by the legacy `/api/consult/:id/join` and legacy `listings/:id/join`). The legacy
@@ -163,6 +169,11 @@ waiting-room UI still exists in `app/lib/features/consult/consult_room_screen.da
   commercial orders; the legacy `money_engine.ts` may *decide* only if it delegates
   the money movement to the commercial executor.
 - Never add a Cloudflare media fallback. Fail closed (pivot spec §1).
+- **Never build or resurface a browser hosting / green-room / backstage for
+  creators** — `/live/:id/host` and `LiveGsHost.tsx` are retired (kept on disk,
+  unmounted). No "host from your browser", no creator-side `getUserMedia` on the
+  website. All transmission is from the app (§7). A creator-facing button on the
+  web may only deep-link into the app.
 
 ---
 
@@ -176,8 +187,47 @@ waiting-room UI still exists in `app/lib/features/consult/consult_room_screen.da
 5. ~~Creator waits in the DO room, or in the GetStream call?~~ — withdrawn
    2026-09-11: decided by the coordinator (DO room by default), now a [RULE] in §3.
 
+---
+
+## 7. Where transmission happens (owner decision 2026-09-12)
+
+**ALL transmission is from the app.** This is the rule the other sections assume.
+
+- **[RULE] Creators transmit only from the avaTOK app** — both lanes. A live event
+  is started from the app; a 1:1 consultation is joined and run from the app. There
+  is no browser path for a creator to publish audio or video, and none may be built.
+- **[RULE] The browser is customer-only.** A customer in a browser may: see and hear
+  the creator, be seen and heard himself, chat, and upload a file into that chat.
+  Nothing else. The web client never requests a camera or microphone on behalf of a
+  creator.
+- **[RULE] A customer needs a verified email and a payment — nothing more.** He
+  clicks the link in his confirmation email, a browser opens on phone, iPad or
+  desktop, he is asked for camera/mic permission, sees his own preview on one side
+  and either "Waiting for <creator> to join…" or the creator's video and voice once
+  the creator is live, with a chat panel beside it that accepts file uploads.
+  **He never logs into a dashboard and never needs an avaTOK account.**
+- **[RULE] Paying is not onboarding.** Email-verified + paid does **not** make
+  someone an onboarded avaTOK user. Onboarding — terms, permissions, the AvaTOK
+  number, the full profile — happens **only in the app**
+  (see project memory `web-signs-up-app-onboards`).
+- **[RULE] In-session chat is not web messaging.** The chat panel inside a paid
+  session (and its file upload) is part of the session the customer paid for. It is
+  *not* the buyer→creator messenger that `web-has-no-messaging` forbids: that note
+  bans a general "ask the host" message box on public listing pages, which still
+  stands. Session chat lives only inside a live/booked session, dies with it, and
+  rides the session's own `StreamSessionDO` socket (§3).
+- **[TODAY → removed 2026-09-12, `[APP-ONLY-TX-1]`]** The browser used to carry a
+  full creator console at `/live/:id/host` (`web/src/islands/live-gs/LiveGsHost.tsx`:
+  camera permission, "Creator green room", "Enter private backstage", Start live),
+  the dashboard said "Host your paid broadcasts from the browser", and
+  `ConsultRoomGS` put a creator straight into the waiting room and the call. All of
+  that is retired: those surfaces now show "Start this event/session from the avaTOK
+  app" with a deep link. `LiveGsHost.tsx` stays on disk, unmounted, as reference
+  only.
+
 ## Changes
 
 - 2026-09-11 — created from the owner's rules stated in the session-pipeline audit.
 - 2026-09-11 (v2) — owner replaced the pro-rata/ring-answer model with the prepaid waiting-room model: full price once the creator checks in within 20 min, full refund otherwise; media auto-connects on DO presence. §2 and §3 rewritten; §6 questions 1 and 4 withdrawn.
 - 2026-09-11 (v3) — §6 question 5 answered by the coordinator and recorded in §3 as a [RULE]: the creator waits in the DO room by default and media opens only when both parties are present; waiting inside the call stays a creator-side option. Question 5 struck from §6.
+- 2026-09-12 (v4) — owner decision "ALL transmission is from the app" recorded as a new §7: creators transmit only from the app (live + 1:1); the browser is customer-only (view, listen, talk, chat, upload); a customer needs only a verified email + payment, never an account or a dashboard; onboarding is app-only. §5 gains a matching prohibition on browser hosting/green-room/backstage surfaces. Shipped as `[APP-ONLY-TX-1]`.

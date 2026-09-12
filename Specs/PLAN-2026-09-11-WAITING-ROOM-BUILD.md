@@ -83,3 +83,44 @@ Reviewers: Opus agents. Deploy: a Sonnet agent, after review.
 
 ## Decision taken by the coordinator (rulebook §6 q5)
 Creator waits in the DO room by default; media opens only when both are present.
+
+---
+
+## Addendum 2026-09-12 — app-only transmission (owner decision, rulebook §7)
+
+Owner decision: **all transmission is from the app.** Creators start live events
+and 1:1s only in the Flutter app; the browser is customer-only (view, listen,
+talk, chat, upload). This does not change wave-1/wave-2 WPs above; it adds a
+concurrent set of work packages that retire the browser creator path and build
+the customer-side chat/attachment surface. Rulebook: `Specs/RULEBOOK-PAID-SESSIONS.md`
+§7. CLAUDE.md PAID-SESSION RULEBOOK section, rule 4.
+
+Shared message contract (worker DO ↔ web ↔ app, all lanes):
+
+```
+{ type: 'chat', from, uid, text, at, attachment?: { url, name, size, mime } }
+```
+
+- `attachment` is optional; when present it is ≤ 1 KB of JSON (url/name/size/mime
+  only — never the file bytes) riding the same DO/Stream Chat socket as plain chat.
+- File cap: 25 MB per upload. Accepted `mime`: images (`image/*`), `application/pdf`,
+  and common doc types (`application/msword`,
+  `application/vnd.openxmlformats-officedocument.wordprocessingml.document`, plain
+  text). Anything else is rejected client-side and server-side.
+- The file itself is never inlined on the socket — it is uploaded out-of-band (R2
+  via the worker) and only the resulting `attachment` descriptor is relayed as a
+  chat message.
+
+Work packages (concurrent, wave "APP-ONLY-TX"):
+
+| WP | Owner files | Deliverable |
+|---|---|---|
+| **S2 [APP-ONLY-TX-WEB-HOST-1]** web | `web/src/islands/live-gs/LiveGsHost.tsx` (unmount, do not delete), `web/src/pages/live/[id]/host.astro`, `web/src/islands/dashboard/*`, `web/src/islands/consult-gs/ConsultRoomGS.tsx` | Retire every browser creator-hosting surface: host page and dashboard copy now say "Start this event/session from the avaTOK app" with a deep link (`web/src/components/StartInApp.tsx`); no `getUserMedia` reachable from a creator's browser session. `LiveGsHost.tsx` stays on disk, unmounted, as reference only. Telemetry: `web_creator_redirected_to_app {listing_id\|booking_id, role}`. |
+| **S3 [APP-ONLY-TX-WORKER-RELAY-1]** worker | `worker/src/do/stream_session.ts`, new attachment upload route (R2-backed) | DO relays `chat` messages including the optional `attachment` descriptor to all connected sockets; a new authenticated route accepts a guest (email-verified, paid, no account) upload up to 25 MB, stores it in R2, returns `{url, name, size, mime}` for the client to attach to its next chat message. Enforces the mime allowlist and size cap server-side regardless of what the client sent. |
+| **S4 [APP-ONLY-TX-WEB-CHAT-1]** web | `web/src/islands/consult-gs/SessionChat.tsx`, `web/src/lib/sessionUpload.ts`, `web/src/islands/consult-gs/{CallStage,WaitingRoom,RoomSocket}.tsx`, `web/src/islands/live-gs/{GsChat,LiveStage,LiveGsViewer}.tsx` | Customer-side chat panel beside the video/waiting state; drag-drop or picker upload flowing through S3's route, rendered as a chat bubble with a file/image preview once the `attachment` descriptor comes back over the socket. Telemetry: `session_chat_attachment_sent {booking_id\|listing_id, role, mime, bytes}`. |
+| **S5 [APP-ONLY-TX-APP-CHAT-1]** app | `app/lib/features/commercial_getstream/**`, chat widget under `consult`/`live` screens | Renders the same `attachment` descriptor (image thumbnail, file chip with name/size for others) inside the existing in-app chat, and can send its own attachments through S3's upload route so a creator can share files back. No behavioural change to who may transmit media — this is chat/file only. |
+
+All four WPs commit under the ground rules already in force above (own-files-only,
+`scripts/git_safe_commit.py`, no push). Telemetry entries land in
+`Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md` under `## APP-ONLY-TX`.
+

@@ -427,6 +427,15 @@ The three rules that bite hardest (full text in the rulebook, v2 2026-09-11):
    `starts_at` → customer pays the full slot no matter when (or whether) he joins.
    Creator did not → 100% refund + strike. The pro-rata idea from earlier on
    2026-09-11 was withdrawn by the owner; do not build it.
+4. **ALL transmission is from the app (owner decision 2026-09-12, rulebook §7).**
+   Creators start live events and 1:1s ONLY in the Flutter app. The browser is for
+   CUSTOMERS: a customer who verified his email and paid opens the link from his
+   confirmation email, grants camera/mic, sees his own preview plus
+   "Waiting for <creator>…" or the creator's video once live, and a side chat that
+   accepts file uploads. **He never signs into a dashboard and paying does not make
+   him an onboarded user — onboarding happens only in the app.** Never build or
+   resurface a browser hosting / green-room / backstage surface for creators; a
+   creator-facing web button may only deep-link into the app.
 
 Audit + implementation plan: `Specs/AUDIT-2026-09-11-PAID-SESSION-WAITING-AND-BILLING.md`.
 
