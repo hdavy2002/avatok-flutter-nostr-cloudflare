@@ -1,4 +1,21 @@
 /*
+ * ⚠️ RETIRED AND UNMOUNTED — DO NOT RE-MOUNT. [APP-ONLY-TX-1 2026-09-12]
+ *
+ * `Specs/RULEBOOK-PAID-SESSIONS.md` §7 (owner decision 2026-09-12): **ALL
+ * transmission is from the app.** Creators start live events and 1:1s only in
+ * the Flutter app; the browser is a CUSTOMER surface (watch, listen, talk,
+ * chat, upload) and never a creator one. §5: "never build or resurface a
+ * browser hosting/green-room/backstage surface for creators".
+ *
+ * This file is a browser creator console: it asks for camera + microphone,
+ * opens a private GetStream backstage room and publishes the creator's tracks.
+ * Its only route, `/live/:id/host`, now renders `components/StartInApp.tsx`
+ * instead, so nothing imports this module. It is kept on disk only as a record
+ * of how the GetStream host handshake worked (`lib/commercialHost.ts`), for
+ * whoever ports it into the app. Mounting it again reintroduces the exact
+ * product-rule violation this commit removed.
+ */
+/*
  * Browser creator console for a commercial GetStream live event.
  *
  * The lifecycle is deliberately two-step: camera/mic preview, then the

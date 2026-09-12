@@ -4,7 +4,7 @@ import { Card } from '../../components/Card';
 import { Pill } from '../../components/Pill';
 import { ApiError } from '../../lib/apiClient';
 import { cfImage } from '../../lib/config';
-import { livePath, sessionPath } from '../../lib/urls';
+import { appSessionDeepLink, livePath, sessionPath } from '../../lib/urls';
 import type { CommercialScheduleSession, ConfirmationDeliveryStatus } from '../../lib/commercialSessions';
 
 export interface DashboardBooking {
@@ -44,9 +44,16 @@ function statusText(s: CommercialScheduleSession, past?: boolean): { label: stri
 function actionFor(s: CommercialScheduleSession, past?: boolean): { href: string; label: string } | null {
   const action = String(s.action ?? s.allowed_actions?.[0] ?? s.actions?.[0] ?? '').toLowerCase();
   if (past || isCancelled(s) || !action || action === 'ended' || action === 'none') return null;
+  // [APP-ONLY-TX-1 2026-09-12] RULEBOOK-PAID-SESSIONS §7 — a creator never
+  // transmits from the browser. Both creator actions used to open a browser
+  // transmitting surface (`/live/:id/host`, the green room + backstage room;
+  // `/session/:booking`, which put him straight into the waiting room and then
+  // the call). They now hand off to the app. The customer rows below are
+  // unchanged: the browser IS the customer's surface.
   if (s.role === 'host' || s.role === 'creator') {
-    if (s.kind === 'live_event') return { href: `/live/${encodeURIComponent(s.listing_id)}/host`, label: action === 'start' ? 'Start live' : 'Rejoin controls' };
-    if (s.booking_id) return { href: sessionPath(s.booking_id), label: 'Join appointment' };
+    const deep = appSessionDeepLink({ kind: s.kind ?? '', listingId: s.listing_id, bookingId: s.booking_id });
+    if (deep) return { href: deep, label: 'Start in the app' };
+    return null;
   }
   if (s.kind === 'live_event') return { href: livePath(s.listing_id), label: 'Watch event' };
   if (s.booking_id) return { href: sessionPath(s.booking_id), label: 'Join appointment' };

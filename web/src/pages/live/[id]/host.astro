@@ -1,10 +1,19 @@
 ---
-// Browser creator console for the commercial live-event lane. The sibling
-// /live/:id route remains the receive-only viewer surface.
+// /live/:id/host — RETIRED as a browser hosting surface. [APP-ONLY-TX-1 2026-09-12]
+//
+// Owner decision 2026-09-12 (`Specs/RULEBOOK-PAID-SESSIONS.md` §7): ALL
+// transmission is from the app. This route used to mount
+// `islands/live-gs/LiveGsHost.tsx` — a full creator console with a camera
+// permission prompt, a "Creator green room", a private backstage room and a
+// Start live button. That is exactly the surface §5 now forbids.
+//
+// The route is KEPT (old dashboard links, bookmarks and emails point at it)
+// but it now only tells the creator to open the app, and deep-links him there.
+// It requests no media and loads no GetStream SDK.
 export const prerender = false;
 
 import Base from '../../../layouts/Base.astro';
-import LiveGsHost from '../../../islands/live-gs/LiveGsHost.tsx';
+import StartInApp from '../../../components/StartInApp.tsx';
 import { getListing, ApiError } from '../../../lib/apiClient';
 import type { Listing } from '../../../lib/types';
 
@@ -29,15 +38,24 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
   headerAuth="static"
   navStatic={true}
   noindex={true}
-  title={`Host ${title} · avaTOK`}
-  description="Prepare and host your avaTOK live event from the browser."
+  title={`Start ${title} in the app · avaTOK`}
+  description="Creators start avaTOK live events from the avaTOK app."
 >
   <main class="min-h-[calc(100dvh-5rem)] bg-paper">
     <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
       <a href={`/live/${encodeURIComponent(id)}`} class="font-mono text-[13px] font-bold uppercase tracking-[0.06em] text-blueInk no-underline">← View event</a>
-      <span class="font-mono text-[12px] font-bold uppercase tracking-[0.08em] text-inkMute">Creator tools</span>
+      <span class="font-mono text-[12px] font-bold uppercase tracking-[0.08em] text-inkMute">App only</span>
     </div>
-    <LiveGsHost client:load listingId={id} title={title} startsAt={startsAt} endsAt={endsAt} />
+    <StartInApp
+      client:load
+      kind="live_event"
+      title={title}
+      listingId={id}
+      startsAt={startsAt}
+      endsAt={endsAt}
+      backHref="/dashboard/live"
+      backLabel="My live events"
+      from="live_host_route"
+    />
   </main>
 </Base>
-
