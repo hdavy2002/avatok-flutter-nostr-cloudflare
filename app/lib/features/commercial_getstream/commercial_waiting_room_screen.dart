@@ -17,11 +17,9 @@
 // the waiting-room socket still open. NO P2P/SFU code lives in this file.
 import 'dart:async';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:stream_video_flutter/stream_video_flutter.dart' show VideoTrackRenderer;
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
@@ -33,14 +31,7 @@ import 'commercial_consult_screens.dart'
 import 'commercial_device_check.dart' show CommercialDeviceCheckController;
 import 'commercial_getstream_handoff.dart';
 import 'commercial_live_gateway.dart' show CommercialConsultGateway, CommercialLiveState, CommercialLiveGatewayError;
-
-class _ChatLine {
-  final String from;
-  final String text;
-  final bool mine;
-  final ChatAttachment? attachment;
-  const _ChatLine({required this.from, required this.text, required this.mine, this.attachment});
-}
+import 'session_chat_panel.dart' show SessionChatController, SessionChatPanel;
 
 class CommercialWaitingRoomScreen extends StatefulWidget {
   const CommercialWaitingRoomScreen({
@@ -78,9 +69,11 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
   Timer? _autoJoinTimer;
   Timer? _opensAtRetryTimer;
   Timer? _noShowPoll;
-  final _chatController = TextEditingController();
-  final _chatScroll = ScrollController();
-  final List<_ChatLine> _chat = [];
+  // [APP-ONLY-TX-APP-2] The ONE session chat controller — created here
+  // (this screen owns the socket + its lifetime), handed by reference into
+  // the pushed call screen so the in-call chat sheet reads/sends through the
+  // SAME channel rather than opening a second one.
+  late final SessionChatController _chatCtrl;
 
   // [WAITROOM-APP-2] Fix 5: this screen creates and owns its OWN device
   // preview controller — it is never handed one from the prejoin screen, and
@@ -132,17 +125,19 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
   bool _pendingEnded = false;
   bool _ended = false;
   String? _error;
-  // [APP-ONLY-TX-APP-1] True while an attachment picked via the paperclip
-  // button is uploading — disables the button so a second tap can't fire a
-  // second upload for the same pick.
-  bool _attachmentUploading = false;
-
   @override
   void initState() {
     super.initState();
     _startsAt = widget.grant.startsAt;
     _endsAt = widget.grant.endsAt;
     _channel = CommercialWaitingRoomChannel(widget.grant.roomWs!);
+    _chatCtrl = SessionChatController(
+      channel: _channel,
+      selfUid: widget.selfUid,
+      kind: 'consult',
+      sessionId: widget.bookingId,
+      isCreator: widget.isCreator,
+    );
     _sub = _channel.events.listen(_onEvent);
     _connSub = _channel.connectionState.listen(_onConnectionState);
     _failSub = _channel.failures.listen((_) => _onChannelFailure());
@@ -207,8 +202,7 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
     // [WAITROOM-APP-2] Fix 5: this screen owns its device controller
     // unconditionally now — no handoff to track.
     unawaited(_deviceController.dispose());
-    _chatController.dispose();
-    _chatScroll.dispose();
+    _chatCtrl.dispose();
     super.dispose();
   }
 
@@ -260,17 +254,11 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
         // Roster events are the source of truth for auto-join; presence is
         // informational only here (no per-peer UI beyond the roster line).
         break;
-      case CommercialWaitingRoomChat c:
-        // [WAITROOM-APP-2] Fix 11: "mine" by uid when the DO sends one,
-        // falling back to the previous name-match comparison otherwise.
-        final mine = c.uid != null ? c.uid == widget.selfUid : c.from == widget.selfUid;
-        setState(() => _chat.add(_ChatLine(from: c.from, text: c.text, mine: mine, attachment: c.attachment)));
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_chatScroll.hasClients) {
-            _chatScroll.animateTo(_chatScroll.position.maxScrollExtent,
-                duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
-          }
-        });
+      case CommercialWaitingRoomChat _:
+        // [APP-ONLY-TX-APP-2] `_chatCtrl` listens to this same channel
+        // directly and owns the message list + unread count now — nothing
+        // for this screen to do with the raw event.
+        break;
       case CommercialWaitingRoomEnded _:
         // [WAITROOM-APP-3] A6: never `pushReplacement` over the call screen
         // — defer to when `_autoJoin` sees the pushed route return.
@@ -415,6 +403,10 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
           gateway: widget.gateway, connector: widget.connector, handoff: handoff, session: session,
           cameraEnabled: widget.cameraOn, microphoneEnabled: widget.microphoneOn, isCreator: widget.isCreator,
           returnToWaitingRoom: true,
+          // [APP-ONLY-TX-APP-2] Same live channel the waiting room keeps
+          // open while this screen is on top — the call screen never opens
+          // a second socket.
+          chatController: _chatCtrl,
         ),
       ));
       _callScreenOnTop = false;
@@ -482,196 +474,6 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
     setState(() {});
   }
 
-  void _sendChat() {
-    final text = _chatController.text;
-    if (text.trim().isEmpty) return;
-    _channel.sendChat(text);
-    _chatController.clear();
-    Analytics.capture('waitroom_chat_sent', {
-      'booking_id': widget.bookingId,
-      'role': widget.isCreator ? 'creator' : 'buyer',
-    });
-  }
-
-  // [APP-ONLY-TX-APP-1] Extension-based best-effort MIME guess for a picked
-  // file — no `mime` package dependency; falls back to a generic binary type
-  // the worker's own sniffing/validation still governs acceptance.
-  static const Map<String, String> _extMime = {
-    'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png',
-    'gif': 'image/gif', 'webp': 'image/webp', 'heic': 'image/heic',
-    'pdf': 'application/pdf',
-    'doc': 'application/msword',
-    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'xls': 'application/vnd.ms-excel',
-    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'ppt': 'application/vnd.ms-powerpoint',
-    'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    'txt': 'text/plain', 'csv': 'text/csv',
-  };
-
-  String _mimeFromName(String name) {
-    final dot = name.lastIndexOf('.');
-    if (dot < 0 || dot == name.length - 1) return 'application/octet-stream';
-    return _extMime[name.substring(dot + 1).toLowerCase()] ?? 'application/octet-stream';
-  }
-
-  String _humanSize(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    const units = ['KB', 'MB', 'GB'];
-    double v = bytes / 1024;
-    var i = 0;
-    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
-    return '${v.toStringAsFixed(v < 10 ? 1 : 0)} ${units[i]}';
-  }
-
-  /// [APP-ONLY-TX-APP-1] Paperclip → pick a file → upload via the shared
-  /// commercial-session attachment route → send it as a chat message. A
-  /// missing worker route (404, or any upload failure) shows the required
-  /// "Attachments not available yet" snackbar rather than crashing the flow.
-  Future<void> _attachFile() async {
-    if (_attachmentUploading) return;
-    FilePickerResult? res;
-    try {
-      res = await FilePicker.platform.pickFiles(withData: true);
-    } catch (_) {
-      return;
-    }
-    final f = res?.files.single;
-    if (f == null || f.bytes == null) return;
-    final bytes = f.bytes!;
-    if (bytes.length > CommercialWaitingRoomApi.maxAttachmentBytes) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('File is too large (25 MB max).')));
-      }
-      return;
-    }
-    final mime = _mimeFromName(f.name);
-    setState(() => _attachmentUploading = true);
-    try {
-      final attachment = await CommercialWaitingRoomApi.uploadAttachment(
-        kind: 'consult',
-        id: widget.bookingId,
-        bytes: bytes,
-        filename: f.name,
-        mime: mime,
-      );
-      _channel.sendChat('', attachment: attachment);
-      Analytics.capture('session_chat_attachment_sent', {
-        'booking_id': widget.bookingId,
-        'role': widget.isCreator ? 'creator' : 'buyer',
-        'mime': mime,
-        'bytes': bytes.length,
-      });
-    } catch (_) {
-      // Covers a 404 (worker route not deployed yet) and any other upload
-      // failure alike — the guard the contract requires.
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Attachments not available yet')));
-      }
-    } finally {
-      if (mounted) setState(() => _attachmentUploading = false);
-    }
-  }
-
-  /// Full-screen, pinch-to-zoom view of an image attachment.
-  void _openImageFull(String url) {
-    showDialog<void>(
-      context: context,
-      builder: (dctx) => Dialog(
-        backgroundColor: Colors.black,
-        insetPadding: const EdgeInsets.all(12),
-        child: Stack(children: [
-          InteractiveViewer(
-            minScale: 0.8,
-            maxScale: 4,
-            child: Center(
-              child: Image.network(url,
-                  errorBuilder: (_, __, ___) => const Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text('Image unavailable', style: TextStyle(color: Colors.white)))),
-            ),
-          ),
-          Positioned(
-            top: 8, right: 8,
-            child: IconButton(
-              icon: Icon(PhosphorIcons.x(PhosphorIconsStyle.bold), color: Colors.white),
-              onPressed: () => Navigator.of(dctx).maybePop(),
-            ),
-          ),
-        ]),
-      ),
-    );
-  }
-
-  Future<void> _openAttachmentFile(String url) async {
-    try {
-      final uri = Uri.parse(url);
-      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!ok && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open file')));
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open file')));
-      }
-    }
-  }
-
-  /// One chat bubble's body: text (if any) plus, when present, the
-  /// attachment — an image thumbnail that opens full-screen, or a file chip
-  /// (name + human size) that opens externally via `url_launcher`.
-  Widget _chatBubbleContent(_ChatLine line) {
-    final textColor = line.mine ? AD.onBand(AD.headerFooter) : AD.textPrimary;
-    final attachment = line.attachment;
-    final children = <Widget>[
-      if (line.text.isNotEmpty) Text(line.text, style: ADText.bubbleBody(c: textColor)),
-    ];
-    if (attachment != null) {
-      if (line.text.isNotEmpty) children.add(const SizedBox(height: Msg.s1));
-      children.add(attachment.isImage
-          ? GestureDetector(
-              onTap: () => _openImageFull(attachment.url),
-              child: ClipRRect(
-                borderRadius: Msg.brSm,
-                child: SizedBox(
-                  height: 140,
-                  width: 180,
-                  child: Image.network(attachment.url, fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => ColoredBox(
-                            color: AD.cardHover,
-                            child: Icon(PhosphorIcons.imageBroken(PhosphorIconsStyle.regular), color: AD.textTertiary),
-                          )),
-                ),
-              ),
-            )
-          : InkWell(
-              onTap: () => _openAttachmentFile(attachment.url),
-              borderRadius: Msg.brSm,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
-                decoration: BoxDecoration(
-                  color: AD.card,
-                  borderRadius: Msg.brSm,
-                  border: Border.all(color: AD.borderControl, width: 1),
-                ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  PhosphorIcon(PhosphorIcons.fileText(PhosphorIconsStyle.regular), size: 18, color: AD.textSecondary),
-                  const SizedBox(width: Msg.s1),
-                  Flexible(
-                    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(attachment.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                          style: ADText.preview(c: AD.textPrimary)),
-                      Text(_humanSize(attachment.size), style: ADText.timestamp(c: AD.textTertiary)),
-                    ]),
-                  ),
-                ]),
-              ),
-            ));
-    }
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: children);
-  }
 
   Future<void> _leave({bool auto = false}) async {
     if (_ended) return;
@@ -824,55 +626,9 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
           const SizedBox(height: Msg.s4),
           Text('Chat', style: ADText.sectionLabel()),
           const SizedBox(height: Msg.s2),
-          Container(
-            height: 220,
-            padding: const EdgeInsets.all(Msg.s3),
-            decoration: BoxDecoration(
-              color: AD.card,
-              borderRadius: Msg.brMd,
-              border: Border.all(color: AD.borderControl, width: 1),
-            ),
-            child: _chat.isEmpty
-                ? Center(child: Text('No messages yet', style: ADText.preview(c: AD.textTertiary)))
-                : ListView.builder(
-                    controller: _chatScroll,
-                    itemCount: _chat.length,
-                    itemBuilder: (_, i) {
-                      final line = _chat[i];
-                      return Align(
-                        alignment: line.mine ? Alignment.centerRight : Alignment.centerLeft,
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(vertical: Msg.s1),
-                          padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
-                          decoration: BoxDecoration(
-                            color: line.mine ? AD.headerFooter : AD.cardHover,
-                            borderRadius: Msg.brMd,
-                          ),
-                          child: _chatBubbleContent(line),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-          const SizedBox(height: Msg.s2),
-          Row(children: [
-            IconButton(
-              onPressed: _attachmentUploading ? null : _attachFile,
-              icon: _attachmentUploading
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                  : Icon(PhosphorIcons.paperclip(PhosphorIconsStyle.bold)),
-            ),
-            Expanded(
-              child: TextField(
-                controller: _chatController,
-                maxLength: 500,
-                decoration: const InputDecoration(hintText: 'Message…', counterText: '', filled: true),
-                onSubmitted: (_) => _sendChat(),
-              ),
-            ),
-            const SizedBox(width: Msg.s2),
-            IconButton(onPressed: _sendChat, icon: Icon(PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.bold))),
-          ]),
+          // [APP-ONLY-TX-APP-2] Same `_chatCtrl`/channel the in-call chat
+          // sheet reads from — one shared widget, no duplicated state.
+          SessionChatPanel(controller: _chatCtrl),
           const SizedBox(height: Msg.s5),
           FilledButton.icon(
             onPressed: () => _leave(),

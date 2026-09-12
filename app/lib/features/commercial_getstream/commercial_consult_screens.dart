@@ -19,6 +19,7 @@ import 'commercial_live_gateway.dart';
 import 'commercial_device_check.dart';
 import 'commercial_speaker_test.dart';
 import 'commercial_waiting_room_screen.dart';
+import 'session_chat_panel.dart' show SessionChatController, SessionChatPanel;
 
 class CommercialConsultationPrejoinFlow extends StatefulWidget {
   const CommercialConsultationPrejoinFlow({
@@ -240,7 +241,7 @@ enum CommercialConsultExit {
 }
 
 class CommercialConsultationRoomScreen extends StatefulWidget {
-  const CommercialConsultationRoomScreen({super.key, required this.listingId, required this.bookingId, required this.title, required this.gateway, required this.connector, required this.handoff, required this.session, required this.cameraEnabled, required this.microphoneEnabled, required this.isCreator, this.returnToWaitingRoom = false});
+  const CommercialConsultationRoomScreen({super.key, required this.listingId, required this.bookingId, required this.title, required this.gateway, required this.connector, required this.handoff, required this.session, required this.cameraEnabled, required this.microphoneEnabled, required this.isCreator, this.returnToWaitingRoom = false, this.chatController});
   final String listingId, bookingId, title;
   final CommercialConsultGateway gateway;
   final CommercialGetStreamConnector connector;
@@ -254,6 +255,11 @@ class CommercialConsultationRoomScreen extends StatefulWidget {
   /// completion screen — it pops back to the still-open waiting room, which
   /// owns those decisions. Old direct-join behaviour is unchanged when false.
   final bool returnToWaitingRoom;
+  /// [APP-ONLY-TX-APP-2] The waiting room's live chat controller, handed in
+  /// by reference — this screen never opens a second socket. Null on the
+  /// legacy direct-join path (no waiting room ran first), which hides the
+  /// chat button entirely rather than crash on a missing channel.
+  final SessionChatController? chatController;
   @override State<CommercialConsultationRoomScreen> createState() => _CommercialConsultationRoomScreenState();
 }
 
@@ -305,6 +311,62 @@ class _CommercialConsultationRoomScreenState extends State<CommercialConsultatio
 
   Future<void> _toggleMic() async { final r = await _call.setMicrophoneEnabled(enabled: !_microphoneOn); if (mounted && r.isSuccess) setState(() => _microphoneOn = !_microphoneOn); }
   Future<void> _toggleCamera() async { final r = await _call.setCameraEnabled(enabled: !_cameraOn); if (mounted && r.isSuccess) setState(() => _cameraOn = !_cameraOn); }
+
+  /// [APP-ONLY-TX-APP-2] Paperclip-in-a-bubble button opens the SAME
+  /// waiting-room chat channel — a bottom sheet in portrait, a right-hand
+  /// side panel in landscape (video calls default to landscape).
+  void _openChat() {
+    final controller = widget.chatController;
+    if (controller == null) return;
+    controller.markRead();
+    final landscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    if (landscape) {
+      showGeneralDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        barrierLabel: 'Chat',
+        barrierColor: AD.scrim,
+        transitionDuration: Msg.base,
+        pageBuilder: (dctx, __, ___) => Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: AD.bg,
+            child: SizedBox(
+              width: 320,
+              height: double.infinity,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(Msg.s3),
+                  child: Column(children: [
+                    Row(children: [
+                      Text('Chat', style: ADText.sectionLabel()),
+                      const Spacer(),
+                      IconButton(
+                        icon: Icon(PhosphorIcons.x(PhosphorIconsStyle.bold)),
+                        onPressed: () => Navigator.of(dctx).maybePop(),
+                      ),
+                    ]),
+                    Expanded(child: SingleChildScrollView(child: SessionChatPanel(controller: controller, listHeight: 420))),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    } else {
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: AD.bg,
+        builder: (dctx) => Padding(
+          padding: EdgeInsets.only(
+              bottom: MediaQuery.of(dctx).viewInsets.bottom + Msg.s3, left: Msg.s3, right: Msg.s3, top: Msg.s3),
+          child: SafeArea(top: false, child: SessionChatPanel(controller: controller)),
+        ),
+      );
+    }
+  }
 
   Future<void> _extend() async {
     if (_busy) return;
@@ -407,7 +469,32 @@ class _CommercialConsultationRoomScreenState extends State<CommercialConsultatio
           if (other.isEmpty) const Center(child: CircularProgressIndicator()) else _ParticipantTile(call: _call, participant: other.first, avatarSize: 96),
           Positioned(right: Msg.s3, bottom: Msg.s3, width: 120, height: 170, child: Container(color: Colors.black, child: _call.state.value.localParticipant == null ? const SizedBox() : _ParticipantTile(call: _call, participant: _call.state.value.localParticipant!, avatarSize: 40, onDark: true))),
         ])),
-        Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [IconButton(onPressed: _toggleMic, icon: Icon(_microphoneOn ? PhosphorIcons.microphone(PhosphorIconsStyle.bold) : PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold))), IconButton(onPressed: _toggleCamera, icon: Icon(_cameraOn ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold) : PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold))), FilledButton.icon(onPressed: _leave, icon: Icon(PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.bold)), label: const Text('Leave'))]),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+          IconButton(onPressed: _toggleMic, icon: Icon(_microphoneOn ? PhosphorIcons.microphone(PhosphorIconsStyle.bold) : PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold))),
+          IconButton(onPressed: _toggleCamera, icon: Icon(_cameraOn ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold) : PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold))),
+          // [APP-ONLY-TX-APP-2] Hidden on the legacy direct-join path
+          // (no waiting-room channel to read/send through).
+          if (widget.chatController != null)
+            ListenableBuilder(
+              listenable: widget.chatController!,
+              builder: (_, __) => Stack(clipBehavior: Clip.none, children: [
+                IconButton(onPressed: _openChat, icon: Icon(PhosphorIcons.chatCircleText(PhosphorIconsStyle.bold))),
+                if (widget.chatController!.unread > 0)
+                  Positioned(
+                    right: 2, top: 2,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      constraints: const BoxConstraints(minWidth: 16),
+                      decoration: BoxDecoration(color: AD.danger, borderRadius: Msg.brPill),
+                      child: Text('${widget.chatController!.unread}',
+                          textAlign: TextAlign.center,
+                          style: ADText.timestamp(c: Colors.white)),
+                    ),
+                  ),
+              ]),
+            ),
+          FilledButton.icon(onPressed: _leave, icon: Icon(PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.bold)), label: const Text('Leave')),
+        ]),
         const SizedBox(height: Msg.s3),
       ]),
     ));
