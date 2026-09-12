@@ -76,6 +76,10 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
   /// "it reloads every time" complaint is answerable from telemetry instead of
   /// by eye.
   bool _servedWarm = false;
+  /// [UI-MKT-NOSKEL-1] Mount time, so `mkt_first_content` can report how long
+  /// the grid stayed BLANK now that the skeleton no longer fills the wait.
+  late final DateTime _openedAt;
+  bool _firstContentLogged = false;
 
   /// Bumped on pull-to-refresh; forwarded to the shelf so it refetches too.
   int _refreshToken = 0;
@@ -83,6 +87,7 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
   @override
   void initState() {
     super.initState();
+    _openedAt = DateTime.now();
     _country = WidgetsBinding.instance.platformDispatcher.locale.countryCode ?? '';
     if (_country.isEmpty) _myCountryOnly = false;
     // [MKT-CACHE-1] Seed the grid SYNCHRONOUSLY from the in-memory cache before
@@ -107,6 +112,30 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
     Analytics.capture('marketplace_opened', {
       'country': _country,
       'warm_cache': _servedWarm,
+    });
+  }
+
+  /// [UI-MKT-NOSKEL-1] Fires ONCE per mount, the first time the grid resolves.
+  ///
+  /// This is the success value for removing the skeletons: `blank_ms` is how
+  /// long the user looked at an empty content area, and `result` says what the
+  /// wait bought them. A warm mount should report ~0ms with `cards`; a cold
+  /// mount that ends in `empty` is the case the skeleton used to dress up as
+  /// six listings, and its `blank_ms` is the number to argue with if anyone
+  /// wants the placeholder back.
+  void _logFirstContent(String result) {
+    if (_firstContentLogged) return;
+    _firstContentLogged = true;
+    final blankMs = DateTime.now().difference(_openedAt).inMilliseconds;
+    // Never capture during build — this runs inside a FutureBuilder builder.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Analytics.capture('mkt_first_content', {
+        'result': result,
+        'blank_ms': blankMs,
+        'warm_cache': _servedWarm,
+        'country': _country,
+        'searched': _search.text.trim().isNotEmpty,
+      });
     });
   }
 
@@ -261,27 +290,23 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
           FutureBuilder<List<ListingCard>>(
             future: _future,
             builder: (context, snap) {
+              // [UI-MKT-NOSKEL-1 2026-09-12] Render NOTHING while the first
+              // page is in flight (owner decision). This slot used to paint six
+              // grey card skeletons; on a marketplace that is frequently empty
+              // they read as real listings that then vanished, which is worse
+              // than a blank wait. A skeleton is only honest when content is
+              // near-certain to arrive — do not restore it here, and do not
+              // swap in a spinner, which was the pre-skeleton state and is the
+              // same lie in a smaller font.
               if (snap.connectionState != ConnectionState.done) {
-                return SliverPadding(
-                  padding: const EdgeInsets.all(Msg.s3),
-                  sliver: SliverGrid(
-                    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: 240,
-                        mainAxisSpacing: 12,
-                        crossAxisSpacing: 12,
-                        childAspectRatio: 0.66),
-                    delegate: SliverChildBuilderDelegate(
-                      (_, __) => const AdSkeleton(
-                        isLoading: true,
-                        skeleton: _MarketplaceCardSkeleton(),
-                        child: SizedBox.shrink(),
-                      ),
-                      childCount: 6,
-                    ),
-                  ),
-                );
+                return const SliverToBoxAdapter(child: SizedBox.shrink());
               }
               final items = snap.data ?? const <ListingCard>[];
+              _logFirstContent(snap.hasError
+                  ? 'error'
+                  : items.isEmpty
+                      ? 'empty'
+                      : 'cards');
               if (items.isEmpty) {
                 // [UI-MARKET-2026] Was a left-aligned icon with a centred
                 // caption and a hard 120px spacer — on a small screen the
@@ -742,24 +767,15 @@ class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
         FutureBuilder<_GroupedListings>(
           future: _all,
           builder: (context, snap) {
+            // [UI-MKT-NOSKEL-1 2026-09-12] Collapse to zero height while
+            // loading (owner decision) rather than painting three poster-sized
+            // skeleton cards. `metrics.height` here was the tallest thing on
+            // the screen, so the shelf's placeholder WAS the marketplace on
+            // first paint — see the grid branch above for why that is worse
+            // than blank. The shelf still reserves no space until it has real
+            // cards; the empty/error messages below are unchanged.
             if (snap.connectionState != ConnectionState.done) {
-              return SizedBox(
-                height: metrics.height,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: Msg.s4),
-                  itemCount: 3,
-                  separatorBuilder: (_, __) => const SizedBox(width: Msg.s3),
-                  itemBuilder: (_, __) => SizedBox(
-                    width: metrics.width,
-                    child: const AdSkeleton(
-                      isLoading: true,
-                      skeleton: _ShelfCardSkeleton(),
-                      child: SizedBox.shrink(),
-                    ),
-                  ),
-                ),
-              );
+              return const SizedBox.shrink();
             }
             if (snap.hasError) {
               return SizedBox(
@@ -955,71 +971,4 @@ class _CardState extends State<_Card> {
   }
 }
 
-/// Grey-block placeholder matching [MarketplaceCard]'s shape (cover image +
-/// two text lines) — shown by [AdSkeleton] while the browse grid's first page
-/// is in flight, replacing what used to be a bare spinner.
-class _MarketplaceCardSkeleton extends StatelessWidget {
-  const _MarketplaceCardSkeleton();
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: AD.card,
-        borderRadius: BorderRadius.circular(AD.rListCard),
-        border: Border.all(color: AD.borderCard, width: 2),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(child: Container(color: AD.mediaPlaceholderBg)),
-        Container(height: 1, color: AD.borderCard),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s2, Msg.s3, Msg.s2),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(width: 100, height: 12, color: AD.mediaPlaceholderBg),
-              const SizedBox(height: Msg.s2),
-              Container(width: 60, height: 12, color: AD.mediaPlaceholderBg),
-            ],
-          ),
-        ),
-      ]),
-    );
-  }
-}
-
-/// Grey-block placeholder matching the commercial shelf's poster cards
-/// ([LiveEventCard] / [ConsultationCard]) — shown by [AdSkeleton] while that
-/// shelf's data is in flight.
-class _ShelfCardSkeleton extends StatelessWidget {
-  const _ShelfCardSkeleton();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AD.card,
-        borderRadius: BorderRadius.circular(AD.rListCard),
-        border: Border.all(color: AD.borderControl),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(child: Container(color: AD.mediaPlaceholderBg)),
-        Padding(
-          padding: const EdgeInsets.all(Msg.s3),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(width: 120, height: 14, color: AD.mediaPlaceholderBg),
-              const SizedBox(height: Msg.s2),
-              Container(width: 80, height: 12, color: AD.mediaPlaceholderBg),
-            ],
-          ),
-        ),
-      ]),
-    );
-  }
-}

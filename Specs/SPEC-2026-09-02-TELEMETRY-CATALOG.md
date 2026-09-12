@@ -199,6 +199,18 @@ Web-side pair: because chrome removal is keyed to the app's UA marker, every
 read the UA marker — do NOT add a second `platform` value, which would split
 every existing web dashboard.
 
+### 3.2 Marketplace first paint (`UI-MKT-NOSKEL-1`, 2026-09-12)
+
+The browse grid no longer paints loading skeletons — six grey card placeholders
+and the shelf's three poster-sized ones were removed (owner, 2026-09-12) because
+on a marketplace that is often genuinely empty they read as real listings that
+then vanished. Removing them removes the only on-screen evidence that the app is
+still working, so the wait has to be measured instead of watched.
+
+| Event | Props | Why it exists |
+|---|---|---|
+| `mkt_first_content` | `result`, `blank_ms`, `warm_cache`, `country`, `searched` | **The success value for removing the skeletons.** Fires once per mount, the first time the grid resolves. `result` is `cards` \| `empty` \| `error` — `empty` is a pass, not a failure: it is the honest outcome the six grey cards used to disguise. `blank_ms` is how long the user looked at nothing, and is the number to argue with if anyone wants the placeholder back. `warm_cache` pairs it with `marketplace_opened` ([MKT-CACHE-1]): a warm mount must report ~0ms with `cards`, so a run of warm mounts with a high `blank_ms` means the in-memory peek has regressed. The event NOT appearing on a build is itself the signal — it means the grid never reached `ConnectionState.done`, which with no skeleton on screen is indistinguishable by eye from a fast empty result. |
+
 ## 4. Desktop apps (macOS / Windows / Linux)
 
 Same Flutter `Analytics` class, `platform` from `Platform.operatingSystem`,
