@@ -64,6 +64,13 @@ interface Props {
 // The site menu. Every entry points at something that exists — checked.
 const DEFAULT_LINKS: HeaderLink[] = [
   { href: '/marketplace', label: 'Marketplace' },
+  // [WEB-HELP-3 2026-09-11] Wiki menu item: links the site-wide help centre
+  // (/help) into the main nav, both the desktop bar and the mobile stacked
+  // panel share this one array. Placed right after Marketplace/Explore and
+  // ahead of the rest of the nav so it reads as core navigation, not a CTA —
+  // the auth/sign-in controls are a separate array (.avh-right / the mobile
+  // auth Fragment below) and are unaffected either way.
+  { href: '/help', label: 'Wiki' },
   { href: '/pricing-fees', label: 'Pricing' },
   { href: 'https://avatok.ai/ideas', label: 'Ideas' },
 ];
@@ -270,6 +277,12 @@ const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false } = Astro.p
   .avh-logo { display: flex; align-items: center; flex: 0 0 auto; }
   .avh-logo img { display: block; height: 54px; width: auto; }
 
+  /* [WEB-HELP-3 2026-09-11] Five items now (was four) at the desktop tier.
+     The switch to the mobile burger stays at max-width:1100px below — not
+     restyled for this change — so on narrower desktop/tablet widths in the
+     ~1024-1200px band the extra Wiki item may wrap or crowd the bar before
+     the burger takes over. Flagging, not fixing: a real fix is a layout
+     change, out of scope here. */
   .avh-nav { display: flex; align-items: center; gap: 24px; }
   .avh-nav a,
   .avh-mobile a {

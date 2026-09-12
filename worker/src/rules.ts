@@ -4,7 +4,7 @@
 // Phase-2 ledger primitives. Thresholds come from the `refund_rules` table.
 //
 //  R1 creator no-show 20min            → 100% refund all, cancel event, strike
-//  R2 buyer no-show, creator waited    → creator pro-rata (price×wait/duration), rest refunded (1:1)
+//  R2 buyer no-show, creator waited    → creator paid IN FULL, no refund (1:1; owner v2 2026-09-11: no pro-rata)
 //  R3 completed (≥50% or host-marked)  → release 80/20
 //  R4 buyer cancels ≥24h               → 100% refund
 //  R5 buyer cancels <24h               → 50% refund, 50% to creator (fee applies)
@@ -91,7 +91,6 @@ function hostEvidence(ctx: SessionCtx, windowEnd: number): boolean {
   return joinedWithin(ivs, ctx.startsAt - 15 * 60_000, windowEnd);
 }
 
-const durationMin = (ctx: SessionCtx) => Math.max(1, Math.round((ctx.endsAt - ctx.startsAt) / 60_000));
 
 // ---------------------------------------------------------------------------
 
@@ -135,13 +134,15 @@ function evalNoShow(ctx: SessionCtx, held: OrderRow[]): Action[] {
       const hostWaited = overlapMs(hostIvs, ctx.startsAt, ctx.startsAt + wait2) >= wait2 * ((r2.presence_pct ?? 75) / 100);
       const buyerJoined = joinedWithin(buyerIvs, ctx.startsAt - 15 * 60_000, ctx.startsAt + wait2);
       if (hostWaited && !buyerJoined) {
-        const prorata = Math.min(o.amount, Math.round(o.amount * (r2.wait_min ?? 20) / durationMin(ctx)));
-        const remainder = o.amount - prorata;
-        const out: Action[] = [];
-        if (prorata > 0) out.push({ kind: "release", orderId: o.id, gross: prorata, rule: "R2", email: "settlement_paid" });
-        if (remainder > 0) out.push({ kind: "refund", orderId: o.id, buyerId: o.buyer_id, amount: remainder, rule: "R2", reason: "you never showed up — creator paid for the 20-minute wait, remainder refunded", email: "no_show_buyer" });
-        out.push({ kind: "set_status", orderId: o.id, status: remainder > 0 ? "refunded_partial" : "settled" });
-        return out;
+        // [SETTLE-CHECKIN-1] Owner v2 2026-09-11 (RULEBOOK-PAID-SESSIONS.md §2 C1):
+        // the slot was reserved and prepaid — a creator who checked in and waited is
+        // paid in FULL whether or not the buyer ever joins. The earlier pro-rata split
+        // (price × wait/duration, remainder refunded) was the withdrawn "ring/answer"
+        // idea and must not come back.
+        return [
+          { kind: "release", orderId: o.id, gross: o.amount, rule: "R2", email: "settlement_paid" },
+          { kind: "set_status", orderId: o.id, status: "settled" },
+        ];
       }
     }
   }

@@ -21,6 +21,7 @@ import { DeviceChecks } from '../../components/DeviceChecks';
 import { ClerkIsland, getActiveToken, requireGuestAuth } from '../../lib/clerk';
 import { IslandBoundary } from '../../components/IslandBoundary';
 import { capture, captureException } from '../../lib/analytics';
+import { ApiError } from '../../lib/apiClient';
 import {
   commercialLiveHostState,
   endCommercialLive,
@@ -32,6 +33,12 @@ import {
 } from '../../lib/commercialHost';
 import { streamClientFor } from '../../lib/getstream';
 
+// [LIVE-GRACE-WEB-1] The server contract (Specs/PLAN-2026-09-11-WAITING-ROOM-BUILD.md
+// "Contracts shared by all WPs") adds a `reconnecting` state and
+// `reconnect_deadline_ms` to `GET .../live/:id/state`, landing with WP8. Widen
+// the shape locally rather than editing the shared lib (owned by another WP) —
+// the extra fields are always optional/absent until WP8 ships.
+
 export interface LiveGsHostProps {
   listingId: string;
   title?: string;
@@ -40,8 +47,26 @@ export interface LiveGsHostProps {
   endsAt?: number | null;
 }
 
-type Phase = 'preview' | 'preparing' | 'backstage' | 'starting' | 'live' | 'ending' | 'ended' | 'refused';
+type Phase =
+  | 'authorizing'
+  | 'not_found'
+  | 'not_creator'
+  | 'rejoin'
+  | 'preview'
+  | 'preparing'
+  | 'backstage'
+  | 'starting'
+  | 'live'
+  | 'ending'
+  | 'ended'
+  | 'refused';
 type JoinPrefs = { micOn: boolean; camOn: boolean; micId: string; camId: string };
+
+/** Widened `CommercialHostState` — see the import-site comment above. */
+export type HostServerState = Omit<CommercialHostState, 'state'> & {
+  state: CommercialHostState['state'] | 'reconnecting';
+  reconnect_deadline_ms?: number;
+};
 
 function stopTracks(stream: MediaStream | null): void {
   stream?.getTracks().forEach((track) => track.stop());
@@ -157,7 +182,7 @@ function HostPreview({
     }
   };
 
-  const selectClass = 'min-w-0 flex-1 rounded-zine-field border-zine border-ink bg-card px-3 py-2 font-body font-bold text-[14px] focus:outline-none focus:shadow-zine-focus';
+  const selectClass = 'min-w-0 flex-1 rounded-zineField border-zine border-ink bg-card px-3 py-2 font-body font-bold text-[14px] focus:outline-none focus:shadow-zine-focus';
   const deviceLabel = (device: MediaDeviceInfo, fallback: string, index: number) => device.label || `${fallback} ${index + 1}`;
 
   return (
@@ -193,7 +218,7 @@ function HostPreview({
               {mics.length === 0 && <option value="">Default microphone</option>}
               {mics.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{deviceLabel(device, 'Microphone', index)}</option>)}
             </select>
-            <button type="button" onClick={() => toggle('mic')} aria-pressed={micOn} className={`rounded-zine-field border-zine border-ink px-3 py-2 font-display font-semibold text-[14px] ${micOn ? 'bg-lime text-ink' : 'bg-coral text-white'}`}>{micOn ? 'On' : 'Off'}</button>
+            <button type="button" onClick={() => toggle('mic')} aria-pressed={micOn} className={`rounded-zineField border-zine border-ink px-3 py-2 font-display font-semibold text-[14px] ${micOn ? 'bg-lime text-ink' : 'bg-coral text-white'}`}>{micOn ? 'On' : 'Off'}</button>
           </div>
           <label className="font-mono text-[11px] font-bold uppercase tracking-[0.08em] text-inkMute" htmlFor="host-cam">Camera</label>
           <div className="flex gap-2">
@@ -201,7 +226,7 @@ function HostPreview({
               {cams.length === 0 && <option value="">Default camera</option>}
               {cams.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{deviceLabel(device, 'Camera', index)}</option>)}
             </select>
-            <button type="button" onClick={() => toggle('cam')} aria-pressed={camOn} className={`rounded-zine-field border-zine border-ink px-3 py-2 font-display font-semibold text-[14px] ${camOn ? 'bg-lime text-ink' : 'bg-coral text-white'}`}>{camOn ? 'On' : 'Off'}</button>
+            <button type="button" onClick={() => toggle('cam')} aria-pressed={camOn} className={`rounded-zineField border-zine border-ink px-3 py-2 font-display font-semibold text-[14px] ${camOn ? 'bg-lime text-ink' : 'bg-coral text-white'}`}>{camOn ? 'On' : 'Off'}</button>
           </div>
           {error && <div className="rounded-zine border-zine border-coral bg-paper2 p-3 font-body text-[13px] font-bold text-ink shadow-zine-error">{error}</div>}
           <Button variant="lime" fullWidth loading={busy} disabled={permission !== 'granted' || busy} label={busy ? 'Opening backstage…' : 'Enter private backstage'} onClick={() => {
@@ -250,14 +275,14 @@ function HostStage({
     <div className="mx-auto flex min-h-[calc(100dvh-5rem)] max-w-6xl flex-col gap-3 px-3 py-5">
       <div className="flex flex-wrap items-center gap-2.5">
         <div className="mr-auto"><span className="font-mono text-[12px] font-bold uppercase tracking-[0.08em] text-blueInk">Creator broadcast</span><h1 className="font-display text-[23px] font-semibold text-ink">{title}</h1></div>
-        <span className={`rounded-zine-badge border-zine px-3 py-1.5 font-mono text-[12px] font-bold uppercase ${phase === 'live' ? 'border-coral bg-coral text-white' : 'border-ink bg-card text-ink'}`}>{phase === 'live' ? 'Live' : phase === 'starting' ? 'Starting' : phase === 'ending' ? 'Ending' : 'Private backstage'}</span>
-        <span className="rounded-zine-badge border-zine border-ink bg-card px-3 py-1.5 font-mono text-[12px] font-bold text-inkSoft">{participantCount} connected</span>
+        <span className={`rounded-zineBadge border-zine px-3 py-1.5 font-mono text-[12px] font-bold uppercase ${phase === 'live' ? 'border-coral bg-coral text-white' : 'border-ink bg-card text-ink'}`}>{phase === 'live' ? 'Live' : phase === 'starting' ? 'Starting' : phase === 'ending' ? 'Ending' : 'Private backstage'}</span>
+        <span className="rounded-zineBadge border-zine border-ink bg-card px-3 py-1.5 font-mono text-[12px] font-bold text-inkSoft">{participantCount} connected</span>
       </div>
 
       <div className="relative min-h-0 flex-1 overflow-hidden rounded-zine border-zine border-ink bg-ink shadow-zine">
         <div className="relative aspect-video w-full bg-ink">
           {local ? <ParticipantView participant={local} trackType="videoTrack" className="h-full w-full [&_video]:h-full [&_video]:w-full [&_video]:object-contain" /> : <div className="flex h-full items-center justify-center text-center font-body font-bold text-white">Camera is initializing…</div>}
-          {phase === 'backstage' && <div className="absolute left-3 top-3 rounded-zine-badge border-zine border-ink bg-lime px-3 py-1.5 font-mono text-[12px] font-bold uppercase text-ink shadow-zine-xs">Private · viewers waiting</div>}
+          {phase === 'backstage' && <div className="absolute left-3 top-3 rounded-zineBadge border-zine border-ink bg-lime px-3 py-1.5 font-mono text-[12px] font-bold uppercase text-ink shadow-zine-xs">Private · viewers waiting</div>}
           {reconnecting && <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-ink/65 text-center text-white"><Spinner size={28} color="#fff" /><p className="font-display text-[18px] font-semibold">Reconnecting…</p></div>}
           {connectionLost && <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-ink/80 px-6 text-center text-white"><p className="font-display text-[19px] font-semibold">Connection lost</p><p className="font-body text-[14px] font-bold text-white/80">The broadcast is still governed by the server. Rejoin when your connection is ready.</p><button type="button" onClick={onRetry} className="rounded-full border-zine border-ink bg-lime px-5 py-2.5 font-display text-[15px] font-semibold text-ink">Reconnect</button></div>}
         </div>
@@ -276,6 +301,40 @@ function HostStage({
   );
 }
 
+function Authorizing() {
+  return <div className="flex min-h-[calc(100dvh-5rem)] items-center justify-center px-4 py-10"><div className="flex flex-col items-center gap-3 text-center"><Spinner size={28} /><p className="font-body font-bold text-[14px] text-inkSoft">Checking host access…</p></div></div>;
+}
+
+function NotFound({ listingId: _listingId }: { listingId: string }) {
+  return <div className="flex min-h-[calc(100dvh-5rem)] items-center justify-center px-4 py-10"><div className="flex w-full max-w-md flex-col items-center gap-5 text-center"><span className="font-mono text-[13px] font-bold uppercase tracking-[0.1em] text-coral">Host access unavailable</span><h1 className="font-display text-[27px] font-semibold text-ink">Event not found.</h1><p className="font-body text-[15px] font-bold leading-relaxed text-inkSoft">We could not find a live event for this listing. It may have been removed or the link is wrong.</p><a href="/dashboard" className="no-underline"><Button variant="lime" label="Dashboard" /></a></div></div>;
+}
+
+function NotCreator({ listingId }: { listingId: string }) {
+  return <div className="flex min-h-[calc(100dvh-5rem)] items-center justify-center px-4 py-10"><div className="flex w-full max-w-md flex-col items-center gap-5 text-center"><span className="font-mono text-[13px] font-bold uppercase tracking-[0.1em] text-coral">Host access unavailable</span><h1 className="font-display text-[27px] font-semibold text-ink">Not your event.</h1><p className="font-body text-[15px] font-bold leading-relaxed text-inkSoft">This backstage room belongs to a different creator account. Sign in as the creator who scheduled it.</p><div className="flex gap-3"><a href={`/live/${encodeURIComponent(listingId)}`} className="no-underline"><Button variant="ghost" label="View event" /></a><a href="/dashboard" className="no-underline"><Button variant="lime" label="Dashboard" /></a></div></div></div>;
+}
+
+function RejoinLive({ title, deadlineMs, onRejoin }: { title: string; deadlineMs?: number; onRejoin: () => void }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+  const remainingS = typeof deadlineMs === 'number' ? Math.max(0, Math.round((deadlineMs - now) / 1000)) : null;
+  const mmss = remainingS != null ? `${String(Math.floor(remainingS / 60)).padStart(2, '0')}:${String(remainingS % 60).padStart(2, '0')}` : null;
+  return (
+    <div className="flex min-h-[calc(100dvh-5rem)] items-center justify-center px-4 py-10">
+      <div className="flex w-full max-w-md flex-col items-center gap-5 text-center">
+        <span className="rounded-zineBadge border-zine border-coral bg-coral px-3 py-1.5 font-mono text-[12px] font-bold uppercase text-white">Reconnecting</span>
+        <h1 className="font-display text-[27px] font-semibold text-ink">{title} is waiting for you.</h1>
+        <p className="font-body text-[15px] font-bold leading-relaxed text-inkSoft">
+          Your stream dropped. Ticket holders are still in their seats{mmss ? ` — you have ${mmss} to rejoin before the event ends for everyone` : ''}.
+        </p>
+        <Button variant="lime" label="Rejoin your live" onClick={onRejoin} />
+      </div>
+    </div>
+  );
+}
+
 function Ended({ title, listingId }: { title: string; listingId: string }) {
   return <div className="flex min-h-[calc(100dvh-5rem)] items-center justify-center px-4 py-10"><div className="flex w-full max-w-md flex-col items-center gap-5 text-center"><span className="font-mono text-[13px] font-bold uppercase tracking-[0.1em] text-blueInk">Broadcast complete</span><h1 className="font-display text-[28px] font-semibold text-ink">{title} has ended.</h1><p className="font-body text-[15px] font-bold leading-relaxed text-inkSoft">The server confirmed the event is over. Your ticket holders can find their receipt from their account.</p><div className="flex gap-3"><a href={`/live/${encodeURIComponent(listingId)}`} className="no-underline"><Button variant="ghost" label="View event" /></a><a href="/dashboard" className="no-underline"><Button variant="lime" label="Dashboard" /></a></div></div></div>;
 }
@@ -285,9 +344,9 @@ function Refused({ listingId, detail, retry }: { listingId: string; detail: stri
 }
 
 function LiveGsHostInner({ listingId, title = 'Live event' }: LiveGsHostProps) {
-  const [phase, setPhase] = useState<Phase>('preview');
+  const [phase, setPhase] = useState<Phase>('authorizing');
   const [error, setError] = useState<string | null>(null);
-  const [serverState, setServerState] = useState<CommercialHostState | null>(null);
+  const [serverState, setServerState] = useState<HostServerState | null>(null);
   const [creds, setCreds] = useState<CommercialHostCredentials | null>(null);
   const [call, setCall] = useState<Call | null>(null);
   const [streamClient, setStreamClient] = useState<unknown>(null);
@@ -364,7 +423,7 @@ function LiveGsHostInner({ listingId, title = 'Live event' }: LiveGsHostProps) {
     const token = await refreshJwt(false);
     if (!token) return;
     try {
-      const next = await commercialLiveHostState(listingId, token);
+      const next = (await commercialLiveHostState(listingId, token)) as HostServerState;
       setServerState(next);
       if (next.state === 'ended' || next.state === 'cancelled') finish();
       else if (next.state === 'live' && phase !== 'ending') setPhase('live');
@@ -386,6 +445,94 @@ function LiveGsHostInner({ listingId, title = 'Live event' }: LiveGsHostProps) {
       pollRef.current = null;
     };
   }, [call, jwt, syncState]);
+
+  // [LIVE-GRACE-WEB-1] Authorise BEFORE ever requesting the camera/mic.
+  // Confirms the listing exists and the signed-in user is its creator via the
+  // existing `/state` endpoint (a read — no media credentials minted yet).
+  // `reconnecting` (server contract, WP8) routes to a distinct "Rejoin your
+  // live" screen instead of the normal preview, since the host already has a
+  // live event in flight and only needs to re-enter it.
+  const authorize = useCallback(async () => {
+    if (!mountedRef.current) return;
+    setError(null);
+    setPhase('authorizing');
+    try {
+      const token = await refreshJwt(true);
+      if (!token) {
+        setPhase('refused');
+        setError('Sign-in is required to host this event.');
+        return;
+      }
+      const next = (await commercialLiveHostState(listingId, token)) as HostServerState;
+      if (!mountedRef.current) return;
+      setServerState(next);
+      if (next.state === 'ended' || next.state === 'cancelled') {
+        setPhase('ended');
+        return;
+      }
+      if (next.state === 'reconnecting') {
+        setPhase('rejoin');
+        try { capture('live_reconnecting_shown', { listing_id: listingId, surface: 'host' }); } catch { /* best-effort */ }
+        return;
+      }
+      setPhase('preview');
+    } catch (e) {
+      if (!mountedRef.current) return;
+      if (e instanceof ApiError && e.status === 404) {
+        // [WAITROOM-WEB-2 fix 4] `GET .../live/:id/state` 404s with
+        // "session unavailable" whenever no `commercial_sessions` row exists
+        // yet for this listing — the ordinary, happy-path shape of "this
+        // live event hasn't been prepared/started", NOT "this listing
+        // doesn't exist". Only show `not_found` when the error body itself
+        // names the LISTING (the wording other commercial routes use for a
+        // genuine listing-level miss, e.g. "listing unavailable"); the
+        // generic "session unavailable" text means "not started yet" and
+        // should let the host straight into the preview so they can start
+        // one, matching what a happy first authorize() would do.
+        const listingLevel404 = /listing/i.test(e.error || '');
+        if (listingLevel404) {
+          setPhase('not_found');
+          try { capture('live_host_authz_refused', { listing_id: listingId, reason: 'not_found', status: e.status }); } catch { /* best-effort */ }
+          return;
+        }
+        // [WAITROOM-WEB-4 NIT] Routing every non-listing-level 404 straight
+        // to `preview` (above) sent a non-creator with a valid link into the
+        // host preview for a listing that hasn't started, with nothing at
+        // this "session not created yet" stage to check ownership against.
+        // If the worker's response for this state ever carries a `role`
+        // (it may not yet — guarded, absent is not an error), a non-host
+        // value routes to `not_creator` instead of `preview`.
+        const bodyRole =
+          e.body && typeof e.body === 'object' && 'role' in (e.body as Record<string, unknown>)
+            ? (e.body as { role?: unknown }).role
+            : undefined;
+        if (typeof bodyRole === 'string' && bodyRole !== 'host' && bodyRole !== 'creator') {
+          setPhase('not_creator');
+          try { capture('live_host_authz_refused', { listing_id: listingId, reason: 'not_creator', status: e.status }); } catch { /* best-effort */ }
+          return;
+        }
+        setPhase('preview');
+        try { capture('live_host_authz_ok', { listing_id: listingId, reason: 'not_started_yet' }); } catch { /* best-effort */ }
+        return;
+      }
+      if (e instanceof ApiError && e.status === 403) {
+        setPhase('not_creator');
+        try { capture('live_host_authz_refused', { listing_id: listingId, reason: 'not_creator', status: e.status }); } catch { /* best-effort */ }
+        return;
+      }
+      setPhase('refused');
+      setError(safeError(e, 'Could not verify host access. Please try again.'));
+      try { capture('live_host_authz_refused', { listing_id: listingId, reason: 'error', status: e instanceof ApiError ? e.status : 0 }); } catch { /* best-effort */ }
+      try { captureException(e, { code: 'commercial_host_authz_failed', listing_id: listingId }); } catch { /* best-effort */ }
+    }
+  }, [listingId, refreshJwt]);
+
+  useEffect(() => {
+    void authorize();
+    // Runs once on mount only — re-authorization after a rejoin/refusal is
+    // triggered explicitly (RejoinLive/Refused retry), never automatically.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const prepare = useCallback(async (stream: MediaStream, prefs: JoinPrefs) => {
     const generation = ++operationGenerationRef.current;
@@ -491,8 +638,23 @@ function LiveGsHostInner({ listingId, title = 'Live event' }: LiveGsHostProps) {
     try { await current.join(); } catch { setError('Still could not reconnect. Check your connection and try again.'); }
   }, []);
 
+  if (phase === 'authorizing') return <Authorizing />;
+  if (phase === 'not_found') return <NotFound listingId={listingId} />;
+  if (phase === 'not_creator') return <NotCreator listingId={listingId} />;
+  if (phase === 'rejoin') {
+    return (
+      <RejoinLive
+        title={title}
+        deadlineMs={serverState?.reconnect_deadline_ms}
+        onRejoin={() => {
+          try { capture('live_host_rejoin', { listing_id: listingId }); } catch { /* best-effort */ }
+          setPhase('preview');
+        }}
+      />
+    );
+  }
   if (phase === 'ended') return <Ended title={title} listingId={listingId} />;
-  if (phase === 'refused') return <Refused listingId={listingId} detail={error ?? 'Host access is unavailable.'} retry={() => { setError(null); setPhase('preview'); }} />;
+  if (phase === 'refused') return <Refused listingId={listingId} detail={error ?? 'Host access is unavailable.'} retry={() => void authorize()} />;
   if (call && creds && jwt && streamClient && ['backstage', 'starting', 'live', 'ending'].includes(phase)) {
     const stagePhase = phase as 'backstage' | 'starting' | 'live' | 'ending';
     return <StreamVideo client={streamClient as any}><StreamCall call={call}><HostStage title={title} phase={stagePhase} serverState={serverState?.state ?? 'backstage'} error={error} onStart={() => void start()} onEnd={() => void end()} onRetry={() => void retry()} /></StreamCall></StreamVideo>;

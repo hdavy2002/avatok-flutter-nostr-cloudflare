@@ -77,13 +77,11 @@ describe("R1 — creator no-show", () => {
 
 describe("R2 — buyer no-show on a 1:1 consult", () => {
   const waited = [att("creator", "host", T0 - 2 * MIN, null)]; // host present throughout
-  it("creator gets 20-min pro-rata (fee applies), remainder refunded with the no-show email", () => {
+  it("creator is paid IN FULL (no pro-rata) — the slot was reserved and prepaid (owner v2 2026-09-11)", () => {
     const a = evaluate(consult({ attendance: waited }), "noshow");
-    // 1000 coins × 20/60 = 333 to the creator (release → 80/20 downstream), 667 back.
-    expect(releases(a)).toEqual([{ kind: "release", orderId: "ord1", gross: 333, rule: "R2", email: "settlement_paid" }]);
-    expect(refunds(a)).toHaveLength(1);
-    expect(refunds(a)[0]).toMatchObject({ orderId: "ord1", buyerId: "buyer", amount: 667, rule: "R2", email: "no_show_buyer" });
-    expect(statuses(a)[0].status).toBe("refunded_partial");
+    expect(releases(a)).toEqual([{ kind: "release", orderId: "ord1", gross: 1000, rule: "R2", email: "settlement_paid" }]);
+    expect(refunds(a).filter((r) => r.rule === "R2")).toHaveLength(0);
+    expect(statuses(a)[0].status).toBe("settled");
   });
   it("does NOT fire when the buyer joined (even briefly)", () => {
     const a = evaluate(consult({ attendance: [...waited, att("buyer", "attendee", T0 + 3 * MIN, T0 + 4 * MIN)] }), "noshow");

@@ -14,6 +14,7 @@ enum LiveServerState {
   starting,
   backstage,
   live,
+  reconnecting,
   ending,
   ended,
   reconciliationPending,
@@ -25,6 +26,10 @@ LiveServerState liveServerStateFromJson(Object? value) => switch (value) {
       'starting' => LiveServerState.starting,
       'backstage' => LiveServerState.backstage,
       'live' => LiveServerState.live,
+      // [LIVE-GRACE-APP-1] Host dropped mid-broadcast; server pairs this with
+      // `reconnect_deadline_ms` on the same state response (WP8, wave 2). Not
+      // present until WP8 ships — guarded as null everywhere it is read.
+      'reconnecting' => LiveServerState.reconnecting,
       'ending' => LiveServerState.ending,
       'ended' => LiveServerState.ended,
       'reconciliation_pending' => LiveServerState.reconciliationPending,
@@ -39,6 +44,9 @@ class CommercialLiveState {
     this.liveStartedAt,
     this.endedAt,
     this.endsAt,
+    this.startsAt,
+    this.reconnectDeadlineMs,
+    this.outcome,
   });
 
   final String sessionId;
@@ -47,6 +55,14 @@ class CommercialLiveState {
   final int? liveStartedAt;
   final int? endedAt;
   final int? endsAt;
+  // [LIVE-GRACE-APP-1] Scheduled start (used to cap the backstage countdown at
+  // `commercialLiveBackstageEarlyMin`). `reconnectDeadlineMs`/`outcome` back the
+  // host reconnect banner and the viewer no-return refund line; both come from
+  // WP8 (wave 2, not yet shipped) and are null until then — every read site
+  // guards for that.
+  final int? startsAt;
+  final int? reconnectDeadlineMs;
+  final String? outcome;
 
   factory CommercialLiveState.fromJson(Map<String, dynamic> json) {
     final sessionId = json['session_id']?.toString() ?? '';
@@ -58,6 +74,13 @@ class CommercialLiveState {
       liveStartedAt: (json['live_started_at'] as num?)?.toInt(),
       endedAt: (json['ended_at'] as num?)?.toInt(),
       endsAt: (json['ends_at'] as num?)?.toInt(),
+      // [WAITROOM-APP-2] Fix 13: some deployments still key the scheduled
+      // time as `scheduled_at` rather than `starts_at` — fall back so the
+      // backstage countdown and waiting-room `opens_at` gate never go null
+      // on those.
+      startsAt: (json['starts_at'] as num?)?.toInt() ?? (json['scheduled_at'] as num?)?.toInt(),
+      reconnectDeadlineMs: (json['reconnect_deadline_ms'] as num?)?.toInt(),
+      outcome: json['outcome']?.toString(),
     );
   }
 }
@@ -173,6 +196,7 @@ class AuthenticatedCommercialConsultGateway
       throw CommercialLiveGatewayError(
         response.statusCode,
         json['error']?.toString() ?? 'Consultation join failed',
+        body: json,
       );
     }
     final role = switch (json['role']) {
@@ -194,7 +218,7 @@ class AuthenticatedCommercialConsultGateway
     final decoded = jsonDecode(response.body);
     final json = decoded is Map ? decoded.cast<String, dynamic>() : <String, dynamic>{};
     if (response.statusCode >= 300) {
-      throw CommercialLiveGatewayError(response.statusCode, json['error']?.toString() ?? 'Consultation request failed');
+      throw CommercialLiveGatewayError(response.statusCode, json['error']?.toString() ?? 'Consultation request failed', body: json);
     }
     return json;
   }
@@ -204,7 +228,7 @@ class AuthenticatedCommercialConsultGateway
     final response = await ApiAuth.getSigned('$kApiBase/commercial/consult/${Uri.encodeComponent(bookingId)}/state');
     final decoded = jsonDecode(response.body);
     final json = decoded is Map ? decoded.cast<String, dynamic>() : <String, dynamic>{};
-    if (response.statusCode >= 300) throw CommercialLiveGatewayError(response.statusCode, json['error']?.toString() ?? 'Consultation state unavailable');
+    if (response.statusCode >= 300) throw CommercialLiveGatewayError(response.statusCode, json['error']?.toString() ?? 'Consultation state unavailable', body: json);
     return CommercialLiveState.fromJson(json);
   }
 
@@ -237,9 +261,13 @@ class AuthenticatedCommercialConsultGateway
 }
 
 class CommercialLiveGatewayError implements Exception {
-  const CommercialLiveGatewayError(this.status, this.message);
+  const CommercialLiveGatewayError(this.status, this.message, {this.body});
   final int status;
   final String message;
+  // [WAITROOM-APP-3] A13: the decoded error response body, when the caller
+  // has it — a 425 "too early" response can carry the server's authoritative
+  // `opens_at` so a retry waits for the right time instead of guessing.
+  final Map<String, dynamic>? body;
   @override
   String toString() => message;
 }
@@ -285,6 +313,7 @@ class AuthenticatedCommercialLiveGateway
       throw CommercialLiveGatewayError(
         response.statusCode,
         json['error']?.toString() ?? 'Commercial live request failed',
+        body: json,
       );
     }
     return json;
@@ -297,6 +326,7 @@ class AuthenticatedCommercialLiveGateway
       throw CommercialLiveGatewayError(
         response.statusCode,
         json['error']?.toString() ?? 'Commercial live request failed',
+        body: json,
       );
     }
     return json;

@@ -1,7 +1,7 @@
 // Phase 7 — refund/settlement EXECUTOR. Builds a SessionCtx from D1, runs the
 // pure rules engine (rules.ts), applies the actions through the Phase-2 ledger
-// primitives (idempotent op_ids), sends Brevo emails + FCM pushes, and writes
-// the settlement_log audit.
+// primitives (idempotent op_ids), sends emails (Cloudflare Email Service,
+// Brevo fallback) + FCM pushes, and writes the settlement_log audit.
 //
 // Invoked from the Q_MONEY queue consumer (this worker consumes its own
 // money-settlements queue: max_retries=5 → money-dlq). Producers: the session
@@ -196,8 +196,25 @@ async function applyAction(env: Env, ctx: SessionCtx, a: Action): Promise<void> 
 // Entry points
 // ---------------------------------------------------------------------------
 
+/**
+ * [SETTLE-CHECKIN-1] Delegation guard (RULEBOOK-PAID-SESSIONS.md §5: "Never run two
+ * settlement engines on one order"). A consult booking migrated to the commercial lane
+ * (`bookings.kind='consult_1to1'`) is owned end-to-end by `commercial_settlement.ts` —
+ * this legacy Phase-7 engine must never move money for it, even if a stale DO alarm or
+ * cron sweep still enqueues a Q_MONEY job for its booking id.
+ */
+async function isCommercialBooking(env: Env, msg: MoneyMsg): Promise<boolean> {
+  if (msg.kind !== "consult") return false;
+  const row = await metaDb(env).prepare("SELECT kind FROM bookings WHERE id=?1").bind(msg.sid).first<{ kind: string | null }>();
+  return row?.kind === "consult_1to1";
+}
+
 /** Run one money job. Throws on real failure → queue retry → DLQ after 5. */
 export async function runMoney(env: Env, msg: MoneyMsg): Promise<{ applied: number; actions: Action[] }> {
+  if (await isCommercialBooking(env, msg)) {
+    console.log(`[money_engine] delegation guard: booking ${msg.sid} is commercial (bookings.kind='consult_1to1') — commercial_settlement.ts owns this order, no money moved here`);
+    return { applied: 0, actions: [{ kind: "noop", rule: "delegate", detail: "commercial_settlement_owns_order" }] };
+  }
   const ctx = await loadCtx(env, msg.sid, msg.kind);
   if (!ctx) return { applied: 0, actions: [] };
   const phase: Phase = msg.type === "cancel" ? "cancel" : (msg.phase ?? "end");

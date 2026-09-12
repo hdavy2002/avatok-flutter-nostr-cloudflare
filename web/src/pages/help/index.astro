@@ -1,27 +1,43 @@
 ---
-// [WEB-HELP-1 2026-09-11] The help centre landing page: hero search, the
-// five section cards (plan §5/§7), an FAQ accordion assembled from every
-// article's `faq:` frontmatter, and a short policy link row. This is the
-// ONLY page in the help centre that emits FAQPage JSON-LD — articles
-// themselves never do (see Help.astro's comment and [WEB-SEO-6], which set
-// the same "one FAQPage per entity page, not one per article" rule for
-// EntityFaq.astro on /about).
+// [WEB-HELP-2 2026-09-11] Redesigned help-centre LANDING page — full-bleed,
+// built directly on Base.astro (SiteHeader + SiteFooter, the same
+// composition marketplace.astro uses) instead of the boxed layouts/Content.astro
+// frame [WEB-HELP-1] used. The owner rejected that boxed editorial look for
+// this page specifically; Content.astro itself is untouched and keeps
+// serving the 23 legal/about pages that still want it. Article pages
+// (layouts/Help.astro, pages/help/[...slug].astro) are a separate,
+// simultaneous rewrite — not touched here.
+//
+// Visual design lifted from the approved mockup: design/help-centre/Main.dc.html
+// (desktop 1440) and Phone.dc.html (390) — see HelpHero.astro, HelpTiles.astro
+// and HelpFaqStrip.astro for the section-by-section notes on what was copied
+// 1:1 vs. adapted. This file owns: the page shell, the `.help-page` colour/
+// type token block those three components (and HelpSearch) read from, the
+// FAQ data assembly + its ONE FAQPage JSON-LD block (unchanged from
+// [WEB-HELP-1] — still the only page in the help centre that emits it; see
+// Help.astro's comment and [WEB-SEO-6]'s matching rule for /about), and the
+// policies link row.
 export const prerender = true;
 
-import Content from '../../layouts/Content.astro';
-import HelpSearch from '../../components/HelpSearch.astro';
+import Base from '../../layouts/Base.astro';
+import HelpHero from '../../components/help/HelpHero.astro';
+import HelpTiles from '../../components/help/HelpTiles.astro';
+import HelpFaqStrip from '../../components/help/HelpFaqStrip.astro';
 import { getHelpTree, helpUrl } from '../../lib/help';
 import { ORG } from '../../lib/org';
 
 const tree = await getHelpTree();
 
-type FaqItem = { q: string; a: string; source: string };
+type FaqItem = { q: string; a: string; source: string; section: string };
 const faqItems: FaqItem[] = tree.flatMap((section) =>
   section.entries.flatMap((entry) =>
-    entry.data.faq.map((f) => ({ ...f, source: helpUrl(entry) })),
+    entry.data.faq.map((f) => ({ ...f, source: helpUrl(entry), section: section.label })),
   ),
 );
 
+// [WEB-HELP-1, kept verbatim] The ONLY FAQPage JSON-LD block on this page —
+// check-help.mjs asserts `"@type":"FAQPage"` appears exactly once in the
+// built landing page and exactly zero times on every article page.
 const faqLd =
   faqItems.length > 0
     ? {
@@ -47,146 +63,107 @@ const POLICY_LINKS = [
 ];
 ---
 
-<Content
-  width="wide"
-  kicker="Help centre"
-  title="How avaTOK works"
+<Base
+  title="Help centre"
   description="Guides for booking, paying, creating and getting paid on avaTOK — search or browse by topic."
-  lead="Plain-English answers to how booking, paying, creating and getting paid actually work on avaTOK."
-  tone="cream"
+  image="/og-editorial.png"
 >
   {faqLd && <script type="application/ld+json" set:html={JSON.stringify(faqLd).replace(/</g, '\\u003c')} />}
 
-  <div class="help-hero">
-    <HelpSearch variant="hero" id="hero" />
-  </div>
+  <main class="help-page">
+    <HelpHero />
+    <HelpTiles tree={tree} />
+    <HelpFaqStrip items={faqItems} />
 
-  <div class="help-sections">
-    {tree.map((section) => {
-      const preview = section.entries.slice(0, 3);
-      const remaining = section.entries.length - preview.length;
-      return (
-        <section class="help-card" id={section.id} aria-labelledby={`help-card-${section.id}-title`}>
-          <h2 id={`help-card-${section.id}-title`}>{section.label}</h2>
-          <p class="help-card-blurb">{section.blurb}</p>
-          <ul class="help-card-list">
-            {preview.map((entry) => (
-              <li><a href={helpUrl(entry)}>{entry.data.title}</a></li>
-            ))}
-          </ul>
-          {remaining > 0 && (
-            // There is no separate "section index" route in phase 1 (plan
-            // §3/§7 name no such page) — the full section list already lives
-            // in every article's sidebar (Help.astro), so "All N articles"
-            // opens the first article, where that complete list is one click
-            // away, rather than link to a page that doesn't exist.
-            <a class="help-card-all" href={helpUrl(preview[0])}>
-              All {section.entries.length} articles →
-            </a>
-          )}
-          {remaining <= 0 && section.entries.length > 0 && (
-            <span class="help-card-count">{section.entries.length} article{section.entries.length === 1 ? '' : 's'}</span>
-          )}
-        </section>
-      );
-    })}
-  </div>
-
-  {faqItems.length > 0 && (
-    <section class="help-faq" aria-labelledby="help-faq-title">
-      <h2 id="help-faq-title">Frequently asked</h2>
-      <div class="help-faq-list">
-        {faqItems.map((f) => (
-          <details class="help-faq-item">
-            <summary>{f.q}</summary>
-            <p>
-              {f.a}{' '}
-              <a class="help-faq-source" href={f.source}>Read more →</a>
-            </p>
-          </details>
-        ))}
-      </div>
-    </section>
-  )}
-
-  <nav class="help-policies" aria-label="Policies">
-    <span class="help-policies-label">Policies:</span>
-    {POLICY_LINKS.map((p, i) => (
-      <>
-        {i > 0 && <span aria-hidden="true"> · </span>}
-        <a href={p.href}>{p.label}</a>
-      </>
-    ))}
-  </nav>
-</Content>
+    <nav class="help-policies" aria-label="Policies">
+      <span class="help-policies-label">Policies</span>
+      {POLICY_LINKS.map((p, i) => (
+        <>
+          {i > 0 && <span class="help-policies-dot" aria-hidden="true"> · </span>}
+          <a href={p.href}>{p.label}</a>
+        </>
+      ))}
+    </nav>
+  </main>
+</Base>
 
 <style>
-  /* [WEB-HELP-1 2026-09-11] Same token set as Help.astro — no new colours,
-     rem units, works down to 400px (single-column cards + accordion). */
-  .help-hero { margin: 2rem 0 3rem; max-width: 40rem; }
+  /* [WEB-HELP-2 2026-09-11] The colour/type custom-property set this whole
+     page (and its three help/*.astro children, plus HelpSearch's own
+     styles) reads from — mirrors the names layouts/Content.astro scopes on
+     `.editorial-page` so HelpSearch (var(--white)/--ink/--blue/--paper/--sky)
+     keeps working unmodified now that this page no longer mounts inside
+     Content.astro. Values are identical to Content.astro's, not
+     reinvented.
+     `--help-*` below are the mockup colours that have NO live equivalent
+     anywhere in the token set — several hexes exist in ava-tokens.css, but
+     that import is dead in production (see global.css's own comment on it),
+     so a var(--ava-*) reference would resolve to nothing. Each is commented
+     with the mockup's hex so a future re-copy of the design bundle can be
+     diffed against it. */
+  .help-page {
+    /* [WEB-HELP-2 review] Aliased to the live --zine-* tokens (exact hex
+       matches, verified against src/styles/tokens.css) instead of repeating
+       the literal hex here — one source of truth if the palette ever
+       shifts. --pink/--yellow keep their literal hex: no --zine-* token
+       matches either value. */
+    --paper: var(--zine-paper); --ink: var(--zine-ink); --blue: var(--zine-blueInk);
+    --sky: var(--zine-blue); --pink: #f03060; --red: var(--zine-coral);
+    --lime: var(--zine-lime); --yellow: #f0d018; --lav: var(--zine-lilac); --white: var(--zine-card);
+    --sans: 'Instrument Sans', system-ui, sans-serif;
+    --sans-label: 'Nunito', system-ui, sans-serif;
+    --serif: 'Playfair Display', Georgia, serif;
+    --display: 'Comfortaa', 'Baloo 2', system-ui, sans-serif;
 
-  .help-sections {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(15.5rem, 1fr));
-    gap: 1.25rem;
-    margin-bottom: 3rem;
-  }
-  .help-card {
-    display: flex;
-    flex-direction: column;
-    padding: 1.5rem;
-    border: 1px solid var(--ink);
-    border-radius: 1.2rem;
-    background: var(--white);
-  }
-  .help-card h2 {
-    margin: 0 0 0.5rem;
-    font-family: var(--display);
-    font-size: 1.4rem;
-    line-height: 1.15;
-  }
-  .help-card h2::before { content: none; } /* override Content.astro's ✦ prefix — too busy at card scale */
-  .help-card-blurb { margin: 0 0 1rem; font-size: 0.92rem; line-height: 1.5; color: rgba(22, 22, 20, 0.75); }
-  .help-card-list { list-style: none; margin: 0 0 0.9rem; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; flex: 1 1 auto; }
-  .help-card-list a {
+    --help-tan: #c9a86a;          /* mockup: getting-started image-band bg */
+    --help-indigo: #3b3f7a;       /* mockup: booking-and-paying tile bg */
+    --help-indigo-deep: #2c2f5e;  /* mockup: booking-and-paying image-band bg */
+    --help-brick: #b8382a;        /* mockup: creators tile bg + FAQ banner bg */
+    --help-brick-deep: #a4352a;   /* mockup: creators image-band bg */
+    --help-tan-deep: #b09a76;     /* mockup: billing image-band bg */
+    --help-marigold: #ea9101;     /* mockup: account & safety image-band bg */
+    --help-answer-red: #b82a19;   /* mockup: FAQ "Read more" link colour */
+    --help-faq-eyebrow: #fbe4df;  /* mockup: "Popular questions" label on brick */
+
     display: block;
-    text-decoration: none;
-    font-weight: 700;
-    font-size: 0.95rem;
+    background: var(--paper);
     color: var(--ink);
+    font-family: var(--sans);
+    font-weight: 500;
   }
-  .help-card-list a:hover { color: var(--blue); text-decoration: underline; }
-  .help-card-all { align-self: flex-start; font-weight: 700; font-size: 0.9rem; color: var(--blue); text-decoration: none; }
-  .help-card-all:hover { text-decoration: underline; }
-  .help-card-count { font-size: 0.8rem; color: rgba(22, 22, 20, 0.6); }
+  .help-page * { box-sizing: border-box; }
+  .help-page a { color: inherit; }
 
-  .help-faq { margin-bottom: 3rem; }
-  .help-faq-list { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 1rem; }
-  .help-faq-item {
-    padding: 0.9rem 1.1rem;
-    border: 1px solid var(--ink);
-    border-radius: 1rem;
-    background: var(--white);
-  }
-  .help-faq-item summary {
-    cursor: pointer;
+  .help-policies {
+    max-width: 110rem;
+    margin: 0 auto;
+    padding: 0 2.5rem 4.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 0.375rem;
+    row-gap: 0.375rem;
+    font-family: var(--sans-label);
     font-weight: 700;
-    font-size: 1rem;
-    list-style: none;
+    font-size: 0.8125rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--zine-inkMute);
   }
-  .help-faq-item summary::-webkit-details-marker { display: none; }
-  .help-faq-item summary::before { content: '+ '; color: var(--blue); font-weight: 700; }
-  .help-faq-item[open] summary::before { content: '– '; }
-  .help-faq-item p { margin: 0.6rem 0 0; font-size: 0.95rem; line-height: 1.55; }
-  .help-faq-source { color: var(--blue); font-weight: 700; }
-  .help-faq-item summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  .help-policies-label { font-weight: 800; margin-right: 0.5rem; }
+  .help-policies-dot { color: var(--zine-placeholder); }
+  .help-policies a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+    color: var(--ink);
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 4px;
+  }
+  .help-policies a:hover { color: var(--blue); }
 
-  .help-policies { font-size: 0.9rem; }
-  .help-policies-label { font-weight: 700; margin-right: 0.4rem; }
-  .help-policies a { color: var(--blue); font-weight: 700; text-decoration: none; }
-  .help-policies a:hover { text-decoration: underline; }
-
-  @media (max-width: 480px) {
-    .help-sections { grid-template-columns: 1fr; }
+  @media (max-width: 599px) {
+    .help-policies { padding: 0 1rem 3rem; }
   }
 </style>

@@ -93,6 +93,7 @@ export type JoinRefusalReason =
   | 'needs_ticket'
   | 'not_yours'
   | 'disabled'
+  | 'not_found'
   | 'unavailable';
 
 export interface JoinRefusal {
@@ -119,7 +120,16 @@ function refusalFor(e: ApiError): JoinRefusal {
   // `joinWindow()` and are unambiguous.
   if (e.status === 425) return { ok: false, reason: 'too_early', status: e.status, detail, opens_at: opensAt };
   if (e.status === 410) return { ok: false, reason: 'too_late', status: e.status, detail };
-  if (e.status === 404) return { ok: false, reason: 'disabled', status: e.status, detail };
+  // [WAITROOM-WEB-1] Two different 404s share a status: the commercial lane
+  // being dark (`commercial join disabled`) vs. a booking id that plain does
+  // not exist / isn't a consult (`booking unavailable`,
+  // commercialConsultPrejoin in worker/src/routes/commercial_stream_sessions.ts).
+  // Conflating them told a visitor with a bad/stale link "not live yet" instead
+  // of "Booking not found" — match the distinctive phrase before falling back.
+  if (e.status === 404) {
+    if (/booking unavailable/i.test(detail)) return { ok: false, reason: 'not_found', status: e.status, detail };
+    return { ok: false, reason: 'disabled', status: e.status, detail };
+  }
   if (e.status === 403) {
     // Two different 403s, and conflating them is the difference between "buy a
     // ticket" and "you are in the wrong room".
@@ -180,6 +190,20 @@ export interface ConsultPrejoin {
   role: 'creator' | 'buyer';
   /** Epoch ms the join window opens; before this, joining returns 425. */
   join_opens_at?: number;
+
+  // ── [WAITROOM-WEB-1] waiting-room contract (PLAN-2026-09-11 §Contracts) ──
+  // Added by WP1/WP2 (worker `buildWaitingRoomGrant`), landing concurrently
+  // with this file. ALL of the below are OPTIONAL and must be guarded — a
+  // prejoin response missing them (WP1/WP2 not deployed yet, or the flag is
+  // off) falls back to today's direct-join flow, not a crash.
+  /** wss URL, token embedded: `…/api/consult/<bookingId>/room?token=<room_token>`. */
+  room_ws?: string;
+  /** Same signed token embedded in `room_ws`, for reconnect bookkeeping. */
+  room_token?: string;
+  /** Epoch ms: `starts_at + sessionCreatorCheckInMin * 60000`. */
+  check_in_by?: number;
+  /** Structured counterparty — preferred over the flat `counterparty_*` pair above. */
+  counterparty?: { name: string | null; avatar_url: string | null };
 }
 
 export async function consultPrejoin(

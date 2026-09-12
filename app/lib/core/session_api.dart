@@ -118,21 +118,37 @@ class RoomChannel {
   final Uri uri;
   final void Function(Map<String, dynamic> event) onEvent;
   final void Function(bool connected)? onState;
+  // [WAITROOM-APP-3] A12: fired once, at most, when the socket has failed to
+  // ever deliver a single message after repeated attempts (a rejected token
+  // looks exactly like this: the handshake can succeed and then the server
+  // closes immediately). Callers that need a fallback (e.g. the commercial
+  // waiting room dropping to a direct join, mirroring the web client) listen
+  // for this instead of retrying forever against a token that will never work.
+  final void Function()? onFailure;
   WebSocketChannel? _ch;
   bool _closed = false;
   int _backoff = 1;
+  bool _everConnected = false;
+  int _failedAttempts = 0;
+  // [WAITROOM-APP-4] B: a failed handshake fires BOTH onError and onDone on
+  // the same stream subscription — without this guard `_retry` ran twice per
+  // attempt, double-counting `_failedAttempts` and scheduling two reconnects.
+  bool _retriedThisAttempt = false;
 
-  RoomChannel(this.uri, this.onEvent, {this.onState}) {
+  RoomChannel(this.uri, this.onEvent, {this.onState, this.onFailure}) {
     _connect();
   }
 
   void _connect() {
     if (_closed) return;
+    _retriedThisAttempt = false;
     try {
       final ch = WebSocketChannel.connect(uri);
       _ch = ch;
       ch.stream.listen((raw) {
         _backoff = 1;
+        _everConnected = true;
+        _failedAttempts = 0;
         onState?.call(true);
         try {
           final m = jsonDecode(raw as String) as Map<String, dynamic>;
@@ -151,8 +167,26 @@ class RoomChannel {
   }
 
   void _retry() {
+    // [WAITROOM-APP-4] B: only the first of the (up to two) calls per failed
+    // attempt does anything.
+    if (_retriedThisAttempt) return;
+    _retriedThisAttempt = true;
     onState?.call(false);
     if (_closed) return;
+    // [WAITROOM-APP-3] A12: never having delivered a single message after 3
+    // attempts means the token/route was rejected, not a transient network
+    // blip — stop retrying forever and surface it once instead. Gated on
+    // `onFailure != null` ([WAITROOM-APP-4] A) so callers that never opted
+    // into this (every legacy RoomChannel user — live viewer/host, the
+    // legacy consult room) keep reconnecting forever exactly as before.
+    if (onFailure != null && !_everConnected) {
+      _failedAttempts++;
+      if (_failedAttempts >= 3) {
+        _closed = true;
+        onFailure?.call();
+        return;
+      }
+    }
     Future.delayed(Duration(seconds: _backoff), _connect);
     _backoff = (_backoff * 2).clamp(1, 15);
   }

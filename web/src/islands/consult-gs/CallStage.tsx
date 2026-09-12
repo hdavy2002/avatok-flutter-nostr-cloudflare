@@ -98,7 +98,7 @@ function CallStageInner({ call, bookingId, jwt, role, peerName, title, endsAt, o
       <div className="flex flex-wrap items-center gap-2.5">
         <h1 className="mr-auto font-display font-semibold text-[18px] text-ink">{title}</h1>
         {hud && (
-          <span className={`rounded-zine-badge border-zine px-3 py-1.5 font-mono font-bold text-[12px] ${hud.cls}`}>
+          <span className={`rounded-zineBadge border-zine px-3 py-1.5 font-mono font-bold text-[12px] ${hud.cls}`}>
             {hud.label}
           </span>
         )}
@@ -107,7 +107,7 @@ function CallStageInner({ call, bookingId, jwt, role, peerName, title, endsAt, o
             type="button"
             onClick={() => void retryConnection()}
             disabled={retrying}
-            className="rounded-zine-badge border-zine border-ink bg-blue px-3 py-1.5 font-display font-semibold text-[13px] text-ink disabled:opacity-60"
+            className="rounded-zineBadge border-zine border-ink bg-blue px-3 py-1.5 font-display font-semibold text-[13px] text-ink disabled:opacity-60"
           >
             {retrying ? 'Retrying…' : 'Retry'}
           </button>
@@ -122,7 +122,7 @@ function CallStageInner({ call, bookingId, jwt, role, peerName, title, endsAt, o
         ) : (
           <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-paper2 text-center">
             <Spinner size={28} />
-            <p className="font-body font-bold text-[15px] text-inkSoft">Waiting for {peerName}…</p>
+            <p className="font-body font-bold text-[15px] text-inkSoft">Connecting you to {peerName}…</p>
           </div>
         )}
 
@@ -132,7 +132,7 @@ function CallStageInner({ call, bookingId, jwt, role, peerName, title, endsAt, o
         </div>
 
         {notice && (
-          <div className="absolute left-1/2 top-3 -translate-x-1/2 rounded-zine-badge border-zine border-ink bg-card px-3 py-1.5 font-body font-bold text-[13px] text-ink shadow-zine-xs">
+          <div className="absolute left-1/2 top-3 -translate-x-1/2 rounded-zineBadge border-zine border-ink bg-card px-3 py-1.5 font-body font-bold text-[13px] text-ink shadow-zine-xs">
             {notice}
           </div>
         )}

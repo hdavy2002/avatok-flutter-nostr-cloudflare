@@ -1,10 +1,16 @@
 ---
-// [WEB-HELP-1 2026-09-11] One static route for every non-draft help
+// [WEB-HELP-1 2026-09-11, kept] One static route for every non-draft help
 // article. Fully prerendered (plan §1 — zero runtime cost, no SSR touched).
 // entry.id is the glob-loader path relative to src/content/help (e.g.
 // "billing/platform-fee"), which is exactly the slug lib/help.ts's helpUrl()
 // builds routes from — using entry.id as `params.slug` here keeps those two
 // in lockstep without a second mapping to maintain.
+//
+// [WEB-HELP-2 2026-09-11] Now also destructures `headings` off `render()`'s
+// result and forwards it to Help.astro, which needs the depth-2 headings to
+// build the "On this page" list in the redesigned article layout. `render()`
+// already computes this for free (it's how Astro builds heading ids for
+// anchor links), so there is no second pass over the article body.
 export const prerender = true;
 
 import { render } from 'astro:content';
@@ -12,7 +18,7 @@ import Help from '../../layouts/Help.astro';
 import { getHelpEntries, getHelpTree, getPrevNext } from '../../lib/help';
 
 export async function getStaticPaths() {
-  // [WEB-HELP-1] Was its own `getCollection('help', (entry) => !entry.data.draft)`
+  // [WEB-HELP-1, kept] Was its own `getCollection('help', (entry) => !entry.data.draft)`
   // call, duplicating the draft filter that lib/help.ts's getHelpEntries()
   // already owns — a second place that could drift from the real rule (e.g.
   // if a future agent adds a second draft condition there and forgets this
@@ -26,16 +32,16 @@ export async function getStaticPaths() {
 }
 
 const { entry } = Astro.props;
-const { Content: Body } = await render(entry);
+const { Content: Body, headings } = await render(entry);
 
-// [WEB-HELP-1] tree/prev/next are derived here (not in Help.astro) so the
-// layout stays a pure renderer of whatever props it's given — every agent
-// touching ordering only has to look at lib/help.ts.
+// [WEB-HELP-1, kept] tree/prev/next are derived here (not in Help.astro) so
+// the layout stays a pure renderer of whatever props it's given — every
+// agent touching ordering only has to look at lib/help.ts.
 const allEntries = await getHelpEntries();
 const tree = await getHelpTree();
 const { prev, next } = getPrevNext(allEntries, entry);
 ---
 
-<Help entry={entry} tree={tree} prev={prev} next={next}>
+<Help entry={entry} tree={tree} prev={prev} next={next} headings={headings}>
   <Body />
 </Help>

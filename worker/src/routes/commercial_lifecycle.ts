@@ -20,6 +20,8 @@ import {
 } from "../cal/engine";
 import { notifyCommercialUsers } from "../lib/commercial_notifications";
 import { claimCommercialMoney, completeCommercialMoneyClaim } from "../commercial_money_claim";
+import { readConfig } from "./config";
+import { consultCheckInWindow, resolveConsultCheckInCfg } from "../commercial_settlement";
 
 type Kind = "live_event" | "consult_1to1";
 type Action = "buyer_cancel" | "creator_cancel" | "creator_no_show" | "provider_outage" | "insufficient_delivery_evidence";
@@ -853,7 +855,22 @@ export async function runCommercialOrphanNoShowSweep(
   limit = 10,
 ): Promise<SystemCancelSummary> {
   if (!await schemaReady(env)) return { scanned: 0, refunded: 0, no_refund: 0, review_pending: 0, failed: 0 };
-  const cutoff = Date.now() - 15 * 60_000;
+  // [SETTLE-CHECKIN-2] fix 1: consult_1to1 uses `sessionCreatorCheckInMin` (default 20,
+  // via readConfig -- RULEBOOK-PAID-SESSIONS.md §2 C1/C2), not the hardcoded 15-minute
+  // window that used to apply to both kinds. live_event keeps its own 15-minute window --
+  // §4 is a separate lane with no check-in concept.
+  //
+  // [SETTLE-CHECKIN-3] R10: `resolveConsultCheckInCfg` is the ONE place the config
+  // parsing/defaulting/ms-conversion happens -- the settlement decision, this sweep and
+  // the C1 backfill all call it instead of each keeping their own copy.
+  const config = await readConfig(env);
+  const now = Date.now();
+  const liveCutoff = now - 15 * 60_000;
+  const { earlyMs, checkInMs } = resolveConsultCheckInCfg(config as unknown as Record<string, unknown>);
+  // consultCheckInWindow(0, earlyMs, checkInMs).closesAt == checkInMs, so `now - that` is
+  // exactly "starts_at more than checkInMs ago" -- the same window fix 3 uses, just
+  // anchored at 0 to get a plain cutoff instead of a per-row bound.
+  const consultCutoff = now - consultCheckInWindow(0, earlyMs, checkInMs).closesAt;
   const safeLimit = Math.max(1, Math.min(50, Math.trunc(limit)));
   const authorities = await loadAuthorityRows(env,
     `o.status IN ('held','free')
@@ -867,12 +884,22 @@ export async function runCommercialOrphanNoShowSweep(
                            WHERE sx.kind='live_event' AND sx.listing_id=o.listing_id))
         OR
         (o.kind='consult_1to1' AND o.booking_id IS NOT NULL
-          AND b.status='confirmed' AND COALESCE(b.starts_at,0) > 0 AND b.starts_at <= ?1
+          AND b.status='confirmed' AND COALESCE(b.starts_at,0) > 0 AND b.starts_at <= ?2
           AND NOT EXISTS (SELECT 1 FROM commercial_sessions sx
-                           WHERE sx.kind='consult_1to1' AND sx.booking_id=o.booking_id))
+                           WHERE sx.kind='consult_1to1' AND sx.booking_id=o.booking_id)
+          -- fix 1: skip any booking whose session_attendance shows a host check-in
+          -- inside the fix-3 window -- the creator WAS there; the buyer just never
+          -- opened the room, so no commercial_sessions row was ever created. That is
+          -- C1 (paid in full), not an orphan no-show, and commercial_session_clock.ts's
+          -- backfill pass settles it instead of this sweep refunding it.
+          AND NOT EXISTS (
+            SELECT 1 FROM session_attendance a
+             WHERE a.session_id=o.booking_id AND a.role='host' AND a.user_id=o.creator_id
+               AND a.joined_at<=b.starts_at+?3 AND COALESCE(a.left_at,?4)>=b.starts_at-?5
+          ))
       )
      ORDER BY o.created_at ASC LIMIT ${safeLimit}`,
-    [cutoff]);
+    [liveCutoff, consultCutoff, checkInMs, now, earlyMs]);
   const summary = await cancelAuthoritiesAsCreator(env, authorities, "creator_no_show", "system-orphan-no-show");
   if (summary.scanned) commercialEvent(env, "orphan_no_show_sweep", null, { ...summary });
   return summary;

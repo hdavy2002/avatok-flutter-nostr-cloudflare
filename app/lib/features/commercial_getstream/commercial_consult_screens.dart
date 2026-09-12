@@ -10,12 +10,15 @@ import 'package:stream_video_flutter/stream_video_flutter.dart';
 import '../../core/listings_api.dart';
 import '../../core/remote_config.dart';
 import '../../core/session_api.dart';
+import '../../core/commercial_waiting_room_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../identity/identity.dart' show AccountScope;
 import 'commercial_getstream_handoff.dart';
 import 'commercial_live_gateway.dart';
 import 'commercial_device_check.dart';
 import 'commercial_speaker_test.dart';
+import 'commercial_waiting_room_screen.dart';
 
 class CommercialConsultationPrejoinFlow extends StatefulWidget {
   const CommercialConsultationPrejoinFlow({
@@ -76,6 +79,41 @@ class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultati
     if (!_ready || _joining) return;
     setState(() { _joining = true; _devicesReady = false; _error = null; });
     try {
+      // [WAITROOM-APP-1] Ask the server for a waiting-room grant first. A
+      // missing/partial response (worker not deployed yet, feature off) is
+      // NOT an error here: it just means today's direct-join flow runs below,
+      // unchanged, so this screen never breaks on an old server.
+      CommercialWaitingRoomGrant? grant;
+      try {
+        grant = await CommercialWaitingRoomApi.prejoin(widget.bookingId);
+      } catch (_) {
+        grant = null;
+      }
+      if (!mounted) return;
+      if (grant != null && grant.isComplete && grant.isCreator == widget.isCreator) {
+        // [WAITROOM-APP-2] Fix 5: the waiting room now creates and owns ITS
+        // OWN device controller — no handoff. Release this screen's preview
+        // (same rule as the direct-join path below) and let `dispose()`
+        // dispose it unconditionally, exactly like the direct-join path.
+        await _deviceController.release();
+        await _speaker.stop();
+        if (!mounted) return;
+        await Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
+          builder: (_) => CommercialWaitingRoomScreen(
+            listingId: widget.listingId,
+            bookingId: widget.bookingId,
+            title: widget.title,
+            gateway: widget.gateway,
+            connector: widget.connector,
+            isCreator: widget.isCreator,
+            grant: grant!,
+            cameraOn: _cameraOn,
+            microphoneOn: _microphoneOn,
+            selfUid: AccountScope.id ?? '',
+          ),
+        ));
+        return;
+      }
       // Preview capture is local-only. Release every native track before the
       // gateway or SDK is touched so the join cannot race the preview.
       await _deviceController.release();
@@ -115,6 +153,8 @@ class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultati
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // [WAITROOM-APP-2] Fix 5: prejoin always disposes its own controller now
+    // — the waiting room never reuses it.
     unawaited(_deviceController.dispose());
     unawaited(_speaker.dispose());
     super.dispose();
@@ -174,14 +214,35 @@ class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultati
   );
 }
 
+/// [WAITROOM-APP-2] Fix 2: how [CommercialConsultationRoomScreen] pops back
+/// when `returnToWaitingRoom` is true — the waiting room (still holding the
+/// DO socket) decides what happens next from this, instead of the room
+/// screen deciding on its own to end the session.
+enum CommercialConsultExit {
+  /// The user pressed Leave. The session is NOT ended; the waiting room
+  /// resumes with auto-join paused until the roster changes.
+  leftManually,
+
+  /// `_refresh` observed the server session has ended. The waiting room
+  /// should go straight to the completion/receipt screen.
+  ended,
+}
+
 class CommercialConsultationRoomScreen extends StatefulWidget {
-  const CommercialConsultationRoomScreen({super.key, required this.listingId, required this.bookingId, required this.title, required this.gateway, required this.connector, required this.handoff, required this.session, required this.cameraEnabled, required this.microphoneEnabled, required this.isCreator});
+  const CommercialConsultationRoomScreen({super.key, required this.listingId, required this.bookingId, required this.title, required this.gateway, required this.connector, required this.handoff, required this.session, required this.cameraEnabled, required this.microphoneEnabled, required this.isCreator, this.returnToWaitingRoom = false});
   final String listingId, bookingId, title;
   final CommercialConsultGateway gateway;
   final CommercialGetStreamConnector connector;
   final CommercialGetStreamJoinHandoff handoff;
   final CommercialGetStreamSession session;
   final bool cameraEnabled, microphoneEnabled, isCreator;
+  /// [WAITROOM-APP-2] Fix 2: true when this screen was pushed ON TOP of the
+  /// waiting room (the WP6 auto-join path) rather than reached directly
+  /// (the pre-WP6 fallback, when the server has not landed the waiting-room
+  /// grant yet). When true, Leave must NOT end the consultation or show the
+  /// completion screen — it pops back to the still-open waiting room, which
+  /// owns those decisions. Old direct-join behaviour is unchanged when false.
+  final bool returnToWaitingRoom;
   @override State<CommercialConsultationRoomScreen> createState() => _CommercialConsultationRoomScreenState();
 }
 
@@ -215,7 +276,19 @@ class _CommercialConsultationRoomScreenState extends State<CommercialConsultatio
       final s = await widget.gateway.consultState(widget.bookingId);
       if (!mounted) return;
       setState(() => _state = s);
-      if (s.state == LiveServerState.ended || s.state == LiveServerState.reconciliationPending) await _finish('Session ended');
+      if (s.state == LiveServerState.ended || s.state == LiveServerState.reconciliationPending) {
+        if (widget.returnToWaitingRoom) {
+          // [WAITROOM-APP-2] Fix 2: the waiting room opens Completion itself —
+          // this screen just reports that the server session ended.
+          if (_ending) return;
+          _ending = true; _timer?.cancel();
+          await _session.leave();
+          if (!mounted) return;
+          Navigator.of(context).pop(CommercialConsultExit.ended);
+          return;
+        }
+        await _finish('Session ended');
+      }
     } catch (_) { if (mounted) setState(() => _error = 'Session status is temporarily unavailable.'); }
   }
 
@@ -258,8 +331,20 @@ class _CommercialConsultationRoomScreenState extends State<CommercialConsultatio
 
   Future<void> _leave() async {
     if (_ending) return;
-    final confirm = await showDialog<bool>(context: context, builder: (c) => AlertDialog(title: const Text('Leave consultation?'), content: const Text('The session remains governed by the booking and provider evidence.'), actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Stay')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Leave'))]));
+    final confirm = await showDialog<bool>(context: context, builder: (c) => AlertDialog(title: const Text('Leave consultation?'), content: Text(widget.returnToWaitingRoom ? 'You can rejoin from the waiting room while the slot is still open.' : 'The session remains governed by the booking and provider evidence.'), actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Stay')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Leave'))]));
     if (confirm != true) return;
+    if (widget.returnToWaitingRoom) {
+      // [WAITROOM-APP-2] Fix 2: a deliberate Leave here must NOT end the
+      // session — the slot is prepaid and still running (RULEBOOK §2/§3).
+      // No `endConsultation`, no completion screen: just leave the GetStream
+      // call and hand control back to the waiting room.
+      if (_ending) return;
+      _ending = true; _timer?.cancel();
+      await _session.leave();
+      if (!mounted) return;
+      Navigator.of(context).pop(CommercialConsultExit.leftManually);
+      return;
+    }
     try { await widget.gateway.endConsultation(widget.bookingId); } catch (_) {}
     await _finish('You left the consultation');
   }
@@ -279,6 +364,14 @@ class _CommercialConsultationRoomScreenState extends State<CommercialConsultatio
     if (_ending) return;
     _ending = true; _timer?.cancel(); await _session.leave();
     if (!mounted) return;
+    if (widget.returnToWaitingRoom) {
+      // [WAITROOM-APP-3] A7: `_reportNoShow` also routes through here — when
+      // pushed on top of the waiting room, ending the session must pop back
+      // to it (which opens Completion itself) rather than pushReplacement
+      // over a route the waiting room doesn't know was replaced.
+      Navigator.of(context).pop(CommercialConsultExit.ended);
+      return;
+    }
     Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => CommercialConsultationCompletionScreen(title: widget.title, sessionId: _state?.sessionId ?? widget.handoff.sessionId, gateway: widget.gateway, heading: heading, creator: widget.isCreator)));
   }
 
@@ -293,10 +386,10 @@ class _CommercialConsultationRoomScreenState extends State<CommercialConsultatio
       backgroundColor: AD.bg,
       appBar: AppBar(backgroundColor: AD.headerFooter, foregroundColor: AD.onBand(AD.headerFooter), title: Text(widget.title), actions: [IconButton(onPressed: _reconnect, icon: Icon(PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold))), if (_extensionAvailable) IconButton(onPressed: _extend, icon: Icon(PhosphorIcons.clock(PhosphorIconsStyle.bold))), IconButton(onPressed: _reportNoShow, icon: Icon(PhosphorIcons.warning(PhosphorIconsStyle.bold)))]),
       body: Column(children: [
-        Padding(padding: const EdgeInsets.all(Msg.s3), child: Row(children: [Text(_state?.state == LiveServerState.live ? 'CONNECTED' : 'WAITING', style: ADText.sectionLabel(c: AD.online)), const Spacer(), if (remaining != null && remaining > 0) Text('${(remaining ~/ 60000)} min remaining', style: ADText.sectionLabel())])),
+        Padding(padding: const EdgeInsets.all(Msg.s3), child: Row(children: [Text(_state?.state == LiveServerState.live ? 'CONNECTED' : 'CONNECTING', style: ADText.sectionLabel(c: AD.online)), const Spacer(), if (remaining != null && remaining > 0) Text('${(remaining ~/ 60000)} min remaining', style: ADText.sectionLabel())])),
         if (_error != null) Padding(padding: const EdgeInsets.symmetric(horizontal: Msg.s4), child: Text(_error!, style: ADText.preview(c: AD.danger))),
         Expanded(child: Stack(children: [
-          if (other.isEmpty) Center(child: Text('Waiting for the other participant…', style: ADText.preview())) else StreamVideoRenderer(call: _call, participant: other.first, videoTrackType: SfuTrackType.video),
+          if (other.isEmpty) const Center(child: CircularProgressIndicator()) else StreamVideoRenderer(call: _call, participant: other.first, videoTrackType: SfuTrackType.video),
           Positioned(right: Msg.s3, bottom: Msg.s3, width: 120, height: 170, child: Container(color: Colors.black, child: _call.state.value.localParticipant == null ? const SizedBox() : StreamVideoRenderer(call: _call, participant: _call.state.value.localParticipant!, videoTrackType: SfuTrackType.video))),
         ])),
         Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [IconButton(onPressed: _toggleMic, icon: Icon(_microphoneOn ? PhosphorIcons.microphone(PhosphorIconsStyle.bold) : PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold))), IconButton(onPressed: _toggleCamera, icon: Icon(_cameraOn ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold) : PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold))), FilledButton.icon(onPressed: _leave, icon: Icon(PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.bold)), label: const Text('Leave'))]),

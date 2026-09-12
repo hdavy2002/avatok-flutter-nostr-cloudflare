@@ -16,6 +16,19 @@ import { capture } from '../../lib/analytics';
 import { GsChat } from './GsChat';
 import type { CommercialSessionState } from '../../lib/getstream';
 
+/*
+ * [LIVE-GRACE-WEB-1] The server contract (Specs/PLAN-2026-09-11-WAITING-ROOM-BUILD.md
+ * "Contracts shared by all WPs") adds a `reconnecting` state and
+ * `reconnect_deadline_ms` to `GET .../live/:id/state`, landing with WP8. Widen
+ * the shape locally rather than editing the shared lib (owned by another
+ * WP) — the extra fields are always optional/absent until WP8 ships.
+ */
+export type LiveServerState = Omit<CommercialSessionState, 'state'> & {
+  state: CommercialSessionState['state'] | 'reconnecting';
+  reconnect_deadline_ms?: number;
+  outcome?: string;
+};
+
 export interface LiveStageProps {
   title: string;
   creatorName: string | null;
@@ -27,7 +40,7 @@ export interface LiveStageProps {
   chatChannelId: string;
   chatChannelType?: string;
   /** Worker-authoritative lifecycle; transport state is insufficient. */
-  serverState: CommercialSessionState | null;
+  serverState: LiveServerState | null;
   onLeave: () => void;
 }
 
@@ -45,6 +58,14 @@ function fmtElapsed(startedAt: Date | undefined, now: number): string {
   const sec = s % 60;
   const pad = (x: number) => String(x).padStart(2, '0');
   return h > 0 ? `${pad(h)}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`;
+}
+
+/** mm:ss remaining until `deadlineMs`, clamped at 00:00. */
+function fmtCountdown(deadlineMs: number | undefined, now: number): string {
+  const remainingS = typeof deadlineMs === 'number' ? Math.max(0, Math.round((deadlineMs - now) / 1000)) : 0;
+  const m = Math.floor(remainingS / 60);
+  const sec = remainingS % 60;
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 }
 
 const RECONNECT_STUCK_MS = 15_000;
@@ -69,6 +90,10 @@ export function LiveStage({
   const transportLive = useIsCallLive();
   const isLive = serverState ? serverState.state === 'live' : transportLive;
   const serverEnded = serverState?.state === 'ended' || serverState?.state === 'cancelled';
+  // [LIVE-GRACE-WEB-1] Server-authoritative — distinct from the SDK's own
+  // `reconnecting` transport state below. The seat/call object stays alive;
+  // this only overlays a message and a countdown to the grace deadline.
+  const hostReconnecting = serverState?.state === 'reconnecting';
   const startedAt = useCallStartedAt();
   const viewerCount = useParticipantCount();
   const remoteParticipants = useRemoteParticipants();
@@ -172,7 +197,7 @@ export function LiveStage({
                 aria-hidden
               />
               <span className="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink">
-                {serverEnded ? 'Ended' : isLive ? 'Live' : 'Waiting'}
+                {serverEnded ? 'Ended' : hostReconnecting ? 'Reconnecting' : isLive ? 'Live' : 'Waiting'}
               </span>
               {isLive && (
                 <span className="font-mono text-[14px] text-inkSoft tabular-nums font-bold">· {elapsed}</span>
@@ -184,8 +209,21 @@ export function LiveStage({
             <style>{'@keyframes zine-pulse{0%,100%{opacity:1}50%{opacity:.35}}'}</style>
           </div>
 
+          {/* creator-reconnecting overlay — server-authoritative, takes
+              precedence over the SDK's own transport-level overlay below;
+              the seat/call stays intact so the viewer keeps their place. */}
+          {hostReconnecting && !connectionLost && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-ink/70 px-6 text-center">
+              <Spinner size={26} color="#fff" />
+              <p className="font-display font-semibold text-[16px] text-white">
+                Creator reconnecting · {fmtCountdown(serverState?.reconnect_deadline_ms, now)}
+              </p>
+              <p className="font-body font-bold text-[13px] text-white/80">Your seat is saved — hang tight.</p>
+            </div>
+          )}
+
           {/* reconnecting overlay — the last frame stays visible underneath */}
-          {reconnecting && (
+          {!hostReconnecting && reconnecting && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-ink/60 px-6 text-center">
               <Spinner size={26} color="#fff" />
               <p className="font-display font-semibold text-[16px] text-white">Reconnecting…</p>

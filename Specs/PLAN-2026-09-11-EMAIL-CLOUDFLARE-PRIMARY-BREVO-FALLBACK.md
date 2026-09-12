@@ -1,7 +1,6 @@
 # PLAN — Transactional email: Cloudflare Email Service primary, Brevo fallback
 
-Date: 2026-09-11 · Status: SHIPPED TO PROD (consumers) 2026-09-11 · web pending PR merge · Owner: Davy
-Scope: every outbound transactional email avaTOK sends today. Marketing campaigns / the Brevo contact list are OUT of scope (Brevo keeps those).
+Date: 2026-09-11 · Status: SHIPPED TO PROD (consumers) 2026-09-11 · web pending PR merge · Owner: DavyScope: every outbound transactional email avaTOK sends today. Marketing campaigns / the Brevo contact list are OUT of scope (Brevo keeps those).
 
 Sources studied: Cloudflare Email Service docs (developers.cloudflare.com/email-service — Workers API, REST API, send bindings, domains, limits, pricing, event subscriptions, suppression lists, local development) via Context7 + the Cloudflare docs MCP, and the current code paths listed in §1.
 

@@ -97,6 +97,12 @@ export interface PlatformConfig {
   payGatewayPickerEnabled: boolean;
   commercialConsultJoinEarlyMin: number;
   commercialConsultJoinLateMin: number;
+  /** [WAITROOM-1] Minutes after starts_at the creator has to check in
+   * (waiting-room presence or GetStream) before the session is a no-show. */
+  sessionCreatorCheckInMin: number;
+  /** [WAITROOM-1] Grace window (minutes) a live host has to reconnect before
+   * the event ends as host_no_return. */
+  liveHostGraceMin: number;
   commercialConsultExtensionEnabled: boolean;
   commercialConsultExtensionMinutes: number;
   commercialConsultExtensionRate: number;
@@ -1890,6 +1896,9 @@ const DEFAULTS: PlatformConfig = {
   payGatewayPickerEnabled: false,
   commercialConsultJoinEarlyMin: 10,
   commercialConsultJoinLateMin: 2,
+  // [WAITROOM-1] Prepaid waiting-room model (RULEBOOK-PAID-SESSIONS.md v2 §2/§3).
+  sessionCreatorCheckInMin: 20,
+  liveHostGraceMin: 10,
   // Paid consultation extensions stay dark until an owner-configured duration
   // and token/minute rate are present. Zero is intentionally fail-closed.
   commercialConsultExtensionEnabled: false,
@@ -2624,6 +2633,8 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // [TAX-GST-1] gstRatePct is an integer; gstEnabled is a boolean and must NOT be here.
     "gstRatePct",
     "commercialConsultJoinEarlyMin", "commercialConsultJoinLateMin",
+    // [WAITROOM-1] Both integers — must be here or putConfig stores them as strings.
+    "sessionCreatorCheckInMin", "liveHostGraceMin",
     "commercialConsultExtensionMinutes", "commercialConsultExtensionRate",
     "commercialLiveBackstageEarlyMin", "commercialLiveStartGraceMin",
     "minAppBuild", "latestAppBuild", "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate",

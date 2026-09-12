@@ -289,3 +289,165 @@ describe("Phase 2 commercial lane contracts", () => {
     expect(routes).not.toContain("releaseSnapshot");
   });
 });
+
+describe("WAITROOM-2 reviewer fixes", () => {
+  const consult = readFileSync(resolve(root, "src/routes/consult.ts"), "utf8");
+  const waitingRoom = readFileSync(resolve(root, "src/lib/commercial_waiting_room.ts"), "utf8");
+
+  it("W4: only the `room` action accepts the wide commercial-booking id length", () => {
+    const normalizedRouter = router.replaceAll("\\/", "/");
+    expect(normalizedRouter).toContain('/^\\/api\\/consult\\/[A-Za-z0-9-]{1,96}\\/room$/'.replaceAll("\\/", "/"));
+    expect(normalizedRouter).toContain("/^/api/consult/[A-Za-z0-9-]{1,64}/(join|complete|cancel|extend)$/");
+    expect(consult).toContain("maxLen: 64 | 96 = 64");
+    expect(consult).toContain("bid(req, 96)");
+  });
+
+  it("W4: consultJoin/Complete/Cancel/Extend refuse a commercial booking (see WAITROOM-4 / R1 for the exact detection rule)", () => {
+    expect(consult).toContain("async function refuseCommercialBooking(env: Env, bk: Bk): Promise<Response | null>");
+    for (const name of ["consultJoin", "consultComplete", "consultCancel", "consultExtend"]) {
+      const start = consult.indexOf(`export async function ${name}(`);
+      const body = consult.slice(start, start + 700);
+      expect(body).toMatch(/await refuseCommercialBooking\(env, bk\)/);
+    }
+  });
+
+  it("W8: rejoin recreates the provider call only on a 404 (not on an 'ending' row — see R14), and refuses 410 on a terminal ended call", () => {
+    expect(routes).toContain("let providerNotFound = false;");
+    expect(routes).toContain("let providerEndedAt: string | null = null;");
+    expect(routes).toContain('if (providerNotFound && existing.state !== "ending") {');
+    expect(routes).toContain('(providerEndedAt && ["ending", "ended"].includes(existing.state))');
+    expect(routes).toContain('return refused("session_terminal", { error: "session unavailable" }, 410);');
+  });
+
+  it("W8: commercialConsultEnd never sends mark_ended before ends_at", () => {
+    const start = routes.indexOf("export async function commercialConsultEnd");
+    const end = routes.indexOf("export async function commercialConsultState");
+    const body = routes.slice(start, end);
+    expect(body).toContain("RULEBOOK-PAID-SESSIONS.md v2 §3");
+    expect(body).toContain("Date.now() < Number(row.ends_at)");
+    expect(body).toContain("recorded_intent");
+    // The provider `mark_ended` path (runControl) is only reached below the
+    // early-return, never before it.
+    const guardIdx = body.indexOf("Date.now() < Number(row.ends_at)");
+    const runControlIdx = body.indexOf("await runControl(");
+    expect(runControlIdx).toBeGreaterThan(guardIdx);
+  });
+
+  it("W10: buildWaitingRoomGrant accepts a shared config so prejoin calls readConfig once", () => {
+    expect(waitingRoom).toContain("config?: PlatformConfig");
+    expect(waitingRoom).toContain("p.config ?? await readConfig(env)");
+    const prejoinStart = routes.indexOf("export async function commercialConsultPrejoin");
+    const prejoinEnd = routes.indexOf("async function commercialConsultJoinUnsafe");
+    const prejoin = routes.slice(prejoinStart, prejoinEnd);
+    expect((prejoin.match(/await readConfig\(env\)/g) ?? []).length).toBe(1);
+    expect(prejoin).toContain("config,\n    });");
+  });
+
+  it("W10: a failed waiting-room grant logs and degrades instead of 500ing", () => {
+    const prejoinStart = routes.indexOf("export async function commercialConsultPrejoin");
+    const prejoinEnd = routes.indexOf("async function commercialConsultJoinUnsafe");
+    const prejoin = routes.slice(prejoinStart, prejoinEnd);
+    expect(prejoin).toContain("try {");
+    expect(prejoin).toContain("waiting_room_grant_failed");
+    expect(prejoin).toContain("commercialEvent(env, \"prejoin\"");
+    expect(prejoin).toContain("...(grant ? { room_ws: grant.room_ws, room_token: grant.room_token, check_in_by: grant.check_in_by } : {})");
+  });
+
+  it("WP8 follow-up: go-live accepts a reconnecting host and exposes starts_at in live state", () => {
+    const goLiveStart = routes.indexOf("export async function commercialLiveGoLive");
+    const goLiveEnd = routes.indexOf("export async function commercialLiveEnd");
+    const goLive = routes.slice(goLiveStart, goLiveEnd);
+    expect(goLive).toContain('session.state === "live"');
+    expect(goLive).toContain("session.reconnect_deadline_ms != null");
+    expect(goLive).toContain("reconnecting");
+    expect(routes).toContain("starts_at: Number(session.scheduled_at)");
+  });
+
+  it("C11: DO chat carries uid, and welcome/roster carry host_checked_in_at", () => {
+    const doSource = readFileSync(resolve(root, "src/do/stream_session.ts"), "utf8");
+    expect(doSource).toContain('this.queue({ type: "chat", from: meta.name, text, at: now, uid: meta.uid });');
+    expect(doSource).toContain("host_checked_in_at: s.host_checked_in_at != null ? Number(s.host_checked_in_at) : null,");
+    expect(doSource).toContain("ALTER TABLE session ADD COLUMN host_checked_in_at INTEGER");
+  });
+});
+
+describe("WAITROOM-4 second-pass fixes", () => {
+  const consult = readFileSync(resolve(root, "src/routes/consult.ts"), "utf8");
+
+  it("R1 BLOCKER: a commercial booking is identified by id prefix or a policy-snapshot row, NOT bare kind==='consult_1to1'", () => {
+    expect(consult).toContain("async function isCommercialBooking(env: Env, bk: Bk): Promise<boolean>");
+    expect(consult).toContain('bk.id.startsWith("commercial-booking-")');
+    expect(consult).toContain("SELECT 1 ok FROM commercial_policy_snapshots WHERE booking_id=?1");
+    // The bare-kind check that 409'd every legacy consult must be gone.
+    expect(consult).not.toMatch(/return bk\.kind === "consult_1to1" \? json/);
+    // Every legacy handler awaits the async guard now.
+    for (const name of ["consultJoin", "consultComplete", "consultCancel", "consultExtend"]) {
+      const start = consult.indexOf(`export async function ${name}(`);
+      const body = consult.slice(start, start + 700);
+      expect(body).toMatch(/await refuseCommercialBooking\(env, bk\)/);
+    }
+  });
+
+  it("R4 BLOCKER: a host `left` webhook is matched to its own provider_session_id, and only arms grace with no other open interval", () => {
+    const start = routes.indexOf("} else if (left && member && input.actorId) {");
+    const end = routes.indexOf("const providerStarted = isCommercialLifecycleStart");
+    const leftBranch = routes.slice(start, end);
+    expect(leftBranch).toContain("const providerSessionId = input.providerSessionId ?? \"default\";");
+    expect(leftBranch).toContain("AND provider_session_id=?3");
+    expect(leftBranch).toContain("const stillConnected = await metaDb(env).prepare(");
+    expect(leftBranch).toContain("if (!stillConnected) {");
+    expect(leftBranch).toContain("await armLiveGrace(env, {");
+  });
+
+  it("R4: endLiveOnHostNoReturn re-checks for an open host interval before ending", () => {
+    const liveGrace = readFileSync(resolve(root, "src/lib/live_grace.ts"), "utf8");
+    expect(liveGrace).toContain("hostStillConnected");
+    expect(liveGrace).toContain("m.role='host'");
+    expect(liveGrace).toContain("host_already_reconnected");
+  });
+
+  it("R6 SHOULD: endLiveOnHostNoReturn requires an armed-and-expired deadline in both the SELECT and the UPDATE, and gates the rest on the UPDATE's changes", () => {
+    const liveGrace = readFileSync(resolve(root, "src/lib/live_grace.ts"), "utf8");
+    const start = liveGrace.indexOf("export async function endLiveOnHostNoReturn");
+    const fn = liveGrace.slice(start);
+    const occurrences = (fn.match(/reconnect_deadline_ms IS NOT NULL AND reconnect_deadline_ms<=\?/g) ?? []).length;
+    expect(occurrences).toBeGreaterThanOrEqual(2); // SELECT + UPDATE
+    expect(fn).toContain("const results = await metaDb(env).batch([");
+    expect(fn).toContain("if ((results[0]?.meta?.changes ?? 0) === 0) return;");
+  });
+
+  it("R7 SHOULD: armLiveGrace arms the DO before writing reconnect_deadline_ms to D1", () => {
+    const liveGrace = readFileSync(resolve(root, "src/lib/live_grace.ts"), "utf8");
+    const start = liveGrace.indexOf("export async function armLiveGrace");
+    const end = liveGrace.indexOf("export async function clearLiveGrace");
+    const fn = liveGrace.slice(start, end);
+    const doArmIdx = fn.indexOf("await sessionOp(env, `live:${s.listingId}`");
+    const dbWriteIdx = fn.indexOf("UPDATE commercial_sessions SET reconnect_deadline_ms");
+    expect(doArmIdx).toBeGreaterThan(-1);
+    expect(dbWriteIdx).toBeGreaterThan(doArmIdx);
+  });
+
+  it("R3 BLOCKER: a cron safety net (sweepExpiredLiveGrace) is exported from live_grace.ts and wired into the scheduled handler", () => {
+    const liveGrace = readFileSync(resolve(root, "src/lib/live_grace.ts"), "utf8");
+    expect(liveGrace).toContain("export async function sweepExpiredLiveGrace(env: Env, limit = 25)");
+    expect(liveGrace).toContain("kind='live_event' AND state='live'");
+    expect(liveGrace).toContain("reconnect_deadline_ms IS NOT NULL AND reconnect_deadline_ms<=?1");
+    expect(router).toContain("sweepExpiredLiveGrace(env)");
+  });
+
+  it("R14 NIT: a 404 rejoin does not recreate the call when the row is already 'ending'", () => {
+    expect(routes).toContain('if (providerNotFound && existing.state !== "ending") {');
+    expect(routes).toContain('(providerNotFound && existing.state === "ending")');
+  });
+
+  it("C8 SHOULD: commercialLiveState answers a missing session row per-caller instead of a blanket 404", () => {
+    const start = routes.indexOf("export async function commercialLiveState");
+    const end = routes.indexOf("export async function commercialReceipt");
+    const fn = routes.slice(start, end);
+    expect(fn).toContain('if (!row || row.kind !== "live_event") return json({ error: "listing unavailable" }, 404);');
+    expect(fn).toContain("if (auth.uid === row.creator_id) {");
+    expect(fn).toContain('state: "scheduled"');
+    expect(fn).toContain('kind: "live_event", listingId, uid: auth.uid, role: "viewer"');
+    expect(fn).toContain('if (!ticket) return json({ error: "not entitled" }, 403);');
+  });
+});

@@ -1,0 +1,334 @@
+---
+// [WEB-HELP-2 2026-09-11] The five help-centre section tiles, full-bleed
+// edge-to-edge per the approved mockup (design/help-centre/Main.dc.html):
+// a 6-column grid, the first three sections at span-2 (three per row, image
+// stacked over the article list) and the last two at span-3 (two per row,
+// image beside the article list) — exactly the layout the comp draws, which
+// happens to match SECTION_ORDER's first-three/last-two split, so the
+// per-index split below never has to special-case a section id.
+//
+// Each tile keeps `id={section.id}` (check-help.mjs's
+// `landingIds.has(anchor)` check, and HelpRailNav.astro's `/help#${s.id}`
+// links, both depend on this) and every one of the section's articles is
+// linked — the old boxed layout only teased the first 3 with a "N articles"
+// counter; edge-to-edge tiles have the room to list them all.
+//
+// Art + colour mapping is fixed per section id, lifted 1:1 from the comp
+// (see this file's ART map below for the exact hex each field reproduces).
+// Colours that already exist as live tokens (--zine-*, or the --paper/--ink/
+// etc block pages/help/index.astro defines on `.help-page`) are reused as
+// those names; a handful of comp hexes have no existing token anywhere in
+// the token set (the ava-tokens.css import is dead in production — see its
+// own "dead in production" comment — so nothing there counts as "existing")
+// and get their own --help-* custom property here, one per colour, each
+// commented with the mockup's hex.
+import type { HelpTreeSection, HelpSectionId } from '../../lib/help';
+import { helpUrl } from '../../lib/help';
+import TruckBorder from '../TruckBorder.astro';
+
+interface Props { tree: HelpTreeSection[] }
+const { tree } = Astro.props;
+
+type TruckKind = 'jhalar' | 'lotus' | 'eyes' | 'chai' | 'auto';
+
+interface TileArt {
+  img: string;
+  imgAlt: string;
+  imgW: number;
+  imgH: number;
+  badge?: { src: string; alt: string; w: number; h: number };
+  bg: string;
+  band: string;
+  text: 'ink' | 'bone';
+  truck: TruckKind;
+}
+
+const ART: Record<HelpSectionId, TileArt> = {
+  'getting-started': {
+    img: '/help/art/chal-nikal.jpg',
+    imgAlt: 'Illustrated rider pulling away on a scooter — "chal nikal", let’s go.',
+    imgW: 720, imgH: 900,
+    bg: 'var(--sky)', band: 'var(--help-tan)', text: 'ink', truck: 'jhalar',
+  },
+  'booking-and-paying': {
+    img: '/help/art/tu-paise-kab-dega.jpg',
+    imgAlt: 'Illustrated scene captioned "tu paise kab dega" — when’s my payment landing.',
+    imgW: 517, imgH: 900,
+    bg: 'var(--help-indigo)', band: 'var(--help-indigo-deep)', text: 'bone', truck: 'lotus',
+  },
+  creators: {
+    img: '/help/art/girl-boss.jpg',
+    imgAlt: 'Illustrated creator in a confident girl-boss pose.',
+    imgW: 507, imgH: 900,
+    badge: { src: '/help/art/desi-swag.png', alt: '', w: 220, h: 156 },
+    bg: 'var(--help-brick)', band: 'var(--help-brick-deep)', text: 'bone', truck: 'eyes',
+  },
+  billing: {
+    img: '/help/art/uthale-re-baba.jpg',
+    imgAlt: 'Illustrated auto-rickshaw scene captioned "uthale re baba" — billing and payouts.',
+    imgW: 600, imgH: 600,
+    bg: 'var(--lav)', band: 'var(--help-tan-deep)', text: 'ink', truck: 'chai',
+  },
+  'account-and-safety': {
+    img: '/help/art/traffic-light.jpg',
+    imgAlt: 'Illustrated traffic light — account verification and safety signals.',
+    imgW: 642, imgH: 900,
+    bg: 'var(--white)', band: 'var(--help-marigold)', text: 'ink', truck: 'auto',
+  },
+};
+
+// First three sections render "stacked" (image over list, span-2); the
+// last two render "split" (image beside list, span-3) — see header comment.
+const SPLIT_FROM = 3;
+---
+
+<div class="help-tiles">
+  {tree.map((section, i) => {
+    const art = ART[section.id];
+    const split = i >= SPLIT_FROM;
+    const num = String(i + 1).padStart(2, '0');
+    return (
+      <article
+        id={section.id}
+        class={`help-tile ${split ? 'help-tile-split' : 'help-tile-stack'} help-tile-${art.text}`}
+        style={`--tile-bg:${art.bg}; --tile-band:${art.band};`}
+        aria-labelledby={`help-tile-${section.id}-title`}
+      >
+        <div class="help-tile-media">
+          <div class="help-tile-photo-wrap">
+            <div class="help-tile-photo-frame">
+              <img
+                class="help-tile-photo"
+                src={art.img}
+                alt={art.imgAlt}
+                width={art.imgW}
+                height={art.imgH}
+                loading="lazy"
+              />
+              {art.badge && (
+                <img
+                  class="help-tile-badge"
+                  src={art.badge.src}
+                  alt={art.badge.alt}
+                  width={art.badge.w}
+                  height={art.badge.h}
+                  loading="lazy"
+                />
+              )}
+            </div>
+          </div>
+          <div class="help-tile-truck"><TruckBorder kind={art.truck} count={16} /></div>
+        </div>
+        <div class="help-tile-body">
+          {/* [WEB-HELP-2 review] Wrapper needed so the <600px breakpoint can
+              promote meta+h2 together into one grid-area ("head") next to
+              the shrunk thumbnail, while blurb/list drop to their own
+              full-width rows below — see the max-width:599px block. */}
+          <div class="help-tile-head">
+            <div class="help-tile-meta">
+              <span>{num}</span>
+              <span>{section.entries.length} article{section.entries.length === 1 ? '' : 's'}</span>
+            </div>
+            <h2 id={`help-tile-${section.id}-title`}>{section.label}</h2>
+          </div>
+          <p class="help-tile-blurb">{section.blurb}</p>
+          <ul class="help-tile-list">
+            {section.entries.map((entry) => (
+              <li>
+                <a href={helpUrl(entry)}>
+                  <span>{entry.data.title}</span>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M5 12h13" /><path d="M13 6l6 6-6 6" />
+                  </svg>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </article>
+    );
+  })}
+</div>
+
+<style>
+  .help-tiles {
+    position: relative;
+    max-width: 110rem;
+    margin: -4rem auto 0;
+    padding: 0 2.5rem;
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 1.5rem;
+  }
+  .help-tile-stack { grid-column: span 2; }
+  .help-tile-split { grid-column: span 3; }
+
+  .help-tile {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 0.1875rem solid var(--ink);
+    border-radius: 1.5rem;
+    background: var(--tile-bg);
+    box-shadow: 0.375rem 0.4375rem 0 var(--ink);
+  }
+  .help-tile-ink { color: var(--ink); }
+  .help-tile-bone { color: var(--white); }
+
+  .help-tile-stack .help-tile-media { display: flex; flex-direction: column; }
+  .help-tile-photo-wrap {
+    height: 20.625rem;
+    background: var(--tile-band);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+  .help-tile-photo-frame { position: relative; flex: none; width: 13.75rem; height: 16.875rem; }
+  .help-tile-photo {
+    display: block;
+    width: 13.75rem;
+    height: 16.875rem;
+    object-fit: cover;
+    object-position: 50% 0%; /* [WEB-HELP-2 review] was 50% 30% — 0% keeps captions in-frame */
+    border: 0.1875rem solid var(--ink);
+    border-radius: 1.5rem;
+    box-shadow: 0.375rem 0.4375rem 0 var(--ink);
+    background: var(--white);
+    transform: rotate(-2deg);
+  }
+  .help-tile-badge {
+    position: absolute;
+    right: -3.9375rem;
+    top: -1.5rem;
+    width: 9.375rem;
+    height: auto;
+    transform: rotate(8deg);
+    filter: drop-shadow(0.375rem 0.4375rem 0 rgba(22, 22, 20, 0.55));
+  }
+  .help-tile-truck { border-top: 0.15625rem solid var(--ink); border-bottom: 0.15625rem solid var(--ink); }
+
+  .help-tile-body { display: flex; flex-direction: column; gap: 0.625rem; padding: 1.25rem 1.5rem 1.5rem; flex: 1; }
+  .help-tile-head { display: flex; flex-direction: column; gap: 0.625rem; }
+  .help-tile-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-family: var(--sans-label);
+    font-weight: 800;
+    font-size: 0.6875rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--zine-inkSoft); /* live token, matches mockup #5a3d33 on light tiles */
+  }
+  .help-tile-bone .help-tile-meta { color: var(--help-faq-eyebrow); } /* [WEB-HELP-2 review] reuse the FAQ banner's existing on-brick eyebrow token instead of a second one-off hex */
+  .help-tile-body h2 {
+    margin: 0;
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 1.875rem;
+    line-height: 1.15;
+    letter-spacing: 0.04em; /* [WEB-HELP-2 review] was 0.03em — bold display labels want >=0.04em */
+    color: inherit;
+  }
+  .help-tile-blurb { margin: 0; max-width: 44ch; font-family: var(--sans); font-size: 0.9375rem; font-weight: 500; line-height: 1.5; color: inherit; opacity: 0.92; text-wrap: pretty; }
+
+  /* [WEB-HELP-2 review] `border-color: inherit` used to inherit `color`
+     (text colour), not a border colour — with no border-color set anywhere
+     up the chain it fell back to currentColor, which happened to look right
+     by accident. Explicit per-variant colours below instead. */
+  .help-tile-list { list-style: none; margin: 0.5rem 0 0; padding: 0; border-bottom: 0.09375rem solid; }
+  .help-tile-ink .help-tile-list { border-bottom-color: rgba(22, 22, 20, 0.2); }
+  .help-tile-bone .help-tile-list { border-bottom-color: rgba(253, 241, 211, 0.28); }
+  .help-tile-list a {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-height: 3rem;
+    padding: 0.5rem 0;
+    border-top: 0.09375rem solid;
+    text-decoration: none;
+    color: inherit;
+    font-family: var(--sans);
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+  .help-tile-ink .help-tile-list a { border-top-color: rgba(22, 22, 20, 0.2); }
+  .help-tile-bone .help-tile-list a { border-top-color: rgba(253, 241, 211, 0.28); }
+  .help-tile-list a svg { flex: none; }
+  .help-tile-list a:hover span,
+  .help-tile-list a:focus-visible span { text-decoration: underline; text-underline-offset: 3px; }
+  .help-tile-list a:focus-visible { outline: 0.1875rem solid currentColor; outline-offset: 0.125rem; border-radius: 0.4rem; }
+
+  /* Split tiles (billing, account & safety): image left, list right, per
+     the comp — image column keeps the same photo treatment as the stacked
+     tiles, just laid out horizontally. */
+  .help-tile-split .help-tile-media { display: contents; }
+  .help-tile-split { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); }
+  .help-tile-split .help-tile-photo-wrap {
+    height: auto;
+    grid-row: 1 / -1;
+    border-right: 0.15625rem solid var(--ink);
+    padding: 2.125rem 1.25rem;
+  }
+  .help-tile-split .help-tile-truck { display: none; }
+  .help-tile-split .help-tile-body { padding: 1.375rem 1.625rem 1.625rem; }
+
+  @media (max-width: 899px) {
+    .help-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: -2.5rem; }
+    .help-tile-stack, .help-tile-split { grid-column: span 1; }
+  }
+
+  /* [WEB-HELP-2 review] <600px: Phone.dc.html's compact tile — a header row
+     (small thumbnail + meta/h2) instead of the full photo band, the truck
+     strip full-width underneath, then blurb and the article list. Both
+     `.help-tile-media` and `.help-tile-body` go `display:contents` so their
+     children (photo-wrap, truck / head, blurb, list) become direct grid
+     items of `.help-tile` and can be placed by name — a wrapper box around
+     either would fight the parent grid's own column tracks. Every selector
+     here repeats the `.help-tile-stack`/`.help-tile-split` prefix the
+     desktop rules use so it wins on specificity, not just source order —
+     this block has to override both tile shapes identically. */
+  @media (max-width: 599px) {
+    .help-tiles { grid-template-columns: 1fr; padding: 0 1rem; margin-top: -2rem; }
+
+    .help-tile-stack, .help-tile-split {
+      display: grid;
+      grid-template-columns: 5.5rem 1fr;
+      grid-template-areas: "thumb head" "truck truck" "blurb blurb" "list list";
+      column-gap: 0.875rem;
+      row-gap: 0.625rem;
+      padding: 1.125rem;
+    }
+    .help-tile-stack .help-tile-media, .help-tile-split .help-tile-media,
+    .help-tile-stack .help-tile-body, .help-tile-split .help-tile-body { display: contents; }
+
+    .help-tile-stack .help-tile-photo-wrap, .help-tile-split .help-tile-photo-wrap {
+      grid-area: thumb;
+      grid-row: auto;
+      height: 5.5rem;
+      width: 5.5rem;
+      padding: 0;
+      border-right: 0;
+    }
+    .help-tile-photo-frame { width: 5.5rem; height: 5.5rem; }
+    .help-tile-photo {
+      width: 5.5rem;
+      height: 5.5rem;
+      border-width: 0.125rem;
+      border-radius: 0.75rem;
+      box-shadow: 0.1875rem 0.25rem 0 var(--ink);
+      transform: none;
+    }
+    .help-tile-badge { display: none; } /* too small to read at thumbnail scale, would just overflow the row */
+
+    .help-tile-split .help-tile-truck { display: block; } /* re-shown — desktop split hides it */
+    .help-tile-truck { grid-area: truck; }
+    .help-tile-head { grid-area: head; justify-content: center; }
+    .help-tile-blurb { grid-area: blurb; }
+    .help-tile-list { grid-area: list; margin-top: 0; }
+    .help-tile-body { padding: 0; } /* moot once display:contents, kept so nothing peeks through pre-hydration */
+  }
+</style>

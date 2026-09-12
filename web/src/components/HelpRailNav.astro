@@ -1,10 +1,11 @@
 ---
-// [WEB-HELP-1 2026-09-11] Shared section/article nav list for Help.astro's
-// rail — extracted into its own component so the desktop and mobile
-// renderings of the rail (Help.astro renders this twice, once per
-// breakpoint, to fix the closed-<details> display:none bug in
-// Chromium/WebKit) render from one source and can't diverge.
-import { helpUrl, type HelpEntry, type HelpTreeSection } from '../lib/help';
+// [WEB-HELP-2 2026-09-11] Restyled for the Article.dc.html / PhoneArticle.dc.html
+// redesign — same shared section/article nav list Help.astro renders twice
+// (desktop always-visible copy + the <details> "Browse help" copy), still
+// from one source so the two can't diverge. Adds the "All help topics" back
+// link and the per-section colour swatch the mockup's rail shows next to
+// each section label; markup/props otherwise unchanged from WEB-HELP-1.
+import { helpUrl, type HelpEntry, type HelpSectionId, type HelpTreeSection } from '../lib/help';
 
 export interface Props {
   tree: HelpTreeSection[];
@@ -12,12 +13,38 @@ export interface Props {
 }
 
 const { tree, entry } = Astro.props;
+
+// [WEB-HELP-2] Fixed per-section swatch colours, lifted from the mockup
+// (Article.dc.html lines 27/30/33/36/39). Four of the five are --ava-*
+// names Help.astro's root aliases to real values (see the long comment at
+// the top of Help.astro's <style> block for why that aliasing exists at
+// all); booking-and-paying's #3b3f7a has no --zine-* match and gets its own
+// --help-indigo custom property, also defined on Help.astro's root — same
+// value the landing page's palette uses for that section — and inherited
+// down to here.
+const SWATCH: Record<HelpSectionId, string> = {
+  'getting-started': 'var(--ava-butter)',
+  'booking-and-paying': 'var(--help-indigo)',
+  creators: 'var(--ava-brick)',
+  billing: 'var(--ava-oat)',
+  'account-and-safety': 'var(--ava-bone)',
+};
 ---
 
 <nav class="help-rail-nav" aria-label="Help sections">
+  <a class="help-rail-all" href="/help">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H6"></path><path d="M11 6l-6 6 6 6"></path></svg>
+    All help topics
+  </a>
   {tree.map((s) => (
     <div class="help-rail-section">
-      <a class="help-rail-section-label" href={`/help#${s.id}`}>{s.label}</a>
+      <a
+        class:list={['help-rail-section-label', { 'is-current': s.id === entry.data.section }]}
+        href={`/help#${s.id}`}
+      >
+        <span class="help-rail-swatch" style={`background:${SWATCH[s.id]}`} aria-hidden="true"></span>
+        {s.label}
+      </a>
       <ul>
         {s.entries.map((e) => {
           const isCurrent = e.id === entry.id;
@@ -35,38 +62,74 @@ const { tree, entry } = Astro.props;
 </nav>
 
 <style>
-  /* [WEB-HELP-1 2026-09-11] Moved here from Help.astro's scoped <style> —
-     Astro's per-component CSS scoping means a parent's scoped rules never
-     reach a child component's own markup, so these rules did nothing while
-     they lived in Help.astro. Same tokens as Help.astro (--ink/--blue/
-     --paper), rem/px units unchanged from the original. */
-  .help-rail-nav { display: flex; flex-direction: column; gap: 1.1rem; }
-  .help-rail-section-label {
-    display: block;
-    margin-bottom: 0.4rem;
-    font-family: var(--display);
-    font-size: 0.85rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
+  /* [WEB-HELP-1, kept] Moved here from Help.astro's scoped <style> — Astro's
+     per-component CSS scoping means a parent's scoped rules never reach a
+     child component's own markup. Colours are --ava-* custom properties —
+     NOT the real ava-tokens.css (its import is dead in production; see the
+     comment on Help.astro's `.help-page` style block) but Help.astro's own
+     local alias of those same values, which reaches this component because
+     custom properties inherit through the DOM and HelpRailNav is always
+     rendered inside `.help-page`. */
+  .help-rail-nav { display: flex; flex-direction: column; gap: 1.375rem; }
+
+  .help-rail-all {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0 0.75rem;
+    font-family: var(--ava-font-stub);
+    font-weight: 800;
+    font-size: 0.8125rem;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
-    color: var(--blue);
+    color: var(--ava-signal-deep);
     text-decoration: none;
   }
+  .help-rail-all:hover { text-decoration: underline; }
+  .help-rail-all:focus-visible { outline: var(--ava-focus-ring); outline-offset: var(--ava-focus-offset); border-radius: 0.5rem; }
+
+  .help-rail-section-label {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    margin-bottom: 0.4rem;
+    padding: 0 0.75rem 0.375rem;
+    font-family: var(--ava-font-stub);
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ava-text-label);
+    text-decoration: none;
+  }
+  .help-rail-section-label.is-current { color: var(--ava-ink); }
   .help-rail-section-label:hover { text-decoration: underline; }
+  .help-rail-section-label:focus-visible { outline: var(--ava-focus-ring); outline-offset: var(--ava-focus-offset); }
+  .help-rail-swatch {
+    display: block;
+    flex: none;
+    width: 0.875rem;
+    height: 0.875rem;
+    border-radius: 0.25rem;
+    border: 2px solid var(--ava-ink);
+  }
+
   .help-rail-section ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; }
-  .help-rail-section a { text-decoration: none; font-size: 0.95rem; }
   .help-rail-section li > a {
     display: block;
-    padding: 0.4rem 0.55rem;
-    border-radius: 0.6rem;
-    color: var(--ink);
+    padding: 0.75rem; /* 44px+ tap target */
+    border-radius: 0.75rem;
+    color: var(--ava-ink);
+    font-size: 0.9375rem;
+    font-weight: 500;
+    line-height: 1.35;
+    text-decoration: none;
   }
   .help-rail-section li > a:hover { background: rgba(22, 22, 20, 0.06); }
   .help-rail-section li > a[aria-current='page'] {
-    background: var(--ink);
-    color: var(--paper);
-    font-weight: 700;
+    background: var(--ava-ink);
+    color: var(--ava-bone);
+    font-weight: 600;
   }
-  .help-rail-section li > a:focus-visible,
-  .help-rail-section-label:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  .help-rail-section li > a:focus-visible { outline: var(--ava-focus-ring); outline-offset: var(--ava-focus-offset); }
 </style>

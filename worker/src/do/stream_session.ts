@@ -19,6 +19,7 @@
 // Instance naming: `live:<listingId>` (AvaLive) | `consult:<bookingId>`.
 import type { Env } from "../types";
 import { json } from "../util";
+import { endLiveOnHostNoReturn } from "../lib/live_grace";
 
 const FLUSH_MS = 5_000;
 const GIFT_COMMISSION = 0.30;          // legacy gifts path (§10.1)
@@ -49,8 +50,14 @@ export class StreamSessionDO {
     this.sql.exec("INSERT OR IGNORE INTO meta (k, creator_uid, pending, total, gifters) VALUES (1, NULL, 0, 0, 0)");
     // Phase 7 session + room state (DO storage — survives hibernation).
     this.sql.exec(
-      "CREATE TABLE IF NOT EXISTS session (k INTEGER PRIMARY KEY, sid TEXT, kind TEXT, starts_at INTEGER, ends_at INTEGER, host_id TEXT, wait_min INTEGER NOT NULL DEFAULT 20, slow_mode_sec INTEGER NOT NULL DEFAULT 0, pinned TEXT, donations_total INTEGER NOT NULL DEFAULT 0, donations_count INTEGER NOT NULL DEFAULT 0, host_live INTEGER NOT NULL DEFAULT 0)",
+      "CREATE TABLE IF NOT EXISTS session (k INTEGER PRIMARY KEY, sid TEXT, kind TEXT, starts_at INTEGER, ends_at INTEGER, host_id TEXT, wait_min INTEGER NOT NULL DEFAULT 20, slow_mode_sec INTEGER NOT NULL DEFAULT 0, pinned TEXT, donations_total INTEGER NOT NULL DEFAULT 0, donations_count INTEGER NOT NULL DEFAULT 0, host_live INTEGER NOT NULL DEFAULT 0, commercial INTEGER NOT NULL DEFAULT 0, host_checked_in_at INTEGER, listing_id TEXT)",
     );
+    // [WAITROOM-1] In-place migration for DOs created before the `commercial` column existed.
+    try { this.sql.exec("ALTER TABLE session ADD COLUMN commercial INTEGER NOT NULL DEFAULT 0"); } catch { /* already migrated / fresh DO */ }
+    // [WAITROOM-2 / C11] In-place migration for DOs created before this column existed.
+    try { this.sql.exec("ALTER TABLE session ADD COLUMN host_checked_in_at INTEGER"); } catch { /* already migrated / fresh DO */ }
+    // [WAITROOM-4 / R3] In-place migration for DOs created before this column existed.
+    try { this.sql.exec("ALTER TABLE session ADD COLUMN listing_id TEXT"); } catch { /* already migrated / fresh DO */ }
     this.sql.exec("INSERT OR IGNORE INTO session (k) VALUES (1)");
     this.sql.exec("CREATE TABLE IF NOT EXISTS modlist (uid TEXT PRIMARY KEY, state TEXT NOT NULL)"); // muted|banned
     this.sql.exec("CREATE TABLE IF NOT EXISTS alarms (t INTEGER NOT NULL, kind TEXT NOT NULL, PRIMARY KEY (t, kind))");
@@ -81,15 +88,46 @@ export class StreamSessionDO {
 
       // ---- Phase 7 session lifecycle ----
       case "schedule": {
-        // {sid, kind, starts_at, ends_at, host_id, wait_min?} — idempotent re-arm.
+        // {sid, kind, starts_at, ends_at, host_id, wait_min?, commercial?} — idempotent re-arm.
+        // [WAITROOM-1] `commercial:true` (bookings.kind='consult_1to1') means the
+        // commercial settlement engine (worker/src/commercial_settlement.ts) owns
+        // the money for this session — see money_noshow/money_end below, which
+        // become no-ops when this flag is set.
         this.sql.exec(
-          "UPDATE session SET sid=?1, kind=?2, starts_at=?3, ends_at=?4, host_id=?5, wait_min=?6 WHERE k=1",
+          "UPDATE session SET sid=?1, kind=?2, starts_at=?3, ends_at=?4, host_id=?5, wait_min=?6, commercial=?7 WHERE k=1",
           String(body.sid), String(body.kind), Number(body.starts_at), Number(body.ends_at), String(body.host_id), Math.trunc(Number(body.wait_min ?? 20)) || 20,
+          body.commercial === true ? 1 : 0,
         );
         this.sql.exec("UPDATE meta SET creator_uid=COALESCE(NULLIF(creator_uid,''),?1) WHERE k=1", String(body.host_id));
         const wait = (Math.trunc(Number(body.wait_min ?? 20)) || 20) * 60_000;
         await this.armAlarm(Number(body.starts_at) + wait, "money_noshow");
         await this.armAlarm(Number(body.ends_at) + END_GRACE_MS, "money_end");
+        return json({ ok: true });
+      }
+      // [LIVE-GRACE-1] RULEBOOK-PAID-SESSIONS.md v2 §4 L4/L5. The Worker
+      // (lib/live_grace.ts) arms/clears this alarm from
+      // recordCommercialStreamEvent's participant_left/participant_joined
+      // branches for the host of a live event; `alarm()` below fires
+      // `endLiveOnHostNoReturn` if nobody clears it in time.
+      case "live_grace_arm": { // {t: deadline_ms, listing_id, sid?, kind?}
+        // [WAITROOM-4 / R3] The commercial live lane never calls this DO's
+        // `schedule` op (that's the legacy AvaLive path — routes/live.ts),
+        // so `sid`/`kind` would otherwise stay empty on this DO instance
+        // forever and the alarm below would have no listing id to act on.
+        // `armLiveGrace` (lib/live_grace.ts) always sends `listing_id`.
+        if (body.listing_id) {
+          this.sql.exec(
+            "UPDATE session SET listing_id=?1, sid=COALESCE(NULLIF(sid,''),?1), kind=COALESCE(NULLIF(kind,''),?2) WHERE k=1",
+            String(body.listing_id), String(body.kind || "live_event"),
+          );
+        }
+        await this.armAlarm(Number(body.t), "live_grace");
+        return json({ ok: true });
+      }
+      case "live_grace_clear": { // host rejoined before the deadline
+        this.sql.exec("DELETE FROM alarms WHERE kind='live_grace'");
+        const next = this.sql.exec("SELECT MIN(t) AS t FROM alarms").one() as any;
+        if (next?.t) await this.state.storage.setAlarm(Number(next.t));
         return json({ ok: true });
       }
       case "host-live": { // stream webhook: connected/disconnected (A4 overlay)
@@ -167,6 +205,16 @@ export class StreamSessionDO {
     // Attendance evidence (refund engine). Host rows carry order_id NULL.
     this.attendance(uid, role === "host" ? "host" : "attendee", meta.orderId, "join");
 
+    // [WAITROOM-2 / C11] First host socket open — record it once, so clients
+    // can show a truthful "creator checked in at …" line instead of trusting
+    // their own clock. Idempotent: only the first host connection writes it.
+    if (role === "host") {
+      const already = this.sess();
+      if (!already.host_checked_in_at) {
+        this.sql.exec("UPDATE session SET host_checked_in_at=?1 WHERE k=1", Date.now());
+      }
+    }
+
     // Initial state straight to the new socket (not coalesced).
     const s = this.sess();
     try {
@@ -174,11 +222,16 @@ export class StreamSessionDO {
         type: "welcome", watching: this.state.getWebSockets().length,
         slow_mode_sec: Number(s.slow_mode_sec), pinned: s.pinned,
         ends_at: s.ends_at, starts_at: s.starts_at, host_live: Number(s.host_live) === 1,
+        host_checked_in_at: s.host_checked_in_at != null ? Number(s.host_checked_in_at) : null,
+        roster: this.rosterFlags(),
         ...this.donations(),
       }));
     } catch { /* ignore */ }
     this.queue({ type: "viewers", n: this.state.getWebSockets().length });
-    if (role === "host" || role === "attendee") this.queue({ type: "presence", uid, name, role, joined: true });
+    if (role === "host" || role === "attendee") {
+      this.queue({ type: "presence", uid, name, role, joined: true });
+      this.queue({ type: "roster", ...this.rosterFlags() });
+    }
     return new Response(null, { status: 101, webSocket: pair[0] });
   }
 
@@ -198,25 +251,34 @@ export class StreamSessionDO {
       this.queue({ type: "sticker", id: String(m.id).slice(0, 32), from: meta.name });
       return;
     }
-    if ((t === "fly" || t === "chat") && typeof m.text === "string") {
+    if (t === "fly" && typeof m.text === "string") {
       const text = String(m.text).slice(0, 120).trim();
       if (!text) return;
       // Profanity hook: drop + warn (full async scan stays on the report path).
       if (PROFANITY.test(text)) { try { ws.send(JSON.stringify({ type: "warn", reason: "message blocked" })); } catch { /* ignore */ } return; }
       const now = Date.now();
-      // Rate limits: flying 1/2s per user; chat honors slow mode (server-side).
-      if (t === "fly") {
-        if (now - (this.lastFly.get(meta.uid) ?? 0) < FLY_RATE_MS) return;
-        this.lastFly.set(meta.uid, now);
-      } else {
-        const slow = Number(this.sess().slow_mode_sec) * 1000;
-        if (slow > 0 && meta.role !== "host") {
-          const last = (this.sql.exec("SELECT t FROM last_msg WHERE uid=?1", meta.uid).toArray() as any[])[0]?.t ?? 0;
-          if (now - Number(last) < slow) { try { ws.send(JSON.stringify({ type: "warn", reason: `slow mode: 1 message per ${slow / 1000}s` })); } catch { /* ignore */ } return; }
-          this.sql.exec("INSERT INTO last_msg (uid, t) VALUES (?1,?2) ON CONFLICT(uid) DO UPDATE SET t=?2", meta.uid, now);
-        }
+      if (now - (this.lastFly.get(meta.uid) ?? 0) < FLY_RATE_MS) return;
+      this.lastFly.set(meta.uid, now);
+      this.queue({ type: "fly", text, from: meta.name, uid: meta.uid });
+      return;
+    }
+    // [WAITROOM-1] Waiting-room chat (RULEBOOK §3: "chat rides the same
+    // socket"). Reuses the flying-messages profanity + slow-mode/mod checks
+    // above (mute/ban already gates this whole handler) but its own 500-char
+    // cap and wire shape: {from, text, at}.
+    if (t === "chat" && typeof m.text === "string") {
+      const text = String(m.text).slice(0, 500).trim();
+      if (!text) return;
+      // Profanity hook: drop + warn (full async scan stays on the report path).
+      if (PROFANITY.test(text)) { try { ws.send(JSON.stringify({ type: "warn", reason: "message blocked" })); } catch { /* ignore */ } return; }
+      const now = Date.now();
+      const slow = Number(this.sess().slow_mode_sec) * 1000;
+      if (slow > 0 && meta.role !== "host") {
+        const last = (this.sql.exec("SELECT t FROM last_msg WHERE uid=?1", meta.uid).toArray() as any[])[0]?.t ?? 0;
+        if (now - Number(last) < slow) { try { ws.send(JSON.stringify({ type: "warn", reason: `slow mode: 1 message per ${slow / 1000}s` })); } catch { /* ignore */ } return; }
+        this.sql.exec("INSERT INTO last_msg (uid, t) VALUES (?1,?2) ON CONFLICT(uid) DO UPDATE SET t=?2", meta.uid, now);
       }
-      this.queue({ type: t, text, from: meta.name, uid: meta.uid });
+      this.queue({ type: "chat", from: meta.name, text, at: now, uid: meta.uid });
       return;
     }
     if (t === "track" && typeof m.track === "string" && m.track.length < 256) {
@@ -233,7 +295,12 @@ export class StreamSessionDO {
     const meta = this.metaOf(ws);
     if (meta) {
       this.attendance(meta.uid, meta.role === "host" ? "host" : "attendee", meta.orderId, "leave");
-      if (meta.role === "host" || meta.role === "attendee") this.queue({ type: "presence", uid: meta.uid, name: meta.name, role: meta.role, joined: false });
+      if (meta.role === "host" || meta.role === "attendee") {
+        this.queue({ type: "presence", uid: meta.uid, name: meta.name, role: meta.role, joined: false });
+        // roster reflects sockets still open at close time, so compute it
+        // excluding the closing socket (getWebSockets() may still list it).
+        this.queue({ type: "roster", ...this.rosterFlags(ws) });
+      }
     }
     this.queue({ type: "viewers", n: Math.max(0, this.state.getWebSockets().length - 1) });
   }
@@ -254,10 +321,45 @@ export class StreamSessionDO {
     this.sql.exec("DELETE FROM alarms WHERE t<=?1", now + 1000);
     const s = this.sess();
     for (const d of due) {
+      // [WAITROOM-5 / follow-up 4] The SELECT/DELETE above tolerate the DO
+      // alarm firing up to 1s early (Cloudflare's own alarm jitter/coalescing
+      // — harmless slack for most kinds). But `endLiveOnHostNoReturn` requires
+      // `reconnect_deadline_ms<=now` (R6), computed fresh with its own
+      // `Date.now()`; an early fire would silently no-op there, and this row
+      // is already gone from `alarms`, so the grace window would only
+      // actually end via the cron sweep (up to 5 min later) instead of
+      // promptly. Re-arm a live_grace row that fired early rather than
+      // processing or dropping it.
+      if (d.kind === "live_grace" && Number(d.t) > now) {
+        await this.armAlarm(Number(d.t), "live_grace");
+        continue;
+      }
       try {
         if (d.kind === "gift_flush") await this.flushGifts();
+        // [WAITROOM-4 / R3] `listing_id` is set explicitly by `live_grace_arm`
+        // (the commercial live lane never calls `schedule`, so `s.sid` alone
+        // used to stay empty forever here); fall back to `s.sid` for a DO
+        // instance that also went through `schedule` (legacy AvaLive).
+        const graceListingId = s.listing_id || s.sid;
+        if (d.kind === "live_grace" && graceListingId) {
+          // Best-effort from the DO's side: sweepExpiredLiveGrace (cron,
+          // lib/live_grace.ts) is the safety net if this throws (see the
+          // catch below) -- this alarm firing at all is itself the durable
+          // signal that the grace window elapsed.
+          await endLiveOnHostNoReturn(this.env, String(graceListingId));
+        }
         if ((d.kind === "money_noshow" || d.kind === "money_end") && s.sid) {
-          await this.env.Q_MONEY.send({ type: "evaluate", sid: String(s.sid), kind: String(s.kind), phase: d.kind === "money_noshow" ? "noshow" : "end" });
+          // [WAITROOM-1] Commercial bookings (bookings.kind='consult_1to1') are
+          // settled ONLY by the commercial settlement engine (check-in decision,
+          // RULEBOOK-PAID-SESSIONS.md v2 §2) or the end-of-slot cron
+          // (endDueConsultSessions). If this DO's own legacy money alarms also
+          // fired an `evaluate` job, two engines could move money on the same
+          // order — RULEBOOK §5 forbids that. So these alarms are a no-op for
+          // commercial sessions; `session_ended` still fires so waiting-room
+          // clients know the slot is over.
+          if (Number(s.commercial) !== 1) {
+            await this.env.Q_MONEY.send({ type: "evaluate", sid: String(s.sid), kind: String(s.kind), phase: d.kind === "money_noshow" ? "noshow" : "end" });
+          }
           if (d.kind === "money_end") this.queue({ type: "session_ended" });
         }
       } catch (e) { console.error("StreamSessionDO alarm:", String(e)); /* sweep is the safety net */ }
@@ -303,6 +405,27 @@ export class StreamSessionDO {
       if (m) out.push({ uid: m.uid, role: m.role, name: m.name });
     }
     return out;
+  }
+
+  /** [WAITROOM-1] {host, attendee} presence flags — the auto-join signal
+   * clients wait for (RULEBOOK §3: both must be present before /join).
+   * `excludeWs` lets `dropped()` compute the flags as-of-close, since the
+   * closing socket can still appear in `getWebSockets()` at that point. */
+  private rosterFlags(excludeWs?: WebSocket): { host: boolean; attendee: boolean; host_checked_in_at: number | null } {
+    let host = false, attendee = false;
+    for (const ws of this.state.getWebSockets()) {
+      if (ws === excludeWs) continue;
+      const m = this.metaOf(ws);
+      if (!m) continue;
+      if (m.role === "host") host = true;
+      else if (m.role === "attendee") attendee = true;
+    }
+    // [WAITROOM-2 / C11] Every roster message (welcome's embedded roster and
+    // each standalone {type:"roster"} broadcast) carries the first host
+    // check-in time, so clients show a server-truthful check-in line instead
+    // of inferring it from `host` flipping true/false across reconnects.
+    const s = this.sess();
+    return { host, attendee, host_checked_in_at: s.host_checked_in_at != null ? Number(s.host_checked_in_at) : null };
   }
 
   private kick(uid: string): void {

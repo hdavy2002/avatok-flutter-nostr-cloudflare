@@ -142,6 +142,12 @@ outcome} · `listing_cancel` · `listing_status_change` {to} ·
 `waitlist_submit` {outcome} · `cta_click` {name, location} · `legal_page_view`
 {page} · `beta_banner_dismiss` · `nav_click` {item}.
 
+[WEB-HELP-1 2026-09-11] Help centre search (`components/HelpSearch.astro`):
+`help_search` {q_len, result_count, zero_result} — fires 600ms after the
+query settles, never the raw query text · `help_search_select` {rank} — on
+navigating to a result. Index-load failures go through the shared
+`captureException` with `{surface: 'help_search'}`, not a bespoke event.
+
 ### 2.10 Admin (`islands/admin`)
 
 `admin_action` {action, target, outcome} for every write (adjust, refund,
@@ -253,3 +259,343 @@ Every spec gets a **Telemetry** section listing: the events (from this file or
 added here), the success value per the ship gate, and which dashboard shows it.
 A PR that adds a fetch, a form, a player, or a money step without the matching
 event is sent back.
+
+## WP5 [LIVE-GRACE-WEB-1] — live host/viewer grace-period web events
+
+Surfaces: `web/src/islands/live-gs/LiveGsHost.tsx`, `LiveGsViewer.tsx`,
+`LiveStage.tsx`. All four carry the shared super-property contract (§1.1) via
+`web/src/lib/analytics.ts`'s `capture()` — `email` is registered once at
+sign-in (`identify()`) and does not need to be repeated per-call.
+
+`live_host_authz_refused` {listing_id, reason: 'not_found'|'not_creator'|'error',
+status} — emitted by `LiveGsHost.tsx`'s `authorize()` when the pre-media
+`GET .../live/:id/state` check fails, BEFORE `getUserMedia` is ever requested.
+`reason` distinguishes a 404 (listing/event does not exist — "Event not
+found") from a 403 (signed-in user is not the event's creator — "Not your
+event") from any other transport/server failure.
+
+`live_reconnecting_shown` {listing_id, surface: 'host'|'viewer'} — fired once
+per reconnect episode, the moment either side learns (via the `/state` poll)
+that `state:'reconnecting'` is in effect. Host: shown when opening the host
+page lands on "Rejoin your live" instead of the normal preview. Viewer: shown
+when the "Creator reconnecting · mm:ss" overlay first appears over the live
+stage. De-duplicated per episode (resets when the state moves off
+`reconnecting`), so a still-reconnecting session does not re-fire on every
+3s poll tick.
+
+`live_host_rejoin` {listing_id} — fired when the creator taps "Rejoin your
+live" on the host page's reconnecting screen, immediately before the normal
+prepare-host/getUserMedia/join flow re-runs against the same server-issued
+call id (the client never mints a new one).
+
+`live_no_return_shown` {listing_id} — fired once for a ticket holder when the
+live state poll reports `state:'ended'` with `outcome:'host_no_return'`
+(server contract, WP8) — the moment the "The creator couldn't return — the
+unused part of your ticket is being refunded" card is shown in place of the
+generic ended card. Success value for this WP's viewer-side refund
+messaging: this event firing with a non-empty `listing_id` on a session that
+actually ended with `host_no_return`.
+
+Contract note: `reconnecting`/`reconnect_deadline_ms`/`outcome` on
+`GET /api/commercial/live/:id/state` land with WP8 (wave 2). Until then these
+fields are simply absent and every branch above is inert — coded against the
+contract now so no follow-up web change is needed when WP8 ships.
+
+## WP3 [SETTLE-CHECKIN-1] — consult settlement decision telemetry
+
+Surfaces: `worker/src/commercial_settlement.ts`, `worker/src/money_engine.ts`. No new
+event NAMES — the existing `commercialEvent(env, "settlement", null, {...})` call sites
+(worker-side, scalar-only, redacted per `lib/commercial_telemetry.ts`) now carry the
+check-in decision instead of the two-party GetStream-overlap one for `consult_1to1`:
+
+- `commercialEvent(env, "settlement", null, { kind: "consult_1to1", outcome: "settled" })`
+  — fires from the existing `finishSettlement()` path whenever
+  `consultCheckInDecision()` found the creator checked in (RULEBOOK-PAID-SESSIONS.md §2
+  C1). The receipt row it corresponds to now also carries `rule: 'creator_checked_in'`
+  and `checked_in_at` (epoch ms) — read those off `commercial_receipts`, not off the
+  event, for the audit trail; the event itself stays scalar/aggregate.
+- `commercialEvent(env, "settlement", null, { outcome: "refunded", reason:
+  "creator_no_show", kind: "consult_1to1" })` — fires from `refundCreatorNoShow()` (main
+  settlement path) or `finalizeOverdueNoShow()` (the "never reached 'ended'" sweep) when
+  the creator did NOT check in within `sessionCreatorCheckInMin` (C2). Both paths now also
+  write an `account_strikes` row (`category: 'marketplace_no_show'`, `source:
+  'commercial_settlement'`) — success value for this WP: every `creator_no_show` refund
+  event has a matching strike row with the same `commercial_session_id` as evidence_url.
+
+Not telemetry, but worth a dashboard eye: `money_engine.ts`'s delegation guard logs
+`console.log('[money_engine] delegation guard: ...')` (worker logs, not PostHog) whenever
+a stale Q_MONEY job for a `bookings.kind='consult_1to1'` order reaches the legacy Phase-7
+engine — it should be rare-to-never post-cutover; a sustained rate means something is
+still enqueueing legacy money jobs for commercial bookings.
+
+## WP1 [SESSION-CLOCK-0] — consult session clock, waiting-room prejoin grant, call rejoin
+
+Surface: `worker/src/routes/commercial_stream_sessions.ts`,
+`worker/src/lib/commercial_session_clock.ts`. All emitted via
+`commercialEvent(env, event, uid, props)` (`worker/src/lib/commercial_telemetry.ts`),
+which stamps `lane: 'commercial'`, `schema_version`, and routes through the shared
+`track()`/`metric()` sinks — same super-property contract as every other commercial
+event in this catalog.
+
+`commercial_provider_event` {kind: 'consult_1to1', outcome: 'applied',
+event_class: 'interval_close_only'} — fired from `recordCommercialStreamEvent` when
+a GetStream `session_ended`/`call.ended`/`live_stopped` webhook arrives for a 1:1
+consult. Per RULEBOOK-PAID-SESSIONS.md §5 ("the schedule ends a session, never a
+provider event"), this path now ONLY closes any open
+`commercial_participant_intervals` rows — it never marks `commercial_sessions`
+ended and never queues a settlement job. `live_event` webhooks are unaffected and
+keep firing the pre-existing `outcome: 'ended'`/settlement-queuing path.
+
+`commercial_session_clock` {kind: 'consult_1to1', outcome: 'ended',
+reason: 'schedule_due'} — fired once per session by the new 5-minute cron sweep
+`endDueConsultSessions` (`worker/src/lib/commercial_session_clock.ts`, wired into
+the existing `scheduled()` handler in `worker/src/index.ts` next to
+`reconcileCommercialSessions`) when a `kind='consult_1to1'` session's booking
+`ends_at + commercialConsultJoinLateMin` has passed and the session is not already
+ended/cancelled. This is the ONLY thing (besides the explicit
+`POST /api/commercial/consult/:id/end` route) that ends a consult session. Success
+value: this event firing for a session whose `commercial_settlement_jobs` row also
+exists (settlement was actually queued, not just the flag flipped).
+
+`commercial_join` {kind, outcome: 'rejoin_recreated_call'} — fired from
+`authorizeProviderJoin` when a valid, in-window participant rejoins a session whose
+GetStream call the provider reports as ended or missing (404) and the call is
+recreated via `createProviderCall` rather than refusing the join. Distinguishes a
+genuine rejoin-after-drop from the normal first-join path (which emits no extra
+event beyond the existing `commercial_join {outcome:'refused', ...}` refusal
+events already in this catalog).
+
+Contract note: `commercialConsultPrejoin`'s response now includes `room_ws`,
+`room_token`, `check_in_by` from WP2's `buildWaitingRoomGrant`
+(`worker/src/lib/commercial_waiting_room.ts`) per the shared waiting-room contract
+in `Specs/PLAN-2026-09-11-WAITING-ROOM-BUILD.md`. As of this WP that lib is a
+stub (`// WP2 replaces this`) returning a placeholder `room_ws`/`room_token` and
+`check_in_by: startsAt` — no new client-facing telemetry from this change until
+WP2 lands the real grant and WP4/WP6 wire the waiting-room UI against it.
+
+## WP4 [WAITROOM-WEB-1] — paid-consult waiting-room web events
+
+Surfaces: `web/src/islands/consult-gs/ConsultRoomGS.tsx`, `WaitingRoom.tsx`,
+`RoomSocket.ts`. All carry the shared super-property contract (§1.1) via
+`web/src/lib/analytics.ts`'s `capture()`; `email` is ALSO passed explicitly
+on every event below (not just relied on as a registered super-property),
+because a guest's email can be set after the waiting room has already been
+entered.
+
+`waitroom_enter` {booking_id, role: 'creator'|'buyer', email} — fired when
+the green room hands off into the waiting room (after PreJoin's device
+preflight, before any GetStream participant exists) and again every time a
+live call is left and the same booking's waiting room is re-entered
+(`RULEBOOK-PAID-SESSIONS.md` §3: "back to waiting on leave, keep the
+socket"). Coded against the WP1/WP2 prejoin contract (`room_ws`,
+`check_in_by`, `counterparty`) — when those fields are absent (worker not
+deployed yet, or the commercial lane's flags are off), the client logs a
+`console.warn` and falls back to today's direct-join flow with no waiting
+room and none of the events below.
+
+`waitroom_autojoin` {booking_id, role, email} — fired the moment the
+waiting-room socket's `roster {host, attendee}` message reports BOTH
+present and the client calls the existing commercial `/join` (PLAN
+contract: "Auto-join rule (clients): call the existing `/join` when
+`roster.host && roster.attendee`"). De-duplicated per waiting-room visit
+(`autoJoinFiredRef`) and re-armed on a later re-entry to waiting so a
+retried join after a transient failure can fire again.
+
+`waitroom_noshow_shown` {booking_id, role: 'buyer', email} — fired once, for
+the customer only, the moment `check_in_by` passes with the socket's roster
+still reporting `host: false` — the moment the "X didn't show up — your
+payment is being refunded" line renders in the waiting room. Never computed
+or asserted independently of the server's `roster`/`check_in_by` fields
+(RULEBOOK §5: "Never compute money on the phone or in the browser").
+
+`waitroom_chat_sent` {booking_id, role, email} — fired on every waiting-room
+chat message sent over the `RoomSocket` (`type:"chat"`, ≤ 500 chars per the
+WP2 contract). Message text itself is never sent to PostHog.
+
+Success value for this WP's ship gate: `waitroom_enter` firing with a
+non-empty `room_ws`-backed session (i.e. not the fallback-warned path) is the
+signal the waiting room is actually live for a booking; `waitroom_autojoin`
+firing before any `consult_join_result` event confirms the auto-join rule
+fired ahead of the manual join path it replaces.
+
+## WP7 [LIVE-GRACE-APP-1] — app-side live host-reconnect / viewer grace events
+
+Surfaces: `app/lib/features/commercial_getstream/commercial_live_screens.dart`
+(`LiveBroadcastScreen`, `LiveViewerScreen`), `commercial_live_gateway.dart`,
+the commercial branch of `app/lib/push/push_service.dart`. All events go
+through `Analytics.capture` (shared super-property contract, §1.1) and always
+additionally carry `listing_id` and `role` (`'host'`|`'viewer'`).
+
+`live_reconnecting_shown` {listing_id, role, email} — fired once per outage
+(de-duplicated until the state clears) the first time a `GET
+/api/commercial/live/:id/state` poll reports `state:'reconnecting'`, on
+either the host's `LiveBroadcastScreen` or a `LiveViewerScreen`. The host
+side also fires an out-of-band state poll the instant the GetStream SDK's
+own `CallStatus` reports `isReconnecting`/`isDisconnected`, so this can beat
+the normal 3 s poll tick; the event and its payload are unchanged either way
+— the server's `state`/`reconnect_deadline_ms` remain the only source of
+truth for what is shown (RULEBOOK §5: never compute this client-side).
+
+`live_host_rejoin` {listing_id, role: 'host', email, source:
+'in_app_banner'|'push'} — fired when the host asks to rejoin: either
+tapping Rejoin on the in-broadcast reconnect banner, or opening the app via
+a `commercial_reconnect` push (`push_service.dart`). Both paths land on
+`LiveReadinessScreen`, which re-runs `prepareHost` — this event marks the
+INTENT to rejoin, not confirmation that the SDK reconnected.
+
+`live_no_return_shown` {listing_id, role: 'viewer', email} — fired once,
+viewer-side only, the moment a state poll reports `state:'ended',
+outcome:'host_no_return'` and the "The creator couldn't return — the unused
+part of your ticket is being refunded" message renders.
+
+Contract note: `reconnect_deadline_ms`, `outcome` and the `'reconnecting'`
+value of `state` are WP8 (wave 2, worker `live_grace`) fields — this WP only
+consumes them. `CommercialLiveState` parses all three as nullable/optional
+so every event and UI path above degrades to "never fires / never shows"
+rather than throwing until WP8 ships. `commercial_reconnect` push payloads
+are allowlisted the same way as `CommercialNotificationPayload` (refused if
+they carry any provider token/call id; require a stable `listing_id`) before
+either `push_shown` or the notification tap is honoured.
+
+Success value for this WP's ship gate: once WP8 ships, `live_reconnecting_shown`
+appearing on BOTH the host's and a viewer's device for the same `listing_id`
+within the same outage window is the signal the grace period is visible to
+both sides; `live_host_rejoin` followed by the state poll leaving
+`reconnecting` confirms the rejoin actually worked.
+
+## WP2
+
+[WAITROOM-1] WP2 is worker plumbing (`worker/src/lib/commercial_waiting_room.ts`,
+`worker/src/do/stream_session.ts`, `worker/src/routes/consult.ts`,
+`worker/src/routes/config.ts`) — it has no screen/path of its own, so it emits no
+new `Analytics.capture`/`commercialEvent` events. It is the wire layer WP4
+(web) and WP6 (app) build their waiting-room telemetry (`waitroom_enter`,
+`waitroom_autojoin`, `waitroom_noshow_shown`) on top of:
+
+- `buildWaitingRoomGrant(env, …)` returns `{room_ws, room_token, check_in_by}`
+  (`check_in_by = starts_at + sessionCreatorCheckInMin·60000`) and arms the
+  session DO (`consult:<bookingId>`) via `sessionOp(..., {op:"schedule", ...,
+  commercial:true})`. Clients read `check_in_by` to decide when to show the
+  no-show state — never compute it locally from a hardcoded 20.
+- The DO's WS now emits `roster {host:boolean, attendee:boolean}` on `welcome`
+  and after every `presence` change — this is the exact signal WP4/WP6's
+  `waitroom_autojoin` should fire alongside (auto-`/join` when
+  `roster.host && roster.attendee`), and `chat {from, text, at}` (≤500 chars)
+  for the waiting-room chat surface.
+- New flags (`worker/src/routes/config.ts`): `sessionCreatorCheckInMin`
+  (default 20) and `liveHostGraceMin` (default 10) — both declared in
+  `PlatformConfig`, `DEFAULTS` and `numericKeys` (CLAUDE.md "FAKE flag" rule).
+- Commercial bookings (`commercial:true` on `schedule`) make the DO's own
+  `money_noshow`/`money_end` alarms a no-op (`session_ended` still fires) —
+  WP3's `commercial_settlement.ts` / the WP1 cron are the only money movers
+  for these sessions (RULEBOOK-PAID-SESSIONS.md v2 §5). No telemetry implication;
+  noted here so a future reader doesn't mistake the silent alarm for a bug.
+
+Success value for this WP: `worker/test/commercial_waiting_room.test.ts` and
+`worker/test/stream_session_do_waitroom_contract.test.ts` are the checkable
+proxy for "the contract fields WP4/WP6 telemetry depends on actually exist and
+have the shape documented above."
+
+## WP6 [WAITROOM-APP-1] — paid-consult waiting-room app events
+
+Surfaces: `app/lib/features/commercial_getstream/commercial_waiting_room_screen.dart`
+(new), `commercial_consult_screens.dart` (`CommercialConsultationPrejoinFlow._join`),
+`app/lib/core/commercial_waiting_room_api.dart` (new). All go through
+`Analytics.capture`, which stamps the shared super-property contract (§1.1) on
+every call automatically — `email` is never omitted here, it just isn't
+repeated as an explicit property since `Analytics.capture`'s `_base()` already
+attaches it.
+
+`waitroom_enter` {booking_id, role: 'creator'|'buyer'} — fired in
+`CommercialWaitingRoomScreen.initState`, i.e. once the prejoin flow's `_join`
+has fetched a COMPLETE `CommercialWaitingRoomApi.prejoin` grant (`room_ws`,
+`room_token`, `starts_at`, `ends_at` all present, `role` matching this
+screen's `isCreator`) and pushed the waiting room. `Leave` from the in-call
+`CommercialConsultationRoomScreen` pops back to the SAME waiting-room screen
+instance (socket kept per RULEBOOK §3) rather than re-creating it, so a
+re-entry does not double-fire this event within one visit. When the prejoin
+grant is absent or partial (worker not deployed yet, or flags off), `_join`
+silently falls back to the pre-WP6 direct-join flow and none of these events
+fire — the app never breaks on an old server.
+
+`waitroom_autojoin` {booking_id, role} — fired at the top of `_autoJoin`, the
+moment the waiting-room socket's `roster {host, attendee}` event reports BOTH
+present (PLAN contract: "call the existing `/join` when `roster.host &&
+roster.attendee`"). Guarded by `_joining`/`_ended` so a retried roster event
+before the first join attempt finishes cannot double-fire.
+
+`waitroom_noshow_shown` {booking_id, role: 'buyer'} — fired once per visit,
+customer-side only, in `_onTick` the moment `check_in_by` passes with the
+roster still reporting no host present (`!_rosterHost`). Read straight off
+the server's `check_in_by`/`roster` fields, never computed locally from a
+hardcoded wait window (RULEBOOK §5).
+
+`waitroom_chat_sent` {booking_id, role} — fired on every waiting-room chat
+send (`CommercialWaitingRoomChannel.sendChat`, ≤ 500 chars per the WP2 DO
+contract). Message text itself never reaches PostHog.
+
+Success value for this WP's ship gate: `waitroom_enter` on a real booking
+with a non-null `room_ws` confirms the app is on the new waiting-room path
+rather than the fallback; `waitroom_autojoin` appearing before the existing
+`consult_room_entered`/join telemetry on the same booking+device confirms the
+auto-join rule fired ahead of the manual "Join consultation" tap it replaces.
+
+## WP8 [LIVE-GRACE-1] — live host disconnect grace window, worker-side
+
+Surface: `worker/src/routes/commercial_stream_sessions.ts` (live branches of
+`recordCommercialStreamEvent`), `worker/src/lib/live_grace.ts`,
+`worker/src/do/stream_session.ts` (alarm kind `live_grace`),
+`worker/src/commercial_settlement.ts` (live `host_no_return` branch). All
+worker-side events emitted via `commercialEvent(env, event, uid, props)`
+(`worker/src/lib/commercial_telemetry.ts`) — same `lane: 'commercial'`,
+`schema_version` super-property contract as every other commercial event in
+this catalog.
+
+`commercial_live_grace` {kind: 'live_event', outcome: 'armed'} — fired from
+`armLiveGrace` when a GetStream `participant_left` webhook for the live
+event's `host` member arrives while `commercial_sessions.state='live'`
+(RULEBOOK-PAID-SESSIONS.md v2 §4 L4/L5). Idempotent: a replayed webhook for an
+already-armed window fires nothing (the D1 write it gates on reports zero
+rows changed).
+
+`commercial_live_grace` {kind: 'live_event', outcome: 'rejoined'} — fired
+from `clearLiveGrace` when the host's `participant_joined` webhook arrives
+before the grace deadline. Same idempotency guard.
+
+`commercial_live_grace` {kind: 'live_event', outcome: 'host_no_return'} —
+fired from `endLiveOnHostNoReturn`, called from the DO's `live_grace` alarm
+(`do/stream_session.ts`) when nobody cleared the window in time. Session row
+gets `state='ended', end_outcome='host_no_return'`; open participant
+intervals and the open `commercial_live_outages` row are closed; one
+`commercial_settlement_jobs` row is queued per order on the listing.
+
+`commercial_settlement` {outcome: 'host_no_return_partial', kind:
+'live_event', refund_pct} — fired from `settleLiveHostNoReturn`
+(`commercial_settlement.ts`) once per settled order: `refund_pct` is the
+unwatched-fraction of the ticket's slot, rounded to a whole percent
+(`gross × (slot_ms − watched_eligible_ms) / slot_ms`, `watched_eligible_ms`
+excluding overlap with any `commercial_live_outages` row). The consumed
+remainder is released through the pre-existing `releaseSnapshot` /
+`finishSettlement` rails with the creator/platform amounts scaled by the
+watched fraction; the unconsumed share goes out through the pre-existing
+`executeCommercialRefund` / `finalizeCommercialRefund` refund rail with
+`reason: 'host_no_return'`.
+
+`commercial_reconnect` push (via `notifyCommercialUser`,
+`worker/src/lib/commercial_notifications.ts`) — sent to the creator only,
+`data: {kind:'commercial', type:'commercial_reconnect', listing_id,
+session_id, deeplink}`. Routed through `consumers/src/fcm.ts`'s
+`commercialType` branch (any `commercial_*` type forwards `type` +
+`listing_id`/`session_id`/`deeplink` on the FCM data payload) rather than a
+bare `notifyUser()` call, whose `notify` branch does not carry those fields —
+this is the "preserves data" path WP7's push handler
+(`app/lib/push/push_service.dart`) reads `listing_id` off.
+
+Contract note: `GET /api/commercial/live/:id/state` (`commercialLiveState`)
+now exposes `state:'reconnecting'` (projected — see
+`migrations/2026-09-11-live-grace-alter.sql` for why the underlying `state`
+column never stores that literal), `reconnect_deadline_ms` while the window
+is open, `starts_at` unconditionally, and `outcome:'host_no_return'` once the
+session has ended that way. No new telemetry from the state route itself —
+WP5 (web) and WP7 (app) poll it and own the client-side events for what the
+viewer/host sees.

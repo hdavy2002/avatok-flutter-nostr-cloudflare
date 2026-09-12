@@ -38,6 +38,8 @@ import { commercialRoutePattern } from "./lib/commercial_ids";
 import { commercialDiagnostics, scanCommercialHealth } from "./routes/commercial_diagnostics";
 import { runCommercialSettlements, runCommercialHostNoShowSweep } from "./commercial_settlement";
 import { refreshStaleCreatorStats } from "./lib/creator_stats"; // [LIST-STATS-1]
+import { endDueConsultSessions, backfillCheckedInConsultSessions } from "./lib/commercial_session_clock"; // [SESSION-CLOCK-0]
+import { sweepExpiredLiveGrace } from "./lib/live_grace"; // [WAITROOM-4 / R3]
 import { messengerCallAuthorize, messengerCallPricing, messengerCallReceipt, messengerCallBillingStatus, cancelMessengerCallAuthorization } from "./routes/messenger_call_billing";
 import { brain } from "./routes/brain";
 import { brainDomains } from "./routes/brain_domains";
@@ -422,6 +424,25 @@ export default {
         reconcileCommercialSessions(env)
           .then((r) => { if (r.scanned) console.log("[commercial-reconciliation]", JSON.stringify(r)); })
           .catch((e) => { console.error("[commercial-reconciliation] failed:", String(e)); }),
+        // [SESSION-CLOCK-0] "The schedule ends a session, never a provider event"
+        // (RULEBOOK-PAID-SESSIONS.md §5) -- this is that schedule for 1:1 consults.
+        // [WAITROOM-3] backfillCheckedInConsultSessions runs first: it synthesizes
+        // the missing commercial_sessions row (+ settlement job) for a booking the
+        // creator checked into but the buyer never opened, so that booking is not
+        // invisible to settlement. It must not block endDueConsultSessions on
+        // failure, so its own error is caught before the chain continues.
+        backfillCheckedInConsultSessions(env)
+          .then((r) => { if (r.scanned) console.log("[commercial-consult-checkin-backfill]", JSON.stringify(r)); })
+          .catch((e) => { console.error("[commercial-consult-checkin-backfill] failed:", String(e)); })
+          .then(() => endDueConsultSessions(env))
+          .then((r) => { if (r.scanned) console.log("[commercial-consult-session-clock]", JSON.stringify(r)); })
+          .catch((e) => { console.error("[commercial-consult-session-clock] failed:", String(e)); }),
+        // [WAITROOM-4 / R3] Cron safety net for the DO `live_grace` alarm —
+        // see sweepExpiredLiveGrace's own doc comment for why this exists
+        // alongside the alarm rather than instead of it.
+        sweepExpiredLiveGrace(env)
+          .then((r) => { if (r.scanned) console.log("[commercial-live-grace-sweep]", JSON.stringify(r)); })
+          .catch((e) => { console.error("[commercial-live-grace-sweep] failed:", String(e)); }),
         reconcileListingLifecycleProjections(env)
           .then((r) => { if (r.scanned) console.log("[listing-lifecycle-reconciliation]", JSON.stringify(r)); })
           .catch((e) => { console.error("[listing-lifecycle-reconciliation] failed:", String(e)); }),
@@ -430,21 +451,30 @@ export default {
           .catch((e) => { console.error("[listing-publication-reconciliation] failed:", String(e)); }),
         recoverEmailOutbox(env)
           .catch(() => { console.error("[commercial-email-recovery] failed"); }),
-        runCommercialHostNoShowSweep(env)
-          .then((r) => { if (r.scanned) console.log("[commercial-host-no-show-sweep]", JSON.stringify(r)); })
-          .catch((e) => { console.error("[commercial-host-no-show-sweep] failed:", String(e)); }),
-        // [LISTING-EXPIRY-1] Buyers of a show nobody ever opened (no session row) —
-        // invisible to the sweep above — are refunded as the host's no-show.
-        runCommercialOrphanNoShowSweep(env)
-          .then((r) => { if (r.scanned) console.log("[commercial-orphan-no-show-sweep]", JSON.stringify(r)); })
-          .catch((e) => { console.error("[commercial-orphan-no-show-sweep] failed:", String(e)); }),
         // [LISTING-EXPIRY-1] Close published shows whose scheduled end has passed.
         expireEndedEventListings(env)
           .then((r) => { if (r.scanned) console.log("[listing-schedule-expiry]", JSON.stringify(r)); })
           .catch((e) => { console.error("[listing-schedule-expiry] failed:", String(e)); }),
-        runCommercialSettlements(env)
-          .then((r) => { if (r.scanned) console.log("[commercial-settlement]", JSON.stringify(r)); })
-          .catch((e) => { console.error("[commercial-settlement] failed:", String(e)); }),
+        // [WAITROOM-3 / reviewer nit 9] Both no-show sweeps run to completion
+        // BEFORE runCommercialSettlements (rather than concurrently with it),
+        // so a no-show refund/strike/settlement-job insert this same tick is
+        // visible to the settlement pass instead of racing it. Sequenced in
+        // their own chain so the rest of this Promise.all stays concurrent.
+        (async () => {
+          await Promise.all([
+            runCommercialHostNoShowSweep(env)
+              .then((r) => { if (r.scanned) console.log("[commercial-host-no-show-sweep]", JSON.stringify(r)); })
+              .catch((e) => { console.error("[commercial-host-no-show-sweep] failed:", String(e)); }),
+            // [LISTING-EXPIRY-1] Buyers of a show nobody ever opened (no session row) —
+            // invisible to the sweep above — are refunded as the host's no-show.
+            runCommercialOrphanNoShowSweep(env)
+              .then((r) => { if (r.scanned) console.log("[commercial-orphan-no-show-sweep]", JSON.stringify(r)); })
+              .catch((e) => { console.error("[commercial-orphan-no-show-sweep] failed:", String(e)); }),
+          ]);
+          await runCommercialSettlements(env)
+            .then((r) => { if (r.scanned) console.log("[commercial-settlement]", JSON.stringify(r)); })
+            .catch((e) => { console.error("[commercial-settlement] failed:", String(e)); });
+        })(),
         scanCommercialHealth(env)
           .then((r) => {
             const warnings = r.alarms.filter((alarm) => alarm.state === "warning");
@@ -1697,11 +1727,22 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/consult/probe/blob" && req.method === "GET") return consultProbeBlob();
       {
         if (/^\/api\/consult\/[A-Za-z0-9-]{1,64}\/sfu(\/|$)/.test(p)) return await consultSfu(req, env);
-        const cn = p.match(/^\/api\/consult\/[A-Za-z0-9-]{1,64}\/(join|room|complete|cancel|extend)$/);
+        // [WAITROOM-1] Commercial booking ids are `commercial-booking-<sha256hex>`
+        // (worker/src/routes/commercial_checkout.ts) — up to 96 chars, longer than
+        // the plain crypto.randomUUID() ids the legacy 1:1 consult path uses.
+        // [WAITROOM-2 / W4] The wide {1,96} id length is for `room` ONLY — that's
+        // the waiting-room DO socket, which a commercial booking legitimately
+        // opens. join/complete/cancel/extend are the legacy money/P2P path and
+        // must stay {1,64} (the legacy crypto.randomUUID() id length) so a
+        // commercial booking id can never match them; consultJoin/consultCancel/
+        // consultExtend/consultComplete additionally 409 on bk.kind==='consult_1to1'
+        // as a second, independent guard (see consult.ts).
+        const cnRoom = p.match(/^\/api\/consult\/[A-Za-z0-9-]{1,96}\/room$/);
+        if (cnRoom) return await consultRoom(req, env);
+        const cn = p.match(/^\/api\/consult\/[A-Za-z0-9-]{1,64}\/(join|complete|cancel|extend)$/);
         if (cn) {
           const act = cn[1];
           if (act === "join" && req.method === "GET") return await consultJoin(req, env);
-          if (act === "room") return await consultRoom(req, env);
           if (act === "complete" && req.method === "POST") return await consultComplete(req, env);
           if (act === "cancel" && req.method === "POST") return await consultCancel(req, env);
           if (act === "extend" && req.method === "POST") return await consultExtend(req, env);

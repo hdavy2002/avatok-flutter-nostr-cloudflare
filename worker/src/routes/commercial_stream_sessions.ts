@@ -13,6 +13,8 @@ import {
 } from "../lib/commercial_stream_sessions";
 import { commercialIdFromPath } from "../lib/commercial_ids";
 import { commercialEvent } from "../lib/commercial_telemetry";
+import { buildWaitingRoomGrant } from "../lib/commercial_waiting_room"; // [SESSION-CLOCK-0] WP2 owns this lib
+import { armLiveGrace, clearLiveGrace } from "../lib/live_grace"; // [LIVE-GRACE-1]
 // [LIST-APPROVAL-AUTH-1] Read-only import of the system-actor listing transition
 // landed in fa44bc21. This file only CALLS it from the provider-confirmed webhook
 // path below — it does not own or edit listings.ts.
@@ -453,6 +455,78 @@ async function authorizeProviderJoin(args: {
       args.config.commercialRecordingEnabled ? "requested" : "disabled",
       args.config.commercialReplayEnabled ? "processing" : "disabled", insertedAt,
     ).run();
+  } else if (!["ended", "cancelled"].includes(existing.state)) {
+    // [SESSION-CLOCK-0] Rejoin after a drop. RULEBOOK-PAID-SESSIONS.md §5: a
+    // provider event never ends a session; only the schedule does. So a
+    // commercial_sessions row can sit in a non-terminal DB state while the
+    // GetStream call itself has actually ended (e.g. everyone left and GetStream
+    // auto-closed it) or 404s (never actually created, or provider-side cleanup).
+    // A valid participant joining inside the join window must be able to get
+    // back into a working call rather than being permanently locked out because
+    // the call object is gone. Probe the provider and recreate the call — never
+    // the commercial_sessions/session-authority rows, which stay exactly as they
+    // were — when it reports ended or missing.
+    let providerNotFound = false;
+    let providerEndedAt: string | null = null;
+    try {
+      const probe = await fetch(providerUrl(args.env, identity.callType, identity.callId), {
+        method: "GET",
+        headers: { Authorization: tokens.server, "stream-auth-type": "jwt" },
+      });
+      if (probe.status === 404) {
+        providerNotFound = true;
+      } else if (probe.ok) {
+        const raw = await probe.text();
+        try {
+          const body = JSON.parse(raw) as { call?: { ended_at?: string | null } };
+          providerEndedAt = body?.call?.ended_at ?? null;
+        } catch {
+          providerEndedAt = null;
+        }
+      }
+    } catch {
+      // Provider unreachable: leave both flags unset — this is a rejoin
+      // convenience, not a fresh authorization decision, so we do not refuse
+      // the join over a probe failure.
+    }
+    // [WAITROOM-2 / W8] Recreate the call ONLY on a genuine 404 — the one case
+    // where "recreate" cannot possibly resurrect a call GetStream itself still
+    // considers live. If the provider instead reports `ended_at` and our own
+    // session row already agrees the slot is over ('ending'/'ended'), refuse
+    // 410 so the client returns to the waiting room instead of getting handed
+    // a brand-new call for a session that is already done.
+    // [WAITROOM-4 / R14] A 404 does NOT override an 'ending' row either — the
+    // schedule already decided this slot is closing (RULEBOOK §5: "the
+    // schedule ends a session, never a provider event"), so a 404 here just
+    // means the provider has already cleaned the call up on its own; refuse
+    // the same way as an 'ended' row rather than spinning up a fresh call for
+    // a session that's already on its way out.
+    if (providerNotFound && existing.state !== "ending") {
+      const members = args.kind === "consult_1to1"
+        ? [args.creatorId, args.uid]
+        : [args.creatorId];
+      for (const memberId of new Set(members)) {
+        if (!await upsertProviderUser(args.env, tokens.server, memberId)) {
+          return refused("provider_user_unavailable", { error: "provider user unavailable" }, 502);
+        }
+      }
+      if (!await createProviderCall({
+        env: args.env,
+        serverToken: tokens.server,
+        callType: identity.callType,
+        callId: identity.callId,
+        creatorId: args.creatorId,
+        kind: args.kind,
+        memberIds: [...new Set(members)],
+        startsAt: args.startsAt,
+      })) return refused("provider_call_unavailable", { error: "provider call unavailable" }, 502);
+      commercialEvent(args.env, "join", args.uid, { kind: args.kind, outcome: "rejoin_recreated_call" });
+    } else if (
+      (providerNotFound && existing.state === "ending")
+      || (providerEndedAt && ["ending", "ended"].includes(existing.state))
+    ) {
+      return refused("session_terminal", { error: "session unavailable" }, 410);
+    }
   }
 
   // INSERT OR IGNORE is only an idempotency primitive. Read the durable row
@@ -705,6 +779,36 @@ export async function commercialConsultPrejoin(req: Request, env: Env): Promise<
   const counterparty = isCreator
     ? { id: row.buyer_id, name: buyerName, avatar_url: buyer?.avatar_url ?? null }
     : { id: row.creator_id, name: creatorName, avatar_url: creator?.avatar_url ?? null };
+  // [SESSION-CLOCK-0] Waiting-room contract fields (PLAN-2026-09-11-WAITING-ROOM-BUILD.md
+  // "Contracts shared by all WPs"): room_ws/room_token/check_in_by come from WP2's
+  // `buildWaitingRoomGrant`, which signs the session token and arms the
+  // StreamSessionDO schedule. `role` here stays the existing 'creator'|'buyer'
+  // wire contract — the host/attendee vocabulary is internal to the grant builder.
+  // [WAITROOM-2 / W10] buildWaitingRoomGrant talks to the StreamSessionDO
+  // (sessionOp → a DO fetch) and signs a token; either can throw. A prejoin
+  // is otherwise pure read-only lookups the client needs regardless (title,
+  // counterparty, join window), so a DO/signing hiccup must degrade to "no
+  // room grant yet" — never a 500 that hides all of that from the client.
+  // `config` is passed through so buildWaitingRoomGrant does not re-fetch it
+  // (readConfig is called exactly once per prejoin, here).
+  let grant: { room_ws: string; room_token: string; check_in_by: number } | null = null;
+  try {
+    grant = await buildWaitingRoomGrant(env, {
+      bookingId: row.id,
+      uid: auth.uid,
+      role: isCreator ? "host" : "attendee",
+      name: isCreator ? creatorName : buyerName,
+      startsAt: Number(row.starts_at),
+      endsAt: Number(row.ends_at),
+      creatorId: row.creator_id,
+      config,
+    });
+  } catch (err) {
+    commercialEvent(env, "prejoin", auth.uid, {
+      kind: "consult_1to1", outcome: "waiting_room_grant_failed",
+      reason: String((err as Error)?.message ?? err).slice(0, 160),
+    });
+  }
   return json({
     ok: true, lane: "commercial", kind: "consult_1to1", booking_id: row.id,
     listing_id: row.listing_id, title: row.title, starts_at: Number(row.starts_at),
@@ -722,6 +826,7 @@ export async function commercialConsultPrejoin(req: Request, env: Env): Promise<
     counterparty: counterparty,
     join_enabled: config.commercialConsultJoinEnabled === true,
     role: isCreator ? "creator" : "buyer",
+    ...(grant ? { room_ws: grant.room_ws, room_token: grant.room_token, check_in_by: grant.check_in_by } : {}),
   });
 }
 
@@ -1080,13 +1185,19 @@ type SessionAuthority = {
   scheduled_at: number;
   live_started_at: number | null;
   ended_at: number | null;
+  // [LIVE-GRACE-1] Nullable — pre-migration rows and every consult_1to1 row
+  // read NULL here. `state` itself never becomes the literal 'reconnecting'
+  // (see migrations/2026-09-11-live-grace-alter.sql); safeSessionState()
+  // projects it from this pair instead.
+  reconnect_deadline_ms: number | null;
+  end_outcome: string | null;
 };
 
 async function sessionByListing(env: Env, listingId: string): Promise<SessionAuthority | null> {
   return await metaDb(env).prepare(
     `SELECT commercial_session_id,kind,listing_id,booking_id,order_id,creator_id,
       provider_call_type,provider_call_id,state,settlement_state,scheduled_at,
-      live_started_at,ended_at FROM commercial_sessions
+      live_started_at,ended_at,reconnect_deadline_ms,end_outcome FROM commercial_sessions
       WHERE kind='live_event' AND listing_id=?1 ORDER BY session_version DESC LIMIT 1`,
   ).bind(listingId).first<SessionAuthority>();
 }
@@ -1095,7 +1206,7 @@ async function sessionByBooking(env: Env, bookingId: string): Promise<SessionAut
   return await metaDb(env).prepare(
     `SELECT commercial_session_id,kind,listing_id,booking_id,order_id,creator_id,
       provider_call_type,provider_call_id,state,settlement_state,scheduled_at,
-      live_started_at,ended_at FROM commercial_sessions
+      live_started_at,ended_at,reconnect_deadline_ms,end_outcome FROM commercial_sessions
       WHERE kind='consult_1to1' AND booking_id=?1 ORDER BY session_version DESC LIMIT 1`,
   ).bind(bookingId).first<SessionAuthority>();
 }
@@ -1230,7 +1341,26 @@ export async function commercialLiveGoLive(req: Request, env: Env): Promise<Resp
   if (!row || row.creator_id !== auth.uid || row.kind !== "live_event") return json({ error: "not your live event" }, 403);
   const session = await sessionByListing(env, listingId);
   if (!session) return json({ error: "prepare host first" }, 409);
-  if (!["scheduled", "backstage"].includes(session.state)) return json({ error: "session cannot go live", state: session.state }, 409);
+  // [WAITROOM-2 / WP8 follow-up] A host who dropped mid-broadcast and is
+  // rejoining within the grace window (raw state 'live' with an unexpired
+  // reconnect_deadline_ms — safeSessionState projects this as 'reconnecting',
+  // RULEBOOK §4 L4) must be able to come back through this same prepare-host
+  // → go-live → join flow, not get a 409 because the row never left 'live'.
+  const reconnecting = session.state === "live"
+    && session.reconnect_deadline_ms != null
+    && Number(session.reconnect_deadline_ms) > Date.now();
+  if (!["scheduled", "backstage"].includes(session.state) && !reconnecting) {
+    return json({ error: "session cannot go live", state: session.state }, 409);
+  }
+  if (reconnecting) {
+    // Already live on the provider side — nothing to re-arm there. The
+    // actual grace-clear happens when the host's rejoin produces a real
+    // `participant_joined` webhook (recordCommercialStreamEvent →
+    // clearLiveGrace); this just lets the client's go-live call succeed
+    // instead of bouncing off a stale state check.
+    commercialEvent(env, "broadcast", auth.uid, { kind: "live_event", outcome: "replay", action: "go_live", reason: "reconnecting" });
+    return json({ ok: true, idempotent_replay: true, state: "live", reconnecting: true });
+  }
   // [LIST-FREE-1] Free lane creator hold — spec §E.2. This runs BEFORE the broadcast
   // starts, i.e. before anyone can join and start consuming metered attendee-minutes.
   // Insufficient creator balance refuses the go-live outright (402, dual error codes) —
@@ -1286,6 +1416,19 @@ export async function commercialConsultEnd(req: Request, env: Env): Promise<Resp
   const session = await sessionByBooking(env, bookingId);
   if (!session) return json({ error: "session unavailable" }, 404);
   if (session.state === "ended") return json({ ok: true, idempotent_replay: true, state: "ended" });
+  // [WAITROOM-2 / W8] RULEBOOK-PAID-SESSIONS.md v2 §3: "The DO's alarms are the
+  // clock authority ... A leave, a crash or a provider webhook never ends the
+  // slot." A consult's price is for the whole reserved slot regardless of who
+  // is present (§2), so sending `mark_ended` to the provider before `ends_at`
+  // would let either party's Leave terminate the OTHER party's billed time
+  // early. Before `ends_at` this only records the caller's intent to end and
+  // returns the current (still-open) state — it never touches the provider.
+  // The DO's own `ends_at + grace` alarm (`money_end`) is what actually closes
+  // the slot; after that point this falls through to the real provider call.
+  if (Date.now() < Number(row.ends_at)) {
+    commercialEvent(env, "broadcast", auth.uid, { kind: "consult_1to1", outcome: "recorded_intent", action: "end" });
+    return json({ ok: true, state: session.state, recorded_intent: true });
+  }
   return await runControl({ req, env, actorId: auth.uid, session, action: "end" });
 }
 
@@ -1337,7 +1480,7 @@ async function canViewSession(env: Env, session: SessionAuthority, uid: string):
   return Boolean(anyGrant);
 }
 
-async function consumeCommercialEntitlementsOnSessionEnd(env: Env, sessionId: string): Promise<void> {
+export async function consumeCommercialEntitlementsOnSessionEnd(env: Env, sessionId: string): Promise<void> {
   const session = await metaDb(env).prepare(
     `SELECT s.kind, s.listing_id, s.booking_id, p.cancellation_policy_json
        FROM commercial_sessions s
@@ -1380,16 +1523,30 @@ async function consumeCommercialEntitlementsOnSessionEnd(env: Env, sessionId: st
 }
 
 function safeSessionState(session: SessionAuthority): Record<string, unknown> {
+  // [LIVE-GRACE-1] `state` on the row itself never becomes the literal
+  // 'reconnecting' (SQLite CHECK constraint — see the migration file); this
+  // is the single place that projects it from
+  // (kind='live_event' AND state='live' AND an unexpired reconnect_deadline_ms).
+  // GET /api/commercial/live/:id/state (commercialLiveState) is the only
+  // caller that can ever see it — a consult_1to1 row's reconnect_deadline_ms
+  // is always NULL.
+  const reconnecting = session.kind === "live_event"
+    && session.state === "live"
+    && session.reconnect_deadline_ms != null
+    && Number(session.reconnect_deadline_ms) > Date.now();
   return {
     session_id: session.commercial_session_id,
     kind: session.kind,
     listing_id: session.listing_id,
     booking_id: session.booking_id,
-    state: session.state,
+    state: reconnecting ? "reconnecting" : session.state,
     settlement_state: session.settlement_state,
+    starts_at: Number(session.scheduled_at),
     scheduled_at: Number(session.scheduled_at),
     live_started_at: session.live_started_at,
     ended_at: session.ended_at,
+    ...(reconnecting ? { reconnect_deadline_ms: Number(session.reconnect_deadline_ms) } : {}),
+    ...(session.end_outcome ? { outcome: session.end_outcome } : {}),
   };
 }
 
@@ -1399,7 +1556,25 @@ export async function commercialLiveState(req: Request, env: Env): Promise<Respo
   const auth = await requireUser(req, env);
   if (isFail(auth)) return json({ error: auth.error }, auth.status);
   const session = await sessionByListing(env, listingId);
-  if (!session) return json({ error: "session unavailable" }, 404);
+  if (!session) {
+    // [WAITROOM-4 / C8] No commercial_sessions row yet — nobody has called
+    // prepare-host/go-live for this listing (or it never existed). The old
+    // blanket 404 gave the host's own "go live" page, a ticket holder
+    // checking in before start, and a stranger the exact same opaque error.
+    // Look the listing up and answer each caller correctly instead.
+    const row = await listing(env, listingId);
+    if (!row || row.kind !== "live_event") return json({ error: "listing unavailable" }, 404);
+    const startsAt = row.starts_at != null ? Number(row.starts_at) : null;
+    if (auth.uid === row.creator_id) {
+      return json({ ok: true, state: "scheduled", starts_at: startsAt, listing_id: listingId });
+    }
+    // Viewer path: a ticket holder must still get a sensible pre-start state
+    // rather than a 403/404, so their waiting-room UI can render normally
+    // before the creator has gone live even once.
+    const ticket = await entitlement(env, { kind: "live_event", listingId, uid: auth.uid, role: "viewer" });
+    if (!ticket) return json({ error: "not entitled" }, 403);
+    return json({ ok: true, state: "scheduled", starts_at: startsAt, listing_id: listingId });
+  }
   if (!await canViewSession(env, session, auth.uid)) return json({ error: "not entitled" }, 403);
   return json({ ok: true, ...safeSessionState(session) });
 }
@@ -1412,7 +1587,7 @@ export async function commercialReceipt(req: Request, env: Env): Promise<Respons
   const session = await metaDb(env).prepare(
     `SELECT commercial_session_id,kind,listing_id,booking_id,order_id,creator_id,
       provider_call_type,provider_call_id,state,settlement_state,scheduled_at,
-      live_started_at,ended_at FROM commercial_sessions WHERE commercial_session_id=?1`,
+      live_started_at,ended_at,reconnect_deadline_ms,end_outcome FROM commercial_sessions WHERE commercial_session_id=?1`,
   ).bind(match[1]).first<SessionAuthority>();
   if (!session) return json({ error: "session unavailable" }, 404);
   if (!await canViewSession(env, session, auth.uid)) return json({ error: "not entitled" }, 403);
@@ -1535,7 +1710,11 @@ export async function commercialSessionsMine(req: Request, env: Env): Promise<Re
              CASE WHEN e.state IN ('refunded','revoked') OR o.status IN ('refunded','cancelled','canceled','canceled_user','canceled_creator','cancelled_user','cancelled_creator','no_show_user','no_show_creator')
                     OR b.status IN ('cancelled','canceled','canceled_user','canceled_creator','cancelled_user','cancelled_creator','no_show_user','no_show_creator','refunded') OR l.status='cancelled'
                     OR COALESCE(s.state,'')='cancelled'
-                    OR (SELECT 1 FROM commercial_refund_receipts rr WHERE rr.order_id=e.order_id LIMIT 1) IS NOT NULL
+                    -- [WAITROOM-5 / follow-up 3] settlement_state='refunded' only —
+                    -- a 'partial_refund' receipt means the ticket was PARTLY
+                    -- refunded (e.g. an outage's unconsumed minutes), not that
+                    -- the whole order was cancelled; it must not show as cancelled.
+                    OR (SELECT 1 FROM commercial_refund_receipts rr WHERE rr.order_id=e.order_id AND rr.settlement_state='refunded' LIMIT 1) IS NOT NULL
                   THEN 1 ELSE 0 END cancelled_flag
            FROM commercial_entitlements e
            JOIN listings l ON l.id=e.listing_id
@@ -1729,7 +1908,8 @@ export async function recordCommercialStreamEvent(
   }
   const payloadHash = await sha256Hex(input.rawJson);
   const session = await metaDb(env).prepare(
-    `SELECT commercial_session_id,state,ended_at,listing_id,kind,creator_id FROM commercial_sessions
+    `SELECT commercial_session_id,state,ended_at,listing_id,kind,creator_id,reconnect_deadline_ms
+      FROM commercial_sessions
       WHERE provider='getstream' AND provider_call_type=?1 AND provider_call_id=?2`,
   ).bind(input.callType, input.callId).first<{
     commercial_session_id: string;
@@ -1738,6 +1918,7 @@ export async function recordCommercialStreamEvent(
     listing_id: string;
     kind: string;
     creator_id: string;
+    reconnect_deadline_ms: number | null;
   }>();
   const inserted = await metaDb(env).prepare(
     `INSERT OR IGNORE INTO commercial_provider_events
@@ -1831,9 +2012,9 @@ export async function recordCommercialStreamEvent(
   }
 
   const member = input.actorId ? await metaDb(env).prepare(
-    `SELECT account_id FROM commercial_session_members
+    `SELECT account_id,role FROM commercial_session_members
       WHERE commercial_session_id=?1 AND provider_user_id=?2 AND removed_at IS NULL`,
-  ).bind(session.commercial_session_id, input.actorId).first<{ account_id: string }>() : null;
+  ).bind(session.commercial_session_id, input.actorId).first<{ account_id: string; role: string }>() : null;
   const joined = eventLower.includes("participant_joined") || eventLower.includes("participant.joined");
   const left = eventLower.includes("participant_left") || eventLower.includes("participant.left");
   if ((joined || left) && !member) {
@@ -1895,13 +2076,31 @@ export async function recordCommercialStreamEvent(
       });
       return { handled: true, reviewPending: true };
     }
+    // [LIVE-GRACE-1] RULEBOOK-PAID-SESSIONS.md v2 §4 L4/L5: the host rejoining
+    // during the grace window puts the event back to a normal live session —
+    // gated on member.role (the live_event host row, not a consult_1to1
+    // creator/buyer row) so this never fires for the 1:1 consult lane.
+    if (input.callType === "avatok_livestream" && member.role === "host") {
+      await clearLiveGrace(env, {
+        commercialSessionId: session.commercial_session_id,
+        listingId: session.listing_id,
+        creatorId: session.creator_id,
+      }, input.occurredAt);
+    }
   } else if (left && member && input.actorId) {
+    // [WAITROOM-4 / R4] A GetStream reconnect delivers join(new session) then
+    // left(old session) — sometimes in that order, sometimes racing. Matching
+    // the newest open interval by uid alone (no provider_session_id filter)
+    // could close the interval the reconnect JUST opened instead of the one
+    // that actually ended, and then arm the grace window while the host is
+    // still live. Match this `left` to ITS OWN provider session id.
+    const providerSessionId = input.providerSessionId ?? "default";
     const open = await metaDb(env).prepare(
       `SELECT interval_id,joined_at FROM commercial_participant_intervals
-       WHERE commercial_session_id=?1 AND provider_user_id=?2
-         AND reconciliation_state='open' AND joined_at<=?3
+       WHERE commercial_session_id=?1 AND provider_user_id=?2 AND provider_session_id=?3
+         AND reconciliation_state='open' AND joined_at<=?4
        ORDER BY joined_at DESC LIMIT 1`,
-    ).bind(session.commercial_session_id, input.actorId, input.occurredAt)
+    ).bind(session.commercial_session_id, input.actorId, providerSessionId, input.occurredAt)
       .first<{ interval_id: string; joined_at: number }>();
     if (open) {
       await metaDb(env).prepare(
@@ -1912,6 +2111,30 @@ export async function recordCommercialStreamEvent(
         open.interval_id, input.webhookId, input.occurredAt,
         Math.max(0, input.occurredAt - Number(open.joined_at)), Date.now(),
       ).run();
+    }
+    // [LIVE-GRACE-1] Host `participant_left` while the event is live: arm the
+    // reconnect grace window (RULEBOOK-PAID-SESSIONS.md v2 §4 L4/L5). Gated on
+    // member.role — the live_event host row — and on the terminal-event check
+    // above already having let this webhook through (a `left` on an already
+    // 'ended'/'cancelled' session never reaches here). armLiveGrace itself is
+    // idempotent (only arms once per grace window) so a replayed webhook is
+    // safe.
+    // [WAITROOM-4 / R4] Only arm if the host has NO OTHER open interval —
+    // i.e. this really was their last connection, not the "old" half of a
+    // join(new)-then-left(old) reconnect race where the new interval is
+    // already open by the time this `left` lands.
+    if (input.callType === "avatok_livestream" && member.role === "host") {
+      const stillConnected = await metaDb(env).prepare(
+        `SELECT 1 ok FROM commercial_participant_intervals
+           WHERE commercial_session_id=?1 AND provider_user_id=?2 AND reconciliation_state='open' LIMIT 1`,
+      ).bind(session.commercial_session_id, input.actorId).first<{ ok: number }>();
+      if (!stillConnected) {
+        await armLiveGrace(env, {
+          commercialSessionId: session.commercial_session_id,
+          listingId: session.listing_id,
+          creatorId: session.creator_id,
+        }, input.occurredAt);
+      }
     }
   }
 
@@ -1976,9 +2199,37 @@ export async function recordCommercialStreamEvent(
       kind: input.callType === "avatok_livestream" ? "live_event" : "consult_1to1",
       outcome: "ended",
     });
+    if (input.callType === "avatok_consult_1to1") {
+      // [SESSION-CLOCK-0] RULEBOOK-PAID-SESSIONS.md §5 / §3: "the schedule ends a
+      // session, never a provider event." A GetStream `session_ended`/`call.ended`
+      // for a 1:1 consult must never mark commercial_sessions ended or queue
+      // settlement — only `endDueConsultSessions` (the cron, keyed off
+      // `ends_at + commercialConsultJoinLateMin`) or the explicit
+      // `POST .../consult/:id/end` route may do that. A creator who steps out of
+      // an otherwise-idle call must not close the door on a customer who joins
+      // later, nor get paid as if the customer no-showed. Close any still-open
+      // participant intervals (attendance evidence must stay accurate) and stop.
+      await metaDb(env).prepare(
+        `UPDATE commercial_participant_intervals
+         SET left_at=?2,connected_ms=MAX(0,?2-joined_at),reconciliation_state='closed',updated_at=?3
+         WHERE commercial_session_id=?1 AND reconciliation_state='open'`,
+      ).bind(session.commercial_session_id, input.occurredAt, Date.now()).run();
+      await metaDb(env).prepare(
+        "UPDATE commercial_provider_events SET processing_state='applied',processed_at=?2 WHERE provider_event_id=?1",
+      ).bind(input.webhookId, Date.now()).run();
+      commercialEvent(env, "provider_event", null, {
+        kind: "consult_1to1", outcome: "applied", event_class: "interval_close_only",
+      });
+      return { handled: true };
+    }
     await metaDb(env).batch([
       metaDb(env).prepare(
+        // [WAITROOM-5 / follow-up 2] Clear reconnect_deadline_ms here too — a
+        // normal end (creator pressed End, or the provider closed the call)
+        // must not leave a stale armed grace window behind for
+        // sweepExpiredLiveGrace / a lingering DO alarm to act on later.
         `UPDATE commercial_sessions SET state='ended',ended_at=COALESCE(ended_at,?2),
+          reconnect_deadline_ms=NULL,
           settlement_state=CASE WHEN settlement_state='not_ready' THEN 'pending' ELSE settlement_state END,
           state_version=state_version+1,updated_at=?3
          WHERE commercial_session_id=?1 AND state NOT IN ('ended','cancelled')`,
@@ -1987,6 +2238,15 @@ export async function recordCommercialStreamEvent(
         `UPDATE commercial_participant_intervals
          SET left_at=?2,connected_ms=MAX(0,?2-joined_at),reconciliation_state='closed',updated_at=?3
          WHERE commercial_session_id=?1 AND reconciliation_state='open'`,
+      ).bind(session.commercial_session_id, input.occurredAt, Date.now()),
+      // [WAITROOM-5 / follow-up 2] Close any still-open outage row on this
+      // NORMAL end path too — not just the host-no-return grace path
+      // (endLiveOnHostNoReturn) — so a live event that ends while an outage
+      // was open (host dropped, then the show ended before the grace window
+      // elapsed) doesn't leave that outage open forever.
+      metaDb(env).prepare(
+        `UPDATE commercial_live_outages SET ended_at=COALESCE(ended_at,?2),updated_at=?3
+         WHERE commercial_session_id=?1 AND ended_at IS NULL`,
       ).bind(session.commercial_session_id, input.occurredAt, Date.now()),
       metaDb(env).prepare(
         `INSERT OR IGNORE INTO commercial_settlement_jobs

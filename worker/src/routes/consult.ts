@@ -50,10 +50,40 @@ async function nameOf(env: Env, uid: string): Promise<string> {
   } catch { return "Someone"; }
 }
 
-const bid = (req: Request): string | null => {
-  const m = new URL(req.url).pathname.match(/^\/api\/consult\/([A-Za-z0-9-]{1,64})(?:\/|$)/);
+// [WAITROOM-1] consultRoom must accept commercial booking ids
+// (`commercial-booking-<sha256hex>`, worker/src/routes/commercial_checkout.ts —
+// up to 96 chars), not just the shorter crypto.randomUUID() ids the legacy
+// 1:1 consult path mints. Matches the widened dispatch regex in index.ts.
+// [WAITROOM-2 / W4] That wide id length is for `room` ONLY (the waiting-room
+// DO socket). join/complete/cancel/extend are the legacy money/P2P path and
+// must reject anything longer than a legacy crypto.randomUUID() id — default
+// maxLen is 64; only consultRoom passes 96.
+const bid = (req: Request, maxLen: 64 | 96 = 64): string | null => {
+  const m = new URL(req.url).pathname.match(new RegExp(`^/api/consult/([A-Za-z0-9-]{1,${maxLen}})(?:/|$)`));
   return m ? m[1] : null;
 };
+
+// [WAITROOM-2 / W4, fixed WAITROOM-4 / R1] Second, independent guard: a
+// commercial booking must never reach the legacy money/P2P handlers
+// (RULEBOOK-PAID-SESSIONS.md §5 — only the commercial settlement engine may
+// move money for it). `kind === 'consult_1to1'` is NOT a safe signal by
+// itself — legacy (non-commercial) 1:1 consult bookings are ALSO written with
+// kind='consult_1to1' (cal/engine.ts/calendar.ts, routes/listings.ts:4330), so
+// that check alone 409s every ordinary consult. A booking is commercial only
+// if it carries the commercial checkout id shape
+// (`commercial-booking-<sha256hex>`, commercial_checkout.ts) or has a
+// commercial_policy_snapshots row (written once, at commercial checkout).
+async function isCommercialBooking(env: Env, bk: Bk): Promise<boolean> {
+  if (bk.id.startsWith("commercial-booking-")) return true;
+  const row = await metaDb(env).prepare(
+    "SELECT 1 ok FROM commercial_policy_snapshots WHERE booking_id=?1 LIMIT 1",
+  ).bind(bk.id).first<{ ok: number }>();
+  return Boolean(row);
+}
+
+async function refuseCommercialBooking(env: Env, bk: Bk): Promise<Response | null> {
+  return (await isCommercialBooking(env, bk)) ? json({ error: "commercial_booking" }, 409) : null;
+}
 
 // ---------------------------------------------------------------------------
 // GET /api/consult/:bookingId/join
@@ -64,6 +94,7 @@ export async function consultJoin(req: Request, env: Env): Promise<Response> {
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const bk = await loadBooking(env, id);
   if (!bk) return json({ error: "booking not found" }, 404);
+  const commercialRefusal = await refuseCommercialBooking(env, bk); if (commercialRefusal) return commercialRefusal;
   const isHost = bk.creator_id === ctx.uid;
   const isBuyer = bk.buyer_id === ctx.uid;
   if (!isHost && !isBuyer) return json({ error: "not your session" }, 403);
@@ -121,7 +152,7 @@ export async function consultJoin(req: Request, env: Env): Promise<Response> {
 // GET /api/consult/:bookingId/room — WS into the session DO.
 // ---------------------------------------------------------------------------
 export async function consultRoom(req: Request, env: Env): Promise<Response> {
-  const id = bid(req); if (!id) return json({ error: "bad booking id" }, 400);
+  const id = bid(req, 96); if (!id) return json({ error: "bad booking id" }, 400);
   if (req.headers.get("Upgrade") !== "websocket") return json({ error: "expected websocket" }, 426);
   const p = await verifySessionToken(env, new URL(req.url).searchParams.get("token") || "");
   if (!p || p.sid !== id) return json({ error: "bad token" }, 403);
@@ -165,6 +196,7 @@ export async function consultComplete(req: Request, env: Env): Promise<Response>
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const bk = await loadBooking(env, id);
   if (!bk) return json({ error: "booking not found" }, 404);
+  const commercialRefusalComplete = await refuseCommercialBooking(env, bk); if (commercialRefusalComplete) return commercialRefusalComplete;
   if (bk.creator_id !== ctx.uid) return json({ error: "host only" }, 403);
   await metaDb(env).prepare("UPDATE bookings SET host_marked_complete=1, updated_at=?2 WHERE id=?1").bind(id, Date.now()).run();
   await env.Q_MONEY.send({ type: "evaluate", sid: id, kind: "consult", phase: "end" });
@@ -181,6 +213,7 @@ export async function consultCancel(req: Request, env: Env): Promise<Response> {
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const bk = await loadBooking(env, id);
   if (!bk) return json({ error: "booking not found" }, 404);
+  const commercialRefusalCancel = await refuseCommercialBooking(env, bk); if (commercialRefusalCancel) return commercialRefusalCancel;
   const byCreator = bk.creator_id === ctx.uid;
   if (!byCreator && bk.buyer_id !== ctx.uid) return json({ error: "not your session" }, 403);
   if (bk.status !== "confirmed") return json({ ok: true, already: true, status: bk.status });
@@ -213,6 +246,7 @@ export async function consultExtend(req: Request, env: Env): Promise<Response> {
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const bk = await loadBooking(env, id);
   if (!bk) return json({ error: "booking not found" }, 404);
+  const commercialRefusalExtend = await refuseCommercialBooking(env, bk); if (commercialRefusalExtend) return commercialRefusalExtend;
   if (bk.creator_id !== ctx.uid) return json({ error: "host only" }, 403);
   const newEnd = bk.ends_at + EXTEND_MS;
   const conflict = await checkAvailability(env, bk.creator_id, bk.ends_at, newEnd, { excludeRef: id });

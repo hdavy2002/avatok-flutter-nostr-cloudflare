@@ -1,0 +1,233 @@
+---
+// [WEB-HELP-2 2026-09-11] "Frequently asked" strip: the brick banner (with
+// the real TruckBorder "eyes" strip and the log-kya-kahenge-wide.jpg art)
+// from design/help-centre/Main.dc.html, followed by a native <details>
+// accordion built from EVERY help entry's `faq:` frontmatter — not just the
+// mockup's curated 6-card "Popular questions" preview, though the first 6
+// (one per section + one) render up front in the same 3-column grid shape,
+// with the rest behind a "Show all N questions" <details> ([WEB-HELP-2
+// review]). The task explicitly calls for every entry's FAQ here and an
+// accordion (not link-cards), so this intentionally departs from the comp's
+// interaction pattern while keeping its banner, colours and card language;
+// see pages/help/index.astro
+// for why FAQPage JSON-LD is emitted there and not in this component (one
+// script tag, one clear owner, easy for check-help.mjs's
+// `"@type":"FAQPage"` count to stay exactly 1).
+import TruckBorder from '../TruckBorder.astro';
+
+export interface FaqStripItem { q: string; a: string; source: string; section: string }
+interface Props { items: FaqStripItem[] }
+const { items } = Astro.props;
+
+// [WEB-HELP-2 review] Preview: one question per section (in section order,
+// same order `items` already arrives in — see index.astro's tree.flatMap)
+// plus one more to reach 6, matching the mockup's 6-card "Popular
+// questions" grid. Everything past that sits behind a "Show all N
+// questions" <details> rather than being dropped — the FAQPage JSON-LD in
+// index.astro still lists every item regardless of what's expanded here.
+const seenSections = new Set<string>();
+const preview: FaqStripItem[] = [];
+const rest: FaqStripItem[] = [];
+for (const item of items) {
+  if (preview.length < 5 && !seenSections.has(item.section)) {
+    seenSections.add(item.section);
+    preview.push(item);
+  } else {
+    rest.push(item);
+  }
+}
+while (preview.length < 6 && rest.length > 0) {
+  preview.push(rest.shift()!);
+}
+---
+
+{items.length > 0 && (
+  <section class="help-faq" aria-labelledby="help-faq-title">
+    <div class="help-faq-banner">
+      <div class="help-faq-truck"><TruckBorder kind="eyes" count={20} /></div>
+      <div class="help-faq-banner-inner">
+        <div>
+          <p class="help-faq-eyebrow">Popular questions</p>
+          <h2 id="help-faq-title" class="help-faq-title">
+            Frequently<br /><span>asked</span>
+          </h2>
+        </div>
+        <img
+          class="help-faq-banner-art"
+          src="/help/art/log-kya-kahenge-wide.jpg"
+          alt="Illustration captioned &quot;log kya kahenge&quot; — what will people say — the help centre’s FAQ banner."
+          width="621"
+          height="360"
+          loading="lazy"
+        />
+      </div>
+    </div>
+
+    <div class="help-faq-list">
+      {preview.map((f) => (
+        <details class="help-faq-item">
+          <summary>
+            <span class="help-faq-item-section">{f.section}</span>
+            <span class="help-faq-item-q">{f.q}</span>
+          </summary>
+          <p class="help-faq-item-a">
+            {f.a}{' '}
+            <a class="help-faq-item-source" href={f.source}>Read more →</a>
+          </p>
+        </details>
+      ))}
+    </div>
+
+    {rest.length > 0 && (
+      <details class="help-faq-more">
+        <summary class="help-faq-more-summary">Show all {items.length} questions</summary>
+        <div class="help-faq-list help-faq-list-more">
+          {rest.map((f) => (
+            <details class="help-faq-item">
+              <summary>
+                <span class="help-faq-item-section">{f.section}</span>
+                <span class="help-faq-item-q">{f.q}</span>
+              </summary>
+              <p class="help-faq-item-a">
+                {f.a}{' '}
+                <a class="help-faq-item-source" href={f.source}>Read more →</a>
+              </p>
+            </details>
+          ))}
+        </div>
+      </details>
+    )}
+  </section>
+)}
+
+<style>
+  .help-faq { max-width: 110rem; margin: 0 auto; padding: 5.5rem 2.5rem 2.75rem; }
+
+  .help-faq-banner {
+    margin: 0 0 1.875rem;
+    overflow: hidden;
+    border: 0.1875rem solid var(--ink);
+    border-radius: 1.5rem;
+    background: var(--help-brick);
+    box-shadow: 0.375rem 0.4375rem 0 var(--ink);
+  }
+  .help-faq-truck { border-bottom: 0.15625rem solid var(--ink); }
+  .help-faq-banner-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 2.5rem;
+    padding: 1.875rem 3.5rem 2.125rem 2.75rem;
+  }
+  .help-faq-eyebrow {
+    margin: 0 0 0.75rem;
+    font-family: var(--sans-label);
+    font-weight: 800;
+    font-size: 0.8125rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--help-faq-eyebrow);
+  }
+  .help-faq-title {
+    margin: 0;
+    font-family: var(--display);
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.055em;
+    word-spacing: 0.2em;
+    font-size: 3.5rem;
+    line-height: 1.12;
+    color: var(--white);
+    text-shadow: 0.25rem 0.25rem 0 var(--ink);
+  }
+  .help-faq-title span { color: var(--yellow); }
+  .help-faq-banner-art {
+    flex: none;
+    display: block;
+    width: 26.875rem;
+    height: auto;
+    border: 0.1875rem solid var(--ink);
+    border-radius: 1rem;
+    box-shadow: 0.3125rem 0.375rem 0 var(--ink);
+    transform: rotate(-1.5deg);
+  }
+
+  /* [WEB-HELP-2 review] 1-column by default, 3-column >=900px — the
+     mockup's "Popular questions" grid shape, kept for both the 6-item
+     preview and the revealed "rest" grid. */
+  .help-faq-list { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
+  @media (min-width: 900px) {
+    .help-faq-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+  .help-faq-item {
+    border: 0.15625rem solid var(--ink);
+    border-radius: 1.25rem;
+    background: var(--white);
+    box-shadow: 0.25rem 0.3125rem 0 var(--ink);
+  }
+  /* [WEB-HELP-2 review] Padding moved off `.help-faq-item` onto `summary`
+     (and the answer) so a closed card's clickable/tappable area is the
+     WHOLE card face, not just its text — with padding on the outer
+     `<details>`, only the text inside `summary` was clickable, leaving a
+     dead ring of card around it. */
+  .help-faq-item summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.75rem;
+    padding: 1rem 1.375rem;
+    min-height: 2.75rem;
+  }
+  .help-faq-item summary::-webkit-details-marker { display: none; }
+  .help-faq-item summary::before { content: '+ '; color: var(--blue); font-weight: 700; }
+  .help-faq-item[open] summary::before { content: '– '; }
+  .help-faq-item-section {
+    font-family: var(--sans-label);
+    font-weight: 800;
+    font-size: 0.6875rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--zine-inkMute); /* live token, matches mockup #6b4f3f */
+  }
+  .help-faq-item-q { font-family: var(--sans); font-weight: 600; font-size: 1.0625rem; line-height: 1.35; color: var(--ink); }
+  .help-faq-item-a { margin: 0; padding: 0 1.375rem 1rem; font-family: var(--sans); font-size: 0.95rem; line-height: 1.55; color: var(--ink); }
+  .help-faq-item-source { color: var(--help-answer-red); font-weight: 700; }
+  .help-faq-item summary:focus-visible { outline: 0.125rem solid var(--blue); outline-offset: -0.125rem; border-radius: 0.4rem; }
+
+  .help-faq-more { margin-top: 0.75rem; }
+  .help-faq-more-summary {
+    cursor: pointer;
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.375rem;
+    min-height: 2.75rem;
+    border: 0.15625rem solid var(--ink);
+    border-radius: 999px;
+    background: var(--white);
+    box-shadow: 0.1875rem 0.25rem 0 var(--ink);
+    font-family: var(--sans-label);
+    font-weight: 800;
+    font-size: 0.85rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink);
+  }
+  .help-faq-more-summary::-webkit-details-marker { display: none; }
+  .help-faq-more-summary::after { content: '↓'; }
+  .help-faq-more[open] .help-faq-more-summary::after { content: '↑'; }
+  .help-faq-more-summary:focus-visible { outline: 0.125rem solid var(--blue); outline-offset: 0.125rem; }
+  .help-faq-list-more { margin-top: 0.75rem; }
+
+  @media (max-width: 900px) {
+    .help-faq-banner-inner { flex-wrap: wrap; padding: 1.5rem 1.5rem 1.75rem; }
+    .help-faq-banner-art { width: min(100%, 20rem); }
+    .help-faq-title { font-size: clamp(2.25rem, 8vw, 3rem); }
+  }
+  @media (max-width: 599px) {
+    .help-faq { padding-left: 1rem; padding-right: 1rem; padding-top: 3.5rem; }
+  }
+</style>

@@ -400,6 +400,38 @@ user-facing real-time media.
 
 ---
 
+## 📕 PAID-SESSION RULEBOOK — READ BEFORE TOUCHING CALLS OR SESSIONS (owner decision 2026-09-11)
+
+**`Specs/RULEBOOK-PAID-SESSIONS.md` is the single source of the customer-side and
+creator-side rules for paid 1:1 consultations and live events** — who pays for what
+when someone is late, absent, or drops; when media may start; what a "delivered
+minute" is. Before rebuilding or modifying ANYTHING related to calls, sessions,
+lobbies, settlement, refunds, join windows, or the commercial GetStream lane, open
+that file first and build to it. If a change needs a rule that is not there, ask the
+owner and add the rule to the rulebook in the same change — never invent one in code.
+
+The three rules that bite hardest (full text in the rulebook, v2 2026-09-11):
+
+1. **Waiting room, not a media room.** Opening an appointment connects the device to
+   the session's `StreamSessionDO` socket (`consult:<bookingId>`): creator avatar,
+   own local preview, meter. GetStream media starts only when the DO reports the
+   other party present. Nobody waits inside a GetStream call by default — GetStream
+   minutes are avaTOK's cost.
+2. **The schedule ends a session, never a provider event.** `call.session_ended`
+   closes participant intervals; it must not mark the commercial session ended or
+   queue settlement. As of 2026-09-11 the code does the opposite
+   (`recordCommercialStreamEvent`, `commercial_stream_sessions.ts:~1974`) — a creator
+   who waits alone and steps out closes the door on the customer and gets paid as
+   "buyer no-show". Fix this before anything else in this lane.
+3. **Two money outcomes, no pro-rata.** Creator checked in within 20 min of
+   `starts_at` → customer pays the full slot no matter when (or whether) he joins.
+   Creator did not → 100% refund + strike. The pro-rata idea from earlier on
+   2026-09-11 was withdrawn by the owner; do not build it.
+
+Audit + implementation plan: `Specs/AUDIT-2026-09-11-PAID-SESSION-WAITING-AND-BILLING.md`.
+
+---
+
 ## 🔻 PRODUCT PIVOT — MARKETPLACE FIRST, PAID SESSIONS (owner decision 2026-08-27)
 
 **Read this before touching calling, AI-in-chat, numbers, payments or the app shell.**

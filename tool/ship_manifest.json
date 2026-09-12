@@ -5124,4 +5124,311 @@
     ],
     "_verified_at": "app/lib/features/wallet/wallet_screen.dart _toggleActivity (Analytics.capture wallet_activity_opened)"
   }
+,
+  "SESSION-CLOCK-0": {
+    "description": "[SESSION-CLOCK-0] worker/src/routes/commercial_stream_sessions.ts + new worker/src/lib/commercial_session_clock.ts. Consult (`kind='consult_1to1'`) sessions now end ONLY on schedule (5-min cron `endDueConsultSessions`, `ends_at + commercialConsultJoinLateMin`) or the explicit end route \u2014 a GetStream `session_ended`/`call.ended` webhook for a consult now only closes open `commercial_participant_intervals` and never sets `state='ended'` or queues settlement (RULEBOOK-PAID-SESSIONS.md v2 SS5). `authorizeProviderJoin` also allows rejoin: a valid in-window participant whose GetStream call the provider reports ended/missing (404) gets it recreated via `createProviderCall` instead of a refusal. `commercialConsultPrejoin` returns `room_ws/room_token/check_in_by` via WP2's `buildWaitingRoomGrant` (stubbed until WP2 lands).",
+    "shipped": "2026-09-11",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "sessionCreatorCheckInMin",
+      "commercialConsultJoinEnabled"
+    ],
+    "success": [
+      {
+        "event": "commercial_provider_event",
+        "where": {
+          "kind": "consult_1to1"
+        },
+        "property": "event_class",
+        "equals": "interval_close_only",
+        "min_events": 1,
+        "note": "A GetStream terminal webhook for a 1:1 consult only closed an interval and did not itself end the session or queue settlement. If this event stops appearing while consult calls are still ending, the webhook handler regressed back to the old provider-authoritative branch."
+      },
+      {
+        "event": "commercial_session_clock",
+        "where": {
+          "kind": "consult_1to1"
+        },
+        "property": "outcome",
+        "equals": "ended",
+        "min_events": 1,
+        "note": "The new 5-minute cron sweep (`endDueConsultSessions`) is the thing actually ending consult sessions now, per RULEBOOK SS5. Zero of these while `commercial_provider_event outcome=applied event_class=interval_close_only` is nonzero means the cron never fired (check the `scheduled()` wiring in worker/src/index.ts) and consult sessions are simply not ending."
+      },
+      {
+        "event": "commercial_join",
+        "where": {
+          "kind": "consult_1to1"
+        },
+        "property": "outcome",
+        "equals": "rejoin_recreated_call",
+        "min_events": 0,
+        "note": "PRESENCE (not absence) is the positive signal here, but zero is an acceptable value on a quiet window: this only fires when a participant rejoins after the provider reports the call ended/missing. A rejoin attempt that instead gets `commercial_join outcome=refused` on the newest build means the 404-recreate path is not landing."
+      }
+    ],
+    "_verified_at": "worker/src/routes/commercial_stream_sessions.ts:2070-2072 provider_event applied/interval_close_only on terminal consult webhook; worker/src/lib/commercial_session_clock.ts:87 commercialEvent(env,'session_clock',...) -> commercial_session_clock; worker/src/routes/commercial_stream_sessions.ts:510 commercialEvent(...,'join',...,{outcome:'rejoin_recreated_call'}) -> commercial_join; worker/src/lib/commercial_telemetry.ts:35 event name is always `commercial_${name}` (the catalog's WP1 section already writes the prefixed names, unlike WP3's)."
+  },
+  "WAITROOM-1": {
+    "description": "[WAITROOM-1] worker plumbing with no screen/path of its own (new worker/src/lib/commercial_waiting_room.ts, worker/src/do/stream_session.ts, worker/src/routes/consult.ts, flags in worker/src/routes/config.ts). `buildWaitingRoomGrant(env,{...})` returns `{room_ws, room_token, check_in_by}` and arms the session DO (`consult:<bookingId>`) via `sessionOp(...,{op:'schedule',...,commercial:true})`. The DO's WS gains `roster {host,attendee}` on welcome and every presence change, and `chat {from,text,at}` (<=500 chars). Commercial bookings make the DO's own `money_noshow`/`money_end` alarms a no-op so only WP1's cron / WP3's settlement move money. This WP itself emits no PostHog event; its contract is proven end-to-end only through the client events WP4/WP6 build on top of it.",
+    "shipped": "2026-09-11",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "sessionCreatorCheckInMin",
+      "liveHostGraceMin",
+      "commercialConsultJoinEnabled"
+    ],
+    "success": [
+      {
+        "event": "waitroom_enter",
+        "property": "role",
+        "in": [
+          "creator",
+          "buyer"
+        ],
+        "min_events": 1,
+        "note": "WAITROOM-1 has no direct event of its own (see Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md WP2 section), so success is read off the downstream client event that can only fire when `buildWaitingRoomGrant` actually returned a complete `room_ws/room_token` grant \u2014 WP4 (web) and WP6 (app) both fall back silently to the pre-waiting-room direct-join flow, firing NONE of these events, when the grant is absent or partial. Zero `waitroom_enter` on the newest builds with consult bookings still happening means the grant is not reaching clients."
+      },
+      {
+        "event": "waitroom_autojoin",
+        "property": "role",
+        "in": [
+          "creator",
+          "buyer"
+        ],
+        "min_events": 1,
+        "note": "Confirms the DO's `roster {host,attendee}` message actually reaches both waiting-room sockets and the auto-join rule fires from it \u2014 the roster message is this WP's only client-visible wire contract besides the grant."
+      }
+    ],
+    "_verified_at": "worker/src/lib/commercial_waiting_room.ts buildWaitingRoomGrant; worker/src/do/stream_session.ts roster/chat message additions + commercial no-op alarm branch; Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md WP2 section states explicitly this WP emits no new Analytics.capture/commercialEvent of its own."
+  },
+  "SETTLE-CHECKIN-1": {
+    "description": "[SETTLE-CHECKIN-1] worker/src/commercial_settlement.ts + worker/src/money_engine.ts (delegation guard) + worker/src/rules.ts (R2 default). Settlement for `consult_1to1` now decides on the RULEBOOK SS2 check-in decision instead of two-party GetStream-overlap: checked in -> settle full via the existing release path (receipt meta gains `rule:'creator_checked_in'`, `checked_in_at`); not checked in -> `creator_no_show` refund + an `account_strikes` row (`category:'marketplace_no_show'`, `source:'commercial_settlement'`). `loadOverdueNoShowAuthorities` now keys off `starts_at + check_in_ms`. `money_engine.ts`'s delegation guard makes the legacy Phase-7 engine a no-op for `bookings.kind='consult_1to1'` orders.",
+    "shipped": "2026-09-11",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "sessionCreatorCheckInMin",
+      "commercialConsultJoinEnabled"
+    ],
+    "success": [
+      {
+        "event": "commercial_settlement",
+        "where": {
+          "kind": "consult_1to1"
+        },
+        "property": "outcome",
+        "equals": "settled",
+        "min_events": 1,
+        "note": "The catalog's WP3 section cites the code call `commercialEvent(env,\"settlement\",...)` verbatim; the ACTUAL PostHog event name is `commercial_settlement` (commercial_telemetry.ts always prefixes `commercial_`) \u2014 asserted here as the literal name to check, not the bare code-site string."
+      },
+      {
+        "event": "commercial_settlement",
+        "property": "reason",
+        "equals": "creator_no_show",
+        "where": {
+          "outcome": "refunded",
+          "kind": "consult_1to1"
+        },
+        "min_events": 0,
+        "note": "Every occurrence of this must have a matching `account_strikes` row with the same `commercial_session_id` as evidence_url per the WP3 catalog note \u2014 check that row, not just this event's presence, before calling a no-show refund correct. Zero is an acceptable value in a quiet window; this is not a presence-is-the-bug-signal case since no-shows are expected to occasionally happen."
+      }
+    ],
+    "_verified_at": "worker/src/commercial_settlement.ts:502 commercialEvent(env,'settlement',null,{kind,outcome:'settled'}); :756/:586/:675 commercialEvent(...,{outcome:'refunded',reason:'creator_no_show',kind}); worker/src/lib/commercial_telemetry.ts:35 name is always `commercial_${event}` so the fired event is `commercial_settlement`, not `settlement`."
+  },
+  "WAITROOM-WEB-1": {
+    "description": "[WAITROOM-WEB-1] web/src/islands/consult-gs/** (ConsultRoomGS.tsx, new WaitingRoom.tsx, RoomSocket.ts). Phase machine loading -> prejoin -> waiting (counterparty avatar+name, own preview, meter from starts_at/ends_at, chat, creator check-in line, Leave) -> joining -> live -> back to waiting on leave -> ended/receipt. Falls back silently to the pre-waiting-room direct-join flow (no events below fire) when WP1/WP2's prejoin fields are absent.",
+    "shipped": "2026-09-11",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "sessionCreatorCheckInMin",
+      "commercialConsultJoinEnabled"
+    ],
+    "success": [
+      {
+        "event": "waitroom_enter",
+        "property": "role",
+        "in": [
+          "creator",
+          "buyer"
+        ],
+        "min_events": 1,
+        "note": "Fired only when the full WP1/WP2 prejoin grant (room_ws, check_in_by, counterparty) is present \u2014 the signal the web waiting room is actually live for a booking, not the pre-existing direct-join fallback."
+      },
+      {
+        "event": "waitroom_autojoin",
+        "property": "role",
+        "in": [
+          "creator",
+          "buyer"
+        ],
+        "min_events": 1,
+        "note": "Fires only when the socket's roster reports BOTH host and attendee present, before the manual join path it replaces. Confirms the PLAN's auto-join rule actually fired client-side."
+      },
+      {
+        "event": "waitroom_noshow_shown",
+        "property": "role",
+        "equals": "buyer",
+        "min_events": 0,
+        "note": "Fires once per buyer when check_in_by passes with roster.host still false. Zero is fine on a quiet window with creators showing up; a sustained nonzero rate alongside `commercial_settlement reason=creator_no_show` corroborates the two systems agree."
+      }
+    ],
+    "_verified_at": "web/src/islands/consult-gs/WaitingRoom.tsx (waitroom_enter/waitroom_autojoin/waitroom_noshow_shown/waitroom_chat_sent per Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md WP4 section); web/src/lib/analytics.ts capture() carries platform/service_name/release/app/email/clerk_uid/trace_id."
+  },
+  "LIVE-GRACE-WEB-1": {
+    "description": "[LIVE-GRACE-WEB-1] web/src/islands/live-gs/** (LiveGsHost.tsx, LiveGsViewer.tsx, LiveStage.tsx). Host page authorises (`GET .../live/:id/state`) BEFORE requesting devices and offers a 'Rejoin your live' path when state is reconnecting; viewer overlays 'Creator reconnecting * mm:ss' from reconnect_deadline_ms and shows a refund line on `outcome:'host_no_return'`. The reconnecting/outcome/reconnect_deadline_ms fields are a WP8 (LIVE-GRACE-1) server contract this WP only consumes \u2014 until WP8 ships, `live_reconnecting_shown` and `live_no_return_shown` cannot fire (fields are absent) and this is expected, not a regression.",
+    "shipped": "2026-09-11",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "liveHostGraceMin",
+      "commercialLiveJoinEnabled"
+    ],
+    "success": [
+      {
+        "event": "live_host_authz_refused",
+        "property": "reason",
+        "in": [
+          "not_found",
+          "not_creator",
+          "error"
+        ],
+        "min_events": 0,
+        "note": "Confirms the pre-media authorize() gate is reachable and distinguishes cases; presence alone is not a failure, this is a refusal-path assertion. This is the one part of the WP that is independently testable before WP8 ships (it does not depend on the reconnecting contract)."
+      },
+      {
+        "event": "live_reconnecting_shown",
+        "property": "surface",
+        "in": [
+          "host",
+          "viewer"
+        ],
+        "min_events": 0,
+        "note": "Cannot fire until WP8 (LIVE-GRACE-1) ships reconnecting/reconnect_deadline_ms on GET .../live/:id/state \u2014 0 is expected pre-WP8. Post-WP8, this appearing on BOTH host and viewer for the same listing_id within one outage window is the real success signal for this WP's UI."
+      },
+      {
+        "event": "live_no_return_shown",
+        "min_events": 0,
+        "note": "Same WP8 dependency as above: cannot fire until the server emits state:'ended', outcome:'host_no_return'. Track post-WP8.",
+        "exists": true
+      }
+    ],
+    "_verified_at": "Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md WP5 section: live_host_authz_refused / live_reconnecting_shown / live_host_rejoin / live_no_return_shown event names and payloads, and its explicit 'Contract note' that reconnecting/outcome/reconnect_deadline_ms land with WP8."
+  },
+  "WAITROOM-APP-1": {
+    "description": "[WAITROOM-APP-1] app/lib/features/commercial_getstream/commercial_waiting_room_screen.dart (new), commercial_consult_screens.dart (CommercialConsultationPrejoinFlow._join), app/lib/core/commercial_waiting_room_api.dart (new). Lifts the waiting state out of features/consult/consult_room_screen.dart (no P2P/SFU code touched): avatar, 'Waiting for X...', own preview, meter, chat, creator check-in line, Leave -> back to the SAME waiting-room screen instance (socket kept). Falls back silently to the pre-WP6 direct-join flow (none of the events below fire) when the prejoin grant is absent or partial.",
+    "shipped": "2026-09-11",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "sessionCreatorCheckInMin",
+      "commercialConsultJoinEnabled"
+    ],
+    "success": [
+      {
+        "event": "waitroom_enter",
+        "property": "role",
+        "in": [
+          "creator",
+          "buyer"
+        ],
+        "min_events": 1,
+        "note": "Fired only once CommercialWaitingRoomApi.prejoin returned a COMPLETE grant (room_ws, room_token, starts_at, ends_at, matching role) and the waiting room was actually pushed. Absence on the newest app build with consult bookings happening means the app is still on the pre-WP6 direct-join path."
+      },
+      {
+        "event": "waitroom_autojoin",
+        "property": "role",
+        "in": [
+          "creator",
+          "buyer"
+        ],
+        "min_events": 1,
+        "note": "Fires at the top of _autoJoin the moment roster reports both host and attendee present. Should appear BEFORE the existing consult_room_entered/manual-join telemetry on the same booking+device, confirming the auto-join rule replaced the manual 'Join consultation' tap."
+      },
+      {
+        "event": "waitroom_noshow_shown",
+        "property": "role",
+        "equals": "buyer",
+        "min_events": 0,
+        "note": "Fires once per visit, customer-side only, when check_in_by passes with roster still reporting no host. Zero is fine in a quiet window."
+      }
+    ],
+    "_verified_at": "Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md WP6 section: waitroom_enter/waitroom_autojoin/waitroom_noshow_shown/waitroom_chat_sent via Analytics.capture (base envelope carries email/clerk_uid/etc automatically)."
+  },
+  "LIVE-GRACE-APP-1": {
+    "description": "[LIVE-GRACE-APP-1] app/lib/features/commercial_getstream/commercial_live_screens.dart (LiveBroadcastScreen, LiveViewerScreen), commercial_live_gateway.dart, the commercial branch of app/lib/push/push_service.dart. Host shows a 'Reconnecting...' banner with deadline on SDK disconnect and handles a `commercial_reconnect` push by opening Backstage on the same listing with a Rejoin button; viewer overlays 'Creator reconnecting * mm:ss' and shows a refund line on host_no_return. Backstage is capped at the grace window by a timer. reconnect_deadline_ms/outcome/state:'reconnecting' are a WP8 (LIVE-GRACE-1) server contract this WP only consumes; CommercialLiveState parses all three as nullable so every path degrades to never-fires/never-shows until WP8 ships.",
+    "shipped": "2026-09-11",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "liveHostGraceMin",
+      "commercialLiveJoinEnabled"
+    ],
+    "success": [
+      {
+        "event": "live_reconnecting_shown",
+        "property": "role",
+        "in": [
+          "host",
+          "viewer"
+        ],
+        "min_events": 0,
+        "note": "Cannot fire until WP8 ships state:'reconnecting' on GET /api/commercial/live/:id/state \u2014 0 is expected pre-WP8. Post-WP8, appearing on BOTH the host's and a viewer's device for the same listing_id within the same outage window is the real success signal."
+      },
+      {
+        "event": "live_host_rejoin",
+        "property": "source",
+        "in": [
+          "in_app_banner",
+          "push"
+        ],
+        "min_events": 0,
+        "note": "Marks INTENT to rejoin (tap or push open), not confirmed SDK reconnection \u2014 pair with the state poll leaving 'reconnecting' to confirm the rejoin actually worked. 0 pre-WP8 is expected."
+      },
+      {
+        "event": "live_no_return_shown",
+        "property": "role",
+        "equals": "viewer",
+        "min_events": 0,
+        "note": "Cannot fire until WP8 emits state:'ended', outcome:'host_no_return'. 0 pre-WP8 is expected; track post-WP8."
+      }
+    ],
+    "_verified_at": "Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md WP7 section: live_reconnecting_shown / live_host_rejoin / live_no_return_shown via Analytics.capture, always carrying listing_id/role/email; its Contract note on the WP8 dependency."
+  },
+  "LIVE-GRACE-1": {
+    "description": "[LIVE-GRACE-1] (wave 2, worker, in progress by another agent as of this manifest entry) commercial_stream_sessions.ts live branches, do/stream_session.ts (new alarm kind live_grace), new worker/src/lib/live_grace.ts, settlement live branch. Contract per Specs/PLAN-2026-09-11-WAITING-ROOM-BUILD.md WP8: host participant_left while live -> state='reconnecting', reconnect_deadline_ms = now + liveHostGraceMin, DO alarm armed, push commercial_reconnect sent to the host. Host rejoin -> back to 'live', outage interval recorded. Alarm fires with no rejoin -> session ends with outcome:'host_no_return' and a per-ticket refund of unconsumed minutes (gross * (slot - watched_eligible)/slot, outage minutes excluded). This entry is written from the PLAN's contract, not from a read of WP8's own (still in-flight) code \u2014 WP9 does not touch WP8's files. Re-verify _verified_at once WP8 lands and commits its own telemetry catalog section.",
+    "shipped": "pending",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "liveHostGraceMin",
+      "commercialLiveJoinEnabled"
+    ],
+    "success": [
+      {
+        "event": "live_reconnecting_shown",
+        "property": "surface",
+        "in": [
+          "host",
+          "viewer"
+        ],
+        "min_events": 1,
+        "note": "This WP has no client-visible event of its own; it is proven end-to-end through the WP5/WP7 client events that only fire once the server actually emits state:'reconnecting'/reconnect_deadline_ms. This is the one entry in this manifest that should flip from an expected-zero (in LIVE-GRACE-WEB-1 / LIVE-GRACE-APP-1) to an expected nonzero once WP8 ships \u2014 if it is still zero after WP8's commit lands, the server side did not actually reach production."
+      },
+      {
+        "event": "commercial_settlement",
+        "where": {
+          "kind": "live_event",
+          "outcome": "refunded"
+        },
+        "property": "reason",
+        "equals": "host_no_return",
+        "min_events": 0,
+        "note": "Placeholder assertion inferred from the RULEBOOK/PLAN refund contract (per-ticket refund of unconsumed minutes on host_no_return) and this catalog's existing `commercial_settlement` naming convention (see SETTLE-CHECKIN-1) \u2014 WP8 must confirm the actual event name and reason string it emits for this branch in its own telemetry catalog section and this entry must be corrected to match verbatim once that section exists. Do not treat this specific event/reason pair as verified against WP8's code."
+      }
+    ],
+    "no_telemetry_note": "NOT a no_telemetry entry: WP8 ships user-visible behaviour (host grace period, viewer overlay, refund). success[] above is provisional, built from the PLAN contract and the already-shipped WP5/WP7 client consumers, pending WP8's own catalog section.",
+    "_verified_at": "Specs/PLAN-2026-09-11-WAITING-ROOM-BUILD.md WP8 row (contract only \u2014 WP8's own files were not read/touched by WP9 per the coordinator's file-ownership rule); Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md WP5/WP7 sections' 'Contract note' paragraphs describing what WP8 must add."
+  }
 }

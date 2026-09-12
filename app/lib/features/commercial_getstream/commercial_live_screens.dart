@@ -239,6 +239,12 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> with WidgetsB
   bool _sessionHandedOff = false;
   final _speaker = CommercialSpeakerTestController();
   String? _error;
+  // [LIVE-GRACE-APP-1] Host's own backstage timer, capped at the
+  // `commercialLiveBackstageEarlyMin` window. `startsAt` is optional — guard
+  // for it being absent (older/unpopulated server state) by simply not
+  // showing the countdown.
+  int? _startsAtMs;
+  Timer? _countdownTicker;
 
   Call get _call => widget.session.call;
 
@@ -260,6 +266,34 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> with WidgetsB
     _callState = _call.state.valueStream.listen((_) {
       if (mounted) setState(() {});
     });
+    unawaited(_loadSchedule());
+    _countdownTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  Future<void> _loadSchedule() async {
+    try {
+      final state = await widget.gateway.state(widget.listingId);
+      if (mounted) setState(() => _startsAtMs = state.startsAt);
+    } catch (_) {
+      // Non-fatal — backstage works without the countdown.
+    }
+  }
+
+  /// mm:ss until `starts_at`, clamped to the backstage window so a host who
+  /// somehow entered earlier never sees an oversized number.
+  String? get _backstageCountdownLabel {
+    final startsAt = _startsAtMs;
+    if (startsAt == null) return null;
+    final capMs = RemoteConfig.commercialLiveBackstageEarlyMin * 60000;
+    final remainingMs =
+        (startsAt - DateTime.now().millisecondsSinceEpoch).clamp(0, capMs);
+    final totalSec = (remainingMs / 1000).ceil();
+    if (totalSec <= 0) return 'Starting now';
+    final m = totalSec ~/ 60;
+    final s = totalSec % 60;
+    return 'Starts in ${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
   Future<void> _toggleMicrophone() async {
@@ -369,6 +403,7 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> with WidgetsB
   @override
   void dispose() {
     _callState?.cancel();
+    _countdownTicker?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_speaker.dispose());
     if (!_sessionHandedOff) unawaited(widget.session.leave());
@@ -393,6 +428,10 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> with WidgetsB
               ),
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             const _LiveStatusBadge(label: 'NOT LIVE', color: AD.danger),
+            if (_backstageCountdownLabel != null) ...[
+              const SizedBox(height: Msg.s2),
+              Text(_backstageCountdownLabel!, style: ADText.sectionLabel()),
+            ],
             const SizedBox(height: Msg.s4),
             Text(widget.title, style: ADText.appTitle()),
             const SizedBox(height: Msg.s2),
@@ -584,14 +623,27 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
   bool _cameraOff = false;
   bool _leaving = false;
   String? _error;
+  // [LIVE-GRACE-APP-1] `reconnect_deadline_ms` backs the "Reconnecting…"
+  // banner; both are null until WP8 (wave 2) ships the server side, and the
+  // banner simply never shows in that case.
+  int? _reconnectDeadlineMs;
+  bool _reconnectAnalyticsSent = false;
+  bool _sdkWasReconnecting = false;
 
   Call get _call => widget.session.call;
 
   @override
   void initState() {
     super.initState();
-    _callState = _call.state.valueStream.listen((_) {
+    _callState = _call.state.valueStream.listen((state) {
       if (mounted) setState(() {});
+      // React to the SDK's own connection status immediately instead of
+      // waiting up to 3 s for the next poll tick — the state poll remains the
+      // source of truth for the deadline shown, this only shortens the delay.
+      final sdkReconnecting =
+          state.status.isReconnecting || state.status.isDisconnected;
+      if (sdkReconnecting && !_sdkWasReconnecting) unawaited(_refreshState());
+      _sdkWasReconnecting = sdkReconnecting;
     });
     _poll = Timer.periodic(const Duration(seconds: 3), (_) => _refreshState());
     _refreshState();
@@ -601,12 +653,48 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
     try {
       final state = await widget.gateway.state(widget.listingId);
       if (!mounted) return;
-      setState(() => _serverState = state.state);
+      setState(() {
+        _serverState = state.state;
+        _reconnectDeadlineMs = state.reconnectDeadlineMs;
+      });
+      if (state.state == LiveServerState.reconnecting) {
+        if (!_reconnectAnalyticsSent) {
+          _reconnectAnalyticsSent = true;
+          Analytics.capture('live_reconnecting_shown', {
+            'listing_id': widget.listingId,
+            'role': 'host',
+            'email': Analytics.currentEmail ?? '',
+          });
+        }
+      } else {
+        _reconnectAnalyticsSent = false;
+      }
       if (state.state == LiveServerState.ended) await _finish();
     } catch (e) {
       if (mounted)
         setState(() => _error = 'Live status is temporarily unavailable.');
     }
+  }
+
+  Future<void> _rejoin() async {
+    Analytics.capture('live_host_rejoin', {
+      'listing_id': widget.listingId,
+      'role': 'host',
+      'email': Analytics.currentEmail ?? '',
+      'source': 'in_app_banner',
+    });
+    _leaving = true;
+    _poll?.cancel();
+    _callState?.cancel();
+    await widget.session.leave();
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
+      builder: (_) => LiveReadinessScreen(
+        listingId: widget.listingId,
+        title: widget.title,
+        gateway: widget.gateway,
+      ),
+    ));
   }
 
   Future<void> _finish() async {
@@ -707,6 +795,11 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
           ],
         ),
         body: Column(children: [
+          if (_serverState == LiveServerState.reconnecting)
+            _ReconnectBanner(
+              deadlineMs: _reconnectDeadlineMs,
+              onRejoin: _rejoin,
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, 0),
             child: Row(children: [
@@ -814,13 +907,17 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
 
   String get _healthLabel => switch (_serverState) {
         LiveServerState.live => 'Live and connected',
+        LiveServerState.reconnecting => 'Reconnecting',
         LiveServerState.ending => 'Ending live event',
         LiveServerState.ended => 'Ended',
         _ => 'Starting broadcast',
       };
 
-  Color get _healthColor =>
-      _serverState == LiveServerState.live ? AD.online : AD.primaryBadge;
+  Color get _healthColor => switch (_serverState) {
+        LiveServerState.live => AD.online,
+        LiveServerState.reconnecting => AD.danger,
+        _ => AD.primaryBadge,
+      };
 }
 
 class LiveViewerScreen extends StatefulWidget {
@@ -852,6 +949,12 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
   bool _loading = true;
   bool _leaving = false;
   String? _error;
+  // [LIVE-GRACE-APP-1] Null until WP8 (wave 2) ships `reconnect_deadline_ms`
+  // and `outcome` on the state response; every read below guards for that.
+  int? _reconnectDeadlineMs;
+  String? _outcome;
+  bool _reconnectAnalyticsSent = false;
+  bool _noReturnAnalyticsSent = false;
 
   @override
   void initState() {
@@ -899,8 +1002,34 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
     try {
       final state = await widget.gateway.state(widget.listingId);
       if (!mounted) return;
-      setState(() => _serverState = state.state);
-      if (state.state == LiveServerState.ended) await _leave();
+      setState(() {
+        _serverState = state.state;
+        _reconnectDeadlineMs = state.reconnectDeadlineMs;
+        _outcome = state.outcome;
+      });
+      if (state.state == LiveServerState.reconnecting) {
+        if (!_reconnectAnalyticsSent) {
+          _reconnectAnalyticsSent = true;
+          Analytics.capture('live_reconnecting_shown', {
+            'listing_id': widget.listingId,
+            'role': 'viewer',
+            'email': Analytics.currentEmail ?? '',
+          });
+        }
+      } else {
+        _reconnectAnalyticsSent = false;
+      }
+      if (state.state == LiveServerState.ended) {
+        if (state.outcome == 'host_no_return' && !_noReturnAnalyticsSent) {
+          _noReturnAnalyticsSent = true;
+          Analytics.capture('live_no_return_shown', {
+            'listing_id': widget.listingId,
+            'role': 'viewer',
+            'email': Analytics.currentEmail ?? '',
+          });
+        }
+        await _leave();
+      }
     } catch (_) {
       // Keep the last honest server state; do not turn a polling failure into
       // a fabricated viewer count or active-state claim.
@@ -938,10 +1067,20 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     if (_error != null) return _stateScaffold('Unable to join', _error!);
     if (_leaving || _serverState == LiveServerState.ended) {
-      return _stateScaffold(
-          'Live event ended', 'This ticket no longer opens a live room.');
+      return _outcome == 'host_no_return'
+          ? _stateScaffold(
+              'Live event ended',
+              "The creator couldn't return \u2014 the unused part of your "
+                  'ticket is being refunded.')
+          : _stateScaffold(
+              'Live event ended', 'This ticket no longer opens a live room.');
     }
-    final active = _serverState == LiveServerState.live;
+    final live = _serverState == LiveServerState.live;
+    final reconnecting = _serverState == LiveServerState.reconnecting;
+    // Reconnecting keeps the media path mounted (grid/renderer stay in the
+    // tree) so the creator's feed resumes without a rebuild the moment they
+    // are back; only the overlay banner communicates the outage.
+    final active = live || reconnecting;
     final session = _session;
     final others = session?.call.state.value.otherParticipants.toList() ??
         const <CallParticipantState>[];
@@ -965,10 +1104,16 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
         Padding(
           padding: const EdgeInsets.all(Msg.s4),
           child: _LiveStatusBadge(
-            label: active ? 'LIVE' : 'WAITING FOR CREATOR',
-            color: active ? AD.danger : AD.primaryBadge,
+            label: live
+                ? 'LIVE'
+                : reconnecting
+                    ? 'RECONNECTING'
+                    : 'WAITING FOR CREATOR',
+            color: live ? AD.danger : AD.primaryBadge,
           ),
         ),
+        if (reconnecting)
+          _ReconnectingOverlayBanner(deadlineMs: _reconnectDeadlineMs),
         Expanded(
           child: Row(
             children: [
@@ -1235,5 +1380,139 @@ class _LiveStatusBadge extends StatelessWidget {
         child: Text(label,
             style: TextStyle(
                 color: AD.onBand(color), fontWeight: FontWeight.w700)),
+      );
+}
+
+
+/// [LIVE-GRACE-APP-1] Host-side banner shown while the server reports
+/// `state == reconnecting` after the GetStream SDK reports a drop. The
+/// countdown is purely a display of `reconnect_deadline_ms`; the server (not
+/// this timer reaching zero) decides when the grace window is over.
+class _ReconnectBanner extends StatefulWidget {
+  const _ReconnectBanner({required this.deadlineMs, required this.onRejoin});
+
+  final int? deadlineMs;
+  final Future<void> Function() onRejoin;
+
+  @override
+  State<_ReconnectBanner> createState() => _ReconnectBannerState();
+}
+
+class _ReconnectBannerState extends State<_ReconnectBanner> {
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  String get _remaining {
+    final deadline = widget.deadlineMs;
+    if (deadline == null) return '';
+    final remainingMs = (deadline - DateTime.now().millisecondsSinceEpoch)
+        .clamp(0, 60 * 60 * 1000);
+    final totalSec = (remainingMs / 1000).ceil();
+    final m = totalSec ~/ 60;
+    final sec = totalSec % 60;
+    return ' ${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
+  }
+
+  String get _label => widget.deadlineMs == null
+      ? 'Reconnecting\u2026'
+      : 'Reconnecting\u2026 you have${_remaining} to get back';
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: double.infinity,
+        color: AD.danger,
+        padding:
+            const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
+        child: Row(children: [
+          Icon(PhosphorIcons.wifiSlash(PhosphorIconsStyle.bold),
+              color: AD.onBand(AD.danger)),
+          const SizedBox(width: Msg.s3),
+          Expanded(
+            child: Text(
+              _label,
+              style: TextStyle(
+                  color: AD.onBand(AD.danger), fontWeight: FontWeight.w700),
+            ),
+          ),
+          TextButton(
+            onPressed: () => unawaited(widget.onRejoin()),
+            child: Text('Rejoin',
+                style: TextStyle(
+                    color: AD.onBand(AD.danger), fontWeight: FontWeight.w700)),
+          ),
+        ]),
+      );
+}
+
+/// [LIVE-GRACE-APP-1] Viewer-side overlay kept above the still-mounted player
+/// while the creator is reconnecting, so the feed resumes in place the moment
+/// they are back instead of rebuilding the whole screen.
+class _ReconnectingOverlayBanner extends StatefulWidget {
+  const _ReconnectingOverlayBanner({required this.deadlineMs});
+
+  final int? deadlineMs;
+
+  @override
+  State<_ReconnectingOverlayBanner> createState() =>
+      _ReconnectingOverlayBannerState();
+}
+
+class _ReconnectingOverlayBannerState
+    extends State<_ReconnectingOverlayBanner> {
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  String get _label {
+    final deadline = widget.deadlineMs;
+    if (deadline == null) return 'Creator reconnecting\u2026';
+    final remainingMs = (deadline - DateTime.now().millisecondsSinceEpoch)
+        .clamp(0, 60 * 60 * 1000);
+    final totalSec = (remainingMs / 1000).ceil();
+    final m = totalSec ~/ 60;
+    final sec = totalSec % 60;
+    return 'Creator reconnecting \u00b7 ${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: double.infinity,
+        color: AD.primaryBadge,
+        padding:
+            const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(PhosphorIcons.wifiSlash(PhosphorIconsStyle.regular),
+              size: 16, color: AD.onBand(AD.primaryBadge)),
+          const SizedBox(width: Msg.s2),
+          Text(_label,
+              style: TextStyle(
+                  color: AD.onBand(AD.primaryBadge),
+                  fontWeight: FontWeight.w600)),
+        ]),
       );
 }
