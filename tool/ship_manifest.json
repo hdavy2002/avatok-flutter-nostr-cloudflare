@@ -1693,7 +1693,7 @@
     "flags": [
       "groupSharedMediaSessionEnabled"
     ],
-    "min_devices_on_build": 1,
+    "min_devices_on_build": 2,
     "shipped": "pending",
     "two_sided": true,
     "success": [
@@ -1865,14 +1865,10 @@
   "SHARE-OG-IMAGE-1": {
     "description": "Song share cards showed no preview image. Two causes, both verified live: (1) the /s/song/<tok>/cover route passed the request headers as an R2 range, so R2 populated object.range even with NO Range header and the route answered social crawlers 206 Partial Content \u2014 WhatsApp/Facebook/X reject that for og:image; covers now bypass range entirely and return 200. (2) the generated cover is a ~2MB PNG, over WhatsApp's ~600KB preview ceiling; crawlers now get a Cloudflare-transformed 1200px JPEG (fail-soft to original bytes). Same size fix applied to video thumbnails. og:image:type removed (was hardcoded image/png while a JPEG may be served).",
     "flags": [],
-    "min_devices_on_build": 0,
+    "min_devices_on_build": 1,
     "shipped": "verified",
     "two_sided": false,
-    "success": [
-      {
-        "no_telemetry": "Verified directly against production: GET /s/song/08b25d0e32d8/cover returned HTTP 206 + image/png + 2,039,453 bytes before, and HTTP 200 + image/jpeg + 148,441 bytes after the deploy (version 36016c59). Server-rendered OG markup has no client telemetry surface."
-      }
-    ]
+    "no_telemetry": "Verified directly against production: GET /s/song/08b25d0e32d8/cover returned HTTP 206 + image/png + 2,039,453 bytes before, and HTTP 200 + image/jpeg + 148,441 bytes after the deploy (version 36016c59). Server-rendered OG markup has no client telemetry surface."
   },
   "SONG-QUICK-1": {
     "description": "Quick song / \"let the engine write it\": a third music mode, engine_written, alongside vocal and instrumental. The person describes a song and the MUSIC ENGINE writes the words and sings them - no AI lyric draft, no approval step. Worker-only. The song interview gains a quick_generate action (lib/song_interview.ts) which do/ava_agent.ts re-validates server-side in canExecute() before any spend (isQuickSongContextReady: a subject + a length >= 60s), and which a group GUEST can never trigger ([AVA-GROUP-SESSION-1]). lib/venice_media.ts routes the mode to cfg.veniceQuickSongModel (default elevenlabs-music, which writes and sings its own words and rejects a lyrics_prompt outright) and sends NO lyrics. music_mode='engine_written' is stored in the existing venice_media_jobs.music_mode TEXT column - no migration, no change to the 27-column insert contract. Wallet path unchanged (flat cfg.veniceMusicTokens reserve/settle).",
@@ -4917,9 +4913,7 @@
     "shipped": "2026-09-09",
     "two_sided": false,
     "min_devices_on_build": 1,
-    "flags": [
-      "listingWebDetailEnabled"
-    ],
+    "flags": [],
     "success": [
       {
         "event": "listing_web_detail_ready",
@@ -4972,7 +4966,7 @@
   },
   "AVAILABILITY-1": {
     "description": "Unified creator availability schedules and conflict-protected appointment booking across native Flutter and web.",
-    "two_sided": true,
+    "two_sided": false,
     "min_devices_on_build": 1,
     "flags": [],
     "success": [
@@ -5078,7 +5072,7 @@
   },
   "REFUND-NOTICE-1": {
     "description": "[REFUND-NOTICE-1] A commercial cancellation/refund sends one notice per person: the buyer gets 'Refund issued \u00b7 \u20b9X' saying where the money went (wallet, or back to the original payment method); the creator gets 'Booking cancelled' saying their buyer was refunded. Both notices used to go to both sides, so the host account read 'Your commercial order has been refunded' for money that went to the buyer's account.",
-    "two_sided": true,
+    "two_sided": false,
     "min_devices_on_build": 1,
     "flags": [],
     "success": [
@@ -5858,5 +5852,627 @@
       }
     ],
     "_verified_at": "app/lib/core/session_api.dart RoomChannel give-up gate + onError/onDone dedupe (commit ea89bdfd); app/lib/features/commercial_getstream/commercial_waiting_room_screen.dart:225 waitroom_socket_failed, :383 waitroom_autojoin, :147 waitroom_enter."
+  },
+  "ADMIN-EDIT-2": {
+    "description": "An admin edit to an already-approved listing (worker/src/routes/admin_listings.ts adminEditListing) now re-hashes and re-binds reviewed_content_hash/reviewed_at/reviewed_by to the admin's own edit instead of leaving the old hash stale, so correcting a listing no longer flips it into review_stale and unpublishes it.",
+    "shipped": "2026-09-06",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "listing_admin_edit",
+        "where": {
+          "status": "approved"
+        },
+        "property": "rebound",
+        "equals": true,
+        "min_events": 1,
+        "note": "rebound is the property this commit added. On an already-approved listing, false (or an event predating this fix, which never carried the property) means the edit just made the listing unpublishable again -- the exact bug this commit closes."
+      }
+    ],
+    "_verified_at": "worker/src/routes/admin_listings.ts: wasBound/rebindHash computed before the UPDATE, rebindSql appends reviewed_content_hash/reviewed_at/reviewed_by when wasBound; safeTrack('listing_admin_edit', {..., rebound: wasBound}) below the write"
+  },
+  "AVAMKT-NATIVE-WIZARD": {
+    "description": "Replaces the marketplace listing creation WebView with a native 8-step Flutter wizard (app/lib/features/marketplace/native_listing/*) talking to a new ListingsApi client, with three same-day follow-up commits fixing a slot-response model ambiguity, a photo-control widget expression, and several compile/import errors introduced by the wizard.",
+    "shipped": "2026-09-09",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "listing_native_wizard_submitted",
+        "property": "listing_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "This event is new in this change and only fires after ListingsApi.wizardReview passes and ListingsApi.wizardSubmit returns ok -- i.e. after all 8 steps of the native wizard actually ran end-to-end on a real device. The three follow-up commits in this same issue id (compile errors, photo widget, slot model) are prerequisites for this code path to run at all, so any volume of this event is proof they landed and the wizard is not crash-looping before submit."
+      }
+    ],
+    "_verified_at": "app/lib/features/marketplace/native_listing/native_listing_wizard_screen.dart: Analytics.capture('listing_native_wizard_opened'/'listing_native_wizard_saved'/'listing_native_wizard_upload_completed'/'listing_native_wizard_submitted') at initState, _save, _upload, _submit respectively"
+  },
+  "CARD-PALETTE-1": {
+    "description": "Swaps the marketplace card's teal palette (#2d7180 family) for indigo everywhere it was hardcoded, including the previously-orphaned LIVE/time pill, and makes the card's creator avatar+name a real link to /c/<handle> (web/src/components/ListingTile.tsx) and to CreatorChannelScreen (app/lib/features/marketplace/commercial_service_cards.dart), instead of being aria-hidden decoration.",
+    "shipped": "2026-09-06",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "creator_view",
+        "property": "creator_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "creator_view (web/src/pages/c/[handle].astro) fires on load of the creator channel page this commit newly links to from the marketplace card. It has no source/referrer property, so it cannot be attributed to this click alone -- it also fires from the existing host-card link on the listing detail page (HOST-FACE-1) -- but the card's avatar/name were previously non-interactive aria-hidden spans with no path to this page at all, so a healthy rate of this event alongside marketplace browsing is the closest available signal that the new link works. The palette color swap itself is a pure hex change with nothing to assert."
+      }
+    ],
+    "_verified_at": "web/src/components/ListingTile.tsx: PAL.teal.fill/photo/shad/stub changed to indigo hexes, live pill background/dot changed off hardcoded teal, creatorHref <a href={`/c/${handle}`}> wraps avatar+name; app/lib/features/marketplace/commercial_service_cards.dart: GestureDetector pushes CreatorChannelScreen(creatorUid: card.creator.uid)"
+  },
+  "CI-RELEASE-2026-09-09": {
+    "description": "Updates two Dart test files (commercial_phase2c_ui_test.dart, commercial_live_phase2e_contract_test.dart) whose string/contract assertions had gone stale against already-shipped production refactors (the centralized commercialRoutePattern helper and the customer-recovery screen's real behaviour), so CI passes against the code as it actually is.",
+    "shipped": "2026-09-09",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Only files under app/test/ are touched (verified via git show --stat) -- this is a test-suite realignment with zero production code changed, so nothing here has a runtime behaviour or event to assert."
+  },
+  "COPY-PIPELINE-1": {
+    "description": "On submit-for-review, worker/src/routes/listings.ts now runs the existing AI copy-polish pass (reviewListingCopy) on title/blurb/description, writes the polished text into the listing columns while preserving the creator's original in attrs.copy_original/copy_polish, and worker/src/lib/listing_blockers.ts adds a new face_photo_required blocker so a listing cannot be submitted without a reference face for its poster (grandfathered for listings that already have a usable poster).",
+    "shipped": "2026-09-06",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "listing_copy_review",
+        "property": "source",
+        "equals": "ai",
+        "min_events": 1,
+        "note": "listing_copy_review already existed for the wizard's manual 'polish' button; polishListingCopy() calls the same reviewListingCopy() function from the submit path, so this event's volume increases once submissions start invoking it too. source='ai' (vs 'rules') proves the model half of the pass is actually running, not silently degraded. There is no call-site property distinguishing manual-wizard calls from submit-triggered calls, so this counts both; a sustained baseline above the pre-change manual-only rate is the signal to watch."
+      },
+      {
+        "event": "listing_submit_blocked",
+        "property": "codes",
+        "equals": "face_photo_required",
+        "min_events": 1,
+        "note": "Fires when listingBlockers() returns exactly the new face_photo_required blocker and nothing else, proving the requirement is enforced at submit time. A submit blocked on face_photo_required together with other codes will not match this exact-equality check (codes is a comma-joined string with no 'contains' operator available) but is still visible by reading the raw event codes field."
+      }
+    ],
+    "_verified_at": "worker/src/routes/listings.ts: polishListingCopy() called in submitListingForApproval before the UPDATE, attrs.copy_original/copy_polish set; worker/src/lib/listing_blockers.ts: face_photo_required pushed onto `out` when !hasUsablePoster && no https face_photo; worker/src/routes/listings.ts:1983 track('listing_submit_blocked', {codes: preBlockers.map(b=>b.code).join(',')}); worker/src/routes/listing_copy_review.ts:240 track('listing_copy_review', {source: out.source, ...})"
+  },
+  "CURRENCY-INR-DEFAULT-1": {
+    "description": "Changes the fallback currency for a listing with no currency_display from USD to INR in worker/src/routes/listings.ts (new LISTING_DEFAULT_CURRENCY constant used in shapeCard and createListing) and updates the listings.sql migration's column default to match for fresh databases.",
+    "shipped": "2026-09-06",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "A silent data-default change: currency_display is never included as a property on any tracked event anywhere in worker/src or web/src/app -- checked listing_draft_created, listing_booked, wallet_topup_initiated and every other track() call touching a listing or booking, none carry currency. There is no PostHog assertion that could observe the value flipping from USD to INR; verifying this requires reading the listings table directly (currency_display column on a newly created listing)."
+  },
+  "FAV-TRUTH-1": {
+    "description": "Makes the favourite heart read its true state from the server instead of assuming false on load (new GET favoriteState endpoint and favorites_count on add/remove in worker/src/routes/listings.ts), and adds a new web Saved page (web/src/pages/dashboard/saved.astro, web/src/islands/dashboard/MyFavourites.tsx) listing a user's hearted listings as cards with an un-heart action.",
+    "shipped": "2026-09-06",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "dashboard_favourite_removed",
+        "property": "listing_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "This event is new in this change and only fires from the new Saved dashboard page's un-heart button after the DELETE to /api/marketplace/favorites succeeds, so its presence directly proves the new page and its remove action work end-to-end. The server-side favoriteState/favorites_count truthing has no separate event of its own -- it is read implicitly by every successful listing_favorited/listing_unfavorited still firing at a normal rate."
+      }
+    ],
+    "_verified_at": "web/src/islands/dashboard/MyFavourites.tsx:91 capture('dashboard_favourite_removed', {listing_id: id}) after request(DELETE /api/marketplace/favorites) resolves; worker/src/routes/listings.ts: favoriteState() and favoriteCountOf() added, addFavorite/removeFavorite responses now include favorites_count"
+  },
+  "HOST-FACE-1": {
+    "description": "On the web listing detail page (web/src/components/ListingDetailsComp.astro), replaces the initials-only hostbar avatar and the flat 'HOST PHOTO' placeholder rectangle with the creator's real avatar_url, makes the host name a link to /c/<handle>, hides the media strip entirely when there are no real stills/reel instead of showing empty placeholder tiles, widens the booking panel above 1400px, and shows the category's real label instead of its raw id in the QuickInfo popup.",
+    "shipped": "2026-09-06",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "creator_view",
+        "property": "creator_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "creator_view (web/src/pages/c/[handle].astro) fires when the newly-added host name/photo links on the listing detail page are followed. It carries no referrer property, so it is shared with the CARD-PALETTE-1 marketplace-card link and cannot be attributed to this surface alone; before this change the hostbar and host-card had no link to this page at all, so a nonzero, sustained rate is the available proof. The media-strip honesty fix, category-label fix and booking-width change are pure rendering/CSS with no event to assert -- they must be checked visually per the design guard."
+      }
+    ],
+    "_verified_at": "web/src/components/ListingDetailsComp.astro: hostAvatar/hostHref computed from listing.creator.avatar_url/handle, both hostbar and host-card render <a href={hostHref}>; stills filtered to real cover_media URLs and thumb-grid only renders when stills.length>0||highlightUrl; web/src/islands/listing/QuickInfo.tsx: heading uses c.categoryLabel ?? c.category; worker/src/routes/listings.ts: category_label joined from listing_categories.label"
+  },
+  "JOURNEY-02": {
+    "description": "Updates five worker test files (worker/test/commercial_*.test.ts) whose string-contract assertions had drifted from already-shipped production changes -- the email_outbox notification rewrite, the commercialRoutePattern helper, the price column added to test bookings, and a state-priority ORDER BY in review lookups -- so the tests assert against the real production code.",
+    "shipped": "2026-09-09",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Only files under worker/test/ are touched (verified via git show --stat) -- a test-suite realignment with zero production code changed, so there is no runtime behaviour or event to assert."
+  },
+  "JOURNEY-04": {
+    "description": "Hardens the durable email outbox and reminder-batch cron so a permanently-failed send is never reported as delivered and one booking's failure no longer stalls the whole reminder sweep.",
+    "shipped": "2026-09-09",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "commercial_email_confirmation",
+        "property": "outcome",
+        "not_in": [
+          "failed"
+        ],
+        "min_events": 3,
+        "note": "email_confirmation is fired at worker/src/routes/commercial_checkout.ts:1278 with outcome = the aggregate status computed by queueCommercialConfirmation (worker/src/cal/emails.ts), the exact function this commit changed to add a distinct 'sending' bucket instead of only queued/provider_accepted/failed. A run of failed outcomes means the outbox hardening did not actually get bookings delivered."
+      },
+      {
+        "event": "commercial_email_confirmation_resend",
+        "property": "delivery_status",
+        "exists": true,
+        "min_events": 1,
+        "note": "email_confirmation_resend is fired at worker/src/routes/commercial_checkout.ts:880, from resendCommercialConfirmation, which this commit changed to derive a fresh per-request messageVersion instead of a force-based short-circuit (worker/src/routes/commercial_checkout.ts:873-878). Confirms the resend path is actually being exercised in production."
+      }
+    ]
+  },
+  "JOURNEY-05": {
+    "description": "Rewrites the 'ticket recovery stays visible while joining is paused' Flutter widget test to drive the real MySessionsScreen with a mocked HTTP client instead of asserting on source-code substrings.",
+    "shipped": "2026-09-09",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Test-only change: the sole file touched is app/test/commercial_phase2c_ui_test.dart, which replaces a File.readAsStringSync() source-substring assertion with a MockClient-driven widget test. No production code in app/ or worker/ changed, so there is no new or altered runtime behaviour to observe in PostHog."
+  },
+  "LAUNCH-DARK-1": {
+    "description": "Marketplace-only launch: adds compile-time kill switches kMessengerAiEnabled and kMessengerCallsEnabled (ANDed with the existing RemoteConfig aiEnabled/conferenceEnabled flags) that hide every Messenger AI surface and audio/video calling affordance, reorders the sidebar and prunes settings, and closes an incoming-group-call bypass that ignored the calling kill switch entirely.",
+    "shipped": "2026-09-05",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "conferenceEnabled"
+    ],
+    "success": [
+      {
+        "event": "messenger_incoming_refused_feature_off",
+        "property": "flag",
+        "equals": "conferenceEnabled",
+        "min_events": 1,
+        "note": "Added at app/lib/push/push_service.dart:6830 inside the group-ring branch of the incoming push handler. Before this commit an incoming GROUP call bypassed the messengerCallingEnabled guard entirely (it returned before that check ever ran); this event only fires from the new `if (!RemoteConfig.conferenceEnabled)` branch, so seeing it in production is direct proof the new refusal path is reachable and executing on a real incoming group ring, which needs a caller on one device and a callee on another."
+      }
+    ]
+  },
+  "LAUNCH-DARK-TESTS-1": {
+    "description": "Restates two Dart contract tests (call-accept non-blocking, app type-scale) so they assert against the surfaces LAUNCH-DARK-1 deliberately removed, instead of failing on stale expectations.",
+    "shipped": "2026-09-06",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Test-only change: both touched files are app/test/*_test.dart. No production code changed, so there is no user-visible behaviour to observe in PostHog."
+  },
+  "LIST-DETAIL-NATIVE-2": {
+    "description": "Replaces the WebView-based listing details page and its native-checkout dead end with a fully native Flutter listing-detail and booking flow, deleting listingWebDetailEnabled from both the client and the server config contract.",
+    "shipped": "2026-09-09",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "listing_detail_opened",
+        "property": "render_mode",
+        "equals": "native_v2",
+        "min_events": 1,
+        "note": "Fired at app/lib/features/explore/native_listing_detail_v2.dart:79 in initState of the new screen introduced by this commit, replacing the deleted WebView-backed listing_web_detail.dart / listing_detail.dart. render_mode:'native_v2' can only appear once this screen is actually mounted in production."
+      },
+      {
+        "event": "native_booking_opened",
+        "property": "render_mode",
+        "equals": "native",
+        "min_events": 1,
+        "note": "Fired at app/lib/features/explore/native_listing_booking_flow.dart:61 in initState of the new native booking sheet this commit adds. Proves the checkout/booking step of the native flow (not just the read-only detail page) is being reached in production."
+      }
+    ]
+  },
+  "LIST-ERR-SURFACE-1": {
+    "description": "Surfaces the server's real validation/refusal sentence in the listing wizard step-save error and creator dashboard archive/remove alerts instead of a generic 'try again' message, and stops an unrelated post-commit cleanup failure (releaseBlocks/ftsSync) from turning a successful archive into a 500.",
+    "shipped": "2026-09-05",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "The user-visible change is the exact text shown in a browser alert()/inline error string (web/src/lib/listingErrors.ts, web/src/islands/dashboard/CreatorListings.tsx, web/src/islands/dashboard/listing-form/ListingWizard.tsx) and a worker-side console.error log for releaseBlocks/ftsSync failures (worker/src/routes/listings.ts:2670-2688); none of this is captured as a PostHog event or property, and the existing 'listing_cancel' / 'listing_status_change' client events (unchanged by this commit) carry no field that distinguishes the old generic message from the new specific one."
+  },
+  "LIVE-SCHEDULE-FIX-1": {
+    "description": "Stops the listing wizard from offering recurring/on_request/always_on schedule modes for a live_event (only fixed_date works, since checkout/join/refund all assume a real starts_at), auto-repairs an existing live_event stuck on one of those modes, and narrows the server's 'listing already published, cannot move time' guard from any non-draft status to only the statuses (published, live) that actually hold a claimed calendar slot.",
+    "shipped": "2026-09-05",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "This is a form-option restriction (web/src/islands/dashboard/listing-form/steps.tsx) plus a narrowed server-side status check on updateListing (worker/src/routes/listings.ts, SLOT_CLAIMED_STATUSES). Neither path emits a PostHog event carrying the listing's kind/schedule_mode/status combination: the only nearby telemetry is track(env, ctx.uid, 'listing_status_changed', APP, {to}) (worker/src/routes/listings.ts:2981), which carries just the target status, not kind or schedule_mode, so it cannot distinguish a rescued live_event draft from any other status change."
+  },
+  "MKT-3GROUP-1": {
+    "description": "Adds the server-computed group_id (groupFor over the three marketplace groups india_goes_live/find_your_people/book_their_time) and a media_mode (audio_video|audio_only) field to every listing card, and derives them from the canonical Specs/listing-taxonomy.json taxonomy.",
+    "shipped": "2026-09-05",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "mkt_blip_tapped",
+        "property": "group_id",
+        "in": [
+          "india_goes_live",
+          "find_your_people",
+          "book_their_time"
+        ],
+        "min_events": 1,
+        "note": "group_id is computed server-side by groupFor() (worker/src/lib/listing_section.ts:179, GROUPS at line 135) and attached to every card in shapeCard (worker/src/routes/listings.ts: 'group_id: groupFor(r.section ?? DEFAULT_SECTION)'). mkt_blip_tapped (app/lib/features/marketplace/marketplace_browse.dart, added by MKT-3GROUP-APP-1) fires with that same group_id when a creator taps a sub-category chip, so seeing only the three real group ids (never null/other) is direct evidence the server's grouping reached the client correctly."
+      }
+    ]
+  },
+  "MKT-3GROUP-APP-1": {
+    "description": "Rebuilds the app's marketplace browse screen around the three server-provided marketplace groups, rendering a shelf per group with tappable sub-category 'blip' chips instead of the old flat/section-only layout.",
+    "shipped": "2026-09-05",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "mkt_blip_tapped",
+        "property": "group_id",
+        "in": [
+          "india_goes_live",
+          "find_your_people",
+          "book_their_time"
+        ],
+        "min_events": 1,
+        "note": "Added at app/lib/features/marketplace/marketplace_browse.dart:688 (_selectBlip), inside the new three-group layout this commit introduces (kListingGroups, ListingGroup in app/lib/core/listing_groups.dart). A tap only reaches this call site if the grouped shelf UI actually rendered, so real group ids arriving in PostHog is direct proof the new browse screen is live in production."
+      }
+    ]
+  },
+  "MKT-CACHE-2": {
+    "description": "Marketplace browse reads (explore, explore/categories, explore/live-now, marketplace/search, explore/search) now bound their TOTAL latency, including Clerk bearer-token acquisition, to a 4s browse timeout instead of only wrapping the HTTP call in an 8s timeout with unbounded auth-header time in front of it, so a stalled token provider can no longer make Marketplace spin forever.",
+    "shipped": "2026-09-10",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "api_error",
+        "where": {
+          "endpoint": "/api/explore",
+          "code": "TimeoutException"
+        },
+        "property": "latency_ms",
+        "lt": 4500,
+        "min_events": 0,
+        "note": "PRESENCE IS NOT THE BUG SIGNAL HERE, THE VALUE IS. api_error is the central capture in ApiAuth._tracked (app/lib/core/api_auth.dart:154-163); a transport failure \u2014 including the new TimeoutException thrown when auth-header acquisition alone eats the request budget \u2014 reports status:0, code:e.runtimeType.toString(), latency_ms. Before this fix a stalled Clerk token fetch could push this well past 8000ms (the old http timeout only wrapped the network call, not the token wait); after it, any timeout on /api/explore must land under ~4500ms (the new 4s _browseTimeout in listings_api.dart:980 plus overhead). min_events 0 because a healthy network should rarely time out at all \u2014 presence is expected to be rare, but WHEN it happens the ms value is the proof the bound is real."
+      },
+      {
+        "event": "api_error",
+        "where": {
+          "endpoint": "/api/explore/categories",
+          "code": "TimeoutException"
+        },
+        "property": "latency_ms",
+        "lt": 4500,
+        "min_events": 0,
+        "note": "Same bound on the categories call used by Marketplace's cold load (ListingsApi.getWizardCategories / cachedCategories, listings_api.dart:1051 and :1193, both now pass timeout:_browseTimeout). A timeout on this endpoint at >=4500ms would mean the 4s bound regressed or a caller reverted to ApiAuth.getSigned's old 8s default."
+      }
+    ],
+    "_verified_at": "app/lib/core/api_auth.dart:283-296 getSigned() times the _headers() call itself and computes a remaining budget for the request, throwing TimeoutException if auth alone consumed it; app/lib/core/api_auth.dart:154-163 _tracked() catch-all reports Analytics.apiError(status:0, code: e.runtimeType.toString(), latencyMs); app/lib/core/listings_api.dart:980 _browseTimeout=4s, wired into getWizardCategories (:1051), cachedCategories (:1193), explore (:1240), search variants (:1269,:1286,:1325,:1347)"
+  },
+  "POSTER-CLEAN-1": {
+    "description": "Posters now ask the model to paint a small 'avatok.ai' mark into the artwork itself (POSTER_STYLE_VERSION bumped 4->5) since a poster is screenshotted and reshared with no link attached, and the verifier's echo check was taught to recognize that requested mark as intentional text rather than flagging it as invented lettering that would previously have burned every retry and failed the poster for 'extra_text'.",
+    "shipped": "2026-09-06",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "poster_verify",
+        "where": {
+          "style_version": 5
+        },
+        "property": "ok",
+        "equals": true,
+        "min_events": 1,
+        "min_pass_rate": 0.7,
+        "note": "The read-back verifier actually passing on the new style version, not merely running. Before isEchoOfCopy() learned the watermark, every poster that correctly painted 'avatok.ai' would report mismatches:['extra_text'] and ok:false purely because of the mark it was asked to render \u2014 a pass rate collapsing on style_version=5 vs the style_version=4 baseline means the echo-match in poster_verify.ts (isEchoOfCopy, listing_poster.ts POSTER_WATERMARK) regressed. Slack matches POSTER-FILMY-1's precedent for the same verifier."
+      },
+      {
+        "event": "poster_verify",
+        "where": {
+          "style_version": 5
+        },
+        "property": "mismatches",
+        "not_in": [
+          "extra_text"
+        ],
+        "min_events": 0,
+        "note": "FAILURE VALUE, and the precise bug this commit fixes: a mismatches value that is exactly 'extra_text' (poster_verify.ts:198, joined from the mismatches array) on style_version 5 means the watermark match in isEchoOfCopy failed to recognize POSTER_WATERMARK ('avatok.ai') as requested text, i.e. the three places that must agree on the exact string (prompt, verifier, overlay fallback) have drifted apart again."
+      }
+    ],
+    "_verified_at": "worker/src/lib/listing_poster.ts:168-173 POSTER_STYLE_VERSION=5, POSTER_WATERMARK='avatok.ai'; :283-307 buildPosterPrompt adds the MARK line; worker/src/lib/poster_verify.ts:95-103 isEchoOfCopy treats POSTER_WATERMARK as an echo, not invented text; worker/src/lib/listing_poster.ts:433-446 track(..., 'poster_verify', {..., mismatches: (verdict.mismatches||[]).join(','), style_version})"
+  },
+  "PRICE-HOURLY-1": {
+    "description": "New pure module session_pricing.ts defines the hourly session pricing formula for live_event/consult listings (FLAT_TOKENS_PER_HOUR=25, COMMISSION_PCT=20, MIN_PRICE_TOKENS_PER_HOUR=49, sessionFeeFor/sessionFeeForHours), plus priceFloorError() which listings.ts wires into listing create/edit/submit validation so a price below the 49-token floor is refused server-side. Deliberately not yet wired into settlement/ledger writes (that followed in SETTLE-FEE-1).",
+    "shipped": "2026-09-05",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "api_error",
+        "where": {
+          "reason": "price_below_floor"
+        },
+        "property": "status",
+        "equals": 400,
+        "min_events": 1,
+        "note": "Proves the server-side floor is actually reachable and refusing: routes/listings.ts:1403/1590/1964 return {error:'price_below_floor'} via priceFloorError(), which web/src/lib/apiClient.ts's request() hook (apiClient.ts:96-116) reports back to PostHog as api_error with reason set to the response body's `error` field. Zero of these ever appearing after this ships would mean priceFloorError() is imported but never actually invoked on the live create/edit path."
+      }
+    ],
+    "_verified_at": "worker/src/lib/session_pricing.ts:14-75 FLAT_TOKENS_PER_HOUR/COMMISSION_PCT/MIN_PRICE_TOKENS_PER_HOUR/sessionFeeFor/sessionFeeForHours/priceFloorError; worker/src/routes/listings.ts:90 import, :1403/:1590/:1964 priceFloorError(f.price/row.price, false) -> 400 price_below_floor; web/src/lib/apiClient.ts:108-116 reason=body.error"
+  },
+  "PRICE-HOURLY-2": {
+    "description": "Fixes the floor check firing on drafts that simply have not reached the Money step yet: createListing/updateListing now only apply the 49-token floor when Number(f.price) > 0 (not merely !== undefined), since the wizard's bodyForSave always sends price=0 until step 2, and the client-side validateStep for the Money step now requires an actual price be set (rejecting 0, 'or 0 for free' removed) rather than silently letting an unpriced draft through to fail five steps later at submit.",
+    "shipped": "2026-09-05",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "listing_draft_created",
+        "property": "kind",
+        "in": [
+          "live_event",
+          "consult"
+        ],
+        "min_events": 1,
+        "note": "A live_event/consult draft actually reaching creation. Before this fix, any client whose bodyForSave sent the default price=0 while advancing past step 1 (i.e. every wizard session, since price defaults to 0 until the Money step) would 400 with price_below_floor on the `b.price !== undefined` check and never reach the INSERT that fires this event (listings.ts:1511) \u2014 so for the two kinds this pricing model governs, this event dropping to zero is exactly the reported 2026-09-05 bug reproduced."
+      },
+      {
+        "event": "api_error",
+        "where": {
+          "reason": "price_below_floor"
+        },
+        "property": "status",
+        "equals": 400,
+        "min_events": 0,
+        "note": "PRESENCE IS THE BUG SIGNAL for the specific shape this fixes: with the client-side Money-step validator now refusing to let a listing advance with price<=0 or price<49 (wizardLogic.ts case 2), and the server now only applying the floor when Number(f.price) > 0, an unpriced (0) draft should never again round-trip a 400 on a step BEFORE Money. A sustained volume of this reason on early-step saves (as opposed to an occasional genuine underpriced Money-step submit) means the `Number(f.price) > 0` guard in listings.ts (createListing:1401, updateListing:1422) regressed back toward `!== undefined`."
+      }
+    ],
+    "_verified_at": "web/src/islands/dashboard/listing-form/wizardLogic.ts:185-199 validateStep case 2 requires p>0 and p>=PRICING.minPriceTokensPerHour; worker/src/routes/listings.ts:1401 createListing `Number(f.price) > 0`, :1422 updateListing same guard, :1511 track('listing_draft_created', {kind,...})"
+  },
+  "RELEASE-2026-09-09": {
+    "description": "The day's consolidated release commit bundling multiple agents' pending work: a new AvaCalls PSTN dialer API (avacalls_api.dart), a new Creator Schedule screen for hosts to open their booked sessions, a new GetStream-based web live-hosting flow (LiveGsHost.tsx) gated behind commercialLiveJoinEnabled/commercialConsultJoinEnabled, and a new durable email outbox (worker/src/lib/email_outbox.ts + consumers/src/email_delivery.ts) for commercial booking confirmations \u2014 none of which had shipped individually tagged commits of their own.",
+    "shipped": "2026-09-09",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "commercialLiveJoinEnabled",
+      "commercialConsultJoinEnabled"
+    ],
+    "success": [
+      {
+        "event": "avacalls_pstn_started",
+        "property": "country",
+        "exists": true,
+        "min_events": 1,
+        "note": "The new AvaCalls PSTN dialer (avacalls_api.dart) actually places a call: fired only after the /avacalls/pstn/place request returns 2xx (avacalls_api.dart:395-402), never on a failed placement, so its presence proves the redesigned dial flow (ava_phone_screen.dart, dialpad_search_tab.dart in this diff) reaches a real outbound call rather than dying somewhere in the new UI."
+      },
+      {
+        "event": "creator_schedule_action_tapped",
+        "property": "action",
+        "in": [
+          "host",
+          "join"
+        ],
+        "min_events": 1,
+        "note": "The new Creator Schedule screen (creator_schedule_screen.dart, new file) is reachable and its rows actually open a session, gated by RemoteConfig.commercialLiveJoinEnabled / commercialConsultJoinEnabled. Absence with the flags on means the new screen is unreachable from the sidebar/shell wiring added in this commit."
+      },
+      {
+        "event": "commercial_host_go_live_requested",
+        "property": "listing_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "The new web GetStream host flow (LiveGsHost.tsx, new file) actually reaches the go-live action, not just renders backstage. This is new surface for hosting a live_event straight from the web dashboard rather than only the app."
+      }
+    ],
+    "_verified_at": "app/lib/core/avacalls_api.dart:395-402 Analytics.capture('avacalls_pstn_started', ...) after a 2xx pstn/place response; app/lib/features/booking/creator_schedule_screen.dart:212-220 RemoteConfig.commercialLiveJoinEnabled/commercialConsultJoinEnabled gates, :290-295 Analytics.capture('creator_schedule_action_tapped', {kind,listing_id,action}); web/src/islands/live-gs/LiveGsHost.tsx:611 capture('commercial_host_go_live_requested', {listing_id}); worker/src/routes/config.ts:21/24 and :1883/1886 both flags declared false in DEFAULTS"
+  },
+  "REVIEW-MOD-1": {
+    "description": "Buyer reviews now land as status='pending' and are hidden from public listing/creator rating averages until an admin approves them via a new /api/admin/reviews moderation endpoint (approve/reject), instead of going live the instant a buyer submits one; editing an already-approved review resets it back to pending. Also fixes the review textarea remounting on every keystroke and shows a reason instead of a blank state when the viewer is the listing's own host.",
+    "shipped": "2026-09-06",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "review_created",
+        "property": "status",
+        "equals": "pending",
+        "min_events": 1,
+        "note": "THE assertion for this issue: a newly written review must land with status:'pending', a property that did not exist on this event before this commit (routes/reviews.ts, the INSERT now writes status='pending' unconditionally and the track() call carries it). Any review_created with a status other than 'pending' means either the moderation gate did not apply or a legacy write path bypassed it."
+      },
+      {
+        "event": "admin_review_moderated",
+        "property": "next_status",
+        "in": [
+          "approved",
+          "rejected"
+        ],
+        "min_events": 1,
+        "note": "NEW event (routes/admin_reviews.ts, added by this commit) \u2014 proves the admin approve/reject flow is actually being used, not merely deployed. Absence entirely, while review_created keeps accumulating pending reviews, means the admin UI at /admin/reviews or its POST /api/admin/reviews/:id action is unreachable or unwired."
+      }
+    ],
+    "_verified_at": "worker/src/routes/reviews.ts:322-326 INSERT ... VALUES (...,'pending') ON CONFLICT ... status='pending'; :369-371 track('review_created', {..., status:'pending', listing_id}); worker/src/routes/admin_reviews.ts:119-193 POST handler, safeTrack(..., 'admin_review_moderated', {previous_status, next_status, rating, has_reason})"
+  },
+  "SEATS-COUNT-2": {
+    "description": "The web listing detail page's heart button now actually calls the server (POST/DELETE /api/marketplace/favorites) instead of only flipping a local CSS class and forgetting on refresh, wired through a new AuthBridge island that exposes window.__avatokToken() to the page's inline script; the 'popular' sort across explore/browse/search now ranks by real commercial_entitlements + legacy joined_count instead of only the legacy counter every commercial-checkout sale ignored; and the FAVOURITES stat on the listing page now reads the honest per-listing favorite count instead of the creator's unrelated follower_count.",
+    "shipped": "2026-09-06",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "listing_favorited",
+        "property": "listing_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "Proves a real authenticated POST to /api/marketplace/favorites landed and wrote a listing_favorites row (routes/listings.ts:4136), the exact call the web heart button never made before this fix (it only toggled state.fav locally). This event is shared with the app's pre-existing favorite control and track() does not stamp a platform/app property, so it cannot alone prove the WEB path specifically fired; corroborate with a rise in volume correlated to web listing-page views (no app deploy on the same day) rather than treating this in isolation."
+      },
+      {
+        "event": "listing_unfavorited",
+        "property": "listing_id",
+        "exists": true,
+        "min_events": 0,
+        "note": "The un-heart half of the same wiring (routes/listings.ts:4173). min_events 0 because an un-favorite is a less common action than a favorite; presence with a valid listing_id, when it occurs, confirms the DELETE path and its optimistic-UI rollback-on-failure logic in ListingDetailsComp.astro are both reachable."
+      }
+    ],
+    "_verified_at": "web/src/islands/auth/AuthBridge.tsx (new) + web/src/lib/clerk.tsx:241-248 window.__avatokToken; web/src/components/ListingDetailsComp.astro heart handler now POSTs/DELETEs to CONFIG.apiBase with optimistic paint + rollback; worker/src/routes/listings.ts:4125-4139 addFavorite -> track('listing_favorited'), :4160-4171 removeFavorite -> track('listing_unfavorited'); worker/src/routes/listings.ts:791-846 POPULARITY_SEATS / popularityOrder() used by exploreBrowse (:3287), exploreLiveNow (:3372), exploreSearch (:3465)"
+  },
+  "SETTLE-FEE-1": {
+    "description": "Checkout now freezes the same \u20b925-flat + 20%-of-remainder hourly split shown to creators in the listing wizard (session_pricing.ts sessionSplitFor) into the commercial_policy_snapshots row for paid live_event/consult_1to1 orders, instead of the older flat commercialCreatorFeePct config split that disagreed with what the creator was shown at listing time; gated behind sessionFeeRuleEnabled (default true) and scoped to price>0 orders only, with a defence-in-depth check that throws before checkout completes if the frozen creator/platform legs do not sum to gross or reproduce the stored percentage.",
+    "shipped": "2026-09-12",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "sessionFeeRuleEnabled"
+    ],
+    "success": [
+      {
+        "event": "commercial_settlement",
+        "where": {
+          "outcome": "settled"
+        },
+        "property": "kind",
+        "in": [
+          "live_event",
+          "consult_1to1"
+        ],
+        "min_events": 1,
+        "note": "A paid order actually reaching a completed settlement using the new frozen snapshot (commercial_settlement.ts:573, after authorityError() at :343 has already re-validated that creator_amount + platform_fee_amount === gross_amount and creator_amount === round(gross * creator_fee_pct / 100) against whatever sessionSplitFor() froze at checkout)."
+      },
+      {
+        "event": "commercial_settlement",
+        "where": {
+          "outcome": "review_pending"
+        },
+        "property": "reason",
+        "in": [
+          "split snapshot mismatch",
+          "creator amount does not match percentage",
+          "gross snapshot mismatch"
+        ],
+        "min_events": 0,
+        "note": "FAILURE VALUE, and the exact authorityError() strings (commercial_settlement.ts:343-357) that would fire if sessionSplitFor()'s frozen split ever disagreed with the settlement-time authority check \u2014 i.e. exactly the class of bug this issue exists to prevent, now that the wizard-shown split and the settled split are computed by the same function. min_events 0: this must never occur; any occurrence parks a real order in review_pending with money not yet paid out."
+      }
+    ],
+    "_verified_at": "worker/src/lib/session_pricing.ts:59-104 SessionSplit type + sessionSplitFor(); worker/src/routes/commercial_checkout.ts:35 import, :1037-1070 useSessionFeeRule/sessionSplitFor wiring + defence-in-depth throw; worker/src/routes/config.ts sessionFeeRuleEnabled declared true in DEFAULTS; worker/src/commercial_settlement.ts:343-357 authorityError(), :573 commercialEvent('settlement',{outcome:'settled',kind}), :105 commercialEvent('settlement',{outcome:'review_pending',reason}) via markReview()"
+  },
+  "SETTLE-FEE-2": {
+    "description": "Declares `sessionFeeRuleEnabled` in worker/src/routes/config.ts's `PlatformConfig` interface and `DEFAULTS` (default true) so the rollback switch SETTLE-FEE-1's checkout code already reads defensively (`config.sessionFeeRuleEnabled !== false`) can actually be flipped through the config API instead of always resolving to true because the key was undeclared.",
+    "shipped": "2026-09-12",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "sessionFeeRuleEnabled"
+    ],
+    "no_telemetry": "Pure config-contract declaration: adds a key to the PlatformConfig interface and DEFAULTS with no new code path of its own. commercial_checkout.ts (SETTLE-FEE-1, same day) already read this exact key defensively with absent-means-true semantics, so runtime behaviour is byte-identical before and after this commit \u2014 the flag's live value stays true either way until an operator explicitly flips it via `flags.sh`. There is no event or property whose value could differ as a result of this specific diff; commercial_checkout.ts emits no PostHog events at all (grepped for capture(/track(), none present)."
+  },
+  "UI-MKT-VERT-1": {
+    "description": "Rewrites marketplace_browse.dart from lane-based Phase 2 discovery shelves into a single scroll view with one shelf per listing category (biggest-supply category first) and taller portrait session cards in commercial_service_cards.dart.",
+    "shipped": "2026-09-05",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Pure layout/visual restructuring of an existing screen; the diff touches no Analytics.capture call. The screen's existing events (marketplace_opened, mkt_shelf_mounted, listing_card_clicked, mkt_card_impression) are all pre-existing, generic, and fire identically regardless of whether shelves are grouped by lane or by category or whether cards are portrait or landscape, so none of them can serve as a value assertion that this specific reshuffle rendered correctly. Success (correct per-category grouping, sort order, and card proportions) must be read off a device."
+  },
+  "UI-SEAM-OFF-1": {
+    "description": "Removes the empty 40dp app-switcher band and the AskAva header seam, enlarges marketplace session cards, removes the app-wide bottom-pinned footer seam overlay from shell_v2.dart, and shrinks the Live-event listing-detail CTA bar and its adjacent icon button.",
+    "shipped": "2026-09-05",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Both commits (ceee1b61, 1b1f4ccd) are chrome/spacing removals and re-sizing across askava_screen.dart, app_switcher_bar.dart, marketplace_browse.dart, listing_detail.dart and shell_v2.dart; neither diff touches an Analytics.capture/uiInteraction call. There is no event whose value distinguishes 'seam present, 40dp band present, 52dp icon button' from the new state \u2014 this is a spacing/decoration-only change verifiable only by looking at the screen."
+  },
+  "UI-SECTION-HEAD-1": {
+    "description": "Marketplace: drops the filter-chip row and the Book-a-creator strip and replaces plain category labels with Anton-font category headings on a scalloped rajasthani_motifs.dart border, adding a pubspec dependency for the new border asset.",
+    "shipped": "2026-09-05",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Visual-only marketplace change (typography, a decorative border widget, and removal of two UI elements); the diff adds no Analytics.capture/uiInteraction call and does not touch any existing one. No property exists that would carry a different value once the chips/strip are gone or once headings render in Anton with a scallop border, so this can only be confirmed by looking at the marketplace screen."
+  },
+  "WAITROOM-6": {
+    "description": "In recordCommercialStreamEvent, when a provider `participant_left` webhook omits its own provider_session_id (so the strict provider_session_id-scoped lookup matches nothing), falls back to closing the newest open commercial_participant_intervals row for that member by session+uid alone, instead of silently leaving the interval open forever (which had inflated settlement's connected_ms and, for a live host, permanently prevented the reconnect-grace window from arming).",
+    "shipped": "2026-09-12",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [],
+    "success": [
+      {
+        "event": "commercial_provider_event",
+        "where": {
+          "event_class": "left_without_session_id"
+        },
+        "property": "outcome",
+        "equals": "applied",
+        "min_events": 0,
+        "note": "New fallback path added by this commit at worker/src/routes/commercial_stream_sessions.ts (recordCommercialStreamEvent): fires with event_class='left_without_session_id' only when a `left` webhook arrives with no provider_session_id. outcome='applied' means the fallback found and closed the stale open interval (the fix working); outcome='no_open_interval' means nothing was open to close (benign/expected on a clean leave). Expected volume is low and depends entirely on how often the provider omits the session id on `left`, so min_events is 0 \u2014 but any occurrence of outcome NOT in {applied, no_open_interval} would mean the branch regressed. A steady stream of 'no_open_interval' where a matching two-sided call's provider webhooks are known to omit session ids on both join and leave would suggest the fallback's own join-side interval was never opened either, which is out of this fix's scope to detect."
+      }
+    ],
+    "_verified_at": "worker/src/routes/commercial_stream_sessions.ts:~2116 (commit 69f3cbdc): `if (!open && !input.providerSessionId) { open = await metaDb(env).prepare(...).first(...); commercialEvent(env, \"provider_event\", null, { kind: ..., outcome: open ? \"applied\" : \"no_open_interval\", event_class: \"left_without_session_id\" }); }`; commercialEvent() name prefix confirmed at worker/src/lib/commercial_telemetry.ts (prefixes `commercial_`), matching the pre-existing commercial_provider_event documented in Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md."
+  },
+  "WEB-ACCOUNT-1": {
+    "description": "Adds POST /api/account/bootstrap (worker/src/routes/web_account.ts) called from the new web SignUpIsland.tsx: idempotently materialises a users row for a Clerk-only web signup, validates and stores a submitted E.164 phone (both phone_hash and a readable private_number, never publicly shown), and auto-assigns an AvaTOK number via autoAssignNumber without asking the buyer to choose one.",
+    "shipped": "2026-09-06",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "web_account_bootstrap",
+        "property": "number_outcome",
+        "in": [
+          "assigned",
+          "existing"
+        ],
+        "min_events": 1,
+        "note": "Emitted once per bootstrap call at the end of webAccountBootstrap(), after autoAssignNumber() runs. number_outcome='none' means the number pool found nothing to assign (the one failure mode this success value must stay off of) and 'assigned'/'existing' are the two outcomes that mean a web signup actually has an AvaTOK number afterward, which is the feature's whole point. phone_stored is a second field on the same event but is not asserted here since phone entry is optional at signup."
+      },
+      {
+        "event": "web_account_bootstrap",
+        "property": "number_outcome",
+        "equals": "none",
+        "min_events": 0,
+        "note": "PRESENCE IS A WARNING SIGNAL, not necessarily a bug: 'none' means autoAssignNumber found no number in the pool for that country. Expected to stay rare; a rising share means the number pool needs restocking for that country, not that the code is broken (autoAssignNumber failures are caught and never fail the signup itself)."
+      }
+    ],
+    "_verified_at": "worker/src/routes/web_account.ts:~90-97 (commit 8d41c8f4): `void track(env, ctx.uid, \"web_account_bootstrap\", APP, { phone_stored, number_outcome: assigned ? (assigned.already ? \"existing\" : \"assigned\") : \"none\", country, named })`; web/src/islands/auth/SignUpIsland.tsx client-side capture('web_account_bootstrap_client', {outcome}) is a separate, unasserted client-fetch-succeeded signal for the same flow."
+  },
+  "WEB-HANDLE-1": {
+    "description": "Auto-assigns every non-guest user a stable, URL-safe @handle (worker/src/lib/handles.ts's ensureHandle, called from profile save, web account bootstrap, and listing publish) and fixes getCreator (worker/src/routes/listings.ts) to resolve its :id param by handle OR uid, so /c/<handle> creator pages \u2014 previously 404ing for every handle because the lookup only matched uid \u2014 now load.",
+    "shipped": "2026-09-10",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "creator_view",
+        "property": "creator_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "Client-side event at web/src/pages/c/[handle].astro, fired only after the page's server-side `getCreator(handle!)` call succeeds (a 404/410 from the API short-circuits the whole page to a 404 Response before this script ever renders). Before the getCreator handle-or-uid fix (commit e8b4ff9b) the `WHERE uid=?1` lookup matched a handle-shaped id only by coincidence, so essentially every /c/<handle> visit 404'd and this event could not fire from that route at all. Its presence in production is the end-to-end proof that (a) users now have handles assigned (worker/src/lib/handles.ts's ensureHandle, commit 8abf94c1) and (b) the creator page resolves them. A quiet window with zero /c/<handle> traffic would also read zero here, so absence alone is not conclusive without checking that some /c/<handle> requests actually landed (worker access logs)."
+      }
+    ],
+    "_verified_at": "worker/src/lib/handles.ts (new, commit 8abf94c1): ensureHandle() idempotently assigns users.handle; call sites at worker/src/routes/api.ts profileUpsert, worker/src/routes/web_account.ts webAccountBootstrap, worker/src/routes/listings.ts publishListingAuthoritative (3 call sites); worker/src/routes/listings.ts:3782-3785 (commit e8b4ff9b) getCreator now does `WHERE uid=?1 OR handle=?1` then reassigns `id = String(user.uid)` before the rest of the handler, including the pre-existing track(...,'creator_channel_viewed',...) at :3957; client proof at web/src/pages/c/[handle].astro:83 `capture('creator_view', { creator_id: creatorId, has_stats: hasStats })`, gated on `getCreator()` not throwing 404/410; web/src/lib/analytics.ts confirms this posthog-js client ships to the same eu.i.posthog.com project."
+  },
+  "WEB-SEO-3": {
+    "description": "Splits the hand-rolled static sitemap.xml.ts into a <sitemapindex> plus three feeds \u2014 sitemap-pages.xml.ts (the old static marketing routes, renamed), and two new request-time feeds sitemap-listings.xml.ts and sitemap-creators.xml.ts that call new Worker endpoints GET /api/sitemap/listings and GET /api/sitemap/creators (worker/src/routes/sitemap.ts) to enumerate public listing and creator pages that cannot be known at build time.",
+    "shipped": "2026-09-10",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Search-engine crawler infrastructure: the new worker/src/routes/sitemap.ts endpoints and the astro sitemap-*.xml.ts pages emit XML to crawlers and contain no track()/capture() calls anywhere in the diff. Even if they were instrumented, this is server-rendered XML fetched by search-engine bots, not by a browser executing the site's posthog-js client (web/src/lib/analytics.ts), so no client-side PostHog event could ever fire from a crawler's request. Correctness (valid sitemap index, correct listing/creator URLs, respected 3600s cache) is verifiable by fetching the URLs directly, not through telemetry."
   }
 }
