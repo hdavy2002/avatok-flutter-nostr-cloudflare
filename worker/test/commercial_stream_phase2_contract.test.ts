@@ -399,6 +399,21 @@ describe("WAITROOM-4 second-pass fixes", () => {
     expect(leftBranch).toContain("await armLiveGrace(env, {");
   });
 
+  it("[WAITROOM-6] a `left` with no provider session id falls back to the newest open interval and logs it", () => {
+    const start = routes.indexOf("} else if (left && member && input.actorId) {");
+    const end = routes.indexOf("const providerStarted = isCommercialLifecycleStart");
+    const leftBranch = routes.slice(start, end);
+    // The strict, id-bearing match stays first (R4's reconnect-race guard).
+    expect(leftBranch).toContain("let open = await metaDb(env).prepare(");
+    expect(leftBranch).toContain("AND provider_session_id=?3");
+    // ...and only a `left` that carries NO session id may widen the match.
+    expect(leftBranch).toContain("if (!open && !input.providerSessionId) {");
+    const fallback = leftBranch.slice(leftBranch.indexOf("if (!open && !input.providerSessionId) {"));
+    expect(fallback).not.toContain("AND provider_session_id=");
+    expect(fallback).toContain("ORDER BY joined_at DESC LIMIT 1");
+    expect(fallback).toContain("left_without_session_id");
+  });
+
   it("R4: endLiveOnHostNoReturn re-checks for an open host interval before ending", () => {
     const liveGrace = readFileSync(resolve(root, "src/lib/live_grace.ts"), "utf8");
     expect(liveGrace).toContain("hostStillConnected");

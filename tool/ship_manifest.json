@@ -5123,8 +5123,7 @@
       }
     ],
     "_verified_at": "app/lib/features/wallet/wallet_screen.dart _toggleActivity (Analytics.capture wallet_activity_opened)"
-  }
-,
+  },
   "SESSION-CLOCK-0": {
     "description": "[SESSION-CLOCK-0] worker/src/routes/commercial_stream_sessions.ts + new worker/src/lib/commercial_session_clock.ts. Consult (`kind='consult_1to1'`) sessions now end ONLY on schedule (5-min cron `endDueConsultSessions`, `ends_at + commercialConsultJoinLateMin`) or the explicit end route \u2014 a GetStream `session_ended`/`call.ended` webhook for a consult now only closes open `commercial_participant_intervals` and never sets `state='ended'` or queues settlement (RULEBOOK-PAID-SESSIONS.md v2 SS5). `authorizeProviderJoin` also allows rejoin: a valid in-window participant whose GetStream call the provider reports ended/missing (404) gets it recreated via `createProviderCall` instead of a refusal. `commercialConsultPrejoin` returns `room_ws/room_token/check_in_by` via WP2's `buildWaitingRoomGrant` (stubbed until WP2 lands).",
     "shipped": "2026-09-11",
@@ -5397,8 +5396,8 @@
     "_verified_at": "Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md WP7 section: live_reconnecting_shown / live_host_rejoin / live_no_return_shown via Analytics.capture, always carrying listing_id/role/email; its Contract note on the WP8 dependency."
   },
   "LIVE-GRACE-1": {
-    "description": "[LIVE-GRACE-1] (wave 2, worker, in progress by another agent as of this manifest entry) commercial_stream_sessions.ts live branches, do/stream_session.ts (new alarm kind live_grace), new worker/src/lib/live_grace.ts, settlement live branch. Contract per Specs/PLAN-2026-09-11-WAITING-ROOM-BUILD.md WP8: host participant_left while live -> state='reconnecting', reconnect_deadline_ms = now + liveHostGraceMin, DO alarm armed, push commercial_reconnect sent to the host. Host rejoin -> back to 'live', outage interval recorded. Alarm fires with no rejoin -> session ends with outcome:'host_no_return' and a per-ticket refund of unconsumed minutes (gross * (slot - watched_eligible)/slot, outage minutes excluded). This entry is written from the PLAN's contract, not from a read of WP8's own (still in-flight) code \u2014 WP9 does not touch WP8's files. Re-verify _verified_at once WP8 lands and commits its own telemetry catalog section.",
-    "shipped": "pending",
+    "description": "[LIVE-GRACE-1] worker/src/lib/live_grace.ts (new), the live branches of worker/src/routes/commercial_stream_sessions.ts, worker/src/do/stream_session.ts (alarm kind live_grace) and the live branch of worker/src/commercial_settlement.ts. Host `participant_left` while the session is live arms a grace window (`commercial_sessions.reconnect_deadline_ms = left_at + liveHostGraceMin`, a `commercial_live_outages` row, the DO's `live_grace` alarm, a `commercial_reconnect` push to the creator); a host rejoin inside the window clears it; the alarm firing with no rejoin ends the session with `end_outcome='host_no_return'` and refunds each ticket its unconsumed minutes. RECONCILED 2026-09-11 by [WAITROOM-6] against the code that actually shipped (commit 10c52f8c plus the WAITROOM-4/5 and SETTLE-CHECKIN-3/4 follow-ups): the previous version of this entry was written from the PLAN's contract before WP8 landed. Two corrections: (a) `state` NEVER becomes the literal 'reconnecting' \u2014 the column keeps 'live' and `reconnect_deadline_ms` is what `commercialLiveState` projects as state:'reconnecting' (see migrations/2026-09-11-live-grace-alter.sql for why); (b) the settlement event is `commercial_settlement {outcome:'host_no_return_partial', kind:'live_event'}`, NOT `{outcome:'refunded', reason:'host_no_return'}` as previously guessed, and it carries no `refund_pct` property.",
+    "shipped": "2026-09-11",
     "two_sided": true,
     "min_devices_on_build": 2,
     "flags": [
@@ -5407,28 +5406,457 @@
     ],
     "success": [
       {
+        "event": "commercial_live_grace",
+        "where": {
+          "kind": "live_event"
+        },
+        "property": "outcome",
+        "in": [
+          "armed",
+          "rejoined",
+          "host_no_return",
+          "host_already_reconnected"
+        ],
+        "min_events": 0,
+        "note": "The four outcomes live_grace.ts can emit, asserted as a closed set: any OTHER value means someone added a branch without updating this entry or the catalog. Zero total is acceptable and expected on a quiet window \u2014 every one of these requires a real host disconnect mid-broadcast \u2014 so read this as a value assertion, not a volume one. A run of `armed` with no matching `rejoined`/`host_no_return` for the same window means the window is being opened and never resolved: check the DO alarm (`live_grace_arm`) and the cron safety net `sweepExpiredLiveGrace`."
+      },
+      {
+        "event": "commercial_settlement",
+        "where": {
+          "kind": "live_event"
+        },
+        "property": "outcome",
+        "equals": "host_no_return_partial",
+        "min_events": 0,
+        "note": "Verbatim from the emit site, replacing the previous placeholder `{outcome:'refunded', reason:'host_no_return'}` guess. Fires once per settled order after an alarm-ended event. The count here must match the number of orders on the listing whose `commercial_live_grace outcome=host_no_return` fired; fewer means settlement jobs are stuck (look for `commercial_settlement outcome=review_pending`), and the amount itself is only auditable from the partial receipt row \u2014 telemetry carries no refund figure."
+      },
+      {
         "event": "live_reconnecting_shown",
-        "property": "surface",
+        "property": "role",
         "in": [
           "host",
           "viewer"
         ],
         "min_events": 1,
-        "note": "This WP has no client-visible event of its own; it is proven end-to-end through the WP5/WP7 client events that only fire once the server actually emits state:'reconnecting'/reconnect_deadline_ms. This is the one entry in this manifest that should flip from an expected-zero (in LIVE-GRACE-WEB-1 / LIVE-GRACE-APP-1) to an expected nonzero once WP8 ships \u2014 if it is still zero after WP8's commit lands, the server side did not actually reach production."
+        "note": "The end-to-end flip this WP owns: the app (WP7) cannot show a reconnecting banner unless the server actually projects state:'reconnecting' + reconnect_deadline_ms, so this moving off zero is the proof WP8 reached production. NOTE the property split \u2014 the APP emits `role` (commercial_live_screens.dart), the WEB emits `surface` (LiveGsHost/LiveGsViewer.tsx); LIVE-GRACE-WEB-1 asserts the `surface` twin. A quiet window with no real host drop will read zero: induce ONE deliberate host disconnect to clear this rather than reporting the WP as proven."
+      }
+    ],
+    "no_telemetry_note": "NOT a no_telemetry entry: WP8 ships user-visible behaviour (host grace period, viewer overlay, per-ticket refund).",
+    "_verified_at": "worker/src/lib/live_grace.ts:85/:102/:144/:212 commercialEvent(env,'live_grace',...) outcomes armed/rejoined/host_already_reconnected/host_no_return; worker/src/commercial_settlement.ts:776 commercialEvent(env,'settlement',null,{outcome:parts.telemetryOutcome,kind}) with telemetryOutcome='host_no_return_partial' set at :824 in settleLiveHostNoReturn; worker/src/lib/commercial_telemetry.ts:35 prefixes every name with `commercial_`; app/lib/features/commercial_getstream/commercial_live_screens.dart:663/:1013 live_reconnecting_shown role=host/viewer; Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md ## WP8 (corrected 2026-09-11 by [WAITROOM-6])."
+  },
+  "WAITROOM-2": {
+    "description": "[WAITROOM-2] Review follow-up to WAITROOM-1/SESSION-CLOCK-0 across worker/src/routes/commercial_stream_sessions.ts, routes/consult.ts, do/stream_session.ts, lib/commercial_waiting_room.ts, index.ts. W4: the legacy consult routes accept a 96-char commercial booking id and must refuse it instead of 404ing on shape. W8: rejoin/mark_ended safety. W10: `commercialConsultPrejoin` reads the check-in config and, when buildWaitingRoomGrant throws, returns the prejoin WITHOUT the grant fields (clients fall back to direct join) and emits a failure event instead of 500ing the whole prejoin. WP8 follow-up: `go_live` during an open grace window is an idempotent replay, not a second broadcast. C11: DO chat carries the sender uid and `host_checked_in_at`.",
+    "shipped": "2026-09-11",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "sessionCreatorCheckInMin",
+      "commercialConsultJoinEnabled",
+      "commercialConsultJoinLateMin"
+    ],
+    "success": [
+      {
+        "event": "commercial_prejoin",
+        "where": {
+          "kind": "consult_1to1"
+        },
+        "property": "outcome",
+        "equals": "waiting_room_grant_failed",
+        "min_events": 0,
+        "note": "THE failure-path assertion for W10: fired only when buildWaitingRoomGrant threw and the prejoin degraded to the pre-waiting-room direct-join response. It must stay at or near ZERO while `waitroom_enter` is nonzero. A nonzero rate here with `waitroom_enter` at zero is the exact silent regression this branch was added to make visible \u2014 every client quietly on the old direct-join path and nothing else complaining."
+      },
+      {
+        "event": "waitroom_enter",
+        "property": "role",
+        "in": [
+          "creator",
+          "buyer"
+        ],
+        "min_events": 1,
+        "note": "The happy path W10's try/catch must not have broken: a complete grant still reaches clients and the waiting room still opens. Paired with the assertion above \u2014 this nonzero AND that zero is the healthy state."
+      },
+      {
+        "event": "commercial_broadcast",
+        "where": {
+          "kind": "live_event",
+          "action": "go_live",
+          "outcome": "replay"
+        },
+        "property": "reason",
+        "equals": "reconnecting",
+        "min_events": 0,
+        "note": "WP8 follow-up: a creator pressing Go live again while his grace window is open is answered as an idempotent replay of the SAME session (`{ok:true, idempotent_replay:true, state:'live', reconnecting:true}`), never a second commercial_sessions row. Zero is fine on a quiet window; any occurrence must NOT be accompanied by a second session row for the same listing."
+      }
+    ],
+    "_verified_at": "worker/src/routes/commercial_stream_sessions.ts:807 commercialEvent(env,'prejoin',auth.uid,{kind:'consult_1to1',outcome:'waiting_room_grant_failed',reason}) and :1361 commercialEvent(env,'broadcast',auth.uid,{kind:'live_event',outcome:'replay',action:'go_live',reason:'reconnecting'}); worker/src/lib/commercial_telemetry.ts:35 prefixes `commercial_`; waitroom_enter is WP4/WP6's client event (Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md WP4/WP6 sections)."
+  },
+  "WAITROOM-3": {
+    "description": "[WAITROOM-3] worker/src/index.ts scheduled handler only \u2014 no route, no schema, no new event of its own. Wires `backfillCheckedInConsultSessions` into the 5-minute cron ahead of `endDueConsultSessions` (a booking the creator checked into but the buyer never opened has no commercial_sessions row at all and would otherwise be invisible to settlement), and sequences both no-show sweeps to COMPLETION before `runCommercialSettlements` so a refund/strike/settlement-job written this tick is visible to the settlement pass in the same tick instead of racing it.",
+    "shipped": "2026-09-11",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "sessionCreatorCheckInMin",
+      "commercialConsultJoinEnabled"
+    ],
+    "success": [
+      {
+        "event": "commercial_session_clock",
+        "where": {
+          "kind": "consult_1to1"
+        },
+        "property": "outcome",
+        "equals": "backfilled",
+        "min_events": 0,
+        "note": "The backfill sweep is actually running inside the cron (this event exists only inside backfillCheckedInConsultSessions). Zero is acceptable \u2014 it only fires for the C1 'creator checked in, buyer never opened' case \u2014 but zero FOREVER while `commercial_settlement reason=creator_no_show` keeps appearing for bookings with no session row means the wiring never took effect."
+      },
+      {
+        "event": "commercial_session_clock",
+        "where": {
+          "kind": "consult_1to1"
+        },
+        "property": "outcome",
+        "equals": "ended",
+        "min_events": 1,
+        "note": "The rest of the chain still runs after the re-sequencing: `endDueConsultSessions` is what actually ends consult sessions (RULEBOOK \u00a75). If this goes to zero while consult bookings keep being made, the backfill's `.catch()` chain broke the tick rather than isolating its own failure."
+      },
+      {
+        "event": "commercial_settlement",
+        "property": "outcome",
+        "equals": "review_pending",
+        "min_events": 0,
+        "note": "Ordering assertion: settlements run AFTER both sweeps now, so a no-show refund and its settlement land in the same tick. A rise in review_pending right after this shipped would mean the sequential chain is timing out the scheduled handler rather than fixing the race."
+      }
+    ],
+    "_verified_at": "worker/src/lib/commercial_session_clock.ts:91 commercialEvent(env,'session_clock',null,{kind:'consult_1to1',outcome:'ended',reason:'schedule_due'}) and :201 {outcome:'backfilled',reason:'creator_checked_in_buyer_absent'}; worker/src/index.ts scheduled() chain added by commit 8e720502; worker/src/commercial_settlement.ts:105 markReview -> outcome review_pending."
+  },
+  "WAITROOM-4": {
+    "description": "[WAITROOM-4] Second-pass review fixes across worker/src/lib/live_grace.ts, routes/commercial_stream_sessions.ts, routes/consult.ts, do/stream_session.ts, index.ts. R1: the legacy-consult 409 guard keyed on `bookings.kind='consult_1to1'`, which legacy non-commercial consults also use \u2014 it now keys on the commercial booking id shape or a commercial_policy_snapshots row, so ordinary consults stop 409ing. R3: `live_grace_arm` carries listing_id/sid so the DO alarm can end the right event, plus a `sweepExpiredLiveGrace` cron safety net. R4: a GetStream reconnect delivers join(new session) then left(old session), so a `left` is matched to its OWN provider session id and the grace window only arms when the host has no other open interval; `endLiveOnHostNoReturn` re-checks the same thing. R6/R7: arm/end gated on armed-AND-expired. R14: 404-vs-ending. C8: per-caller commercialLiveState response.",
+    "shipped": "2026-09-11",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "liveHostGraceMin",
+      "commercialLiveJoinEnabled",
+      "sessionCreatorCheckInMin",
+      "commercialConsultJoinEnabled"
+    ],
+    "success": [
+      {
+        "event": "commercial_live_grace",
+        "where": {
+          "kind": "live_event"
+        },
+        "property": "outcome",
+        "equals": "host_already_reconnected",
+        "min_events": 0,
+        "note": "R4's defence-in-depth re-check: the alarm or the cron sweep fired but the host already had an open participant interval, so the window was cleared and the event left live instead of being ended and refunded. This is the event that PROVES the reconnect race is being caught rather than silently ending a live event under a host who is actually connected. Should be rare; a steady stream means clearLiveGrace is not running on the host's rejoin webhook."
+      },
+      {
+        "event": "commercial_live_grace",
+        "where": {
+          "kind": "live_event"
+        },
+        "property": "outcome",
+        "equals": "armed",
+        "min_events": 0,
+        "note": "R4's other half: arming must NOT happen while the host still has an open interval. Every `armed` should be followed, within liveHostGraceMin, by exactly one `rejoined` or one `host_no_return` for the same session. An `armed` with neither is a lost DO alarm \u2014 which is what the R3 cron sweep exists to backstop."
+      },
+      {
+        "event": "waitroom_enter",
+        "property": "role",
+        "in": [
+          "creator",
+          "buyer"
+        ],
+        "min_events": 1,
+        "note": "R1's regression signal, read from the client side: the legacy consult path and the commercial waiting room must both keep working after the guard was narrowed. A consult booking that 409s now shows up as waitroom_enter going to zero for the affected role while bookings continue \u2014 there is no server-side event on the 409 path itself."
+      }
+    ],
+    "_verified_at": "worker/src/lib/live_grace.ts:144 commercialEvent(env,'live_grace',session.creator_id,{kind:'live_event',outcome:'host_already_reconnected'}) added by commit d51dd97e; :85 outcome 'armed'; worker/src/routes/commercial_stream_sessions.ts left-branch provider_session_id match; worker/src/routes/consult.ts isCommercialBooking() replacing the kind='consult_1to1' test (no telemetry on that path \u2014 hence the client-side assertion)."
+  },
+  "WAITROOM-5": {
+    "description": "[WAITROOM-5] Third-pass review fixes in worker/src/lib/live_grace.ts, routes/commercial_stream_sessions.ts, do/stream_session.ts. `endLiveOnHostNoReturn`'s dependent statements (close intervals, close the outage, insert the settlement job) are now EXISTS-guarded on the session actually having been ended by THIS call, so a lost race does the real no-op it looks like instead of closing intervals and queueing settlement for a session it did not end. A normal live end also closes any still-open outage and clears reconnect_deadline_ms; partial refunds are excluded from cancelled_flag; a `live_grace` alarm that fires early is re-armed instead of being consumed. No new telemetry \u2014 every assertion below is a CONSISTENCY assertion over the events WP8 already emits.",
+    "shipped": "2026-09-11",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "liveHostGraceMin",
+      "commercialLiveJoinEnabled"
+    ],
+    "success": [
+      {
+        "event": "commercial_live_grace",
+        "where": {
+          "kind": "live_event"
+        },
+        "property": "outcome",
+        "equals": "host_no_return",
+        "min_events": 0,
+        "note": "Each host_no_return must be matched by settlement events for the listing's orders (next assertion). The EXISTS guards mean a raced call now emits nothing at all rather than a second set of side effects, so a DUPLICATE host_no_return for one commercial_session_id is the regression signal here."
       },
       {
         "event": "commercial_settlement",
         "where": {
-          "kind": "live_event",
+          "kind": "live_event"
+        },
+        "property": "outcome",
+        "equals": "host_no_return_partial",
+        "min_events": 0,
+        "note": "The settlement side of the same window. With the EXISTS guards in place the settlement job is inserted only by the call that genuinely ended the session, so the count of these per listing must equal its order count exactly \u2014 more than that means the guard regressed and a losing race queued a second job."
+      },
+      {
+        "event": "commercial_settlement",
+        "where": {
+          "kind": "live_event"
+        },
+        "property": "outcome",
+        "equals": "review_pending",
+        "min_events": 0,
+        "note": "Must stay at zero for live events. This entry's changes (outage still open at a normal end, an early-fired alarm, a partial refund mis-flagged as cancelled) all previously surfaced as a settlement that could not decide and parked in review; their recurrence shows up here first."
+      }
+    ],
+    "_verified_at": "worker/src/lib/live_grace.ts:212 outcome host_no_return; the EXISTS(SELECT 1 FROM commercial_sessions ... state='ended' AND end_outcome='host_no_return') guards on the three batched statements (commit 0b149d21); worker/src/commercial_settlement.ts:776 host_no_return_partial, :105 review_pending."
+  },
+  "SETTLE-CHECKIN-2": {
+    "description": "[SETTLE-CHECKIN-2] First review pass on SETTLE-CHECKIN-1: worker/src/commercial_settlement.ts, lib/commercial_session_clock.ts, routes/commercial_lifecycle.ts. The check-in evidence window is now bounded AND creator-scoped (it previously matched any host interval at any time); the orphan no-show sweep uses `sessionCreatorCheckInMin` instead of a hard-coded number and skips hosts that DID check in; the overdue sweep skips the refund for a checked-in creator; the C1 'creator checked in, buyer never came' case is backfilled into a real session row; receipt replay tolerates pre-migration receipts with a NULL `rule`; the no-show strike insert is idempotent.",
+    "shipped": "2026-09-11",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "sessionCreatorCheckInMin",
+      "commercialConsultJoinEnabled"
+    ],
+    "success": [
+      {
+        "event": "commercial_settlement",
+        "where": {
+          "kind": "consult_1to1"
+        },
+        "property": "outcome",
+        "equals": "skipped_checked_in",
+        "min_events": 0,
+        "note": "New in this commit and the core fix: settlement refused to refund because the creator DID check in (RULEBOOK \u00a72 C1 \u2014 the customer pays in full however late he joins). Every one of these is a refund that the pre-fix code would have paid out wrongly. Zero is fine on a quiet window; a nonzero count alongside zero `reason=creator_no_show` refunds is the healthy shape."
+      },
+      {
+        "event": "commercial_settlement",
+        "where": {
+          "kind": "consult_1to1",
           "outcome": "refunded"
         },
         "property": "reason",
-        "equals": "host_no_return",
+        "equals": "creator_no_show",
         "min_events": 0,
-        "note": "Placeholder assertion inferred from the RULEBOOK/PLAN refund contract (per-ticket refund of unconsumed minutes on host_no_return) and this catalog's existing `commercial_settlement` naming convention (see SETTLE-CHECKIN-1) \u2014 WP8 must confirm the actual event name and reason string it emits for this branch in its own telemetry catalog section and this entry must be corrected to match verbatim once that section exists. Do not treat this specific event/reason pair as verified against WP8's code."
+        "note": "The other side of the same decision: refunds that survive the check-in test. After this commit these must correspond ONLY to creators with no in-window host interval. A creator_no_show refund on a booking that also produced a `skipped_checked_in` event is a contradiction and means the two code paths disagree about the window."
+      },
+      {
+        "event": "commercial_session_clock",
+        "where": {
+          "kind": "consult_1to1"
+        },
+        "property": "outcome",
+        "equals": "backfilled",
+        "min_events": 0,
+        "note": "The C1 backfill this commit added: a booking the creator checked into but the buyer never opened now gets a synthesized session row so settlement can see it at all. Zero forever while consult bookings exist means the backfill's query never matches and those bookings stay invisible."
       }
     ],
-    "no_telemetry_note": "NOT a no_telemetry entry: WP8 ships user-visible behaviour (host grace period, viewer overlay, refund). success[] above is provisional, built from the PLAN contract and the already-shipped WP5/WP7 client consumers, pending WP8's own catalog section.",
-    "_verified_at": "Specs/PLAN-2026-09-11-WAITING-ROOM-BUILD.md WP8 row (contract only \u2014 WP8's own files were not read/touched by WP9 per the coordinator's file-ownership rule); Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md WP5/WP7 sections' 'Contract note' paragraphs describing what WP8 must add."
+    "_verified_at": "worker/src/commercial_settlement.ts:1084 commercialEvent(env,'settlement',null,{outcome:'skipped_checked_in',kind}) added by commit d8ff3757; :974/:1063/:1160 {outcome:'refunded',reason:'creator_no_show',kind}; worker/src/lib/commercial_session_clock.ts:201 {outcome:'backfilled'}."
+  },
+  "SETTLE-CHECKIN-3": {
+    "description": "[SETTLE-CHECKIN-3] Second review pass, worker/src/commercial_settlement.ts (major) + lib/commercial_session_clock.ts + routes/commercial_lifecycle.ts. R2 blocker: a partial settlement took a 'refund' claim for its first leg and completed it, leaving the creator's remainder unpayable \u2014 replaced by a single settlement claim plus a partial-refund receipt path (`applyPartialCommercialSettlement`), so the order only becomes 'settled' inside `finishSettlement` once the creator's consumed share has actually been released. R5 remainder-based rounding; R8 backfill scoped to commercial orders and batched; R9 the overdue scan excludes checked-in sessions; R10 one shared `resolveConsultCheckInCfg`; R11 outage minutes are refunded even when the live event ends normally; R15 `watchedEligibleMs` is clipped to the slot window.",
+    "shipped": "2026-09-11",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "sessionCreatorCheckInMin",
+      "commercialConsultJoinEnabled",
+      "liveHostGraceMin",
+      "commercialLiveJoinEnabled"
+    ],
+    "success": [
+      {
+        "event": "commercial_settlement",
+        "where": {
+          "kind": "consult_1to1"
+        },
+        "property": "outcome",
+        "equals": "settled",
+        "min_events": 1,
+        "note": "The R2 blocker's regression signal. A consult that ends with the creator checked in must reach `settled` \u2014 which now happens only after the creator's money actually moved. If this drops to zero while consults keep ending, the single-claim rework has re-broken the payout leg."
+      },
+      {
+        "event": "commercial_settlement",
+        "where": {
+          "kind": "live_event"
+        },
+        "property": "outcome",
+        "equals": "host_no_return_partial",
+        "min_events": 0,
+        "note": "The partial path R2/R5/R11/R15 rewrote, now emitted by the shared `applyPartialCommercialSettlement`. Used for both host_no_return and the R11 normal-end-with-outage-minutes case. Zero is acceptable; each occurrence must leave the order 'settled', never 'refunded', with a partial receipt row carrying the ORIGINAL gross."
+      },
+      {
+        "event": "commercial_settlement",
+        "property": "outcome",
+        "equals": "review_pending",
+        "min_events": 0,
+        "note": "Must stay at zero. The stuck-claim symptom this commit set out to kill (`commercial money claim owned by refund:...`) surfaces exactly here, as a settlement parked in review, and nowhere else."
+      }
+    ],
+    "_verified_at": "worker/src/commercial_settlement.ts:776 commercialEvent(env,'settlement',null,{outcome:parts.telemetryOutcome,kind}) inside applyPartialCommercialSettlement (commit 11a407a7), :573 {outcome:'settled'}, :105 markReview {outcome:'review_pending'}, :824 telemetryOutcome='host_no_return_partial'."
+  },
+  "SETTLE-CHECKIN-4": {
+    "description": "[SETTLE-CHECKIN-4] Third review pass, worker/src/commercial_settlement.ts only, 19 lines. Fix 1: `applyPartialCommercialSettlement` claimed the money under a differently-prefixed claimId than the one `finishSettlement` completes (`job.settlement_job_id`), so every partial settlement left its commercial money claim in state='claimed' FOREVER even after the order settled \u2014 blocking any later claim on the same order. Fix 2: a live event ending normally with an outage row still open read its length as zero and refunded nothing; the outage is now closed at its end time first, so the outage minutes are actually refunded.",
+    "shipped": "2026-09-11",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "liveHostGraceMin",
+      "commercialLiveJoinEnabled",
+      "sessionCreatorCheckInMin",
+      "commercialConsultJoinEnabled"
+    ],
+    "success": [
+      {
+        "event": "commercial_settlement",
+        "where": {
+          "kind": "live_event"
+        },
+        "property": "outcome",
+        "equals": "host_no_return_partial",
+        "min_events": 0,
+        "note": "The only externally visible marker of both fixes. Each occurrence must now leave NO row in the money-claim table in state='claimed' for that order \u2014 telemetry cannot see the claim table, so pair this event with a direct check of the claim state for the order before calling it fixed. The stuck-claim symptom appears later, as the NEXT settlement on the same order parking in review (assertion below)."
+      },
+      {
+        "event": "commercial_settlement",
+        "property": "outcome",
+        "equals": "review_pending",
+        "min_events": 0,
+        "note": "Must stay at zero. A claim stuck at 'claimed' by fix 1's bug shows up here on the next settlement attempt for that order, as `markReview('commercial money claim owned by ...')`. This is the assertion that would have caught the original defect."
+      }
+    ],
+    "_verified_at": "worker/src/commercial_settlement.ts:861 claimId: job.settlement_job_id with the [SETTLE-CHECKIN-4] comment, :824 settleLiveHostNoReturn telemetryOutcome, :776 emit site, :105 markReview; commit 63ef3775."
+  },
+  "WAITROOM-APP-2": {
+    "description": "[WAITROOM-APP-2] First review pass on WAITROOM-APP-1 (app only): commercial_waiting_room_screen.dart, commercial_consult_screens.dart, commercial_live_gateway.dart, core/commercial_waiting_room_api.dart, push/push_service.dart (commercial branch). Fixes the auto-join stuck state (a failed /join left the screen inert with no retry), a Leave that did not end the session, a missing own-camera preview in the waiting room, no-show/check-in copy, an end-of-slot guard, isClosed guards on the socket, the chat sender uid, a scheduled_at fallback for live, and push listing_id validation. No new event names \u2014 the assertions are on WAITROOM-APP-1's events continuing to fire through the fixed paths.",
+    "shipped": "2026-09-11",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "sessionCreatorCheckInMin",
+      "commercialConsultJoinEnabled"
+    ],
+    "success": [
+      {
+        "event": "waitroom_enter",
+        "property": "role",
+        "in": [
+          "creator",
+          "buyer"
+        ],
+        "min_events": 1,
+        "note": "The screen still opens after the prejoin/preview rework. This is the event that goes to zero if the app silently reverts to the pre-waiting-room direct-join path."
+      },
+      {
+        "event": "waitroom_autojoin",
+        "property": "role",
+        "in": [
+          "creator",
+          "buyer"
+        ],
+        "min_events": 1,
+        "note": "THE fix-1 assertion: auto-join no longer gets stuck. Pre-fix, a failed /join left the screen with no retry, so `waitroom_enter` kept firing while this stayed flat. The healthy shape is a waitroom_autojoin for (nearly) every waitroom_enter pair on a booking that actually went ahead; a widening gap between the two counts is the stuck state coming back."
+      },
+      {
+        "event": "waitroom_noshow_shown",
+        "property": "role",
+        "equals": "buyer",
+        "min_events": 0,
+        "note": "Fires customer-side only, once per visit, when check_in_by passes with no host on the roster \u2014 the copy this commit corrected. Zero is fine on a quiet window; each occurrence should be corroborated by a `commercial_settlement reason=creator_no_show` for the same booking, and a mismatch means the client and the server disagree about the check-in window."
+      }
+    ],
+    "_verified_at": "app/lib/features/commercial_getstream/commercial_waiting_room_screen.dart:147 waitroom_enter, :330 waitroom_noshow_shown, :383 waitroom_autojoin, :483 waitroom_chat_sent (Analytics.capture; the base envelope carries email/clerk_uid); commit f949eab8."
+  },
+  "WAITROOM-APP-3": {
+    "description": "[WAITROOM-APP-3] Second review pass (app only): commercial_waiting_room_screen.dart, core/session_api.dart, core/commercial_waiting_room_api.dart, commercial_consult_screens.dart, commercial_live_gateway.dart. Fixes A1 compile error, A2 false no-show race, A5 double camera-open, A6 session_ended painted over the call screen, A7 reportNoShow pop, A12 RoomChannel retrying forever, A13 425 opens_at parsing, A14/A15 opens_at/ends_at auto-join gating. Adds ONE new event, `waitroom_socket_failed`, on the give-up path of the waiting-room socket.",
+    "shipped": "2026-09-11",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "sessionCreatorCheckInMin",
+      "commercialConsultJoinEnabled"
+    ],
+    "success": [
+      {
+        "event": "waitroom_socket_failed",
+        "property": "role",
+        "in": [
+          "creator",
+          "buyer"
+        ],
+        "min_events": 0,
+        "note": "New in this commit (A12): the waiting-room socket exhausted its retries and gave up, after which the screen degrades to a manual join. This is a FAILURE-path event and must stay near zero \u2014 a nonzero rate means the DO socket is unreachable for real users and every one of those sessions lost its auto-join, its roster and its chat while still looking like a normal waiting room."
+      },
+      {
+        "event": "waitroom_autojoin",
+        "property": "role",
+        "in": [
+          "creator",
+          "buyer"
+        ],
+        "min_events": 1,
+        "note": "A14/A15's assertion: auto-join is now gated on opens_at/ends_at, so it must still fire inside the window and must NOT fire outside it. Compare the timestamps of these events against the booking's slot \u2014 an autojoin before opens_at is the gating regressing."
+      },
+      {
+        "event": "waitroom_noshow_shown",
+        "property": "role",
+        "equals": "buyer",
+        "min_events": 0,
+        "note": "A2's assertion: the false no-show race. Pre-fix this could fire while the host WAS present. Any occurrence must have NO `waitroom_autojoin` for the same booking+role afterwards; the two appearing together on one booking is the race returning."
+      }
+    ],
+    "_verified_at": "app/lib/features/commercial_getstream/commercial_waiting_room_screen.dart:225 Analytics.capture('waitroom_socket_failed', {booking_id, role}) added by commit e994ec95; :383 waitroom_autojoin; :330 waitroom_noshow_shown."
+  },
+  "WAITROOM-APP-4": {
+    "description": "[WAITROOM-APP-4] Third review pass (app only), 29 lines: app/lib/core/session_api.dart and commercial_waiting_room_screen.dart. RoomChannel's give-up path (added by WAITROOM-APP-3) is now gated on `onFailure != null`, so the LEGACY consult callers that never passed a failure handler keep reconnecting forever as they always did instead of silently going dead; onError+onDone are deduped into ONE retry per attempt (they both fire on a dropped socket, doubling the retry rate and burning the budget in half the time); and the waiting-room auto-join skips its roster check when the socket is already dead. No new event names.",
+    "shipped": "2026-09-11",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "sessionCreatorCheckInMin",
+      "commercialConsultJoinEnabled"
+    ],
+    "success": [
+      {
+        "event": "waitroom_socket_failed",
+        "property": "role",
+        "in": [
+          "creator",
+          "buyer"
+        ],
+        "min_events": 0,
+        "note": "The dedupe assertion: onError+onDone previously produced two retries per drop, so the retry budget was exhausted twice as fast and this fired roughly twice as often. After this commit its rate should FALL for the same underlying network conditions. A rate that did not change means the dedupe is not taking effect."
+      },
+      {
+        "event": "waitroom_autojoin",
+        "property": "role",
+        "in": [
+          "creator",
+          "buyer"
+        ],
+        "min_events": 1,
+        "note": "The regression signal for the give-up gating: the waiting room must still reach auto-join. If this falls while `waitroom_enter` holds, the `onFailure != null` gate is now stopping retries on the commercial path too, which is the opposite of the fix."
+      },
+      {
+        "event": "waitroom_enter",
+        "property": "role",
+        "in": [
+          "creator",
+          "buyer"
+        ],
+        "min_events": 1,
+        "note": "The legacy-caller half of the same fix is not directly observable (legacy consult callers emit no waitroom event by design \u2014 they are the pre-WP6 path). This assertion only confirms the commercial waiting room itself still opens; the legacy RoomChannel behaviour must be checked by reading session_api.dart, not from telemetry."
+      }
+    ],
+    "_verified_at": "app/lib/core/session_api.dart RoomChannel give-up gate + onError/onDone dedupe (commit ea89bdfd); app/lib/features/commercial_getstream/commercial_waiting_room_screen.dart:225 waitroom_socket_failed, :383 waitroom_autojoin, :147 waitroom_enter."
   }
 }

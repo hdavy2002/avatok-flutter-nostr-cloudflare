@@ -562,6 +562,14 @@ rows changed).
 from `clearLiveGrace` when the host's `participant_joined` webhook arrives
 before the grace deadline. Same idempotency guard.
 
+`commercial_live_grace` {kind: 'live_event', outcome:
+'host_already_reconnected'} — fired from `endLiveOnHostNoReturn`'s
+defence-in-depth re-check ([WAITROOM-4] R4): the alarm (or the cron sweep) fired
+but the host already has an open participant interval, so the window is cleared
+and the session stays live instead of ending. Should be RARE — a steady stream of
+these means `clearLiveGrace` is not running on the host's rejoin webhook and the
+grace window is only ever being torn down by the alarm.
+
 `commercial_live_grace` {kind: 'live_event', outcome: 'host_no_return'} —
 fired from `endLiveOnHostNoReturn`, called from the DO's `live_grace` alarm
 (`do/stream_session.ts`) when nobody cleared the window in time. Session row
@@ -570,9 +578,16 @@ intervals and the open `commercial_live_outages` row are closed; one
 `commercial_settlement_jobs` row is queued per order on the listing.
 
 `commercial_settlement` {outcome: 'host_no_return_partial', kind:
-'live_event', refund_pct} — fired from `settleLiveHostNoReturn`
-(`commercial_settlement.ts`) once per settled order: `refund_pct` is the
-unwatched-fraction of the ticket's slot, rounded to a whole percent
+'live_event'} — fired from `settleLiveHostNoReturn`
+(`commercial_settlement.ts`) once per settled order. **Correction 2026-09-11
+([WAITROOM-6]):** this paragraph was written from the PLAN's contract before
+WP8's code landed and named a third property, `refund_pct`, that the emit site
+does not carry — `commercialEvent(env, "settlement", null, { outcome:
+parts.telemetryOutcome, kind: authority.kind })` sends `outcome` and `kind`
+only (plus the `lane`/`schema_version` super-properties). Do not write a
+PostHog assertion against `refund_pct`; the refund amount lives in the partial
+receipt row, not in telemetry. The split itself is unchanged: the refunded
+share is the unwatched fraction of the ticket's slot
 (`gross × (slot_ms − watched_eligible_ms) / slot_ms`, `watched_eligible_ms`
 excluding overlap with any `commercial_live_outages` row). The consumed
 remainder is released through the pre-existing `releaseSnapshot` /

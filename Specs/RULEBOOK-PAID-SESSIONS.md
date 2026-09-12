@@ -98,6 +98,12 @@ wants back, with GetStream as the media:
   DO room and both auto-join when both are present (cheapest, and it avoids the
   provider `session_ended` trap). The owner also allows the creator to enter the
   call directly at `starts_at` and wait there; that is a client option, not a rule.
+- **[RULE] The creator waits in the DO room by default** — §6 question 5, decided by
+  the coordinator on 2026-09-11 (`Specs/PLAN-2026-09-11-WAITING-ROOM-BUILD.md`,
+  "Decision taken by the coordinator"). Media opens only when both parties are
+  present. Entering the GetStream call at `starts_at` and waiting there remains
+  available to the creator (his minutes are covered by the price, §2), but it is a
+  client option he chooses, never the default and never something code does for him.
 - **[RULE] The meter starts at `starts_at`** on every screen, from the DO's
   `welcome {starts_at, ends_at}` — never from "when I joined".
 - **[RULE] The DO's alarms are the clock authority**: `starts_at + 20 min` →
@@ -167,10 +173,11 @@ waiting-room UI still exists in `app/lib/features/consult/consult_room_screen.da
 3. Late grace after `ends_at` for consults today is 2 min (`commercialConsultJoinLateMin`).
    Keep? The meter must show the same number.
 4. ~~Both in lobby, nobody rang~~ — withdrawn; C1 applies (creator checked in → full charge).
-5. Should the creator wait in the DO room (free) by default, or enter the GetStream
-   call at `starts_at` and wait there (his minutes covered)? Suggested: DO room.
+5. ~~Creator waits in the DO room, or in the GetStream call?~~ — withdrawn
+   2026-09-11: decided by the coordinator (DO room by default), now a [RULE] in §3.
 
 ## Changes
 
 - 2026-09-11 — created from the owner's rules stated in the session-pipeline audit.
 - 2026-09-11 (v2) — owner replaced the pro-rata/ring-answer model with the prepaid waiting-room model: full price once the creator checks in within 20 min, full refund otherwise; media auto-connects on DO presence. §2 and §3 rewritten; §6 questions 1 and 4 withdrawn.
+- 2026-09-11 (v3) — §6 question 5 answered by the coordinator and recorded in §3 as a [RULE]: the creator waits in the DO room by default and media opens only when both parties are present; waiting inside the call stays a creator-side option. Question 5 struck from §6.

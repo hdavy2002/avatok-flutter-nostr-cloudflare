@@ -2095,13 +2095,41 @@ export async function recordCommercialStreamEvent(
     // that actually ended, and then arm the grace window while the host is
     // still live. Match this `left` to ITS OWN provider session id.
     const providerSessionId = input.providerSessionId ?? "default";
-    const open = await metaDb(env).prepare(
+    let open = await metaDb(env).prepare(
       `SELECT interval_id,joined_at FROM commercial_participant_intervals
        WHERE commercial_session_id=?1 AND provider_user_id=?2 AND provider_session_id=?3
          AND reconciliation_state='open' AND joined_at<=?4
        ORDER BY joined_at DESC LIMIT 1`,
     ).bind(session.commercial_session_id, input.actorId, providerSessionId, input.occurredAt)
       .first<{ interval_id: string; joined_at: number }>();
+    // [WAITROOM-6] The strict match above is right whenever the `left` webhook
+    // carries its own provider session id. When it does NOT (the payload omits
+    // `session_id`), `providerSessionId` collapses to the "default" sentinel —
+    // which matches nothing if the corresponding `participant_joined` DID carry
+    // a real id. The old code then simply closed nothing: the interval stayed
+    // 'open' forever, so `connected_ms` was never written (settlement's
+    // watched/connected sums keep counting that member as still connected, which
+    // inflates connected_ms) and, for a live host, the `stillConnected` probe
+    // below always found that stale open row and NEVER armed the grace window.
+    // It failed safe on money, but silently and permanently wrong on the data.
+    // Fall back to the newest open interval for this member — the R4 reconnect
+    // race the strict filter exists to avoid cannot apply here, because a
+    // provider that omits the session id on `left` omits it on `join` too, so
+    // there is no second, id-bearing interval for this uid to confuse it with.
+    if (!open && !input.providerSessionId) {
+      open = await metaDb(env).prepare(
+        `SELECT interval_id,joined_at FROM commercial_participant_intervals
+         WHERE commercial_session_id=?1 AND provider_user_id=?2
+           AND reconciliation_state='open' AND joined_at<=?3
+         ORDER BY joined_at DESC LIMIT 1`,
+      ).bind(session.commercial_session_id, input.actorId, input.occurredAt)
+        .first<{ interval_id: string; joined_at: number }>();
+      commercialEvent(env, "provider_event", null, {
+        kind: input.callType === "avatok_livestream" ? "live_event" : "consult_1to1",
+        outcome: open ? "applied" : "no_open_interval",
+        event_class: "left_without_session_id",
+      });
+    }
     if (open) {
       await metaDb(env).prepare(
         `UPDATE commercial_participant_intervals
