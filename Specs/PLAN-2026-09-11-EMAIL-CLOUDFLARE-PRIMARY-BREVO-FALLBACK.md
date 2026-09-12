@@ -1,7 +1,6 @@
 # PLAN — Transactional email: Cloudflare Email Service primary, Brevo fallback
 
-Date: 2026-09-11 · Status: IMPLEMENTING · Owner: Davy
-Scope: every outbound transactional email avaTOK sends today. Marketing campaigns / the Brevo contact list are OUT of scope (Brevo keeps those).
+Date: 2026-09-11 · Status: SHIPPED TO PROD (consumers) 2026-09-11 · web pending PR merge · Owner: DavyScope: every outbound transactional email avaTOK sends today. Marketing campaigns / the Brevo contact list are OUT of scope (Brevo keeps those).
 
 Sources studied: Cloudflare Email Service docs (developers.cloudflare.com/email-service — Workers API, REST API, send bindings, domains, limits, pricing, event subscriptions, suppression lists, local development) via Context7 + the Cloudflare docs MCP, and the current code paths listed in §1.
 
@@ -276,4 +275,26 @@ Facts learned while working Phase 0:
 - Cloudflare allows only **one** event subscription per sending domain — staging (`email-events-staging`) therefore gets no delivery events; staging visibility stays at `provider_accepted` until a real cutover.
 - Account `fd3dbf43f8e6d8bf65bd36b02eb0abb0`, zone `ae74ddf95ebf8c401d254ae3d308d4b5`.
 - Root SPF already reads `v=spf1 include:_spf.mx.cloudflare.net include:spf.brevo.com ~all` — both providers' includes are present, so no merge was needed at onboarding.
+
+---
+
+## Deploy log 2026-09-11
+
+**consumers/worker deploy (already live in prod + staging, ahead of the PR):**
+- Confirmed account: `wrangler whoami` → `Hdavy2005@gmail.com's Account`, id `fd3dbf43f8e6d8bf65bd36b02eb0abb0`.
+- Flipped top-level `EMAIL_PROVIDER` `"brevo"` → `"cloudflare_then_brevo"` in `consumers/wrangler.toml` (line 309); `[env.staging]` was already `"cloudflare_then_brevo"` (line 570).
+- Sanity: `consumers` `tsc --noEmit` clean, `vitest run` 45/45 passed; `web` `node --test test/sendMail.test.ts` 12/12 passed; `worker` `tsc --noEmit` clean.
+- Migration `worker/migrations/2026-09-11-email-provider.sql`:
+  - **Prod** `avatok-meta` (`c4ec8c0e-e1ac-4a1d-8e41-636f4007871b`): applied cleanly — 7 queries, 11 rows written. Verified via `PRAGMA table_info(email_outbox)`: `provider`, `fallback_used`, `last_event`, `last_event_at` all present (cid 21-24). Verified via `sqlite_master`: `email_suppressions`, `email_events_seen`, `idx_email_outbox_provider_msg` all present.
+  - **Staging** `avatok-meta-staging` (`3866e75b-89ab-4325-bbfa-4bef61395107`): the `ALTER TABLE email_outbox …` statements failed with `no such table: email_outbox` — staging's D1 never received the earlier JOURNEY-04 migrations (`2026-09-03-commercial-email-outbox.sql`, `2026-09-09-commercial-email-delivery.sql`), a **pre-existing gap unrelated to this migration**. Applied only the file's two standalone `CREATE TABLE IF NOT EXISTS` statements to staging; `email_suppressions` and `email_events_seen` confirmed present there. `email_outbox` alters/index were skipped on staging — someone should backfill the base JOURNEY-04 schema on staging before relying on delivery-event tracking there.
+  - Prod deploy (`npx wrangler deploy`): version `db46f261-8b7e-47bf-b267-507612b3bf74`. Confirmed bindings: `env.EMAIL (unrestricted)` Send Email binding, `Consumer for email-events`, `env.EMAIL_PROVIDER ("cloudflare_then_brevo")`.
+  - Staging deploy (`npx wrangler deploy --env staging`) initially failed: `Queue "mkt-audio-dlq-staging" does not exist` — pre-existing wrangler.toml/Cloudflare-account drift (config declared the queue, it was never provisioned), unrelated to this migration. Ran `npx wrangler queues create mkt-audio-dlq-staging` (additive, matches already-committed config) and redeployed successfully. Confirmed `env.EMAIL`, `Consumer for email-events-staging`, `EMAIL_PROVIDER ("cloudflare_then_brevo")`.
+  - Post-deploy: `curl -sI https://avatok.ai/` → `200`. Tailed `avatok-consumers` for ~90s — no traffic, no errors. `email_outbox` had no rows updated in the prior hour (baseline, expected pre-cutover).
+- **Pages secret**: `CF_EMAIL_API_TOKEN` set on `avatok-app` (owner + coordinator, outside this session) — web will flip to Cloudflare-first sending on its next deploy once this PR merges.
+
+**Git-history note:** `origin/main` had diverged from this session's local `main` — `origin`'s tip (`42b3c7f2`, message `[WEB-HELP-1] Help centre…`) is actually a large revert (~3,200 lines) of the waiting-room / live-grace / session-clock feature set relative to local `main`, and another session was actively editing files in that same area (`worker/src/commercial_settlement.ts`, `worker/src/do/stream_session.ts`, `worker/src/lib/commercial_notifications.ts`, `worker/src/routes/commercial_stream_sessions.ts`) at the time. Rather than rebase or merge local `main` onto `origin/main` (risking silently dropping or duplicating that in-flight work), the email-migration commit was shipped as a **branch off `origin/main` in a separate `git worktree`** (`git worktree add /tmp/avatok-email origin/main`, `git cherry-pick 0152d34b`), leaving local `main` and the other session's dirty files completely untouched. The cherry-pick applied cleanly with no conflicts (the email files are disjoint from the reverted waiting-room area).
+
+**PR:** `email/cloudflare-primary-brevo-fallback` → `main`. https://github.com/hdavy2002/avatok-flutter-nostr-cloudflare/pull/2
+
+**CI on the PR branch (`typecheck` workflow, run 34596912828):** `availability-web`, `consumers`, `worker`, `design-guard` jobs all passed. `ship-gate` failed, but on a pre-existing, unrelated backlog: `python3 tool/check_ship_readiness.py --check all` reports 32 issues with no telemetry success definition and 7 malformed manifest entries (`UI-MKT-VERT-1`, `WEB-ACCOUNT-1`, `AVA-GROUP-SESSION-1`, `SHARE-OG-IMAGE-1`, etc.) — none of them touch email/consumers/web-sendMail. Ran the same check against `origin/main` directly and got the identical 32/7 counts, confirming this PR did not introduce the failure.
 
