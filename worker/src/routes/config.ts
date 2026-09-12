@@ -25,6 +25,17 @@ export interface PlatformConfig {
   commercialCreatorFeePct: number;
   commercialSettlementHoldHours: number;
   /**
+   * [SETTLE-FEE-2] Rollback switch for the hourly session-fee rule (₹25 flat per
+   * participant per hour + 20% of the remainder — lib/session_pricing.ts) that
+   * commercial_checkout.ts freezes into each order's policy snapshot, so settlement
+   * pays out the same split the listing wizard showed the creator. TRUE by default:
+   * the wizard has shown this rule since [PRICE-HOURLY-1] and the snapshot was the
+   * only place still using the flat `commercialCreatorFeePct` 80/20. Setting it false
+   * sends NEW checkouts back to commercialCreatorFeePct; snapshots already written are
+   * immutable and never re-derived either way. Boolean → NOT in numericKeys.
+   */
+  sessionFeeRuleEnabled: boolean;
+  /**
    * [COMM-REFUND-POL-1] The three refund percentages the cancellation decision needs.
    *
    * cancellationDecision() in commercial_lifecycle.ts auto-refunds ONLY when the policy
@@ -1875,6 +1886,9 @@ const DEFAULTS: PlatformConfig = {
   commercialConsultJoinEnabled: false,
   commercialCreatorFeePct: 80,
   commercialSettlementHoldHours: 24,
+  // [SETTLE-FEE-2] See the interface comment. commercialCreatorFeePct above is now the
+  // FALLBACK this flag selects when off, plus the split for free (₹0) orders.
+  sessionFeeRuleEnabled: true,
   // [COMM-REFUND-POL-1] See the interface comment. Snapshotted at checkout, never read
   // live at settlement time.
   commercialCreatorCancelRefundPct: 100,
