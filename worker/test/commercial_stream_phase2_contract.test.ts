@@ -365,7 +365,12 @@ describe("WAITROOM-2 reviewer fixes", () => {
 
   it("C11: DO chat carries uid, and welcome/roster carry host_checked_in_at", () => {
     const doSource = readFileSync(resolve(root, "src/do/stream_session.ts"), "utf8");
-    expect(doSource).toContain('this.queue({ type: "chat", from: meta.name, text, at: now, uid: meta.uid });');
+    // [APP-ONLY-TX-FIX-1] The chat relay became a two-branch queue() when
+    // attachments landed ([APP-ONLY-TX-WORKER-1]); assert the invariant this
+    // test exists for — `uid: meta.uid` on the relayed chat event — on BOTH
+    // branches, instead of pinning one exact source line that no longer exists.
+    expect(doSource).toContain('{ type: "chat", from: meta.name, text, at: now, uid: meta.uid }');
+    expect(doSource).toContain('{ type: "chat", from: meta.name, text, at: now, uid: meta.uid, attachment }');
     expect(doSource).toContain("host_checked_in_at: s.host_checked_in_at != null ? Number(s.host_checked_in_at) : null,");
     expect(doSource).toContain("ALTER TABLE session ADD COLUMN host_checked_in_at INTEGER");
   });
