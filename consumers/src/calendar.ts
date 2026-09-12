@@ -43,6 +43,25 @@ async function signJoinToken(env: Env, bookingId: string, expMs: number): Promis
   return `${payload}.${b64u(sig)}`;
 }
 
+/**
+ * [JOIN-LINK-1] v2 join token — mirrors worker/src/cal/ics.ts `signJoinTokenV2`
+ * (the consumers bundle deliberately keeps its own copy of the HMAC helpers; see
+ * `signJoinToken` above). Binds the link to ONE account and ONE entitlement so a
+ * reminder email, like the confirmation, opens the room without a login.
+ */
+async function signJoinTokenV2(env: Env, c: {
+  bookingId: string | null; listingId: string; accountId: string;
+  kind: "live_event" | "consult_1to1"; expMs: number;
+}): Promise<string> {
+  const secret = env.JOIN_LINK_SECRET || "dev-join-secret";
+  const payload = b64u(new TextEncoder().encode(JSON.stringify({
+    v: 2, b: c.bookingId, l: c.listingId, u: c.accountId, k: c.kind, exp: c.expMs,
+  })));
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload)));
+  return `${payload}.${b64u(sig)}`;
+}
+
 async function nameOf(env: Env, uid: string): Promise<string> {
   try {
     const r = await env.DB_META.prepare("SELECT name, handle FROM profiles WHERE npub=?1 OR clerk_user_id=?1").bind(uid).first<any>();
@@ -177,12 +196,24 @@ async function remind(env: Env, sendEmail: SendEmail, b: DueBooking, tier: "24h"
   // Commercial consultations resolve through the authenticated session
   // destination. Legacy calendar bookings keep their signed /j invitation;
   // that path is still required for genuinely old rows.
-  const joinUrl = b.kind === "consult_1to1"
+  // [JOIN-LINK-1] The link is per-recipient now. The CREATOR gets the canonical
+  // room URL (he transmits from the app and is signed in there anyway,
+  // RULEBOOK §7); the BUYER gets his own signed /j/ link, because the bare
+  // /session/:id he used to be sent stopped him at the email-code gate on the
+  // way into a session he had already paid for.
+  const creatorUrl = b.kind === "consult_1to1"
     ? `https://avatok.ai/session/${encodeURIComponent(b.id)}`
     : `https://avatok.ai/j/${await signJoinToken(env, b.id, b.starts_at + 86_400_000)}`;
+  const buyerUrl = b.kind === "consult_1to1" && b.listing_id
+    ? `https://avatok.ai/j/${await signJoinTokenV2(env, {
+      bookingId: b.id, listingId: b.listing_id, accountId: b.buyer_id,
+      kind: "consult_1to1", expMs: b.starts_at + 86_400_000,
+    })}`
+    : creatorUrl;
   const pairs: [string, string][] = [[b.creator_id, b.buyer_id], [b.buyer_id, b.creator_id]];
   for (const [uid, otherUid] of pairs) {
     const otherName = await nameOf(env, otherUid);
+    const joinUrl = uid === b.buyer_id ? buyerUrl : creatorUrl;
     const { subject, html } = reminderHtml(tier, { title, start: b.starts_at, otherName, joinUrl });
     const email = await clerkEmail(env, uid);
     if (email) {
@@ -271,7 +302,19 @@ async function liveTicketReminderSweep(
           seen.add(key);
           try {
             const title = row.title ?? "Your live event";
-            const joinUrl = `https://avatok.ai/live/${encodeURIComponent(row.listing_id)}`;
+            // [JOIN-LINK-1] Two URLs, and they are not interchangeable.
+            // `roomUrl` is the canonical room and stays the PUSH deeplink — the
+            // app parses /live/:id (deep_links.dart) and has no /j/ handler, so
+            // signing that link would break tap-to-join in the app. `joinUrl` is
+            // what goes in the EMAIL: for a ticket holder it is his own signed
+            // link, so the browser lets him in without a sign-in.
+            const roomUrl = `https://avatok.ai/live/${encodeURIComponent(row.listing_id)}`;
+            const joinUrl = uid === row.creator_id
+              ? roomUrl
+              : `https://avatok.ai/j/${await signJoinTokenV2(env, {
+                bookingId: row.booking_id ?? null, listingId: row.listing_id, accountId: uid,
+                kind: "live_event", expMs: row.starts_at + 86_400_000,
+              })}`;
             if (tier !== "10m") {
               const otherName = uid === row.creator_id ? "your attendees" : "the host";
               const { subject, html } = reminderHtml(tier, { title, start: row.starts_at, otherName, joinUrl });
@@ -290,7 +333,7 @@ async function liveTicketReminderSweep(
                 type: "commercial_join_window", listing_id: row.listing_id,
                 ...(row.booking_id ? { booking_id: row.booking_id } : {}),
                 ...(row.session_id ? { session_id: row.session_id } : {}),
-                deeplink: joinUrl,
+                deeplink: roomUrl,
               });
             }
           } catch (error) {

@@ -104,6 +104,7 @@ import { guestCreate, guestHandleCheck, guestUpgrade, getIdentityLevel } from ".
 import { createSlot, listSlots, cancelSlot, bookSlot, cancelBooking, listEvents, listBlocks, getRules, putRules, getTime } from "./routes/calendar";
 import { getAvailabilitySchedule, putAvailabilitySchedule, getListingAvailability, previewAvailabilityConflicts } from "./routes/calendar_availability";
 import { listBookings, getPolicies, putPolicies, proposeReschedule, respondReschedule, listReschedules, joinInfo } from "./routes/booking";
+import { joinLinkSession } from "./routes/join_link";
 import { gcalConnect, gcalCallback, gcalStatus, gcalDisconnect, gcalWebhook, gcalCalendars, gcalSaveCalendars } from "./cal/gcal";
 import { payoutSetup, payoutAccounts, payoutRequest, payoutStatus, wiseWebhook } from "./routes/payout";
 import { upiAccount, upiAccountGet, upiPayoutQuote, upiPayoutRequest, upiPayoutRequests, adminUpiPayouts, adminUpiAccountVerify, adminUpiApprove, adminUpiReject, adminUpiPaid, adminUpiReconcile } from "./routes/upi_payout";
@@ -1385,6 +1386,11 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
         if (pr && req.method === "POST") return await proposeReschedule(req, env, pr[1]);
         const ji = p.match(/^\/api\/join-info\/([A-Za-z0-9._-]{1,512})$/);
         if (ji && req.method === "GET") return await joinInfo(req, env, ji[1]);
+        // [JOIN-LINK-1] The emailed link's own entry point: verify the signed
+        // token and hand back a Clerk sign-in ticket + the room path, so the
+        // customer is never asked to log in (RULEBOOK-PAID-SESSIONS §7).
+        const jl = p.match(/^\/api\/join-link\/([A-Za-z0-9._-]{1,512})\/session$/);
+        if (jl && req.method === "POST") return await joinLinkSession(req, env, jl[1]);
       }
 
       // --- AvaPayout (Phase 4; production transfers flag-gated pending legal) ---

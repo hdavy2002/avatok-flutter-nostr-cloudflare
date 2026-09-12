@@ -39,6 +39,91 @@ export async function verifyJoinToken(env: Env, token: string): Promise<string |
 export function joinUrlFor(token: string): string { return `https://avatok.ai/j/${token}`; }
 
 // ---------------------------------------------------------------------------
+// [JOIN-LINK-1] v2 join tokens — the emailed link carries the customer's identity
+//
+// RULEBOOK-PAID-SESSIONS §7: "A customer needs a verified email and a payment —
+// nothing more... He never logs into a dashboard and never needs an avaTOK
+// account." A v1 token proves only WHICH booking; it cannot open a session,
+// which is why `/j/<token>` could do nothing but redirect to a page that then
+// asked the customer to sign in.
+//
+// A v2 payload additionally names the LISTING, the ACCOUNT the entitlement
+// belongs to, and the session kind, so `POST /api/join-link/:token/session`
+// can start a session for exactly that person:
+//
+//     { v: 2, b: bookingId|null, l: listingId, u: accountId, k: kind, exp }
+//
+// It is NOT single-use (the owner's rule: the same emailed link must work on a
+// phone, then again on a laptop). It expires at session end + 24 h, it is bound
+// to one account, and the endpoint re-checks the live entitlement on every call
+// — a cancelled or refunded booking is refused even with a perfectly valid
+// signature. A live_event ticket legitimately has no bookings row, which is why
+// `b` is nullable while `l` is not.
+export interface JoinTokenClaims {
+  version: 1 | 2;
+  bookingId: string | null;
+  listingId: string | null;
+  accountId: string | null;
+  kind: "live_event" | "consult_1to1" | null;
+  exp: number | null;
+}
+
+export async function signJoinTokenV2(env: Env, c: {
+  bookingId: string | null;
+  listingId: string;
+  accountId: string;
+  kind: "live_event" | "consult_1to1";
+  expMs: number;
+}): Promise<string> {
+  const secret = env.JOIN_LINK_SECRET || "dev-join-secret";
+  const payload = b64u(new TextEncoder().encode(JSON.stringify({
+    v: 2, b: c.bookingId ?? null, l: c.listingId, u: c.accountId, k: c.kind, exp: c.expMs,
+  })));
+  return `${payload}.${b64u(await hmac(secret, payload))}`;
+}
+
+/**
+ * Verify the signature and return the full claim set (v1 and v2).
+ *
+ * `allowExpired` exists so a caller can tell "this link is old" (410, with a
+ * sentence the customer can act on) apart from "this link is not ours" (404).
+ * Collapsing the two — which is what a bare boolean verifier forces — makes an
+ * expired ticket look like a forged one to the person holding it.
+ */
+export async function verifyJoinTokenClaims(
+  env: Env, token: string, opts: { allowExpired?: boolean } = {},
+): Promise<JoinTokenClaims | null> {
+  const [payload, sig] = token.split(".");
+  if (!payload || !sig) return null;
+  const secret = env.JOIN_LINK_SECRET || "dev-join-secret";
+  // Constant-work compare: both sides are fixed-length base64url of the same
+  // HMAC, so a plain !== leaks nothing an attacker can time against a secret
+  // they do not hold — but keep the comparison after BOTH values exist.
+  const expect = b64u(await hmac(secret, payload));
+  if (expect !== sig) return null;
+  let j: Record<string, unknown>;
+  try {
+    j = JSON.parse(new TextDecoder().decode(fromB64u(payload))) as Record<string, unknown>;
+  } catch { return null; }
+  const exp = typeof j.exp === "number" ? j.exp : null;
+  if (exp && Date.now() > exp && !opts.allowExpired) return null;
+  if (j.v === 2) {
+    const listingId = typeof j.l === "string" && j.l ? j.l : null;
+    const accountId = typeof j.u === "string" && j.u ? j.u : null;
+    const kind = j.k === "live_event" || j.k === "consult_1to1" ? j.k : null;
+    if (!listingId || !accountId || !kind) return null;
+    return {
+      version: 2,
+      bookingId: typeof j.b === "string" && j.b ? j.b : null,
+      listingId, accountId, kind, exp,
+    };
+  }
+  const bookingId = typeof j.b === "string" && j.b ? j.b : null;
+  if (!bookingId) return null;
+  return { version: 1, bookingId, listingId: null, accountId: null, kind: null, exp };
+}
+
+// ---------------------------------------------------------------------------
 // ICS — minimal RFC 5545 VEVENT, UTC times (clients render in local tz).
 // ---------------------------------------------------------------------------
 const icsDate = (ms: number): string => new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");

@@ -764,7 +764,11 @@ export async function commercialConsultPrejoin(req: Request, env: Env): Promise<
   }
   const row = await booking(env, bookingId);
   if (!row || row.kind !== "consult_1to1") return json({ error: "booking unavailable" }, 404);
-  if (auth.uid !== row.creator_id && auth.uid !== row.buyer_id) return json({ error: "not your booking" }, 403);
+  // [JOIN-LINK-1] Same reason as the join route below: the refusal carries the
+  // listing so the browser can offer "Pay and join" instead of a dead end.
+  if (auth.uid !== row.creator_id && auth.uid !== row.buyer_id) {
+    return json({ error: "not your booking", listing_id: row.listing_id }, 403);
+  }
   if (!["confirmed", "completed"].includes(row.status)) return json({ error: "booking unavailable" }, 409);
   const window = joinWindow(config, "consult_1to1", Number(row.starts_at), Number(row.ends_at));
   const [creator, buyer] = await Promise.all([
@@ -842,13 +846,20 @@ async function commercialConsultJoinUnsafe(req: Request, env: Env): Promise<Resp
   const row = await booking(env, bookingId);
   if (!row || row.kind !== "consult_1to1") return json({ error: "booking unavailable" }, 404);
   const isCreator = auth.uid === row.creator_id;
-  if (!isCreator && auth.uid !== row.buyer_id) return json({ error: "not your booking" }, 403);
+  // [JOIN-LINK-1] Both refusals now name the LISTING. Without it the browser had
+  // no way to offer the one thing that actually resolves them — buying a slot on
+  // this listing — so a signed-in visitor at a bare /session/:id was shown a
+  // dead end ("Go to my bookings") for a session he was willing to pay for. The
+  // listing id is already public on /l/:id; nothing private leaves here.
+  if (!isCreator && auth.uid !== row.buyer_id) {
+    return json({ error: "not your booking", listing_id: row.listing_id }, 403);
+  }
   if (row.status !== "confirmed") return json({ error: "booking unavailable" }, 409);
   const grant = await entitlement(env, {
     kind: "consult_1to1", listingId: row.listing_id, bookingId, uid: auth.uid,
     role: isCreator ? "creator" : "buyer",
   });
-  if (!grant) return json({ error: "booking entitlement required" }, 403);
+  if (!grant) return json({ error: "booking entitlement required", listing_id: row.listing_id }, 403);
   if (grant.role !== (isCreator ? "creator" : "buyer")) {
     commercialEvent(env, "join", auth.uid, { kind: "consult_1to1", outcome: "refused", reason: "entitlement_role_mismatch" });
     return json({ error: "commercial entitlement authority mismatch" }, 409);

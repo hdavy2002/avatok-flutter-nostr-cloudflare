@@ -5,7 +5,7 @@
 // best-effort: never blocks money/booking ops.
 import type { Env } from "../types";
 import { clerkEmail } from "../ledger";
-import { buildIcs, icsB64, joinUrlFor, signJoinToken } from "./ics";
+import { buildIcs, icsB64, joinUrlFor, signJoinToken, signJoinTokenV2 } from "./ics";
 import { commercialEmailKey, enqueueEmail, verifiedClerkEmail, type EmailDeliveryStatus, type EmailQueueStatus } from "../lib/email_outbox";
 
 const inr = (tokens: number): string => `\u20b9${tokens}`;
@@ -59,12 +59,44 @@ async function profileName(env: Env, uid: string, fallback: string): Promise<str
   } catch { return fallback; }
 }
 
+function webBase(env: Env): string {
+  return String(env.WEB_BASE_URL || "https://avatok.ai").replace(/\/+$/, "");
+}
+
+/** The canonical room URL. Correct for the CREATOR (who is signed in on the app). */
 function commercialDestination(env: Env, c: CommercialConfirmationCtx): string {
-  const base = String(env.WEB_BASE_URL || "https://avatok.ai").replace(/\/+$/, "");
   const path = c.kind === "live_event"
     ? `/live/${encodeURIComponent(c.listingId)}`
     : `/session/${encodeURIComponent(c.bookingId ?? "")}`;
-  return `${base}${path}`;
+  return `${webBase(env)}${path}`;
+}
+
+/**
+ * [JOIN-LINK-1] The BUYER's link. RULEBOOK-PAID-SESSIONS §7: "He clicks the link
+ * in his confirmation email... He never logs into a dashboard."
+ *
+ * Until now this email carried the bare room URL above — which is exactly the
+ * URL that has no idea who is opening it, so it met the customer with the
+ * email-code gate on the way into a room he had already paid for. It now carries
+ * a signed /j/<token> bound to HIS account and this entitlement, valid until the
+ * session ends + 24 h; `/api/join-link/:token/session` turns it into a session.
+ *
+ * Falls back to the bare URL if signing throws — a confirmation email that is
+ * slightly worse is far better than a confirmation email that never sends.
+ */
+async function buyerDestination(env: Env, c: CommercialConfirmationCtx): Promise<string> {
+  try {
+    const token = await signJoinTokenV2(env, {
+      bookingId: c.bookingId ?? null,
+      listingId: c.listingId,
+      accountId: c.buyerId,
+      kind: c.kind,
+      expMs: c.end + 24 * 60 * 60 * 1000,
+    });
+    return `${webBase(env)}/j/${token}`;
+  } catch {
+    return commercialDestination(env, c);
+  }
 }
 
 /**
@@ -81,27 +113,33 @@ export async function queueCommercialConfirmation(env: Env, c: CommercialConfirm
   const buyerName = c.buyerName ?? await profileName(env, c.buyerId, "the customer");
   const messageVersion = opts?.messageVersion ?? COMMERCIAL_CONFIRMATION_VERSION;
   const destination = commercialDestination(env, c);
-  const ics = {
+  // [JOIN-LINK-1] Two links, on purpose: the creator's calendar entry and button
+  // point at the canonical room; the buyer's point at his own signed join link,
+  // including inside the .ics (a calendar reminder is the other place he clicks
+  // through from, and it must not drop him on a login screen either).
+  const buyerUrl = await buyerDestination(env, c);
+  const icsFor = (url: string) => ({
     name: c.kind === "live_event" ? "live-event.ics" : "appointment.ics",
     content: icsB64(buildIcs({
       uid: c.orderId,
       title: c.title,
       start: c.start,
       end: c.end,
-      url: destination,
+      url,
     })),
-  };
+  });
+  const ics = icsFor(destination);
   const buyerBody = `<p style="margin:0 0 8px;font-weight:600">${escapeHtml(c.title)}</p>
     <p style="margin:0 0 8px">${whenUtc(c.start)} → ${whenUtc(c.end)}</p>
     <p style="margin:0 0 8px">With: ${escapeHtml(creatorName)}${c.price > 0 ? ` · ${inr(c.price)}` : " · free"}</p>
-    <p style="margin:0 0 8px">Your access is ready in AvaTOK. Use the button or the Marketplace ticket list.</p>`;
+    <p style="margin:0 0 8px">Your access is ready. The button below takes you straight in \u2014 no password, no sign-in.</p>`;
   const creatorBody = `<p style="margin:0 0 8px;font-weight:600">${escapeHtml(c.title)}</p>
     <p style="margin:0 0 8px">${whenUtc(c.start)} → ${whenUtc(c.end)}</p>
     <p style="margin:0 0 8px">Customer: ${escapeHtml(buyerName)}</p>
     <p style="margin:0 0 8px">Open the event or appointment from the button below.</p>`;
   const recipients = opts?.recipients ?? ["buyer", "creator"];
   const [buyer, creator] = await Promise.all([
-    recipients.includes("buyer") ? queueEmail(env, c.buyerId, `Confirmation: ${c.title}`, shell(c.kind === "live_event" ? "Live event ticket confirmed" : "Appointment confirmed", buyerBody, { label: "Open booking", url: destination }), ics, {
+    recipients.includes("buyer") ? queueEmail(env, c.buyerId, `Confirmation: ${c.title}`, shell(c.kind === "live_event" ? "Live event ticket confirmed" : "Appointment confirmed", buyerBody, { label: "Join your session", url: buyerUrl }), icsFor(buyerUrl), {
       outboxKey: commercialEmailKey(c.orderId, c.buyerId, messageVersion),
       orderId: c.orderId, messageVersion, verified: true,
     }) : Promise.resolve("unavailable" as const),

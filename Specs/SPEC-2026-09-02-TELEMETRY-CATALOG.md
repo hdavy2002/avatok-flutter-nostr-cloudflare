@@ -634,3 +634,32 @@ live/booked session (the side chat described in rulebook §3/§7). `role` is
 the ≤ 1 KB JSON descriptor that actually rides the chat socket). Exactly one of
 `listing_id`/`booking_id` is set, matching whichever lane the session is in.
 
+
+## JOIN-LINK-1
+
+Owner rule 2026-09-12 (rulebook §7): the link in a booking/ticket email drops the
+customer straight into the room with no login; a bare `/live/:id` or
+`/session/:id` from any other source keeps the email-code gate and, if that
+account holds no ticket, offers the listing's checkout. Two web events.
+
+`join_link_opened {kind, outcome, status?, reason?}` — fired once by
+`islands/join/JoinLink.tsx` for every `/j/:token` open. `kind` is
+`'live' | 'consult' | 'unknown'` (unknown only when the token was refused before
+a destination was known). `outcome` is `'joined'` (ticket redeemed, navigating to
+the room), `'expired'` (worker answered 410 — link past session end + 24 h,
+booking cancelled, entitlement refunded/revoked), or `'invalid'` (404 forged or
+truncated token; also our own failures, with `reason` naming which). This is the
+event that says whether rule (a) is actually working in the field: a rising
+`expired`/`invalid` share means emails are carrying links that do not open.
+
+`pay_and_join_shown {listing_id, kind, refusal?}` — fired when a signed-in
+visitor is shown the "Pay and join" panel instead of a dead end: by
+`islands/live-gs/LiveGsViewer.tsx` on a `needs_ticket` refusal (`kind:'live'`)
+and by `islands/consult-gs/ConsultRoomGS.tsx` on `needs_ticket` / `not_yours`
+(`kind:'consult'`, `refusal` naming which). Pair it with §2.5's checkout events
+to see how many shared links become paid tickets.
+
+Worker side: `join_link` on the commercial telemetry lane
+(`lib/commercial_telemetry.ts`, so it carries `lane:'commercial'`) with
+`{kind, token_version, listing_id, booking_id, outcome}` — the server's own
+record of a link being exchanged for a session.
