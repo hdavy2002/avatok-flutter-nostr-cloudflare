@@ -15,6 +15,15 @@
  * the parent applies those preferences to the Call's device managers
  * (`call.camera.select(...)`, `call.microphone.disable()`, etc.) before
  * joining, then releases this preview stream.
+ *
+ * [AV-AUDIO-ONLY-1 2026-09-12] A desktop with a Bluetooth mic and NO camera
+ * must NOT be blocked here. `getUserMedia({video,audio})` rejects outright on
+ * such a machine (`NotFoundError`/`OverconstrainedError`/`NotReadableError`),
+ * which used to leave `perm === 'denied'` and the Join button permanently
+ * disabled. The preflight now retries audio-only and unlocks Join with the
+ * camera reported unavailable — the customer is heard, and still SEES the
+ * creator (RULEBOOK-PAID-SESSIONS.md §3: nothing blocks the customer at
+ * preflight, the waiting room or join).
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Spinner } from '../../components';
@@ -35,6 +44,30 @@ interface Dev {
   label: string;
 }
 
+/**
+ * [AV-AUDIO-ONLY-1] The one preflight rule that has to be right: which
+ * `getUserMedia` rejection deserves an audio-only retry. Exported as a pure
+ * function so the decision is readable (and checkable) without a browser.
+ *
+ * - `NotFoundError` / `DevicesNotFoundError` — no camera on this machine.
+ * - `OverconstrainedError` — a remembered `deviceId` that no longer exists.
+ * - `NotReadableError` / `TrackStartError` — the camera exists but another
+ *   app holds it. Audio still works, so join audio-only rather than block.
+ *
+ * `NotAllowedError` is deliberately NOT in the list: the user blocked the
+ * permission prompt for BOTH devices, so an audio-only retry would only
+ * reject again and hide the real "allow access" instruction.
+ */
+export function preflightFallbackFor(errorName: string | undefined): 'audio_only' | 'none' {
+  return errorName === 'NotFoundError' ||
+    errorName === 'DevicesNotFoundError' ||
+    errorName === 'OverconstrainedError' ||
+    errorName === 'NotReadableError' ||
+    errorName === 'TrackStartError'
+    ? 'audio_only'
+    : 'none';
+}
+
 export function PreJoin({ title, peerName, joining = false, error, onReady }: PreJoinProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -49,6 +82,8 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(true);
   const [previewStream, setPreviewStream] = useState<MediaStream | null>(null);
+  // [AV-AUDIO-ONLY-1] False once the preflight has fallen back to audio-only.
+  const [camAvailable, setCamAvailable] = useState(true);
 
   const attach = (stream: MediaStream) => {
     streamRef.current = stream;
@@ -75,17 +110,28 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
   }, []);
 
   const acquire = useCallback(
-    async (constraints?: MediaStreamConstraints) => {
+    async () => {
       const generation = ++acquireGenerationRef.current;
       setPerm('asking');
       setPermErr(null);
+      const audio: MediaStreamConstraints['audio'] = micId ? { deviceId: { exact: micId } } : true;
+      const attempt = (audioOnly: boolean) =>
+        navigator.mediaDevices.getUserMedia({
+          audio,
+          video: audioOnly ? false : camId ? { deviceId: { exact: camId } } : { facingMode: 'user' },
+        });
+      let audioOnly = false;
       try {
-        const stream = await navigator.mediaDevices.getUserMedia(
-          constraints ?? {
-            audio: micId ? { deviceId: { exact: micId } } : true,
-            video: camId ? { deviceId: { exact: camId } } : { facingMode: 'user' },
-          },
-        );
+        let stream: MediaStream;
+        try {
+          stream = await attempt(false);
+        } catch (first) {
+          // [AV-AUDIO-ONLY-1] No camera (or a camera another app is holding)
+          // is not a reason to refuse the session — retry without video.
+          if (preflightFallbackFor((first as DOMException)?.name) !== 'audio_only') throw first;
+          audioOnly = true;
+          stream = await attempt(true);
+        }
         if (!mountedRef.current || generation !== acquireGenerationRef.current) {
           stream.getTracks().forEach((track) => track.stop());
           return;
@@ -93,8 +139,14 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
         // Stop a prior stream before swapping (device change).
         streamRef.current?.getTracks().forEach((t) => t.stop());
         attach(stream);
+        // An audio-only fallback also fixes the camera INTENT: the parent
+        // reads `camOn` to decide `call.camera.disable()` before joining, so
+        // it must say "off" when there is nothing to publish.
+        const nextCamOn = audioOnly ? false : camOn;
+        if (audioOnly && camOn) setCamOn(false);
+        setCamAvailable(!audioOnly);
         stream.getAudioTracks().forEach((t) => (t.enabled = micOn));
-        stream.getVideoTracks().forEach((t) => (t.enabled = camOn));
+        stream.getVideoTracks().forEach((t) => (t.enabled = nextCamOn));
         setPerm('granted');
         await refreshDevices();
       } catch (e) {
@@ -104,8 +156,8 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
         setPermErr(
           name === 'NotAllowedError'
             ? 'Camera & mic permission was blocked. Allow access in your browser, then retry.'
-            : name === 'NotFoundError'
-              ? 'No camera or microphone found.'
+            : audioOnly || name === 'NotFoundError'
+              ? 'No microphone found. Connect one (or pair your Bluetooth headset) and retry.'
               : 'Could not start your camera & mic.',
         );
       }
@@ -142,6 +194,7 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
     streamRef.current?.getAudioTracks().forEach((t) => (t.enabled = next));
   };
   const toggleCam = () => {
+    if (!camAvailable) return;
     const next = !camOn;
     setCamOn(next);
     streamRef.current?.getVideoTracks().forEach((t) => (t.enabled = next));
@@ -197,7 +250,7 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
         )}
         {perm === 'granted' && !camOn && (
           <div className="absolute inset-0 flex items-center justify-center bg-ink/80 font-display font-semibold text-[16px] text-paper">
-            Camera off
+            {camAvailable ? 'Camera off' : 'No camera — audio only'}
           </div>
         )}
       </div>
@@ -240,9 +293,9 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
             className={`${selectClass} min-w-0 flex-1`}
             value={camId}
             onChange={(e) => setCamId(e.target.value)}
-            disabled={perm !== 'granted'}
+            disabled={perm !== 'granted' || !camAvailable}
           >
-            {cams.length === 0 && <option value="">Default camera</option>}
+            {cams.length === 0 && <option value="">{camAvailable ? 'Default camera' : 'No camera found'}</option>}
             {cams.map((d) => (
               <option key={d.deviceId} value={d.deviceId}>
                 📷 {d.label}
@@ -253,15 +306,29 @@ export function PreJoin({ title, peerName, joining = false, error, onReady }: Pr
             type="button"
             onClick={toggleCam}
             aria-pressed={!camOn}
+            disabled={!camAvailable}
             className={[
               'shrink-0 rounded-zineField border-zine border-ink px-3 py-2 font-display font-semibold text-[14px]',
               camOn ? 'bg-card text-ink' : 'bg-coral text-white',
+              camAvailable ? '' : 'opacity-60',
             ].join(' ')}
           >
             {camOn ? 'On' : 'Off'}
           </button>
         </div>
       </div>
+
+      {/*
+        * [AV-AUDIO-ONLY-1] Says what happened AND that the session still
+        * works — a bare "no camera" reads as a failure and makes people
+        * abandon a slot they have already paid for.
+        */}
+      {perm === 'granted' && !camAvailable && (
+        <p role="status" className="rounded-zine border-zine border-ink bg-paper2 p-3 font-body font-bold text-[14px] text-inkSoft">
+          No camera found — you&rsquo;ll join with audio only; you&rsquo;ll still see{' '}
+          {peerName ?? 'the creator'}.
+        </p>
+      )}
 
       {error && (
         <div className="rounded-zine border-zine border-coral bg-card p-3 font-body font-bold text-[14px] text-ink shadow-zine-error">

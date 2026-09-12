@@ -37,6 +37,16 @@ class _PendingCameraFactory implements CommercialDeviceTrackFactory {
   @override Future<RtcLocalCameraTrack> camera() => pending.future;
 }
 
+/// [AV-AUDIO-ONLY-1] A desktop/phone with no usable camera: `RtcLocalTrack
+/// .camera()` rejects instead of returning a track.
+class _NoCameraFactory implements CommercialDeviceTrackFactory {
+  int attempts = 0;
+  @override Future<RtcLocalCameraTrack> camera() {
+    attempts++;
+    return Future.error(StateError('no camera on this device'));
+  }
+}
+
 void main() {
   testWidgets('device checks fit a small screen and never animate a missing level', (tester) async {
     tester.view.physicalSize = const Size(320, 480);
@@ -117,6 +127,45 @@ void main() {
       ), isFalse);
     });
 
+    test('[AV-AUDIO-ONLY-1] a missing camera never blocks join', () {
+      // Camera ON, camera permission granted, but the device has no camera:
+      // the customer still has a working mic and still sees the creator, so
+      // this must be joinable (RULEBOOK-PAID-SESSIONS.md §3).
+      expect(commercialDeviceCheckReady(
+        enabled: true,
+        checking: false,
+        cameraOn: true,
+        microphoneOn: true,
+        cameraGranted: false,
+        microphoneGranted: true,
+        networkVerdict: 'green',
+        cameraAvailable: false,
+      ), isTrue);
+      // The microphone is the device that still matters: no mic permission
+      // while the mic is on is still not ready.
+      expect(commercialDeviceCheckReady(
+        enabled: true,
+        checking: false,
+        cameraOn: true,
+        microphoneOn: true,
+        cameraGranted: false,
+        microphoneGranted: false,
+        networkVerdict: 'green',
+        cameraAvailable: false,
+      ), isFalse);
+      // Default stays strict: a camera that IS available still needs its
+      // permission before the screen reports ready.
+      expect(commercialDeviceCheckReady(
+        enabled: true,
+        checking: false,
+        cameraOn: true,
+        microphoneOn: true,
+        cameraGranted: false,
+        microphoneGranted: true,
+        networkVerdict: 'green',
+      ), isFalse);
+    });
+
     test('receive-only choice does not require disabled device permission', () {
       expect(commercialDeviceCheckReady(
         enabled: true,
@@ -128,6 +177,32 @@ void main() {
         networkVerdict: 'green',
       ), isTrue);
     });
+  });
+
+  test('[AV-AUDIO-ONLY-1] a broken camera is reported, not thrown, and the mic still starts', () async {
+    final camera = _NoCameraFactory();
+    final recorder = _FakeRecorder();
+    final controller = CommercialDeviceCheckController(
+      trackFactory: camera,
+      recorderFactory: _FakeRecordFactory([recorder]),
+    );
+    // Must NOT throw: throwing here used to abort the prejoin sync before the
+    // microphone was ever started, killing the meter AND the Join button.
+    await controller.setCameraEnabled(true);
+    expect(camera.attempts, 1);
+    expect(controller.cameraTrack, isNull);
+    expect(controller.cameraUnavailable, isTrue);
+    await controller.setMicrophoneEnabled(true);
+    await controller.release();
+    expect(recorder.stopped, isTrue);
+    // An explicit retry re-probes rather than staying latched forever.
+    controller.clearCameraUnavailable();
+    expect(controller.cameraUnavailable, isFalse);
+    controller.resume();
+    await controller.setCameraEnabled(true);
+    expect(camera.attempts, 2);
+    expect(controller.cameraUnavailable, isTrue);
+    await controller.dispose();
   });
 
   test('PCM meter reports actual sample energy and ignores incomplete bytes', () {

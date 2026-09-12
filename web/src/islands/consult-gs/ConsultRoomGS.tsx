@@ -329,23 +329,41 @@ function ConsultRoomGSInner({ booking }: { booking: string }) {
   const reacquirePreviewIfNeeded = useCallback(() => {
     if (previewStreamRef.current || typeof navigator === 'undefined' || !navigator.mediaDevices) return;
     const prefs = prefsRef.current;
+    const audio: MediaStreamConstraints['audio'] = prefs?.micId ? { deviceId: { exact: prefs.micId } } : true;
+    const adopt = (stream: MediaStream) => {
+      if (!mountedRef.current || phaseRef.current !== 'waiting') {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      stream.getAudioTracks().forEach((t) => (t.enabled = prefs?.micOn ?? true));
+      stream.getVideoTracks().forEach((t) => (t.enabled = prefs?.camOn ?? true));
+      previewStreamRef.current = stream;
+      setPreviewTick((n) => n + 1);
+    };
     navigator.mediaDevices
       .getUserMedia({
-        audio: prefs?.micId ? { deviceId: { exact: prefs.micId } } : true,
-        video: prefs?.camId ? { deviceId: { exact: prefs.camId } } : { facingMode: 'user' },
+        audio,
+        // [AV-AUDIO-ONLY-1] `camOn === false` here means either "the user
+        // turned the camera off" or "PreJoin found no camera at all" — either
+        // way, asking for video would reject on a camera-less desktop and
+        // leave the waiting room with no preview AND no mic meter.
+        video: prefs?.camOn === false
+          ? false
+          : prefs?.camId
+            ? { deviceId: { exact: prefs.camId } }
+            : { facingMode: 'user' },
       })
-      .then((stream) => {
-        if (!mountedRef.current || phaseRef.current !== 'waiting') {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        stream.getAudioTracks().forEach((t) => (t.enabled = prefs?.micOn ?? true));
-        stream.getVideoTracks().forEach((t) => (t.enabled = prefs?.camOn ?? true));
-        previewStreamRef.current = stream;
-        setPreviewTick((n) => n + 1);
-      })
+      .then(adopt)
       .catch(() => {
-        /* camera busy/denied — the waiting room just shows no local preview */
+        // Camera busy/absent after all — retry audio-only so the waiting room
+        // still holds a live mic, rather than falling back to nothing.
+        if (prefs?.camOn === false) return;
+        navigator.mediaDevices
+          .getUserMedia({ audio, video: false })
+          .then(adopt)
+          .catch(() => {
+            /* mic denied too — the waiting room just shows no local preview */
+          });
       });
   }, []);
 

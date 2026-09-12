@@ -46,12 +46,20 @@ class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultati
   PermissionStatus? _camera, _microphone;
   NetProbe? _network;
   bool _cameraOn = true, _microphoneOn = true, _checking = true, _joining = false;
+  /// [AV-AUDIO-ONLY-1] False once this device proved it has no usable camera.
+  /// Kept separate from [_cameraOn] (the user's intent) so "Run checks again"
+  /// can re-probe, and so the join publishes audio only instead of asking the
+  /// SDK to start a camera that cannot start.
+  bool _cameraAvailable = true;
   String? _error;
   late final CommercialDeviceCheckController _deviceController;
   final _speaker = CommercialSpeakerTestController();
   bool _devicesReady = false;
 
   bool get _enabled => (widget.flags ?? CommercialGetStreamJoinFlags.fromRemoteConfig()).consultationJoinEnabled;
+  /// The camera intent actually handed to the panel and to the join.
+  bool get _cameraIntent => _cameraOn && _cameraAvailable;
+
   bool get _ready => _devicesReady && commercialDeviceCheckReady(
         enabled: _enabled,
         checking: _checking,
@@ -60,6 +68,7 @@ class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultati
         cameraGranted: _camera?.isGranted == true,
         microphoneGranted: _microphone?.isGranted == true,
         networkVerdict: _network?.verdict,
+        cameraAvailable: _cameraAvailable,
       );
 
   @override
@@ -67,7 +76,8 @@ class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultati
 
   Future<void> _check() async {
     if (!_enabled) { if (mounted) setState(() => _checking = false); return; }
-    setState(() { _checking = true; _network = null; _devicesReady = false; _error = null; });
+    _deviceController.clearCameraUnavailable();
+    setState(() { _checking = true; _network = null; _devicesReady = false; _error = null; _cameraAvailable = true; });
     try {
       final p = await [Permission.camera, Permission.microphone].request();
       final n = await SessionApi.probe();
@@ -107,7 +117,7 @@ class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultati
             connector: widget.connector,
             isCreator: widget.isCreator,
             grant: grant!,
-            cameraOn: _cameraOn,
+            cameraOn: _cameraIntent,
             microphoneOn: _microphoneOn,
             selfUid: AccountScope.id ?? '',
           ),
@@ -129,14 +139,14 @@ class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultati
       if (handoff.role != expected) throw const FormatException('Server role does not match this booking');
       final session = widget.connector is CommercialGetStreamMediaConnector
           ? await (widget.connector as CommercialGetStreamMediaConnector).connectWithMedia(
-              handoff, cameraEnabled: _cameraOn, microphoneEnabled: _microphoneOn)
+              handoff, cameraEnabled: _cameraIntent, microphoneEnabled: _microphoneOn)
           : await widget.connector.connect(handoff);
       if (!mounted) { await session.leave(); return; }
       await Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
         builder: (_) => CommercialConsultationRoomScreen(
           listingId: widget.listingId, bookingId: widget.bookingId, title: widget.title,
           gateway: widget.gateway, connector: widget.connector, handoff: handoff, session: session,
-          cameraEnabled: _cameraOn, microphoneEnabled: _microphoneOn, isCreator: widget.isCreator,
+          cameraEnabled: _cameraIntent, microphoneEnabled: _microphoneOn, isCreator: widget.isCreator,
         ),
       ));
     } catch (e) {
@@ -185,7 +195,7 @@ class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultati
       const SizedBox(height: Msg.s2),
       Text('Private appointment · ${widget.isCreator ? 'Creator' : 'Customer'}', style: ADText.preview()),
       const SizedBox(height: Msg.s4),
-      _Check(label: 'Camera permission', value: _camera?.isGranted == true),
+      _Check(label: 'Camera permission', value: _camera?.isGranted == true && _cameraAvailable, warning: !_cameraAvailable, detail: _cameraAvailable ? null : 'No camera — joining with audio only'),
       _Check(label: 'Microphone permission', value: _microphone?.isGranted == true),
       _Check(label: 'Connection', value: _network?.verdict == 'green', warning: _network?.verdict == 'yellow', detail: _network == null ? 'Checking…' : _network!.tip),
       const SizedBox(height: Msg.s3),
@@ -197,8 +207,9 @@ class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultati
         cameraGranted: _camera?.isGranted == true,
         microphoneGranted: _microphone?.isGranted == true,
         onReadyChanged: (ready) { if (mounted && ready != _devicesReady) setState(() => _devicesReady = ready); },
+        onCameraUnavailable: () { if (mounted && _cameraAvailable) setState(() => _cameraAvailable = false); },
         speakerControl: CommercialSpeakerTestButton(controller: _speaker, enabled: !_joining),
-        cameraEnabled: _cameraOn,
+        cameraEnabled: _cameraIntent,
         microphoneEnabled: _microphoneOn,
         onCameraChanged: (v) => setState(() { _cameraOn = v; _devicesReady = false; }),
         onMicrophoneChanged: (v) => setState(() { _microphoneOn = v; _devicesReady = false; }),
@@ -389,8 +400,12 @@ class _CommercialConsultationRoomScreenState extends State<CommercialConsultatio
         Padding(padding: const EdgeInsets.all(Msg.s3), child: Row(children: [Text(_state?.state == LiveServerState.live ? 'CONNECTED' : 'CONNECTING', style: ADText.sectionLabel(c: AD.online)), const Spacer(), if (remaining != null && remaining > 0) Text('${(remaining ~/ 60000)} min remaining', style: ADText.sectionLabel())])),
         if (_error != null) Padding(padding: const EdgeInsets.symmetric(horizontal: Msg.s4), child: Text(_error!, style: ADText.preview(c: AD.danger))),
         Expanded(child: Stack(children: [
-          if (other.isEmpty) const Center(child: CircularProgressIndicator()) else StreamVideoRenderer(call: _call, participant: other.first, videoTrackType: SfuTrackType.video),
-          Positioned(right: Msg.s3, bottom: Msg.s3, width: 120, height: 170, child: Container(color: Colors.black, child: _call.state.value.localParticipant == null ? const SizedBox() : StreamVideoRenderer(call: _call, participant: _call.state.value.localParticipant!, videoTrackType: SfuTrackType.video))),
+          // [AV-AUDIO-ONLY-1] A participant with no published video track is
+          // normal (no camera, or camera off), not an error — render the
+          // placeholder tile the rest of this lane already uses
+          // (commercial_live_screens.dart) instead of an empty renderer.
+          if (other.isEmpty) const Center(child: CircularProgressIndicator()) else _ParticipantTile(call: _call, participant: other.first, avatarSize: 96),
+          Positioned(right: Msg.s3, bottom: Msg.s3, width: 120, height: 170, child: Container(color: Colors.black, child: _call.state.value.localParticipant == null ? const SizedBox() : _ParticipantTile(call: _call, participant: _call.state.value.localParticipant!, avatarSize: 40))),
         ])),
         Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [IconButton(onPressed: _toggleMic, icon: Icon(_microphoneOn ? PhosphorIcons.microphone(PhosphorIconsStyle.bold) : PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold))), IconButton(onPressed: _toggleCamera, icon: Icon(_cameraOn ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold) : PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold))), FilledButton.icon(onPressed: _leave, icon: Icon(PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.bold)), label: const Text('Leave'))]),
         const SizedBox(height: Msg.s3),
@@ -411,6 +426,57 @@ class _CommercialConsultationCompletionScreenState extends State<CommercialConsu
   @override void initState() { super.initState(); _load(); }
   Future<void> _load() async { final r = await widget.gateway.consultationReceipt(widget.sessionId); if (mounted) setState(() { _receipt = r; _loading = false; }); }
   @override Widget build(BuildContext context) => Scaffold(backgroundColor: AD.bg, appBar: AppBar(backgroundColor: AD.headerFooter, foregroundColor: AD.onBand(AD.headerFooter), title: const Text('Consultation complete')), body: ListView(padding: const EdgeInsets.all(Msg.s5), children: [Text(widget.heading, style: ADText.appTitle()), const SizedBox(height: Msg.s3), Text(widget.title, style: ADText.preview()), const SizedBox(height: Msg.s4), if (_loading) const CircularProgressIndicator() else if (_receipt?.ready != true) const _Notice(text: 'Settlement is still being finalized from signed GetStream evidence.') else const _Notice(text: 'Your server receipt is ready.'), const SizedBox(height: Msg.s4), FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done'))]));
+}
+
+/// [AV-AUDIO-ONLY-1] One participant slot that survives a missing camera:
+/// the video track when there is one, otherwise the participant's initials,
+/// their name and a mic state icon — the same rule the live lane already
+/// applies (`publishedTracks.containsKey(SfuTrackType.video)`).
+class _ParticipantTile extends StatelessWidget {
+  const _ParticipantTile({required this.call, required this.participant, required this.avatarSize});
+  final Call call;
+  final CallParticipantState participant;
+  final double avatarSize;
+
+  bool get _large => avatarSize >= 96;
+
+  String get _name => participant.name.isNotEmpty ? participant.name : participant.userId;
+
+  String get _initials {
+    final parts = _name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).take(2);
+    final letters = parts.map((p) => p.substring(0, 1).toUpperCase()).join();
+    return letters.isEmpty ? '?' : letters;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (participant.publishedTracks.containsKey(SfuTrackType.video)) {
+      return StreamVideoRenderer(call: call, participant: participant, videoTrackType: SfuTrackType.video);
+    }
+    final audioOn = participant.publishedTracks.containsKey(SfuTrackType.audio);
+    return Center(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          width: avatarSize,
+          height: avatarSize,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(color: AD.card, shape: BoxShape.circle),
+          child: Text(_initials, style: _large ? ADText.appTitle() : ADText.preview(c: AD.textPrimary)),
+        ),
+        SizedBox(height: _large ? Msg.s3 : Msg.s2),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s2),
+          child: Text(_name, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: ADText.preview(c: AD.textPrimary)),
+        ),
+        const SizedBox(height: Msg.s1),
+        Icon(
+          audioOn ? PhosphorIcons.microphone(PhosphorIconsStyle.fill) : PhosphorIcons.microphoneSlash(PhosphorIconsStyle.fill),
+          size: _large ? 22 : 16,
+          color: audioOn ? AD.online : AD.textTertiary,
+        ),
+      ]),
+    );
+  }
 }
 
 class _Check extends StatelessWidget { const _Check({required this.label, required this.value, this.warning = false, this.detail}); final String label; final bool value, warning; final String? detail; @override Widget build(BuildContext context) => ListTile(contentPadding: EdgeInsets.zero, leading: Icon(value ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill) : PhosphorIcons.warningCircle(PhosphorIconsStyle.regular), color: value ? AD.online : warning ? AD.primaryBadge : AD.danger), title: Text(label), subtitle: Text(detail ?? (value ? 'Ready' : 'Permission required'))); }

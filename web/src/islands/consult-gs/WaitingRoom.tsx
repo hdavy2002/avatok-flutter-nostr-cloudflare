@@ -126,6 +126,11 @@ export function WaitingRoom({
     chatEndRef.current?.scrollIntoView({ block: 'nearest' });
   }, [chat.length]);
 
+  // [AV-AUDIO-ONLY-1] An audio-only visitor (Bluetooth mic, no camera) has a
+  // live preview stream that carries no video track. Treat that as a
+  // placeholder tile, not as "camera off" — the wording differs because there
+  // is nothing for him to turn back on.
+  const hasVideoTrack = (previewStream?.getVideoTracks().length ?? 0) > 0;
   const started = now >= startsAt;
   const meterTarget = started ? endsAt : startsAt;
   const meterLabel = started ? 'Time left' : 'Starts in';
@@ -185,9 +190,10 @@ export function WaitingRoom({
             <Spinner size={22} />
           </div>
         )}
-        {previewStream && !camOn && (
-          <div className="absolute inset-0 flex items-center justify-center bg-ink/80 font-display font-semibold text-[14px] text-paper">
-            Camera off
+        {previewStream && (!camOn || !hasVideoTrack) && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-ink/80 px-3 text-center font-display font-semibold text-[14px] text-paper">
+            <span aria-hidden className="text-[22px] leading-none">{hasVideoTrack ? '🚫' : '🎙️'}</span>
+            {hasVideoTrack ? 'Camera off' : 'No camera — audio only'}
           </div>
         )}
         {previewStream && !micOn && (
