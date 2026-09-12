@@ -11,6 +11,10 @@
 // worker lands the endpoint later than the app build.
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart' show MediaType;
 
 import 'api_auth.dart';
 import 'config.dart';
@@ -87,6 +91,34 @@ class CommercialWaitingRoomGrant {
   }
 }
 
+/// [APP-ONLY-TX-APP-1] Shape of an uploaded chat attachment — the server's
+/// response from `POST /api/commercial/session/:kind/:id/attachment` and the
+/// same shape it embeds in a `chat` socket event's `attachment` field.
+/// Contract shared with worker (S3) and web (S4): `{url, name, size, mime}`.
+class ChatAttachment {
+  final String url;
+  final String name;
+  final int size;
+  final String mime;
+  const ChatAttachment({required this.url, required this.name, required this.size, required this.mime});
+
+  bool get isImage => mime.startsWith('image/');
+
+  factory ChatAttachment.fromJson(Map<String, dynamic> json) => ChatAttachment(
+        url: json['url']?.toString() ?? '',
+        name: json['name']?.toString() ?? '',
+        size: (json['size'] as num?)?.toInt() ?? 0,
+        mime: json['mime']?.toString() ?? 'application/octet-stream',
+      );
+
+  /// Null when the wire object is missing its `url` (nothing to render/open).
+  static ChatAttachment? tryParse(dynamic raw) {
+    if (raw is! Map) return null;
+    final a = ChatAttachment.fromJson(raw.cast<String, dynamic>());
+    return a.url.isEmpty ? null : a;
+  }
+}
+
 class CommercialWaitingRoomApi {
   /// Fetches the waiting-room grant for a consult booking. Throws
   /// [SessionApiError] on a non-2xx response (including 404 when the worker
@@ -101,6 +133,42 @@ class CommercialWaitingRoomApi {
           r.statusCode, json['error']?.toString() ?? 'Prejoin unavailable', json);
     }
     return CommercialWaitingRoomGrant.fromJson(json);
+  }
+
+  /// [APP-ONLY-TX-APP-1] 25 MB cap, shared with worker (S3) and web (S4).
+  static const int maxAttachmentBytes = 25 * 1024 * 1024;
+
+  /// Uploads a chat attachment for the given session `kind` ('consult' |
+  /// 'live') and `id` (bookingId for consult), per the shared contract
+  /// `POST /api/commercial/session/:kind/:id/attachment` (multipart `file`,
+  /// user JWT). Throws [SessionApiError] on a non-2xx response — including
+  /// 404, which callers must treat as "the worker route isn't deployed yet"
+  /// and show the "Attachments not available yet" fallback, never a crash.
+  static Future<ChatAttachment> uploadAttachment({
+    required String kind,
+    required String id,
+    required Uint8List bytes,
+    required String filename,
+    required String mime,
+  }) async {
+    final url = '$kApiBase/commercial/session/${Uri.encodeComponent(kind)}/${Uri.encodeComponent(id)}/attachment';
+    // Signed headers carry the Clerk bearer + trace id; `MultipartRequest`
+    // overwrites `content-type` with its own multipart boundary at
+    // `finalize()` time, so the JSON content-type this returns is harmless.
+    final headers = await ApiAuth.signedHeaders('POST', url);
+    final request = http.MultipartRequest('POST', Uri.parse(url))
+      ..headers.addAll(headers)
+      ..files.add(http.MultipartFile.fromBytes('file', bytes,
+          filename: filename, contentType: MediaType.parse(mime)));
+    final streamed = await request.send().timeout(const Duration(seconds: 60));
+    final res = await http.Response.fromStream(streamed);
+    final decoded = res.body.isEmpty ? null : jsonDecode(res.body);
+    final json = decoded is Map ? decoded.cast<String, dynamic>() : <String, dynamic>{};
+    if (res.statusCode >= 300) {
+      throw SessionApiError(
+          res.statusCode, json['error']?.toString() ?? 'Attachment upload failed', json);
+    }
+    return ChatAttachment.fromJson(json);
   }
 }
 
@@ -139,7 +207,11 @@ class CommercialWaitingRoomChat extends CommercialWaitingRoomEvent {
   // [WAITROOM-APP-2] Fix 11: "mine" is decided by uid when the DO sends one;
   // null on older deployments, where the caller falls back to name match.
   final String? uid;
-  const CommercialWaitingRoomChat({required this.from, required this.text, required this.at, this.uid});
+  // [APP-ONLY-TX-APP-1] Optional file/image attached to this chat message,
+  // per the shared `{type:'chat', ..., attachment?:{url,name,size,mime}}`
+  // contract. Null when the message carries no attachment.
+  final ChatAttachment? attachment;
+  const CommercialWaitingRoomChat({required this.from, required this.text, required this.at, this.uid, this.attachment});
 }
 
 class CommercialWaitingRoomEnded extends CommercialWaitingRoomEvent {
@@ -201,12 +273,17 @@ class CommercialWaitingRoomChannel {
         ));
       case 'chat':
         final text = e['text']?.toString();
-        if (text != null && text.isNotEmpty) {
+        final attachment = ChatAttachment.tryParse(e['attachment']);
+        // [APP-ONLY-TX-APP-1] An attachment-only message carries empty text —
+        // it must still render, so the old "drop empty text" guard now keys
+        // off attachment presence too.
+        if ((text != null && text.isNotEmpty) || attachment != null) {
           _events.add(CommercialWaitingRoomChat(
             from: e['from']?.toString() ?? '',
-            text: text,
+            text: text ?? '',
             at: (e['at'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch,
             uid: e['uid']?.toString(),
+            attachment: attachment,
           ));
         }
       case 'session_ended':
@@ -225,10 +302,23 @@ class CommercialWaitingRoomChannel {
 
   /// ≤500 chars per the DO's relay contract; longer text is dropped
   /// client-side to fail loud in dev rather than let the server 400 silently.
-  void sendChat(String text) {
+  /// [APP-ONLY-TX-APP-1] `attachment` rides alongside (or instead of) text —
+  /// an attachment-only send passes an empty `text`.
+  void sendChat(String text, {ChatAttachment? attachment}) {
     final trimmed = text.trim();
-    if (trimmed.isEmpty || trimmed.length > 500) return;
-    _room.send({'type': 'chat', 'text': trimmed});
+    if (trimmed.length > 500) return;
+    if (attachment == null && trimmed.isEmpty) return;
+    _room.send({
+      'type': 'chat',
+      'text': trimmed,
+      if (attachment != null)
+        'attachment': {
+          'url': attachment.url,
+          'name': attachment.name,
+          'size': attachment.size,
+          'mime': attachment.mime,
+        },
+    });
   }
 
   void close() {
