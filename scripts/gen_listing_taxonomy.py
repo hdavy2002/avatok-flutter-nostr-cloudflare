@@ -65,13 +65,14 @@ export interface SubCategory {
 }
 """
 
-HIDDEN = """
-/* [MKT-3GROUP-1] 'Voices with character' (ai_voice_agents) is deliberately NOT a
- * group: the owner removed it from the front page and the marketplace on
- * 2026-09-05. The SECTION value stays alive in the worker's SECTIONS union
- * because published rows carry it — it simply maps to no group, so nothing
- * renders it. Do not "tidy up" by deleting the value. */
-export const HIDDEN_SECTIONS: ReadonlySet<string> = new Set(['ai_voice_agents']);
+HIDDEN_TPL = """
+/* [MKT-3GROUP-1 / AGENT-LIVE-1] Sections that render nowhere, generated from
+ * `_hidden_sections` in Specs/listing-taxonomy.json. A hidden section's value
+ * STAYS alive in the worker's SECTIONS union because published rows carry it —
+ * it simply maps to no group. Do not "tidy up" by deleting a value, and do not
+ * hand-edit this set: it was hand-edited once and the next regeneration threw
+ * the change away. Change the JSON. */
+export const HIDDEN_SECTIONS: ReadonlySet<string> = new Set(%s);
 """
 
 HELPERS = """
@@ -128,7 +129,8 @@ def render_ts(data):
         out.append("    sections: %s," % js(g["sections"]))
         out.append("  },")
     out.append("];")
-    out.append(HIDDEN)
+    _h = sorted((data.get('_hidden_sections') or {}).keys())
+    out.append(HIDDEN_TPL % (('[' + ', '.join("'%s'" % x for x in _h) + ']') if _h else '[]'))
     out.append("export const SUB_CATEGORIES: SubCategory[] = [")
     for c in data["categories"]:
         flag = (" requiresFlag: %s," % js(c["requires_flag"])) if c.get("requires_flag") else ""
@@ -226,13 +228,26 @@ class ListingSubCategory {
 }
 """
 
-DART_HIDDEN = """
-/// [MKT-3GROUP-1] 'Voices with character' (ai_voice_agents) is deliberately NOT
-/// a group: the owner removed it from the front page and the marketplace on
-/// 2026-09-05. The SECTION value stays alive in the worker's SECTIONS union
-/// because published rows carry it — it simply maps to no group, so nothing
-/// renders it. Do not "tidy up" by deleting the value.
-const Set<String> kHiddenListingSections = {'ai_voice_agents'};
+DART_HIDDEN_TPL = """
+/// [MKT-3GROUP-1 / AGENT-LIVE-1] Sections that render nowhere, generated from
+/// `_hidden_sections` in Specs/listing-taxonomy.json. A hidden section's value
+/// STAYS alive in the worker's SECTIONS union because published rows carry it —
+/// it simply maps to no group. Do not "tidy up" by deleting a value, and do not
+/// hand-edit this set: it was hand-edited once and the next regeneration threw
+/// the change away. Change the JSON.
+const Set<String> kHiddenListingSections = %s;
+
+/// Which group a SECTION belongs to. The inverse of `ListingGroup.sections`,
+/// flattened for lookup. Generated — see the note above.
+const Map<String, String> kGroupForSection = {
+%s};
+
+/// True when a section should be rendered at all. A section with no group, or
+/// one listed in [kHiddenListingSections], renders nowhere.
+bool listingSectionVisible(String section) {
+  if (kHiddenListingSections.contains(section)) return false;
+  return kGroupForSection.containsKey(section);
+}
 """
 
 DART_HELPERS = """
@@ -316,7 +331,10 @@ def render_dart(data):
         out.append("    sections: %s," % dart_str_list(g["sections"]))
         out.append("  ),")
     out.append("];")
-    out.append(DART_HIDDEN)
+    _h = sorted((data.get('_hidden_sections') or {}).keys())
+    _hs = ('{' + ', '.join("'%s'" % x for x in _h) + '}') if _h else '{}'
+    _gs = ''.join("  '%s': '%s',\n" % (sec, g['id']) for g in data['groups'] for sec in g['sections'])
+    out.append(DART_HIDDEN_TPL % (_hs, _gs))
     out.append("const List<ListingSubCategory> kListingSubCategories = [")
     for c in data["categories"]:
         flag = (" requiresFlag: %s," % dart_str(c["requires_flag"])) if c.get("requires_flag") else ""

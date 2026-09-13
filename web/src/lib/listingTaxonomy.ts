@@ -62,16 +62,17 @@ export const GROUPS: Group[] = [
     emphasis: "time.",
     blurb: "Choose a professional, check their calendar and book a private session.",
     kinds: ["consult"],
-    sections: ["consulting", "astro_tarot", "glow_up"],
+    sections: ["consulting", "astro_tarot", "glow_up", "ai_voice_agents"],
   },
 ];
 
-/* [MKT-3GROUP-1] 'Voices with character' (ai_voice_agents) is deliberately NOT a
- * group: the owner removed it from the front page and the marketplace on
- * 2026-09-05. The SECTION value stays alive in the worker's SECTIONS union
- * because published rows carry it — it simply maps to no group, so nothing
- * renders it. Do not "tidy up" by deleting the value. */
-export const HIDDEN_SECTIONS: ReadonlySet<string> = new Set(['ai_voice_agents']);
+/* [MKT-3GROUP-1 / AGENT-LIVE-1] Sections that render nowhere, generated from
+ * `_hidden_sections` in Specs/listing-taxonomy.json. A hidden section's value
+ * STAYS alive in the worker's SECTIONS union because published rows carry it —
+ * it simply maps to no group. Do not "tidy up" by deleting a value, and do not
+ * hand-edit this set: it was hand-edited once and the next regeneration threw
+ * the change away. Change the JSON. */
+export const HIDDEN_SECTIONS: ReadonlySet<string> = new Set([]);
 
 export const SUB_CATEGORIES: SubCategory[] = [
   { id: "live_cooking", label: "Cooking", emoji: "🍳", group: "india_goes_live", sort: 10, },
