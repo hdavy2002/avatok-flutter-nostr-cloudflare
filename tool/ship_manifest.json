@@ -6509,5 +6509,32 @@
     "min_devices_on_build": 1,
     "flags": [],
     "no_telemetry": "A ThemeData border value. The change is a painted 2px outline on inputs that already exist and already emit whatever their own screens emit; it adds, removes and renames no widget, route, state or user action, so there is no new decision or failure for an event to describe. Verification is visual and is specified in the entry above: open the Create-listing wizard on the cream background and confirm each field has an edge. Instrumenting a border would produce an event that fires on every screen with a text input and can never carry a failure value."
+  },
+  "AGENT-LIVE-1": {
+    "description": "AI voice agent listings on GPT-Live-1 (Specs/SPEC-2026-09-12-AGENT-LIVE-1-BUILD.md): a single agent admin creates AI companion/voice agents customers book and talk to live over an OpenAI Live WebSocket relay, with RAG knowledge, image-reading side channel, per-buyer memory, and wallet hold/settle/refund money rules (RULEBOOK-PAID-SESSIONS.md section 8).",
+    "shipped": "2026-09-12",
+    "two_sided": false,
+    "min_devices_on_build": 2,
+    "flags": [
+      "agentListingsEnabled",
+      "agentCheckoutEnabled",
+      "agentTalkEnabled"
+    ],
+    "success": [
+      {
+        "event": "agent_talk_ready",
+        "property": "outcome",
+        "equals": "ok",
+        "min_events": 2,
+        "note": "Web event (web/src/lib/analytics.ts capture()) fired once the talk room's WS relay reports the OpenAI Live session is connected and audio is flowing both ways. min_events:2 is a floor, not the real bar: per CLAUDE.md's ship-gate rule 2 ('two phones before the word shipped'), these two must come from >= 2 DISTINCT persons, not one person retrying twice — the admin's own test call is one, and a real second customer booking reached via the emailed /j/ link is the other. An admin-only pass does not satisfy this."
+      },
+      {
+        "event": "agent_session_settled",
+        "property": "outcome",
+        "equals": "completed_full",
+        "min_events": 1,
+        "note": "Worker event (hooks.track()) fired once per booking when agent_live_decisions is written (worker/src/lib/agent_live/money.ts decide()/decideAndEnqueue()). Must be a real, non-is_test booking that actually paid out 80/20 to the agent admin's wallet — admin test calls (is_test=1) never settle and never emit this event (RULEBOOK-PAID-SESSIONS.md section 8), so this assertion can only be satisfied by a genuine paid AI-agent talk completing."
+      }
+    ]
   }
 }

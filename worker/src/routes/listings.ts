@@ -1345,6 +1345,12 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
   const kind = String(b.kind || "");
+  // [AGENT-LIVE-1] M6 — an AI voice agent listing is never created through the
+  // generic pipeline (no KYC/entitlement/section logic here fits it, and only
+  // the sole agent admin may ever create one — D2). Checked before the KINDS
+  // gate so the caller gets the specific redirect rather than a generic
+  // "kind must be ..." 400.
+  if (kind === "agent") return json({ error: "use_agent_admin_api" }, 409);
   if (!KINDS.has(kind)) return json({ error: "kind must be live_event|consult|sell|buy|social" }, 400);
   if (MARKET_KINDS.has(kind) && !(await marketplacePublishOn(env))) return marketplaceOff();
   // Marketplace listing gate (2026-07-10): a Didit LIVENESS pass, valid 90 days.
@@ -1540,6 +1546,9 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
     "SELECT * FROM listings WHERE id=?1",
   ).bind(id).first<any>();
   if (!row || row.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
+  // [AGENT-LIVE-1] M6 — agent listings are only ever edited via /api/agents/admin/:id
+  // (PATCH), even by the admin who owns them; this generic PUT never touches them.
+  if (String(row.kind) === "agent") return json({ error: "use_agent_admin_api" }, 409);
   if (MARKET_KINDS.has(String(row.kind)) && !(await marketplacePublishOn(env))) return marketplaceOff();
   if (row.status === "cancelled" || row.status === "completed") return json({ error: "listing closed" }, 409);
   const b = (await req.json().catch(() => ({}))) as any;
@@ -4213,6 +4222,16 @@ export async function bookListing(req: Request, env: Env, id: string): Promise<R
   const db = metaDb(env);
   const l = await db.prepare("SELECT * FROM listings WHERE id=?1").bind(id).first<any>();
   if (!l || !["published", "live"].includes(l.status)) return json({ error: "listing not available" }, 404);
+  // [AGENT-LIVE-1] M6 — an AI voice agent is never booked through the legacy
+  // calendar/escrow pipeline (no calendar slot, no per-creator wallet escrow —
+  // D7's platform-fee split and the seat authority own this instead). Checked
+  // before any calendar claim or wallet op runs.
+  if (l.kind === "agent") {
+    return json({
+      error: "agent_checkout_required",
+      message: "AI voice agent sessions are booked through /api/agents/:id/quote and /book.",
+    }, 409);
+  }
   if (l.creator_id === ctx.uid) return json({ error: "cannot book your own listing" }, 400);
   if (l.kind === "live_event" || l.kind === "consult") {
     // [COMM-FLAG-UNIFY-1] One predicate, shared with commercial_checkout.ts. This fence

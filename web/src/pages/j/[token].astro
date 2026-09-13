@@ -26,6 +26,9 @@ if (!token) {
 
 // A join link is personal and single-person: never cache it, never index it.
 Astro.response.headers.set('Cache-Control', 'no-store');
+// [AGENT-LIVE-1 M10] The token in this URL is single-use identity material —
+// never let it leak to a third-party destination via the Referer header.
+Astro.response.headers.set('Referrer-Policy', 'no-referrer');
 ---
 
 <Base headerAuth="static"

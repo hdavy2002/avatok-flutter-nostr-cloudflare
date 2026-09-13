@@ -1,0 +1,30 @@
+---
+// [AGENT-LIVE-1] The AI voice agent talk room, at /talk/<bookingId>
+// (BUILD SPEC §6). Pure client island — no SSR of media, mirrors the
+// /session/[booking].astro pattern (prerender=false, no-store, noindex).
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import AgentTalkRoom from '../../islands/agent-live/AgentTalkRoom.tsx';
+
+const { booking } = Astro.params;
+
+if (!booking) {
+  return new Response('Booking required', { status: 400 });
+}
+
+// [AGENT-LIVE-1 M10] Never cache or index a private talk room, and never let
+// its URL (which carries a booking id) leak via the Referer header to a
+// third party the page might link out to.
+Astro.response.headers.set('Cache-Control', 'no-store');
+Astro.response.headers.set('Referrer-Policy', 'no-referrer');
+---
+
+<Base headerAuth="static"
+  title="Your AI voice agent call · avatok.ai"
+  description="Talk to your booked AI voice agent."
+  navStatic={true}
+>
+  <meta name="robots" content="noindex, nofollow" slot="head" />
+  <AgentTalkRoom client:load bookingId={booking} />
+</Base>

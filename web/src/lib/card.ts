@@ -367,7 +367,13 @@ export function timePillLabel(startsAt: number | null, opts: { prefixNext?: bool
 export function pillLabel(lane: ListingLane, card: Card, c: CardView): string {
   switch (lane) {
     case 'agent':
-      return statusPill.ALWAYS_ON;
+      // [AGENT-LIVE-1 D1] price-aware: `card.price` is already price-per-minute
+      // for an agent listing (billing_unit='minute', BUILD SPEC §1). Falls
+      // back to the old always-on label when the price is unknown/zero rather
+      // than claiming a rate that isn't there.
+      return c.price != null && c.price > 0
+        ? `AI VOICE AGENT · from ₹${c.price.toLocaleString('en-IN')}/min`
+        : statusPill.ALWAYS_ON;
     case 'consult':
       if (card.schedule_mode === 'on_request') return pillExtra.ON_REQUEST;
       // A consult has no fixed show time; a stale starts_at in the past is not a date to advertise.

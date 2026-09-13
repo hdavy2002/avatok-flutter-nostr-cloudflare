@@ -174,6 +174,14 @@ export interface Env {
   DIALER_GATE: DurableObjectNamespace;
   // [AVA-CAMP-B2-WIRE] Per-campaign SQLite-backed DO (call_fsm state, pacing).
   CAMPAIGN_DO: DurableObjectNamespace;
+  // [AGENT-LIVE-1] Single global seat/capacity authority (idFromName('global'))
+  // for AI voice agent bookings — per-agent max_concurrent + platform-wide
+  // agentPlatformMaxConcurrent. worker/src/do/agent_seat_authority.ts.
+  AGENT_SEAT_AUTHORITY: DurableObjectNamespace;
+  // [AGENT-LIVE-1] Per-booking live room DO (idFromName(bookingId)) bridging
+  // the browser WebSocket to the OpenAI gpt-live-1 realtime session.
+  // worker/src/do/agent_live_room.ts. DO migration tag v24.
+  AGENT_LIVE_ROOMS: DurableObjectNamespace;
 
   // vars
   BLOSSOM_BASE_URL: string;
@@ -291,6 +299,17 @@ export interface Env {
   // Optional DLT-approved OTP template name on the 2Factor account. Unset => 2Factor's default.
   TWOFACTOR_OTP_TEMPLATE?: string;
   JOIN_LINK_SECRET?: string;       // HMAC for https://avatok.ai/j/<token>
+  // [AGENT-LIVE-1] OpenAI API key for the gpt-live-1 realtime WebSocket relay,
+  // the gpt-6-astra backend/vision calls and the RAG Files/Vector Store APIs.
+  // Never reaches the browser. Unset ⇒ laneGate/talkGate fail closed (503
+  // agent_live_unavailable). `wrangler secret put OPENAI_API_KEY`.
+  OPENAI_API_KEY?: string;
+  // [AGENT-LIVE-1] Comma-separated Clerk uid(s) allowed to create/edit/publish
+  // AI voice agent listings and upload knowledge (D2). MUST resolve to exactly
+  // one uid at runtime (worker/src/lib/agent_live/gate.ts requireAgentAdmin) —
+  // never an email allowlist. Prod value filled in at rollout via
+  // `wrangler.toml` var (see [AGENT-LIVE-1] AGENT_ADMIN_UIDS).
+  AGENT_ADMIN_UIDS?: string;
   // [AVADIAL-CALL-INTEL-1] HMAC key for the call-intelligence phone identifier
   // (routes/telemetry_calls.ts). phone_id = HMAC-SHA256(this, E.164), and it is the
   // ONLY form of a caller's number that ever reaches PostHog.

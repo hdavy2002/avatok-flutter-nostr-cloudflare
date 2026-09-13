@@ -826,6 +826,17 @@ class RemoteConfig {
   /// in KV `platform_config` to surface the Marketplace menu + agent calls.
   static bool get marketplaceEnabled => _b('marketplaceEnabled', false);
 
+  /// [AGENT-LIVE-1 D1/D11, Specs/SPEC-2026-09-12-AGENT-LIVE-1-BUILD.md §2/§7]
+  /// AI voice agent listings (`kind:'agent'`, section `ai_voice_agents`,
+  /// mapped to the `book_their_time` group — `core/listing_groups.dart`).
+  /// Default FALSE, matching `config.ts` DEFAULTS — this flag IS declared
+  /// server-side (unlike the fake-flag examples in CLAUDE.md), so flipping it
+  /// in KV `platform_config` actually reaches this getter. The app is
+  /// read-only for agents: it may only show the tile/detail and hand off to
+  /// `https://avatok.ai/l/<id>` ("Talk on the web") — no checkout, no talk
+  /// session, ever runs natively.
+  static bool get agentListingsEnabled => _b('agentListingsEnabled', false);
+
   /// [MKT2] AI-chat listing creation (PLAN-2026-07-17 §3). When ON, "Create
   /// listing" opens the AI compose chat instead of the 6-step form. Default OFF
   /// (mirrors config.ts `aiComposeEnabled`); the form stays as the fallback (M-D7)

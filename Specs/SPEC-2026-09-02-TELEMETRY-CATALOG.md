@@ -675,3 +675,50 @@ Worker side: `join_link` on the commercial telemetry lane
 (`lib/commercial_telemetry.ts`, so it carries `lane:'commercial'`) with
 `{kind, token_version, listing_id, booking_id, outcome}` — the server's own
 record of a link being exchanged for a session.
+
+## `[AGENT-LIVE-1]` — AI voice agent listings on GPT-Live-1 (2026-09-12)
+
+Canonical spec: `Specs/SPEC-2026-09-12-AGENT-LIVE-1-BUILD.md` §8. Web events go
+through `web/src/lib/analytics.ts`'s `capture()` (shared super-property
+contract, §1.1 above); worker events go through `hooks.track(env, uid, event,
+app_name, props)` per §5 above. Per §1.5, **no transcript text, memory
+content, tool-call arguments, image bytes, or OpenAI API keys ever ride any
+event below** — only ids, enums, counts and durations.
+
+### Web
+
+| Event | Props | Note |
+|---|---|---|
+| `agent_listing_view` | `agent_id` | Listing detail viewed for `kind='agent'`. |
+| `agent_quote` | `minutes, instant, outcome` | `POST .../quote`. `outcome` is the ship-gate-style success value: `ok` \| `unavailable` (503 `agent_live_unavailable`) \| `error`. |
+| `agent_booking_created` | `minutes, instant, wait_s` | `POST .../book` succeeded. `wait_s` is time from now to `starts_at` (0 for Talk now). |
+| `agent_seat_unavailable` | `next_free_in_s` | `book` returned 409 `seat_taken`. |
+| `agent_talk_open` | `agent_id, booking_id` | Talk page mounted, before mic permission. |
+| `agent_talk_ready` | `connect_ms, outcome` | **Ship-manifest success value.** Fires once the WS relay reports the OpenAI session is live and audio is flowing both ways. `outcome: 'ok'` \| `'error'` \| `'timeout'`; `connect_ms` is time from `agent_talk_open` to ready. |
+| `agent_talk_image_shared` | `outcome, ms` | "Share a photo" round trip: upload → `session.commentary.append` spoken. `outcome: 'ok'` \| `'error'` \| `'quota'`. |
+| `agent_talk_ended` | `reason, billed_s` | Talk room closed. `reason` mirrors `agent_live_sessions.end_reason` (`slot_complete`, `customer_end`, `disconnect_timeout`, `provider_error`, `capacity`, `platform_error`, `emergency_stop`, `no_show`). |
+| `agent_memory_forget` | `agent_id` | "Forget me" tapped on the ended card. |
+| `agent_admin_save` | `outcome` | Admin create/patch/publish. `outcome: 'ok'` \| `'error'` \| `'refused'` (non-admin, 403 `agent_admin_only`). |
+| `agent_kb_upload` | `outcome, bytes` | Admin knowledge-base file upload. `outcome: 'ok'` \| `'error'`. Never the filename or file content. |
+
+### Worker (`track()`)
+
+| Event | Props | Note |
+|---|---|---|
+| `agent_session_start` | `outcome, reason, agent_id` | Room DO attempts the provider session at `starts_at`. `outcome: 'ok'` \| `'refused'` \| `'error'`; `reason` names the gate that refused (`agentTalkEnabled`, `agentEmergencyStop`, missing key/admin/secret, capacity). |
+| `agent_openai_error` | `code` | Any non-2xx / socket error from the OpenAI Live or Responses API. `code` is the provider's error code/class, never the raw message body. |
+| `agent_capacity_refused` | — | `AgentSeatAuthorityDO` refused a reservation (agent or platform cap). |
+| `agent_session_settled` | `outcome, gross, refund, billed_s` | **Ship-manifest success value.** Fires once per booking when `agent_live_decisions` is written. `outcome` is the decision outcome enum: `completed_full` \| `no_show` \| `cancelled_by_customer_early` \| `refunded_platform_failure`. `gross`/`refund` are token amounts (never `$`, per CLAUDE.md's token rule). |
+| `agent_memory_written` | `facts_n` | Summariser wrote `agent_live_user_memory`. Count only — never fact text. |
+| `agent_money_job` | `kind, state, attempts` | Every `agent_live_money_jobs` transition (`refund` \| `release` \| `erase` \| `summarise`; `pending` \| `running` \| `done` \| `needs_attention`). |
+| `$ai_generation` | `$ai_model, $ai_provider, $ai_input_tokens, $ai_output_tokens, $ai_total_cost_usd, $ai_trace_id` | Emitted at the summariser call and the vision (`describe_shared_image`) call on `agent.backend_model`, mirroring the existing `reception_room_cf.ts` pattern. |
+
+### Ship manifest
+
+`tool/ship_manifest.json` entry `AGENT-LIVE-1`: `two_sided:false`, flags
+`agentListingsEnabled, agentCheckoutEnabled, agentTalkEnabled`. Success:
+`agent_talk_ready.outcome == 'ok'` from **≥ 2 distinct persons** (the admin
+test call is one; a real second customer booking via the `/j/` link is the
+other — an admin-only pass does not count, per the ship gate's "two phones
+before the word shipped" rule) and `agent_session_settled.outcome ==
+'completed_full'` **≥ 1** (a real, non-`is_test` booking that paid out).

@@ -41,7 +41,8 @@ interface JoinLinkResponse {
   ticket: string;
   ticket_kind?: string;
   destination: string;
-  destination_kind?: 'live' | 'consult';
+  // [AGENT-LIVE-1 M9] 'agent' → `/talk/<bookingId>`, the AI voice agent talk room.
+  destination_kind?: 'live' | 'consult' | 'agent';
   account_email_masked?: string | null;
 }
 
@@ -51,7 +52,7 @@ type Phase = 'opening' | 'expired' | 'invalid' | 'error';
 function safeDestination(raw: string | null | undefined): string | null {
   const v = (raw ?? '').trim();
   if (!v || v.startsWith('//')) return null;
-  return /^\/(?:live|session|consult)\/[A-Za-z0-9._~:-]{1,128}$/.test(v) ? v : null;
+  return /^\/(?:live|session|consult|talk)\/[A-Za-z0-9._~:-]{1,128}$/.test(v) ? v : null;
 }
 
 const ctaClass =
@@ -96,7 +97,8 @@ function Inner({ token }: { token: string }) {
         capture('join_link_opened', { kind: 'unknown', outcome: 'invalid', reason: 'bad_destination' });
         return;
       }
-      const kind = res.destination_kind ?? (destination.startsWith('/live/') ? 'live' : 'consult');
+      const kind = res.destination_kind
+        ?? (destination.startsWith('/live/') ? 'live' : destination.startsWith('/talk/') ? 'agent' : 'consult');
       if (!cancelled) setMasked(res.account_email_masked ?? null);
 
       try {

@@ -133,6 +133,13 @@ SYNC_CONV_CURSOR_V2 = "1"
 # cross-device recovery. Staging explicitly remains dark in its own vars.
 CHAT_ARCHIVE_V2 = "1"
 
+# [AGENT-LIVE-1] Comma-separated Clerk uid(s) allowed to create/edit/publish AI
+# voice agent listings (D2). Empty until the coordinator resolves
+# hdavy2002@gmail.com to a single verified uid per R2 §7.1 and fills this in
+# at rollout — until then laneGate/talkGate fail closed with
+# agent_admin_unconfigured (worker/src/lib/agent_live/gate.ts).
+AGENT_ADMIN_UIDS = "user_3AuqQadIDHJftJtTkLD0DtKM8MB"  # hdavy2002@gmail.com — resolved 2026-09-13 via users.email_hash; sole agent admin
+
 # ---------------------------------------------------------------------------
 # D1 — the database (Golden Rule 1). Four logical databases at launch.
 # Relay starts single; sharding router (src/db/shard.ts) can fan to 16 later.
@@ -506,6 +513,20 @@ class_name = "DialerGateDO"
 name = "CAMPAIGN_DO"
 class_name = "CampaignDO"
 
+# [AGENT-LIVE-1] Single global seat/capacity authority (idFromName('global'))
+# for AI voice agent bookings. DARK behind agentListingsEnabled/agentCheckoutEnabled
+# (routes/config.ts). Specs/SPEC-2026-09-12-AGENT-LIVE-1-BUILD.md §4.
+[[durable_objects.bindings]]
+name = "AGENT_SEAT_AUTHORITY"
+class_name = "AgentSeatAuthorityDO"
+
+# [AGENT-LIVE-1] Per-booking live room DO (idFromName(bookingId)) bridging the
+# browser WebSocket to the OpenAI gpt-live-1 realtime session. DARK behind
+# agentTalkEnabled (routes/config.ts). Specs/SPEC-2026-09-12-AGENT-LIVE-1-BUILD.md §4.
+[[durable_objects.bindings]]
+name = "AGENT_LIVE_ROOMS"
+class_name = "AgentLiveRoom"
+
 # [DYNW-CORE-1] Dynamic Workers loader (Specs/PROPOSAL-DYNAMIC-WORKERS-2026-07-28.md).
 # Lets this Worker spin up sandboxed child Workers at runtime. DARK behind
 # `dynamicWorkersEnabled` (routes/config.ts); the ONLY consumer is lib/dynw/host.ts.
@@ -631,6 +652,10 @@ new_sqlite_classes = ["ConferenceRoomDO"]
 tag = "v23"
 new_sqlite_classes = ["MessengerCallBillingDO"]
 
+[[migrations]]
+tag = "v24"
+new_sqlite_classes = ["AgentSeatAuthorityDO", "AgentLiveRoom"]
+
 # Brain reasoning + observability config (vars; secrets set via wrangler):
 #   BRAIN_REASONER_MODEL  — default @cf/meta/llama-3.1-8b-instruct-fp8 (8B)
 #   POSTHOG_QUERY_HOST    — https://us.posthog.com (investigate reads)
@@ -660,6 +685,9 @@ custom_domain = true
 
 [env.staging.vars]
 CHAT_ARCHIVE_V2 = "0"
+# [AGENT-LIVE-1] Empty until the coordinator resolves the admin uid for staging
+# per R2 §7.1 — see the top-level [vars] AGENT_ADMIN_UIDS comment.
+AGENT_ADMIN_UIDS = ""
 TEST_CLOCK_ALLOWED = "1"   # Phase 7 A2 — refund-engine test clock (staging ONLY)
 # [STAGING-ISOLATION-1] TAGS PostHog events with the environment (Phase-1 audit A1).
 ENVIRONMENT_NAME = "staging"
@@ -1007,6 +1035,18 @@ class_name = "DialerGateDO"
 name = "CAMPAIGN_DO"
 class_name = "CampaignDO"
 
+# [AGENT-LIVE-1] Single global seat/capacity authority (mirrored from prod).
+# DARK behind agentListingsEnabled/agentCheckoutEnabled.
+[[env.staging.durable_objects.bindings]]
+name = "AGENT_SEAT_AUTHORITY"
+class_name = "AgentSeatAuthorityDO"
+
+# [AGENT-LIVE-1] Per-booking live room DO (mirrored from prod). DARK behind
+# agentTalkEnabled.
+[[env.staging.durable_objects.bindings]]
+name = "AGENT_LIVE_ROOMS"
+class_name = "AgentLiveRoom"
+
 [[env.staging.migrations]]
 tag = "v1"
 new_sqlite_classes = ["CallRoom"]
@@ -1104,3 +1144,7 @@ new_sqlite_classes = ["ConferenceRoomDO"]
 [[env.staging.migrations]]
 tag = "v23"
 new_sqlite_classes = ["MessengerCallBillingDO"]
+
+[[env.staging.migrations]]
+tag = "v24"
+new_sqlite_classes = ["AgentSeatAuthorityDO", "AgentLiveRoom"]

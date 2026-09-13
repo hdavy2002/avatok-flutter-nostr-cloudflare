@@ -19,10 +19,16 @@ import { apiError, captureException } from './analytics';
 // `identity`, `affiliate` etc. untouched while still collapsing real ids.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ID_LIKE_RE = /^[A-Za-z][A-Za-z0-9_-]*\d[A-Za-z0-9_-]{5,}$/; // has a digit, 7+ chars
+// [AGENT-LIVE-1 M10] A join-link token is attacker-adjacent secret material —
+// it must never sit in a PostHog `endpoint` property even once, not just get
+// collapsed after the first sighting. It also isn't guaranteed to satisfy
+// ID_LIKE_RE (no digit requirement on a token), so it needs its own rule
+// ahead of the generic per-segment pass below.
+const JOIN_LINK_RE = /^\/api\/join-link\/[^/]+\/session$/;
 function normalizeEndpoint(path: string): string {
-  return path
-    .replace(/^https?:\/\/[^/]+/, '')
-    .split('?')[0]
+  const clean = path.replace(/^https?:\/\/[^/]+/, '').split('?')[0];
+  if (JOIN_LINK_RE.test(clean)) return '/api/join-link/:token/session';
+  return clean
     .split('/')
     .map((seg) => (UUID_RE.test(seg) || ID_LIKE_RE.test(seg) ? ':id' : seg))
     .join('/');

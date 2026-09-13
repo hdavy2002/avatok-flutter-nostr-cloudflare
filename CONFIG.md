@@ -45,3 +45,52 @@ RealtimeKit org key) live only in Cloudflare Worker secrets / the gitignored
 ## App
 - Android applicationId: `ai.avatok.avatok_call`
 - Direct test APK: GitHub release `calltest-latest`
+
+## Razorpay — ⚠️ PRODUCTION IS RUNNING IN **TEST MODE** (2026-09-13)
+
+**`razorpayEnabled=true` in prod KV, with `rzp_test_…` keys.** Production buyers are
+offered a Razorpay button that ONLY accepts Razorpay's test cards — a real card will be
+declined. This is deliberate, for testing; it must be switched to live keys or switched
+off before any real buyer is pointed at it.
+
+- Key id (public, test): `rzp_test_TbM0H5hnewQZR5`. Key secret and
+  `RAZORPAY_WEBHOOK_SECRET` are Worker secrets on `avatok-api` and are mirrored in the
+  gitignored `secrets/secret-values.env` — never here.
+- Webhook endpoint the dashboard must point at:
+  `https://api.avatok.ai/api/pay/razorpay/webhook`
+  (events: `payment.captured`, `payment.failed`, `order.paid`, `refund.processed`).
+- Test cards: success `4111 1111 1111 1111`, any future expiry, any CVV, OTP `1111`.
+  Test UPI success `success@razorpay`, failure `failure@razorpay`.
+- Switch the rail off again with:
+  `ALLOW_PROD=1 scripts/flags.sh set razorpayEnabled=false`
+- Going live later is only: new keys into `wrangler secret put RAZORPAY_KEY_ID/…SECRET`,
+  a new webhook + secret in live mode, and nothing in the code changes.
+
+See `Specs/REPORT-2026-09-13-RAZORPAY-WIRE-UP.md`.
+
+## Remote config flags — AI voice agent listings (`[AGENT-LIVE-1]`, 2026-09-12)
+
+Declared in `PlatformConfig` + `DEFAULTS` in `worker/src/routes/config.ts` per
+`Specs/SPEC-2026-09-12-AGENT-LIVE-1-BUILD.md` §2 — not secrets, flip with
+`scripts/flags.sh set <key>=<value>` per the CLAUDE.md flags rules (never
+re-materialize the whole blob; obey `.avatok-target`).
+
+| Flag | Type | Default |
+|---|---|---|
+| `agentListingsEnabled` | bool | `false` |
+| `agentCheckoutEnabled` | bool | `false` |
+| `agentTalkEnabled` | bool | `false` |
+| `agentEmergencyStop` | bool | `false` |
+| `agentImageReadingEnabled` | bool | `true` |
+| `agentMemoryEnabled` | bool | `true` |
+| `agentLiveModel` | string | `gpt-live-1` |
+| `agentBackendModel` | string | `gpt-6-astra` |
+| `agentSlotMinutes` | string | `5,10,20,30,40,60` |
+| `agentPlatformMaxConcurrent` | number | `20` |
+| `agentMinPricePerMin` | number | `10` |
+
+Server-only env (not a flag, `worker/src/types.ts` `Env`): `OPENAI_API_KEY?`,
+`AGENT_ADMIN_UIDS?` (wrangler var — exactly one uid, resolved from
+`hdavy2002@gmail.com`; never an email allowlist in remote config),
+`JOIN_LINK_SECRET`, DO bindings `AGENT_SEAT_AUTHORITY` / `AGENT_LIVE_ROOMS`,
+R2 binding `DIGITAL` (existing, private bucket).

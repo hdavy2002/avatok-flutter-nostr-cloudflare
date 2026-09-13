@@ -1865,6 +1865,44 @@ export interface PlatformConfig {
   // Escape hatch: set false in KV to reopen it to every creator. Boolean →
   // NOT in numericKeys. See lib/free_entry_gate.ts for the check itself.
   freeEntryAllowlistOnly: boolean;
+
+  // [AGENT-LIVE-1] AI voice agent listings on GPT-Live-1 (Specs/SPEC-2026-09-12-
+  // AGENT-LIVE-1-BUILD.md §2). Three independently-canaried kill switches per
+  // the pattern above (commercialLive*): listings discovery, checkout/money,
+  // and the live talk lane, so each can be flipped without the others.
+  // Booleans → NOT in numericKeys.
+  agentListingsEnabled: boolean;
+  agentCheckoutEnabled: boolean;
+  agentTalkEnabled: boolean;
+  // [AGENT-LIVE-1] Global kill switch (D12) — checked ahead of the three
+  // above; true refuses quote/checkout/talk regardless of the others.
+  // Boolean → NOT in numericKeys.
+  agentEmergencyStop: boolean;
+  // [AGENT-LIVE-1] Whether the photo side-channel (D4) is offered at all.
+  // Boolean → NOT in numericKeys.
+  agentImageReadingEnabled: boolean;
+  // [AGENT-LIVE-1] Whether per-(agent,buyer) memory (D6) is loaded/written.
+  // Boolean → NOT in numericKeys.
+  agentMemoryEnabled: boolean;
+  // [AGENT-LIVE-1] OpenAI realtime model id for the live voice session (D3).
+  // String → NOT in numericKeys; declared in stringKeys below.
+  agentLiveModel: string;
+  // [AGENT-LIVE-1] OpenAI model id for the backend/vision/summariser calls
+  // (D3). String → NOT in numericKeys; declared in stringKeys below.
+  agentBackendModel: string;
+  // [AGENT-LIVE-1] Comma-separated subset of the 5/10/20/30/40/60-minute slot
+  // grid (D9) offered at checkout — parsed by lib/agent_live/gate.ts
+  // slotMinutesFrom(). String → NOT in numericKeys; declared in stringKeys.
+  agentSlotMinutes: string;
+  // [AGENT-LIVE-1] Platform-wide concurrent AI voice session cap enforced by
+  // AgentSeatAuthorityDO (D8), independent of each agent's own max_concurrent.
+  // NUMERIC → it MUST also appear in `numericKeys` below or
+  // `flags.sh set agentPlatformMaxConcurrent=20` 400s `bad type`.
+  agentPlatformMaxConcurrent: number;
+  // [AGENT-LIVE-1] Floor on price_per_min (tokens = ₹) an admin may set when
+  // creating/editing an agent listing. NUMERIC → it MUST also appear in
+  // `numericKeys` below or `flags.sh set agentMinPricePerMin=10` 400s `bad type`.
+  agentMinPricePerMin: number;
 }
 
 // FREE LAUNCH (2026-06-28, owner-locked Specs/FREE-LAUNCH-DIRECTION.md): ship an
@@ -2529,6 +2567,20 @@ const DEFAULTS: PlatformConfig = {
   listingSlotsEnabled: false,
   // [FREE-ENTRY-GATE-1 2026-09-04] fail closed — see interface comment above.
   freeEntryAllowlistOnly: true,
+  // [AGENT-LIVE-1] ship dark — flip in KV per Specs/SPEC-2026-09-12-
+  // AGENT-LIVE-1-BUILD.md once OPENAI_API_KEY / AGENT_ADMIN_UIDS / migrations
+  // are in place for the target environment.
+  agentListingsEnabled: false,
+  agentCheckoutEnabled: false,
+  agentTalkEnabled: false,
+  agentEmergencyStop: false,
+  agentImageReadingEnabled: true,
+  agentMemoryEnabled: true,
+  agentLiveModel: "gpt-live-1",
+  agentBackendModel: "gpt-6-astra",
+  agentSlotMinutes: "5,10,20,30,40,60",
+  agentPlatformMaxConcurrent: 20,
+  agentMinPricePerMin: 10,
 };
 
 /**
@@ -2769,8 +2821,16 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // not listed.)
     "posterVerifyMaxAttempts",
     "posterStyleVersion",
+    // [AGENT-LIVE-1] numeric — must be here or `flags.sh set
+    // agentPlatformMaxConcurrent=20` / `agentMinPricePerMin=10` 400s `bad type`.
+    "agentPlatformMaxConcurrent", "agentMinPricePerMin",
   ]);
-  const stringKeys = new Set(["virtualNumberPrimaryProvider"]);
+  const stringKeys = new Set([
+    "virtualNumberPrimaryProvider",
+    // [AGENT-LIVE-1] string config — must be here or `flags.sh set
+    // agentLiveModel=gpt-live-1` 400s `bad type`.
+    "agentLiveModel", "agentBackendModel", "agentSlotMinutes",
+  ]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);
     if ((k === "paidCalls" || k === "conferenceBillingEnabled") && v !== false) {
@@ -2797,6 +2857,37 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     }
     if (k === "virtualNumberPrimaryProvider" && v !== "vobiz" && v !== "frejun") {
       return json({ error: "virtualNumberPrimaryProvider must be vobiz or frejun" }, 400);
+    }
+    // [AGENT-LIVE-1] bounds validation (BUILD SPEC §2/WS-A).
+    if (k === "agentPlatformMaxConcurrent") {
+      const n = v as number;
+      if (!Number.isInteger(n) || n < 0 || n > 500) {
+        return json({ error: "agentPlatformMaxConcurrent must be an integer 0-500" }, 400);
+      }
+    }
+    if (k === "agentMinPricePerMin") {
+      const n = v as number;
+      if (!Number.isInteger(n) || n < 1 || n > 100000) {
+        return json({ error: "agentMinPricePerMin must be an integer 1-100000" }, 400);
+      }
+    }
+    if (k === "agentSlotMinutes") {
+      const allowed = [5, 10, 20, 30, 40, 60];
+      const parts = String(v).split(",").map((s) => Number(s.trim()));
+      const valid =
+        parts.length > 0 &&
+        parts.every((n) => allowed.includes(n)) &&
+        new Set(parts).size === parts.length &&
+        parts.every((n, i) => i === 0 || n > parts[i - 1]);
+      if (!valid) {
+        return json(
+          { error: "agentSlotMinutes must be a comma-separated, strictly increasing, non-empty subset of 5,10,20,30,40,60" },
+          400,
+        );
+      }
+    }
+    if ((k === "agentLiveModel" || k === "agentBackendModel") && (!(v as string).trim() || (v as string).length > 64)) {
+      return json({ error: `${k} must be a non-empty string of at most 64 characters` }, 400);
     }
     next[k] = v;
   }

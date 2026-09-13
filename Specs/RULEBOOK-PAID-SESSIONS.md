@@ -225,9 +225,55 @@ waiting-room UI still exists in `app/lib/features/consult/consult_room_screen.da
   app" with a deep link. `LiveGsHost.tsx` stays on disk, unmounted, as reference
   only.
 
+## 8. AI voice agent sessions (owner decision 2026-09-12)
+
+**Status: BINDING.** These are the money rules for a paid talk with an AI voice
+agent (`kind='agent'`, GPT-Live-1) — see `Specs/SPEC-2026-09-12-AGENT-LIVE-1-BUILD.md`
+(D7, §11 M7, M12) for the build detail; this section states them in the
+rulebook's voice, the way §§1–4 state the human-creator rules, so a reader who
+knows §§1–4 can read this one the same way.
+
+- **[RULE] The slot is reserved and prepaid, same as a 1:1 consult.** There is
+  no "creator" heartbeat to wait on — the agent IS the provider session, so the
+  question is not "did the creator check in" but "did the platform actually
+  deliver the seat".
+- **[RULE] Full slot charged** when the customer connected during the slot, or
+  never connected but the platform can PROVE full availability for the whole
+  slot (a real no-show, not a platform failure). "Availability" means every
+  piece of M7's evidence is present: the seat leased within 10 s of
+  `starts_at`, `session.started` received, the delegation model answered a
+  readiness probe within 10 s, and heartbeats every 30 s with no gap over 90 s
+  and no provider error until `ends_at`.
+- **[RULE] 100% refund** on any platform or provider failure, or whenever that
+  evidence is missing or uncertain — same "fail closed, refund in full"
+  posture as C4/L6 above. A no-show with incomplete evidence is a refund, not
+  a charge: the burden is on the platform to prove the seat was live, not on
+  the customer to prove it wasn't.
+- **[RULE] Cancel ≥ 10 minutes before `starts_at` → 100% refund.** Cancel later
+  than that → the full slot is charged, exactly as if the customer had simply
+  not shown up to a live seat. There is no grace window inside the 10 minutes.
+- **[RULE] No pro-rata anywhere in this lane**, same as §1/§2's rule for human
+  sessions — a partial talk is billed as the full slot or refunded in full,
+  never split by elapsed seconds.
+- **[RULE] The creator of an agent listing is the agent admin** (the sole
+  `AGENT_ADMIN_UIDS` account) — the 80/20 split (creator/platform) applies to
+  the admin's wallet exactly as it would to any other creator's.
+- **[RULE] Admin test calls never settle.** A test call (`is_test=1`) moves no
+  money in either direction — no hold, no charge, no refund, no release — same
+  spirit as never charging a creator for their own session. Acceptance for
+  this lane is split accordingly: an admin test proves audio/image plumbing
+  only; `completed_full` settlement is proven only on a real, paid, non-test
+  booking.
+- **[RULE] Memory is kept until the customer says Forget me.** A per-agent,
+  per-buyer memory row persists across sessions (summary, facts, open
+  threads) the same way a creator might remember a returning client, until
+  the customer explicitly erases it — at which point it is blanked, not
+  merely hidden, and any in-flight write against the old state is rejected.
+
 ## Changes
 
 - 2026-09-11 — created from the owner's rules stated in the session-pipeline audit.
 - 2026-09-11 (v2) — owner replaced the pro-rata/ring-answer model with the prepaid waiting-room model: full price once the creator checks in within 20 min, full refund otherwise; media auto-connects on DO presence. §2 and §3 rewritten; §6 questions 1 and 4 withdrawn.
 - 2026-09-11 (v3) — §6 question 5 answered by the coordinator and recorded in §3 as a [RULE]: the creator waits in the DO room by default and media opens only when both parties are present; waiting inside the call stays a creator-side option. Question 5 struck from §6.
 - 2026-09-12 (v4) — owner decision "ALL transmission is from the app" recorded as a new §7: creators transmit only from the app (live + 1:1); the browser is customer-only (view, listen, talk, chat, upload); a customer needs only a verified email + payment, never an account or a dashboard; onboarding is app-only. §5 gains a matching prohibition on browser hosting/green-room/backstage surfaces. Shipped as `[APP-ONLY-TX-1]`.
+- 2026-09-12 (v5) — new §8 "AI voice agent sessions" for `[AGENT-LIVE-1]`: full slot charged on a connected call or a fully-evidenced no-show, 100% refund on any platform/provider failure or missing evidence, cancel ≥10 min before start = 100% refund (later = full charge), no pro-rata, creator = the sole agent admin at the usual 80/20 split, admin test calls never settle, memory kept until Forget me. States BUILD SPEC D7 / §11 M7 / M12 in the rulebook's own voice.

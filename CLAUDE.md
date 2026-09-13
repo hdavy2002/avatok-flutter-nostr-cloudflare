@@ -400,6 +400,29 @@ user-facing real-time media.
 
 ---
 
+## 🤖 AI VOICE AGENT LISTINGS — `[AGENT-LIVE-1]` (2026-09-12)
+
+AvaTOK sells paid live talks with an AI voice agent (`kind='agent'`, section
+`ai_voice_agents`) on OpenAI's `gpt-live-1`, delegating reasoning to
+`gpt-6-astra`. Canonical spec, build first: **`Specs/SPEC-2026-09-12-AGENT-LIVE-1-BUILD.md`**
+(money rules also live in `Specs/RULEBOOK-PAID-SESSIONS.md` §8). Five things bite:
+
+1. **Only `AGENT_ADMIN_UIDS` can create/edit/publish agents — it is a Worker env
+   var, not a remote-config flag.** Never move agent-admin gating into KV/config.
+2. **GPT-Live-1 has no image input.** Photos never go to the live model directly —
+   they go through the vision side channel (upload → `DIGITAL` → a Responses API
+   vision call on the backend model → spoken commentary).
+3. **`agl_` orders move money ONLY via `agent_live_decisions` + `agent_live_money_jobs`.**
+   Never `worker/src/routes/admin_money.ts` and never a bare `release()` — those
+   are rejected for `agl_` orders on purpose (BUILD SPEC §11 M1/M6).
+4. **Every customer artifact (transcripts, uploaded photos, KB files) lives in
+   the private `DIGITAL` R2 bucket — never `BLOBS`.**
+5. **The seat authority DO (`AgentSeatAuthorityDO`) is the only thing that knows
+   whether a slot is free.** Never infer availability by counting D1 rows —
+   `agent_live_bookings` is a projection, not the source of truth.
+
+---
+
 ## 📕 PAID-SESSION RULEBOOK — READ BEFORE TOUCHING CALLS OR SESSIONS (owner decision 2026-09-11)
 
 **`Specs/RULEBOOK-PAID-SESSIONS.md` is the single source of the customer-side and

@@ -207,6 +207,60 @@ export async function refund(env: Env, orderId: string, uid: string, amount: num
 }
 
 /**
+ * [AGENT-LIVE-1 / M1] Read-only lookup of a previously recorded WalletDO op
+ * result by opId — never mutates, never re-applies. Used by agent-live money
+ * job recovery (refund/release retries) so a lost response is not mistaken
+ * for "nothing happened" (R2 §2.6/§2.3: an empty escrow after a lost refund
+ * response is not failure).
+ */
+export async function walletOpResult(env: Env, uid: string, opId: string): Promise<{ found: boolean; result: any }> {
+  const r = await walletOp(env, uid, { op: "op_result", uid, op_id: opId });
+  if (r.status !== 200) return { found: false, result: null };
+  return { found: !!r.body?.found, result: r.body?.result ?? null };
+}
+
+export interface FrozenRelease {
+  orderId: string;
+  beneficiaryUid: string;
+  gross: number;
+  fee: number;
+  net: number;
+  title?: string;
+}
+
+/**
+ * [AGENT-LIVE-1 / M1] Exact-settlement adapter for agent-live bookings. Unlike
+ * `release()`, this NEVER reads `escrowBalance` and NEVER recomputes gross/
+ * fee/net — every amount is frozen on the immutable `agent_live_decisions`
+ * row and passed in by the caller (worker/src/lib/agent_live/money.ts). It
+ * replays the SAME two legs `release()` uses (creator earn + platform fee),
+ * with the SAME op ids (`rel:<orderId>` / `fee:<orderId>`), so a retry after a
+ * partial success (creator leg landed, fee leg lost) reissues only the
+ * missing leg with the ORIGINAL numbers rather than recomputing anything from
+ * residual escrow. Idempotent: WalletDO's own op_id dedupe makes a repeated
+ * `earn` call a no-op replay, and the fee leg's ledger row id is the queue
+ * consumer's own dedupe key.
+ */
+export async function releaseExact(env: Env, d: FrozenRelease): Promise<LedgerResult> {
+  if (!(d.gross > 0) || !(d.fee >= 0) || !(d.net >= 0) || d.fee + d.net !== d.gross) {
+    return { ok: false, status: 400, body: { error: "invalid frozen release amounts", d } };
+  }
+  const relOpId = `rel:${d.orderId}`;
+  const feeOpId = `fee:${d.orderId}`;
+  const feeRate = d.gross > 0 ? d.fee / d.gross : 0;
+  const meta = { title: d.title ?? null, gross: d.gross, fee: d.fee, net: d.net, fee_rate: feeRate, counterpart: d.beneficiaryUid };
+  const r = await walletOp(env, d.beneficiaryUid, {
+    op: "earn", uid: d.beneficiaryUid, amount: d.net, commission: d.fee, app_name: "agent_live", ref: d.orderId, op_id: relOpId,
+    ledger: { debit: acctEscrow(d.orderId), credit: acctUser(d.beneficiaryUid), type: "escrow_release", ref: d.orderId, meta: JSON.stringify(meta) },
+  });
+  if (r.status !== 200) return { ok: false, status: r.status, body: r.body };
+  if (d.fee > 0) {
+    await sendLedgerRow(env, feeOpId, acctEscrow(d.orderId), ACCT_PLATFORM_FEES, d.fee, "fee", d.orderId, { title: d.title ?? null, gross: d.gross, fee_rate: feeRate });
+  }
+  return { ok: true, status: 200, body: { ok: true, orderId: d.orderId, gross: d.gross, net: d.net, fee: d.fee, ...r.body } };
+}
+
+/**
  * donation — Phase 7 live tips (universal §4): instant to the creator (NO
  * escrow, NO 7-day hold — it's a gift, not a deliverable), minus the 20%
  * platform fee. Three balanced rows: buyer→creator gross (type donation),

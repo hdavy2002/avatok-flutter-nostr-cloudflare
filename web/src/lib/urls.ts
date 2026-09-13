@@ -35,6 +35,11 @@ export function joinPath(token: string): string {
   return `/j/${encodeURIComponent(token)}`;
 }
 
+/** [AGENT-LIVE-1] The AI voice agent talk room for a booking. */
+export function talkPath(bookingId: string): string {
+  return `/talk/${encodeURIComponent(bookingId)}`;
+}
+
 /**
  * [APP-ONLY-TX-1 2026-09-12] Creator-side deep link into the avaTOK app.
  *

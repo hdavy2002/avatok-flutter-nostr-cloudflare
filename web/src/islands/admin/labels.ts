@@ -47,7 +47,7 @@ const SECTION: Record<string, string> = {
   consulting: 'Book their time',
   astro_tarot: 'Astrology & tarot',
   glow_up: 'Style & glow-up',
-  ai_voice_agents: 'Voice agents (retired)',
+  ai_voice_agents: 'AI voice agents',
   other: 'Other',
 };
 

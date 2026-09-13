@@ -37,6 +37,17 @@ const POSTHOG_OWN_KEYS = new Set(['token']);
 // the surrounding message stays readable.
 const LONG_DIGIT_RUN_RE = /\d{7,}/g;
 
+// [AGENT-LIVE-1 M9/M10] A join-link token is single-use identity material —
+// `/j/<token>` must never reach PostHog even once, in ANY property, including
+// the `$…` ones (`$current_url`, `$pathname`, `$referrer`) that the digit-run
+// scrub below deliberately leaves alone (see the comment on that skip). This
+// runs on every string value before that key-based branching, so it can't be
+// bypassed by a property name starting with `$`.
+const JOIN_LINK_PATH_RE = /\/j\/[^/?#"'\s]+/g;
+function redactJoinLinkToken(v: unknown): unknown {
+  return typeof v === 'string' ? v.replace(JOIN_LINK_PATH_RE, '/j/[token]') : v;
+}
+
 function scrubValue(v: unknown): unknown {
   if (typeof v === 'string') return v.replace(LONG_DIGIT_RUN_RE, '[redacted]');
   return v;
@@ -47,13 +58,23 @@ function scrubProps(props: Properties | undefined | null): Properties | undefine
   const out: Properties = {};
   for (const [k, v] of Object.entries(props)) {
     if (!POSTHOG_OWN_KEYS.has(k) && SENSITIVE_KEY_RE.test(k)) continue; // drop entirely
+    const noToken = redactJoinLinkToken(v);
     // PostHog's own `$…` props, the git SHA and ids are not phone numbers —
     // redacting digit runs there broke `release` filtering on day one.
     out[k] = k.startsWith('$') || k === 'release' || k === 'token' || k.endsWith('_id') || k === 'distinct_id'
-      ? v
-      : scrubValue(v);
+      ? noToken
+      : scrubValue(noToken);
   }
   return out;
+}
+
+// [AGENT-LIVE-1 M10] `/j/<token>` and `/talk/<bookingId>` are private,
+// single-purpose surfaces — a session replay of either would show a real
+// person's booking flow to anyone who could pull the recording. Checked at
+// init time (Astro is an MPA: every one of these pages is a fresh document
+// load, so a fresh `initAnalytics()` call always sees the real path).
+function isPrivacySensitivePath(pathname: string): boolean {
+  return pathname.startsWith('/j/') || pathname.startsWith('/talk/');
 }
 
 // ── §2.1 `app` derivation from the URL path — matches the Worker's app_name. ─
@@ -126,6 +147,8 @@ export function initAnalytics(): void {
   const key = (import.meta.env.PUBLIC_POSTHOG_KEY as string | undefined) || DEFAULT_KEY;
   const host = (import.meta.env.PUBLIC_POSTHOG_HOST as string | undefined) || DEFAULT_HOST;
   const release = (import.meta.env.PUBLIC_RELEASE_SHA as string | undefined) || 'dev';
+  // [AGENT-LIVE-1 M10] No replay on a join link or a talk room.
+  const sensitivePage = isPrivacySensitivePath(window.location.pathname);
 
   posthog.init(key, {
     api_host: host,
@@ -135,6 +158,7 @@ export function initAnalytics(): void {
     rageclick: true,
     capture_dead_clicks: true,
     capture_exceptions: true,
+    disable_session_recording: sensitivePage,
     session_recording: {
       maskAllInputs: true,
       maskTextSelector: '*',
@@ -145,7 +169,19 @@ export function initAnalytics(): void {
     // the app's server-controlled rollout — no client-side dice roll needed.
     persistence: 'localStorage+cookie',
     cross_subdomain_cookie: false,
-    loaded: () => registerResponsiveSuperProps(),
+    loaded: (ph) => {
+      registerResponsiveSuperProps();
+      // Belt-and-braces on top of `disable_session_recording` above — a
+      // config option can change shape across posthog-js versions, an
+      // explicit stop call cannot silently stop working.
+      if (sensitivePage) {
+        try {
+          ph.stopSessionRecording();
+        } catch {
+          /* best-effort */
+        }
+      }
+    },
     before_send: (event) => {
       if (!event) return event;
       if (event.properties) {

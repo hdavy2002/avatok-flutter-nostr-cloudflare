@@ -22,6 +22,10 @@ import AuthBridgeIsland from '../islands/auth/AuthBridge';
 // outcome, entirely inside the reviews section. See the island for why the
 // eligibility check is the server's and not this page's.
 import LeaveReviewIsland from '../islands/listing/LeaveReview';
+// [AGENT-LIVE-1] The agent-kind booking flow (duration chips, Talk now / Pick a
+// time, quote → book → /talk/<id>) — a dedicated island because an AI voice
+// agent has no calendar, no seat count and no legacy vanilla-JS booking script.
+import AgentBookingBoxIsland from '../islands/agent-live/AgentBookingBox';
 import { inrOrFree } from '../lib/money';
 import { API_BASE, cfImage } from '../lib/config';
 import { durationLabel, languageLabel, recurrenceLabel, timePillLabel, scheduleStateOf } from '../lib/card';
@@ -383,6 +387,13 @@ const offeredSlots = !bookingOpen
       : [];
 
 const clientConfig = {
+  // [AGENT-LIVE-1] The vanilla-JS calendar/qty/book-cta script below writes
+  // straight into `#cal-grid`/`#qty-section`/`#book-cta-area`/… by id; those
+  // elements don't exist in the DOM for an agent listing (AgentBookingBox
+  // renders in their place). `kind` lets that script skip the calls that
+  // would otherwise throw on a null element and abort the rest of its own
+  // <script> block (favourites, reviews, browse rail included).
+  kind: listing.kind ?? null,
   ctaColor,
   isLive,
   countdownActive,
@@ -632,66 +643,79 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
         )}
         <div class="booking-card__body">
           <div class="booking-card__head">
-            <span class="section-title section-title--sm">Book a seat</span>
-            <span class="booking-card__unit-price">{priceLine}{!isFree && priceUnitLabel}</span>
-          </div>
-
-          {!bookingOpen && (
-            <div class="show-closed" role="status">
-              <p class="show-closed__title">{closedTitle}</p>
-              <p class="show-closed__line">{closedLine}</p>
-              {hostHref && <a class="btn btn--cta btn--block show-closed__cta" href={hostHref} style={`background:${ctaColor}`}>More from {hostName}</a>}
-              <a class="link-btn show-closed__browse" href="/marketplace">Browse shows on avaTOK →</a>
-            </div>
-          )}
-          <div class="booking-controls" style={bookingOpen ? undefined : 'display:none'}>
-          <div class="calendar">
-            <div class="calendar__nav">
-              <button type="button" id="cal-prev" class="round-btn">‹</button>
-              <span id="cal-month-label" class="calendar__month"></span>
-              <button type="button" id="cal-next" class="round-btn">›</button>
-            </div>
-            <div class="calendar__dow">
-              <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
-            </div>
-            <div id="cal-grid" class="calendar__grid"></div>
-            <div class="calendar__legend">● = SHOW DAY</div>
-          </div>
-
-          <div class="slots">
-            <div id="slot-head" class="slots__head"></div>
-            <div id="slots-list" class="slots__list"></div>
-          </div>
-
-          <div id="qty-section" class="qty-row">
-            <span class="qty-row__label">HOW MANY SEATS?</span>
-            <div class="qty-row__controls">
-              <button type="button" id="qty-minus" class="round-btn">−</button>
-              <span id="qty-value" class="qty-row__value">1</span>
-              <button type="button" id="qty-plus" class="round-btn">+</button>
-            </div>
-          </div>
-
-          <div id="price-summary" class="price-box">
-            <div id="price-rows"></div>
-            <span class="price-box__footnote">THAT'S IT. NO SURPRISES AT CHECKOUT.</span>
-          </div>
-
-          <div id="book-cta-area">
-            <button type="button" id="book-btn" class="btn btn--cta btn--block"></button>
-            <div class="book-cta-area__footnote">FREE CANCEL UP TO 24 HRS BEFORE THE SHOW<br />NO AUTO-RENEW · NO HIDDEN FEES</div>
-          </div>
-          </div>
-
-          <div id="booked-panel" class="booked-panel">
-            <div class="booked-panel__title">Seat locked! ✓</div>
-            <p id="booked-line" class="booked-panel__line"></p>
-            {isLive && (
-              <button type="button" class="btn btn--cta js-join-btn booked-panel__join">▸ Join the show now</button>
+            <span class="section-title section-title--sm">{listing.kind === 'agent' ? 'Talk to her' : 'Book a seat'}</span>
+            {listing.kind !== 'agent' && (
+              <span class="booking-card__unit-price">{priceLine}{!isFree && priceUnitLabel}</span>
             )}
-            <p id="booked-note" class="booked-panel__note"></p>
-            <button type="button" id="unbook-btn" class="link-btn link-btn--light">CHANGE / CANCEL BOOKING</button>
           </div>
+
+          {listing.kind === 'agent' ? (
+            /* [AGENT-LIVE-1] The vanilla-JS calendar/qty/book-cta machinery
+             * above is for seated shows; an AI voice agent has no calendar and
+             * no seat count. Swap the whole booking body for the dedicated
+             * island — duration chips, Talk now / Pick a time, quote → book →
+             * `/talk/<id>`. See web/src/islands/agent-live/AgentBookingBox.tsx. */
+            <AgentBookingBoxIsland client:load listingId={listing.id} />
+          ) : (
+            <>
+              {!bookingOpen && (
+                <div class="show-closed" role="status">
+                  <p class="show-closed__title">{closedTitle}</p>
+                  <p class="show-closed__line">{closedLine}</p>
+                  {hostHref && <a class="btn btn--cta btn--block show-closed__cta" href={hostHref} style={`background:${ctaColor}`}>More from {hostName}</a>}
+                  <a class="link-btn show-closed__browse" href="/marketplace">Browse shows on avaTOK →</a>
+                </div>
+              )}
+              <div class="booking-controls" style={bookingOpen ? undefined : 'display:none'}>
+              <div class="calendar">
+                <div class="calendar__nav">
+                  <button type="button" id="cal-prev" class="round-btn">‹</button>
+                  <span id="cal-month-label" class="calendar__month"></span>
+                  <button type="button" id="cal-next" class="round-btn">›</button>
+                </div>
+                <div class="calendar__dow">
+                  <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+                </div>
+                <div id="cal-grid" class="calendar__grid"></div>
+                <div class="calendar__legend">● = SHOW DAY</div>
+              </div>
+
+              <div class="slots">
+                <div id="slot-head" class="slots__head"></div>
+                <div id="slots-list" class="slots__list"></div>
+              </div>
+
+              <div id="qty-section" class="qty-row">
+                <span class="qty-row__label">HOW MANY SEATS?</span>
+                <div class="qty-row__controls">
+                  <button type="button" id="qty-minus" class="round-btn">−</button>
+                  <span id="qty-value" class="qty-row__value">1</span>
+                  <button type="button" id="qty-plus" class="round-btn">+</button>
+                </div>
+              </div>
+
+              <div id="price-summary" class="price-box">
+                <div id="price-rows"></div>
+                <span class="price-box__footnote">THAT'S IT. NO SURPRISES AT CHECKOUT.</span>
+              </div>
+
+              <div id="book-cta-area">
+                <button type="button" id="book-btn" class="btn btn--cta btn--block"></button>
+                <div class="book-cta-area__footnote">FREE CANCEL UP TO 24 HRS BEFORE THE SHOW<br />NO AUTO-RENEW · NO HIDDEN FEES</div>
+              </div>
+              </div>
+
+              <div id="booked-panel" class="booked-panel">
+                <div class="booked-panel__title">Seat locked! ✓</div>
+                <p id="booked-line" class="booked-panel__line"></p>
+                {isLive && (
+                  <button type="button" class="btn btn--cta js-join-btn booked-panel__join">▸ Join the show now</button>
+                )}
+                <p id="booked-note" class="booked-panel__note"></p>
+                <button type="button" id="unbook-btn" class="link-btn link-btn--light">CHANGE / CANCEL BOOKING</button>
+              </div>
+            </>
+          )}
         </div>
       </div>
       {masala && (
@@ -1093,24 +1117,31 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
     el.style.color = state.joined === 2 ? '#2d7180' : '#b82a19';
   }
 
-  document.getElementById('cal-prev').onclick = () => {
-    state.calM === 0 ? (state.calM = 11, state.calY--) : state.calM--;
-    state.selD = null; state.booked = false;
-    renderCalendar(); renderSlots(); renderBooking();
-  };
-  document.getElementById('cal-next').onclick = () => {
-    state.calM === 11 ? (state.calM = 0, state.calY++) : state.calM++;
-    state.selD = null; state.booked = false;
-    renderCalendar(); renderSlots(); renderBooking();
-  };
-  document.getElementById('qty-minus').onclick = () => { state.qty = Math.max(1, state.qty - 1); state.booked = false; renderBooking(); };
-  document.getElementById('qty-plus').onclick = () => {
-    const defs = state.selD != null ? slotDefs(state.selD) : [];
-    const cur = defs[state.slot];
-    state.qty = Math.min(cur ? cur.left : 4, Math.min(4, state.qty + 1));
-    state.booked = false; renderBooking();
-  };
-  document.getElementById('unbook-btn').onclick = () => { state.booked = false; state.joined = 0; renderBooking(); renderJoinNote(); };
+  // [AGENT-LIVE-1] None of `#cal-prev`/`#cal-next`/`#qty-minus`/`#qty-plus`/
+  // `#unbook-btn` exist for an agent listing — see the note on `CONFIG.kind`
+  // above. Wiring these unconditionally would throw on the first `.onclick =`
+  // and abort every statement after it in this script, including the
+  // favourite button, reviews and the browse rail below.
+  if (CONFIG.kind !== 'agent') {
+    document.getElementById('cal-prev').onclick = () => {
+      state.calM === 0 ? (state.calM = 11, state.calY--) : state.calM--;
+      state.selD = null; state.booked = false;
+      renderCalendar(); renderSlots(); renderBooking();
+    };
+    document.getElementById('cal-next').onclick = () => {
+      state.calM === 11 ? (state.calM = 0, state.calY++) : state.calM++;
+      state.selD = null; state.booked = false;
+      renderCalendar(); renderSlots(); renderBooking();
+    };
+    document.getElementById('qty-minus').onclick = () => { state.qty = Math.max(1, state.qty - 1); state.booked = false; renderBooking(); };
+    document.getElementById('qty-plus').onclick = () => {
+      const defs = state.selD != null ? slotDefs(state.selD) : [];
+      const cur = defs[state.slot];
+      state.qty = Math.min(cur ? cur.left : 4, Math.min(4, state.qty + 1));
+      state.booked = false; renderBooking();
+    };
+    document.getElementById('unbook-btn').onclick = () => { state.booked = false; state.joined = 0; renderBooking(); renderJoinNote(); };
+  }
 
   document.querySelectorAll('.js-join-btn').forEach((btn) => {
     btn.addEventListener('click', () => { state.joined = state.booked ? 2 : 1; renderJoinNote(); });
@@ -1329,7 +1360,10 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
     tick(); setInterval(tick, 1000);
   }
 
-  renderCalendar(); renderSlots(); renderBooking(); renderJoinNote(); renderReviews(); renderBrowse();
+  // [AGENT-LIVE-1] Same guard as above — none of the three touch a DOM node
+  // that exists for an agent listing.
+  if (CONFIG.kind !== 'agent') { renderCalendar(); renderSlots(); renderBooking(); }
+  renderJoinNote(); renderReviews(); renderBrowse();
 </script>
 
 <script>

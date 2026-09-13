@@ -156,12 +156,9 @@ export const GROUP_META: Readonly<Record<Group, { heading: string; emphasis: str
 };
 
 /**
- * Section -> group. `ai_voice_agents` is deliberately ABSENT — "Voices with
- * character" is removed from the front page and the marketplace (owner
- * decision 2026-09-05), but the section value stays in the SECTIONS union
- * because live rows carry it (see the module header). Absent from this map
- * means `groupFor` returns null for it, which is the correct "renders
- * nowhere" answer, not a bug to fix by adding it here.
+ * Section -> group. `ai_voice_agents` maps to `book_their_time`
+ * ([AGENT-LIVE-1] D1, BUILD SPEC §0/§9) — AI voice agents are booked private
+ * sessions like consults and astro/tarot, so they render in the same group.
  */
 const GROUP_FOR_SECTION: Readonly<Partial<Record<Section, Group>>> = {
   live_streaming: "india_goes_live",
@@ -170,12 +167,13 @@ const GROUP_FOR_SECTION: Readonly<Partial<Record<Section, Group>>> = {
   consulting: "book_their_time",
   astro_tarot: "book_their_time",
   glow_up: "book_their_time",
+  ai_voice_agents: "book_their_time",
 };
 
-/** The group a section renders under, or null when it renders nowhere
- *  (today, only `ai_voice_agents`). Use this rather than re-deriving the
- *  section->group table anywhere else — it is the one place the mapping
- *  from Specs/listing-taxonomy.json lives in the worker. */
+/** The group a section renders under, or null when it renders nowhere.
+ *  Use this rather than re-deriving the section->group table anywhere else
+ *  — it is the one place the mapping from Specs/listing-taxonomy.json lives
+ *  in the worker. */
 export function groupFor(section: string | null | undefined): Group | null {
   return GROUP_FOR_SECTION[section as Section] ?? null;
 }

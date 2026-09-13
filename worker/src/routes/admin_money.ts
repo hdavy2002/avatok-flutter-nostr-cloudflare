@@ -23,6 +23,17 @@ export async function requireAdmin(req: Request, env: Env): Promise<{ uid: strin
   return { uid: ctx.uid };
 }
 
+// [AGENT-LIVE-1 / M6] `agl_*` orders are owned by the agent-live decision
+// authority (worker/src/lib/agent_live/money.ts `decideAndEnqueue`/
+// `runMoneyJob`, ledger.ts `releaseExact`) — an immutable
+// `agent_live_decisions` row freezes the exact split. This generic admin
+// console must not be able to move that escrow through refund/release/hold,
+// which would race the decision authority and could double-spend or
+// contradict the frozen amounts.
+function isAgentLiveOrder(orderId: string | null | undefined): boolean {
+  return typeof orderId === "string" && orderId.startsWith("agl_");
+}
+
 async function audit(env: Env, adminId: string, action: string, target: string | null, meta: object): Promise<void> {
   try {
     await env.DB_WALLET.prepare(
@@ -57,6 +68,7 @@ export async function adminRefund(req: Request, env: Env): Promise<Response> {
   const orderId = String(b.orderId || ""); const amount = Math.trunc(Number(b.amount));
   const reason = String(b.reason || "").trim();
   if (!orderId || !(amount > 0) || !reason) return json({ error: "orderId, amount>0, reason required" }, 400);
+  if (isAgentLiveOrder(orderId)) return json({ error: "agent_decision_required" }, 409);
 
   // Buyer defaults to the debit side of the order's purchase_hold row.
   let uid = String(b.userId || "");
@@ -117,6 +129,7 @@ export async function adminEscrowHold(req: Request, env: Env): Promise<Response>
   const a = await requireAdmin(req, env); if (a instanceof Response) return a;
   const b = (await req.json().catch(() => ({}))) as any;
   if (!b.userId || !b.orderId || !(Number(b.amount) > 0)) return json({ error: "userId, orderId, amount>0 required" }, 400);
+  if (isAgentLiveOrder(String(b.orderId))) return json({ error: "agent_decision_required" }, 409);
   const r = await hold(env, String(b.userId), String(b.orderId), Number(b.amount), { title: b.title, opId: b.opId });
   await audit(env, a.uid, "escrow_hold", String(b.orderId), { uid: b.userId, amount: b.amount, ok: r.ok });
   return json(r.body, r.status);
@@ -126,6 +139,7 @@ export async function adminEscrowRelease(req: Request, env: Env): Promise<Respon
   const a = await requireAdmin(req, env); if (a instanceof Response) return a;
   const b = (await req.json().catch(() => ({}))) as any;
   if (!b.orderId || !b.creatorId) return json({ error: "orderId, creatorId required" }, 400);
+  if (isAgentLiveOrder(String(b.orderId))) return json({ error: "agent_decision_required" }, 409);
   const r = await release(env, String(b.orderId), String(b.creatorId), { title: b.title });
   await audit(env, a.uid, "escrow_release", String(b.orderId), { creator: b.creatorId, ok: r.ok });
   return json(r.body, r.status);

@@ -3,16 +3,41 @@ import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/analytics.dart';
 import '../../core/availability_time.dart';
 import '../../core/avatar.dart';
 import '../../core/listings_api.dart';
+import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/motion/motion.dart';
 import 'creator_channel.dart';
 import 'native_listing_booking_flow.dart';
+
+/// [AGENT-LIVE-1 D1/D11, Specs/SPEC-2026-09-12-AGENT-LIVE-1-BUILD.md §7]
+/// Mirrors `agentSlotMinutes` server default (`5,10,20,30,40,60`,
+/// `worker/src/routes/config.ts` DEFAULTS) — shown as read-only chips when a
+/// card doesn't carry its own `slot_minutes` (today, no `ListingCard` field
+/// does; see `core/listings_api.dart`).
+const List<int> kAgentDefaultSlotMinutes = [5, 10, 20, 30, 40, 60];
+
+/// The durations this agent can be booked for. Reads `attrs['slot_minutes']`
+/// defensively (same pattern as `_howItWorks`'s `content_how_it_works`) in
+/// case a future server ships it there; falls back to the platform default.
+List<int> _agentSlotMinutes(ListingCard l) {
+  final raw = l.attrs['slot_minutes'];
+  if (raw is List) {
+    final mins = raw
+        .whereType<num>()
+        .map((n) => n.toInt())
+        .where((n) => n > 0)
+        .toList();
+    if (mins.isNotEmpty) return mins;
+  }
+  return kAgentDefaultSlotMinutes;
+}
 
 /// [LISTING-EXPIRY-1 / P1-6] Show time in the LISTING's timezone. India has one
 /// fixed offset (+05:30, no DST), so an IST listing is rendered in IST whatever
@@ -104,6 +129,16 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
         related = r.where((x) => x.id != d.listing.id).take(8).toList();
         loading = false;
       });
+      // [AGENT-LIVE-1 §8] `agent_listing_view{agent_id}` — mirrors the web
+      // telemetry catalog entry so an agent's views are comparable across
+      // surfaces, even though this app never lets a session start natively.
+      if (d.listing.kind == 'agent') {
+        Analytics.capture('agent_listing_view', {
+          'agent_id': d.listing.id,
+          'listing_id': d.listing.id,
+          'source': widget.source,
+        });
+      }
     } catch (e) {
       if (mounted)
         setState(() {
@@ -152,6 +187,29 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                 listing: d.listing)));
   }
 
+  /// [AGENT-LIVE-1 D11] The ONLY thing the app ever does for an agent
+  /// listing: hand off to the web. No hold, no quote, no checkout sheet, no
+  /// talk session ever starts natively — those all live behind
+  /// `agentCheckoutEnabled`/`agentTalkEnabled` on the web surface (WS-D/E1/G).
+  Future<void> _talkOnWeb(ListingCard l) async {
+    final startedMs = DateTime.now().millisecondsSinceEpoch;
+    final uri = Uri.parse('https://avatok.ai/l/${l.id}');
+    bool opened = false;
+    try {
+      opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      opened = false;
+    }
+    Analytics.uiInteraction(
+        'agent_talk_on_web_tap', DateTime.now().millisecondsSinceEpoch - startedMs,
+        phase: 'interactive',
+        extra: {'listing_id': l.id, 'agent_id': l.id, 'opened': opened});
+    if (!opened && mounted) {
+      showAdToast(context,
+          message: 'Could not open the browser. Copy the link and try again.');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (loading)
@@ -164,6 +222,33 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                   FilledButton(onPressed: _load, child: const Text('Retry'))));
     }
     final d = detail!;
+    // [AGENT-LIVE-1 §2/§7] Fail closed while the flag is off, including for a
+    // direct `/l/<id>` deep link that skips the browse row entirely — the
+    // browse row isn't the only door into this screen.
+    if (d.listing.kind == 'agent' && !RemoteConfig.agentListingsEnabled) {
+      return Scaffold(
+          backgroundColor: AD.bg,
+          appBar: AppBar(
+              backgroundColor: AD.bg,
+              foregroundColor: AD.textPrimary,
+              title: Text('BAZAAR', style: ADText.rowName())),
+          body: Center(
+              child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        PhosphorIcon(PhosphorIcons.microphone(PhosphorIconsStyle.regular),
+                            size: 40, color: AD.textTertiary),
+                        const SizedBox(height: 12),
+                        Text('This AI voice agent isn’t available yet.',
+                            textAlign: TextAlign.center, style: ADText.appTitle()),
+                        const SizedBox(height: 8),
+                        Text('Check back soon.',
+                            textAlign: TextAlign.center,
+                            style: ADText.preview(c: AD.textTertiary)),
+                      ]))));
+    }
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: AppBar(
@@ -195,12 +280,19 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
       bottomNavigationBar: SafeArea(
           child: Padding(
               padding: const EdgeInsets.all(12),
-              child: FilledButton.icon(
-                  onPressed: d.booked || d.listing.canBook ? _openBooking : null,
-            icon: PhosphorIcon(PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold)),
-                  label: Text(d.booked
-                      ? 'OPEN BOOKING'
-                      : (d.listing.canBook ? _cta(d.listing) : _closedLabel(d.listing)))))),
+              // [AGENT-LIVE-1 D11] Agents never see the native booking CTA —
+              // "Talk on the web" is the only affordance, same as the card.
+              child: d.listing.kind == 'agent'
+                  ? FilledButton.icon(
+                      onPressed: () => _talkOnWeb(d.listing),
+                      icon: PhosphorIcon(PhosphorIcons.globe(PhosphorIconsStyle.regular)),
+                      label: const Text('TALK ON THE WEB'))
+                  : FilledButton.icon(
+                      onPressed: d.booked || d.listing.canBook ? _openBooking : null,
+                      icon: PhosphorIcon(PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold)),
+                      label: Text(d.booked
+                          ? 'OPEN BOOKING'
+                          : (d.listing.canBook ? _cta(d.listing) : _closedLabel(d.listing)))))),
     );
   }
 
@@ -214,7 +306,9 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
     final l = d.listing;
     final hero = _hero(l);
     final summary = _summary(d);
-    final booking = _bookingCard(l);
+    // [AGENT-LIVE-1 D11] Agents get their own read-only card — price + slot
+    // chips + "Talk on the web" — never the native booking flow.
+    final booking = l.kind == 'agent' ? _agentTalkCard(l) : _bookingCard(l);
     final body =
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       _ticker(l),
@@ -519,6 +613,45 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                         : 'CHOOSE DATE & TIME')),
             const SizedBox(height: 8),
             Text('No hidden fees · policy shown before payment',
+                textAlign: TextAlign.center,
+                style: ADText.sectionLabel(c: AD.textTertiary))
+          ])));
+
+  /// [AGENT-LIVE-1 D1/D11] The `kind=='agent'` replacement for [_bookingCard]:
+  /// price-per-minute + read-only slot chips + one CTA that hands off to the
+  /// web. No hold, no quote, no in-app checkout sheet — the app never starts
+  /// an agent session.
+  Widget _agentTalkCard(ListingCard l) => Card(
+      color: AD.card,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AD.rSheet),
+          side: const BorderSide(color: AD.textPrimary, width: 2.5)),
+      child: Padding(
+          padding: const EdgeInsets.all(18),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('TALK TO THE AGENT', style: ADText.appTitle()),
+            const SizedBox(height: 4),
+            Text('from ${l.money(l.price)}/min',
+                style: const TextStyle(
+                    fontFamily: ADText.display, fontSize: 20, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 14),
+            Text('AVAILABLE SESSION LENGTHS', style: ADText.sectionLabel(c: AD.textTertiary)),
+            const SizedBox(height: 8),
+            Wrap(
+                spacing: 7,
+                runSpacing: 7,
+                children: [
+                  for (final m in _agentSlotMinutes(l)) _pill('$m MIN', AD.cardHover, dark: true)
+                ]),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+                onPressed: () => _talkOnWeb(l),
+                icon: PhosphorIcon(PhosphorIcons.globe(PhosphorIconsStyle.regular)),
+                label: const Text('TALK ON THE WEB')),
+            const SizedBox(height: 8),
+            Text('Booking, payment and the call itself all happen on avatok.ai.',
                 textAlign: TextAlign.center,
                 style: ADText.sectionLabel(c: AD.textTertiary))
           ])));

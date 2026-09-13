@@ -66,12 +66,19 @@ export const GROUPS: Group[] = [
   },
 ];
 
-/* [MKT-3GROUP-1] 'Voices with character' (ai_voice_agents) is deliberately NOT a
- * group: the owner removed it from the front page and the marketplace on
- * 2026-09-05. The SECTION value stays alive in the worker's SECTIONS union
- * because published rows carry it — it simply maps to no group, so nothing
- * renders it. Do not "tidy up" by deleting the value. */
-export const HIDDEN_SECTIONS: ReadonlySet<string> = new Set(['ai_voice_agents']);
+/* [AGENT-LIVE-1 D1 2026-09-12] 'ai_voice_agents' is back. The 2026-09-05 note
+ * below (kept for history) removed it from the front page while nothing sold
+ * through it; BUILD SPEC D1 relaunches it under the `book_their_time` group as
+ * real, bookable AI voice agent listings — the worker's `GROUP_FOR_SECTION`
+ * and the app's `kHiddenListingSections` are updated in step so all three
+ * surfaces agree. Do not re-add this to HIDDEN_SECTIONS without an owner
+ * decision reversing D1.
+ *
+ * [MKT-3GROUP-1 2026-09-05, superseded] 'Voices with character' (ai_voice_agents)
+ * was deliberately NOT a group: the owner removed it from the front page and
+ * the marketplace. The SECTION value stayed alive in the worker's SECTIONS
+ * union because published rows carried it. */
+export const HIDDEN_SECTIONS: ReadonlySet<string> = new Set([]);
 
 export const SUB_CATEGORIES: SubCategory[] = [
   { id: "live_cooking", label: "Cooking", emoji: "🍳", group: "india_goes_live", sort: 10, },

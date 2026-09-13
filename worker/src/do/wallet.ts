@@ -361,7 +361,25 @@ export class WalletDO {
     // excluded: listing_billing stores the same namespaced operation in D1 so a
     // publish retry months later must replay the original debit result rather
     // than risk issuing a second debit after this cache was pruned.
-    this.sql.exec("DELETE FROM ops WHERE ts < ?1 AND op_id NOT LIKE 'listing:%'", Date.now() - OPS_TTL_MS);
+    // [AGENT-LIVE-1 / M1] Same exemption for agent-live settlement op ids: the
+    // exact-settlement adapter (ledger.ts releaseExact) and refund recovery
+    // both replay a specific `agentlive:%` / `rel:agl_%` / `fee:agl_%` op id
+    // months later and must see the ORIGINAL result, not a fresh debit.
+    this.sql.exec(
+      "DELETE FROM ops WHERE ts < ?1 AND op_id NOT LIKE 'listing:%' AND op_id NOT LIKE 'agentlive:%' AND op_id NOT LIKE 'rel:agl\\_%' ESCAPE '\\' AND op_id NOT LIKE 'fee:agl\\_%' ESCAPE '\\'",
+      Date.now() - OPS_TTL_MS,
+    );
+  }
+
+  /** [AGENT-LIVE-1 / M1] Read-only lookup of a previously recorded op result —
+   * never mutates, never re-applies. Used by the agent-live money job runner
+   * to recover from a lost response (e.g. a refund that actually landed)
+   * instead of guessing from the eventually-consistent escrow balance. */
+  private opResult(opId: string | undefined): Response {
+    if (!opId) return json({ found: false, result: null });
+    const rows = this.sql.exec("SELECT result FROM ops WHERE op_id=?1", opId).toArray() as any[];
+    if (!rows.length) return json({ found: false, result: null });
+    return json({ found: true, result: JSON.parse(String(rows[0].result)) });
   }
 
   private bal(): { balance: number; held: number } {
@@ -442,6 +460,7 @@ export class WalletDO {
 
     switch (body.op) {
       case "balance": return json({ ...this.snap(), uid });
+      case "op_result": return this.opResult(body.op_id); // [AGENT-LIVE-1 / M1] read-only replay-cache lookup
       case "credit": return this.credit(uid, body);
       case "promo_credit": return this.promoCredit(uid, body); // [WELCOME-100-1] persistent promo bucket
       case "hard_reset": return this.hardReset(uid, body); // [TOKENS-100-GRANT-1] one-time balance reset to a fixed amount

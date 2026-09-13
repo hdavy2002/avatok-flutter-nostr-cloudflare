@@ -1,0 +1,12 @@
+ROUND 3 of 5 — audit the BUILD SPEC. Read Specs/SPEC-2026-09-12-AGENT-LIVE-1-BUILD.md (v2, the document 9 coding agents will implement in parallel), against your Round 1 (Specs/codex-rounds/round1-astra.md) and Round 2 (Specs/codex-rounds/round2-astra.md) and the code it touches.
+
+The coordinator deliberately simplified several R2 designs for v1 (listed in the spec under "v1 simplifications"). Judge each simplification: is it SAFE for money and capacity correctness, or does it re-open a hole you flagged? Say "accept" or "reject + minimal fix".
+
+Then find, in priority order, ONLY things that would make the build fail or ship a money/security bug:
+1. Interface gaps between workstreams (exports named in §9 vs routes in §3 vs data in §1) — anything an agent could not implement from this doc alone.
+2. Schema mistakes (columns a handler needs but §1 lacks; indexes; NOT NULL traps).
+3. Shared-file collisions: two workstreams editing the same file (the spec assigns owners; check every file named twice).
+4. Anything in the OpenAI Live contract still wrong (re-verify against https://developers.openai.com/api/reference/resources/live and the live guides: session.start audio.format shape, delegation.responses fields, session.update semantics, function_call event path, session.close/closed, input/output transcript events).
+5. Things the acceptance list in §10 misses that could lose money.
+
+Output: a terse markdown report with (a) simplification verdicts table, (b) P0 blockers with exact fix text, (c) P1 should-fix, (d) a final 'ready to build: yes/no'. Max ~250 lines. Do not modify files.

@@ -59,12 +59,17 @@ export function joinUrlFor(token: string): string { return `https://avatok.ai/j/
 // — a cancelled or refunded booking is refused even with a perfectly valid
 // signature. A live_event ticket legitimately has no bookings row, which is why
 // `b` is nullable while `l` is not.
+// [AGENT-LIVE-1 / M9] 'agent' joins the union — a booking-scoped join to an
+// `agent_live_bookings` row (D10: same Clerk-ticket mechanism as the other
+// two kinds, deliberately, per the locked v1 simplification).
+export type JoinKind = "live_event" | "consult_1to1" | "agent";
+
 export interface JoinTokenClaims {
   version: 1 | 2;
   bookingId: string | null;
   listingId: string | null;
   accountId: string | null;
-  kind: "live_event" | "consult_1to1" | null;
+  kind: JoinKind | null;
   exp: number | null;
 }
 
@@ -72,9 +77,17 @@ export async function signJoinTokenV2(env: Env, c: {
   bookingId: string | null;
   listingId: string;
   accountId: string;
-  kind: "live_event" | "consult_1to1";
+  kind: JoinKind;
   expMs: number;
 }): Promise<string> {
+  // [AGENT-LIVE-1 / M9] No dev fallback for the 'agent' kind — D12 fail-closed
+  // extends to minting the join link itself: an agent booking confirmed
+  // without a real JOIN_LINK_SECRET must not hand out a link signed with the
+  // well-known dev secret. (Every caller reaches here only after laneGate has
+  // already required JOIN_LINK_SECRET, so this is defence in depth.)
+  if (c.kind === "agent" && !env.JOIN_LINK_SECRET) {
+    throw new Error("join_link_secret_missing");
+  }
   const secret = env.JOIN_LINK_SECRET || "dev-join-secret";
   const payload = b64u(new TextEncoder().encode(JSON.stringify({
     v: 2, b: c.bookingId ?? null, l: c.listingId, u: c.accountId, k: c.kind, exp: c.expMs,
@@ -110,8 +123,13 @@ export async function verifyJoinTokenClaims(
   if (j.v === 2) {
     const listingId = typeof j.l === "string" && j.l ? j.l : null;
     const accountId = typeof j.u === "string" && j.u ? j.u : null;
-    const kind = j.k === "live_event" || j.k === "consult_1to1" ? j.k : null;
+    const kind: JoinKind | null =
+      j.k === "live_event" || j.k === "consult_1to1" || j.k === "agent" ? j.k : null;
     if (!listingId || !accountId || !kind) return null;
+    // [AGENT-LIVE-1 / M9] Fail closed, no dev fallback: an agent claim signed
+    // (or forged) while JOIN_LINK_SECRET was unset must never verify just
+    // because both sides happened to use the same well-known dev secret.
+    if (kind === "agent" && !env.JOIN_LINK_SECRET) return null;
     return {
       version: 2,
       bookingId: typeof j.b === "string" && j.b ? j.b : null,

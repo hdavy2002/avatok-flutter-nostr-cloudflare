@@ -29,11 +29,13 @@
 // bookings". 404 means the token is not ours at all.
 import type { Env } from "../types";
 import { json } from "../util";
+import { sha256Hex } from "../util";
 import { metaDb } from "../db/shard";
 import { verifyJoinTokenClaims } from "../cal/ics";
 import { mintClerkSignInTicket, maskEmail } from "../lib/clerk_ticket";
 import { clerkEmail } from "../ledger";
 import { commercialEvent } from "../lib/commercial_telemetry";
+import type { AgentLiveBookingRow } from "../lib/agent_live/types";
 
 const JOIN_GRACE_MS = 24 * 60 * 60 * 1000;
 
@@ -58,6 +60,69 @@ function destinationFor(r: Resolved): { kind: "live" | "consult"; path: string }
   return { kind: "consult", path: `/session/${encodeURIComponent(r.bookingId)}` };
 }
 
+// [AGENT-LIVE-1 / M9] Agent bookings live in `agent_live_bookings`, not the
+// generic `bookings` table the branch below reads — so this MUST run before
+// that lookup, not fall through into it. Exact-match on id/agent/buyer AND
+// `join_token_hash` (never trust the signed claims alone: the hash binds this
+// specific emailed token, so a booking row can't be replayed with a
+// differently-issued token for the same account). D10: same Clerk-ticket
+// mechanism as the other two kinds, deliberately.
+async function joinAgentBooking(env: Env, token: string, claims: NonNullable<Awaited<ReturnType<typeof verifyJoinTokenClaims>>>): Promise<Response | null> {
+  if (claims.version !== 2 || claims.kind !== "agent") return null;
+  if (!claims.listingId || !claims.accountId || !claims.bookingId) {
+    return json({ error: "invalid link", reason: "invalid" }, 404);
+  }
+  const tokenHash = await sha256Hex(token);
+  const row = await metaDb(env).prepare(
+    "SELECT id, agent_id, buyer_uid, status, ends_at, join_token_hash FROM agent_live_bookings WHERE id=?1",
+  ).bind(claims.bookingId).first<Pick<AgentLiveBookingRow, "id" | "agent_id" | "buyer_uid" | "status" | "ends_at" | "join_token_hash">>();
+  if (!row) return json({ error: "not found", reason: "invalid" }, 404);
+  if (row.agent_id !== claims.listingId || row.buyer_uid !== claims.accountId) {
+    return json({ error: "not your booking", reason: "invalid" }, 404);
+  }
+  if (!row.join_token_hash || row.join_token_hash !== tokenHash) {
+    return json({ error: "invalid link", reason: "invalid" }, 404);
+  }
+  if (row.status === "cancelled" || row.status === "failed") {
+    return json({ error: "this booking is no longer active", reason: "cancelled" }, 410);
+  }
+  // F15: `status` alone goes stale once a decision has moved money — a late
+  // cancellation is settled as outcome `completed_full` but status is
+  // rewritten to 'completed' (full charge, no session ever happened), which
+  // the check above would wrongly accept and mint a live ticket for. Reject
+  // whenever ANY decision has recorded a cancel/refund outcome for this
+  // booking, regardless of what `status` says.
+  const decision = await metaDb(env).prepare(
+    "SELECT outcome, reason FROM agent_live_decisions WHERE booking_id=?1",
+  ).bind(row.id).first<{ outcome: string; reason: string | null }>();
+  if (decision && (
+    decision.outcome === "cancelled_by_customer_early"
+    || decision.outcome === "refunded_platform_failure"
+    || (decision.reason ?? "").startsWith("customer_cancel")
+  )) {
+    return json({ error: "this booking is no longer active", reason: "cancelled" }, 410);
+  }
+  if (row.ends_at && Date.now() > row.ends_at + JOIN_GRACE_MS) {
+    return json({ error: "this link has expired", reason: "expired" }, 410);
+  }
+  const mint = await mintClerkSignInTicket(env, row.buyer_uid);
+  if (!mint.ok) {
+    return json({ error: "could not start your session", reason: mint.reason },
+      mint.reason === "unconfigured" ? 503 : 502);
+  }
+  const email = await clerkEmail(env, row.buyer_uid).catch(() => null);
+  commercialEvent(env, "join_link", row.buyer_uid, {
+    kind: "agent", token_version: 2, listing_id: row.agent_id, booking_id: row.id, outcome: "joined",
+  });
+  return json({
+    ticket: mint.ticket,
+    ticket_kind: "clerk_sign_in_token",
+    destination: `/talk/${row.id}`,
+    destination_kind: "agent",
+    account_email_masked: maskEmail(email),
+  }, 200, { "cache-control": "no-store" });
+}
+
 export async function joinLinkSession(req: Request, env: Env, token: string): Promise<Response> {
   const claims = await verifyJoinTokenClaims(env, token, { allowExpired: true });
   if (!claims) return json({ error: "invalid link", reason: "invalid" }, 404);
@@ -65,9 +130,15 @@ export async function joinLinkSession(req: Request, env: Env, token: string): Pr
     return json({ error: "this link has expired", reason: "expired" }, 410);
   }
 
+  const agentResult = await joinAgentBooking(env, token, claims);
+  if (agentResult) return agentResult;
+
   // ── resolve the four facts, from the token (v2) or the booking row (v1) ──
   let resolved: Resolved | null = null;
-  if (claims.version === 2 && claims.listingId && claims.accountId && claims.kind) {
+  // 'agent' claims already returned above via joinAgentBooking — this narrows
+  // claims.kind back to the legacy Kind union for everything below.
+  if (claims.version === 2 && claims.listingId && claims.accountId
+    && (claims.kind === "live_event" || claims.kind === "consult_1to1")) {
     resolved = {
       kind: claims.kind, listingId: claims.listingId,
       bookingId: claims.bookingId, accountId: claims.accountId, endsAt: null,

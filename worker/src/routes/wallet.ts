@@ -104,6 +104,12 @@ type WalletOpBase = Record<string, unknown> & { uid?: string; op_id?: string; ap
 
 export type WalletOperation =
   | (WalletOpBase & { op: "balance" })
+  // [AGENT-LIVE-1 / M1] Read-only replay-cache lookup by op_id — added to this
+  // union (not owned by WS-D, but required for `ledger.ts` `walletOpResult`
+  // to compile) so agent-live refund/release recovery can distinguish "this
+  // op already ran" from "nothing happened yet" without guessing from the
+  // eventually-consistent escrow balance.
+  | (WalletOpBase & { op: "op_result"; op_id: string })
   | (WalletOpBase & { op: "credit"; amount: number })
   | (WalletOpBase & { op: "promo_credit"; amount: number })
   | (WalletOpBase & { op: "hard_reset"; amount?: number })
