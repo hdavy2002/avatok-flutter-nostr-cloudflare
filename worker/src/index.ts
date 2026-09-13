@@ -1865,7 +1865,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       {
         const ls = p.match(/^\/api\/listings\/([A-Za-z0-9-]{1,64})\/stats$/);
         if (ls && req.method === "GET") return await listingStats(req, env, ls[1]);
-        const la = p.match(/^\/api\/listings\/([A-Za-z0-9-]{1,64})\/(publish|submit|status|duplicate|repeat|book|reviews|promotions|questions)$/);
+        const la = p.match(/^\/api\/listings\/([A-Za-z0-9-]{1,64})\/(publish|submit|status|duplicate|repeat|book|reviews|review|blockers|promotions|questions)$/);
         if (la) {
           const lid = la[1], act = la[2];
           if (act === "publish" && req.method === "POST") return await publishListing(req, env, lid);
