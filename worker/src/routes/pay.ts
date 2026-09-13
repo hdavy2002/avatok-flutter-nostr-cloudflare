@@ -40,6 +40,10 @@ import type { GatewayAdapter } from "../lib/payments/types";
 import { track, trackException } from "../hooks";
 import { payAffiliateBountyOnPurchase } from "./affiliate";
 import { bookability } from "../lib/listing_schedule";
+// [MKT-PROMO-GATEWAY-1 / M5] The SAME promo resolution the wallet checkout uses, read from
+// the PRIMARY. Without it this lane quoted list price while the web page advertised the
+// discounted one, and GatewayPicker's drift check refused to open the sheet at all.
+import { promosForCharging, activePromoPct, promoChargePrice } from "../lib/listing_promos";
 
 const APP = "avapay";
 
@@ -113,6 +117,7 @@ export async function payCreateOrder(req: Request, env: Env, gatewayId: string):
 
   const b = (await req.json().catch(() => ({}))) as {
     listingId?: unknown; bookingId?: unknown; slot?: unknown; order_id?: unknown; hold_id?: unknown;
+    promo_code?: unknown;
   };
   const listingId = String(b.listingId || "");
   let bookingId = b.bookingId ? String(b.bookingId) : null;
@@ -145,10 +150,39 @@ export async function payCreateOrder(req: Request, env: Env, gatewayId: string):
 
   // THE PRICE IS COMPUTED HERE, FROM THE LISTING. The client sends no amount and could
   // not be believed if it did.
-  const base = Math.trunc(Number(listing.price));
-  if (!Number.isSafeInteger(base) || base < 0) return json({ error: "invalid price" }, 409);
+  const listPrice = Math.trunc(Number(listing.price));
+  if (!Number.isSafeInteger(listPrice) || listPrice < 0) return json({ error: "invalid price" }, 409);
+
+  // [MKT-PROMO-GATEWAY-1 / M5] Promotions apply on this rail too, and the number quoted
+  // here is the number the gateway charges and the number
+  // `provisionFromGatewayPurchase` will independently re-derive at provisioning time.
+  //
+  // NO PROMO CODE. `gateway_orders` has no column to carry one across the round trip, so
+  // the webhook could not reproduce a code-priced total and would refuse to provision a
+  // payment that had already been taken. Refused loudly at the door rather than quoted and
+  // then failed after the buyer's money moved. Automatic promotions (early-bird) need
+  // nothing carried — both ends resolve them from the listing.
+  if (typeof b.promo_code === "string" && b.promo_code.trim() !== "") {
+    return json({
+      error: "promo codes are not supported on card/UPI checkout yet",
+      reason: "promo_code_gateway_unsupported",
+    }, 400);
+  }
+  const promoRows = (await promosForCharging(env, [listing.id])).get(listing.id) ?? [];
+  const { pct: promoPct, promo } = activePromoPct(promoRows, Date.now(), null);
+  // [M4] Clamped at the ₹49 floor, exactly as the wallet lane clamps it, or the creator is
+  // settled ₹0 on a deep discount and the platform silently keeps the whole sale.
+  const priced = promoChargePrice(listPrice, promoPct);
+  const base = priced.chargePrice;
   const tax = taxFor(config, base);
   if (!tax) return json({ error: "tax configuration invalid" }, 503);
+  if (promoPct > 0) {
+    commercialEvent(env, "checkout_promo", auth.uid, {
+      kind, outcome: priced.clamped ? "floor_clamped" : "applied", listing_id: listing.id,
+      promo_pct: promoPct, promo_kind: String(promo?.kind ?? ""),
+      list_price: listPrice, charge_price: base, floor_clamped: priced.clamped, rail: adapter.id,
+    });
+  }
   if (tax.buyerTotal <= 0) {
     return json({ error: "free listings use the standard checkout" }, 400);
   }

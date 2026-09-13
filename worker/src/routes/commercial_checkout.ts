@@ -32,11 +32,11 @@ import { queueCommercialConfirmation, COMMERCIAL_CONFIRMATION_VERSION } from "..
 import { rateLimit } from "../money";
 import { commercialEmailKey, type EmailQueueStatus } from "../lib/email_outbox";
 import { bookability } from "../lib/listing_schedule";
-import { sessionSplitFor } from "../lib/session_pricing"; // [SETTLE-FEE-1]
+import { sessionSplitFor, MIN_PRICE_TOKENS_PER_HOUR } from "../lib/session_pricing"; // [SETTLE-FEE-1]
 // [MKT-PROMO-CHECKOUT-1] The SAME two helpers routes/listings.ts uses for the card
 // and the legacy book route. Shared so a discount can never apply on the card and
 // silently not apply at checkout.
-import { promosFor, activePromoPct } from "../lib/listing_promos";
+import { promosForCharging, activePromoPct, promoChargePrice } from "../lib/listing_promos";
 
 type CheckoutKind = "live_event" | "consult_1to1";
 
@@ -656,39 +656,6 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
   const listPrice = Math.trunc(Number(listing.price));
   if (!Number.isSafeInteger(listPrice) || listPrice < 0) return json({ error: "invalid commercial price" }, 409);
 
-  // [MKT-PROMO-CHECKOUT-1] Discounts. Early-bird applies with no code; a `promo_code`
-  // promotion applies only when the buyer submitted the matching code. Same helper, same
-  // semantics as the marketplace card — see lib/listing_promos.ts.
-  const promoCode = typeof body.promo_code === "string"
-    ? body.promo_code.trim().toUpperCase().slice(0, 24)
-    : null;
-  const promoRows = (await promosFor(env, [listing.id])).get(listing.id) ?? [];
-  const promoNow = Date.now();
-  const { pct: promoPct, promo } = activePromoPct(promoRows, promoNow, promoCode);
-  // A code that matched nothing must NOT be swallowed into a full-price charge — the
-  // buyer typed it expecting a discount and would be debited more than he agreed to.
-  // Asked of the code-kind promos ALONE: a code that is genuinely valid but loses to a
-  // bigger early-bird is not an error, and the buyer still gets the better of the two.
-  const codeMatched = promoCode
-    ? activePromoPct(promoRows.filter((p) => p.kind === "promo_code"), promoNow, promoCode).promo != null
-    : false;
-  if (promoCode && !codeMatched) {
-    commercialEvent(env, "checkout", auth.uid, { kind: route.kind, outcome: "refused", reason: "invalid_promo_code", listing_id: listing.id });
-    return json({ error: "invalid_promo_code" }, 400);
-  }
-  const chargePrice = promoPct > 0 ? Math.round(listPrice * (100 - promoPct) / 100) : listPrice;
-  if (!Number.isSafeInteger(chargePrice) || chargePrice < 0 || chargePrice > listPrice) {
-    return json({ error: "invalid commercial price" }, 409);
-  }
-  if (promo && promoPct > 0) {
-    // [W3] Money changed hands at a different number than the listing says. Say so.
-    commercialEvent(env, "checkout_promo", auth.uid, {
-      kind: route.kind, outcome: "applied", listing_id: listing.id,
-      promo_pct: promoPct, promo_kind: String(promo.kind ?? ""),
-      list_price: listPrice, charge_price: chargePrice,
-    });
-  }
-
   const startsAt = route.kind === "live_event" ? Math.trunc(Number(listing.starts_at)) : null;
   const endsAt = route.kind === "live_event" && startsAt !== null
     ? startsAt + Math.max(1, Math.trunc(Number(listing.duration_min ?? 60))) * 60_000
@@ -775,6 +742,90 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
     return json({ ...(safeResponse(operation.response_json) ?? { error: "checkout failed" }), idempotent_replay: true }, 409);
   }
 
+  // [MKT-PROMO-CHECKOUT-1 / M1] PROMO RESOLUTION SITS BELOW THE REPLAY BRANCHES, AND MUST
+  // STAY THERE.
+  //
+  // It used to run ~90 lines above them, which made an idempotent replay unreachable for
+  // any buyer whose promotion stopped being applicable between his two attempts. Traced:
+  // a buyer redeems a `max_uses=1` code, the wallet is debited, `used` goes to 1 and the
+  // operation completes — then the 200 is lost (network drop, app backgrounded) and the
+  // client retries with the SAME Idempotency-Key and the SAME code, which both shipped
+  // clients are built to do. On the retry `activePromoPct` skips the promo (`used >=
+  // max_uses`), `codeMatched` is false, and the buyer got **400 invalid_promo_code** on a
+  // purchase that had already taken his money. `ends_at` elapsing between the two
+  // attempts, or the creator's wizard deleting and recreating the promotion, did the same.
+  //
+  // WHY THIS DIRECTION AND NOT HOISTING THE REPLAY BRANCH: the operation row is keyed on
+  // `requestHash`, which is derived from the parsed consultation slot and availability
+  // hold — all of which are validated BELOW the old promo block. Hoisting the state
+  // machine would have dragged that validation up with it and changed what a malformed
+  // slot is answered with. Moving the promo work DOWN touches nothing the idempotency
+  // contract is built out of: the promo code is not part of `canonicalRequest`, so the
+  // request hash, the operation id and the order id are all byte-identical to before.
+  // A completed or failed operation now returns its ORIGINAL result without the promo
+  // being re-evaluated at all, which is the only correct answer for money already taken.
+  const promoCode = typeof body.promo_code === "string"
+    ? body.promo_code.trim().toUpperCase().slice(0, 24)
+    : null;
+  // [M6] Promo codes are creator-chosen and short (`MONSOON20`-shaped), and until now a
+  // wrong one cost an attacker nothing at all: the 400 fired before the operation row
+  // existed, so attempts were neither rate-limited nor idempotency-constrained. Limited
+  // per uid and, more tightly, per uid+listing. Both windows are far above anything a real
+  // buyer does — he types one code, occasionally mistypes it once — and neither is reached
+  // by a replay, because replays return above this line.
+  if (promoCode) {
+    const limitedByListing = await rateLimit(env, `commercial-promo:${auth.uid}:${listing.id}`, 8, 3600);
+    if (limitedByListing) {
+      commercialEvent(env, "checkout", auth.uid, { kind: route.kind, outcome: "refused", reason: "promo_rate_limited", listing_id: listing.id, scope: "listing" });
+      return limitedByListing;
+    }
+    const limitedByUser = await rateLimit(env, `commercial-promo:${auth.uid}`, 20, 3600);
+    if (limitedByUser) {
+      commercialEvent(env, "checkout", auth.uid, { kind: route.kind, outcome: "refused", reason: "promo_rate_limited", listing_id: listing.id, scope: "account" });
+      return limitedByUser;
+    }
+  }
+  // [M3] PRIMARY, not the stale-tolerant replica: this read decides what the buyer is
+  // debited and is compared against a `used` counter written to the primary.
+  const promoRows = (await promosForCharging(env, [listing.id])).get(listing.id) ?? [];
+  const promoNow = Date.now();
+  const { pct: promoPct, promo } = activePromoPct(promoRows, promoNow, promoCode);
+  // A code that matched nothing must NOT be swallowed into a full-price charge — the
+  // buyer typed it expecting a discount and would be debited more than he agreed to.
+  // Asked of the code-kind promos ALONE: a code that is genuinely valid but loses to a
+  // bigger early-bird is not an error, and the buyer still gets the better of the two.
+  const codeMatched = promoCode
+    ? activePromoPct(promoRows.filter((p) => p.kind === "promo_code"), promoNow, promoCode).promo != null
+    : false;
+  if (promoCode && !codeMatched) {
+    commercialEvent(env, "checkout", auth.uid, { kind: route.kind, outcome: "refused", reason: "invalid_promo_code", listing_id: listing.id });
+    return json({ error: "invalid_promo_code" }, 400);
+  }
+  // [M4] The discount is clamped at the ₹49 paid-session floor — see promoChargePrice().
+  const priced = promoChargePrice(listPrice, promoPct);
+  const chargePrice = priced.chargePrice;
+  if (!Number.isSafeInteger(chargePrice) || chargePrice < 0 || chargePrice > listPrice) {
+    return json({ error: "invalid commercial price" }, 409);
+  }
+  if (priced.clamped) {
+    // The creator would otherwise have been settled ₹0 while the platform kept the lot.
+    // Loud, because the clamp means a creator's own promotion is not being honoured in
+    // full and somebody has to be able to see that from the outside.
+    commercialEvent(env, "checkout_promo", auth.uid, {
+      kind: route.kind, outcome: "floor_clamped", listing_id: listing.id,
+      promo_pct: promoPct, promo_kind: String(promo?.kind ?? ""),
+      list_price: listPrice, asked_price: priced.discounted, charge_price: chargePrice,
+    });
+  }
+  if (promo && promoPct > 0) {
+    // [W3] Money changed hands at a different number than the listing says. Say so.
+    commercialEvent(env, "checkout_promo", auth.uid, {
+      kind: route.kind, outcome: "applied", listing_id: listing.id,
+      promo_pct: promoPct, promo_kind: String(promo.kind ?? ""),
+      list_price: listPrice, charge_price: chargePrice, floor_clamped: priced.clamped,
+    });
+  }
+
   // [LISTING-EXPIRY-1] Never sell a seat for a show that is over. Checked AFTER the
   // replay branches on purpose: a buyer whose purchase completed a minute before the
   // show started must still get their original success response on a retry, not a
@@ -815,6 +866,7 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
   return await provisionCommercialPurchase(env, {
     auth, route, listing, config, policy, price: chargePrice, tax, startsAt, endsAt,
     listPrice, promoPct, promoId: promo?.id != null ? String(promo.id) : null,
+    floorClamped: priced.clamped,
     slotStart, slotEnd, availabilityHoldId, orderId, operationId, bookingId, requestHash,
     funding: {
       rail: "wallet",
@@ -976,6 +1028,10 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
   listPrice?: number;
   promoPct?: number;
   promoId?: string | null;
+  /** [M4] True when the ₹49 price floor, not the promotion, decided `price`. Recorded in
+   *  the immutable conversion snapshot so an audit can tell a 90%-off sale that was
+   *  honoured from one that was clamped. */
+  floorClamped?: boolean;
   tax: TaxBreakdown;
   startsAt: number | null;
   endsAt: number | null;
@@ -1003,8 +1059,15 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
     list_price: listPrice,
     promo_pct: promoPct,
     promo_id: promoId,
+    // [M4] Added ONLY when it is true, so every snapshot written before this change and
+    // every unclamped order after it keep a byte-identical JSON string. `price` above is
+    // still the authority on what was charged; this only says which rule produced it.
+    ...(ctx.floorClamped === true ? { price_floor_clamped: true, price_floor: MIN_PRICE_TOKENS_PER_HOUR } : {}),
   });
   let holdWasFresh = false;
+  // [M2] Did THIS attempt bump the promotion's `used` counter? The abort path below has to
+  // give the use back, and must not give back a use it never took.
+  let promoUseCounted = false;
   const calendarClaims: CalendarClaim[] = [];
   let availabilityReservationId: string | null = null;
   try {
@@ -1133,6 +1196,10 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
     const promoAlreadyCounted = promoId
       ? !!(await metaDb(env).prepare("SELECT id FROM orders WHERE id=?1").bind(orderId).first())
       : false;
+    // [M2] Remembered for the abort path: only the attempt that actually bumped the
+    // counter may decrement it, which keeps this consistent with the pre-check above —
+    // a retry finds the order row, does not bump, and therefore does not un-bump either.
+    promoUseCounted = Boolean(promoId) && !promoAlreadyCounted;
     await metaDb(env).batch([
       metaDb(env).prepare(
         `INSERT OR IGNORE INTO orders
@@ -1456,7 +1523,26 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
         metaDb(env).prepare(
           "UPDATE commercial_entitlements SET state='refunded',updated_at=?2 WHERE order_id=?1 AND account_id=?3",
         ).bind(orderId, Date.now(), auth.uid),
+        // [M2] GIVE THE PROMOTION USE BACK. The bump rides in the order batch, but this
+        // path — `slot_already_booked`, `ticket_already_owned`, a calendar collision, an
+        // expired availability hold — marks that order refunded and reverses the hold,
+        // and used to leave the counter incremented. One lost slot race therefore retired
+        // a `max_uses=1` code permanently, on a purchase nobody was charged for.
+        //
+        // Guarded three ways: only when THIS attempt bumped it (`promoUseCounted`, the
+        // mirror of the `promoAlreadyCounted` pre-check), never below zero, and inside the
+        // same all-or-nothing batch as the refund, so the counter cannot be released
+        // without the order being released with it.
+        ...(promoUseCounted && promoId
+          ? [metaDb(env).prepare("UPDATE listing_promotions SET used=used-1 WHERE id=?1 AND used>0").bind(promoId)]
+          : []),
       ]);
+      if (promoUseCounted && promoId) {
+        promoUseCounted = false;
+        commercialEvent(env, "checkout_promo", auth.uid, {
+          kind: route.kind, outcome: "use_released", listing_id: listing.id, promo_pct: promoPct,
+        });
+      }
     }
     const message = ticketRace
       ? "ticket already owned"
@@ -1521,14 +1607,57 @@ export async function provisionFromGatewayPurchase(env: Env, args: {
 
   const policy = policyFor(args.kind, parseAttrs(listing.attrs), config);
   if (!policy) return json({ error: "commercial policy unavailable" }, 409);
-  const price = Math.trunc(Number(listing.price));
-  if (!Number.isSafeInteger(price) || price < 0) return json({ error: "invalid commercial price" }, 409);
-  const tax = taxFor(config, price);
-  if (!tax) return json({ error: "commercial tax configuration invalid" }, 503);
+  const listPrice = Math.trunc(Number(listing.price));
+  if (!Number.isSafeInteger(listPrice) || listPrice < 0) return json({ error: "invalid commercial price" }, 409);
+
+  // [MKT-PROMO-GATEWAY-1 / M5] THE GATEWAY LANE IS NO LONGER PROMO-BLIND.
+  //
+  // It re-derived `price` straight off `listings.price` while the web checkout had already
+  // started preferring `effective_price` and cross-checking its own total against the
+  // server's — so any listing with a live early-bird BLOCKED card/UPI checkout outright,
+  // and anything that bypassed the drift check would have charged full price against a
+  // page advertising the discount.
+  //
+  // Resolved here, from the PRIMARY (M3), with NO code: a promo code cannot be carried
+  // across a gateway round trip — `gateway_orders` has no column for it — and a discount
+  // this function cannot reproduce from the listing alone is a discount it must not
+  // provision. `routes/pay.ts` refuses a code at order-creation time for the same reason,
+  // so the two ends always resolve the identical set of automatic promotions.
+  const promoRows = (await promosForCharging(env, [listing.id])).get(listing.id) ?? [];
+  const { pct: promoPct, promo } = activePromoPct(promoRows, Date.now(), null);
+  const priced = promoChargePrice(listPrice, promoPct);
+  const promoTax = taxFor(config, priced.chargePrice);
+  const listTax = taxFor(config, listPrice);
+  if (!promoTax || !listTax) return json({ error: "commercial tax configuration invalid" }, 503);
+
   // The buyer paid a specific number. If the listing no longer agrees, do NOT provision:
   // an under-charge silently gifts the difference and an over-charge silently keeps it.
-  if (tax.buyerTotal !== Math.trunc(args.chargedTokens)) {
-    return json({ error: "price changed since payment", charged: args.chargedTokens, now: tax.buyerTotal }, 409);
+  //
+  // TWO acceptable numbers, and both are server-derived — nothing here is taken from the
+  // client. The promotional total is what a promo-aware caller (routes/pay.ts) quoted; the
+  // LIST total is what a caller that predates this change quoted (routes/cashfree.ts still
+  // prices off `listings.price`). Matching the list total provisions exactly as before,
+  // with no promo provenance and no `used` bump — that lane genuinely did charge full
+  // price, and inventing a discount on it after the money moved would short the creator.
+  const charged = Math.trunc(args.chargedTokens);
+  const promotional = promoTax.buyerTotal === charged && promoTax.buyerTotal !== listTax.buyerTotal;
+  const matchesList = listTax.buyerTotal === charged;
+  if (!promotional && !matchesList) {
+    return json({
+      error: "price changed since payment",
+      charged: args.chargedTokens,
+      now: promoTax.buyerTotal,
+      list: listTax.buyerTotal,
+    }, 409);
+  }
+  const price = promotional ? priced.chargePrice : listPrice;
+  const tax = promotional ? promoTax : listTax;
+  if (promotional) {
+    commercialEvent(env, "checkout_promo", args.uid, {
+      kind: args.kind, outcome: priced.clamped ? "floor_clamped" : "applied", listing_id: listing.id,
+      promo_pct: promoPct, promo_kind: String(promo?.kind ?? ""),
+      list_price: listPrice, charge_price: price, floor_clamped: priced.clamped, rail: gateway,
+    });
   }
 
   const startsAt = args.kind === "live_event" ? Math.trunc(Number(listing.starts_at)) : null;
@@ -1581,6 +1710,13 @@ export async function provisionFromGatewayPurchase(env: Env, args: {
     auth: { uid: args.uid },
     route: { kind: args.kind },
     listing, config, policy, price, tax,
+    // [M5] Provenance carried through so the gateway order records the same
+    // price_source/list_price/promo_id the wallet lane does — and so the `used` counter is
+    // bumped ONCE, here at provisioning, never at order creation.
+    listPrice,
+    promoPct: promotional ? promoPct : 0,
+    promoId: promotional && promo?.id != null ? String(promo.id) : null,
+    floorClamped: promotional ? priced.clamped : false,
     startsAt, endsAt, slotStart, slotEnd,
     orderId, operationId,
     bookingId: args.bookingId,
