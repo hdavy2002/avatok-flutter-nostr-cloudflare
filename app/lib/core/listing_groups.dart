@@ -16,8 +16,6 @@
 // Prose, the wording rules and the reasoning:
 // Specs/SPEC-2026-09-05-THREE-GROUPS-AND-HOURLY-PRICING.md
 
-import 'remote_config.dart';
-
 /// One of the three marketplace top-level groups.
 class ListingGroup {
   final String id;
@@ -83,52 +81,22 @@ const List<ListingGroup> kListingGroups = [
     emphasis: 'time.',
     blurb: 'Choose a professional, check their calendar and book a private session.',
     kinds: ['consult'],
-    sections: ['consulting', 'astro_tarot', 'glow_up', 'ai_voice_agents'],
+    sections: ['consulting', 'astro_tarot', 'glow_up'],
   ),
 ];
 
-/// [AGENT-LIVE-1 D1, Specs/SPEC-2026-09-12-AGENT-LIVE-1-BUILD.md §7/§9]
-/// `ai_voice_agents` used to be hidden outright (owner decision 2026-09-05).
-/// It is a real, bookable section again — AI voice agents are booked private
-/// sessions like consults and astro/tarot, so it now maps to `book_their_time`
-/// (see `kListingGroups` above and `kGroupForSection` below), mirroring the
-/// worker's `GROUP_FOR_SECTION` (`worker/src/lib/listing_section.ts`) exactly.
-/// It is empty on purpose — nothing else is compile-time hidden — but kept
-/// (rather than deleted) as the one place a future "hide this section
-/// outright" decision would go, so callers of [listingSectionVisible] have a
-/// stable name to extend instead of inventing a second mechanism.
-const Set<String> kHiddenListingSections = {};
-
-/// Section -> group, mirroring the worker's `GROUP_FOR_SECTION`
-/// (`worker/src/lib/listing_section.ts`) exactly. Kept as an explicit map
-/// (rather than derived from [kListingGroups].sections) so it reads the same
-/// shape as the worker file it must stay in lockstep with.
-const Map<String, String> kGroupForSection = {
-  'live_streaming': 'india_goes_live',
-  'live_friends': 'find_your_people',
-  'adda_rooms': 'find_your_people',
-  'consulting': 'book_their_time',
-  'astro_tarot': 'book_their_time',
-  'glow_up': 'book_their_time',
-  'ai_voice_agents': 'book_their_time',
-};
-
-/// Whether a listing in section [section] should render anywhere in the app
-/// right now. `ai_voice_agents` has a real group above ([kGroupForSection])
-/// but stays gated behind the `agentListingsEnabled` remote flag
-/// ([RemoteConfig.agentListingsEnabled]) — D11: the app is read-only for
-/// agents (tile + detail + "Talk on the web"), and until the flag is on it
-/// isn't safe to surface one from a browse row at all.
-bool listingSectionVisible(String section) {
-  if (kHiddenListingSections.contains(section)) return false;
-  if (section == 'ai_voice_agents') return RemoteConfig.agentListingsEnabled;
-  return true;
-}
+/// [MKT-3GROUP-1] 'Voices with character' (ai_voice_agents) is deliberately NOT
+/// a group: the owner removed it from the front page and the marketplace on
+/// 2026-09-05. The SECTION value stays alive in the worker's SECTIONS union
+/// because published rows carry it — it simply maps to no group, so nothing
+/// renders it. Do not "tidy up" by deleting the value.
+const Set<String> kHiddenListingSections = {'ai_voice_agents'};
 
 const List<ListingSubCategory> kListingSubCategories = [
   ListingSubCategory(id: 'live_cooking', label: 'Cooking', emoji: '🍳', group: 'india_goes_live', sort: 10,),
   ListingSubCategory(id: 'live_trek', label: 'Treks & hiking', emoji: '🥾', group: 'india_goes_live', sort: 20,),
   ListingSubCategory(id: 'live_puja', label: 'Puja & darshan', emoji: '🪔', group: 'india_goes_live', sort: 30,),
+  ListingSubCategory(id: 'live_puja_ritual', label: 'Puja', emoji: '🕉️', group: 'india_goes_live', sort: 35,),
   ListingSubCategory(id: 'live_temple', label: 'Temple tours', emoji: '🛕', group: 'india_goes_live', sort: 40,),
   ListingSubCategory(id: 'live_festival', label: 'Festivals', emoji: '🎉', group: 'india_goes_live', sort: 50,),
   ListingSubCategory(id: 'live_music', label: 'Music', emoji: '🎵', group: 'india_goes_live', sort: 60,),
@@ -212,10 +180,7 @@ List<ListingGroup> listingGroupsForKind(String kind) =>
     kListingGroups.where((g) => g.kinds.contains(kind)).toList();
 
 /// Which group a listing belongs to, from its category. Null when it belongs
-/// to none — a marketplace-goods category, or a category this mirror doesn't
-/// know (an agent listing's category isn't one of [kListingSubCategories];
-/// its group comes from the server's `group_id`, or from [kGroupForSection]
-/// via its `section` when a section is available).
+/// to none — a marketplace-goods category, or an ai_voice_agents listing.
 ///
 /// Prefer the server's `group_id` (shipped on `GET /api/explore/categories`
 /// and on every listing card) over this offline lookup — this mirror only

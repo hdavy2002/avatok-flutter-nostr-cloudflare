@@ -33,6 +33,7 @@
     { "id": "live_cooking",     "label": "Cooking",            "emoji": "🍳",  "group": "india_goes_live",  "new": true,  "sort": 10 },
     { "id": "live_trek",        "label": "Treks & hiking",     "emoji": "🥾",  "group": "india_goes_live",  "new": true,  "sort": 20 },
     { "id": "live_puja",        "label": "Puja & darshan",     "emoji": "🪔",  "group": "india_goes_live",  "new": true,  "sort": 30 },
+    { "id": "live_puja_ritual", "label": "Puja",               "emoji": "🕉️", "group": "india_goes_live",  "new": true,  "sort": 35 },
     { "id": "live_temple",      "label": "Temple tours",       "emoji": "🛕",  "group": "india_goes_live",  "new": true,  "sort": 40 },
     { "id": "live_festival",    "label": "Festivals",          "emoji": "🎉",  "group": "india_goes_live",  "new": true,  "sort": 50 },
     { "id": "live_music",       "label": "Music",              "emoji": "🎵",  "group": "india_goes_live",  "new": true,  "sort": 60 },
