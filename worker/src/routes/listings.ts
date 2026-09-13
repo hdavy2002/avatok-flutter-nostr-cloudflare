@@ -88,6 +88,9 @@ import { checkTransition } from "../lib/listing_transitions";
 import { freeEntryAllowed } from "../lib/free_entry_gate";
 // [PRICE-HOURLY-1]
 import { priceFloorError } from "../lib/session_pricing";
+// [MKT-PROMO-CHECKOUT-1] promosFor/activePromoPct moved to lib so the commercial
+// checkout lane applies the SAME discount rule this file does.
+import { promosFor, activePromoPct } from "../lib/listing_promos";
 // [REVIEW-MOD-1 2026-09-06] One implementation of "recompute ratings from
 // APPROVED reviews only", shared with routes/reviews.ts. reviews.ts does not
 // import from this file, so this direction is not a cycle.
@@ -660,17 +663,6 @@ async function favoritesFor(env: Env, uid: string | null, ids: string[]): Promis
   return set;
 }
 
-function activePromoPct(promos: any[], now: number, code?: string | null): { pct: number; promo: any | null } {
-  let best: any = null;
-  for (const p of promos) {
-    if (p.ends_at && now > Number(p.ends_at)) continue;
-    if (p.max_uses != null && Number(p.used) >= Number(p.max_uses)) continue;
-    if (p.kind === "promo_code" && (!code || String(p.code || "").toUpperCase() !== String(code).toUpperCase())) continue;
-    if (!best || Number(p.pct_off) > Number(best.pct_off)) best = p;
-  }
-  return best ? { pct: Math.min(100, Math.max(0, Number(best.pct_off))), promo: best } : { pct: 0, promo: null };
-}
-
 function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set<string>, stats?: Map<string, { seats_taken: number; watching: number; favorites: number }>) {
   const now = Date.now();
   const promos = promosByListing?.get(r.id) ?? [];
@@ -911,21 +903,6 @@ async function cardStatsFor(env: Env, ids: string[]): Promise<Map<string, { seat
       map.set(key, { ...prev, favorites: Number(r.n ?? 0) });
     }
   } catch { /* table may not be migrated — no count, not an error */ }
-  return map;
-}
-
-/** Fetch early-bird promos for a page of listing ids (one IN query, no N+1). */
-async function promosFor(env: Env, ids: string[]): Promise<Map<string, any[]>> {
-  const map = new Map<string, any[]>();
-  if (!ids.length) return map;
-  const rs = await metaSession(env).prepare(
-    `SELECT id, listing_id, kind, pct_off, code, max_uses, used, ends_at FROM listing_promotions
-      WHERE listing_id IN (${ids.map((_, i) => `?${i + 1}`).join(",")})`,
-  ).bind(...ids).all();
-  for (const p of (rs.results ?? []) as any[]) {
-    if (!map.has(p.listing_id)) map.set(p.listing_id, []);
-    map.get(p.listing_id)!.push(p);
-  }
   return map;
 }
 

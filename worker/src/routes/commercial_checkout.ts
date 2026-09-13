@@ -33,6 +33,10 @@ import { rateLimit } from "../money";
 import { commercialEmailKey, type EmailQueueStatus } from "../lib/email_outbox";
 import { bookability } from "../lib/listing_schedule";
 import { sessionSplitFor } from "../lib/session_pricing"; // [SETTLE-FEE-1]
+// [MKT-PROMO-CHECKOUT-1] The SAME two helpers routes/listings.ts uses for the card
+// and the legacy book route. Shared so a discount can never apply on the card and
+// silently not apply at checkout.
+import { promosFor, activePromoPct } from "../lib/listing_promos";
 
 type CheckoutKind = "live_event" | "consult_1to1";
 
@@ -649,8 +653,42 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
 
   const policy = policyFor(route.kind, parseAttrs(listing.attrs), config);
   if (!policy) return json({ error: "commercial policy unavailable" }, 409);
-  const price = Math.trunc(Number(listing.price));
-  if (!Number.isSafeInteger(price) || price < 0) return json({ error: "invalid commercial price" }, 409);
+  const listPrice = Math.trunc(Number(listing.price));
+  if (!Number.isSafeInteger(listPrice) || listPrice < 0) return json({ error: "invalid commercial price" }, 409);
+
+  // [MKT-PROMO-CHECKOUT-1] Discounts. Early-bird applies with no code; a `promo_code`
+  // promotion applies only when the buyer submitted the matching code. Same helper, same
+  // semantics as the marketplace card — see lib/listing_promos.ts.
+  const promoCode = typeof body.promo_code === "string"
+    ? body.promo_code.trim().toUpperCase().slice(0, 24)
+    : null;
+  const promoRows = (await promosFor(env, [listing.id])).get(listing.id) ?? [];
+  const promoNow = Date.now();
+  const { pct: promoPct, promo } = activePromoPct(promoRows, promoNow, promoCode);
+  // A code that matched nothing must NOT be swallowed into a full-price charge — the
+  // buyer typed it expecting a discount and would be debited more than he agreed to.
+  // Asked of the code-kind promos ALONE: a code that is genuinely valid but loses to a
+  // bigger early-bird is not an error, and the buyer still gets the better of the two.
+  const codeMatched = promoCode
+    ? activePromoPct(promoRows.filter((p) => p.kind === "promo_code"), promoNow, promoCode).promo != null
+    : false;
+  if (promoCode && !codeMatched) {
+    commercialEvent(env, "checkout", auth.uid, { kind: route.kind, outcome: "refused", reason: "invalid_promo_code", listing_id: listing.id });
+    return json({ error: "invalid_promo_code" }, 400);
+  }
+  const chargePrice = promoPct > 0 ? Math.round(listPrice * (100 - promoPct) / 100) : listPrice;
+  if (!Number.isSafeInteger(chargePrice) || chargePrice < 0 || chargePrice > listPrice) {
+    return json({ error: "invalid commercial price" }, 409);
+  }
+  if (promo && promoPct > 0) {
+    // [W3] Money changed hands at a different number than the listing says. Say so.
+    commercialEvent(env, "checkout_promo", auth.uid, {
+      kind: route.kind, outcome: "applied", listing_id: listing.id,
+      promo_pct: promoPct, promo_kind: String(promo.kind ?? ""),
+      list_price: listPrice, charge_price: chargePrice,
+    });
+  }
+
   const startsAt = route.kind === "live_event" ? Math.trunc(Number(listing.starts_at)) : null;
   const endsAt = route.kind === "live_event" && startsAt !== null
     ? startsAt + Math.max(1, Math.trunc(Number(listing.duration_min ?? 60))) * 60_000
@@ -771,11 +809,12 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
   // while the hold took `tax.buyerTotal` — so with GST switched on, an aborted checkout
   // would have returned the base and quietly kept the tax. Caught by reading the catch
   // block; `gstEnabled` is false in production, so it never reached a real buyer.
-  const tax = taxFor(config, price);
+  const tax = taxFor(config, chargePrice);
   if (!tax) return json({ error: "commercial tax configuration invalid" }, 503);
 
   return await provisionCommercialPurchase(env, {
-    auth, route, listing, config, policy, price, tax, startsAt, endsAt,
+    auth, route, listing, config, policy, price: chargePrice, tax, startsAt, endsAt,
+    listPrice, promoPct, promoId: promo?.id != null ? String(promo.id) : null,
     slotStart, slotEnd, availabilityHoldId, orderId, operationId, bookingId, requestHash,
     funding: {
       rail: "wallet",
@@ -930,7 +969,13 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
   listing: Listing;
   config: PlatformConfig;
   policy: CheckoutPolicy;
+  /** What the buyer is actually charged (list price minus any applied promotion). */
   price: number;
+  /** [MKT-PROMO-CHECKOUT-1] Provenance only. Omitted by the gateway lane, which has no
+   *  promo concept: it then records price_source "listing.price" exactly as before. */
+  listPrice?: number;
+  promoPct?: number;
+  promoId?: string | null;
   tax: TaxBreakdown;
   startsAt: number | null;
   endsAt: number | null;
@@ -947,6 +992,18 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
     auth, route, listing, config, policy, price, tax, startsAt, endsAt,
     slotStart, slotEnd, availabilityHoldId, orderId, operationId, bookingId, requestHash, funding,
   } = ctx;
+  // [MKT-PROMO-CHECKOUT-1] Promo provenance. `price` above is ALREADY the discounted
+  // amount and stays the single number every leg, invariant and ledger call uses.
+  const promoPct = Math.trunc(Number(ctx.promoPct ?? 0));
+  const promoId = promoPct > 0 ? (ctx.promoId ?? null) : null;
+  const listPrice = Math.trunc(Number(ctx.listPrice ?? price));
+  const conversionSnapshotJson = JSON.stringify({
+    request_sha256: requestHash,
+    price_source: promoId ? "listing.price+promo" : "listing.price",
+    list_price: listPrice,
+    promo_pct: promoPct,
+    promo_id: promoId,
+  });
   let holdWasFresh = false;
   const calendarClaims: CalendarClaim[] = [];
   let availabilityReservationId: string | null = null;
@@ -1068,6 +1125,14 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
     const policySnapshotId = `commercial-policy:${orderId}`;
     const policyJson = JSON.stringify(policy);
     const now = Date.now();
+    // [MKT-PROMO-CHECKOUT-1] The usage counter is bumped in the SAME batch as the order
+    // insert, so a promo can never be consumed by a checkout that did not commit. The
+    // order insert is INSERT OR IGNORE for idempotency, so a re-entered provision (crash
+    // between the batch and finishOperation) would otherwise double-count the use —
+    // hence the pre-check: if the order row already exists, this use is already counted.
+    const promoAlreadyCounted = promoId
+      ? !!(await metaDb(env).prepare("SELECT id FROM orders WHERE id=?1").bind(orderId).first())
+      : false;
     await metaDb(env).batch([
       metaDb(env).prepare(
         `INSERT OR IGNORE INTO orders
@@ -1083,8 +1148,11 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
          VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)`,
       ).bind(policySnapshotId, orderId, listing.id, bookingId, auth.uid, listing.creator_id, route.kind, price,
         listing.currency_display ?? DEFAULT_CURRENCY, creatorFeePct, settlementHoldHours, platformFeeAmount, creatorAmount,
-        policyJson, JSON.stringify({ request_sha256: requestHash, price_source: "listing.price" }),
+        policyJson, conversionSnapshotJson,
         CHECKOUT_POLICY_VERSION, now, tax.gstRatePct, tax.gstAmount, tax.taxableBase),
+      ...(promoId && !promoAlreadyCounted
+        ? [metaDb(env).prepare("UPDATE listing_promotions SET used=used+1 WHERE id=?1").bind(promoId)]
+        : []),
     ]);
 
     const order = await metaDb(env).prepare(
@@ -1100,7 +1168,7 @@ export async function provisionCommercialPurchase(env: Env, ctx: {
       || order.status !== (price > 0 ? "held" : "free")) {
       throw new Error("order authority mismatch");
     }
-    const conversionSnapshot = JSON.stringify({ request_sha256: requestHash, price_source: "listing.price" });
+    const conversionSnapshot = conversionSnapshotJson;
     const policyRow = await metaDb(env).prepare(
       `SELECT policy_snapshot_id,order_id,listing_id,booking_id,buyer_id,creator_id,kind,gross_amount,currency,
           creator_fee_pct,settlement_hold_hours,platform_fee_amount,creator_amount,cancellation_policy_json,
