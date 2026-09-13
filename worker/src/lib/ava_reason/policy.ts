@@ -116,6 +116,56 @@ export const MEDIA_LATENCY_PROFILE_MS: Record<string, number> = {
 // outage degrades to the reasoner ALT instead of failing the job.
 const MEDIA_TEXT_FEATURES = new Set(["media_doc_summarize", "media_doc_translate", "media_audio_translate"]);
 
+// ── [COPY-LADDER-INVERT-1 2026-09-13, owner decision] NON-THINKING-FIRST ──────
+// Features whose ladder is the reasoner ladder RUN BACKWARDS: the non-thinking
+// OpenRouter model is PRIMARY and Workers-AI gemma-4 is the ALT. Same mechanism
+// as MEDIA_TEXT_FEATURES above (a `feature` branch feeding core.ts's existing
+// primary->alt fallback) — no new routing concept, and the ladder still has two
+// rungs, so an OpenRouter outage still degrades to Workers AI rather than
+// failing the creator's request.
+//
+// WHY, written down so nobody re-derives it the hard way. The reasoner primary
+// `@cf/google/gemma-4-26b-a4b-it` is a THINKING model. On Workers AI its
+// scratchpad comes back as `choices[0].message.reasoning_content`, is emitted
+// BEFORE the answer, and is billed against the SAME completion budget. So when
+// the budget runs out mid-thought the call returns HTTP 200 with
+// `finish_reason:"length"` and `content:""` — a successful, billed call carrying
+// no answer. That is what broke listing copy-review for a week: one production
+// `ava_reason_call` with ok:true / tokens_out:700.0 sitting next to a
+// `listing_copy_review` with source:"rules".
+//
+// MEASURED against the live model (2026-09-13), all on the real copy-review
+// prompts, so these numbers are not estimates:
+//   - max_tokens 700  -> finish "length", 700 completion tokens, content ""
+//   - max_tokens 2000 -> finish "stop",  ~740-950 completion tokens (works)
+//   - per-field edit at 3000 -> finish "stop", ~1900 completion tokens (~35 s)
+//   - THREE-field review at 5000 -> STILL finish "length" (it spirals), ~90 s
+// The scratchpad CANNOT be turned off on Workers AI. Tested and all still
+// produced full `reasoning_content` and an empty `content`:
+//   reasoning:{effort:"none"}, reasoning:{effort:"minimal"},
+//   thinking:false, response_format:{type:"json_object"}
+//
+// A ~35 s wait per button press — three buttons, with the wizard's step 2 gated
+// on all three — is not a shippable creator flow, and a bulk path that reliably
+// spirals past 5000 tokens is not something to leave armed in production. Hence
+// the inversion. `google/gemini-2.5-flash-lite` (the SAME model that was already
+// this ladder's ALT, so no new provider, key or cost line) does not think, so it
+// answers this prompt in one to three seconds with a few hundred output tokens.
+//
+// NOTE this is a routing choice, not a bug fix: the two real defects behind that
+// incident are fixed independently and stay fixed for every OTHER caller —
+// `cfText()` reading the OpenAI `choices` shape ([REASONER-CHOICES-1] in
+// ./types.ts) and an empty primary answer now trying the ALT
+// ([REASONER-EMPTY-FALLBACK-1] in ./core.ts).
+const NON_THINKING_FIRST_FEATURES = new Set(["listing_copy_review"]);
+
+/** Primary model for NON_THINKING_FIRST_FEATURES. Defaults to the reasoner ALT
+ *  (google/gemini-2.5-flash-lite) so there is ONE place that names it; override
+ *  via [vars] AVA_COPY_EDIT_MODEL without a code deploy. */
+export function copyEditModel(env: ReasonEnv): string {
+  return ((env as any).AVA_COPY_EDIT_MODEL as string) || reasonerAltModel(env);
+}
+
 function step(provider: Step["provider"], model: string, body: BodyOpts): Step {
   return { provider, model, body };
 }
@@ -167,6 +217,21 @@ export function plan(env: ReasonEnv, req: ReasonReq, dialect: Dialect): Plan {
   // see MEDIA_TEXT_FEATURES's doc comment above. Checked before the
   // dialect/verb branches below since it applies regardless of legacyModel
   // (the job consumer never sets one).
+  // [COPY-LADDER-INVERT-1] Non-thinking OpenRouter PRIMARY -> Workers-AI gemma-4
+  // ALT. Checked alongside the media-text branch and before the dialect/verb
+  // branches, for the same reason: it applies regardless of legacyModel, which
+  // these callers never set. `altRequiresKey` stays false on purpose — it is the
+  // PRIMARY that needs the OpenRouter key here, so a missing key throws on rung
+  // one and the Workers-AI ALT still answers.
+  if (NON_THINKING_FIRST_FEATURES.has(String(req.feature ?? ""))) {
+    return {
+      verb,
+      primary: step("openrouter", copyEditModel(env), OR_W),
+      alt: step("cf_ai", reasonerModel(env), CF_W),
+      noFallback: false, retryPrimaryIfNoAlt: false, altRequiresKey: false, altChatOnly: false,
+    };
+  }
+
   if (MEDIA_TEXT_FEATURES.has(String(req.feature ?? ""))) {
     return {
       verb,

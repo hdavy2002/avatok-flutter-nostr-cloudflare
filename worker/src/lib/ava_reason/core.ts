@@ -157,8 +157,45 @@ export async function runReason(env: ReasonEnv, req: ReasonReq, host: ReasonHost
     }));
   };
 
+  /**
+   * [REASONER-EMPTY-FALLBACK-1 2026-09-13] An EMPTY completion is a failure, and
+   * until now it was the one failure the ladder could not see.
+   *
+   * The reasoner primary `@cf/google/gemma-4-26b-a4b-it` is a thinking model whose
+   * scratchpad is billed against the same completion budget as the answer and is
+   * emitted first. When the budget runs out mid-thought it returns HTTP 200 with
+   * `finish_reason:"length"` and `content:""` — a perfectly successful call that
+   * carries no answer. `runStep` did not throw, so the OpenRouter ALT rung never
+   * fired, `ava_reason_call` recorded ok:true, and every caller was handed "".
+   * (That is exactly how listing copy-review spent a week answering
+   * `source:"rules"` next to an ok:true, 700-token reasoner event.) Verified live:
+   * the same prompt at max_tokens 1000/1500/2600 returns finish_reason "length"
+   * and empty content; `reasoning:{effort:"none"|"minimal"}`, `thinking:false` and
+   * `response_format:json_object` do NOT suppress the scratchpad on Workers AI.
+   *
+   * So: for the `reason` verb only, an empty primary answer now tries the ALT the
+   * plan already declares. Deliberately NOT done by throwing — if the ALT is
+   * unavailable or also comes back empty, this returns the primary's original
+   * result unchanged, so no call site that used to receive "" can start receiving
+   * an exception. Non-`reason` verbs are untouched: `embed`/`transcribe`/`speak`
+   * legitimately carry their payload in `raw` with an empty `text`, and every
+   * pinned-`@cf`, gemini_direct and legacyModel plan has `alt:null` anyway.
+   */
+  const emptyReasonAnswer = (out: AdapterOut): boolean =>
+    (req.verb ?? "reason") === "reason" && !String(out.text ?? "").trim();
+
   try {
     const out = await runStep(env, p.primary, req, dialect);
+    if (p.alt && emptyReasonAnswer(out)) {
+      const altUsable = (!p.altRequiresKey || hasOrKey(env)) && (!p.altChatOnly || isChatShaped(req));
+      if (altUsable) {
+        emitErr(p.primary, new Error("empty completion (no answer text)"), false);
+        try {
+          const alt = await runStep(env, p.alt, req, dialect);
+          if (!emptyReasonAnswer(alt)) return await finish(alt, p.alt, true);
+        } catch (eAlt) { emitErr(p.alt, eAlt, true); }
+      }
+    }
     return await finish(out, p.primary, false);
   } catch (e1) {
     if (p.noFallback) { emitErr(p.primary, e1, false); throw e1; }

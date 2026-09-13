@@ -264,11 +264,40 @@ export function buildChatBody(req: ReasonReq, opts: BodyOpts): Record<string, un
   return body;
 }
 
-/** Workers-AI text extraction — EXACTLY the worker's historical workersAiCall shape
- *  (`response` only). Do NOT widen to choices here: the worker reason path returned
- *  "" for choices-style output before, and changing that would alter behaviour. */
+/** Workers-AI text extraction.
+ *
+ *  [REASONER-CHOICES-1 2026-09-13] Historically this read `response` ONLY, with a
+ *  comment forbidding a widening to `choices` "because the worker reason path
+ *  returned '' for choices-style output before". That was the bug, not the
+ *  contract: the CURRENT reasoner primary, `@cf/google/gemma-4-26b-a4b-it`
+ *  (wrangler.toml AVA_REASONER), answers in the OpenAI chat-completions shape —
+ *
+ *      { choices: [ { message: { content: "…", reasoning_content: "…" } } ], usage }
+ *
+ *  — and has no `response` key at all. So every reasoner-ladder call resolved to
+ *  "" while `ava_reason_call` reported ok:true with a real tokens_out, and each
+ *  caller silently treated a HEALTHY, PAID-FOR completion as junk (listing
+ *  copy-review downgraded to `source:"rules"` on every single request).
+ *
+ *  `response` still WINS, so every model that returns the classic Workers-AI
+ *  shape is byte-identical to before. The choices branch can only fire where the
+ *  old code returned "" — it cannot change a non-empty historical result.
+ *
+ *  `reasoning_content` (thinking-mode scratchpad) is deliberately NOT read: it is
+ *  not the answer, and concatenating it would corrupt a JSON-mode reply. */
 export function cfText(out: any): string {
-  return String(out?.response ?? out?.result?.response ?? "").trim();
+  const direct = out?.response ?? out?.result?.response;
+  if (direct != null && String(direct).trim()) return String(direct).trim();
+  const choices = out?.choices ?? out?.result?.choices;
+  const content = Array.isArray(choices) ? choices[0]?.message?.content : undefined;
+  if (typeof content === "string") return content.trim();
+  if (Array.isArray(content)) {
+    return content
+      .map((part: any) => (typeof part === "string" ? part : String(part?.text ?? "")))
+      .join("")
+      .trim();
+  }
+  return String(direct ?? "").trim();
 }
 
 /** OpenRouter text extraction. OpenAI-compatible providers may return content as
