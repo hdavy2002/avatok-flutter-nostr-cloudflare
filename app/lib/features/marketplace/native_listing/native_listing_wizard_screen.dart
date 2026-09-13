@@ -8,7 +8,6 @@ import '../../../core/analytics.dart';
 import '../../../core/availability_time.dart';
 import '../../../core/cached_image.dart';
 import '../../../core/listings_api.dart';
-import '../../../core/remote_config.dart';
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/messenger_theme.dart';
 import '../../../core/ui/zine_widgets.dart';
@@ -80,6 +79,11 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   // live_event save 422'd at step 2 (owner report 2026-09-13). These fields
   // carry the values the listing already has so an edit never silently rewrites
   // a policy the creator set elsewhere; the wizard has no UI for them yet.
+  // [LIST-WIZARD-GATE-1] Server-computed, per-account: may this creator hold a
+  // free_entry listing at all? Starts false so the switch is never painted
+  // before the answer arrives — the owner's instruction is that nobody but the
+  // allowlisted account ever sees it, and a flash counts as seeing it.
+  bool _freeEntryAllowed = false;
   int _refundWindowHours = 24;
   int _cancellationWindowHours = 24;
   int _bookingNoticeHours = 6;
@@ -114,6 +118,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
+      _freeEntryAllowed = await ListingsApi.freeEntryAllowed();
       _categories = await ListingsApi.categories();
       if (_id != null) {
         final raw = await ListingsApi.wizardGet(_id!);
@@ -261,7 +266,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
 
   String? _validate() {
     if (_step == 1 && (_title.text.trim().isEmpty || _description.text.trim().isEmpty)) return 'Add a title and description.';
-    if (_step == 2 && !_freeEntry && (int.tryParse(_price.text.trim()) ?? 0) <= 0) return RemoteConfig.isAdmin ? 'Enter a price greater than zero, or choose a free show.' : 'Enter a price greater than zero.';
+    if (_step == 2 && !_freeEntry && (int.tryParse(_price.text.trim()) ?? 0) <= 0) return _freeEntryAllowed ? 'Enter a price greater than zero, or choose a free show.' : 'Enter a price greater than zero.';
     if (_step == 3 && _kind == 'live_event' && ((_startsAtEpoch() ?? 0) <= DateTime.now().millisecondsSinceEpoch)) return 'Choose a future date and time.';
     if (_step == 6 && (_coverUrls.isEmpty || _faceUrl == null || _faceUrl!.isEmpty)) return 'Add a cover photo and private face photo.';
     if (_step == 7 && !_copyReviewed) return 'Review the copy before submitting.';
@@ -385,11 +390,21 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
           // (worker/src/lib/free_entry_gate.ts: ADMIN_UIDS or FREE_ENTRY_ALLOWLIST
           // while freeEntryAllowlistOnly stays true), so an ordinary creator who
           // flipped this only ever got a 403 "Free-entry listings are limited to
-          // approved creators right now." two steps later. Owner decision
-          // 2026-09-13: show the switch to admins only. RemoteConfig.isAdmin is
-          // server-verified, so this hides an affordance that cannot work — it is
-          // not the gate. The gate stays in the Worker.
-          if (RemoteConfig.isAdmin)
+          // approved creators right now." two steps later. Owner instruction
+          // 2026-09-13: nobody but the admin account sees this control.
+          //
+          // The condition is the SERVER's per-account answer (`free_entry_allowed`
+          // from GET /api/listings/mine), which the web wizard already uses, not a
+          // client guess: RemoteConfig.isAdmin would cover ADMIN_UIDS only and
+          // would wrongly hide the switch from FREE_ENTRY_ALLOWLIST testers. It
+          // fails closed. This hides an affordance that cannot work; the Worker
+          // gate is still the only gate.
+          //
+          // `|| _freeEntry` keeps the switch reachable on a listing that ALREADY
+          // has free entry, so its owner can turn it off. Without that, an account
+          // whose allowlisting was revoked would be left with a listing it can
+          // never save again.
+          if (_freeEntryAllowed || _freeEntry)
             SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('This is a free show'), value: _freeEntry, onChanged: (v) => setState(() { _freeEntry = v; _dirty = true; })),
         ]);
       case 1:

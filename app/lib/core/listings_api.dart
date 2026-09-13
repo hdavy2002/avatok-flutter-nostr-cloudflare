@@ -1561,6 +1561,24 @@ class ListingsApi {
     return _cards(_j(r.body));
   }
 
+  /// [LIST-WIZARD-GATE-1] May THIS account create or hold a `free_entry`
+  /// listing? Computed server-side by the same `freeEntryAllowed()` the
+  /// create/edit routes enforce (worker/src/lib/free_entry_gate.ts), so it
+  /// covers ADMIN_UIDS *and* FREE_ENTRY_ALLOWLIST testers — unlike the public
+  /// `freeEntryAllowlistOnly` config flag, which is identical for every
+  /// visitor and would hide the control from the very accounts the gate lets
+  /// through. Fails CLOSED: a network or auth failure returns false, so a
+  /// creator is never shown a switch whose save would 403 two steps later.
+  static Future<bool> freeEntryAllowed() async {
+    try {
+      final r = await ApiAuth.getSigned('$_base/listings/mine');
+      if (r.statusCode < 200 || r.statusCode >= 300) return false;
+      return _j(r.body)['free_entry_allowed'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<bool> addPromotion(String id, {required String kind, required int pctOff, String? code, int? maxUses, int? endsAt}) async {
     final r = await ApiAuth.postJson('$_base/listings/$id/promotions', {
       'kind': kind, 'pct_off': pctOff,
