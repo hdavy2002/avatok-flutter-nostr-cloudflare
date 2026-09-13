@@ -722,3 +722,87 @@ test call is one; a real second customer booking via the `/j/` link is the
 other — an admin-only pass does not count, per the ship gate's "two phones
 before the word shipped" rule) and `agent_session_settled.outcome ==
 'completed_full'` **≥ 1** (a real, non-`is_test` booking that paid out).
+
+---
+
+## `[VIDEO-HERO-1]` / `[PHOTO-STRIP-2]` / `[DETAIL-PROMO-1]` / `[CHECKOUT-PROMO-1]` — listing detail media + promo pricing (2026-09-13)
+
+Surfaces: `web/src/components/ListingDetailsComp.astro` (the LIVE detail page for
+`/l/[id]`, `/[username]/[slug]` and `/e/[event]` — `ListingDetailView.astro` is
+dead code and emits nothing) and `web/src/islands/checkout/CommercialPayStep.tsx`.
+All go through `web/src/lib/analytics.ts`'s `capture()`, so they carry the §1.1
+super properties (`platform`, `service_name`, `release`, `app`, `email`,
+`device_class`, `viewport`, `trace_id` where one is active). Per §1.5 no promo
+code STRING is ever sent from the detail page, and the checkout events carry the
+code's length and outcome, never the code itself where it could be harvested —
+`checkout_promo_applied` reports only `result`, `quoted_total` and
+`charged_total`.
+
+### Web — listing detail (§2.4 addendum)
+
+| Event | Props | Note |
+|---|---|---|
+| `listing_video_play` | `listing_id, creator_uid, provider, surface` | The buyer pressed play on the embedded hero video. `provider: 'youtube'` (the only embedded provider — anything else keeps the outbound HIGHLIGHT REEL tile and is a plain `listing_cta_click`), `surface: 'hero'`. Detected by focus moving into the `youtube-nocookie` iframe, so it fires at most once per page view and never without a real gesture. |
+| `listing_photo_open` | `listing_id, creator_uid, index, photo_count` | A photo thumbnail opened the lightbox. `index` is 0-based within the strip; `photo_count` is how many real uploaded photos the strip is showing (the AI poster is excluded by `cover_media[].source === 'ai_poster'`, never by position). |
+| `listing_photo_error` | `listing_id, creator_uid, reason` | The full-size photo failed to load inside the lightbox. `reason: 'image_load_failed'`. This is the "no silent catch" path for the new surface — before it, a broken R2/CDN render was invisible. |
+
+### Web — checkout promo code (§2.5 addendum)
+
+| Event | Props | Note |
+|---|---|---|
+| `checkout_promo_submitted` | `listing_id, kind, code_length` | "Apply" pressed. Staging only — there is no validate endpoint, so this is an intent, not a result. Never the code text. |
+| `checkout_promo_applied` | `listing_id, kind, result, quoted_total, charged_total?` | **The success value.** `result: 'success'` only after the checkout POST returned 200 and `charged_total` is the amount the SERVER says it charged; `result: 'invalid'` when it returned 400 `invalid_promo_code` (no money moved). A client-computed discount is never reported, because the client never computes one. |
+
+### Ship manifest note
+
+These four issue ids ship together as a web-only change (`two_sided: false`, no
+app build). The assertions to write down BEFORE the deploy, per the ship gate's
+rule 3:
+
+- `listing_video_play` present with `provider == 'youtube'` for a listing that
+  has a `video_url` — i.e. the embed replaced the outbound tile and the buyer
+  stayed on the page.
+- `checkout_promo_applied.result == 'success'` at least once with
+  `charged_total < quoted_total`. `result == 'invalid'` present is NOT a pass;
+  it only proves the error path renders.
+
+---
+
+## `[LIST-APP-PARITY-1]` — app listing wizard + detail parity with the web (2026-09-13)
+
+App events, emitted through `app/lib/core/analytics.dart` (`Analytics.capture`,
+`Analytics.uiInteraction`, `Analytics.captureException`). The shared
+super-property contract of §1.1 rides automatically via `Analytics._base` — in
+particular `email`, `phone` and `clerk_uid`, so every event below is
+retrievable per tester by email, which is the only way to tell whose device a
+problem is on. Per §1.5, **no listing copy, no promo-code value and no photo
+bytes ever ride an event below** — only ids, enums, counts and durations.
+
+### Android / iOS app
+
+| Event | Props | Note |
+|---|---|---|
+| `ui_interaction` name=`listing_ai_copy_assist` | `field, outcome, ai_source, kind, listing_id, latency_ms` | **Success value.** One tap of a per-field "Use AI" blip on the wizard's Pitch step, round trip to `POST /api/listings/copy-review`. `field: 'title' \| 'blurb' \| 'description'`; `outcome: 'ok'`; `ai_source: 'ai' \| 'rules'` — a run of `rules` means the model half is silently down and creators are getting a length fit, not an AI review. |
+| `listing_ai_copy_assist_failed` | `field, outcome, kind, listing_id` | The call did not answer. `outcome: 'error'`. Paired with a handled `$exception` carrying `stage: 'copy_review'`. Note the step then UNBLOCKS — a provider outage must never make listing impossible — so a rise here means creators are publishing un-reviewed copy. |
+| `listing_ai_copy_applied` | `field, outcome, ai_source, kind, listing_id` | The creator pressed Apply on a suggestion. `outcome: 'applied'`. The ratio against `listing_ai_copy_assist` is how useful the suggestions actually are. Never the text. |
+| `listing_promotion_saved` | `listing_id, promotion_kind, pct_off, outcome` | A creator-side discount was reconciled into `listing_promotions`. `promotion_kind: 'early_bird' \| 'promo_code'`; `outcome: 'ok' \| 'error'`. Never the code string. |
+| `listing_promo_applied` | `listing_id, surface, outcome` | **Success value for the buyer half.** A promo code was sent with a checkout. `surface: 'native_booking' \| 'commercial_checkout_sheet'`; `outcome: 'ok'` (the server accepted and charged the discounted amount) \| `'invalid'` (400 `invalid_promo_code`). Never the code itself. |
+| `listing_video_play` | `listing_id, video_id, surface, outcome` | The video hero on the native detail page was tapped and the inline player mounted. `surface: 'detail_hero'`; `outcome: 'started'`. |
+| `listing_gallery_opened` | `listing_id, photo_index, photo_count, outcome` | A gallery thumbnail was tapped and the full-screen viewer opened. `outcome: 'opened'`. |
+
+Existing app events unchanged and still emitted from these surfaces:
+`listing_native_wizard_opened`, `listing_native_wizard_saved`,
+`listing_native_wizard_save_failed`, `listing_native_wizard_upload_completed`,
+`listing_native_wizard_submitted`, `listing_detail_opened`,
+`native_booking_opened`, `commercial_checkout_confirmed`,
+`listing_checkout_refused_closed`.
+
+### Worker
+
+No new worker events. `POST /api/listings/copy-review` already emits
+`listing_copy_review` via `track(env, uid, event, app_name, props)` with
+`source`, `kind` and the per-field `*_changed` / `*_len` counts
+(`worker/src/routes/listing_copy_review.ts`); the app calls the same route, so
+those rows now carry app traffic as well as web traffic and are separated by
+the `platform` / `service_name` super-properties, not by a new event name.
+`POST /api/listings/:id/promotions` already emits `listing_promo_created`.
