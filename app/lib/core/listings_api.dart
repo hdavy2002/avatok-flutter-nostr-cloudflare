@@ -978,27 +978,48 @@ class CopyReviewField {
 }
 
 /// [LIST-APP-PARITY-1] The whole copy-review answer.
+///
+/// [LIST-AI-PERFIELD-1] Every field is NULLABLE. When the request names a
+/// single `field`, the route reviews only that one and answers with the other
+/// two keys set to null; a request without `field` still fills all three. A
+/// null key means "not reviewed in this call" — never "nothing to change".
 class CopyReviewResult {
-  final CopyReviewField title, blurb, description;
+  final CopyReviewField? title, blurb, description;
 
   /// 'ai' when the model half produced the suggestions, 'rules' when only the
   /// deterministic length pass ran. The UI prints this — never claim an AI
   /// review that did not happen.
   final String source;
 
+  /// [LIST-AI-PERFIELD-1] WHY the model half did or did not answer:
+  /// 'ok' | 'moderation_blocked' | 'provider_error' | 'bad_json' | 'disabled'.
+  /// Null on a response that predates the code, in which case the UI must fall
+  /// back to wording derived from [source] alone.
+  final String? aiStatus;
+
   const CopyReviewResult({
-    required this.title,
-    required this.blurb,
-    required this.description,
+    this.title,
+    this.blurb,
+    this.description,
     required this.source,
+    this.aiStatus,
   });
 
-  factory CopyReviewResult.fromJson(Map<String, dynamic> value) => CopyReviewResult(
-        title: CopyReviewField.fromJson(value['title']),
-        blurb: CopyReviewField.fromJson(value['blurb']),
-        description: CopyReviewField.fromJson(value['description']),
-        source: (value['source'] ?? 'rules').toString(),
-      );
+  /// A key the server left out (or nulled, because this call reviewed another
+  /// field) parses to null rather than to an empty suggestion.
+  static CopyReviewField? _fieldOrNull(dynamic value) =>
+      value is Map ? CopyReviewField.fromJson(value) : null;
+
+  factory CopyReviewResult.fromJson(Map<String, dynamic> value) {
+    final status = value['ai_status']?.toString();
+    return CopyReviewResult(
+      title: _fieldOrNull(value['title']),
+      blurb: _fieldOrNull(value['blurb']),
+      description: _fieldOrNull(value['description']),
+      source: (value['source'] ?? 'rules').toString(),
+      aiStatus: (status == null || status.isEmpty) ? null : status,
+    );
+  }
 
   CopyReviewField? field(String key) {
     switch (key) {
@@ -1205,6 +1226,11 @@ class ListingsApi {
   /// The timeout is deliberately long: the model half budgets 20s server-side
   /// (`avaReason(... timeoutMs: 20000)`), and the default 8s would abandon a call
   /// that was about to answer and make every review look like a failure.
+  ///
+  /// [LIST-AI-PERFIELD-1] [field] is 'title' | 'blurb' | 'description'. When it
+  /// is given the route reviews ONLY that field and returns the other two keys
+  /// as null, so one "Use AI" tap can never rewrite a box the creator did not
+  /// ask about. Omitting it keeps the older all-three behaviour.
   static Future<ListingApiResult<CopyReviewResult>> copyReview({
     required String title,
     required String blurb,
@@ -1212,6 +1238,7 @@ class ListingsApi {
     required String kind,
     String category = '',
     bool freeEntry = false,
+    String? field,
   }) async {
     final r = await ApiAuth.postJson('$_base/listings/copy-review', {
       'title': title,
@@ -1220,6 +1247,7 @@ class ListingsApi {
       'kind': kind,
       'category': category,
       'free_entry': freeEntry,
+      if (field != null && field.isNotEmpty) 'field': field,
     }, timeout: const Duration(seconds: 30));
     return _result(r, (body) => CopyReviewResult.fromJson(body));
   }

@@ -101,20 +101,33 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   bool _publishing = false;
   List<ExploreCategory> _categories = const [];
 
-  // [LIST-APP-PARITY-1] AI copy assist on the Pitch step. `POST /api/listings/
-  // copy-review` reviews all three fields in ONE call, so a per-field blip that
-  // re-requested per field would pay three round trips for one answer: the first
-  // run stores every field's suggestion and the rest are served from here.
+  // [LIST-APP-PARITY-1] AI copy assist on the Pitch step.
+  //
+  // [LIST-AI-PERFIELD-1] ONE FIELD PER TAP. The earlier build reviewed all
+  // three in the first call and served the other two from memory to save round
+  // trips; the owner wants each button to review only its own box, so every
+  // call now sends `field:` and every piece of state below is keyed by field.
+  // Nothing in `_runCopyReview` writes a key other than the one that was
+  // tapped.
   //
   // `_aiReviewedText` is BOTH the "has this field been through AI" record (the
   // gate on leaving this step) and the idempotency key: a field whose text still
   // equals what was reviewed does not re-run.
   final _aiSuggestion = <String, CopyReviewField>{};
   final _aiReviewedText = <String, String>{};
-  String? _aiBusyField;
-  String? _aiSource;
-  // A failed call must not trap the creator on step 2 forever. One failure
-  // unlocks the step; the affordance stays so they can try again.
+  /// Per-field 'source' ('ai' | 'rules') and 'ai_status' from the call that
+  /// produced that field's suggestion — two fields can differ (one reviewed
+  /// while the model was up, the next after it fell over).
+  final _aiSourceByField = <String, String>{};
+  final _aiStatusByField = <String, String>{};
+  /// The fields with a call in flight, and the per-field failure line. A set,
+  /// not one string, so a slow description does not freeze the title's button.
+  final _aiBusyFields = <String>{};
+  final _aiErrorByField = <String, String>{};
+  // A failed call must not trap the creator on step 2 forever. ANY field's
+  // failure unlocks the step, and it stays unlocked for the rest of the
+  // session: a later success on a different field must not re-lock a step whose
+  // remaining field cannot be reviewed while the provider is down.
   bool _aiUnavailable = false;
 
   // [LIST-APP-PARITY-1] Spoken languages -> the `spoken_lang` CSV.
@@ -471,6 +484,13 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
         // "has been through the check", not "accepted the suggestion" — the
         // words stay the creator's. `_aiUnavailable` releases it after a failed
         // attempt, because a provider outage must not make listing impossible.
+        //
+        // [LIST-AI-PERFIELD-1] Each field now earns its own entry in
+        // `_aiReviewedText` from its own call, so this still reads exactly as
+        // it did: three fields, three checks. The release is deliberately
+        // sticky — one field failing frees the step even if another later
+        // succeeds, so a creator can never be held by a box the provider
+        // refuses to review.
         if (!_aiUnavailable) {
           final pending = _kCopyFields.where((f) => !_aiReviewedText.containsKey(f)).toList();
           if (pending.isNotEmpty) {
@@ -625,10 +645,22 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   /// in the box now — i.e. re-running would ask the same question again.
   bool _aiFresh(String key) => _aiReviewedText[key] == _copyController(key).text.trim();
 
+  /// [LIST-AI-PERFIELD-1] Reviews EXACTLY [key]. The whole draft still travels
+  /// so the server has the context to judge (and, for an empty box, to write)
+  /// this one field, but only `data.field(key)` is read back and only [key]'s
+  /// entry in each map is written.
   Future<void> _runCopyReview(String key) async {
-    if (_aiBusyField != null || _aiFresh(key)) return;
+    // Only this field's own in-flight call blocks it; a sibling's does not.
+    if (_aiBusyFields.contains(key) || _aiFresh(key)) return;
     final startedMs = DateTime.now().millisecondsSinceEpoch;
-    setState(() { _aiBusyField = key; _error = null; });
+    // The text as it stood when the request left, so a creator who keeps typing
+    // does not get a suggestion recorded against words the server never saw.
+    final sentText = _copyController(key).text.trim();
+    setState(() {
+      _aiBusyFields.add(key);
+      _aiErrorByField.remove(key);
+      _error = null;
+    });
     try {
       final result = await ListingsApi.copyReview(
         title: _title.text.trim(),
@@ -637,23 +669,33 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
         kind: _kind,
         category: _category,
         freeEntry: _freeEntry,
+        field: key,
       );
       final data = result.data;
       if (!result.ok || data == null) {
         throw StateError(result.error?.userMessage ?? 'The AI check did not answer.');
       }
+      final value = data.field(key);
+      if (value == null) {
+        // A per-field call that comes back without the field it was asked
+        // about is a failure, not an empty answer — say so rather than mark the
+        // box reviewed with nothing to show.
+        throw StateError('The AI check did not answer for ${_kCopyFieldLabels[key]!.toLowerCase()}.');
+      }
       if (!mounted) return;
       setState(() {
-        _aiSource = data.source;
-        _aiUnavailable = false;
-        for (final field in _kCopyFields) {
-          final value = data.field(field);
-          if (value == null) continue;
-          _aiSuggestion[field] = value;
-          _aiReviewedText[field] = _copyController(field).text.trim();
+        _aiSuggestion[key] = value;
+        _aiReviewedText[key] = sentText;
+        _aiSourceByField[key] = data.source;
+        final status = data.aiStatus;
+        if (status == null) {
+          _aiStatusByField.remove(key);
+        } else {
+          _aiStatusByField[key] = status;
         }
+        _aiErrorByField.remove(key);
       });
-      Analytics.uiInteraction(
+      await Analytics.uiInteraction(
         'listing_ai_copy_assist',
         DateTime.now().millisecondsSinceEpoch - startedMs,
         phase: 'interactive',
@@ -661,6 +703,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
           'field': key,
           'outcome': 'ok',
           'ai_source': data.source,
+          'ai_status': data.aiStatus ?? 'unknown',
           'kind': _kind,
           'listing_id': _id ?? '',
         },
@@ -668,8 +711,10 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
     } catch (e, stack) {
       if (mounted) {
         setState(() {
+          // Releases the step gate for good — see [_aiUnavailable].
           _aiUnavailable = true;
-          _error = 'The AI check could not run just now. You can continue without it.';
+          _aiErrorByField[key] =
+              'The AI check could not run on this field just now. You can continue without it.';
         });
       }
       AvaLog.I.warn('listing', 'copy review failed on field $key');
@@ -680,7 +725,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
       await Analytics.capture('listing_ai_copy_assist_failed',
           {'field': key, 'outcome': 'error', 'kind': _kind, 'listing_id': _id ?? ''});
     } finally {
-      if (mounted) setState(() => _aiBusyField = null);
+      if (mounted) setState(() => _aiBusyFields.remove(key));
     }
   }
 
@@ -698,7 +743,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
     Analytics.capture('listing_ai_copy_applied', {
       'field': key,
       'outcome': 'applied',
-      'ai_source': _aiSource ?? 'rules',
+      'ai_source': _aiSourceByField[key] ?? 'rules',
       'kind': _kind,
       'listing_id': _id ?? '',
     });
@@ -981,16 +1026,21 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   };
 
   /// The per-field "Use AI" blip that sits above Title / Blurb / Description.
+  ///
+  /// [LIST-AI-PERFIELD-1] Everything it reads and everything its button can
+  /// reach is keyed by [key]; a sibling field's in-flight call neither disables
+  /// this button nor changes anything shown here.
   Widget _aiBlip(String key) {
-    final busy = _aiBusyField == key;
+    final busy = _aiBusyFields.contains(key);
     final reviewed = _aiReviewedText.containsKey(key);
     final fresh = reviewed && _aiFresh(key);
     final suggestion = _aiSuggestion[key];
+    final failure = _aiErrorByField[key];
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         Expanded(child: Text(_kCopyFieldLabels[key]!.toUpperCase(), style: ADText.sectionLabel(c: AD.textTertiary))),
         TextButton.icon(
-          onPressed: _aiBusyField != null || fresh ? null : () => _runCopyReview(key),
+          onPressed: busy || fresh ? null : () => _runCopyReview(key),
           icon: busy
               ? const SizedBox.square(dimension: 14, child: CircularProgressIndicator(strokeWidth: 2))
               : Icon(PhosphorIcons.sparkle(PhosphorIconsStyle.regular), size: 16),
@@ -1000,34 +1050,73 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
                   ? 'AI checked'
                   : reviewed
                       ? 'Check again'
-                      : 'Use AI'),
+                      : failure != null
+                          ? 'Try again'
+                          : 'Use AI'),
         ),
       ]),
+      if (failure != null)
+        Padding(
+          padding: const EdgeInsets.only(bottom: Msg.s2),
+          child: Text(failure, style: ADText.preview(c: AD.textTertiary)),
+        ),
       if (fresh && suggestion != null) _aiSuggestionCard(key, suggestion),
     ]);
   }
 
+  /// [LIST-AI-PERFIELD-1] The honest one-line header for a suggestion card.
+  ///
+  /// `ai_status` says WHY the model half did or did not answer, so each case
+  /// gets its own true sentence instead of one blanket "unavailable". A
+  /// response without the code (an older Worker) falls back to the wording the
+  /// screen used before, derived from `source` alone.
+  String _aiStatusLabel(String key) {
+    final source = _aiSourceByField[key];
+    switch (_aiStatusByField[key]) {
+      case 'ok':
+        return 'AI SUGGESTION';
+      case 'moderation_blocked':
+        return 'LENGTH CHECK ONLY · AI WOULD NOT REWRITE THIS TEXT';
+      case 'provider_error':
+        return 'LENGTH CHECK ONLY · AI DID NOT ANSWER';
+      case 'bad_json':
+        return 'LENGTH CHECK ONLY · AI ANSWER COULD NOT BE READ';
+      case 'disabled':
+        return 'LENGTH CHECK ONLY · AI ASSIST IS SWITCHED OFF';
+    }
+    // Never claim an AI review that did not happen — `source` says which
+    // half of the route answered (listing_copy_review.ts rule 2).
+    return source == 'ai' ? 'AI SUGGESTION' : 'LENGTH CHECK · AI MODEL UNAVAILABLE';
+  }
+
   Widget _aiSuggestionCard(String key, CopyReviewField suggestion) {
     final current = _copyController(key).text.trim();
-    final nothingToDo = suggestion.suggested.isEmpty || suggestion.suggested == current;
+    // [LIST-AI-PERFIELD-1] An asked-for empty field comes back WRITTEN, not
+    // reviewed, so "suggested is not what is in the box" is the only test for
+    // "there is something to apply" — an empty box with a written suggestion
+    // must offer Apply, never "nothing to change".
+    final applyable = suggestion.suggested.isNotEmpty && suggestion.suggested != current;
+    final emptyStill = !applyable && current.isEmpty;
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: Msg.s2),
       padding: const EdgeInsets.all(Msg.s3),
       decoration: BoxDecoration(color: AD.cardHover, borderRadius: BorderRadius.circular(AD.rListCard)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Never claim an AI review that did not happen — `source` says which
-        // half of the route answered (listing_copy_review.ts rule 2).
-        Text(_aiSource == 'ai' ? 'AI SUGGESTION' : 'LENGTH CHECK · AI MODEL UNAVAILABLE',
-            style: ADText.sectionLabel(c: AD.textTertiary)),
+        Text(_aiStatusLabel(key), style: ADText.sectionLabel(c: AD.textTertiary)),
         const SizedBox(height: Msg.s1),
-        Text(nothingToDo ? 'This reads well as it is — nothing to change.' : suggestion.suggested,
+        Text(
+            applyable
+                ? suggestion.suggested
+                : emptyStill
+                    ? 'The AI check could not write this one from the rest of your listing yet — fill in a little more and run it again.'
+                    : 'This reads well as it is — nothing to change.',
             style: ADText.preview(c: AD.textPrimary)),
         if (suggestion.note != null) ...[
           const SizedBox(height: Msg.s1),
           Text(suggestion.note!, style: ADText.preview()),
         ],
-        if (!nothingToDo)
+        if (applyable)
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(onPressed: () => _applySuggestion(key), child: const Text('Apply')),
@@ -1249,7 +1338,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
             Padding(
                 padding: const EdgeInsets.only(bottom: Msg.s3),
                 child: Text(
-                    'The AI check is unavailable right now, so it is not holding you up. You can run it again from any of the three fields.',
+                    'The AI check has failed at least once, so it is no longer holding up this step. You can still run it on any field.',
                     style: ADText.preview(c: AD.textTertiary))),
           DropdownButtonFormField<String>(value: _category.isEmpty ? null : _category, decoration: const InputDecoration(labelText: 'Category'), items: _categories.map((c) => DropdownMenuItem(value: c.id, child: Text('${c.emoji} ${c.label}'))).toList(), onChanged: (v) => setState(() { _category = v ?? ''; _dirty = true; })),
           const SizedBox(height: Msg.s4),
