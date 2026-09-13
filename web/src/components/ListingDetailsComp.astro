@@ -418,10 +418,29 @@ const posterCopy = posterUsable ? (posterAttr.copy ?? null) : null;
 //       `source: 'ai_poster'` (types.ts CoverMedia) precisely so consumers can
 //       tell. With no poster, index 0 is a real uploaded photo and was being
 //       thrown away. Filter by the marker, never by position.
+//   (c) [PHOTO-STRIP-3 2026-09-13] Excluding only `ai_poster` is not the same as
+//       excluding the HERO. With no poster, `heroBase` falls back to
+//       `cover_media[0].url` (see above), so that first upload was rendered as
+//       the hero AND as thumbnail #1 — the same photo twice. The Dart client
+//       already reasons this way (`native_listing_detail_v2.dart:344-348`,
+//       "otherwise the first photo is already the hero and one is a duplicate"),
+//       so drop whichever entry is ACTUALLY the hero, not just the marked one:
+//         · video hero  -> no photo is the hero, every photo stays (index 0 too)
+//         · poster hero -> the `ai_poster` entry goes, all uploads stay
+//         · photo hero  -> the one entry being used as `heroBase` goes, once.
+//       "Once" matters: a creator who uploaded the same file twice still gets
+//       their second copy, and only the first match is consumed.
+const heroStillUrl = videoIsHero ? null : heroBase;
+let heroStillTaken = false;
 const stills = ((listing.cover_media ?? [])
   .filter((m) => m && (m as { source?: string }).source !== 'ai_poster')
   .map((m) => m?.url)
   .filter((u): u is string => typeof u === 'string' && u.length > 0)
+  .filter((u) => {
+    if (heroStillTaken || !heroStillUrl || u !== heroStillUrl) return true;
+    heroStillTaken = true;
+    return false;
+  })
   .slice(0, 8));
 
 const breadcrumbId = `LISTING #${listing.id}`;
