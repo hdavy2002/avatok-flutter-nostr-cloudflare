@@ -67,7 +67,7 @@ import { walletStatement, walletStatementExport, walletSummary, walletTopupQuote
 import { adminLedger, adminRefund, adminAdjust, adminAccount, adminRecon, adminEscrowHold, adminEscrowRelease, adminTaxExport, adminFailedSettlements, adminRetrySettlement, requireAdmin } from "./routes/admin_money";
 import { adminCommercialClaims, adminResolveCommercialClaim } from "./routes/commercial_admin_claims";
 import { cashfreeCreateOrder, cashfreeWebhook, cashfreeStatus } from "./routes/cashfree";
-import { payMethods, payCreateOrder, payWebhook, payStatus } from "./routes/pay"; // [PAY-RAIL-1]
+import { payMethods, payCreateOrder, payWebhook, payStatus, payVerifyHandoff } from "./routes/pay"; // [PAY-RAIL-1] [PAY-RAIL-3]
 import { dynwAcceptance } from "./routes/dynw_test"; // [DYNW-CORE-1] Phase 0 acceptance battery (admin-only, dark behind dynamicWorkersEnabled)
 import { receptRules } from "./routes/recept_rules"; // [DYNW-RECEPT-RULES-1] owner receptionist rule scripts
 import { welcomeBackfill } from "./routes/welcome_bonus"; // [WELCOME-100-1]
@@ -1250,6 +1250,11 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
         if (pw && req.method === "POST") return await payWebhook(req, env, pw[1]);
         const ps = p.match(/^\/api\/pay\/([a-z]+)\/status$/);
         if (ps && req.method === "GET") return await payStatus(req, env, ps[1]);
+        // [PAY-RAIL-3] Razorpay's client-side handoff. requireUser (unlike the webhook):
+        // this one IS called by the buyer's browser, and the razorpay_signature it carries
+        // is checked against the order that browser's user actually owns.
+        const pv = p.match(/^\/api\/pay\/([a-z]+)\/verify$/);
+        if (pv && req.method === "POST") return await payVerifyHandoff(req, env, pv[1]);
       }
       if ((p === "/webhooks/stripe" || p === "/api/wallet/stripe-webhook") && req.method === "POST") return await stripeWebhook(req, env);
       if (p === "/api/wallet/spend" && req.method === "POST") return await walletSpend(req, env);
