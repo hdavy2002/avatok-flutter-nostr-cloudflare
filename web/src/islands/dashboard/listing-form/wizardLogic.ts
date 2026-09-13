@@ -150,7 +150,10 @@ export function bodyForSave(d: ListingDraft, opts: { includeAttrs: boolean; incl
     billing_unit: 'hour',
     media_mode: d.media_mode,
     timezone: d.timezone,
-    max_per_booking: d.max_per_booking,
+    // [WIZ-SIMPLIFY-1] `max_per_booking` is no longer asked for — the wizard
+    // dropped the field (owner decision). The server defaults it to 4 when the
+    // key is absent (worker/src/routes/listings.ts:1276 on PUT, :1490 on
+    // create), so leaving it out is the same value the form used to send.
     video_url: d.video_url.trim() || undefined,
     location: d.location.trim() || undefined,
     adults_only: d.adults_only,
@@ -177,11 +180,25 @@ export function bodyForSave(d: ListingDraft, opts: { includeAttrs: boolean; incl
 
 export interface FieldProblem { field: string; message: string }
 
+/** [WIZ-AI-ASSIST-1] Which of the three pitch fields have been through the AI
+ *  check. A field counts once the creator has APPLIED a suggestion for it or
+ *  explicitly kept their own words — both are a decision, which is all the gate
+ *  is asking for. Lives outside `ListingDraft` on purpose: it is a record of
+ *  what happened in this session, not listing data, and it is never sent. */
+export interface AiAssisted { title: boolean; blurb: boolean; description: boolean }
+
+export const AI_ASSIST_GATE_MESSAGE =
+  'Run the AI check on your title, blurb and description before continuing.';
+
 /** Client mirror of listingContentFieldsError + contentAttrsError +
  *  commercialPolicyError, scoped to what a given step just collected. Returns
  *  the FIRST problem found, same "stop at the first thing that's wrong"
  *  posture as the server. */
-export function validateStep(d: ListingDraft, step: StepIndex): FieldProblem | null {
+export function validateStep(
+  d: ListingDraft,
+  step: StepIndex,
+  opts: { aiAssisted?: AiAssisted } = {},
+): FieldProblem | null {
   switch (step) {
     // [MKT-3GROUP-1] The free-show "token cap" is gone (owner decision
     // 2026-09-05) — a free show no longer asks what the creator is willing to
@@ -198,6 +215,19 @@ export function validateStep(d: ListingDraft, step: StepIndex): FieldProblem | n
       if (!d.blurb.trim()) return { field: 'blurb', message: 'Write the one-line blurb — it is the line buyers read on the card.' };
       if (d.blurb.length > 120) return { field: 'blurb', message: 'The blurb must be at most 120 characters.' };
       if (!d.category) return { field: 'category', message: 'Pick one category.' };
+      // [WIZ-AI-ASSIST-1] The AI copy check moved from step 8 to here, where the
+      // words are actually being written, and it is a gate rather than a
+      // decoration: a creator leaves this step having seen what Ava would do
+      // with each of the three fields. IDEMPOTENT — once all three are marked
+      // this passes silently and nothing re-runs. When the call itself fails,
+      // Step2Pitch offers "Continue without AI", which marks all three, so a
+      // dead endpoint can never trap a creator on this step.
+      if (opts.aiAssisted) {
+        const a = opts.aiAssisted;
+        if (!a.title || !a.blurb || !a.description) {
+          return { field: 'ai_assist', message: AI_ASSIST_GATE_MESSAGE };
+        }
+      }
       return null;
     case 2: // Money
       if (!d.free_entry) {
@@ -218,6 +248,18 @@ export function validateStep(d: ListingDraft, step: StepIndex): FieldProblem | n
       }
       if (d.early_bird_pct && !(Number(d.early_bird_pct) >= 1 && Number(d.early_bird_pct) <= 100)) {
         return { field: 'early_bird_pct', message: 'Early-bird discount must be 1–100%.' };
+      }
+      // [WIZ-DISCOUNT-1] The promo code carries its own percentage now. The
+      // wizard used to POST `pct_off: 10` for a code typed without an
+      // early-bird number — a discount nobody chose. Ask for it instead.
+      if (d.promo_pct && !(Number(d.promo_pct) >= 1 && Number(d.promo_pct) <= 100)) {
+        return { field: 'promo_pct', message: 'Promo code discount must be 1–100%.' };
+      }
+      if (d.promo_code.trim() && !d.promo_pct) {
+        return { field: 'promo_pct', message: 'Give the promo code a discount % (1–100), or clear the code.' };
+      }
+      if (d.promo_pct && !d.promo_code.trim()) {
+        return { field: 'promo_code', message: 'Give the discount a code buyers can type, or clear the %.' };
       }
       return null;
     case 3: { // Time
@@ -240,8 +282,8 @@ export function validateStep(d: ListingDraft, step: StepIndex): FieldProblem | n
         return { field: 'starts_at', message: 'A live event needs a date and time — pick "One fixed date".' };
       }
       const consultNeedsFixedWindow = d.kind !== 'consult' || d.availability_mode === 'exclusive';
-      if (d.schedule_mode === 'fixed_date' && consultNeedsFixedWindow && !d.starts_at && d.slots.length === 0) {
-        return { field: 'starts_at', message: 'Pick the date and time this starts, or add an explicit slot.' };
+      if (d.schedule_mode === 'fixed_date' && consultNeedsFixedWindow && !d.starts_at) {
+        return { field: 'starts_at', message: 'Pick the date and time this starts.' };
       }
       if (d.schedule_mode === 'fixed_date' && consultNeedsFixedWindow && d.starts_at) {
         const ms = localToEpoch(d.starts_at, d.timezone);
@@ -265,7 +307,6 @@ export function validateStep(d: ListingDraft, step: StepIndex): FieldProblem | n
         const bad = d.availability_rules.some((r) => r.weekday < 0 || r.weekday > 6 || r.start_min < 0 || r.end_min > 1440 || r.end_min <= r.start_min);
         if (bad) return { field: 'availability_rules', message: 'Each consult window needs a valid start and end time.' };
       }
-      if (d.max_per_booking < 1 || d.max_per_booking > 20) return { field: 'max_per_booking', message: 'Bookings per person must be 1–20.' };
       if (d.response_time_min !== '' && (!Number.isInteger(Number(d.response_time_min)) || Number(d.response_time_min) < 0)) {
         return { field: 'response_time_min', message: 'Typical reply time must be a non-negative number of minutes.' };
       }
@@ -325,71 +366,26 @@ export function validateStep(d: ListingDraft, step: StepIndex): FieldProblem | n
  *  exist only so a creator can see what they did and did not fill in. */
 export type ReadinessCheck = { ok: boolean; label: string; info?: boolean };
 
-/** The server's verdict on this listing — POST /api/listings/:id/review. */
-export type ListingReviewResult = {
-  verdict: 'pass' | 'warn' | 'fail';
-  model: 'ok' | 'unavailable' | 'off';
-  issues: { severity: 'fail' | 'warn'; field: string | null; message: string; source: 'rules' | 'ai' }[];
-};
-
 /**
- * [WIZARD-VALIDATE-1 2026-09-05] The step-8 checklist, rebuilt around the
- * server's answer instead of a second opinion computed in the browser.
+ * [WIZ-SUBMIT-PLAIN-1] The step-8 list is INFORMATIONAL ONLY and gates nothing.
  *
- * What was wrong with the old one, in the owner's words: "the AI review at the
- * end is fake." Three separate problems:
+ * It used to be built around POST /api/listings/:id/review, and the first line
+ * ("Check your listing — not run yet") was what disabled Submit until the
+ * creator pressed "Run the check". That button is gone (owner decision): step 8
+ * is now a plain read-only summary of what was submitted plus the Submit
+ * button. The server still validates on submit — POST /api/listings/:id/submit
+ * returns the listing blockers — so the authority never moved; only the second
+ * opinion in the browser did.
  *
- *   1. Four of its seven base lines were literal `ok: true` — decorative rows
- *      that could never fail, padding a list that looked like scrutiny.
- *   2. The schedule lines were pushed only for `fixed_date` / `recurring`, with
- *      no else and no reference to `kind`, so a live_event with no start time
- *      had NO schedule line at all and the list went all-green.
- *   3. The first line claimed an AI check had "passed" when all that had
- *      happened was that a copy-length request returned. There was no verdict
- *      in the response to read.
- *
- * Now: the blocking lines come from the server (`review.issues` of severity
- * `fail`, which are exactly the rules publish enforces), the AI line reports the
- * real verdict, and the local lines that remain are marked `info` so it is
- * obvious they decide nothing. Until the review has actually run, the list is
- * NOT ready — an unknown answer is not a pass.
+ * Every line here is `info`, and Step8Preview renders `info` lines with a dot
+ * rather than a tick, precisely so nothing in this list reads as a verdict.
+ * Do NOT reintroduce a blocking line: the caller no longer has anything to run
+ * that could clear it, so a false line here would lock Submit forever.
  */
-export function publishReadiness(
-  d: ListingDraft,
-  opts: { review?: ListingReviewResult | null; reviewing?: boolean } = {},
-): ReadinessCheck[] {
-  const review = opts.review ?? null;
-  const checks: ReadinessCheck[] = [];
-
-  // ---- the one line that gates everything ----
-  if (!review) {
-    checks.push({
-      ok: false,
-      label: opts.reviewing ? 'Checking your listing…' : 'Check your listing — not run yet',
-    });
-  } else if (review.verdict === 'fail') {
-    checks.push({ ok: false, label: `Check found ${review.issues.filter((i) => i.severity === 'fail').length} thing(s) that must be fixed` });
-  } else {
-    // Never claim more than actually happened. When the model could not run, the
-    // deterministic half still did, and the label says exactly that rather than
-    // implying a full review.
-    checks.push({
-      ok: true,
-      label: review.model === 'ok'
-        ? (review.verdict === 'warn' ? 'Checked — nothing blocking, some suggestions below' : 'Checked — no problems found')
-        : 'Checked against the publishing rules (the AI reviewer was unavailable)',
-    });
-  }
-
-  // ---- every blocking problem the server found, verbatim ----
-  for (const i of review?.issues ?? []) {
-    if (i.severity === 'fail') checks.push({ ok: false, label: i.message });
-  }
-
-  // ---- informational only: these decide nothing and say so ----
-  checks.push({ ok: true, info: true, label: d.cover_media.length ? `Photos added (${d.cover_media.length}/5)` : 'No photos — the AI poster will be used' });
-  checks.push({ ok: true, info: true, label: d.content_how_it_works.length ? `How it works (${d.content_how_it_works.length} step${d.content_how_it_works.length === 1 ? '' : 's'})` : 'How it works — optional, left blank' });
-  checks.push({ ok: true, info: true, label: d.content_house_rules.length ? `House rules (${d.content_house_rules.length})` : 'House rules — optional, left blank' });
-
-  return checks;
+export function publishReadiness(d: ListingDraft): ReadinessCheck[] {
+  return [
+    { ok: true, info: true, label: d.cover_media.length ? `Photos added (${d.cover_media.length}/5)` : 'No photos — the AI poster will be used' },
+    { ok: true, info: true, label: d.content_how_it_works.length ? `How it works (${d.content_how_it_works.length} step${d.content_how_it_works.length === 1 ? '' : 's'})` : 'How it works — optional, left blank' },
+    { ok: true, info: true, label: d.content_house_rules.length ? `House rules (${d.content_house_rules.length})` : 'House rules — optional, left blank' },
+  ];
 }

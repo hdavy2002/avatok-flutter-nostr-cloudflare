@@ -4,22 +4,41 @@
  * validation happens in wizardLogic.ts / ListingWizard.tsx — these components
  * only render inputs and call `patch`. */
 import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { Field } from '../../../components/Field';
 import { Card } from '../../../components/Card';
 import { Button } from '../../../components/Button';
-import { CopyReview } from './CopyReview';
+import { useCopyReview, CopyFieldAssist } from './CopyReview';
+import type { CopyField } from './CopyReview';
 import { TwoFieldListEditor, StringListEditor, ChatLineEditor, labelCls, inputCls, textareaCls, SectionHeader, charCount } from './Editors';
-import { REFUND_WINDOWS, BOOKING_NOTICE_HOURS, localToEpoch } from './wizardLogic';
-import type { ReadinessCheck, ListingReviewResult } from './wizardLogic';
+import { REFUND_WINDOWS, BOOKING_NOTICE_HOURS } from './wizardLogic';
+import type { ReadinessCheck, AiAssisted } from './wizardLogic';
 import { defaultsFor } from '../../../lib/listingDefaults';
 import { cfImage } from '../../../lib/config';
 import { MEDIA_MODES, PRICING, groupsForKind, subCategoriesFor, feeSplit } from '../../../lib/listingTaxonomy';
 import type { GroupId } from '../../../lib/listingTaxonomy';
-import type { ListingDraft, DraftSlot, Kind, PosterMirror, AvailabilityRule } from './types';
+import type { ListingDraft, Kind, PosterMirror, AvailabilityRule } from './types';
 
 type Patch = (p: Partial<ListingDraft>) => void;
 type CreatorInfo = { name?: string | null; handle?: string | null; avatar?: string | null };
-const LANGS = ['Hindi', 'English', 'Bengali', 'Tamil', 'Telugu', 'Marathi', 'Gujarati', 'Punjabi', 'Urdu', 'Kannada', 'Malayalam'];
+/* [WIZ-LANGS-1 2026-09-13] The 11 original languages first, in their original
+ * order, then the rest of India's major languages, then `Others` LAST.
+ *
+ * ⚠️ The server stores this as a CSV in `listings.spoken_lang` and TRUNCATES it
+ * at 64 characters without saying so (worker/src/routes/listings.ts:1211:
+ * `String(b.spoken_lang).slice(0, 64)`). With 11 options a creator could not
+ * realistically hit that; with 28 they can pick five and silently lose the last
+ * two — and the loss only shows up on the published listing. LANG_CSV_MAX below
+ * is the client-side guard: the toggle refuses a selection whose joined CSV
+ * would exceed the column, and says so. The worker is NOT changed here. */
+const LANGS = [
+  'Hindi', 'English', 'Bengali', 'Tamil', 'Telugu', 'Marathi', 'Gujarati', 'Punjabi', 'Urdu', 'Kannada', 'Malayalam',
+  'Odia', 'Assamese', 'Maithili', 'Bhojpuri', 'Konkani', 'Kashmiri', 'Nepali', 'Sanskrit', 'Sindhi', 'Dogri',
+  'Manipuri', 'Santali', 'Tulu', 'Rajasthani', 'Chhattisgarhi', 'Haryanvi',
+  'Others',
+];
+/** Same 64 the worker slices at — see the note on LANGS. */
+const LANG_CSV_MAX = 64;
 const RECUR_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 /* [LIST-WIZ-TZ-1] Common timezones a creator picks from, IST first and
@@ -242,12 +261,18 @@ function BlipGroup({ heading, blips, selected, onPick }: {
   );
 }
 
-export function Step2Pitch({ draft, patch, err, categories, creator, conferenceEnabled }: {
+export function Step2Pitch({ draft, patch, err, categories, creator, conferenceEnabled, aiAssisted, onAssisted, onSkipAi }: {
   draft: ListingDraft; patch: Patch; err: FieldErr;
   categories: { id: string; label: string; emoji?: string | null; group_id?: string | null }[];
   creator?: CreatorInfo;
   /** [MKT-3GROUP-1] Hides the `adda_rooms` blip while the flag is off. */
   conferenceEnabled: boolean;
+  /** [WIZ-AI-ASSIST-1] Which fields have been through the AI check — the gate
+   *  on Next reads the same object (wizardLogic.validateStep case 1). */
+  aiAssisted: AiAssisted;
+  onAssisted: (field: CopyField) => void;
+  /** The escape hatch after a failed call — marks all three and unblocks Next. */
+  onSkipAi: () => void;
 }) {
   // [MKT-3GROUP-1] Sub-categories are DRIVEN BY THE STEP-1 KIND. `live_event`
   // gets one group's blips (india_goes_live); `consult` gets TWO groups' blips
@@ -255,6 +280,22 @@ export function Step2Pitch({ draft, patch, err, categories, creator, conferenceE
   // the listing into "Find your people" or "Book their time". The group is
   // never asked separately; it is derived from the category (spec §6 step 2).
   const groups = groupsForKind(draft.kind);
+  // [WIZ-AI-ASSIST-1] ONE shared call for all three fields — the endpoint
+  // returns title, blurb and description together, so three chips must never
+  // mean three requests. Each field then settles independently.
+  const copy = useCopyReview(draft);
+  const allAssisted = aiAssisted.title && aiAssisted.blurb && aiAssisted.description;
+  // [WIZ-LANGS-1] Set when a language was refused because the CSV would blow
+  // past the column the server silently truncates at.
+  const [langCapped, setLangCapped] = useState(false);
+  function toggleLang(l: string) {
+    const on = draft.spoken_lang.includes(l);
+    if (on) { setLangCapped(false); patch({ spoken_lang: draft.spoken_lang.filter((x) => x !== l) }); return; }
+    const next = [...draft.spoken_lang, l];
+    if (next.join(',').length > LANG_CSV_MAX) { setLangCapped(true); return; }
+    setLangCapped(false);
+    patch({ spoken_lang: next });
+  }
   // [POSTER-FIRST-1 2026-09-05] The live preview card that used to sit in a
   // sticky right-hand column is GONE, and step 2 is a single full-width column.
   //
@@ -267,21 +308,49 @@ export function Step2Pitch({ draft, patch, err, categories, creator, conferenceE
     <div className="mx-auto grid w-full max-w-2xl grid-cols-1 gap-6">
       <div className="flex flex-col gap-5">
         <div>
+          <CopyFieldAssist field="title" label="Title" state={copy} patch={patch}
+            assisted={aiAssisted.title} onSettled={() => onAssisted('title')} />
           <Field label="Title" placeholder="e.g. Friday night live cook-along" value={draft.title}
             onChange={(e) => patch({ title: e.target.value.slice(0, 140) })} />
           <ErrLine err={err} field="title" />
         </div>
         <div>
+          <CopyFieldAssist field="blurb" label="Blurb" state={copy} patch={patch}
+            assisted={aiAssisted.blurb} onSettled={() => onAssisted('blurb')} />
           <Field label="Blurb (one line)" placeholder="What fans get, in one punchy line" value={draft.blurb}
             onChange={(e) => patch({ blurb: e.target.value.slice(0, 120) })} />
           <div className="mt-1 flex">{charCount(draft.blurb, 120)}</div>
           <ErrLine err={err} field="blurb" />
         </div>
-        <label className="block">
-          <span className={labelCls}>Description</span>
-          <textarea className={textareaCls} rows={4} value={draft.description} maxLength={8000}
-            placeholder="Tell people what to expect" onChange={(e) => patch({ description: e.target.value })} />
-        </label>
+        <div>
+          <CopyFieldAssist field="description" label="Description" state={copy} patch={patch}
+            assisted={aiAssisted.description} onSettled={() => onAssisted('description')} />
+          <label className="block">
+            <span className={labelCls}>Description</span>
+            <textarea className={textareaCls} rows={4} value={draft.description} maxLength={8000}
+              placeholder="Tell people what to expect" onChange={(e) => patch({ description: e.target.value })} />
+          </label>
+        </div>
+
+        {/* [WIZ-AI-ASSIST-1] The escape hatch. The check is a gate on Next, so a
+            500 or a dead network must not be able to trap a creator on this
+            step — one failed attempt is enough to earn the way out. */}
+        {copy.failed && !allAssisted && (
+          <Card fillClassName="bg-paper2">
+            <p className="font-body font-bold text-[13px] text-coral">⚠ The AI check could not run.</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button type="button" onClick={() => void copy.run()} disabled={copy.busy}
+                className="rounded-zineField border-zine border-ink bg-blue px-3 py-1.5 font-body font-bold text-[12px] text-ink shadow-zine-xs">
+                {copy.busy ? 'Trying again…' : 'Try again'}
+              </button>
+              <button type="button" onClick={onSkipAi}
+                className="rounded-zineField border-zine border-ink bg-card px-3 py-1.5 font-body font-bold text-[12px] text-inkSoft shadow-zine-xs">
+                Continue without AI
+              </button>
+            </div>
+          </Card>
+        )}
+        <ErrLine err={err} field="ai_assist" />
 
         {groups.map((g) => (
           <BlipGroup key={g.id} heading={groups.length > 1 ? g.heading : 'Category'}
@@ -313,19 +382,24 @@ export function Step2Pitch({ draft, patch, err, categories, creator, conferenceE
             {LANGS.map((l) => {
               const on = draft.spoken_lang.includes(l);
               return (
-                <button key={l} type="button"
-                  onClick={() => patch({ spoken_lang: on ? draft.spoken_lang.filter((x) => x !== l) : [...draft.spoken_lang, l] })}
+                <button key={l} type="button" onClick={() => toggleLang(l)}
                   className={['rounded-zineField border-zine border-ink px-3 py-2 font-body font-bold text-[13px] shadow-zine-xs', on ? 'bg-lime text-ink' : 'bg-card text-inkSoft'].join(' ')}>
                   {l}
                 </button>
               );
             })}
           </div>
+          {langCapped && (
+            <p className="mt-2 font-body font-bold text-[13px] text-coral">
+              ⚠ That is as many languages as fit ({LANG_CSV_MAX} characters in total).
+              Remove one before adding another, or pick “Others”.
+            </p>
+          )}
         </div>
         <p className="font-body text-[13px] text-inkSoft">
           Your title and blurb are what get painted onto your poster. Everything
           else you enter — price, timing, rules — appears next to it, not on it.
-          Ava reviews your final copy once, in step 8, right before you submit.
+          Ava reviews all three fields here, before you go on.
         </p>
       </div>
     </div>
@@ -341,9 +415,27 @@ export function Step2Pitch({ draft, patch, err, categories, creator, conferenceE
  * listingTaxonomy.ts feeSplit(). */
 const FEE_EXAMPLES = [100, 500] as const;
 
+/** [WIZ-DISCOUNT-1] What a customer pays after a 1–100% discount, rounded to a
+ *  whole token (the wire unit is an integer ₹ — see the TOKENS-INR note in
+ *  CLAUDE.md). Returns null when the percentage is absent or out of range, so
+ *  the caller can leave the row out rather than print a nonsense price. */
+function discountedPrice(price: number, pctRaw: string): number | null {
+  if (!pctRaw) return null;
+  const pct = Number(pctRaw);
+  if (!Number.isFinite(pct) || pct < 1 || pct > 100) return null;
+  return Math.max(0, Math.round(price * (1 - pct / 100)));
+}
+
 export function Step3Money({ draft, patch, err }: { draft: ListingDraft; patch: Patch; err: FieldErr }) {
   const price = Number(draft.price) || 0;
   const split = feeSplit(price);
+  const earlyPrice = discountedPrice(price, draft.early_bird_pct);
+  const promoPrice = draft.promo_code.trim() ? discountedPrice(price, draft.promo_pct) : null;
+  const customerRows: { label: string; pay: number }[] = [
+    { label: 'Full price', pay: price },
+    ...(earlyPrice !== null ? [{ label: `Early bird −${Number(draft.early_bird_pct)}%`, pay: earlyPrice }] : []),
+    ...(promoPrice !== null ? [{ label: `Code ${draft.promo_code.trim()} −${Number(draft.promo_pct)}%`, pay: promoPrice }] : []),
+  ];
   return (
     <div className="flex flex-col gap-5">
       {draft.free_entry ? (
@@ -403,11 +495,65 @@ export function Step3Money({ draft, patch, err }: { draft: ListingDraft; patch: 
 
           <div>
             <Field label="Early-bird discount % (optional)" inputMode="numeric" placeholder="e.g. 20" value={draft.early_bird_pct}
-              onChange={(e) => patch({ early_bird_pct: e.target.value.replace(/[^0-9]/g, '') })} />
+              onChange={(e) => patch({ early_bird_pct: e.target.value.replace(/[^0-9]/g, '').slice(0, 3) })} />
             <ErrLine err={err} field="early_bird_pct" />
           </div>
-          <Field label="Promo code (optional)" placeholder="e.g. FRIENDS20" value={draft.promo_code}
-            onChange={(e) => patch({ promo_code: e.target.value.toUpperCase().slice(0, 24) })} />
+          <div>
+            <Field label="Promo code (optional)" placeholder="e.g. FRIENDS20" value={draft.promo_code}
+              onChange={(e) => patch({ promo_code: e.target.value.toUpperCase().slice(0, 24) })} />
+            <ErrLine err={err} field="promo_code" />
+          </div>
+          {/* [WIZ-DISCOUNT-1] The code's OWN percentage. Until now the wizard
+              posted `pct_off: 10` for a code typed without an early-bird
+              number — a discount the creator never chose, invented client-side
+              in saveEarlyBirdAndPromo(). */}
+          <div>
+            <Field label="Promo code discount % (needed if you set a code)" inputMode="numeric" placeholder="e.g. 15" value={draft.promo_pct}
+              onChange={(e) => patch({ promo_pct: e.target.value.replace(/[^0-9]/g, '').slice(0, 3) })} />
+            <ErrLine err={err} field="promo_pct" />
+          </div>
+
+          {/* [WIZ-DISCOUNT-1] What the CUSTOMER pays, live. The step showed only
+              the creator's take-home at full price, so a creator typing "50" in
+              early-bird had no way to see that they were about to sell an hour
+              for ₹250 and keep ₹205. avaTOK's fee is charged on the DISCOUNTED
+              amount (feeSplit is a pure function of what is actually paid), so
+              each row is feeSplit(that row's price) — never the list-price
+              split with a discount subtracted afterwards. */}
+          {price > 0 && (earlyPrice !== null || promoPrice !== null) && (
+            <div>
+              <span className={labelCls}>What a customer pays</span>
+              <div className="overflow-x-auto rounded-zine border-zine border-ink shadow-zine-xs">
+                <table className="w-full font-body text-[13px]">
+                  <thead>
+                    <tr className="border-b-2 border-ink bg-paper2 text-left">
+                      <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft">Buying with</th>
+                      <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft">Customer pays</th>
+                      <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft">avaTOK takes</th>
+                      <th className="p-2 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft">You keep</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {customerRows.map((row) => {
+                      const sp = feeSplit(row.pay);
+                      return (
+                        <tr key={row.label} className="border-b border-ink/15 last:border-b-0">
+                          <td className="p-2 font-bold text-ink">{row.label}</td>
+                          <td className="p-2 font-bold text-ink">₹{row.pay}/hr</td>
+                          <td className="p-2 text-inkSoft">₹{sp.fee}</td>
+                          <td className="p-2 text-inkSoft">₹{sp.creator}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-1 font-body text-[12px] text-inkSoft">
+                avaTOK’s ₹{PRICING.flatTokensPerHour} flat + {PRICING.commissionPct}% is taken from what the
+                customer actually pays, so a discount comes out of both sides — not only yours.
+              </p>
+            </div>
+          )}
         </>
       )}
     </div>
@@ -415,14 +561,20 @@ export function Step3Money({ draft, patch, err }: { draft: ListingDraft; patch: 
 }
 
 // ── Step 4 — Time ──────────────────────────────────────────────────────────
-export function Step4Time({ draft, patch, err, slotsSupported, onAddSlot, onRemoveSlot, slotBusy }: {
+/* [WIZ-SIMPLIFY-1 2026-09-13, owner decision] Two controls are GONE from this
+ * step and are not coming back without a fresh decision:
+ *
+ *  - "Specific time slots (optional)" — the named multi-slot editor and the
+ *    POST /api/listings/:id/slots + DELETE /api/slots/:id calls behind it. The
+ *    worker routes still exist and are untouched; nothing in the wizard calls
+ *    them any more.
+ *  - "Max bookings per person" — the server defaults `max_per_booking` to 4
+ *    when the key is absent, so not sending it is the same value the form used
+ *    to send by default (worker/src/routes/listings.ts:1276, :1490).
+ */
+export function Step4Time({ draft, patch, err }: {
   draft: ListingDraft; patch: Patch; err: FieldErr;
-  slotsSupported: boolean | null; // null = unknown yet
-  onAddSlot: (s: Omit<DraftSlot, 'id'>) => void;
-  onRemoveSlot: (id: string) => void;
-  slotBusy: boolean;
 }) {
-  const [slotDraft, setSlotDraft] = useState({ starts_at: '', duration_min: 60, label: '', capacity: draft.kind === 'consult' ? 1 : 10 });
   // [LIVE-SCHEDULE-FIX-1 2026-09-05] Rescue an EXISTING live_event that was
   // saved on one of the three modes we no longer offer (see
   // LIVE_EVENT_SCHEDULE_OPTS). Hiding the buttons is not enough on its own: the
@@ -435,7 +587,6 @@ export function Step4Time({ draft, patch, err, slotsSupported, onAddSlot, onRemo
       patch({ schedule_mode: 'fixed_date' });
     }
   }, [draft.kind, draft.schedule_mode, patch]);
-  const showTimeFields = draft.schedule_mode === 'fixed_date' || draft.schedule_mode === 'recurring';
   // [LIST-WIZ-TZ-1] Show the free-text box only when the current timezone isn't
   // one of the friendly options — i.e. it was picked "Other…", loaded from an
   // existing listing with an uncommon tz, or (pre-normalization) a legacy id.
@@ -556,59 +707,6 @@ export function Step4Time({ draft, patch, err, slotsSupported, onAddSlot, onRemo
         </Card>
       )}
 
-      {showTimeFields && (
-        <div>
-          <SectionHeader title="Specific time slots (optional)" hint="Offer several named time options instead of one fixed start." />
-          {slotsSupported === false ? (
-            <p className="mt-2 font-body font-bold text-[13px] text-inkSoft">Slot booking is coming soon — for now, use the single start time above.</p>
-          ) : (
-            <div className="mt-2 flex flex-col gap-3">
-              {draft.slots.map((s) => (
-                <div key={s.id ?? s.starts_at} className="flex items-center justify-between rounded-zine border-zine border-ink bg-card p-2.5 shadow-zine-xs">
-                  <span className="font-body font-bold text-[13px] text-ink">
-                    {s.label || 'Slot'} · {new Date(s.starts_at).toLocaleString()} · {s.duration_min}min · cap {s.capacity}
-                  </span>
-                  {s.id && <button type="button" onClick={() => onRemoveSlot(s.id!)} className="font-body font-bold text-[12px] text-coral">Remove</button>}
-                </div>
-              ))}
-              {/* [LIST-RESPONSIVE-1] A `datetime-local` control has a fixed
-                  intrinsic width on both mobile engines and will not shrink
-                  into half of a 360px row — it overflows the dashed box. One
-                  column on a phone. */}
-              <div className="grid grid-cols-1 gap-2 rounded-zine border-zine border-dashed border-ink p-2.5 sm:grid-cols-2">
-                <label className="block">
-                  <span className={labelCls}>Slot start</span>
-                  <input type="datetime-local" className={inputCls} value={slotDraft.starts_at} onChange={(e) => setSlotDraft((s) => ({ ...s, starts_at: e.target.value }))} />
-                </label>
-                <label className="block">
-                  <span className={labelCls}>Label (optional)</span>
-                  <input type="text" placeholder="e.g. Morning batch" className={inputCls} value={slotDraft.label} onChange={(e) => setSlotDraft((s) => ({ ...s, label: e.target.value }))} />
-                </label>
-                <label className="block">
-                  <span className={labelCls}>Duration (min)</span>
-                  <input type="number" placeholder="60" className={inputCls} value={slotDraft.duration_min} onChange={(e) => setSlotDraft((s) => ({ ...s, duration_min: Number(e.target.value) }))} />
-                </label>
-                <label className="block">
-                  <span className={labelCls}>Seats</span>
-                  <input type="number" placeholder="10" className={inputCls} value={slotDraft.capacity} onChange={(e) => setSlotDraft((s) => ({ ...s, capacity: Number(e.target.value) }))} />
-                </label>
-                <Button variant="blue" label="Add slot" loading={slotBusy} className="sm:col-span-2"
-                  onClick={() => {
-                    // [LISTING-EXPIRY-1 / P1-6] Read the typed time in the LISTING's timezone,
-                    // like the main start time already is — `new Date(value)` used the
-                    // browser's zone, so a creator on a laptop set to UTC saved every extra
-                    // slot 5h30 late.
-                    const ms = localToEpoch(slotDraft.starts_at, draft.timezone);
-                    if (ms == null || !Number.isFinite(ms)) return;
-                    onAddSlot({ starts_at: ms, duration_min: slotDraft.duration_min, label: slotDraft.label, capacity: slotDraft.capacity });
-                    setSlotDraft({ starts_at: '', duration_min: 60, label: '', capacity: draft.kind === 'consult' ? 1 : 10 });
-                  }} />
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
       {(draft.kind === 'consult' || draft.kind === 'ai_agent') && (
         <div>
           <Field label="Typical reply time (minutes, optional)" inputMode="numeric" value={draft.response_time_min}
@@ -626,13 +724,6 @@ export function Step4Time({ draft, patch, err, slotsSupported, onAddSlot, onRemo
           <ErrLine err={err} field="capacity" />
         </label>
       )}
-      <label className="block">
-        <span className={labelCls}>Max bookings per person</span>
-        <input type="number" min={1} max={20} className={inputCls} value={draft.max_per_booking}
-          onChange={(e) => patch({ max_per_booking: Number(e.target.value) })} />
-        <p className="mt-1 font-body font-bold text-[12px] text-inkSoft">Seats one person can book in one go.</p>
-        <ErrLine err={err} field="max_per_booking" />
-      </label>
     </div>
   );
 }
@@ -916,17 +1007,72 @@ export function Step7Photos({ draft, patch, err, onUpload, onRemoveCover, upload
   );
 }
 
-// ── Step 8 — Preview & submit for review ────────────────────────────────────
-export function Step8Preview({ draft, patch, checks, ready, onSubmitForReview, publishing,
-  published, pendingReview, approvedAwaitingPublish, rejected, publicHref, error,
-  repeatOpen, setRepeatOpen, repeatWeeks, setRepeatWeeks, onRepeat, repeating, isLive, creator, copyReviewed, onReviewed,
-  review, reviewing, onRunReview,
+// ── Step 8 — Summary & submit for review ────────────────────────────────────
+/* [WIZ-SUBMIT-PLAIN-1 2026-09-13, owner decision] Step 8 is a PLAIN read-only
+ * summary of everything the creator entered, plus Submit. Four things were
+ * removed and must not come back without a fresh decision:
+ *
+ *  - the "Check this listing" / "Run the check" card (POST /api/listings/:id/review).
+ *    It also GATED the Submit button, so removing it means Submit is enabled
+ *    and the SERVER's answer on submit is the only verdict — which it always
+ *    really was (POST /api/listings/:id/submit returns the listing blockers,
+ *    surfaced inline below).
+ *  - the CopyReview panel. The AI copy assist now lives on step 2, next to the
+ *    words it is about — see CopyReview.tsx and Step2Pitch.
+ *  - the "Open the public page preview" link (for a draft there is no public
+ *    page worth opening; the published state still links to it).
+ *  - "Runs every week? Make copies" (POST /api/listings/:id/repeat).
+ *
+ * The checklist that remains is `publishReadiness`, which is now informational
+ * only and renders with dots, not ticks.
+ */
+function humanizeId(id: string): string {
+  return id ? id.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : '';
+}
+
+const KIND_LABEL: Record<Kind, string> = {
+  live_event: 'Live event',
+  consult: '1:1 consult',
+  ai_agent: 'AI agent',
+};
+
+function SummaryRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="grid grid-cols-1 gap-0.5 border-b border-dashed border-ink/25 py-2 last:border-b-0 sm:grid-cols-[180px_1fr] sm:gap-3">
+      <span className="font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-inkSoft">{label}</span>
+      <div className="font-body text-[14px] text-ink">{children}</div>
+    </div>
+  );
+}
+
+/** Renders nothing at all when the creator left this one blank — a summary of
+ *  what was submitted should not be padded with rows saying "—". */
+function SummaryText({ label, value }: { label: string; value: string | null | undefined }) {
+  if (!value || !String(value).trim()) return null;
+  return <SummaryRow label={label}><span className="whitespace-pre-wrap">{value}</span></SummaryRow>;
+}
+
+function SummaryList({ label, items }: { label: string; items: string[] }) {
+  if (!items.length) return null;
+  return (
+    <SummaryRow label={label}>
+      <ul className="flex list-disc flex-col gap-0.5 pl-4">
+        {items.map((t, i) => <li key={`${i}-${t}`}>{t}</li>)}
+      </ul>
+    </SummaryRow>
+  );
+}
+
+/** A YouTube id, when the link is one; otherwise null and we render a link. */
+function youtubeId(url: string): string | null {
+  const m = /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/.exec(url);
+  return m ? m[1] : null;
+}
+
+export function Step8Preview({ draft, checks, onSubmitForReview, publishing,
+  published, pendingReview, approvedAwaitingPublish, rejected, publicHref, error, creator,
 }: {
-  draft: ListingDraft; patch: Patch; checks: ReadinessCheck[]; ready: boolean;
-  /** [WIZARD-VALIDATE-1] The server's verdict, and the button that fetches it. */
-  review: ListingReviewResult | null; reviewing: boolean; onRunReview: () => void;
-  /** [CARD-AI-REVIEW-1] Reviewed in this session? Drives the panel below. */
-  copyReviewed: boolean; onReviewed: () => void;
+  draft: ListingDraft; checks: ReadinessCheck[];
   /** [LIST-SUBMIT-REVIEW-1] Sends the draft into the admin approval queue —
    *  POST /api/listings/:id/submit, not the old direct-publish call. */
   onSubmitForReview: () => void; publishing: boolean;
@@ -934,21 +1080,138 @@ export function Step8Preview({ draft, patch, checks, ready, onSubmitForReview, p
    *  `pending_review` or `rejected` listing is very much not "published". */
   published: boolean; pendingReview: boolean; approvedAwaitingPublish: boolean; rejected: boolean;
   publicHref: string | null; error: string | null;
-  repeatOpen: boolean; setRepeatOpen: (v: boolean) => void; repeatWeeks: number; setRepeatWeeks: (n: number) => void;
-  onRepeat: () => void; repeating: boolean; isLive: boolean; creator?: CreatorInfo;
+  creator?: CreatorInfo;
 }) {
   const isDraftState = !published && !pendingReview && !approvedAwaitingPublish && !rejected;
+  const price = Number(draft.price) || 0;
+  const startsAt = draft.starts_at ? draft.starts_at.replace('T', ' at ') : '';
+  const schedule = draft.schedule_mode === 'fixed_date'
+    ? (startsAt ? `${startsAt} (${draft.timezone}) · ${draft.duration_min} min` : `Not set (${draft.timezone})`)
+    : draft.schedule_mode === 'recurring'
+      ? `Every ${draft.recurrence_days.map((d) => RECUR_DAYS[d]).join(', ') || '—'} at ${draft.recurrence_time} (${draft.timezone}) · ${draft.duration_min} min`
+      : draft.schedule_mode === 'on_request'
+        ? `On request (${draft.timezone})`
+        : `Always on (${draft.timezone})`;
+  const jr = draft.join_requirements;
+  const joinBits = [
+    jr.mic ? 'Mic required' : null,
+    jr.cam ? 'Camera required' : null,
+    jr.listen_only ? 'Listen-only allowed' : null,
+    jr.recording ? 'Session is recorded' : null,
+    jr.replay_days ? `Replay for ${jr.replay_days} day${jr.replay_days === 1 ? '' : 's'}` : null,
+  ].filter(Boolean) as string[];
+  const vid = draft.video_url.trim();
+  const ytId = vid ? youtubeId(vid) : null;
+
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
       <div className="flex flex-col gap-4">
-        <SectionHeader title={isDraftState ? 'Ready to send for review?' : 'Status'} />
+        <SectionHeader
+          title={isDraftState ? 'Ready to send for review?' : 'Status'}
+          hint={isDraftState ? 'Everything you entered, in one place. Go back to any step to change it.' : undefined}
+        />
+
+        {/* ── the plain summary ─────────────────────────────────────────── */}
+        <Card fillClassName="bg-card">
+          <div className="flex flex-col">
+            <SummaryRow label="Type">
+              {KIND_LABEL[draft.kind]}{draft.free_entry ? ' · Free show' : ''}
+            </SummaryRow>
+            <SummaryText label="Title" value={draft.title} />
+            <SummaryText label="Blurb" value={draft.blurb} />
+            <SummaryText label="Description" value={draft.description} />
+            <SummaryText label="Category" value={humanizeId(draft.category)} />
+            <SummaryText label="Languages" value={draft.spoken_lang.join(', ')} />
+            <SummaryRow label="Price">
+              {draft.free_entry ? 'Free' : price > 0 ? `₹${price} per hour` : 'Not set'}
+            </SummaryRow>
+            {!draft.free_entry && draft.early_bird_pct && (
+              <SummaryRow label="Early bird">{draft.early_bird_pct}% off</SummaryRow>
+            )}
+            {!draft.free_entry && draft.promo_code.trim() && (
+              <SummaryRow label="Promo code">
+                {draft.promo_code.trim()}{draft.promo_pct ? ` · ${draft.promo_pct}% off` : ''}
+              </SummaryRow>
+            )}
+            <SummaryRow label="Schedule">{schedule}</SummaryRow>
+            <SummaryRow label="Capacity">
+              {draft.kind === 'consult' ? 'One seat (1:1)' : draft.capacity > 0 ? `${draft.capacity} seats` : 'Unlimited'}
+            </SummaryRow>
+            <SummaryText label="Typical reply" value={draft.response_time_min ? `${draft.response_time_min} min` : ''} />
+            <SummaryList label="How it works" items={draft.content_how_it_works.map((h) => `${h.label} — ${h.body}`)} />
+            <SummaryText label="House rules intro" value={draft.content_house_rules_intro} />
+            <SummaryList label="House rules" items={draft.content_house_rules.map((r) => `${r.heading} — ${r.body}`)} />
+            <SummaryList label="What you get" items={draft.content_what_you_get} />
+            <SummaryList label="Who it's for" items={draft.content_who_for} />
+            <SummaryList label="Not for" items={draft.content_not_for} />
+            <SummaryList label="FAQ" items={draft.content_faq.map((q) => `${q.q} — ${q.a}`)} />
+            <SummaryList label="Sample Q&A" items={draft.content_sample_qa.map((q) => `${q.q} — ${q.a}`)} />
+            <SummaryList label="Joining" items={joinBits} />
+            <SummaryRow label="Join lead time">{draft.content_join_lead_minutes} min before start</SummaryRow>
+            <SummaryText label="Credential" value={draft.credential} />
+            <SummaryText label="Preparation" value={draft.commercial_preparation_instructions} />
+            <SummaryText label="Location" value={draft.location} />
+            <SummaryRow label="Audience">{draft.adults_only ? 'Adults only (18+)' : 'Open to all ages'}</SummaryRow>
+            {draft.kind === 'live_event' && (
+              <SummaryRow label="Refunds">
+                {draft.commercial_refund_window_hours === 0
+                  ? 'No refunds'
+                  : `Refundable up to ${draft.commercial_refund_window_hours} hours before the start`}
+              </SummaryRow>
+            )}
+            {draft.kind === 'consult' && (
+              <>
+                <SummaryRow label="Cancellation">
+                  {draft.commercial_cancellation_window_hours === 0
+                    ? 'No cancellations'
+                    : `Free cancellation up to ${draft.commercial_cancellation_window_hours} hours before`}
+                </SummaryRow>
+                <SummaryRow label="Rescheduling">{draft.commercial_reschedule_allowed ? 'Allowed' : 'Not allowed'}</SummaryRow>
+                <SummaryRow label="Booking notice">{draft.commercial_booking_notice_hours} hours</SummaryRow>
+                <SummaryRow label="No-show">The session is charged</SummaryRow>
+              </>
+            )}
+          </div>
+        </Card>
+
+        {/* ── what they uploaded ────────────────────────────────────────── */}
+        {(draft.cover_media.length > 0 || vid) && (
+          <Card fillClassName="bg-paper2">
+            {draft.cover_media.length > 0 && (
+              <div>
+                <span className={labelCls}>Photos ({draft.cover_media.length})</span>
+                <div className="flex flex-wrap gap-2">
+                  {draft.cover_media.map((c) => (
+                    <img key={c.url} src={cfImage(c.url, { width: 240 })} alt=""
+                      className="h-24 w-24 rounded-zine border-zine border-ink object-cover shadow-zine-xs" />
+                  ))}
+                </div>
+              </div>
+            )}
+            {vid && (
+              <div className={draft.cover_media.length > 0 ? 'mt-4' : ''}>
+                <span className={labelCls}>Video</span>
+                {ytId ? (
+                  <div className="overflow-hidden rounded-zine border-zine border-ink shadow-zine-xs" style={{ aspectRatio: '16 / 9' }}>
+                    <iframe src={`https://www.youtube.com/embed/${ytId}`} title="Listing video"
+                      allow="accelerometer; clipboard-write; encrypted-media; picture-in-picture"
+                      allowFullScreen className="h-full w-full border-0" />
+                  </div>
+                ) : (
+                  <a href={vid} target="_blank" rel="noreferrer" className="font-body font-bold text-[13px] text-blueInk underline break-all">
+                    {vid}
+                  </a>
+                )}
+              </div>
+            )}
+          </Card>
+        )}
+
+        {/* [WIZ-SUBMIT-PLAIN-1] Informational only — dots, never ticks, and it
+            gates nothing. See publishReadiness in wizardLogic.ts. */}
         <div className="flex flex-col gap-2">
           {checks.map((c) => (
             <div key={c.label} className="flex items-center gap-2">
-              {/* [WIZARD-VALIDATE-1] An `info` line is not a check and must not
-                  wear a tick. The old list padded itself with four hardcoded
-                  `ok: true` rows, so a listing with real problems still showed a
-                  column of green ticks — the visual half of the same lie. */}
               <span className={c.info ? 'text-inkMute' : c.ok ? 'text-lime' : 'text-coral'}>
                 {c.info ? '·' : c.ok ? '✓' : '○'}
               </span>
@@ -957,52 +1220,9 @@ export function Step8Preview({ draft, patch, checks, ready, onSubmitForReview, p
           ))}
         </div>
 
-        {/* [WIZARD-VALIDATE-1] The check, and what it found. Nothing here is
-            claimed unless the server said it: a listing that has not been
-            checked says so, and Submit stays locked. */}
-        {isDraftState && (
-          <Card fillClassName="bg-paper2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="font-body font-bold text-[14px] text-ink">
-                {review ? (review.verdict === 'fail' ? 'This listing cannot be published yet' : 'Checked') : 'Check this listing'}
-              </span>
-              <Button variant="ghost" label={review ? "Check again" : "Run the check"} loading={reviewing} onClick={onRunReview} />
-            </div>
-            {review && review.model !== 'ok' && (
-              <p className="mt-2 font-body font-bold text-[13px] text-inkSoft">
-                The AI reviewer {review.model === 'off' ? 'is switched off' : 'was unavailable'}, so this ran the
-                publishing rules only. Those are the same rules that decide whether it can go live.
-              </p>
-            )}
-            {review && review.issues.length > 0 && (
-              <ul className="mt-3 flex flex-col gap-2">
-                {review.issues.map((i, n) => (
-                  <li key={`${i.source}-${n}`} className="flex gap-2">
-                    <span className={i.severity === 'fail' ? 'text-coral' : 'text-inkSoft'}>
-                      {i.severity === 'fail' ? '✕' : '!'}
-                    </span>
-                    <span className="font-body font-bold text-[13px] text-ink">
-                      {i.message}
-                      {i.severity === 'warn' && <span className="ml-2 font-normal text-inkMute">suggestion</span>}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {review && review.verdict === 'pass' && (
-              <p className="mt-2 font-body font-bold text-[13px] text-inkSoft">No problems found.</p>
-            )}
-          </Card>
-        )}
-
-        {/* [CARD-AI-REVIEW-1] The review is a submit check, so the way to
-            satisfy it lives HERE, next to the blocked button — not only back on
-            step 2. A checklist that fails without an adjacent way to fix it is
-            how a form becomes a dead end. */}
-        {isDraftState && !copyReviewed && (
-          <CopyReview draft={draft} patch={patch} onReviewed={onReviewed} />
-        )}
-
+        {/* [WIZ-SUBMIT-PLAIN-1] The server's answer on submit lands here — with
+            the local pre-check gone, this is where a creator finds out that a
+            blocker is still open, so it must stay next to the button. */}
         {error && <p className="font-body font-bold text-[14px] text-coral">⚠ {error}</p>}
 
         {/* [LIST-SUBMIT-REVIEW-1] A real state machine — the creator can only ever
@@ -1036,33 +1256,9 @@ export function Step8Preview({ draft, patch, checks, ready, onSubmitForReview, p
           <>
             {/* [LIST-FORM-2] Renamed per spec §6 step 8 — "Submit for review"
                 didn't say who reviews it or how long that takes. */}
-            <Button variant="lime" label="Submit for human review" loading={publishing} disabled={!ready} onClick={onSubmitForReview} fullWidth />
+            <Button variant="lime" label="Submit for human review" loading={publishing} onClick={onSubmitForReview} fullWidth />
             <p className="font-body font-bold text-[12px] text-inkSoft">Takes 24–48 hours. We’ll email you once it passes.</p>
           </>
-        )}
-        {publicHref && isDraftState && (
-          <a href={publicHref} target="_blank" rel="noreferrer" className="font-body font-bold text-[13px] text-blueInk underline">
-            Open the public page preview
-          </a>
-        )}
-
-        {isLive && isDraftState && (
-          <div>
-            <button type="button" onClick={() => setRepeatOpen(!repeatOpen)} className="font-body font-bold text-[13px] text-blueInk underline">
-              Runs every week? Make copies (optional)
-            </button>
-            {repeatOpen && (
-              <Card fillClassName="bg-paper2" className="mt-2">
-                <div className="flex items-center gap-2">
-                  <select value={repeatWeeks} onChange={(e) => setRepeatWeeks(Number(e.target.value))}
-                    className={inputCls}>
-                    {[1, 2, 3, 4, 6, 8, 12].map((w) => <option key={w} value={w}>{w} more week{w === 1 ? '' : 's'}</option>)}
-                  </select>
-                  <Button variant="blue" label="Make copies" loading={repeating} onClick={onRepeat} />
-                </div>
-              </Card>
-            )}
-          </div>
         )}
       </div>
       {/* [POSTER-FIRST-1 2026-09-05] Step 8 is the ONLY place a preview belongs,

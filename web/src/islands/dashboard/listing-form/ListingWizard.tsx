@@ -12,7 +12,7 @@
  * per-step diff) so jumping backward and re-advancing never drops a later
  * step's already-collected data — see wizardLogic.bodyForSave.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { getActiveTokenWaited as getActiveToken } from '../../../lib/clerk';
 import { request, ApiError } from '../../../lib/apiClient';
 import { API_BASE } from '../../../lib/config';
@@ -23,9 +23,10 @@ import { IslandBoundary } from '../../../components/IslandBoundary';
 import { capture, withTrace } from '../../../lib/analytics';
 import { isEmbedded, embedNotifyDirty, embedNotifySubmitted } from '../../../lib/embed';
 import { emptyDraft, STEP_LABELS } from './types';
-import type { ListingDraft, StepIndex, DraftSlot } from './types';
-import { bodyForSave, buildAttrs, validateStep, publishReadiness, epochToLocal, normalizeTimezone } from './wizardLogic';
-import type { ListingReviewResult } from './wizardLogic';
+import type { ListingDraft, StepIndex } from './types';
+import { bodyForSave, buildAttrs, validateStep, publishReadiness, epochToLocal, normalizeTimezone, AI_ASSIST_GATE_MESSAGE } from './wizardLogic';
+import type { AiAssisted } from './wizardLogic';
+import type { CopyField } from './CopyReview';
 import { defaultsFor } from '../../../lib/listingDefaults';
 import { getCreatorSchedule, saveCreatorSchedule, previewCalendarConflicts, epochForDateTime } from '../../../lib/availability';
 import type { CreatorSchedule } from '../../../lib/availability';
@@ -75,7 +76,6 @@ function draftFromListing(l: any): Partial<ListingDraft> {
     recurrence_days: Array.isArray(l.recurrence_days) ? l.recurrence_days : [],
     recurrence_time: l.recurrence_time || '18:00',
     response_time_min: l.response_time_min != null ? String(l.response_time_min) : '',
-    max_per_booking: l.max_per_booking ?? 4,
     capacity: l.capacity ?? 0,
     content_how_it_works: attrs.content_how_it_works ?? [],
     content_house_rules_intro: attrs.content_house_rules_intro ?? '',
@@ -113,6 +113,11 @@ function draftFromListing(l: any): Partial<ListingDraft> {
 
 interface CreatorInfo { name?: string | null; handle?: string | null; avatar?: string | null }
 
+/** [WIZ-DISCOUNT-1] One row of `listing_promotions` as the server hands it back
+ *  (GET /api/listings/:id/promotions). Kept so a re-save can be idempotent —
+ *  see saveEarlyBirdAndPromo. */
+interface PromoRow { id: string; kind: 'early_bird' | 'promo_code'; pct_off: number; code: string | null }
+
 export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boolean }) {
   const [draft, setDraft] = useState<ListingDraft>(() => emptyDraft());
   const [step, setStep] = useState<StepIndex>(startAtPublish ? 7 : 0);
@@ -123,17 +128,16 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
   const [fieldErr, setFieldErr] = useState<FieldErr>({ field: null, message: null });
   const [gate, setGate] = useState<'liveness' | 'kyc' | null>(null);
   const [publishing, setPublishing] = useState(false);
-  // [CARD-AI-REVIEW-1] Has the copy review run in this session? Session-only —
-  // see the note on publishReadiness for why this is not persisted.
-  const [copyReviewed, setCopyReviewed] = useState(false);
-  // [WIZARD-VALIDATE-1 2026-09-05] The SERVER's verdict on this listing. Null
-  // means we have not asked yet, which is deliberately not the same as a pass —
-  // the old checklist treated "no answer" as fine and that is how an
-  // unpublishable listing reached the review queue.
-  const [review, setReview] = useState<ListingReviewResult | null>(null);
-  const [reviewing, setReviewing] = useState(false);
-  const [slotsSupported, setSlotsSupported] = useState<boolean | null>(null);
-  const [slotBusy, setSlotBusy] = useState(false);
+  // [WIZ-AI-ASSIST-1 2026-09-13] Which of step 2's three fields have been
+  // through the AI copy check. Session-only and never sent: it records a
+  // decision the creator made in this sitting, not listing data. Step 2's Next
+  // is gated on all three (validateStep case 1 + the guard in next()), and a
+  // field counts once the creator applied a suggestion OR kept their own words.
+  const [aiAssisted, setAiAssisted] = useState<AiAssisted>({ title: false, blurb: false, description: false });
+  // [WIZ-DISCOUNT-1] The promotions this listing ALREADY has on the server.
+  // Without this the wizard could only ever INSERT, so every pass through step
+  // 3 stacked another early-bird row on the same listing.
+  const [promoRows, setPromoRows] = useState<PromoRow[]>([]);
   const [availabilitySchedule, setAvailabilitySchedule] = useState<CreatorSchedule | null>(null);
   const [categories, setCategories] = useState<{ id: string; label: string; emoji?: string | null; group_id?: string | null }[]>([]);
   // [MKT-3GROUP-1] `adda_rooms` is a `find_your_people` blip gated on
@@ -141,9 +145,6 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
   // config, not read from DEFAULTS — see CLAUDE.md). Fail closed: hidden
   // until the public, unauthenticated /api/config read actually says true.
   const [conferenceEnabled, setConferenceEnabled] = useState(false);
-  const [repeatOpen, setRepeatOpen] = useState(false);
-  const [repeatWeeks, setRepeatWeeks] = useState(4);
-  const [repeating, setRepeating] = useState(false);
   const [creatorInfo, setCreatorInfo] = useState<CreatorInfo | undefined>(undefined);
   // [FREE-ENTRY-GATE-1] Fail closed: hidden until GET /api/listings/mine
   // (a per-user, authenticated read) actually says `free_entry_allowed ===
@@ -164,12 +165,6 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
   function patch(p: Partial<ListingDraft>) {
     setDraft((d) => ({ ...d, ...p }));
     setFieldErr({ field: null, message: null });
-    // [WIZARD-VALIDATE-1] Any edit throws away the verdict. A green tick that
-    // was earned by an earlier version of the listing is the same lie in a
-    // slower form — the creator changes the price, the check still says
-    // "no problems found", and Submit stays unlocked on an answer about
-    // different data.
-    setReview(null);
   }
 
   // [LIST-WIZ-HOST-1] The live-preview card's host chip (steps.tsx PreviewCard)
@@ -218,6 +213,10 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
     void (async () => {
       try {
         const token = await getActiveToken();
+        // [WIZ-TYPES-1] getActiveTokenWaited resolves to null when nothing
+        // signs in inside the timeout. This hydrate is authenticated, so a null
+        // token could only ever produce a 401 — skip it rather than send one.
+        if (!token) return;
         const r = await getCreatorSchedule(token, draft.id);
         if (!alive) return;
         setAvailabilitySchedule(r.schedule);
@@ -268,6 +267,24 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
         const l = await request<any>(`/api/listings/${encodeURIComponent(id!)}`, { auth: token });
         const data = l?.listing ?? l ?? {};
         setDraft((d) => ({ ...d, ...draftFromListing(data) }));
+        // [WIZ-DISCOUNT-1] `early_bird_pct` / `promo_code` are not columns on
+        // the listing — they are rows in `listing_promotions`, so
+        // draftFromListing cannot see them and the fields came back empty on
+        // every reopen. Read them here and hydrate both the draft and the
+        // bookkeeping the idempotent re-save needs.
+        try {
+          const pr = await request<{ promotions?: PromoRow[] }>(`/api/listings/${encodeURIComponent(id!)}/promotions`);
+          const rows = (pr.promotions ?? []).filter((r) => r.kind === 'early_bird' || r.kind === 'promo_code');
+          setPromoRows(rows);
+          const eb = rows.find((r) => r.kind === 'early_bird');
+          const pc = rows.find((r) => r.kind === 'promo_code');
+          setDraft((d) => ({
+            ...d,
+            early_bird_pct: eb ? String(eb.pct_off) : d.early_bird_pct,
+            promo_code: pc?.code ?? d.promo_code,
+            promo_pct: pc ? String(pc.pct_off) : d.promo_pct,
+          }));
+        } catch { /* the discount fields stay blank; a save then creates them */ }
       } catch { setError('Could not load this listing.'); }
       setLoading(false);
     })();
@@ -309,7 +326,6 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
     return () => { alive = false; };
   }, []);
 
-  const isLive = draft.kind === 'live_event';
   const flavourKey = `${draft.category}:${draft.kind}`;
 
   // Auto-apply category defaults ONCE per (category,kind) pair, and only into
@@ -428,8 +444,12 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
     }
   }
 
-  async function saveListingAvailability(token: string, d: ListingDraft & { id: string | null }): Promise<{ ok: boolean; schedule?: CreatorSchedule }> {
-    if (!d.id) return { ok: true };
+  async function saveListingAvailability(token: string | null, d: ListingDraft & { id: string | null }): Promise<{ ok: boolean; schedule?: CreatorSchedule }> {
+    // [WIZ-TYPES-1] `token` is `string | null` (getActiveTokenWaited). Every
+    // call below is authenticated, and the listing save that got us here has
+    // already succeeded with the same token, so a null here means the session
+    // went away mid-step — nothing useful to send.
+    if (!d.id || !token) return { ok: true };
     let start = NaN;
     if (d.schedule_mode === 'fixed_date' && d.starts_at && (d.kind !== 'consult' || d.availability_mode === 'exclusive')) {
       try {
@@ -448,16 +468,6 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
         setFieldErr({ field: 'starts_at', message: first ? `This overlaps ${first.title || 'another commitment'}. Choose another time.` : 'That time conflicts with another commitment.' });
         setError('Choose a time that does not conflict with your calendar.');
         capture('availability_conflict_preview', { listing_id: d.id, kind: d.kind, conflicts: preview.conflicts.length });
-        return { ok: false };
-      }
-    }
-    for (const slot of d.slots) {
-      const preview = await previewCalendarConflicts(token, { listing_id: d.id, start_at: slot.starts_at, end_at: slot.starts_at + slot.duration_min * 60_000, timezone: d.timezone });
-      if (!preview.ok) {
-        const first = preview.conflicts[0];
-        setFieldErr({ field: 'starts_at', message: first ? `A slot overlaps ${first.title || 'another commitment'}. Choose another time.` : 'A slot conflicts with another commitment.' });
-        setError('Choose slot times that do not conflict with your calendar.');
-        capture('availability_conflict_preview', { listing_id: d.id, kind: d.kind, conflicts: preview.conflicts.length, slot: true });
         return { ok: false };
       }
     }
@@ -487,28 +497,97 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
     }
   }
 
-  async function saveEarlyBirdAndPromo() {
-    if (!draft.id) return;
-    const pct = Number(draft.early_bird_pct);
+  /* [WIZ-DISCOUNT-1 2026-09-13] Early-bird + promo code, made honest and
+   * idempotent. Three separate bugs lived in the six lines this replaces:
+   *
+   *   1. A promo code typed with no early-bird percentage was posted as
+   *      `pct_off: 10` — a discount the creator never chose, invented in the
+   *      browser. The code has its own `promo_pct` field now.
+   *   2. Both POSTs swallowed every failure in a bare `catch {}`, so a 400 or a
+   *      dropped connection looked exactly like a saved discount.
+   *   3. `listing_promotions` rows are only ever INSERTed by that route, and
+   *      `early_bird_pct` / `promo_code` were never hydrated back into the
+   *      draft — so reopening the wizard showed empty fields and passing step 3
+   *      again posted a SECOND row for the same listing. Existing promotions
+   *      are loaded into `promoRows` below, and this compares against them:
+   *      unchanged is a no-op, changed is delete-then-recreate, cleared is a
+   *      delete (DELETE /api/listings/:id/promotions/:pid).
+   */
+  async function saveEarlyBirdAndPromo(): Promise<void> {
+    const id = draft.id;
+    if (!id) return;
     const token = await getActiveToken();
-    if (draft.early_bird_pct && pct >= 1 && pct <= 100) {
-      try { await request(`/api/listings/${encodeURIComponent(draft.id)}/promotions`, { method: 'POST', auth: token, body: { kind: 'early_bird', pct_off: pct } }); }
-      catch { /* best-effort — the main save already succeeded */ }
+    const failures: string[] = [];
+    const nextRows: PromoRow[] = [];
+
+    const del = async (pid: string) => {
+      await request(`/api/listings/${encodeURIComponent(id)}/promotions/${encodeURIComponent(pid)}`, { method: 'DELETE', auth: token });
+    };
+    const add = async (body: Record<string, unknown>): Promise<string | null> => {
+      const r = await request<{ promotion_id?: string }>(`/api/listings/${encodeURIComponent(id)}/promotions`, { method: 'POST', auth: token, body });
+      return r.promotion_id ?? null;
+    };
+
+    const ebPct = Number(draft.early_bird_pct);
+    const wantEb = draft.early_bird_pct !== '' && ebPct >= 1 && ebPct <= 100 ? ebPct : null;
+    const promoPct = Number(draft.promo_pct);
+    const code = draft.promo_code.trim().toUpperCase();
+    const wantCode = code && promoPct >= 1 && promoPct <= 100 ? { code, pct: promoPct } : null;
+
+    for (const kind of ['early_bird', 'promo_code'] as const) {
+      const existing = promoRows.find((r) => r.kind === kind) ?? null;
+      const unchanged = kind === 'early_bird'
+        ? (existing != null && wantEb != null && existing.pct_off === wantEb)
+        : (existing != null && wantCode != null && existing.pct_off === wantCode.pct && (existing.code ?? '') === wantCode.code);
+      const want = kind === 'early_bird' ? wantEb != null : wantCode != null;
+      if (unchanged && existing) { nextRows.push(existing); continue; }
+      if (existing) {
+        try { await del(existing.id); }
+        catch { failures.push(kind === 'early_bird' ? 'the old early-bird discount could not be removed' : 'the old promo code could not be removed'); nextRows.push(existing); continue; }
+      }
+      if (!want) continue;
+      try {
+        const body = kind === 'early_bird'
+          ? { kind, pct_off: wantEb }
+          : { kind, pct_off: wantCode!.pct, code: wantCode!.code };
+        const pid = await add(body);
+        if (pid) nextRows.push({ id: pid, kind, pct_off: kind === 'early_bird' ? wantEb! : wantCode!.pct, code: kind === 'promo_code' ? wantCode!.code : null });
+      } catch (e) {
+        failures.push(kind === 'early_bird'
+          ? `the early-bird discount was not saved${e instanceof ApiError ? ` (${e.error})` : ''}`
+          : `the promo code was not saved${e instanceof ApiError ? ` (${e.error})` : ''}`);
+      }
     }
-    if (draft.promo_code) {
-      const codePct = pct >= 1 && pct <= 100 ? pct : 10;
-      try { await request(`/api/listings/${encodeURIComponent(draft.id)}/promotions`, { method: 'POST', auth: token, body: { kind: 'promo_code', pct_off: codePct, code: draft.promo_code } }); }
-      catch { /* best-effort */ }
+
+    setPromoRows(nextRows);
+    if (failures.length) {
+      // Never silent: the main listing save succeeded, so without this the
+      // creator walks away believing a discount exists that does not.
+      setError(`Your listing was saved, but ${failures.join(' and ')}. Go back to Money and try again.`);
+      capture('listing_promo_save', { outcome: 'error', failures: failures.length });
+    } else {
+      capture('listing_promo_save', { outcome: 'ok', early_bird: wantEb != null, promo_code: wantCode != null });
     }
   }
 
   async function next() {
     if (savingRef.current) return;
-    const problem = validateStep(draft, step);
+    const problem = validateStep(draft, step, { aiAssisted });
     if (problem) {
       setFieldErr({ field: problem.field, message: problem.message });
       setError(problem.message);
       capture('listing_field_error', { field: problem.field, step: STEP_LABELS[step] });
+      return;
+    }
+    // [WIZ-AI-ASSIST-1] The same gate again, in the place that actually moves
+    // the step. validateStep is the shared rule; this guard is what stops a
+    // creator leaving step 2 with a field Ava has never seen. Idempotent by
+    // construction — once all three are marked it never fires again, and
+    // nothing re-runs.
+    if (step === 1 && !(aiAssisted.title && aiAssisted.blurb && aiAssisted.description)) {
+      setFieldErr({ field: 'ai_assist', message: AI_ASSIST_GATE_MESSAGE });
+      setError(AI_ASSIST_GATE_MESSAGE);
+      capture('listing_ai_assist_blocked', { ...aiAssisted });
       return;
     }
     // Steps 0 (Type) and 1 (Pitch) collect locally; the draft is created the
@@ -619,31 +698,6 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
     } catch { setError('Could not remove that photo.'); }
   }
 
-  // ── slots — [LIST-SLOTS-1], dark behind listingSlotsEnabled; a 503 means
-  // "coming soon", never an error the creator needs to see. ─────────────────
-  async function onAddSlot(s: Omit<DraftSlot, 'id'>) {
-    if (!draft.id || slotBusy) return;
-    setSlotBusy(true);
-    try {
-      const token = await getActiveToken();
-      const r = await request<{ slot?: { id: string } }>(`/api/listings/${encodeURIComponent(draft.id)}/slots`, {
-        method: 'POST', auth: token, body: { starts_at: s.starts_at, duration_min: s.duration_min, label: s.label || undefined, capacity: s.capacity },
-      });
-      setSlotsSupported(true);
-      patch({ slots: [...draft.slots, { ...s, id: r.slot?.id }] });
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 503) setSlotsSupported(false);
-      else setError('Could not add that slot.');
-    } finally { setSlotBusy(false); }
-  }
-  async function onRemoveSlot(id: string) {
-    try {
-      const token = await getActiveToken();
-      await request(`/api/slots/${encodeURIComponent(id)}`, { method: 'DELETE', auth: token });
-      patch({ slots: draft.slots.filter((s) => s.id !== id) });
-    } catch { setError('Could not remove that slot.'); }
-  }
-
   // [LIST-SUBMIT-REVIEW-1] Replaces the old direct-publish call. Publishing now
   // requires admin approval (worker/src/routes/admin_listings.ts), so the creator's
   // wizard only ever sends a draft INTO the review queue — POST /publish 409s for
@@ -684,48 +738,7 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
     } finally { setPublishing(false); }
   }
 
-  async function onRepeat() {
-    if (repeating || !draft.id) return;
-    setRepeating(true); setError(null);
-    try {
-      const token = await getActiveToken();
-      const r = await withTrace(() => request<{ listing_ids?: string[] }>(`/api/listings/${encodeURIComponent(draft.id!)}/repeat`, { method: 'POST', auth: token, body: { weeks: repeatWeeks } }));
-      const n = r.listing_ids?.length ?? 0;
-      capture('listing_repeat', { weeks: repeatWeeks, outcome: 'ok' });
-      // [LIST-EMBED-1] Same reason as onSubmitForReview: hand the app back to
-      // its own My listings rather than steering the WebView to the dashboard.
-      if (isEmbedded()) { embedNotifySubmitted(draft.id); return; }
-      window.location.href = `/dashboard/listings?repeated=${n}`;
-    } catch {
-      setError('Could not make the copies. Try again.');
-      capture('listing_repeat', { weeks: repeatWeeks, outcome: 'error' });
-    } finally { setRepeating(false); }
-  }
-
-  // [WIZARD-VALIDATE-1] Ask the server. Any edit invalidates the answer, so the
-  // verdict can never be stale-but-green: `review` is cleared on every patch
-  // (see `patch` below) and Submit is locked again until it is re-run.
-  const runReview = useCallback(async () => {
-    if (!draft.id) return;
-    setReviewing(true);
-    setError(null);
-    try {
-      const r = await request<ListingReviewResult>(`/api/listings/${encodeURIComponent(draft.id)}/review`, {
-        auth: await getActiveToken(), method: 'POST', body: {},
-      });
-      setReview(r);
-      capture('listing_review_run', { verdict: r.verdict, model: r.model, issues: r.issues?.length ?? 0 });
-    } catch (e) {
-      // A failed review is NOT a pass. Leaving `review` null keeps Submit locked
-      // and the checklist honest about not knowing.
-      setReview(null);
-      setError(e instanceof ApiError ? e.error : 'Could not check the listing. Try again.');
-      capture('listing_review_run', { verdict: 'error', model: 'unavailable', issues: 0 });
-    } finally { setReviewing(false); }
-  }, [draft.id]);
-
-  const checks = useMemo(() => publishReadiness(draft, { review, reviewing }), [draft, review, reviewing]);
-  const ready = checks.every((c) => c.ok);
+  const checks = useMemo(() => publishReadiness(draft), [draft]);
   // [LIST-SUBMIT-REVIEW-1] `status !== 'draft'` used to stand in for "published",
   // which made a `pending_review` or `rejected` listing render "This listing is
   // published." — both are very much not. Each state now gets its own explicit flag.
@@ -785,22 +798,21 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
           <Step2Pitch
             draft={draft} patch={patch} err={fieldErr} categories={categories} creator={creatorInfo}
             conferenceEnabled={conferenceEnabled}
+            aiAssisted={aiAssisted}
+            onAssisted={(f: CopyField) => setAiAssisted((a) => ({ ...a, [f]: true }))}
+            onSkipAi={() => setAiAssisted({ title: true, blurb: true, description: true })}
           />
         )}
         {step === 2 && <Step3Money draft={draft} patch={patch} err={fieldErr} />}
-        {step === 3 && <Step4Time draft={draft} patch={patch} err={fieldErr} slotsSupported={slotsSupported} onAddSlot={onAddSlot} onRemoveSlot={onRemoveSlot} slotBusy={slotBusy} />}
+        {step === 3 && <Step4Time draft={draft} patch={patch} err={fieldErr} />}
         {step === 4 && <Step5HowItWorks draft={draft} patch={patch} />}
         {step === 5 && <Step6HouseRules draft={draft} patch={patch} />}
         {step === 6 && <Step7Photos draft={draft} patch={patch} err={fieldErr} onUpload={onUpload} onRemoveCover={onRemoveCover} uploading={uploading} onUploadFace={onUploadFace} />}
         {step === 7 && (
           <Step8Preview
-            draft={draft} patch={patch} checks={checks} ready={ready} onSubmitForReview={onSubmitForReview} publishing={publishing}
-            copyReviewed={copyReviewed} onReviewed={() => setCopyReviewed(true)}
-            review={review} reviewing={reviewing} onRunReview={runReview}
+            draft={draft} checks={checks} onSubmitForReview={onSubmitForReview} publishing={publishing}
             published={published} pendingReview={pendingReview} approvedAwaitingPublish={approvedAwaitingPublish} rejected={rejected}
-            publicHref={publicHref} error={error}
-            repeatOpen={repeatOpen} setRepeatOpen={setRepeatOpen} repeatWeeks={repeatWeeks} setRepeatWeeks={setRepeatWeeks}
-            onRepeat={onRepeat} repeating={repeating} isLive={isLive} creator={creatorInfo}
+            publicHref={publicHref} error={error} creator={creatorInfo}
           />
         )}
       </div>

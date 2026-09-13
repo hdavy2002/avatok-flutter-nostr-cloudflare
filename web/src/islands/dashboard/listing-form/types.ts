@@ -28,13 +28,6 @@ export interface JoinRequirements {
   replay_days?: number;
   recording?: boolean;
 }
-export interface DraftSlot {
-  id?: string; // present once saved server-side
-  starts_at: number;
-  duration_min: number;
-  label: string;
-  capacity: number;
-}
 export interface Cover { type: string; url: string }
 
 /** Everything the wizard collects, across all 8 steps. */
@@ -70,6 +63,12 @@ export interface ListingDraft {
   billing_unit: string;
   early_bird_pct: string;
   promo_code: string;
+  /** [WIZ-DISCOUNT-1] The promo code's OWN percentage. Before this existed,
+   *  ListingWizard.saveEarlyBirdAndPromo() invented `10` whenever a code was
+   *  typed without an early-bird pct — a discount the creator never chose,
+   *  posted straight to /promotions. The code and the early-bird are two
+   *  separate promotions server-side, so they get two separate numbers here. */
+  promo_pct: string;
 
   // Step 4 — Time
   timezone: string;
@@ -77,9 +76,7 @@ export interface ListingDraft {
   duration_min: number;
   recurrence_days: number[];
   recurrence_time: string;
-  slots: DraftSlot[];
   response_time_min: string;
-  max_per_booking: number;
   capacity: number; // live events: total seats, 0 = unlimited
   // Consult availability is a creator-calendar schedule, separate from the
   // listing's presentation schedule_mode. Shared uses the creator's hours;
@@ -170,14 +167,13 @@ export function emptyDraft(initial?: Partial<ListingDraft>): ListingDraft {
     billing_unit: 'session',
     early_bird_pct: '',
     promo_code: '',
+    promo_pct: '',
     timezone: normalizeTimezone(typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'Asia/Kolkata'),
     starts_at: '',
     duration_min: 60,
     recurrence_days: [],
     recurrence_time: '18:00',
-    slots: [],
     response_time_min: '',
-    max_per_booking: 4,
     capacity: 0,
     availability_mode: 'shared',
     availability_rules: [],
