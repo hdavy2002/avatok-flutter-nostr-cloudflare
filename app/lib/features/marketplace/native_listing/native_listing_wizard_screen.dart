@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
+import '../../../core/ava_log.dart';
 import '../../../core/availability_time.dart';
 import '../../../core/cached_image.dart';
 import '../../../core/listings_api.dart';
@@ -97,8 +98,34 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   bool _rescheduleAllowed = true;
   bool _saving = false;
   bool _publishing = false;
-  bool _copyReviewed = false;
   List<ExploreCategory> _categories = const [];
+
+  // [LIST-APP-PARITY-1] AI copy assist on the Pitch step. `POST /api/listings/
+  // copy-review` reviews all three fields in ONE call, so a per-field blip that
+  // re-requested per field would pay three round trips for one answer: the first
+  // run stores every field's suggestion and the rest are served from here.
+  //
+  // `_aiReviewedText` is BOTH the "has this field been through AI" record (the
+  // gate on leaving this step) and the idempotency key: a field whose text still
+  // equals what was reviewed does not re-run.
+  final _aiSuggestion = <String, CopyReviewField>{};
+  final _aiReviewedText = <String, String>{};
+  String? _aiBusyField;
+  String? _aiSource;
+  // A failed call must not trap the creator on step 2 forever. One failure
+  // unlocks the step; the affordance stays so they can try again.
+  bool _aiUnavailable = false;
+
+  // [LIST-APP-PARITY-1] Spoken languages -> the `spoken_lang` CSV.
+  final _spokenLangs = <String>{};
+
+  // [LIST-APP-PARITY-1] Creator-side discounts. These are NOT listing columns —
+  // they become rows in `listing_promotions` via POST /api/listings/:id/
+  // promotions, reconciled by [_syncPromotions].
+  final _earlyBirdPct = TextEditingController();
+  final _promoCode = TextEditingController();
+  final _promoPct = TextEditingController();
+  List<Map<String, dynamic>> _promotions = const [];
   final _coverUrls = <String>[];
   String? _faceUrl;
 
@@ -120,7 +147,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
 
   @override
   void dispose() {
-    for (final c in [_title, _blurb, _description, _price, _location, _timezone, _how, _rules, _faq, _preparation, _whatGet, _whoFor, _notFor, _videoUrl, _startsAt, _duration, _capacity]) {
+    for (final c in [_title, _blurb, _description, _price, _location, _timezone, _how, _rules, _faq, _preparation, _whatGet, _whoFor, _notFor, _videoUrl, _startsAt, _duration, _capacity, _earlyBirdPct, _promoCode, _promoPct]) {
       c.dispose();
     }
     super.dispose();
@@ -173,6 +200,27 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
         _videoUrl.text = l.videoUrl ?? '';
         final face = attrs['face_photo'];
         _faceUrl = face is String ? face : (face is Map ? face['url']?.toString() : null);
+        // [LIST-APP-PARITY-1] `spoken_lang` is a CSV. Only names this picker can
+        // render are taken back in; anything else (an older free-text value) is
+        // dropped rather than shown as an unselectable chip.
+        for (final raw in (l.spokenLang ?? '').split(',')) {
+          final name = raw.trim();
+          if (name.isEmpty) continue;
+          for (final known in _kLanguages) {
+            if (known.toLowerCase() == name.toLowerCase()) { _spokenLangs.add(known); break; }
+          }
+        }
+        _promotions = await ListingsApi.listingPromotions(_id!);
+        for (final promotion in _promotions) {
+          final kind = (promotion['kind'] ?? '').toString();
+          final pct = (promotion['pct_off'] as num?)?.toInt() ?? 0;
+          if (kind == 'early_bird' && pct > 0) {
+            _earlyBirdPct.text = '$pct';
+          } else if (kind == 'promo_code' && pct > 0) {
+            _promoPct.text = '$pct';
+            _promoCode.text = (promotion['code'] ?? '').toString();
+          }
+        }
         _step = 7;
       }
     } catch (e) {
@@ -266,6 +314,11 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
       'kind': _kind,
       'location': _location.text.trim(),
       'video_url': _videoUrl.text.trim(),
+      // [LIST-APP-PARITY-1] The server stores at most 64 characters and
+      // SILENTLY truncates the rest (listings.ts:1211), so the picker caps the
+      // CSV rather than letting a half-cut language name reach a buyer. An
+      // empty string is stored as NULL by the same line.
+      'spoken_lang': _spokenLangCsv(),
       'timezone': _zone, // never the raw box: an invalid IANA zone 400s the save
       'schedule_mode': _scheduleMode,
       // Only a fixed-date listing carries a start. Sending null the rest of the
@@ -402,6 +455,17 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
       case 1:
         if (_title.text.trim().isEmpty || _description.text.trim().isEmpty) return 'Add a title and description.';
         if (_category.isEmpty) return 'Choose a category — a listing cannot be published without one.';
+        // [LIST-APP-PARITY-1] Every card is AI-checked before it can be
+        // published (owner decision, mirrored from the web wizard). The gate is
+        // "has been through the check", not "accepted the suggestion" — the
+        // words stay the creator's. `_aiUnavailable` releases it after a failed
+        // attempt, because a provider outage must not make listing impossible.
+        if (!_aiUnavailable) {
+          final pending = _kCopyFields.where((f) => !_aiReviewedText.containsKey(f)).toList();
+          if (pending.isNotEmpty) {
+            return 'Run the AI check on ${pending.map((f) => _kCopyFieldLabels[f]!.toLowerCase()).join(', ')} before continuing.';
+          }
+        }
         return null;
       case 2:
         if (_freeEntry) return null;
@@ -409,6 +473,25 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
         // session_pricing.ts:27 — MIN_PRICE_TOKENS_PER_HOUR. Refused at save when
         // above zero, and again on the stored row at submit.
         if (price < _minPricePerHour) return 'Price must be at least $_minPricePerHour tokens/hour (₹$_minPricePerHour).';
+        // listings.ts:3434 — the promotions route accepts pct_off 1..100 only,
+        // and a promo_code row without a code is refused outright.
+        final earlyText = _earlyBirdPct.text.trim();
+        final early = int.tryParse(earlyText);
+        if (earlyText.isNotEmpty && (early == null || early < 1 || early > 100)) {
+          return 'Early-bird discount must be a whole number from 1 to 100, or empty.';
+        }
+        final promoText = _promoPct.text.trim();
+        final promoPct = int.tryParse(promoText);
+        if (promoText.isNotEmpty && (promoPct == null || promoPct < 1 || promoPct > 100)) {
+          return 'Promo discount must be a whole number from 1 to 100, or empty.';
+        }
+        final code = _promoCode.text.trim();
+        if (code.isNotEmpty && (promoPct == null || promoPct < 1)) {
+          return 'Give the promo code a discount percentage, or clear the code.';
+        }
+        if (code.isEmpty && promoPct != null && promoPct >= 1) {
+          return 'Give the promo discount a code customers can type, or clear the percentage.';
+        }
         return null;
       case 3:
         final duration = int.tryParse(_duration.text.trim()) ?? 0;
@@ -433,15 +516,18 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
         if (get > 5) return 'At most 5 things customers get.';
         if (_lines(_whoFor.text).length > 3) return 'At most 3 lines for who this is for.';
         if (_lines(_notFor.text).length > 3) return 'At most 3 lines for who this is not for.';
+        // [LIST-APP-PARITY-1] The FAQ editor moved here when step 8 became a
+        // read-only summary, so its rule moved with it — contentAttrsError:515.
+        final faq = _lines(_faq.text).length;
+        if (faq > 0 && faq < 3) return 'Add at least 3 questions and answers, or leave the FAQ empty.';
+        if (faq > 6) return 'At most 6 FAQ entries.';
         return null;
       case 6:
         if (_coverUrls.isEmpty || _faceUrl == null || _faceUrl!.isEmpty) return 'Add a cover photo and private face photo.';
         return null;
+      // [LIST-APP-PARITY-1] Step 8 is a read-only summary now: it owns no field,
+      // so it has no rule of its own. The server still validates on submit.
       case 7:
-        final faq = _lines(_faq.text).length;
-        if (faq > 0 && faq < 3) return 'Add at least 3 questions and answers, or leave the FAQ empty.';
-        if (faq > 6) return 'At most 6 FAQ entries.';
-        if (!_copyReviewed) return 'Review the copy before submitting.';
         return null;
       default:
         return null;
@@ -456,6 +542,220 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
     'Asia/Kolkata', 'Asia/Dubai', 'Asia/Singapore', 'Europe/London',
     'Europe/Berlin', 'America/New_York', 'America/Los_Angeles', 'Australia/Sydney', 'UTC',
   ];
+
+
+  // ---------------------------------------------------------------------------
+  // [LIST-APP-PARITY-1] Language picker.
+  //
+  // The native wizard had NO language control at all, even though the draft
+  // carries `spoken_lang` and the server accepts it — so every listing made in
+  // the app was published with no language, while the same listing made on the
+  // web had one.
+  // ---------------------------------------------------------------------------
+
+  /// The web wizard's list, in the web wizard's order, ending in "Others".
+  static const List<String> _kLanguages = [
+    'Hindi', 'English', 'Bengali', 'Tamil', 'Telugu', 'Marathi', 'Gujarati',
+    'Punjabi', 'Urdu', 'Kannada', 'Malayalam', 'Odia', 'Assamese', 'Maithili',
+    'Bhojpuri', 'Konkani', 'Kashmiri', 'Nepali', 'Sanskrit', 'Sindhi', 'Dogri',
+    'Manipuri', 'Santali', 'Tulu', 'Rajasthani', 'Chhattisgarhi', 'Haryanvi',
+    'Others',
+  ];
+
+  /// `listings.spoken_lang` holds 64 characters and the Worker truncates the
+  /// rest without saying so, so the cap is enforced HERE where it can be
+  /// explained. Anything else stores "Hindi,English,Beng".
+  static const int _kSpokenLangMax = 64;
+
+  /// Always in [_kLanguages] order, whatever order they were tapped in.
+  String _spokenLangCsv([Set<String>? langs]) =>
+      _kLanguages.where((l) => (langs ?? _spokenLangs).contains(l)).join(',');
+
+  void _toggleLang(String lang, bool selected) {
+    if (!selected) {
+      setState(() { _spokenLangs.remove(lang); _dirty = true; });
+      return;
+    }
+    final next = {..._spokenLangs, lang};
+    if (_spokenLangCsv(next).length > _kSpokenLangMax) {
+      setState(() => _error =
+          'That is as many languages as fit — the list is limited to $_kSpokenLangMax characters. Remove one first.');
+      return;
+    }
+    setState(() { _spokenLangs.add(lang); _dirty = true; _error = null; });
+  }
+
+  // ---------------------------------------------------------------------------
+  // [LIST-APP-PARITY-1] AI copy assist (POST /api/listings/copy-review).
+  // ---------------------------------------------------------------------------
+
+  static const List<String> _kCopyFields = ['title', 'blurb', 'description'];
+  static const Map<String, String> _kCopyFieldLabels = {
+    'title': 'Title',
+    'blurb': 'Short blurb',
+    'description': 'Description',
+  };
+  static const Map<String, String> _kCopyFieldHints = {
+    'title': 'A clear, specific title',
+    'blurb': 'The one-line promise',
+    'description': 'What customers should know',
+  };
+
+  TextEditingController _copyController(String key) =>
+      key == 'title' ? _title : (key == 'blurb' ? _blurb : _description);
+
+  /// True when the stored suggestion was produced from exactly the text that is
+  /// in the box now — i.e. re-running would ask the same question again.
+  bool _aiFresh(String key) => _aiReviewedText[key] == _copyController(key).text.trim();
+
+  Future<void> _runCopyReview(String key) async {
+    if (_aiBusyField != null || _aiFresh(key)) return;
+    final startedMs = DateTime.now().millisecondsSinceEpoch;
+    setState(() { _aiBusyField = key; _error = null; });
+    try {
+      final result = await ListingsApi.copyReview(
+        title: _title.text.trim(),
+        blurb: _blurb.text.trim(),
+        description: _description.text.trim(),
+        kind: _kind,
+        category: _category,
+        freeEntry: _freeEntry,
+      );
+      final data = result.data;
+      if (!result.ok || data == null) {
+        throw StateError(result.error?.userMessage ?? 'The AI check did not answer.');
+      }
+      if (!mounted) return;
+      setState(() {
+        _aiSource = data.source;
+        _aiUnavailable = false;
+        for (final field in _kCopyFields) {
+          final value = data.field(field);
+          if (value == null) continue;
+          _aiSuggestion[field] = value;
+          _aiReviewedText[field] = _copyController(field).text.trim();
+        }
+      });
+      Analytics.uiInteraction(
+        'listing_ai_copy_assist',
+        DateTime.now().millisecondsSinceEpoch - startedMs,
+        phase: 'interactive',
+        extra: {
+          'field': key,
+          'outcome': 'ok',
+          'ai_source': data.source,
+          'kind': _kind,
+          'listing_id': _id ?? '',
+        },
+      );
+    } catch (e, stack) {
+      if (mounted) {
+        setState(() {
+          _aiUnavailable = true;
+          _error = 'The AI check could not run just now. You can continue without it.';
+        });
+      }
+      AvaLog.I.warn('listing', 'copy review failed on field $key');
+      await Analytics.captureException(e, stack,
+          screen: 'native_listing_wizard',
+          handled: true,
+          extra: {'stage': 'copy_review', 'field': key, 'listing_id': _id ?? ''});
+      await Analytics.capture('listing_ai_copy_assist_failed',
+          {'field': key, 'outcome': 'error', 'kind': _kind, 'listing_id': _id ?? ''});
+    } finally {
+      if (mounted) setState(() => _aiBusyField = null);
+    }
+  }
+
+  /// Applying is the creator's own act — the route suggests and never saves.
+  void _applySuggestion(String key) {
+    final suggestion = _aiSuggestion[key];
+    if (suggestion == null || suggestion.suggested.isEmpty) return;
+    setState(() {
+      _copyController(key).text = suggestion.suggested;
+      // Keep the field "reviewed and fresh" so applying a suggestion does not
+      // immediately ask for another round trip.
+      _aiReviewedText[key] = suggestion.suggested;
+      _dirty = true;
+    });
+    Analytics.capture('listing_ai_copy_applied', {
+      'field': key,
+      'outcome': 'applied',
+      'ai_source': _aiSource ?? 'rules',
+      'kind': _kind,
+      'listing_id': _id ?? '',
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // [LIST-APP-PARITY-1] The creator-facing discount sum.
+  //
+  // Mirrors web/src/lib/listingTaxonomy.ts `PRICING` + `feeSplit`. FOR DISPLAY
+  // ONLY, exactly as the web helper's own warning says: the Worker recomputes
+  // this when money actually moves, and a client-computed fee must never reach
+  // a ledger row. Keep the two in step.
+  // ---------------------------------------------------------------------------
+  static const int _kFlatTokensPerHour = 25;
+  static const int _kCommissionPct = 20;
+
+  static ({int fee, int creator}) _feeSplit(int pricePerHour) {
+    final price = pricePerHour < 0 ? 0 : pricePerHour;
+    if (price <= _kFlatTokensPerHour) return (fee: price, creator: 0);
+    final fee = _kFlatTokensPerHour +
+        ((price - _kFlatTokensPerHour) * _kCommissionPct / 100).round();
+    return (fee: fee, creator: price - fee);
+  }
+
+  /// Make `listing_promotions` match what the creator typed.
+  ///
+  /// `POST /api/listings/:id/promotions` is INSERT-only (listings.ts:3439), so
+  /// posting on every save would stack a new row each time a draft was reopened
+  /// and the buyer would get whichever one the server happened to read first.
+  /// This reads the current rows, deletes what it is replacing, and writes at
+  /// most one row per kind.
+  Future<void> _syncPromotions() async {
+    final id = _id;
+    if (id == null) return;
+    final early = int.tryParse(_earlyBirdPct.text.trim()) ?? 0;
+    final promoPct = int.tryParse(_promoPct.text.trim()) ?? 0;
+    final code = _promoCode.text.trim().toUpperCase();
+    try {
+      final existing = await ListingsApi.listingPromotions(id);
+      Future<void> reconcile(String kind, int pct, String? wantedCode) async {
+        final rows = existing.where((row) => (row['kind'] ?? '').toString() == kind).toList();
+        final want = pct >= 1 && pct <= 100 && (kind != 'promo_code' || (wantedCode ?? '').isNotEmpty);
+        final unchanged = rows.length == 1 &&
+            ((rows.first['pct_off'] as num?)?.toInt() ?? 0) == pct &&
+            (rows.first['code'] ?? '').toString().toUpperCase() == (wantedCode ?? '').toUpperCase();
+        if (want && unchanged) return;
+        for (final row in rows) {
+          await ListingsApi.deleteListingPromotion(id, (row['id'] ?? '').toString());
+        }
+        if (!want) return;
+        final ok = await ListingsApi.addPromotion(id, kind: kind, pctOff: pct, code: wantedCode);
+        Analytics.capture('listing_promotion_saved', {
+          'listing_id': id,
+          'promotion_kind': kind,
+          'pct_off': pct,
+          'outcome': ok ? 'ok' : 'error',
+        });
+        if (!ok) throw StateError('The discount could not be saved.');
+      }
+      await reconcile('early_bird', early, null);
+      await reconcile('promo_code', promoPct, code);
+      _promotions = await ListingsApi.listingPromotions(id);
+    } catch (e, stack) {
+      if (mounted) {
+        setState(() => _error =
+            'Your listing was saved, but the discount could not be. Try Save and continue again.');
+      }
+      AvaLog.I.warn('listing', 'promotion sync failed for listing $id');
+      await Analytics.captureException(e, stack,
+          screen: 'native_listing_wizard',
+          handled: true,
+          extra: {'stage': 'promotion_sync', 'listing_id': id});
+    }
+  }
 
   Future<bool> _save() async {
     setState(() { _saving = true; _error = null; });
@@ -493,6 +793,13 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
     if (problem != null) { setState(() => _error = problem); return; }
     if (_step == 0) { setState(() => _step = 1); return; }
     if (!await _save()) return;
+    // [LIST-APP-PARITY-1] Discounts are separate rows, written once the listing
+    // has an id — which `_save()` above has just guaranteed. A failure here does
+    // not advance, so the creator sees it on the step that owns the field.
+    if (_step == 2) {
+      await _syncPromotions();
+      if (_error != null) return;
+    }
     if (mounted && _step < _steps.length - 1) setState(() => _step++);
   }
 
@@ -524,6 +831,10 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
     final problem = _validate();
     if (problem != null) { setState(() => _error = problem); return; }
     if (_id == null && !await _save()) return;
+    // Last chance to write a discount the creator typed but never left the
+    // Money step with (back-navigation, an interrupted save).
+    await _syncPromotions();
+    if (_error != null) return;
     setState(() { _publishing = true; _error = null; });
     try {
       final review = await ListingsApi.wizardReview(_id!);
@@ -552,15 +863,239 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   static String _serverMessage(Map<String, dynamic> result) =>
       (result['message'] ?? result['detail'] ?? result['error'] ?? result['reason'] ?? 'Could not save this listing.').toString();
 
-  Widget _field(String label, TextEditingController controller, {int maxLines = 1, String? hint}) => Padding(
+  /// [LIST-APP-PARITY-1] `live: true` rebuilds the step on every keystroke. Only
+  /// the price and discount boxes need it — they feed the running "what the
+  /// customer pays / what you keep" sum, which would otherwise sit one edit
+  /// behind. Every other field keeps the cheap `_dirty`-only path.
+  Widget _field(String label, TextEditingController controller, {int maxLines = 1, String? hint, bool live = false}) => Padding(
         padding: const EdgeInsets.only(bottom: Msg.s3),
         child: TextField(
           controller: controller,
           maxLines: maxLines,
-          onChanged: (_) => _dirty = true,
+          onChanged: (_) {
+            _dirty = true;
+            if (live && mounted) setState(() {});
+          },
           decoration: InputDecoration(labelText: label, hintText: hint, filled: true, fillColor: AD.inputField),
         ),
       );
+
+  /// What customers need to join. The keys are the ONLY ones the server accepts
+  /// (listings.ts:534); anything else fails the whole save.
+  static const Map<String, String> _kJoinRequirementLabels = {
+    'mic': 'A microphone',
+    'cam': 'A camera',
+    'listen_only': 'Listening only — no mic needed',
+    'recording': 'This session is recorded',
+  };
+
+  /// The per-field "Use AI" blip that sits above Title / Blurb / Description.
+  Widget _aiBlip(String key) {
+    final busy = _aiBusyField == key;
+    final reviewed = _aiReviewedText.containsKey(key);
+    final fresh = reviewed && _aiFresh(key);
+    final suggestion = _aiSuggestion[key];
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Expanded(child: Text(_kCopyFieldLabels[key]!.toUpperCase(), style: ADText.sectionLabel(c: AD.textTertiary))),
+        TextButton.icon(
+          onPressed: _aiBusyField != null || fresh ? null : () => _runCopyReview(key),
+          icon: busy
+              ? const SizedBox.square(dimension: 14, child: CircularProgressIndicator(strokeWidth: 2))
+              : Icon(PhosphorIcons.sparkle(PhosphorIconsStyle.regular), size: 16),
+          label: Text(busy
+              ? 'Checking…'
+              : fresh
+                  ? 'AI checked'
+                  : reviewed
+                      ? 'Check again'
+                      : 'Use AI'),
+        ),
+      ]),
+      if (fresh && suggestion != null) _aiSuggestionCard(key, suggestion),
+    ]);
+  }
+
+  Widget _aiSuggestionCard(String key, CopyReviewField suggestion) {
+    final current = _copyController(key).text.trim();
+    final nothingToDo = suggestion.suggested.isEmpty || suggestion.suggested == current;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: Msg.s2),
+      padding: const EdgeInsets.all(Msg.s3),
+      decoration: BoxDecoration(color: AD.cardHover, borderRadius: BorderRadius.circular(AD.rListCard)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Never claim an AI review that did not happen — `source` says which
+        // half of the route answered (listing_copy_review.ts rule 2).
+        Text(_aiSource == 'ai' ? 'AI SUGGESTION' : 'LENGTH CHECK · AI MODEL UNAVAILABLE',
+            style: ADText.sectionLabel(c: AD.textTertiary)),
+        const SizedBox(height: Msg.s1),
+        Text(nothingToDo ? 'This reads well as it is — nothing to change.' : suggestion.suggested,
+            style: ADText.preview(c: AD.textPrimary)),
+        if (suggestion.note != null) ...[
+          const SizedBox(height: Msg.s1),
+          Text(suggestion.note!, style: ADText.preview()),
+        ],
+        if (!nothingToDo)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(onPressed: () => _applySuggestion(key), child: const Text('Apply')),
+          ),
+      ]),
+    );
+  }
+
+  Widget _languagePicker() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Languages you will speak', style: ADText.rowName()),
+        Text('Shown on your listing. The whole list is limited to $_kSpokenLangMax characters.',
+            style: ADText.preview()),
+        const SizedBox(height: Msg.s2),
+        Wrap(spacing: Msg.s2, runSpacing: Msg.s2, children: [
+          for (final lang in _kLanguages)
+            FilterChip(
+              label: Text(lang),
+              selected: _spokenLangs.contains(lang),
+              onSelected: (selected) => _toggleLang(lang, selected),
+            ),
+        ]),
+      ]);
+
+  /// The running customer-facing sum. Display only — see [_feeSplit].
+  Widget _moneyBreakdown() {
+    final price = int.tryParse(_price.text.trim()) ?? 0;
+    if (price <= 0) return const SizedBox.shrink();
+    final early = (int.tryParse(_earlyBirdPct.text.trim()) ?? 0).clamp(0, 100).toInt();
+    final promo = (int.tryParse(_promoPct.text.trim()) ?? 0).clamp(0, 100).toInt();
+    Widget line(String label, int pct) {
+      final pays = (price * (100 - pct) / 100).round();
+      final split = _feeSplit(pays);
+      return Padding(
+        padding: const EdgeInsets.only(top: Msg.s1),
+        child: Text(
+            '$label — customer pays ₹$pays per hour · you keep ₹${split.creator} after the ₹${split.fee} platform fee',
+            style: ADText.preview(c: AD.textPrimary)),
+      );
+    }
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: Msg.s2),
+      padding: const EdgeInsets.all(Msg.s3),
+      decoration: BoxDecoration(color: AD.cardHover, borderRadius: BorderRadius.circular(AD.rListCard)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('WHAT THIS EARNS', style: ADText.sectionLabel(c: AD.textTertiary)),
+        line('Full price', 0),
+        if (early > 0) line('Early bird $early% off', early),
+        if (promo > 0) line('Promo code ${_promoCode.text.trim().toUpperCase()} $promo% off', promo),
+        const SizedBox(height: Msg.s1),
+        Text(
+            'The platform fee is ₹$_kFlatTokensPerHour plus $_kCommissionPct% of everything above it, per participant per hour. The server recomputes every amount at checkout.',
+            style: ADText.preview(c: AD.textTertiary)),
+      ]),
+    );
+  }
+
+  String _categoryLabel() {
+    for (final c in _categories) {
+      if (c.id == _category) return '${c.emoji} ${c.label}';
+    }
+    return _category;
+  }
+
+  Widget _summaryLine(String label, String value) => Padding(
+        padding: const EdgeInsets.only(bottom: Msg.s2),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label.toUpperCase(), style: ADText.sectionLabel(c: AD.textTertiary)),
+          Text(value.trim().isEmpty ? '—' : value.trim(), style: ADText.preview(c: AD.textPrimary)),
+        ]),
+      );
+
+  /// [LIST-APP-PARITY-1] Step 8: a plain read-only summary of everything the
+  /// creator entered, the review-time promise, and one Submit button.
+  ///
+  /// It used to be a title+description echo with an "I reviewed this" checkbox
+  /// and a "Repeat this listing for four weeks" control — the creator could not
+  /// see what they were about to publish, and the repeat button silently created
+  /// four extra drafts from a step whose only job is to submit one.
+  Widget _reviewStep() {
+    final consult = _kind == 'consult';
+    final price = int.tryParse(_price.text.trim()) ?? 0;
+    final split = _feeSplit(price);
+    final early = int.tryParse(_earlyBirdPct.text.trim()) ?? 0;
+    final promoPct = int.tryParse(_promoPct.text.trim()) ?? 0;
+    final join = _joinReq.entries
+        .where((e) => e.value)
+        .map((e) => _kJoinRequirementLabels[e.key] ?? e.key)
+        .join(', ');
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('Check your listing', style: ADText.appTitle()),
+      const SizedBox(height: Msg.s1),
+      Text('Nothing on this step can be edited — step back to change anything.', style: ADText.preview()),
+      const SizedBox(height: Msg.s3),
+      AdCard(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _summaryLine('Type', consult ? '1:1 consultation' : 'Live event'),
+        _summaryLine('Title', _title.text),
+        _summaryLine('Short blurb', _blurb.text),
+        _summaryLine('Description', _description.text),
+        _summaryLine('Category', _categoryLabel()),
+        _summaryLine('Languages', _spokenLangCsv().replaceAll(',', ', ')),
+        _summaryLine(
+            'Price',
+            _freeEntry
+                ? 'Free entry'
+                : price > 0
+                    ? '₹$price per hour · you keep ₹${split.creator} after the ₹${split.fee} platform fee'
+                    : ''),
+        if (!_freeEntry && early > 0) _summaryLine('Early-bird discount', '$early% off'),
+        if (!_freeEntry && promoPct > 0)
+          _summaryLine('Promo code', '${_promoCode.text.trim().toUpperCase()} · $promoPct% off'),
+        _summaryLine('Media', _mediaMode == 'audio_only' ? 'Audio only' : 'Audio and video'),
+        _summaryLine('Schedule',
+            _scheduleMode == 'fixed_date' ? 'Fixed date and time' : 'On request (from my availability)'),
+        _summaryLine('Time zone', _zone),
+        if (_scheduleMode == 'fixed_date' || _kind == 'live_event') _summaryLine('Starts', _startsAt.text),
+        _summaryLine('Duration', '${int.tryParse(_duration.text.trim()) ?? 60} minutes'),
+        _summaryLine(
+            'Capacity',
+            consult
+                ? '1 seat — a 1:1 consultation'
+                : (int.tryParse(_capacity.text.trim()) ?? 0) == 0
+                    ? 'Unlimited'
+                    : _capacity.text),
+        _summaryLine('Location / meeting note', _location.text),
+        _summaryLine('How it works', _how.text),
+        _summaryLine('House rules', _rules.text),
+        _summaryLine('What customers get', _whatGet.text),
+        _summaryLine('Who this is for', _whoFor.text),
+        _summaryLine('Who this is not for', _notFor.text),
+        _summaryLine('FAQ', _faq.text),
+        _summaryLine('What customers need to join', join),
+        if (consult) _summaryLine('Preparation instructions', _preparation.text),
+        _summaryLine('Video', _videoUrl.text),
+      ])),
+      const SizedBox(height: Msg.s3),
+      Text('Photos', style: ADText.rowName()),
+      const SizedBox(height: Msg.s2),
+      if (_coverUrls.isEmpty)
+        Text('No cover photos added.', style: ADText.preview())
+      else
+        Wrap(spacing: Msg.s2, runSpacing: Msg.s2, children: [
+          for (final url in _coverUrls) CachedImage(url, width: 84, height: 84, radius: Msg.brMd),
+        ]),
+      if (_faceUrl != null) ...[
+        const SizedBox(height: Msg.s3),
+        Text('Private face photo — never shown publicly', style: ADText.preview()),
+        Padding(
+            padding: const EdgeInsets.only(top: Msg.s2),
+            child: CachedImage(_faceUrl!, width: 84, height: 84, radius: Msg.brMd)),
+      ],
+      const SizedBox(height: Msg.s4),
+      AdCard(
+          child: Text(
+              'Submitting sends this listing for review. Reviews take 24 to 48 hours, and you will be told as soon as it is approved or sent back with changes.',
+              style: ADText.preview(c: AD.textPrimary))),
+    ]);
+  }
 
   Widget _stepBody() {
     switch (_step) {
@@ -600,16 +1135,41 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
             SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('This is a free show'), value: _freeEntry, onChanged: (v) => setState(() { _freeEntry = v; _dirty = true; })),
         ]);
       case 1:
-        return Column(children: [
-          _field('Title', _title, hint: 'A clear, specific title'),
-          _field('Short blurb', _blurb, hint: 'The one-line promise'),
-          _field('Description', _description, maxLines: 6, hint: 'What customers should know'),
-          DropdownButtonFormField<String>(value: _category.isEmpty ? null : _category, decoration: const InputDecoration(labelText: 'Category'), items: _categories.map((c) => DropdownMenuItem(value: c.id, child: Text('${c.emoji} ${c.label}'))).toList(), onChanged: (v) => setState(() => _category = v ?? '')),
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // [LIST-APP-PARITY-1] Each of the three copy fields carries its own AI
+          // blip. The category list is fetched from /api/explore/categories, so
+          // a new category (e.g. "Puja") appears here with no client change.
+          for (final key in _kCopyFields) ...[
+            _aiBlip(key),
+            _field(_kCopyFieldLabels[key]!, _copyController(key),
+                maxLines: key == 'description' ? 6 : 1, hint: _kCopyFieldHints[key]),
+          ],
+          if (_aiUnavailable)
+            Padding(
+                padding: const EdgeInsets.only(bottom: Msg.s3),
+                child: Text(
+                    'The AI check is unavailable right now, so it is not holding you up. You can run it again from any of the three fields.',
+                    style: ADText.preview(c: AD.textTertiary))),
+          DropdownButtonFormField<String>(value: _category.isEmpty ? null : _category, decoration: const InputDecoration(labelText: 'Category'), items: _categories.map((c) => DropdownMenuItem(value: c.id, child: Text('${c.emoji} ${c.label}'))).toList(), onChanged: (v) => setState(() { _category = v ?? ''; _dirty = true; })),
+          const SizedBox(height: Msg.s4),
+          _languagePicker(),
         ]);
       case 2:
-        return Column(children: [
-          if (!_freeEntry) _field('Price per hour (Tokens = ₹)', _price, hint: 'At least $_minPricePerHour tokens per hour'),
-          DropdownButtonFormField<String>(value: _mediaMode, decoration: const InputDecoration(labelText: 'Media mode'), items: const [DropdownMenuItem(value: 'audio_video', child: Text('Audio + video')), DropdownMenuItem(value: 'audio_only', child: Text('Audio only'))], onChanged: (v) => setState(() => _mediaMode = v ?? 'audio_video')),
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (!_freeEntry) _field('Price per hour (Tokens = ₹)', _price, hint: 'At least $_minPricePerHour tokens per hour', live: true),
+          DropdownButtonFormField<String>(value: _mediaMode, decoration: const InputDecoration(labelText: 'Media mode'), items: const [DropdownMenuItem(value: 'audio_video', child: Text('Audio + video')), DropdownMenuItem(value: 'audio_only', child: Text('Audio only'))], onChanged: (v) => setState(() { _mediaMode = v ?? 'audio_video'; _dirty = true; })),
+          // [LIST-APP-PARITY-1] Discounts. Free entry has nothing to discount.
+          if (!_freeEntry) ...[
+            const SizedBox(height: Msg.s4),
+            Text('Discounts', style: ADText.rowName()),
+            Text('Optional. An early-bird cut applies to everyone; a promo code applies only to customers who type it at checkout.',
+                style: ADText.preview()),
+            const SizedBox(height: Msg.s3),
+            _field('Early-bird discount %', _earlyBirdPct, hint: '1 to 100 — leave empty for none', live: true),
+            _field('Promo code', _promoCode, hint: 'MONSOON20', live: true),
+            _field('Promo code discount %', _promoPct, hint: '1 to 100', live: true),
+            _moneyBreakdown(),
+          ],
         ]);
       case 3:
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -676,7 +1236,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
           // these keys and 422s anything else (listings.ts:534), so prose in that
           // box made the listing unsaveable. Checkboxes can only produce a legal
           // object.
-          for (final entry in const {'mic': 'A microphone', 'cam': 'A camera', 'listen_only': 'Listening only — no mic needed', 'recording': 'This session is recorded'}.entries)
+          for (final entry in _kJoinRequirementLabels.entries)
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,
               dense: true,
@@ -685,6 +1245,10 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
               onChanged: (v) => setState(() { _joinReq[entry.key] = v ?? false; _dirty = true; }),
             ),
           if (_kind == 'consult') _field('Preparation instructions', _preparation, maxLines: 5),
+          const SizedBox(height: Msg.s2),
+          // [LIST-APP-PARITY-1] Moved off step 8, which is now read-only. Same
+          // 3-to-6 rule (contentAttrsError:515), now checked on this step.
+          _field('FAQ (3 to 6 lines, or leave empty)', _faq, maxLines: 6, hint: 'Do I need a mic? Yes, any headset works'),
         ]);
       case 6:
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -711,19 +1275,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
           _field('Video URL', _videoUrl),
         ]);
       default:
-        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(_title.text.isEmpty ? 'Untitled listing' : _title.text, style: ADText.appTitle()),
-          const SizedBox(height: Msg.s2),
-          Text(_description.text.isEmpty ? 'Add a description before submitting.' : _description.text, style: ADText.preview()),
-          const SizedBox(height: Msg.s3),
-          _field('FAQ (3 to 6 lines, or leave empty)', _faq, maxLines: 6, hint: 'Do I need a mic? Yes, any headset works'),
-          CheckboxListTile(value: _copyReviewed, onChanged: (v) => setState(() => _copyReviewed = v ?? false), title: const Text('I reviewed this listing for accuracy')),
-          if (_id != null) TextButton.icon(onPressed: _publishing ? null : () async {
-            final result = await ListingsApi.wizardRepeat(_id!, 4);
-            if (!mounted) return;
-            showAdToast(context, message: result['ok'] == true ? 'Four draft copies created.' : _serverMessage(result));
-          }, icon: Icon(PhosphorIcons.repeat(PhosphorIconsStyle.regular)), label: const Text('Repeat this listing for four weeks')),
-        ]);
+        return _reviewStep();
     }
   }
 

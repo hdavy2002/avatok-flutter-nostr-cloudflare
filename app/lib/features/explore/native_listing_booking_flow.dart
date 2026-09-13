@@ -42,6 +42,12 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
   int? _balance;
   String? _error;
   CommercialCheckoutResult? _receipt;
+  // [LIST-APP-PARITY-1] Promo code at checkout. The field existed on
+  // `ListingsApi.book` and on the commercial checkout routes; nothing in the app
+  // ever offered a box to type it into, so a creator's promo code was
+  // unredeemable from the phone.
+  final _promoCode = TextEditingController();
+  String? _promoError;
   late final String _idempotencyKey = CommercialCheckoutApi.newIdempotencyKey();
   late final String _viewerTimezone = _resolveViewerTimezone();
 
@@ -54,6 +60,12 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
   int get _price => widget.listing.effectivePrice > 0
       ? widget.listing.effectivePrice
       : widget.listing.price;
+
+  @override
+  void dispose() {
+    _promoCode.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -245,7 +257,9 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
     setState(() {
       _busy = true;
       _error = null;
+      _promoError = null;
     });
+    final promo = _promoCode.text.trim().toUpperCase();
     CommercialCheckoutResult result;
     if (_isConsult) {
       final slot = _selectedSlot;
@@ -265,6 +279,7 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
         holdId:_holdId,
         acceptPolicy: true,
         idempotencyKey: _idempotencyKey,
+        promoCode: promo,
       );
     } else if (widget.listing.kind == 'live_event' && !widget.listing.canBook) {
       // [LISTING-EXPIRY-1] The screen may have been open since before the show
@@ -280,6 +295,7 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
         listingId: widget.listing.id,
         acceptPolicy: true,
         idempotencyKey: _idempotencyKey,
+        promoCode: promo,
       );
     } else {
       // Legacy/agent listings still use the server-owned booking endpoint;
@@ -288,10 +304,18 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
       try {
         final booking = await ListingsApi.book(widget.listing.id,
             slotStart: _selectedSlot?.startAt.millisecondsSinceEpoch,
-            slotEnd: _selectedSlot?.endAt.millisecondsSinceEpoch);
+            slotEnd: _selectedSlot?.endAt.millisecondsSinceEpoch,
+            promoCode: promo);
+        // [LIST-APP-PARITY-1] This used to hard-code `status: 200, ok: true` and
+        // throw the server's answer away, so a refusal (including a bad promo
+        // code) was reported to the buyer as a confirmed booking. `book()`
+        // returns the response json plus its real status; use it.
+        final status = (booking['status'] as num?)?.toInt() ?? 0;
+        final accepted = status >= 200 && status < 300;
         result = CommercialCheckoutResult(
-            status: 200,
-            ok: true,
+            status: status,
+            ok: accepted,
+            error: accepted ? null : booking['error']?.toString(),
             listingId: widget.listing.id,
             bookingId: booking['booking_id']?.toString(),
             orderId: booking['order_id']?.toString(),
@@ -302,6 +326,28 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
       }
     }
     if (!mounted) return;
+    // [LIST-APP-PARITY-1] A refused code is a field-level problem, not a failed
+    // checkout: say so next to the box and leave everything else standing so the
+    // buyer can fix the code and press Pay again with the SAME idempotency key.
+    if (!result.ok && result.error == 'invalid_promo_code') {
+      setState(() {
+        _busy = false;
+        _promoError = 'That promo code is not valid for this booking. Clear it or try another.';
+      });
+      Analytics.capture('listing_promo_applied', {
+        'listing_id': widget.listing.id,
+        'surface': 'native_booking',
+        'outcome': 'invalid',
+      });
+      return;
+    }
+    if (result.ok && promo.isNotEmpty) {
+      Analytics.capture('listing_promo_applied', {
+        'listing_id': widget.listing.id,
+        'surface': 'native_booking',
+        'outcome': 'ok',
+      });
+    }
     if (!result.ok && _isConsult && _slotWasStolen(result)) {
       setState(() {
         _busy = false;
@@ -519,6 +565,29 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
         if (_balance != null)
           Text('Wallet balance: $_balance ${widget.listing.currency}',
               style: const TextStyle(color: AD.textSecondary)),
+        const SizedBox(height: 14),
+        if (!_free) ...[
+          const SizedBox(height: 14),
+          TextField(
+            controller: _promoCode,
+            textCapitalization: TextCapitalization.characters,
+            enabled: !_busy,
+            decoration: InputDecoration(
+              labelText: 'Promo code (optional)',
+              hintText: 'MONSOON20',
+              errorText: _promoError,
+              filled: true,
+              fillColor: AD.inputField,
+            ),
+            onChanged: (_) {
+              if (_promoError != null) setState(() => _promoError = null);
+            },
+          ),
+          const SizedBox(height: 4),
+          const Text(
+              'The discount is worked out and applied by the server when you pay.',
+              style: TextStyle(color: AD.textSecondary, fontSize: 12)),
+        ],
         const SizedBox(height: 14),
         Text(_isConsult
             ? 'Cancel according to the creator policy before your selected time. No-shows may not be refunded.'

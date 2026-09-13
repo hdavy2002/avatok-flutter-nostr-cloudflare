@@ -949,6 +949,70 @@ class ListingPromotion {
   int get pctOff => (json['pct_off'] as num?)?.toInt() ?? 0;
 }
 
+/// [LIST-APP-PARITY-1] One field of `POST /api/listings/copy-review`.
+///
+/// The route SUGGESTS and never saves (worker/src/routes/listing_copy_review.ts
+/// rule 1), so the creator applies each field by hand. `suggested` equals
+/// `original` when nothing needed changing, and `note` is null in that case.
+class CopyReviewField {
+  final String original, suggested;
+  final String? note;
+
+  const CopyReviewField({
+    required this.original,
+    required this.suggested,
+    this.note,
+  });
+
+  factory CopyReviewField.fromJson(dynamic value) {
+    final row = value is Map ? value.cast<String, dynamic>() : const <String, dynamic>{};
+    final note = row['note']?.toString();
+    return CopyReviewField(
+      original: (row['original'] ?? '').toString(),
+      suggested: (row['suggested'] ?? '').toString(),
+      note: (note == null || note.isEmpty) ? null : note,
+    );
+  }
+
+  bool get changed => suggested.isNotEmpty && suggested != original;
+}
+
+/// [LIST-APP-PARITY-1] The whole copy-review answer.
+class CopyReviewResult {
+  final CopyReviewField title, blurb, description;
+
+  /// 'ai' when the model half produced the suggestions, 'rules' when only the
+  /// deterministic length pass ran. The UI prints this — never claim an AI
+  /// review that did not happen.
+  final String source;
+
+  const CopyReviewResult({
+    required this.title,
+    required this.blurb,
+    required this.description,
+    required this.source,
+  });
+
+  factory CopyReviewResult.fromJson(Map<String, dynamic> value) => CopyReviewResult(
+        title: CopyReviewField.fromJson(value['title']),
+        blurb: CopyReviewField.fromJson(value['blurb']),
+        description: CopyReviewField.fromJson(value['description']),
+        source: (value['source'] ?? 'rules').toString(),
+      );
+
+  CopyReviewField? field(String key) {
+    switch (key) {
+      case 'title':
+        return title;
+      case 'blurb':
+        return blurb;
+      case 'description':
+        return description;
+    }
+    return null;
+  }
+}
+
 class CreatedListingSlot {
   final Map<String, dynamic> json;
   CreatedListingSlot.fromJson(Map<String, dynamic> value)
@@ -1132,6 +1196,58 @@ class ListingsApi {
       return ListingPromotion.fromJson(value);
     });
   }
+
+  /// [LIST-APP-PARITY-1] `POST /api/listings/copy-review` — the SAME endpoint the
+  /// web wizard's CopyReview panel calls (web/src/islands/dashboard/listing-form/
+  /// CopyReview.tsx). It reads the draft's copy and answers with a suggestion per
+  /// field; it writes nothing, so applying a suggestion is the creator's own act.
+  ///
+  /// The timeout is deliberately long: the model half budgets 20s server-side
+  /// (`avaReason(... timeoutMs: 20000)`), and the default 8s would abandon a call
+  /// that was about to answer and make every review look like a failure.
+  static Future<ListingApiResult<CopyReviewResult>> copyReview({
+    required String title,
+    required String blurb,
+    required String description,
+    required String kind,
+    String category = '',
+    bool freeEntry = false,
+  }) async {
+    final r = await ApiAuth.postJson('$_base/listings/copy-review', {
+      'title': title,
+      'blurb': blurb,
+      'description': description,
+      'kind': kind,
+      'category': category,
+      'free_entry': freeEntry,
+    }, timeout: const Duration(seconds: 30));
+    return _result(r, (body) => CopyReviewResult.fromJson(body));
+  }
+
+  /// [LIST-APP-PARITY-1] The promotions a listing ALREADY has.
+  ///
+  /// `POST .../promotions` only ever INSERTs, so a wizard that posted on every
+  /// save would stack a new row each time a draft was reopened. Reading first is
+  /// what makes the creator-side discount editable instead of append-only.
+  /// Returns an empty list on any failure — the caller must then treat "unknown"
+  /// as "do not write" rather than duplicating a promotion it could not see.
+  static Future<List<Map<String, dynamic>>> listingPromotions(String id) async {
+    try {
+      final r = await ApiAuth.getSigned(_listingPath(id, '/promotions'));
+      if (r.statusCode < 200 || r.statusCode >= 300) return const [];
+      return ((_j(r.body)['promotions'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((row) => row.cast<String, dynamic>())
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static Future<bool> deleteListingPromotion(String id, String promotionId) async =>
+      (await ApiAuth.deleteSigned(
+        '${_listingPath(id, '/promotions')}/${Uri.encodeComponent(promotionId)}',
+      )).statusCode == 200;
 
   static Future<ListingApiResult<CreatedListingSlot>> addListingSlot(
     String id, {

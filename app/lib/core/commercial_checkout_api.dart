@@ -99,14 +99,24 @@ class CommercialCheckoutApi {
     return bytes.map((v) => v.toRadixString(16).padLeft(2, '0')).join();
   }
 
+  /// [LIST-APP-PARITY-1] `promoCode` is optional and the SERVER decides what it
+  /// is worth: it answers 400 `{"error":"invalid_promo_code"}` when the code does
+  /// not apply, and recomputes the charge itself when it does. The client never
+  /// computes an authoritative discounted total — an amount the client picked is
+  /// an amount an attacker picked.
   static Future<CommercialCheckoutResult> liveTicket({
     required String listingId,
     required bool acceptPolicy,
     required String idempotencyKey,
+    String? promoCode,
   }) async {
     return _checkout(
       path: 'live/${Uri.encodeComponent(listingId)}/checkout',
-      body: {'accept_policy': acceptPolicy},
+      body: {
+        'accept_policy': acceptPolicy,
+        if (promoCode != null && promoCode.trim().isNotEmpty)
+          'promo_code': promoCode.trim().toUpperCase(),
+      },
       idempotencyKey: idempotencyKey,
     );
   }
@@ -125,6 +135,7 @@ class CommercialCheckoutApi {
     String? holdId,
     required bool acceptPolicy,
     required String idempotencyKey,
+    String? promoCode,
   }) async {
     return _checkout(
       path: 'consult/${Uri.encodeComponent(listingId)}/checkout',
@@ -132,6 +143,9 @@ class CommercialCheckoutApi {
         'accept_policy': acceptPolicy,
         if(holdId!=null) 'hold_id':holdId,
         'slot': {'start_at': startAt, 'end_at': endAt},
+        // See [liveTicket]: server-verified, never client-computed.
+        if (promoCode != null && promoCode.trim().isNotEmpty)
+          'promo_code': promoCode.trim().toUpperCase(),
       },
       idempotencyKey: idempotencyKey,
     );

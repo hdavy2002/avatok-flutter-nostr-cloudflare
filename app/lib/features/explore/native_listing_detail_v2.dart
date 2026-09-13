@@ -4,10 +4,12 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 
 import '../../core/analytics.dart';
 import '../../core/availability_time.dart';
 import '../../core/avatar.dart';
+import '../../core/cached_image.dart';
 import '../../core/listings_api.dart';
 import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
@@ -64,6 +66,21 @@ String _when(int? epochMs, [String? timezone]) {
   return '${two(date.day)}/${two(date.month)} · ${two(date.hour)}:${two(date.minute)}${ist ? ' IST' : ''}';
 }
 
+/// [LIST-APP-PARITY-1] The YouTube id inside a listing's `video_url`, or null.
+///
+/// Same pattern as `features/avatok/chat_media_cards.dart#firstYouTubeId`;
+/// duplicated rather than imported so the detail page does not pull the whole
+/// chat media-card library in for eleven characters.
+String? youTubeIdOf(String? url) {
+  final text = (url ?? '').trim();
+  if (text.isEmpty) return null;
+  final match = RegExp(
+    r'(?:youtube\.com/(?:watch\?(?:.*&)?v=|shorts/|embed/|live/|v/)|youtu\.be/)([A-Za-z0-9_-]{11})',
+    caseSensitive: false,
+  ).firstMatch(text);
+  return match?.group(1);
+}
+
 /// [LISTING-EXPIRY-1] The one line a closed listing shows instead of a CTA.
 String _closedLabel(ListingCard l) {
   switch (l.scheduleState) {
@@ -97,6 +114,15 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
   bool loading = true;
   bool favouriteBusy = false;
   String? error;
+  /// [LIST-APP-PARITY-1] Created only when the viewer actually taps play, so a
+  /// listing page never boots an embedded webview nobody asked for.
+  YoutubePlayerController? _ytController;
+
+  @override
+  void dispose() {
+    _ytController?.close();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -271,7 +297,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
         onRefresh: _load,
         child: LayoutBuilder(builder: (context, constraints) {
           final wide = constraints.maxWidth >= 760;
-          final content = _content(d, wide);
+          final content = _content(d, wide, constraints.maxWidth);
           return ListView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 48),
               children: [content]);
@@ -302,9 +328,11 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
           ? 'RESERVE YOUR SEAT'
           : 'BOOK A SEAT · ${l.priceLabel}');
 
-  Widget _content(ListingDetail d, bool wide) {
+  Widget _content(ListingDetail d, bool wide, double width) {
     final l = d.listing;
-    final hero = _hero(l);
+    final hero = _hero(l, width);
+    final galleryUrls = _galleryUrls(l);
+    final hasVideoHero = youTubeIdOf(l.videoUrl) != null;
     final summary = _summary(d);
     // [AGENT-LIVE-1 D11] Agents get their own read-only card — price + slot
     // chips + "Talk on the web" — never the native booking flow.
@@ -313,7 +341,14 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       _ticker(l),
       hero,
-      if (l.coverMedia.length > 1) _gallery(l),
+      // [LIST-APP-PARITY-1] Gate on the FILTERED count. The old gate was
+      // `coverMedia.length > 1` — two entries with one usable url built an empty
+      // 88px strip. When the video OR the AI poster owns the hero, the creator's
+      // photos have nowhere else to appear, so one photo is worth a strip;
+      // otherwise the first photo is already the hero and one is a duplicate.
+      if (galleryUrls.length > 1 ||
+          ((hasVideoHero || l.hasAiPoster) && galleryUrls.isNotEmpty))
+        _gallery(l, galleryUrls),
       _shareCard(l),
       summary,
       if (wide)
@@ -409,10 +444,22 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
             style: ADText.rowName(c: Colors.white))
       ]));
 
-  Widget _hero(ListingCard l) {
-    final url = l.coverUrl;
+  /// [LIST-APP-PARITY-1] The hero.
+  ///
+  /// THREE things were wrong here. (1) The listing's video was never read at
+  /// all — zero references to `videoUrl` on this screen, though the wizard
+  /// collects it and `ListingCard.videoUrl` has carried it for months. (2) The
+  /// whole `[POSTER-FIRST-1]` system (`hasAiPoster`, `posterUrlForWidth`,
+  /// `posterNeedsLettering`, `posterTitle`) was ignored in favour of a raw
+  /// `coverUrl`. (3) The title was painted over the image unconditionally, so a
+  /// poster that already carries painted lettering got it twice.
+  ///
+  /// The rule now: a video is CENTRE-STAGE and playable in place; with no video
+  /// the poster owns the hero at the right width variant; `coverUrl` is the last
+  /// fallback.
+  Widget _hero(ListingCard l, double width) {
+    final videoId = youTubeIdOf(l.videoUrl);
     return Container(
-        height: 250,
         decoration: BoxDecoration(
             color: AD.headerFooter,
             border: Border.all(color: AD.textPrimary, width: 3),
@@ -421,29 +468,105 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
               BoxShadow(color: AD.textPrimary, offset: Offset(5, 6))
             ]),
         clipBehavior: Clip.antiAlias,
-        child: Stack(fit: StackFit.expand, children: [
-          if (url != null)
-            Image.network(url,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox())
-          else
-            Center(
-                child: Text(l.title.toUpperCase(),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        fontFamily: ADText.display,
-                        fontSize: 28,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white))),
+        child: videoId == null
+            ? SizedBox(height: 250, child: _imageHero(l, width))
+            : AspectRatio(aspectRatio: 16 / 9, child: _videoHero(l, videoId)));
+  }
+
+  Widget _imageHero(ListingCard l, double width) {
+    // `posterUrlForWidth` falls back to the portrait when the wider variants
+    // were never generated, so this is safe on every listing published before
+    // `posterVariantsEnabled`.
+    final poster = l.hasAiPoster ? l.posterUrlForWidth(width) : null;
+    final url = poster ?? l.coverUrl;
+    // "overlay" means the artwork is deliberately textless because the model
+    // could not be trusted to spell the title — the CLIENT draws it. A poster
+    // that already carries its lettering must NOT have the title printed on top.
+    final letterOverPoster = poster != null && l.posterNeedsLettering;
+    final showTitle = poster == null || letterOverPoster;
+    final heroTitle = letterOverPoster ? l.posterTitle : l.title;
+    final heroTagline = letterOverPoster ? l.posterTagline : '';
+    return Stack(fit: StackFit.expand, children: [
+      if (url != null)
+        Image.network(url,
+            fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox())
+      else
+        Center(
+            child: Text(l.title.toUpperCase(),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontFamily: ADText.display,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white))),
+      DecoratedBox(
+          decoration: BoxDecoration(
+              gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [AD.card.withOpacity(0), AD.scrim]))),
+      if (showTitle)
+        Positioned(
+            left: 16,
+            right: 16,
+            bottom: 14,
+            child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(heroTitle,
+                      style: const TextStyle(
+                          fontFamily: ADText.display,
+                          color: Colors.white,
+                          fontSize: 26,
+                          fontWeight: FontWeight.w700)),
+                  if (heroTagline.isNotEmpty)
+                    Text(heroTagline,
+                        style: const TextStyle(color: Colors.white, fontSize: 13)),
+                ])),
+      Positioned(
+          top: 12,
+          left: 12,
+          child: _pill(
+              l.status == 'live'
+                  ? '● LIVE'
+                  : l.isEnded
+                      ? _closedLabel(l)
+                      : (l.scheduleState == 'starting' ? 'STARTING NOW' : 'NEXT SHOW'),
+              AD.danger)),
+    ]);
+  }
+
+  /// A real inline player, using the `youtube_player_iframe` already pinned in
+  /// `pubspec.yaml` and already shipping in chat (`YouTubeCard`). No new
+  /// dependency: with no local toolchain, a bad pin costs a CI round trip.
+  Widget _videoHero(ListingCard l, String videoId) {
+    final controller = _ytController;
+    if (controller != null) {
+      return YoutubePlayer(controller: controller, aspectRatio: 16 / 9);
+    }
+    return GestureDetector(
+        onTap: () => _playVideo(l, videoId),
+        child: Stack(fit: StackFit.expand, alignment: Alignment.center, children: [
+          CachedThumb(
+              url: 'https://img.youtube.com/vi/$videoId/hqdefault.jpg',
+              px: 720,
+              fallback: const ColoredBox(color: AD.headerFooter)),
           DecoratedBox(
               decoration: BoxDecoration(
                   gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: [
-                AD.card.withOpacity(0),
-                AD.scrim,
-              ]))),
+                      colors: [AD.card.withOpacity(0), AD.scrim]))),
+          Center(
+              child: Container(
+                  width: 64,
+                  height: 64,
+                  alignment: Alignment.center,
+                  decoration:
+                      const BoxDecoration(color: AD.danger, shape: BoxShape.circle),
+                  child: PhosphorIcon(PhosphorIcons.play(PhosphorIconsStyle.fill),
+                      color: Colors.white, size: 30))),
           Positioned(
               left: 16,
               right: 16,
@@ -454,36 +577,77 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                       color: Colors.white,
                       fontSize: 26,
                       fontWeight: FontWeight.w700))),
-          Positioned(
-              top: 12,
-              left: 12,
-              child: _pill(
-                  l.status == 'live'
-                      ? '● LIVE'
-                      : l.isEnded
-                          ? _closedLabel(l)
-                          : (l.scheduleState == 'starting' ? 'STARTING NOW' : 'NEXT SHOW'),
-                      AD.danger)),
         ]));
   }
 
-  Widget _gallery(ListingCard l) {
-    final urls = l.coverMedia
-        .map((m) => (m is Map ? m['url'] : null)?.toString())
-        .whereType<String>()
-        .where((u) => u.startsWith('http'))
-        .take(8)
-        .toList();
-    return SizedBox(
-        height: 88,
-        child: ListView.separated(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            scrollDirection: Axis.horizontal,
-            itemCount: urls.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
-            itemBuilder: (_, i) => ClipRRect(
-                borderRadius: BorderRadius.circular(AD.rImage),
-                child: Image.network(urls[i], width: 110, fit: BoxFit.cover))));
+  void _playVideo(ListingCard l, String videoId) {
+    setState(() {
+      _ytController = YoutubePlayerController.fromVideoId(
+        videoId: videoId,
+        autoPlay: true,
+        params: const YoutubePlayerParams(
+          showControls: true,
+          showFullscreenButton: true,
+          enableCaption: true,
+        ),
+      );
+    });
+    Analytics.capture('listing_video_play', {
+      'listing_id': l.id,
+      'video_id': videoId,
+      'surface': 'detail_hero',
+      'outcome': 'started',
+    });
+  }
+
+  /// The creator's photos, filtered BEFORE anything counts them.
+  ///
+  /// The AI poster is prepended to `cover_media` by the worker as a
+  /// `source: 'ai_poster'` entry — it belongs on cards, not in the creator's own
+  /// photo strip, so it is excluded here.
+  List<String> _galleryUrls(ListingCard l) => l.coverMedia
+      .whereType<Map>()
+      .where((m) => m['source'] != 'ai_poster')
+      .map((m) => (m['url'] ?? m['r2_key'])?.toString())
+      .whereType<String>()
+      .where((u) => u.startsWith('http'))
+      .take(12)
+      .toList();
+
+  Widget _gallery(ListingCard l, List<String> urls) => SizedBox(
+      height: 88,
+      child: ListView.separated(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          scrollDirection: Axis.horizontal,
+          itemCount: urls.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          itemBuilder: (_, i) => GestureDetector(
+              onTap: () => _openGallery(l, urls, i),
+              child: ClipRRect(
+                  borderRadius: BorderRadius.circular(AD.rImage),
+                  child: Image.network(urls[i],
+                      width: 110,
+                      fit: BoxFit.cover,
+                      // A dead url degrades to a marked tile, never to a blank
+                      // one that reads as a broken layout.
+                      errorBuilder: (_, __, ___) => Container(
+                          width: 110,
+                          alignment: Alignment.center,
+                          color: AD.cardHover,
+                          child: PhosphorIcon(
+                              PhosphorIcons.imageBroken(PhosphorIconsStyle.regular),
+                              color: AD.textTertiary)))))));
+
+  void _openGallery(ListingCard l, List<String> urls, int index) {
+    Analytics.capture('listing_gallery_opened', {
+      'listing_id': l.id,
+      'photo_index': index,
+      'photo_count': urls.length,
+      'outcome': 'opened',
+    });
+    Navigator.of(context).push(MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => _FullScreenGallery(urls: urls, initialIndex: index)));
   }
 
   Widget _summary(ListingDetail d) {
@@ -672,6 +836,10 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
         const SizedBox(height: 10),
         child
       ]));
+  /// [LIST-APP-PARITY-1] `'$steps[i]'` printed the WHOLE list's `toString()`
+  /// followed by a literal `[i]` — Dart's bare-identifier interpolation stops at
+  /// the identifier. Unpacked properly through [_pairHeading]/[_pairBody] now,
+  /// which `_rules` shares.
   Widget _howItWorks(ListingCard l) {
     final raw = l.attrs['content_how_it_works'];
     final steps = raw is List ? raw : const [];
@@ -681,11 +849,25 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
         : Column(children: [
             for (var i = 0; i < steps.length; i++)
               _infoCard(
-                  'STEP ${i + 1} · ${(steps[i] is Map ? steps[i]['label'] : 'YOUR SESSION')}',
-                  body: steps[i] is Map
-                      ? '${steps[i]['body'] ?? ''}'
-                      : '$steps[i]')
+                  'STEP ${i + 1} · ${_pairHeading(steps[i], 'label', 'YOUR SESSION')}',
+                  body: _pairBody(steps[i], 'body'))
           ]);
+  }
+
+  /// The server stores every `content_*` object list as `{heading|label|q, body|a}`
+  /// (contentAttrsError, worker/src/routes/listings.ts:439). A plain string is
+  /// tolerated as the heading — some older rows hold one.
+  static String _pairHeading(dynamic row, String key, String fallback) {
+    final value = row is Map
+        ? (row[key] ?? '').toString().trim()
+        : row.toString().trim();
+    return value.isEmpty ? fallback : value;
+  }
+
+  static String? _pairBody(dynamic row, String key) {
+    if (row is! Map) return null;
+    final value = (row[key] ?? '').toString().trim();
+    return value.isEmpty ? null : value;
   }
 
   Widget _infoCard(String title, {String? body}) => Container(
@@ -711,7 +893,8 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
     return _section(
         'MEET THE HOST.',
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          _infoCard('', body: null),
+          // [LIST-APP-PARITY-1] An unconditional `_infoCard('', body: null)`
+          // used to sit here: an always-empty bordered box above every host.
           Row(children: [
             Avatar(
                 seed: l.creator.uid,
@@ -756,8 +939,16 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
         ]));
   }
 
+  /// [LIST-APP-PARITY-1] House rules.
+  ///
+  /// This read `attrs['rules']` — a key nothing writes. The wizard writes, and
+  /// the server validates, `content_house_rules`: a list of `{heading, body}`
+  /// objects (listings.ts:503). So EVERY custom house rule a creator wrote was
+  /// invisible and every listing showed the same generic fallback; and even
+  /// with the key fixed, `'${rules[i]}'` would have printed a raw Dart map.
+  /// The fallback below is now reached only when the creator truly wrote none.
   Widget _rules(ListingCard l) {
-    final raw = l.attrs['rules'];
+    final raw = l.attrs['content_house_rules'];
     final rules = raw is List ? raw : const [];
     if (rules.isEmpty)
       return _section(
@@ -768,7 +959,9 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
         'HOUSE RULES.',
         Column(children: [
           for (var i = 0; i < rules.length; i++)
-            _infoCard('${i + 1}. ${rules[i]}')
+            _infoCard(
+                '${i + 1}. ${_pairHeading(rules[i], 'heading', 'HOUSE RULE')}',
+                body: _pairBody(rules[i], 'body'))
         ]));
   }
 
@@ -868,6 +1061,52 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
           ),
         ),
       );
+}
+
+/// [LIST-APP-PARITY-1] Tapping a gallery thumbnail opens this: the photos at
+/// full size, swipeable and pinch-zoomable. Before, a thumbnail did nothing.
+class _FullScreenGallery extends StatefulWidget {
+  const _FullScreenGallery({required this.urls, required this.initialIndex});
+  final List<String> urls;
+  final int initialIndex;
+
+  @override
+  State<_FullScreenGallery> createState() => _FullScreenGalleryState();
+}
+
+class _FullScreenGalleryState extends State<_FullScreenGallery> {
+  late final PageController _pages =
+      PageController(initialPage: widget.initialIndex);
+  late int _index = widget.initialIndex;
+
+  @override
+  void dispose() {
+    _pages.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+          title: Text('${_index + 1} / ${widget.urls.length}',
+              style: const TextStyle(color: Colors.white))),
+      body: PageView.builder(
+          controller: _pages,
+          itemCount: widget.urls.length,
+          onPageChanged: (i) => setState(() => _index = i),
+          itemBuilder: (_, i) => InteractiveViewer(
+              minScale: 1,
+              maxScale: 4,
+              child: Center(
+                  child: Image.network(widget.urls[i],
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => PhosphorIcon(
+                          PhosphorIcons.imageBroken(PhosphorIconsStyle.regular),
+                          color: Colors.white,
+                          size: 48))))));
 }
 
 class _TrustTile extends StatelessWidget {

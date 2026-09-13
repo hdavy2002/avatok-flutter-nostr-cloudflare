@@ -44,6 +44,10 @@ abstract class _CommercialCheckoutSheetState<T extends _CommercialCheckoutSheet>
   bool walletUnavailable = false;
   bool showTopUp = false;
   String? error;
+  // [LIST-APP-PARITY-1] Promo code at checkout. Lives on the shared base so the
+  // live-event sheet and the consult sheet cannot drift apart.
+  final promoCode = TextEditingController();
+  String? promoError;
   late final String idempotencyKey;
 
   ListingCard get listing => widget.listing;
@@ -56,6 +60,39 @@ abstract class _CommercialCheckoutSheetState<T extends _CommercialCheckoutSheet>
     idempotencyKey = CommercialCheckoutApi.newIdempotencyKey();
     _loadBalance();
   }
+
+  @override
+  void dispose() {
+    promoCode.dispose();
+    super.dispose();
+  }
+
+  /// The code the buyer typed, normalised. The SERVER decides what it is worth.
+  String get promo => promoCode.text.trim().toUpperCase();
+
+  Widget promoBlock() => Padding(
+        padding: const EdgeInsets.only(top: Msg.s3),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          TextField(
+            controller: promoCode,
+            enabled: !busy,
+            textCapitalization: TextCapitalization.characters,
+            decoration: InputDecoration(
+              labelText: 'Promo code (optional)',
+              hintText: 'MONSOON20',
+              errorText: promoError,
+              filled: true,
+              fillColor: AD.inputField,
+            ),
+            onChanged: (_) {
+              if (promoError != null) setState(() => promoError = null);
+            },
+          ),
+          const SizedBox(height: Msg.s1),
+          Text('The discount is worked out and applied by the server when you pay.',
+              style: ADText.preview(c: AD.textSecondary)),
+        ]),
+      );
 
   Future<void> _loadBalance() async {
     try {
@@ -224,7 +261,28 @@ abstract class _CommercialCheckoutSheetState<T extends _CommercialCheckoutSheet>
         'listing_id': listing.id,
         'idempotent_replay': result.idempotentReplay,
       });
+      if (promo.isNotEmpty) {
+        Analytics.capture('listing_promo_applied', {
+          'listing_id': listing.id,
+          'surface': 'commercial_checkout_sheet',
+          'outcome': 'ok',
+        });
+      }
       Navigator.pop(context, result);
+      return;
+    }
+    // [LIST-APP-PARITY-1] A refused code is a field-level problem: mark the box,
+    // keep the sheet and the idempotency key, let the buyer fix it and retry.
+    if (result.error == 'invalid_promo_code') {
+      Analytics.capture('listing_promo_applied', {
+        'listing_id': listing.id,
+        'surface': 'commercial_checkout_sheet',
+        'outcome': 'invalid',
+      });
+      setState(() {
+        busy = false;
+        promoError = 'That promo code is not valid for this booking. Clear it or try another.';
+      });
       return;
     }
     final insufficient =
@@ -268,11 +326,13 @@ class _LiveCheckoutSheetState
     setState(() {
       busy = true;
       error = null;
+      promoError = null;
     });
     final result = await CommercialCheckoutApi.liveTicket(
       listingId: listing.id,
       acceptPolicy: acceptedPolicy,
       idempotencyKey: idempotencyKey,
+      promoCode: promo,
     );
     if (mounted) showResult(result);
   }
@@ -306,6 +366,7 @@ class _LiveCheckoutSheetState
               text:
                   'Your wallet balance is below the server listing price. Top up before confirming.'),
         ],
+        if (listing.effectivePrice > 0) promoBlock(),
         consentBlock(),
         actionButton(),
       ]);
@@ -398,6 +459,7 @@ class _ConsultCheckoutSheetState
     setState(() {
       busy = true;
       error = null;
+      promoError = null;
     });
     final result = await CommercialCheckoutApi.consultation(
       listingId: listing.id,
@@ -405,6 +467,7 @@ class _ConsultCheckoutSheetState
       endAt: end,
       acceptPolicy: acceptedPolicy,
       idempotencyKey: idempotencyKey,
+      promoCode: promo,
     );
     if (mounted) showResult(result);
   }
@@ -477,6 +540,7 @@ class _ConsultCheckoutSheetState
               text:
                   'Your wallet balance is below the server listing price. Top up before confirming.'),
         ],
+        if (listing.effectivePrice > 0) promoBlock(),
         consentBlock(),
         actionButton(),
       ]);
