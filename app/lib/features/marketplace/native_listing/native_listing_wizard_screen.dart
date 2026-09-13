@@ -8,6 +8,7 @@ import '../../../core/analytics.dart';
 import '../../../core/availability_time.dart';
 import '../../../core/cached_image.dart';
 import '../../../core/listings_api.dart';
+import '../../../core/remote_config.dart';
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/messenger_theme.dart';
 import '../../../core/ui/zine_widgets.dart';
@@ -70,6 +71,19 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   String? _id;
   String? _error;
   bool _loading = false, _freeEntry = false, _adultsOnly = false, _dirty = false;
+  // [LIST-WIZARD-GATE-1] Commercial policy is a SERVER CONTRACT, not free text:
+  // worker/src/routes/listings.ts commercialPolicyError() allows exactly
+  // `commercial_refund_window_hours` on live_event and exactly the five consult
+  // keys on consult, and rejects the whole save with "unsupported commercial
+  // policy field" if any other commercial_* key appears. This wizard used to
+  // post `commercial_preparation_instructions` unconditionally, so EVERY
+  // live_event save 422'd at step 2 (owner report 2026-09-13). These fields
+  // carry the values the listing already has so an edit never silently rewrites
+  // a policy the creator set elsewhere; the wizard has no UI for them yet.
+  int _refundWindowHours = 24;
+  int _cancellationWindowHours = 24;
+  int _bookingNoticeHours = 6;
+  bool _rescheduleAllowed = true;
   bool _saving = false;
   bool _publishing = false;
   bool _copyReviewed = false;
@@ -126,6 +140,10 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
         _rules.text = _asText(attrs['content_house_rules']);
         _faq.text = _asText(attrs['content_faq']);
         _preparation.text = (attrs['commercial_preparation_instructions'] ?? '').toString();
+        _refundWindowHours = _policyInt(attrs['commercial_refund_window_hours'], 24, const [0, 12, 24, 48]);
+        _cancellationWindowHours = _policyInt(attrs['commercial_cancellation_window_hours'], 24, const [0, 12, 24, 48]);
+        _bookingNoticeHours = _policyInt(attrs['commercial_booking_notice_hours'], 6, const [1, 2, 6, 24]);
+        _rescheduleAllowed = attrs['commercial_reschedule_allowed'] is bool ? attrs['commercial_reschedule_allowed'] as bool : true;
         _whatGet.text = _asText(attrs['content_what_you_get']);
         _whoFor.text = _asText(attrs['content_who_for']);
         _notFor.text = _asText(attrs['content_not_for']);
@@ -139,6 +157,14 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
       _error = 'Could not load this listing. Try again.';
     }
     if (mounted) setState(() => _loading = false);
+  }
+
+  /// A stored policy value is only reusable if the server would still accept it
+  /// (commercialPolicyError() checks membership, not range), so anything outside
+  /// the allowed set falls back to the default rather than failing the next save.
+  static int _policyInt(dynamic value, int fallback, List<int> allowed) {
+    final n = value is num ? value.toInt() : int.tryParse('$value');
+    return n != null && allowed.contains(n) ? n : fallback;
   }
 
   static String _asText(dynamic value) {
@@ -213,7 +239,19 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
           'content_who_for': _lines(_whoFor.text),
           'content_not_for': _lines(_notFor.text),
           'join_requirements': _jsonMap(_joinRequirements.text),
-          'commercial_preparation_instructions': _preparation.text.trim(),
+          // Per-kind ONLY — see the [LIST-WIZARD-GATE-1] note on the fields above.
+          // A live_event that sends a consult key (or the reverse) is refused
+          // wholesale with "unsupported commercial policy field", and a consult
+          // that sends a partial set is refused key by key, so each branch posts
+          // the complete, valid set its kind requires.
+          if (_kind == 'live_event') 'commercial_refund_window_hours': _refundWindowHours,
+          if (_kind == 'consult') ...{
+            'commercial_cancellation_window_hours': _cancellationWindowHours,
+            'commercial_reschedule_allowed': _rescheduleAllowed,
+            'commercial_booking_notice_hours': _bookingNoticeHours,
+            'commercial_no_show_policy': 'session_charged',
+            'commercial_preparation_instructions': _preparation.text.trim(),
+          },
           if (_faceUrl != null) 'face_photo': {'url': _faceUrl},
         },
       };
@@ -223,7 +261,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
 
   String? _validate() {
     if (_step == 1 && (_title.text.trim().isEmpty || _description.text.trim().isEmpty)) return 'Add a title and description.';
-    if (_step == 2 && !_freeEntry && (int.tryParse(_price.text.trim()) ?? 0) <= 0) return 'Enter a price greater than zero, or choose a free show.';
+    if (_step == 2 && !_freeEntry && (int.tryParse(_price.text.trim()) ?? 0) <= 0) return RemoteConfig.isAdmin ? 'Enter a price greater than zero, or choose a free show.' : 'Enter a price greater than zero.';
     if (_step == 3 && _kind == 'live_event' && ((_startsAtEpoch() ?? 0) <= DateTime.now().millisecondsSinceEpoch)) return 'Choose a future date and time.';
     if (_step == 6 && (_coverUrls.isEmpty || _faceUrl == null || _faceUrl!.isEmpty)) return 'Add a cover photo and private face photo.';
     if (_step == 7 && !_copyReviewed) return 'Review the copy before submitting.';
@@ -244,6 +282,17 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
       return true;
     } catch (e) {
       _error = e.toString().replaceFirst('Bad state: ', '');
+      // [LIST-WIZARD-GATE-1] The two bugs this change fixes were invisible in
+      // telemetry: a refused save only ever painted red text on the creator's
+      // phone. Emit the refusal (with the step and kind that produced it) so the
+      // next one is a PostHog query, not a screenshot.
+      Analytics.capture('listing_native_wizard_save_failed', {
+        'step': _step,
+        'kind': _kind,
+        'free_entry': _freeEntry,
+        'listing_id': _id ?? '',
+        'message': _error ?? '',
+      });
       return false;
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -332,7 +381,16 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
           const SizedBox(height: Msg.s3),
           for (final option in const {'consult': '1:1 consultation', 'live_event': 'Live event'}.entries)
             RadioListTile<String>(title: Text(option.value), value: option.key, groupValue: _kind, onChanged: (v) => setState(() => _kind = v!)),
-          SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('This is a free show'), value: _freeEntry, onChanged: (v) => setState(() { _freeEntry = v; _dirty = true; })),
+          // [LIST-WIZARD-GATE-1] Free entry is allowlist-gated server-side
+          // (worker/src/lib/free_entry_gate.ts: ADMIN_UIDS or FREE_ENTRY_ALLOWLIST
+          // while freeEntryAllowlistOnly stays true), so an ordinary creator who
+          // flipped this only ever got a 403 "Free-entry listings are limited to
+          // approved creators right now." two steps later. Owner decision
+          // 2026-09-13: show the switch to admins only. RemoteConfig.isAdmin is
+          // server-verified, so this hides an affordance that cannot work — it is
+          // not the gate. The gate stays in the Worker.
+          if (RemoteConfig.isAdmin)
+            SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('This is a free show'), value: _freeEntry, onChanged: (v) => setState(() { _freeEntry = v; _dirty = true; })),
         ]);
       case 1:
         return Column(children: [
