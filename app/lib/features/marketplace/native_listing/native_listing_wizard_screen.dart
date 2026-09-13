@@ -711,43 +711,110 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   /// `POST /api/listings/:id/promotions` is INSERT-only (listings.ts:3439), so
   /// posting on every save would stack a new row each time a draft was reopened
   /// and the buyer would get whichever one the server happened to read first.
-  /// This reads the current rows, deletes what it is replacing, and writes at
-  /// most one row per kind.
+  /// This reads the current rows, writes at most one row per kind, and removes
+  /// whatever it replaced.
+  ///
+  /// [PROMO-SYNC-2 2026-09-13] Two money-shaped defects fixed here.
+  ///
+  ///   (a) ORDER. It used to DELETE the existing rows and only then insert the
+  ///       replacement. When `addPromotion` failed it threw, the creator was
+  ///       told "your listing was saved, but the discount could not be" — and
+  ///       their LIVE discount was already gone. Navigating away made that
+  ///       permanent and silent. Insert first: a failure now leaves the old
+  ///       discount exactly as it was, which is the safe end of the two.
+  ///   (b) `deleteListingPromotion` returns a bool and the result was dropped.
+  ///       A failed delete leaves a row the wizard no longer displays and that
+  ///       CHECKOUT WILL STILL HONOUR — the creator believes they cancelled a
+  ///       50% discount and buyers keep getting it. It is now checked and said
+  ///       out loud.
+  ///
+  /// Idempotent by construction: an existing row that already matches what the
+  /// creator wants is KEPT rather than re-inserted, so re-running after a
+  /// partial failure converges on one row per kind instead of stacking more.
   Future<void> _syncPromotions() async {
     final id = _id;
     if (id == null) return;
     final early = int.tryParse(_earlyBirdPct.text.trim()) ?? 0;
     final promoPct = int.tryParse(_promoPct.text.trim()) ?? 0;
     final code = _promoCode.text.trim().toUpperCase();
+    // Rows we inserted/kept but could NOT clear the old copy of. Non-empty means
+    // a stale discount is still live and the creator must be told.
+    final stillLive = <String>[];
     try {
       final existing = await ListingsApi.listingPromotions(id);
       Future<void> reconcile(String kind, int pct, String? wantedCode) async {
         final rows = existing.where((row) => (row['kind'] ?? '').toString() == kind).toList();
         final want = pct >= 1 && pct <= 100 && (kind != 'promo_code' || (wantedCode ?? '').isNotEmpty);
-        final unchanged = rows.length == 1 &&
-            ((rows.first['pct_off'] as num?)?.toInt() ?? 0) == pct &&
-            (rows.first['code'] ?? '').toString().toUpperCase() == (wantedCode ?? '').toUpperCase();
-        if (want && unchanged) return;
-        for (final row in rows) {
-          await ListingsApi.deleteListingPromotion(id, (row['id'] ?? '').toString());
+        bool matchesWanted(Map<String, dynamic> row) =>
+            ((row['pct_off'] as num?)?.toInt() ?? 0) == pct &&
+            (row['code'] ?? '').toString().toUpperCase() == (wantedCode ?? '').toUpperCase();
+        // The one existing row that already IS what the creator asked for, if any.
+        Map<String, dynamic>? keep;
+        if (want) {
+          for (final row in rows) {
+            if (matchesWanted(row)) {
+              keep = row;
+              break;
+            }
+          }
         }
-        if (!want) return;
-        final ok = await ListingsApi.addPromotion(id, kind: kind, pctOff: pct, code: wantedCode);
-        Analytics.capture('listing_promotion_saved', {
-          'listing_id': id,
-          'promotion_kind': kind,
-          'pct_off': pct,
-          'outcome': ok ? 'ok' : 'error',
-        });
-        if (!ok) throw StateError('The discount could not be saved.');
+        final stale = rows.where((row) => !identical(row, keep)).toList();
+        if (keep != null && stale.isEmpty) return; // already correct
+        if (!want && stale.isEmpty) return; // nothing there, nothing wanted
+
+        // 1. Write the replacement FIRST. If this fails the creator keeps the
+        //    discount they had — see (a) above.
+        if (want && keep == null) {
+          final ok = await ListingsApi.addPromotion(id, kind: kind, pctOff: pct, code: wantedCode);
+          Analytics.capture('listing_promotion_saved', {
+            'listing_id': id,
+            'promotion_kind': kind,
+            'pct_off': pct,
+            'outcome': ok ? 'ok' : 'error',
+          });
+          if (!ok) throw StateError('The discount could not be saved.');
+        }
+
+        // 2. Only now remove what it replaced, and BELIEVE THE RESULT — see (b).
+        for (final row in stale) {
+          final rowId = (row['id'] ?? '').toString();
+          if (rowId.isEmpty) continue;
+          final removed = await ListingsApi.deleteListingPromotion(id, rowId);
+          if (removed) continue;
+          stillLive.add(kind);
+          AvaLog.I.warn('listing',
+              'promotion delete failed for listing $id kind $kind row $rowId — stale discount is still live');
+          await Analytics.captureException(
+              StateError('deleteListingPromotion returned false'), StackTrace.current,
+              screen: 'native_listing_wizard',
+              handled: true,
+              extra: {
+                'stage': 'promotion_delete',
+                'listing_id': id,
+                'promotion_kind': kind,
+                'promotion_id': rowId,
+              });
+          await Analytics.capture('listing_promotion_delete_failed', {
+            'listing_id': id,
+            'promotion_kind': kind,
+            'promotion_id': rowId,
+            'outcome': 'error',
+          });
+        }
       }
       await reconcile('early_bird', early, null);
       await reconcile('promo_code', promoPct, code);
       _promotions = await ListingsApi.listingPromotions(id);
+      if (stillLive.isNotEmpty && mounted) {
+        // Plainly: the creator did NOT cancel what they think they cancelled.
+        setState(() => _error =
+            'Your listing was saved, but an old discount (${stillLive.toSet().join(', ')}) could not be removed and buyers may still get it. Try Save and continue again.');
+      }
     } catch (e, stack) {
       if (mounted) {
-        setState(() => _error =
-            'Your listing was saved, but the discount could not be. Try Save and continue again.');
+        setState(() => _error = stillLive.isEmpty
+            ? 'Your listing was saved, but the discount could not be. Your previous discount, if any, is unchanged. Try Save and continue again.'
+            : 'Your listing was saved, but an old discount (${stillLive.toSet().join(', ')}) could not be removed and buyers may still get it. Try Save and continue again.');
       }
       AvaLog.I.warn('listing', 'promotion sync failed for listing $id');
       await Analytics.captureException(e, stack,
