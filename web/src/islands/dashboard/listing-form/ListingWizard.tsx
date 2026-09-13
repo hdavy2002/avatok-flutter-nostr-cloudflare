@@ -24,7 +24,7 @@ import { capture, withTrace } from '../../../lib/analytics';
 import { isEmbedded, embedNotifyDirty, embedNotifySubmitted } from '../../../lib/embed';
 import { emptyDraft, STEP_LABELS } from './types';
 import type { ListingDraft, StepIndex } from './types';
-import { bodyForSave, buildAttrs, validateStep, publishReadiness, epochToLocal, normalizeTimezone, AI_ASSIST_GATE_MESSAGE } from './wizardLogic';
+import { bodyForSave, buildAttrs, validateStep, publishReadiness, epochToLocal, normalizeTimezone, AI_ASSIST_GATE_MESSAGE, LISTING_PROMOTIONS_ENABLED } from './wizardLogic';
 import type { AiAssisted } from './wizardLogic';
 import type { CopyField } from './CopyReview';
 import { defaultsFor } from '../../../lib/listingDefaults';
@@ -272,19 +272,26 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
         // draftFromListing cannot see them and the fields came back empty on
         // every reopen. Read them here and hydrate both the draft and the
         // bookkeeping the idempotent re-save needs.
-        try {
-          const pr = await request<{ promotions?: PromoRow[] }>(`/api/listings/${encodeURIComponent(id!)}/promotions`);
-          const rows = (pr.promotions ?? []).filter((r) => r.kind === 'early_bird' || r.kind === 'promo_code');
-          setPromoRows(rows);
-          const eb = rows.find((r) => r.kind === 'early_bird');
-          const pc = rows.find((r) => r.kind === 'promo_code');
-          setDraft((d) => ({
-            ...d,
-            early_bird_pct: eb ? String(eb.pct_off) : d.early_bird_pct,
-            promo_code: pc?.code ?? d.promo_code,
-            promo_pct: pc ? String(pc.pct_off) : d.promo_pct,
-          }));
-        } catch { /* the discount fields stay blank; a save then creates them */ }
+        //
+        // [PROMO-SHELVE-1 2026-09-13] Skipped while promotions are shelved:
+        // step 3 renders none of these fields, so there is nothing to hydrate
+        // and no reason to spend a round trip on a route the server is about to
+        // start refusing. Comes back with LISTING_PROMOTIONS_ENABLED.
+        if (LISTING_PROMOTIONS_ENABLED) {
+          try {
+            const pr = await request<{ promotions?: PromoRow[] }>(`/api/listings/${encodeURIComponent(id!)}/promotions`);
+            const rows = (pr.promotions ?? []).filter((r) => r.kind === 'early_bird' || r.kind === 'promo_code');
+            setPromoRows(rows);
+            const eb = rows.find((r) => r.kind === 'early_bird');
+            const pc = rows.find((r) => r.kind === 'promo_code');
+            setDraft((d) => ({
+              ...d,
+              early_bird_pct: eb ? String(eb.pct_off) : d.early_bird_pct,
+              promo_code: pc?.code ?? d.promo_code,
+              promo_pct: pc ? String(pc.pct_off) : d.promo_pct,
+            }));
+          } catch { /* the discount fields stay blank; a save then creates them */ }
+        }
       } catch { setError('Could not load this listing.'); }
       setLoading(false);
     })();
@@ -605,7 +612,13 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
     setSaving(true);
     try {
       const ok = await saveDraft(currentStep);
-      if (ok && currentStep === 2) await saveEarlyBirdAndPromo();
+      // [PROMO-SHELVE-1 2026-09-13] NOT CALLED while promotions are shelved.
+      // With `listingPromotionsEnabled` off the server refuses
+      // POST /api/listings/:id/promotions, and this function reports every
+      // failure to the creator by design — so firing it would put a spurious
+      // "your promo code was not saved" banner in front of someone who was
+      // never shown a promo field. The function itself is untouched below.
+      if (LISTING_PROMOTIONS_ENABLED && ok && currentStep === 2) await saveEarlyBirdAndPromo();
       if (!ok) setStep(currentStep);
     } finally {
       savingRef.current = false;

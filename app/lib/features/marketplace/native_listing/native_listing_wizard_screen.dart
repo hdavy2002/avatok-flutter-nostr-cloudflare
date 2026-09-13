@@ -9,6 +9,7 @@ import '../../../core/ava_log.dart';
 import '../../../core/availability_time.dart';
 import '../../../core/cached_image.dart';
 import '../../../core/listings_api.dart';
+import '../../../core/remote_config.dart';
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/messenger_theme.dart';
 import '../../../core/ui/zine_widgets.dart';
@@ -122,6 +123,11 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   // [LIST-APP-PARITY-1] Creator-side discounts. These are NOT listing columns —
   // they become rows in `listing_promotions` via POST /api/listings/:id/
   // promotions, reconciled by [_syncPromotions].
+  //
+  // [LIST-PROMO-OFF-1] SHELVED. Every read and write of the three controllers
+  // below is gated on [RemoteConfig.listingPromotionsEnabled] (default false).
+  // The controllers themselves stay declared, created and disposed so turning
+  // the flag back on needs no client change.
   final _earlyBirdPct = TextEditingController();
   final _promoCode = TextEditingController();
   final _promoPct = TextEditingController();
@@ -210,15 +216,20 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
             if (known.toLowerCase() == name.toLowerCase()) { _spokenLangs.add(known); break; }
           }
         }
-        _promotions = await ListingsApi.listingPromotions(_id!);
-        for (final promotion in _promotions) {
-          final kind = (promotion['kind'] ?? '').toString();
-          final pct = (promotion['pct_off'] as num?)?.toInt() ?? 0;
-          if (kind == 'early_bird' && pct > 0) {
-            _earlyBirdPct.text = '$pct';
-          } else if (kind == 'promo_code' && pct > 0) {
-            _promoPct.text = '$pct';
-            _promoCode.text = (promotion['code'] ?? '').toString();
+        // [LIST-PROMO-OFF-1] While promotions are shelved the boxes are not
+        // rendered, so there is nothing to hydrate and no reason to spend a
+        // round trip on a list the creator cannot act on.
+        if (RemoteConfig.listingPromotionsEnabled) {
+          _promotions = await ListingsApi.listingPromotions(_id!);
+          for (final promotion in _promotions) {
+            final kind = (promotion['kind'] ?? '').toString();
+            final pct = (promotion['pct_off'] as num?)?.toInt() ?? 0;
+            if (kind == 'early_bird' && pct > 0) {
+              _earlyBirdPct.text = '$pct';
+            } else if (kind == 'promo_code' && pct > 0) {
+              _promoPct.text = '$pct';
+              _promoCode.text = (promotion['code'] ?? '').toString();
+            }
           }
         }
         _step = 7;
@@ -475,22 +486,28 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
         if (price < _minPricePerHour) return 'Price must be at least $_minPricePerHour tokens/hour (₹$_minPricePerHour).';
         // listings.ts:3434 — the promotions route accepts pct_off 1..100 only,
         // and a promo_code row without a code is refused outright.
-        final earlyText = _earlyBirdPct.text.trim();
-        final early = int.tryParse(earlyText);
-        if (earlyText.isNotEmpty && (early == null || early < 1 || early > 100)) {
-          return 'Early-bird discount must be a whole number from 1 to 100, or empty.';
-        }
-        final promoText = _promoPct.text.trim();
-        final promoPct = int.tryParse(promoText);
-        if (promoText.isNotEmpty && (promoPct == null || promoPct < 1 || promoPct > 100)) {
-          return 'Promo discount must be a whole number from 1 to 100, or empty.';
-        }
-        final code = _promoCode.text.trim();
-        if (code.isNotEmpty && (promoPct == null || promoPct < 1)) {
-          return 'Give the promo code a discount percentage, or clear the code.';
-        }
-        if (code.isEmpty && promoPct != null && promoPct >= 1) {
-          return 'Give the promo discount a code customers can type, or clear the percentage.';
+        //
+        // [LIST-PROMO-OFF-1] Off the active path while promotions are shelved:
+        // the three boxes are not rendered, so a creator must never be blocked
+        // here by a field they cannot see or clear.
+        if (RemoteConfig.listingPromotionsEnabled) {
+          final earlyText = _earlyBirdPct.text.trim();
+          final early = int.tryParse(earlyText);
+          if (earlyText.isNotEmpty && (early == null || early < 1 || early > 100)) {
+            return 'Early-bird discount must be a whole number from 1 to 100, or empty.';
+          }
+          final promoText = _promoPct.text.trim();
+          final promoPct = int.tryParse(promoText);
+          if (promoText.isNotEmpty && (promoPct == null || promoPct < 1 || promoPct > 100)) {
+            return 'Promo discount must be a whole number from 1 to 100, or empty.';
+          }
+          final code = _promoCode.text.trim();
+          if (code.isNotEmpty && (promoPct == null || promoPct < 1)) {
+            return 'Give the promo code a discount percentage, or clear the code.';
+          }
+          if (code.isEmpty && promoPct != null && promoPct >= 1) {
+            return 'Give the promo discount a code customers can type, or clear the percentage.';
+          }
         }
         return null;
       case 3:
@@ -732,6 +749,13 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   /// creator wants is KEPT rather than re-inserted, so re-running after a
   /// partial failure converges on one row per kind instead of stacking more.
   Future<void> _syncPromotions() async {
+    // [LIST-PROMO-OFF-1] Shelved. The Worker answers 403 `promotions_disabled`
+    // to POST /promotions while the flag is off, and this function turns any
+    // failure into "the discount could not be saved" on the Money step — which
+    // `_next()` treats as a blocker. Running it with the flag off would trap
+    // every creator on step 2 over a field they cannot even see. Left intact
+    // for the day the flag flips back on.
+    if (!RemoteConfig.listingPromotionsEnabled) return;
     final id = _id;
     if (id == null) return;
     final early = int.tryParse(_earlyBirdPct.text.trim()) ?? 0;
@@ -1031,8 +1055,15 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   Widget _moneyBreakdown() {
     final price = int.tryParse(_price.text.trim()) ?? 0;
     if (price <= 0) return const SizedBox.shrink();
-    final early = (int.tryParse(_earlyBirdPct.text.trim()) ?? 0).clamp(0, 100).toInt();
-    final promo = (int.tryParse(_promoPct.text.trim()) ?? 0).clamp(0, 100).toInt();
+    // [LIST-PROMO-OFF-1] The fee split below is the PLATFORM fee and always
+    // shows; only the discounted variants are shelved with promotions.
+    final promotions = RemoteConfig.listingPromotionsEnabled;
+    final early = !promotions
+        ? 0
+        : (int.tryParse(_earlyBirdPct.text.trim()) ?? 0).clamp(0, 100).toInt();
+    final promo = !promotions
+        ? 0
+        : (int.tryParse(_promoPct.text.trim()) ?? 0).clamp(0, 100).toInt();
     Widget line(String label, int pct) {
       final pays = (price * (100 - pct) / 100).round();
       final split = _feeSplit(pays);
@@ -1087,8 +1118,11 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
     final consult = _kind == 'consult';
     final price = int.tryParse(_price.text.trim()) ?? 0;
     final split = _feeSplit(price);
-    final early = int.tryParse(_earlyBirdPct.text.trim()) ?? 0;
-    final promoPct = int.tryParse(_promoPct.text.trim()) ?? 0;
+    // [LIST-PROMO-OFF-1] Shelved: no discount rows on the summary while the
+    // creator has no way to set one.
+    final promotions = RemoteConfig.listingPromotionsEnabled;
+    final early = promotions ? (int.tryParse(_earlyBirdPct.text.trim()) ?? 0) : 0;
+    final promoPct = promotions ? (int.tryParse(_promoPct.text.trim()) ?? 0) : 0;
     final join = _joinReq.entries
         .where((e) => e.value)
         .map((e) => _kJoinRequirementLabels[e.key] ?? e.key)
@@ -1226,7 +1260,11 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
           if (!_freeEntry) _field('Price per hour (Tokens = ₹)', _price, hint: 'At least $_minPricePerHour tokens per hour', live: true),
           DropdownButtonFormField<String>(value: _mediaMode, decoration: const InputDecoration(labelText: 'Media mode'), items: const [DropdownMenuItem(value: 'audio_video', child: Text('Audio + video')), DropdownMenuItem(value: 'audio_only', child: Text('Audio only'))], onChanged: (v) => setState(() { _mediaMode = v ?? 'audio_video'; _dirty = true; })),
           // [LIST-APP-PARITY-1] Discounts. Free entry has nothing to discount.
-          if (!_freeEntry) ...[
+          // [LIST-PROMO-OFF-1] Shelved behind the kill switch. The fee
+          // breakdown below it is the PLATFORM fee (the flat-per-hour charge
+          // plus the commission, see [_feeSplit]), not a promotion, so it
+          // keeps rendering whenever there is a price.
+          if (!_freeEntry && RemoteConfig.listingPromotionsEnabled) ...[
             const SizedBox(height: Msg.s4),
             Text('Discounts', style: ADText.rowName()),
             Text('Optional. An early-bird cut applies to everyone; a promo code applies only to customers who type it at checkout.',
@@ -1235,8 +1273,8 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
             _field('Early-bird discount %', _earlyBirdPct, hint: '1 to 100 — leave empty for none', live: true),
             _field('Promo code', _promoCode, hint: 'MONSOON20', live: true),
             _field('Promo code discount %', _promoPct, hint: '1 to 100', live: true),
-            _moneyBreakdown(),
           ],
+          if (!_freeEntry) _moneyBreakdown(),
         ]);
       case 3:
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

@@ -1854,6 +1854,26 @@ export interface PlatformConfig {
   // (§C.3). Boolean → NOT in numericKeys.
   listingSlotsEnabled: boolean;
 
+  // [PROMO-DARK-1 2026-09-13] Listing promotions — early-bird discounts and
+  // promo codes — SHELVED by owner decision. Hidden in the UI and dark on the
+  // backend so the rest of the pipeline can move; nothing is deleted and no
+  // `listing_promotions` row is purged. Default FALSE = off.
+  //
+  // With this false: POST /api/listings/:id/promotions refuses with 403
+  // `promotions_disabled` (the GET still reports existing rows), the
+  // marketplace card reports effective_price == price and promo_pct 0, and
+  // every charging lane (commercial checkout, the legacy book route, the
+  // card/UPI order in routes/pay.ts) resolves no promotion and quotes the list
+  // price. A submitted promo_code is refused plainly rather than swallowed, so
+  // a stale client can never believe a discount applied.
+  //
+  // Flipping it back TRUE re-enables all of it in place, including the M1–M6
+  // safety work (replay-before-promo ordering, the abort-path `used` release,
+  // the primary-copy `promosForCharging` reads, the ₹49 floor clamp and the
+  // promo-code rate limits) — none of that was removed. Boolean → NOT in
+  // numericKeys.
+  listingPromotionsEnabled: boolean;
+
   // [FREE-ENTRY-GATE-1 2026-09-04] free_entry listings (freeSessionsEnabled)
   // are metered by a creator-declared attendee cap with no mid-session
   // cut-off (lib/free_session.ts checks headcount only at admission and
@@ -2565,6 +2585,9 @@ const DEFAULTS: PlatformConfig = {
   freeSessionTokensPerAttendeeMinute: 0,
   listingContentV2Enabled: false,
   listingSlotsEnabled: false,
+  // [PROMO-DARK-1 2026-09-13] Listing promotions shelved — see the interface
+  // comment above. Flip true in KV to bring early-bird + promo codes back.
+  listingPromotionsEnabled: false,
   // [FREE-ENTRY-GATE-1 2026-09-04] fail closed — see interface comment above.
   freeEntryAllowlistOnly: true,
   // [AGENT-LIVE-1] ship dark — flip in KV per Specs/SPEC-2026-09-12-

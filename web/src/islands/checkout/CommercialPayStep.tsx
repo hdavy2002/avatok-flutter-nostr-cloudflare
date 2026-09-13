@@ -35,6 +35,7 @@ import { cta, freeBox } from '../../lib/copy';
 import { capture } from '../../lib/analytics';
 import { GatewayPicker } from './GatewayPicker';
 import type { Listing } from '../../lib/types';
+import { CHECKOUT_PROMOTIONS_ENABLED } from './types';
 import type { BookingResult, BookSelection, CommercialCheckoutNeedsFunding, CommercialCheckoutResult, PayStatusResponse, WalletBalance } from './types';
 
 function uuidv4(): string {
@@ -203,9 +204,17 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
     }
   }
 
-  /** True for the server's documented rejection of a bad/expired/exhausted code. */
+  /** True for the server's documented rejection of a bad/expired/exhausted code.
+   *
+   *  [PROMO-SHELVE-1 2026-09-13] `promotions_disabled` — what the server answers
+   *  while `listingPromotionsEnabled` is off — is treated the same way: no
+   *  charge was made, and the buyer's route out is to clear the code and pay.
+   *  UNREACHABLE while CHECKOUT_PROMOTIONS_ENABLED is false, because nothing can
+   *  stage a code and `promo_code` never reaches the wire. Kept wired so the
+   *  path is already correct the moment promotions come back. */
   function isInvalidPromo(e: unknown): boolean {
-    return e instanceof ApiError && e.status === 400 && e.error === 'invalid_promo_code';
+    return e instanceof ApiError && e.status === 400
+      && (e.error === 'invalid_promo_code' || e.error === 'promotions_disabled');
   }
 
   function onInvalidPromo() {
@@ -214,8 +223,15 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
     capturePromoResult('invalid');
   }
 
-  /** The promo code as the request body carries it, or nothing at all. */
-  const promoBody = appliedPromo ? { promo_code: appliedPromo } : {};
+  /* [PROMO-SHELVE-1 2026-09-13] The promo code as the request body carries it,
+   * or nothing at all — and while promotions are shelved it is ALWAYS nothing.
+   * `promo_code` must not appear in the checkout body even as an empty string:
+   * with `listingPromotionsEnabled` off the server answers a body carrying that
+   * key with 400 `promotions_disabled`, which would fail an otherwise valid
+   * purchase. Nothing can stage a code anyway (the input is not rendered), so
+   * this is belt and braces on the one line that actually reaches the wire. */
+  const promoBody: { promo_code?: string } =
+    CHECKOUT_PROMOTIONS_ENABLED && appliedPromo ? { promo_code: appliedPromo } : {};
 
   // [LIST-FREE-1] SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING.md §D "Free join" /
   // SPEC-2026-09-02-LISTING-TRUST-AND-VIBE.md §2.4, §3.4. `free_entry` is server
@@ -594,7 +610,13 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
 
       {/* [CHECKOUT-PROMO-1] The promo code field. Deliberately next to the price
           breakdown and not inside it: it changes what will be charged, but it
-          does NOT change any number on this screen until the server says so. */}
+          does NOT change any number on this screen until the server says so.
+
+          [PROMO-SHELVE-1 2026-09-13] HIDDEN while promotions are shelved — the
+          input, its Apply/Remove control and the confirmation line all go with
+          it. Flip CHECKOUT_PROMOTIONS_ENABLED in ./types.ts to bring the whole
+          card back exactly as it was. */}
+      {CHECKOUT_PROMOTIONS_ENABLED && (
       <Card fillClassName="bg-paper2" shadow="sm">
         <p className="font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-inkSoft">Promo code</p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -632,6 +654,7 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
           </p>
         )}
       </Card>
+      )}
 
       <Card fillClassName="bg-paper2" shadow="sm">
         <p className="font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-inkSoft">Cancellation terms</p>
@@ -688,7 +711,8 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
             order server-side (POST /api/pay/:gateway/order) and carries no promo
             field today, so a code applied here only reaches the wallet rail. Say
             so rather than let a buyer pay full price wondering where it went. */}
-        {appliedPromo && (
+        {/* [PROMO-SHELVE-1] Hidden with the field it explains. */}
+        {CHECKOUT_PROMOTIONS_ENABLED && appliedPromo && (
           <p className="font-body font-bold text-[13px] text-inkSoft">
             Promo codes apply to wallet payments only right now — paying by card or UPI charges the total shown above.
           </p>

@@ -856,6 +856,21 @@ class RemoteConfig {
   /// this is on regardless of that flag's value.
   static bool get listingWebFormEnabled => _b('listingWebFormEnabled', true);
 
+  /// [LIST-PROMO-OFF-1 2026-09-13, owner decision] Listing promotions —
+  /// creator-side early-bird / promo-code discounts and the buyer's promo-code
+  /// box — are SHELVED so the rest of the listing pipeline can move. Default
+  /// FALSE, matching `listingPromotionsEnabled` in config.ts DEFAULTS, where it
+  /// is declared (interface + DEFAULTS) — a getter for a key the server does
+  /// not declare is a fake flag that can never be flipped.
+  ///
+  /// With this OFF the Worker refuses to create a promotion (403
+  /// `promotions_disabled`) and refuses a submitted `promo_code` (400
+  /// `promotions_disabled`), so the app must not offer either. The UI and the
+  /// sync/redeem code are HIDDEN, not deleted: flip this key in KV
+  /// `platform_config` to bring promotions back with no client change.
+  static bool get listingPromotionsEnabled =>
+      _b('listingPromotionsEnabled', false);
+
   /// Legacy server field retained for config compatibility. Listing details
   /// are now always native; this flag is intentionally no longer consulted by
   /// the Flutter route.

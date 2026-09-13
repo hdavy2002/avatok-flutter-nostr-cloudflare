@@ -663,6 +663,22 @@ async function favoritesFor(env: Env, uid: string | null, ids: string[]): Promis
   return set;
 }
 
+/**
+ * [PROMO-DARK-1] The CARD read of listing promotions, behind the kill switch.
+ *
+ * `listingPromotionsEnabled` is false today (promotions are shelved — see
+ * routes/config.ts). Every card surface goes through here instead of calling
+ * `promosFor` directly, so with the flag off no promo row is read at all and
+ * `shapeCard` reports `effective_price === price` and `promo_pct: 0`. That is the
+ * whole point: a card must never advertise a discount that checkout is going to
+ * refuse to honour. Flip the flag true and every one of these call sites is
+ * byte-identical in behaviour to what it was before.
+ */
+async function promosForCards(env: Env, ids: string[]): Promise<Map<string, any[]>> {
+  if ((await readConfig(env)).listingPromotionsEnabled !== true) return new Map<string, any[]>();
+  return promosFor(env, ids);
+}
+
 function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set<string>, stats?: Map<string, { seats_taken: number; watching: number; favorites: number }>) {
   const now = Date.now();
   const promos = promosByListing?.get(r.id) ?? [];
@@ -3401,7 +3417,7 @@ export async function myListings(req: Request, env: Env): Promise<Response> {
     `${CARD_SELECT} WHERE l.creator_id=?1 AND l.vertical=?2 ORDER BY l.updated_at DESC LIMIT 100`,
   ).bind(ctx.uid, vertical).all();
   const rows = (rs.results ?? []) as any[];
-  const promos = await promosFor(env, rows.map((r) => r.id));
+  const promos = await promosForCards(env, rows.map((r) => r.id));
   const cardStats = await cardStatsFor(env, rows.map((r) => r.id));
   const favs = await favoritesFor(env, ctx.uid, rows.map((r) => String(r.id))); // [UI-MKT-3]
   // [FREE-ENTRY-GATE-1] Per-user capability so the wizard can show/hide the
@@ -3424,8 +3440,19 @@ export async function listingPromotions(req: Request, env: Env, id: string): Pro
     ).bind(id).all();
     return json({ promotions: rs.results ?? [] });
   }
+  // [PROMO-DARK-1] CREATION is gated; the GET above deliberately is NOT. Promotions
+  // are shelved, not purged: existing `listing_promotions` rows stay in D1 and the
+  // creator (and any admin/debug surface) must still be able to SEE what is on a
+  // listing — reporting a row is not the same as selling against it, and hiding the
+  // rows would make the switch look like a delete. Nothing may be ADDED while the
+  // switch is off, because no charging lane will honour it. Deletion also stays open
+  // (deletePromotion below): tidying up a shelved promotion must not require the
+  // feature to be turned back on first.
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  if ((await readConfig(env)).listingPromotionsEnabled !== true) {
+    return json({ error: "promotions_disabled" }, 403);
+  }
   const own = await metaDb(env).prepare("SELECT creator_id FROM listings WHERE id=?1").bind(id).first<any>();
   if (!own || own.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
   const b = (await req.json().catch(() => ({}))) as any;
@@ -3525,7 +3552,7 @@ export async function exploreBrowse(req: Request, env: Env): Promise<Response> {
   ).bind(...binds).all();
   const rows = (rs.results ?? []) as any[];
   const page = rows.slice(0, limit);
-  const promos = await promosFor(env, page.map((r) => r.id));
+  const promos = await promosForCards(env, page.map((r) => r.id));
   const cardStats = await cardStatsFor(env, page.map((r) => r.id));
   const favs = await favoritesFor(env, uid, page.map((r) => String(r.id))); // [UI-MKT-3] hydrate heart state per fetch
   trackImpressions(env, req, uid, APP, "explore", page.map((r) => String(r.id)));
@@ -3604,7 +3631,7 @@ export async function exploreLiveNow(req: Request, env: Env): Promise<Response> 
     `${CARD_SELECT} WHERE ${where.join(" AND ")} ORDER BY ${await popularityOrder(env)} LIMIT 25`,
   ).bind(...binds).all();
   const rows = (rs.results ?? []) as any[];
-  const promos = await promosFor(env, rows.map((r) => r.id));
+  const promos = await promosForCards(env, rows.map((r) => r.id));
   const cardStats = await cardStatsFor(env, rows.map((r) => r.id));
   const favs = await favoritesFor(env, uid, rows.map((r) => String(r.id))); // [UI-MKT-3]
   trackImpressions(env, req, uid, APP, "live_now", rows.map((r) => String(r.id)));
@@ -3708,7 +3735,7 @@ export async function exploreSearch(req: Request, env: Env): Promise<Response> {
   ).bind(...binds).all();
   const rows = (rs.results ?? []) as any[];
   const page = rows.slice(0, limit);
-  const promos = await promosFor(env, page.map((r) => r.id));
+  const promos = await promosForCards(env, page.map((r) => r.id));
   const cardStats = await cardStatsFor(env, page.map((r) => r.id));
   const favs = await favoritesFor(env, uid, page.map((r) => String(r.id))); // [UI-MKT-3]
   const g = geoOf(req);
@@ -3748,7 +3775,7 @@ export async function getListing(req: Request, env: Env, id: string): Promise<Re
       : false;
     if (!wasPublic) return json({ error: "not found" }, 404);
   }
-  const promos = await promosFor(env, [id]);
+  const promos = await promosForCards(env, [id]);
   const cardStats = await cardStatsFor(env, [id]);
   const favs = await favoritesFor(env, uid, [id]); // [UI-MKT-3] heart state on the detail page
   const card = shapeCard(r, promos, favs, cardStats);
@@ -3924,7 +3951,7 @@ export async function getCreator(req: Request, env: Env, id: string): Promise<Re
       ORDER BY (l.status='live') DESC, COALESCE(l.starts_at, 4102444800000) ASC LIMIT 50`,
   ).bind(id, vertical, Date.now()).all();
   const lrows = (ls.results ?? []) as any[];
-  const promos = await promosFor(env, lrows.map((r) => r.id));
+  const promos = await promosForCards(env, lrows.map((r) => r.id));
   const cardStats = await cardStatsFor(env, lrows.map((r) => r.id));
   const favs = await favoritesFor(env, uid, lrows.map((r) => String(r.id))); // [UI-MKT-3]
   const reviews = await metaSession(env).prepare(
@@ -4178,7 +4205,7 @@ export async function listFavorites(req: Request, env: Env): Promise<Response> {
       ORDER BY f.created_at DESC LIMIT 100`,
   ).bind(ctx.uid, vertical, Date.now()).all();
   const rows = (rs.results ?? []) as any[];
-  const promos = await promosFor(env, rows.map((r) => r.id));
+  const promos = await promosForCards(env, rows.map((r) => r.id));
   const cardStats = await cardStatsFor(env, rows.map((r) => r.id));
   const favs = new Set(rows.map((r) => String(r.id))); // all favorited by definition
   return json({ vertical, listings: rows.map((r) => shapeCard(r, promos, favs, cardStats)) });
@@ -4264,9 +4291,19 @@ export async function bookListing(req: Request, env: Env, id: string): Promise<R
   }
 
   // A5: best single promotion (early-bird auto; promo code when provided).
-  const promos = await promosFor(env, [id]);
+  // [PROMO-DARK-1] ...unless promotions are shelved, in which case this lane resolves
+  // NOTHING and charges the list price. A submitted `promo_code` is refused plainly
+  // instead of being silently ignored: a stale client that still shows the field must
+  // not be able to complete a booking believing a discount was applied.
+  const promosEnabled = (await readConfig(env)).listingPromotionsEnabled === true;
+  if (!promosEnabled && typeof b.promo_code === "string" && String(b.promo_code).trim() !== "") {
+    return json({ error: "promotions_disabled" }, 400);
+  }
+  const promos = promosEnabled ? await promosFor(env, [id]) : new Map<string, any[]>();
   const cardStats = await cardStatsFor(env, [id]);
-  const { pct, promo } = activePromoPct(promos.get(id) ?? [], Date.now(), b.promo_code ?? null);
+  const { pct, promo } = activePromoPct(
+    promosEnabled ? (promos.get(id) ?? []) : [], Date.now(), promosEnabled ? (b.promo_code ?? null) : null,
+  );
   const amount = pct > 0 ? Math.round(Number(l.price) * (100 - pct) / 100) : Number(l.price);
 
   const bookingId = crypto.randomUUID();

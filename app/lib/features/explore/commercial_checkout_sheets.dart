@@ -46,6 +46,12 @@ abstract class _CommercialCheckoutSheetState<T extends _CommercialCheckoutSheet>
   String? error;
   // [LIST-APP-PARITY-1] Promo code at checkout. Lives on the shared base so the
   // live-event sheet and the consult sheet cannot drift apart.
+  //
+  // [LIST-PROMO-OFF-1 2026-09-13] SHELVED behind
+  // [RemoteConfig.listingPromotionsEnabled] (default false, mirrors the
+  // Worker). [promoBlock] is not rendered and [promo] reads empty, so no
+  // `promo_code` is sent; the `invalid_promo_code` handling in [showResult]
+  // stays put but is unreachable.
   final promoCode = TextEditingController();
   String? promoError;
   late final String idempotencyKey;
@@ -68,7 +74,12 @@ abstract class _CommercialCheckoutSheetState<T extends _CommercialCheckoutSheet>
   }
 
   /// The code the buyer typed, normalised. The SERVER decides what it is worth.
-  String get promo => promoCode.text.trim().toUpperCase();
+  /// [LIST-PROMO-OFF-1] Empty while promotions are shelved — this is the single
+  /// choke point both sheets' `confirm()` and the analytics below read, so no
+  /// `promo_code` can leak out of either one.
+  String get promo => RemoteConfig.listingPromotionsEnabled
+      ? promoCode.text.trim().toUpperCase()
+      : '';
 
   Widget promoBlock() => Padding(
         padding: const EdgeInsets.only(top: Msg.s3),
@@ -366,7 +377,8 @@ class _LiveCheckoutSheetState
               text:
                   'Your wallet balance is below the server listing price. Top up before confirming.'),
         ],
-        if (listing.effectivePrice > 0) promoBlock(),
+        if (listing.effectivePrice > 0 && RemoteConfig.listingPromotionsEnabled)
+          promoBlock(),
         consentBlock(),
         actionButton(),
       ]);
@@ -540,7 +552,8 @@ class _ConsultCheckoutSheetState
               text:
                   'Your wallet balance is below the server listing price. Top up before confirming.'),
         ],
-        if (listing.effectivePrice > 0) promoBlock(),
+        if (listing.effectivePrice > 0 && RemoteConfig.listingPromotionsEnabled)
+          promoBlock(),
         consentBlock(),
         actionButton(),
       ]);

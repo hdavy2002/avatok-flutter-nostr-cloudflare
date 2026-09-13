@@ -11,7 +11,7 @@ import { Button } from '../../../components/Button';
 import { useCopyReview, CopyFieldAssist } from './CopyReview';
 import type { CopyField } from './CopyReview';
 import { TwoFieldListEditor, StringListEditor, ChatLineEditor, labelCls, inputCls, textareaCls, SectionHeader, charCount } from './Editors';
-import { REFUND_WINDOWS, BOOKING_NOTICE_HOURS } from './wizardLogic';
+import { REFUND_WINDOWS, BOOKING_NOTICE_HOURS, LISTING_PROMOTIONS_ENABLED } from './wizardLogic';
 import type { ReadinessCheck, AiAssisted } from './wizardLogic';
 import { defaultsFor } from '../../../lib/listingDefaults';
 import { cfImage } from '../../../lib/config';
@@ -429,8 +429,12 @@ function discountedPrice(price: number, pctRaw: string): number | null {
 export function Step3Money({ draft, patch, err }: { draft: ListingDraft; patch: Patch; err: FieldErr }) {
   const price = Number(draft.price) || 0;
   const split = feeSplit(price);
-  const earlyPrice = discountedPrice(price, draft.early_bird_pct);
-  const promoPrice = draft.promo_code.trim() ? discountedPrice(price, draft.promo_pct) : null;
+  /* [PROMO-SHELVE-1] With promotions shelved there is no discount to preview,
+   * so both derived prices stay null and the "What a customer pays" table below
+   * never renders. The creator-facing FEE SPLIT and the worked-examples table
+   * are NOT promotions and stay visible unconditionally. */
+  const earlyPrice = LISTING_PROMOTIONS_ENABLED ? discountedPrice(price, draft.early_bird_pct) : null;
+  const promoPrice = LISTING_PROMOTIONS_ENABLED && draft.promo_code.trim() ? discountedPrice(price, draft.promo_pct) : null;
   const customerRows: { label: string; pay: number }[] = [
     { label: 'Full price', pay: price },
     ...(earlyPrice !== null ? [{ label: `Early bird −${Number(draft.early_bird_pct)}%`, pay: earlyPrice }] : []),
@@ -493,25 +497,35 @@ export function Step3Money({ draft, patch, err }: { draft: ListingDraft; patch: 
             </div>
           </div>
 
-          <div>
-            <Field label="Early-bird discount % (optional)" inputMode="numeric" placeholder="e.g. 20" value={draft.early_bird_pct}
-              onChange={(e) => patch({ early_bird_pct: e.target.value.replace(/[^0-9]/g, '').slice(0, 3) })} />
-            <ErrLine err={err} field="early_bird_pct" />
-          </div>
-          <div>
-            <Field label="Promo code (optional)" placeholder="e.g. FRIENDS20" value={draft.promo_code}
-              onChange={(e) => patch({ promo_code: e.target.value.toUpperCase().slice(0, 24) })} />
-            <ErrLine err={err} field="promo_code" />
-          </div>
-          {/* [WIZ-DISCOUNT-1] The code's OWN percentage. Until now the wizard
-              posted `pct_off: 10` for a code typed without an early-bird
-              number — a discount the creator never chose, invented client-side
-              in saveEarlyBirdAndPromo(). */}
-          <div>
-            <Field label="Promo code discount % (needed if you set a code)" inputMode="numeric" placeholder="e.g. 15" value={draft.promo_pct}
-              onChange={(e) => patch({ promo_pct: e.target.value.replace(/[^0-9]/g, '').slice(0, 3) })} />
-            <ErrLine err={err} field="promo_pct" />
-          </div>
+          {/* [PROMO-SHELVE-1 2026-09-13] Early-bird %, promo code and the code's
+              own % are HIDDEN while promotions are shelved. The server refuses
+              to create a promotion with `listingPromotionsEnabled` off, so a
+              creator filling these in would only earn an error they could not
+              act on. Flip LISTING_PROMOTIONS_ENABLED in ./wizardLogic.ts to bring
+              them back — the fields themselves are unchanged. */}
+          {LISTING_PROMOTIONS_ENABLED && (
+            <>
+              <div>
+                <Field label="Early-bird discount % (optional)" inputMode="numeric" placeholder="e.g. 20" value={draft.early_bird_pct}
+                  onChange={(e) => patch({ early_bird_pct: e.target.value.replace(/[^0-9]/g, '').slice(0, 3) })} />
+                <ErrLine err={err} field="early_bird_pct" />
+              </div>
+              <div>
+                <Field label="Promo code (optional)" placeholder="e.g. FRIENDS20" value={draft.promo_code}
+                  onChange={(e) => patch({ promo_code: e.target.value.toUpperCase().slice(0, 24) })} />
+                <ErrLine err={err} field="promo_code" />
+              </div>
+              {/* [WIZ-DISCOUNT-1] The code's OWN percentage. Until now the wizard
+                  posted `pct_off: 10` for a code typed without an early-bird
+                  number — a discount the creator never chose, invented client-side
+                  in saveEarlyBirdAndPromo(). */}
+              <div>
+                <Field label="Promo code discount % (needed if you set a code)" inputMode="numeric" placeholder="e.g. 15" value={draft.promo_pct}
+                  onChange={(e) => patch({ promo_pct: e.target.value.replace(/[^0-9]/g, '').slice(0, 3) })} />
+                <ErrLine err={err} field="promo_pct" />
+              </div>
+            </>
+          )}
 
           {/* [WIZ-DISCOUNT-1] What the CUSTOMER pays, live. The step showed only
               the creator's take-home at full price, so a creator typing "50" in
@@ -1125,10 +1139,13 @@ export function Step8Preview({ draft, checks, onSubmitForReview, publishing,
             <SummaryRow label="Price">
               {draft.free_entry ? 'Free' : price > 0 ? `₹${price} per hour` : 'Not set'}
             </SummaryRow>
-            {!draft.free_entry && draft.early_bird_pct && (
+            {/* [PROMO-SHELVE-1] No "Early bird" / "Promo code" rows while
+                promotions are shelved — a summary must not report something the
+                creator was never offered and the server will not store. */}
+            {LISTING_PROMOTIONS_ENABLED && !draft.free_entry && draft.early_bird_pct && (
               <SummaryRow label="Early bird">{draft.early_bird_pct}% off</SummaryRow>
             )}
-            {!draft.free_entry && draft.promo_code.trim() && (
+            {LISTING_PROMOTIONS_ENABLED && !draft.free_entry && draft.promo_code.trim() && (
               <SummaryRow label="Promo code">
                 {draft.promo_code.trim()}{draft.promo_pct ? ` · ${draft.promo_pct}% off` : ''}
               </SummaryRow>

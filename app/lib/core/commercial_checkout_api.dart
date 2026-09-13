@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import 'api_auth.dart';
 import 'config.dart';
+import 'remote_config.dart';
 
 /// Provider-neutral Phase 2C checkout contracts.
 ///
@@ -104,6 +105,11 @@ class CommercialCheckoutApi {
   /// not apply, and recomputes the charge itself when it does. The client never
   /// computes an authoritative discounted total — an amount the client picked is
   /// an amount an attacker picked.
+  ///
+  /// [LIST-PROMO-OFF-1 2026-09-13] While [RemoteConfig.listingPromotionsEnabled]
+  /// is false the field is DROPPED here as well as hidden in the UI, because the
+  /// Worker answers 400 `promotions_disabled` to any `promo_code` it receives
+  /// and that refusal would read to the buyer as a failed checkout.
   static Future<CommercialCheckoutResult> liveTicket({
     required String listingId,
     required bool acceptPolicy,
@@ -114,7 +120,9 @@ class CommercialCheckoutApi {
       path: 'live/${Uri.encodeComponent(listingId)}/checkout',
       body: {
         'accept_policy': acceptPolicy,
-        if (promoCode != null && promoCode.trim().isNotEmpty)
+        if (RemoteConfig.listingPromotionsEnabled &&
+            promoCode != null &&
+            promoCode.trim().isNotEmpty)
           'promo_code': promoCode.trim().toUpperCase(),
       },
       idempotencyKey: idempotencyKey,
@@ -144,7 +152,9 @@ class CommercialCheckoutApi {
         if(holdId!=null) 'hold_id':holdId,
         'slot': {'start_at': startAt, 'end_at': endAt},
         // See [liveTicket]: server-verified, never client-computed.
-        if (promoCode != null && promoCode.trim().isNotEmpty)
+        if (RemoteConfig.listingPromotionsEnabled &&
+            promoCode != null &&
+            promoCode.trim().isNotEmpty)
           'promo_code': promoCode.trim().toUpperCase(),
       },
       idempotencyKey: idempotencyKey,

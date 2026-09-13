@@ -3,6 +3,31 @@
  * They live here (not in the shared lib) because they are checkout-internal.
  */
 
+/* [PROMO-SHELVE-1 2026-09-13] Listing promotions are SHELVED, not deleted.
+ * The server holds the authority — `listingPromotionsEnabled` in
+ * worker/src/routes/config.ts defaults FALSE, and with it off a checkout
+ * carrying `promo_code` is refused with 400 `promotions_disabled`.
+ *
+ * This is the BUYER CHECKOUT's matching switch and the only thing to flip on
+ * this side. A local constant, not a /api/config read, on purpose: the promo
+ * field sits directly above the Pay button, so an async flag would pop a new
+ * control in under the buyer's thumb mid-tap. Hard-false cannot do that.
+ *
+ * While it is false the promo input, its Apply/Remove control and the
+ * wallet-only note are not rendered, and `promo_code` is not put in the
+ * checkout body at all. The `invalid_promo_code` / `promotions_disabled`
+ * handling stays wired up but is unreachable, because nothing can stage a code.
+ *
+ * NOTE: this flag has NOTHING to do with the `effective_price ?? price`
+ * preference in CommercialPayStep, SlotPicker (x2) and BookingFlow. That
+ * ordering is correct with or without promotions — with the server flag off
+ * `effective_price` simply equals `price`. Do not "simplify" it away.
+ *
+ * Typed `: boolean` deliberately, so TypeScript does not narrow the guarded
+ * blocks to unreachable dead code while the flag is off.
+ */
+export const CHECKOUT_PROMOTIONS_ENABLED: boolean = false;
+
 /** A real, bookable calendar slot row — GET /api/calendar/slots?host=<creator>. */
 export interface CalendarSlot {
   id: string;

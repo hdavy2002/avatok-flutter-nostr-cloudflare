@@ -773,6 +773,26 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
   // per uid and, more tightly, per uid+listing. Both windows are far above anything a real
   // buyer does — he types one code, occasionally mistypes it once — and neither is reached
   // by a replay, because replays return above this line.
+  // [PROMO-DARK-1] THE KILL SWITCH SHORT-CIRCUITS *AHEAD OF* THE RATE LIMITER.
+  //
+  // The limiter below exists to stop a buyer brute-forcing a creator's short,
+  // guessable code. With promotions shelved there is nothing left to guess: every
+  // code, valid or not, gets the identical `promotions_disabled` 400, so the endpoint
+  // is not a discount oracle and there is no budget to protect. Refusing first also
+  // keeps a stale client's retries from burning the real limiter's window, which would
+  // otherwise lock a buyer out of a legitimate code the moment the flag is flipped back
+  // on. When it IS on, the limiter sits exactly where M6 put it — in front of promo
+  // resolution — completely unchanged.
+  //
+  // The refusal is LOUD, not a silent full-price charge: the buyer typed a code
+  // expecting a discount and must not be debited more than he believes he agreed to.
+  const promotionsEnabled = config.listingPromotionsEnabled === true;
+  if (!promotionsEnabled && promoCode) {
+    commercialEvent(env, "checkout", auth.uid, {
+      kind: route.kind, outcome: "refused", reason: "promotions_disabled", listing_id: listing.id,
+    });
+    return json({ error: "promotions_disabled" }, 400);
+  }
   if (promoCode) {
     const limitedByListing = await rateLimit(env, `commercial-promo:${auth.uid}:${listing.id}`, 8, 3600);
     if (limitedByListing) {
@@ -787,7 +807,13 @@ export async function commercialCheckout(req: Request, env: Env): Promise<Respon
   }
   // [M3] PRIMARY, not the stale-tolerant replica: this read decides what the buyer is
   // debited and is compared against a `used` counter written to the primary.
-  const promoRows = (await promosForCharging(env, [listing.id])).get(listing.id) ?? [];
+  // [PROMO-DARK-1] ...and with the switch off it is not read AT ALL. Not read-and-
+  // ignored: no promo row reaches this lane, `promoPct` is 0, `promoId` is null, the
+  // conversion snapshot records `listing.price` as the price source, and no `used`
+  // counter is touched on either the commit or the abort path.
+  const promoRows = promotionsEnabled
+    ? ((await promosForCharging(env, [listing.id])).get(listing.id) ?? [])
+    : [];
   const promoNow = Date.now();
   const { pct: promoPct, promo } = activePromoPct(promoRows, promoNow, promoCode);
   // A code that matched nothing must NOT be swallowed into a full-price charge — the
@@ -1623,6 +1649,26 @@ export async function provisionFromGatewayPurchase(env: Env, args: {
   // this function cannot reproduce from the listing alone is a discount it must not
   // provision. `routes/pay.ts` refuses a code at order-creation time for the same reason,
   // so the two ends always resolve the identical set of automatic promotions.
+  //
+  // [PROMO-DARK-1] WHY THIS LANE STILL RESOLVES PROMOTIONS WHILE THE SWITCH IS OFF.
+  //
+  // Every other lane quotes. This one PROVISIONS money that has already left a buyer's
+  // bank. Quoting and provisioning are separated by a gateway round trip that can span
+  // minutes, so the flag can be flipped in between: a buyer is quoted the promotional
+  // total while promotions are on, pays it, and the webhook arrives after the shelve.
+  // If this function refused to resolve promos, `charged` would match neither total,
+  // the 409 below would fire, and a paid buyer would be left with no ticket and a
+  // refund to chase — the switch would have eaten someone's purchase.
+  //
+  // So the resolution stays, and the discipline lives on the QUOTING side instead
+  // (routes/pay.ts refuses to price a new gateway order with a promotion when the flag
+  // is off). That makes the promotional branch here self-limiting: with the flag off no
+  // NEW promo-priced gateway order can be minted, so the only payments that can still
+  // take it are the in-flight ones. It is also not a way in for a forged discount —
+  // `charged` is compared against a total this function derives itself from the
+  // listing and the promo rows, never against anything the client or the gateway says.
+  //
+  // The list-total branch is unaffected and remains what a flag-off quote produces.
   const promoRows = (await promosForCharging(env, [listing.id])).get(listing.id) ?? [];
   const { pct: promoPct, promo } = activePromoPct(promoRows, Date.now(), null);
   const priced = promoChargePrice(listPrice, promoPct);
@@ -1657,6 +1703,12 @@ export async function provisionFromGatewayPurchase(env: Env, args: {
       kind: args.kind, outcome: priced.clamped ? "floor_clamped" : "applied", listing_id: listing.id,
       promo_pct: promoPct, promo_kind: String(promo?.kind ?? ""),
       list_price: listPrice, charge_price: price, floor_clamped: priced.clamped, rail: gateway,
+      // [PROMO-DARK-1] Says out loud that a promotional total was honoured while the
+      // switch was off — i.e. this is an in-flight purchase quoted before the shelve.
+      // It should be a trickle that stops within one payment window of the flip; a
+      // steady stream of these means something is still QUOTING discounts and needs
+      // finding, not that the grandfathering is wrong.
+      ...(config.listingPromotionsEnabled === true ? {} : { promotions_shelved_in_flight: true }),
     });
   }
 

@@ -8,6 +8,7 @@ import '../../core/availability_time.dart';
 import '../../core/commercial_checkout_api.dart';
 import '../../core/listings_api.dart';
 import '../../core/money_api.dart';
+import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/motion/motion.dart';
 import '../../features/calendar/calendar_data.dart';
@@ -46,6 +47,11 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
   // `ListingsApi.book` and on the commercial checkout routes; nothing in the app
   // ever offered a box to type it into, so a creator's promo code was
   // unredeemable from the phone.
+  //
+  // [LIST-PROMO-OFF-1 2026-09-13] SHELVED behind
+  // [RemoteConfig.listingPromotionsEnabled] (default false, mirrors the
+  // Worker). The box is not rendered and no `promo_code` is sent; the
+  // `invalid_promo_code` handling below stays put but is unreachable.
   final _promoCode = TextEditingController();
   String? _promoError;
   late final String _idempotencyKey = CommercialCheckoutApi.newIdempotencyKey();
@@ -259,7 +265,12 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
       _error = null;
       _promoError = null;
     });
-    final promo = _promoCode.text.trim().toUpperCase();
+    // [LIST-PROMO-OFF-1] Empty while shelved, so no `promo_code` reaches the
+    // Worker (which would answer 400 `promotions_disabled`) on any of the three
+    // branches below.
+    final promo = RemoteConfig.listingPromotionsEnabled
+        ? _promoCode.text.trim().toUpperCase()
+        : '';
     CommercialCheckoutResult result;
     if (_isConsult) {
       final slot = _selectedSlot;
@@ -305,7 +316,7 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
         final booking = await ListingsApi.book(widget.listing.id,
             slotStart: _selectedSlot?.startAt.millisecondsSinceEpoch,
             slotEnd: _selectedSlot?.endAt.millisecondsSinceEpoch,
-            promoCode: promo);
+            promoCode: promo.isEmpty ? null : promo);
         // [LIST-APP-PARITY-1] This used to hard-code `status: 200, ok: true` and
         // throw the server's answer away, so a refusal (including a bad promo
         // code) was reported to the buyer as a confirmed booking. `book()`
@@ -566,7 +577,7 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
           Text('Wallet balance: $_balance ${widget.listing.currency}',
               style: const TextStyle(color: AD.textSecondary)),
         const SizedBox(height: 14),
-        if (!_free) ...[
+        if (!_free && RemoteConfig.listingPromotionsEnabled) ...[
           const SizedBox(height: 14),
           TextField(
             controller: _promoCode,

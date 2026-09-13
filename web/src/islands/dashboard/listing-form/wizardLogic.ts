@@ -12,6 +12,35 @@ import type { ListingDraft, StepIndex } from './types';
 import { PRICING } from '../../../lib/listingTaxonomy';
 import { epochForDateTime } from '../../../lib/availability';
 
+/* [PROMO-SHELVE-1 2026-09-13] Listing promotions (early-bird discount + promo
+ * code) are SHELVED, not deleted. The server has the authority: a
+ * `listingPromotionsEnabled` kill switch in worker/src/routes/config.ts
+ * defaults FALSE, and with it off POST /api/listings/:id/promotions is refused
+ * and a submitted `promo_code` comes back 400 `promotions_disabled`.
+ *
+ * This is the WEB WIZARD's matching switch, and it is the ONLY thing to flip in
+ * the creator flow to bring the feature back. It is a local constant rather
+ * than a read of /api/config on purpose: the wizard's existing config read
+ * (`conferenceEnabled`) starts FALSE and resolves asynchronously, so wiring the
+ * promo fields to it would make them flash into existence a beat after the step
+ * paints — and, worse, would let the client show a field the server may still
+ * refuse. Hard-false here can never disagree with itself.
+ *
+ * TO RE-ENABLE the creator side: set this to true (and flip
+ * `listingPromotionsEnabled` on the server). Everything it gates — the step-3
+ * fields, the "What a customer pays" table, the step-3 validation rules, the
+ * step-8 summary rows, saveEarlyBirdAndPromo() and the /promotions hydrate —
+ * is still here, untouched, behind this one boolean.
+ *
+ * It lives in wizardLogic.ts rather than types.ts only because types.ts already
+ * imports this module — a value import the other way round would be a real
+ * module cycle.
+ *
+ * Typed `: boolean` deliberately, so TypeScript does not narrow the guarded
+ * blocks to unreachable dead code while the flag is off.
+ */
+export const LISTING_PROMOTIONS_ENABLED: boolean = false;
+
 export const VIBE_TAGS = ['safe_space', 'cam_optional', 'listener_first', 'savage', 'beginner_ok', 'queer_friendly', 'women_only'] as const;
 export const BILLING_UNITS = ['session', 'minute', '10min', 'chat', 'night', 'game'] as const;
 export const SCHEDULE_MODES = ['fixed_date', 'recurring', 'on_request', 'always_on'] as const;
@@ -246,20 +275,28 @@ export function validateStep(
           return { field: 'price', message: `The lowest price is ₹${PRICING.minPriceTokensPerHour}/hour — below that, avaTOK’s flat fee leaves you with nothing.` };
         }
       }
-      if (d.early_bird_pct && !(Number(d.early_bird_pct) >= 1 && Number(d.early_bird_pct) <= 100)) {
-        return { field: 'early_bird_pct', message: 'Early-bird discount must be 1–100%.' };
-      }
-      // [WIZ-DISCOUNT-1] The promo code carries its own percentage now. The
-      // wizard used to POST `pct_off: 10` for a code typed without an
-      // early-bird number — a discount nobody chose. Ask for it instead.
-      if (d.promo_pct && !(Number(d.promo_pct) >= 1 && Number(d.promo_pct) <= 100)) {
-        return { field: 'promo_pct', message: 'Promo code discount must be 1–100%.' };
-      }
-      if (d.promo_code.trim() && !d.promo_pct) {
-        return { field: 'promo_pct', message: 'Give the promo code a discount % (1–100), or clear the code.' };
-      }
-      if (d.promo_pct && !d.promo_code.trim()) {
-        return { field: 'promo_code', message: 'Give the discount a code buyers can type, or clear the %.' };
+      // [PROMO-SHELVE-1 2026-09-13] OFF THE ACTIVE PATH while promotions are
+      // hidden. Step 3 no longer renders the early-bird / promo-code / promo-%
+      // fields, and a creator must never be blocked by a field they cannot see
+      // — a stale value hydrated from an older draft would otherwise wedge the
+      // stepper with an error pointing at nothing. The rules themselves are
+      // unchanged and come back with LISTING_PROMOTIONS_ENABLED.
+      if (LISTING_PROMOTIONS_ENABLED) {
+        if (d.early_bird_pct && !(Number(d.early_bird_pct) >= 1 && Number(d.early_bird_pct) <= 100)) {
+          return { field: 'early_bird_pct', message: 'Early-bird discount must be 1–100%.' };
+        }
+        // [WIZ-DISCOUNT-1] The promo code carries its own percentage now. The
+        // wizard used to POST `pct_off: 10` for a code typed without an
+        // early-bird number — a discount nobody chose. Ask for it instead.
+        if (d.promo_pct && !(Number(d.promo_pct) >= 1 && Number(d.promo_pct) <= 100)) {
+          return { field: 'promo_pct', message: 'Promo code discount must be 1–100%.' };
+        }
+        if (d.promo_code.trim() && !d.promo_pct) {
+          return { field: 'promo_pct', message: 'Give the promo code a discount % (1–100), or clear the code.' };
+        }
+        if (d.promo_pct && !d.promo_code.trim()) {
+          return { field: 'promo_code', message: 'Give the discount a code buyers can type, or clear the %.' };
+        }
       }
       return null;
     case 3: { // Time

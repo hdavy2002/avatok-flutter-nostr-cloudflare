@@ -162,13 +162,28 @@ export async function payCreateOrder(req: Request, env: Env, gatewayId: string):
   // payment that had already been taken. Refused loudly at the door rather than quoted and
   // then failed after the buyer's money moved. Automatic promotions (early-bird) need
   // nothing carried — both ends resolve them from the listing.
+  // [PROMO-DARK-1] ...and while promotions are SHELVED, not even the automatic ones.
+  // This is the quoting half of the pair with `provisionFromGatewayPurchase`: that
+  // function still recognises a promotional total so an in-flight purchase quoted
+  // before the shelve can settle, and this refusal to MINT a new promo-priced order is
+  // what makes that grandfathering finite. With the flag off the order is quoted at the
+  // list price, which is exactly what the card now advertises and what the webhook will
+  // independently re-derive.
+  const promotionsEnabled = config.listingPromotionsEnabled === true;
   if (typeof b.promo_code === "string" && b.promo_code.trim() !== "") {
-    return json({
-      error: "promo codes are not supported on card/UPI checkout yet",
-      reason: "promo_code_gateway_unsupported",
-    }, 400);
+    // Refused plainly either way — never swallowed into a full-price charge the buyer
+    // thinks was discounted. Only the reason differs, so the client can tell "shelved"
+    // from "this rail cannot carry a code".
+    return promotionsEnabled
+      ? json({
+        error: "promo codes are not supported on card/UPI checkout yet",
+        reason: "promo_code_gateway_unsupported",
+      }, 400)
+      : json({ error: "promotions_disabled" }, 400);
   }
-  const promoRows = (await promosForCharging(env, [listing.id])).get(listing.id) ?? [];
+  const promoRows = promotionsEnabled
+    ? ((await promosForCharging(env, [listing.id])).get(listing.id) ?? [])
+    : [];
   const { pct: promoPct, promo } = activePromoPct(promoRows, Date.now(), null);
   // [M4] Clamped at the ₹49 floor, exactly as the wallet lane clamps it, or the creator is
   // settled ₹0 on a deep discount and the platform silently keeps the whole sale.
