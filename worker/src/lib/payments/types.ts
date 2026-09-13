@@ -44,6 +44,22 @@ export interface GatewayAdapter {
     gateway_payment_id: string | null;
   } | null;
   fetchOrder(env: Env, gatewayOrderId: string): Promise<{ status: string; amount_paise: number } | null>;
+  /**
+   * [PAY-RAIL-3] OPTIONAL client-side handoff. Razorpay's Checkout.js hands the browser
+   * `razorpay_payment_id | razorpay_order_id | razorpay_signature` on success; the
+   * signature is HMAC-SHA256(`order_id|payment_id`) under the API KEY SECRET (not the
+   * webhook secret), so the Worker can authenticate that handoff without waiting for the
+   * webhook. An adapter that leaves this undefined is webhook-only, and
+   * POST /api/pay/:gateway/verify answers 501 for it.
+   */
+  verifyHandoff?(env: Env, a: { gatewayOrderId: string; gatewayPaymentId: string; signature: string }): Promise<boolean>;
+  /**
+   * [PAY-RAIL-3] OPTIONAL single-payment read-back, the handoff path's equivalent of
+   * `fetchOrder`. The browser claiming "paid" is never enough: an `authorized` payment is
+   * not captured money, so the handoff route refuses to provision until the gateway itself
+   * says `captured`.
+   */
+  fetchPayment?(env: Env, gatewayPaymentId: string): Promise<{ status: string; amount_paise: number; order_id: string } | null>;
   refund(env: Env, a: { gatewayOrderId: string; amountPaise: number; reason: string; opId: string }):
     Promise<{ accepted: boolean; gateway_refund_id: string | null; error?: string }>;
 }

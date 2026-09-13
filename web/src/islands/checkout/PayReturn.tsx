@@ -179,7 +179,10 @@ export function PayReturn({ gateway, orderId }: PayReturnProps) {
           });
           if (cancelled) return;
           setStatus(s);
-          if (s.status === 'paid') {
+          // [WEB-COMM-PAY-3] `credited` is the terminal happy state; `paid` is money
+          // confirmed with provisioning still in flight, so it keeps polling and is only
+          // accepted on the final attempt.
+          if (s.status === 'credited' || (s.status === 'paid' && attempt + 1 >= POLL_ATTEMPTS)) {
             setPhase('confirmed');
             try {
               capture('checkout_return', { gateway, outcome: 'confirmed' });
@@ -195,7 +198,7 @@ export function PayReturn({ gateway, orderId }: PayReturnProps) {
             }
             return;
           }
-          if (s.status === 'failed' || s.status === 'refunded') {
+          if (s.status === 'failed' || s.status === 'refunded' || s.status === 'review_pending') {
             setPhase('failed');
             try {
               capture('checkout_return', { gateway, outcome: s.status });

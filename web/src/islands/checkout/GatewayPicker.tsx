@@ -30,7 +30,7 @@ import { openGatewaySheet, createStripeElements, confirmStripePayment } from './
 import { stashPayReturn } from './PayReturn';
 import { readReturnParam } from '../../lib/urls';
 import { capture } from '../../lib/analytics';
-import type { StripeElementsHandle } from './gatewaySheet';
+import type { StripeElementsHandle, RazorpayHandoff } from './gatewaySheet';
 import type { GatewayId, GatewayOrderResponse, PayMethod, PayMethodsResponse, PayStatusResponse } from './types';
 
 const POLL_MS = 2500;
@@ -113,6 +113,38 @@ export function GatewayPicker({
     };
   }, [phase, stripeHandle]);
 
+  /**
+   * [WEB-COMM-PAY-3] The buyer just finished the sheet. For Razorpay that means we hold a
+   * signature the Worker can verify RIGHT NOW — POST it to /api/pay/:gateway/verify and
+   * the order is usually `credited` before the first poll would even fire.
+   *
+   * The verify call is a shortcut, never a requirement: it shares the webhook's
+   * idempotency key, so whichever lands first wins and the other is a no-op. If it fails
+   * for any reason — offline, 501, a 400 on a signature we could not verify — we simply
+   * fall through to the poll the webhook feeds, which is exactly what shipped before.
+   */
+  async function settleAfterSheet(
+    gateway: GatewayId, order: GatewayOrderResponse, handoff?: RazorpayHandoff,
+  ): Promise<void> {
+    if (handoff?.razorpay_signature) {
+      setPhase('polling');
+      try {
+        const verified = await request<PayStatusResponse & { duplicate?: boolean }>(
+          `/api/pay/${gateway}/verify`,
+          { method: 'POST', auth: token, body: { order_id: order.order_id, ...handoff } },
+        );
+        if (verified?.status === 'credited' || verified?.ok === true) {
+          // Still confirm through /status rather than believing this response — it is the
+          // one endpoint that reads the order row back.
+          return pollStatus(gateway, order.order_id);
+        }
+      } catch {
+        /* the webhook is still coming — poll for it */
+      }
+    }
+    return pollStatus(gateway, order.order_id);
+  }
+
   async function pollStatus(gateway: GatewayId, orderId: string, attempt = 0): Promise<void> {
     if (attempt >= POLL_ATTEMPTS) {
       setPhase('timeout');
@@ -124,7 +156,12 @@ export function GatewayPicker({
         auth: token,
         query: { order_id: orderId },
       });
-      if (s.status === 'paid') {
+      // [WEB-COMM-PAY-3] `credited` — escrow funded and the ticket written — is the
+      // state worth celebrating. `paid` only means the gateway confirmed the money and
+      // provisioning is still in flight, so it keeps polling; if the budget runs out
+      // while still on `paid` the last attempt below accepts it rather than showing a
+      // timeout for a payment that plainly worked.
+      if (s.status === 'credited' || (s.status === 'paid' && attempt + 1 >= POLL_ATTEMPTS)) {
         try {
           capture('checkout_result', {
             outcome: 'ok',
@@ -136,6 +173,17 @@ export function GatewayPicker({
           /* best-effort */
         }
         onPaid(s);
+        return;
+      }
+      if (s.status === 'review_pending') {
+        setBusy(false);
+        setPhase('pick');
+        setError('Your payment went through but we could not confirm the booking automatically. Do not pay again — support has been notified and will sort it out.');
+        try {
+          capture('checkout_result', { outcome: 'error', reason: 'review_pending', gateway, ms: Date.now() - submitStartRef.current });
+        } catch {
+          /* best-effort */
+        }
         return;
       }
       if (s.status === 'failed' || s.status === 'refunded') {
@@ -231,7 +279,7 @@ export function GatewayPicker({
       }
 
       await openGatewaySheet(selected, created, {
-        onSettled: () => void pollStatus(selected, created.order_id),
+        onSettled: (handoff) => void settleAfterSheet(selected, created, handoff),
         onDismiss: () => {
           setBusy(false);
           setPhase('pick');

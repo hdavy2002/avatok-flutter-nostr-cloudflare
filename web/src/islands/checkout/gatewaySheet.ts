@@ -76,9 +76,20 @@ function loadScript(src: string): Promise<void> {
   return p;
 }
 
+/* [WEB-COMM-PAY-3] What Razorpay Checkout.js hands the success handler. Passing it up
+ * lets the caller POST /api/pay/razorpay/verify, which credits the order in about a
+ * second instead of waiting for the webhook — see that route's header for why this is a
+ * shortcut and not a second source of truth. */
+export interface RazorpayHandoff {
+  razorpay_payment_id: string;
+  razorpay_order_id: string;
+  razorpay_signature: string;
+}
+
 export interface GatewaySheetHandlers {
-  /** Called once the buyer completed the sheet — start/continue status polling. */
-  onSettled: () => void;
+  /** Called once the buyer completed the sheet — start/continue status polling.
+   *  Razorpay also passes its signed handoff; the other gateways pass nothing. */
+  onSettled: (handoff?: RazorpayHandoff) => void;
   /** Called when the buyer closes the sheet without paying. */
   onDismiss: () => void;
   /** Called when the sheet itself can't be opened (script load failure, etc). */
@@ -115,7 +126,14 @@ export async function openGatewaySheet(
           order_id: String(payload.razorpay_order_id ?? order.gateway_order_id),
           amount: payload.amount ?? order.amount_paise,
           currency: payload.currency ?? order.currency,
-          handler: () => handlers.onSettled(),
+          // Razorpay calls this with { razorpay_payment_id, razorpay_order_id,
+          // razorpay_signature }. It is signed with the API key secret, so the Worker can
+          // authenticate it — never trusted here in the browser.
+          handler: (r: Record<string, unknown>) => handlers.onSettled({
+            razorpay_payment_id: String(r?.razorpay_payment_id ?? ''),
+            razorpay_order_id: String(r?.razorpay_order_id ?? payload.razorpay_order_id ?? ''),
+            razorpay_signature: String(r?.razorpay_signature ?? ''),
+          }),
           modal: { ondismiss: () => handlers.onDismiss() },
         });
         rz.open();

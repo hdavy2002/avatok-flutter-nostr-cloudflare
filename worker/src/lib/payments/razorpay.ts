@@ -127,6 +127,44 @@ export const razorpayAdapter: GatewayAdapter = {
     };
   },
 
+  /**
+   * [PAY-RAIL-3] Checkout.js handoff signature: hex(HMAC-SHA256(`order_id|payment_id`,
+   * RAZORPAY_KEY_SECRET)). NOTE the different secret from verifyWebhook() above — the
+   * webhook is signed with the webhook secret, this with the API key secret. Getting the
+   * two the wrong way round fails closed (every verify 400s), which is the safe direction.
+   */
+  async verifyHandoff(env, a) {
+    if (!env.RAZORPAY_KEY_SECRET || !a.signature || !a.gatewayOrderId || !a.gatewayPaymentId) return false;
+    try {
+      const expected = await hmacSha256Hex(
+        String(env.RAZORPAY_KEY_SECRET), `${a.gatewayOrderId}|${a.gatewayPaymentId}`,
+      );
+      const given = a.signature.trim().toLowerCase();
+      return expected.length === given.length && constantTimeEqual(expected, given);
+    } catch {
+      return false;
+    }
+  },
+
+  async fetchPayment(env, gatewayPaymentId) {
+    if (!razorpayConfigured(env)) return null;
+    try {
+      const res = await fetch(`${BASE}/payments/${encodeURIComponent(gatewayPaymentId)}`, {
+        headers: { authorization: authHeader(env) },
+      });
+      if (!res.ok) return null;
+      const parsed = await res.json() as any;
+      // status is created|authorized|captured|refunded|failed; only `captured` is money.
+      return {
+        status: String(parsed?.status ?? ""),
+        amount_paise: Math.trunc(Number(parsed?.amount ?? 0)),
+        order_id: String(parsed?.order_id ?? ""),
+      };
+    } catch {
+      return null;
+    }
+  },
+
   async fetchOrder(env, gatewayOrderId) {
     if (!razorpayConfigured(env)) return null;
     try {

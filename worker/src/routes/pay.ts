@@ -381,15 +381,61 @@ async function payWebhookInner(req: Request, env: Env, gatewayId: string): Promi
     return json({ ok: true, status: parsed.status });
   }
 
+  return await creditPaidGatewayOrder(env, adapter, row, {
+    gatewayPaymentId: parsed.gateway_payment_id,
+    gatewayOrderId: parsed.gateway_order_id,
+    reportedPaise: parsed.amount_paise,
+  });
+}
+
+/** GET /api/pay/:gateway/status?order_id=<id> — poll while the webhook is in flight. */
+export async function payStatus(req: Request, env: Env, gatewayId: string): Promise<Response> {
+  const auth = await requireUser(req, env);
+  if (isFail(auth)) return json({ error: auth.error }, auth.status);
+  const adapter = resolveGateway(gatewayId);
+  if (!adapter) return json({ error: "unknown gateway" }, 404);
+  const orderId = new URL(req.url).searchParams.get("order_id") || "";
+  if (!orderId) return json({ error: "order_id required" }, 400);
+  const row = await metaDb(env).prepare(
+    "SELECT order_id,uid,listing_id,kind,status,amount_paise FROM gateway_orders WHERE order_id=?1 AND gateway=?2",
+  ).bind(orderId, adapter.id).first<OrderRow>();
+  if (!row || row.uid !== auth.uid) return json({ error: "not found" }, 404);
+  return json({
+    ok: true,
+    order_id: row.order_id,
+    status: row.status,
+    listing_id: row.listing_id,
+    total_amount: Math.round(Number(row.amount_paise) / 100),
+  });
+}
+
+/**
+ * [PAY-RAIL-3] STEPS 3-5, shared by the webhook and the Razorpay checkout handoff
+ * (`payVerifyHandoff` below). Lifted verbatim out of `payWebhookInner` so the two entry
+ * points cannot drift: whichever one arrives first does the read-back, the amount check
+ * and the provisioning, and the other is stopped before it gets here by the SAME
+ * `gateway_webhook_events` idempotency insert.
+ *
+ * The caller owns steps 1-2 (authenticate the message, then claim
+ * (gateway, gateway_payment_id)); this function assumes both already succeeded.
+ */
+async function creditPaidGatewayOrder(
+  env: Env,
+  adapter: GatewayAdapter,
+  row: OrderRow,
+  a: { gatewayPaymentId: string; gatewayOrderId: string; reportedPaise: number },
+): Promise<Response> {
+  const { gatewayPaymentId, gatewayOrderId, reportedPaise } = a;
+  const db = metaDb(env);
   // STEP 3. Re-read from the gateway where supported. The webhook body said "paid"; ask
   // the gateway itself before believing it, same as the Cashfree lane.
-  const truth = await adapter.fetchOrder(env, parsed.gateway_order_id).catch(() => null);
-  const confirmedPaise = truth ? truth.amount_paise : parsed.amount_paise;
+  const truth = await adapter.fetchOrder(env, gatewayOrderId).catch(() => null);
+  const confirmedPaise = truth ? truth.amount_paise : reportedPaise;
 
   // STEP 4. Amount check against what we stored at order-creation time.
   if (confirmedPaise !== row.amount_paise) {
     await db.prepare("UPDATE gateway_orders SET status='review_pending',last_error=?2,gateway_payment_id=?3,updated_at=?4 WHERE order_id=?1")
-      .bind(row.order_id, `amount mismatch: gateway ${confirmedPaise} vs expected ${row.amount_paise}`, parsed.gateway_payment_id, Date.now()).run();
+      .bind(row.order_id, `amount mismatch: gateway ${confirmedPaise} vs expected ${row.amount_paise}`, gatewayPaymentId, Date.now()).run();
     await track(env, row.uid, "gateway_amount_mismatch", APP, {
       gateway: adapter.id, expected: row.amount_paise, got: confirmedPaise,
     });
@@ -397,7 +443,7 @@ async function payWebhookInner(req: Request, env: Env, gatewayId: string): Promi
   }
 
   await db.prepare("UPDATE gateway_orders SET status='paid',gateway_payment_id=?2,updated_at=?3 WHERE order_id=?1")
-    .bind(row.order_id, parsed.gateway_payment_id, Date.now()).run();
+    .bind(row.order_id, gatewayPaymentId, Date.now()).run();
 
   // STEP 5. Fund escrow AND issue the ticket, through the SAME function the Cashfree and
   // wallet lanes use. `gateway: adapter.id` is what makes this show up under its own name
@@ -481,23 +527,110 @@ async function payWebhookInner(req: Request, env: Env, gatewayId: string): Promi
   return json({ ok: true, order_id: row.order_id, bridge_order_id: bridgeOrderId });
 }
 
-/** GET /api/pay/:gateway/status?order_id=<id> — poll while the webhook is in flight. */
-export async function payStatus(req: Request, env: Env, gatewayId: string): Promise<Response> {
+/**
+ * POST /api/pay/:gateway/verify — the CLIENT-SIDE HANDOFF, Razorpay only.
+ *
+ * Razorpay Checkout.js hands the browser `razorpay_payment_id`, `razorpay_order_id` and
+ * `razorpay_signature` the moment the buyer finishes paying — seconds before the webhook
+ * arrives, and reliably even when the webhook is misconfigured, delayed or replayed into a
+ * queue. Verifying it here means the buyer gets their ticket while the sheet is still
+ * closing, instead of watching a spinner poll /status.
+ *
+ * IT IS NOT A SECOND SOURCE OF TRUTH, and deliberately so:
+ *   - the signature is HMAC-SHA256(`order_id|payment_id`) under KEY_SECRET, which only
+ *     Razorpay and this Worker can produce, so a forged body cannot get past step 2;
+ *   - it still re-reads the payment FROM Razorpay (`fetchPayment`) before believing the
+ *     browser, exactly as the webhook re-reads the order;
+ *   - it shares the webhook's `gateway_webhook_events` idempotency claim, so whichever of
+ *     the two arrives first provisions and the loser is a no-op 200. No double credit.
+ *
+ * A gateway whose adapter has no `verifyHandoff` (Paytm, Stripe, Cashfree) gets 501 — for
+ * those rails the webhook remains the only path, unchanged.
+ */
+export async function payVerifyHandoff(req: Request, env: Env, gatewayId: string): Promise<Response> {
   const auth = await requireUser(req, env);
   if (isFail(auth)) return json({ error: auth.error }, auth.status);
-  const adapter = resolveGateway(gatewayId);
-  if (!adapter) return json({ error: "unknown gateway" }, 404);
-  const orderId = new URL(req.url).searchParams.get("order_id") || "";
-  if (!orderId) return json({ error: "order_id required" }, 400);
-  const row = await metaDb(env).prepare(
-    "SELECT order_id,uid,listing_id,kind,status,amount_paise FROM gateway_orders WHERE order_id=?1 AND gateway=?2",
+  const gate = await gatewayEnabled(env, gatewayId);
+  if (!gate.ok) return json({ error: "checkout unavailable", reason: gate.reason }, gate.status);
+  const adapter = gate.adapter;
+  if (!adapter.verifyHandoff || !adapter.fetchPayment) {
+    return json({ error: "this gateway has no client-side handoff", reason: "handoff_unsupported" }, 501);
+  }
+
+  const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const orderId = String(b.order_id ?? "");
+  const gatewayPaymentId = String(b.razorpay_payment_id ?? b.gateway_payment_id ?? "");
+  const gatewayOrderId = String(b.razorpay_order_id ?? b.gateway_order_id ?? "");
+  const signature = String(b.razorpay_signature ?? b.signature ?? "");
+  if (!orderId || !gatewayPaymentId || !gatewayOrderId || !signature) {
+    return json({ error: "order_id, razorpay_order_id, razorpay_payment_id and razorpay_signature are required" }, 400);
+  }
+
+  const db = metaDb(env);
+  const row = await db.prepare(
+    `SELECT order_id,gateway,gateway_order_id,uid,listing_id,booking_id,kind,slot_start,slot_end,
+            amount_paise,currency,status,gateway_payment_id
+       FROM gateway_orders WHERE order_id=?1 AND gateway=?2`,
   ).bind(orderId, adapter.id).first<OrderRow>();
+  // Somebody else's order is a 404, not a 403 — a probe must not learn that the id exists.
   if (!row || row.uid !== auth.uid) return json({ error: "not found" }, 404);
-  return json({
-    ok: true,
-    order_id: row.order_id,
-    status: row.status,
-    listing_id: row.listing_id,
-    total_amount: Math.round(Number(row.amount_paise) / 100),
+  // The signature only proves Razorpay signed THIS pair; it says nothing about which of our
+  // orders it belongs to. Bind it to the row we looked up, or a valid signature for one
+  // order could be replayed against another.
+  if (row.gateway_order_id !== gatewayOrderId) return json({ error: "order mismatch" }, 400);
+  if (row.status === "credited") return json({ ok: true, status: "credited", order_id: row.order_id });
+  if (row.status === "refunded" || row.status === "review_pending") {
+    return json({ ok: true, status: row.status, order_id: row.order_id });
+  }
+
+  // STEP 1. The signature IS the authentication here. Mismatch ⇒ 400 and nothing is
+  // written: the order stays 'pending' for the webhook to decide.
+  let verified = false;
+  try {
+    verified = await adapter.verifyHandoff(env, { gatewayOrderId, gatewayPaymentId, signature });
+  } catch (err) {
+    await trackException(env, err, { uid: auth.uid, route: `/api/pay/${adapter.id}/verify`, method: "POST", handled: true, app_name: APP });
+    verified = false;
+  }
+  if (!verified) {
+    await track(env, auth.uid, "gateway_handoff_bad_signature", APP, { gateway: adapter.id, order_id: row.order_id });
+    return json({ error: "signature mismatch", reason: "bad_signature" }, 400);
+  }
+
+  // STEP 2. Same idempotency claim the webhook makes. A 0-row insert means the webhook
+  // already has this payment — answer with the order's current state rather than racing it.
+  const dedupe = await db.prepare(
+    "INSERT OR IGNORE INTO gateway_webhook_events (gateway,gateway_payment_id,order_id,received_at) VALUES (?1,?2,?3,?4)",
+  ).bind(adapter.id, gatewayPaymentId, row.order_id, Date.now()).run();
+  if (!dedupe.meta || dedupe.meta.changes === 0) {
+    const now = await db.prepare("SELECT status FROM gateway_orders WHERE order_id=?1").bind(row.order_id).first<{ status: string }>();
+    return json({ ok: true, duplicate: true, status: now?.status ?? row.status, order_id: row.order_id });
+  }
+
+  // The browser said "paid". Razorpay gets to confirm it, the same way the webhook path
+  // re-reads the order — and a payment that is only `authorized` is not money yet.
+  const payment = await adapter.fetchPayment(env, gatewayPaymentId).catch(() => null);
+  if (!payment || payment.status !== "captured") {
+    await db.prepare("UPDATE gateway_orders SET gateway_payment_id=?2,updated_at=?3 WHERE order_id=?1")
+      .bind(row.order_id, gatewayPaymentId, Date.now()).run();
+    // Leave the claim in place only if we know it failed; otherwise release it so the
+    // webhook can still do the work when capture lands.
+    if (payment?.status === "failed") {
+      await db.prepare("UPDATE gateway_orders SET status='failed',updated_at=?2 WHERE order_id=?1")
+        .bind(row.order_id, Date.now()).run();
+      return json({ ok: true, status: "failed", order_id: row.order_id });
+    }
+    await db.prepare("DELETE FROM gateway_webhook_events WHERE gateway=?1 AND gateway_payment_id=?2")
+      .bind(adapter.id, gatewayPaymentId).run();
+    return json({ ok: true, status: "pending", order_id: row.order_id, reason: "not_captured_yet" });
+  }
+
+  await db.prepare("UPDATE gateway_orders SET status='paid',gateway_payment_id=?2,updated_at=?3 WHERE order_id=?1")
+    .bind(row.order_id, gatewayPaymentId, Date.now()).run();
+
+  return await creditPaidGatewayOrder(env, adapter, row, {
+    gatewayPaymentId,
+    gatewayOrderId,
+    reportedPaise: payment.amount_paise,
   });
 }

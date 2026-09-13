@@ -109,7 +109,12 @@ export interface GatewayOrderResponse {
 export interface PayStatusResponse {
   ok?: boolean;
   order_id: string;
-  status: 'paid' | 'pending' | 'failed' | 'refunded' | string;
+  /* [WEB-COMM-PAY-3] `credited` is the TERMINAL happy state in gateway_orders, not
+   * `paid`: `paid` means the gateway confirmed the money, `credited` means escrow was
+   * funded and the ticket written. The poller used to succeed on `paid` only, so a
+   * normal purchase — which reaches `credited` inside the same webhook request — fell
+   * through to "keep polling" and ended on the timeout screen despite having worked. */
+  status: 'pending' | 'paid' | 'credited' | 'failed' | 'refunded' | 'review_pending' | string;
   listing_id?: string;
   /** Tokens (₹1 = 1 token). */
   total_amount?: number;
