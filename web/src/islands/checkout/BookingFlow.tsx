@@ -103,7 +103,9 @@ function FlowInner({ listing }: { listing: Listing }) {
       capture('checkout_open', {
         listing_id: listing.id,
         kind: listing.kind,
-        price: listing.price ?? listing.effective_price ?? null,
+        // [CHECKOUT-PROMO-1] effective_price first — the telemetry has to name
+        // the price the buyer is actually being asked for.
+        price: listing.effective_price ?? listing.price ?? null,
         free_entry: Boolean(listing.free_entry),
         from: typeof document !== 'undefined' ? document.referrer || 'direct' : 'direct',
       });

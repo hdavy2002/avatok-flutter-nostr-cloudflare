@@ -29,6 +29,7 @@ import AgentBookingBoxIsland from '../islands/agent-live/AgentBookingBox';
 import { inrOrFree } from '../lib/money';
 import { API_BASE, cfImage } from '../lib/config';
 import { durationLabel, languageLabel, recurrenceLabel, timePillLabel, scheduleStateOf } from '../lib/card';
+import { earlyBird } from '../lib/copy';
 import type { Listing, ReviewList, ListingSlot, Card, Creator } from '../lib/types';
 
 interface Props {
@@ -279,10 +280,29 @@ const showsHosted = listing.creator_trust_stats?.shows_hosted ?? 0;
 const showsListed = hostListings.length + 1;
 const comebackPct = listing.creator_trust_stats?.comeback_pct != null ? `${Math.round(listing.creator_trust_stats.comeback_pct)}%` : '—';
 
-const priceTokens = listing.price ?? 0;
+/* [DETAIL-PROMO-1 2026-09-13] The detail page shows the price the buyer will
+ * actually be charged.
+ *
+ * It read `listing.price` and nothing else, while the marketplace card has read
+ * `effective_price` since card.ts:137 — so a promoted listing advertised ₹400 on
+ * the card and then ₹500 on its own page, and the number fed into the inline
+ * booking script (`CONFIG.price`) was the undiscounted one too. `effective_price`
+ * is the server's post-promo number; `price` is the list price it was reduced
+ * from, and is shown struck through beside the same "EARLY BIRD −N%" chip the
+ * card draws (copy.ts:earlyBird — one wording, one source).
+ *
+ * `effective_price` may be absent (older responses, hand-built cards), so the
+ * fallback is `price` — never the other way round, because `price` is always a
+ * number and would make the discount unreachable. That inversion is exactly the
+ * bug this fixes in the checkout islands. */
+const listPriceTokens = listing.price ?? 0;
+const priceTokens = listing.effective_price ?? listing.price ?? 0;
+const promoPct = Math.round(Number(listing.promo_pct ?? 0)) || 0;
+const hasPromo = promoPct > 0 && priceTokens < listPriceTokens;
 const isFree = Boolean(listing.free_entry) || priceTokens === 0;
 const priceUnitLabel = listing.billing_unit === 'minute' ? '/ MIN' : listing.billing_unit === 'night' ? '/ NIGHT' : listing.billing_unit === 'game' ? '/ GAME' : '/ SEAT';
 const priceLine = isFree ? 'FREE' : `${inrOrFree(priceTokens)} `;
+const promoChip = hasPromo ? earlyBird(promoPct) : null;
 
 const hostInitials = (listing.creator?.name ?? listing.creator?.handle ?? '?').split(' ').map((w) => w[0]).filter(Boolean).join('').slice(0, 2).toUpperCase();
 // [HOST-FACE-1 2026-09-05] The host's actual photo, and a link to their page.
@@ -315,6 +335,41 @@ const aboutBio = creatorProfile?.bio ?? null;
 const howItWorks = listing.attrs?.content_how_it_works ?? [];
 
 const highlightUrl = listing.video_url ?? null;
+
+/* [VIDEO-HERO-1 2026-09-13] When the creator gave a video, the VIDEO is the hero.
+ *
+ * It used to be a flat teal tile in the thumbnail strip with a ▶ glyph on it and
+ * an `<a target="_blank">` behind it — i.e. the one asset that sells a live show
+ * was the one thing on the page that sent the buyer AWAY from it, to YouTube,
+ * mid-decision. Now it is embedded in the `player-card__screen` slot and the
+ * poster steps back to being what it is good at: the marketplace card.
+ *
+ * Only YouTube is embedded, and only via youtube-nocookie.com (no tracking
+ * cookie until the visitor actually presses play). Anything else that is a valid
+ * https URL keeps the old link tile — embedding an arbitrary origin in an iframe
+ * on a page that also carries a booking flow is not something to do on a guess.
+ */
+function youtubeIdOf(raw: string | null): string | null {
+  if (!raw) return null;
+  let u: URL;
+  try { u = new URL(raw); } catch { return null; }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+  const host = u.hostname.replace(/^www\./, '').toLowerCase();
+  const ok = (id: string | null | undefined) => (id && /^[A-Za-z0-9_-]{6,20}$/.test(id) ? id : null);
+  if (host === 'youtu.be') return ok(u.pathname.slice(1).split('/')[0]);
+  if (host !== 'youtube.com' && host !== 'm.youtube.com' && host !== 'youtube-nocookie.com') return null;
+  if (u.pathname === '/watch') return ok(u.searchParams.get('v'));
+  const seg = u.pathname.split('/').filter(Boolean);
+  if (seg.length >= 2 && (seg[0] === 'shorts' || seg[0] === 'embed' || seg[0] === 'live' || seg[0] === 'v')) return ok(seg[1]);
+  return null;
+}
+const heroVideoId = youtubeIdOf(highlightUrl);
+const heroVideoUrl = heroVideoId
+  ? `https://www.youtube-nocookie.com/embed/${heroVideoId}?rel=0&modestbranding=1&playsinline=1`
+  : null;
+const videoIsHero = Boolean(heroVideoUrl);
+/* A non-YouTube (or unparseable) video keeps the outbound tile — see above. */
+const reelTileUrl = !videoIsHero && highlightUrl && /^https:\/\//i.test(highlightUrl) ? highlightUrl : null;
 // [MEDIA-STRIP-1] The reel tile says WHEN, the way the hero countdown does, so a
 // visitor who clicks away to the video still leaves knowing the show is dated.
 const videoWhenLabel = !isLive && listing.starts_at
@@ -350,12 +405,24 @@ const posterCopy = posterUsable ? (posterAttr.copy ?? null) : null;
  * cover_media array is the creator's own uploads (the poster sits at [0] and is
  * shown as the hero), so the gallery starts at 1 either way — but with a poster
  * present it is captioned as "more photos", not as the listing's face. */
-// [MEDIA-STRIP-1] Index 1 onwards: cover_media[0] is the generated poster and
-// is already the hero above. Compacted, so one uploaded photo renders one tile
-// rather than one tile and two empty boxes.
-const stills = ([1, 2, 3]
-  .map((i) => listing.cover_media?.[i]?.url)
-  .filter((u): u is string => typeof u === 'string' && u.length > 0));
+// [MEDIA-STRIP-1] Compacted, so one uploaded photo renders one tile rather than
+// one tile and two empty boxes.
+//
+// [PHOTO-STRIP-2 2026-09-13] Two bugs, both about WHICH entries are a creator's
+// photos.
+//   (a) It sliced indices 1..3, so a creator who uploaded four or more photos
+//       silently lost everything past the third. The cap is now 8, and it is a
+//       cap rather than a window.
+//   (b) It skipped index 0 on the assumption that slot is the AI poster. That is
+//       only true when the worker actually PREPENDED one — it marks that entry
+//       `source: 'ai_poster'` (types.ts CoverMedia) precisely so consumers can
+//       tell. With no poster, index 0 is a real uploaded photo and was being
+//       thrown away. Filter by the marker, never by position.
+const stills = ((listing.cover_media ?? [])
+  .filter((m) => m && (m as { source?: string }).source !== 'ai_poster')
+  .map((m) => m?.url)
+  .filter((u): u is string => typeof u === 'string' && u.length > 0)
+  .slice(0, 8));
 
 const breadcrumbId = `LISTING #${listing.id}`;
 
@@ -465,8 +532,25 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
       </div>
 
       <div class="player-card">
-        <div class="player-card__screen" style={heroBase ? undefined : `background:${cat.photo}`}>
-          {heroBase && (
+        <div class={`player-card__screen${videoIsHero ? ' player-card__screen--video' : ''}`} style={(heroBase || videoIsHero) ? undefined : `background:${cat.photo}`}>
+          {/* [VIDEO-HERO-1] The video takes the stage when there is one. The
+              poster is NOT dropped — it is still the marketplace card's face
+              (lib/card.ts aiPosterFrom) and still the hero on every listing
+              without a video. */}
+          {videoIsHero && (
+            <div class="player-card__video">
+              <iframe
+                id="hero-video"
+                src={heroVideoUrl}
+                title={`${listing.title} — video`}
+                loading="lazy"
+                referrerpolicy="strict-origin-when-cross-origin"
+                allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowfullscreen
+              ></iframe>
+            </div>
+          )}
+          {!videoIsHero && heroBase && (
             <picture class="player-card__poster">
               {heroPortrait && <source media="(max-width: 639px)" srcset={cfImage(heroPortrait, { width: 720, fit: 'cover' })} />}
               {heroWide && <source media="(min-width: 1024px)" srcset={cfImage(heroWide, { width: 1600, fit: 'cover' })} />}
@@ -474,7 +558,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
               <img src={cfImage(heroPortrait, { width: 900, fit: 'cover' })} alt={`${listing.title} — poster`} />
             </picture>
           )}
-          {posterOverlay && (
+          {posterOverlay && !videoIsHero && (
             <div class="player-card__lettering">
               <p class="player-card__lettering-title">{posterCopy?.title ?? listing.title}</p>
               {(posterCopy?.tagline ?? listing.blurb) && (
@@ -506,8 +590,13 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
               <button type="button" id="fav-btn" class="icon-btn" aria-label="Favorite">♡</button>
             </span>
           </div>
-          {!heroBase && <span class="player-card__center-label">LIVE STAGE · HOST CAMERA<br />16:9 STREAM DROPS HERE</span>}
-          {isLive ? (
+          {!heroBase && !videoIsHero && <span class="player-card__center-label">LIVE STAGE · HOST CAMERA<br />16:9 STREAM DROPS HERE</span>}
+          {/* [VIDEO-HERO-1] With a video in the frame these move OUT of it and
+              into the bar below — overlaid on a player they would sit on top of
+              YouTube's own controls and the scrubber. Exactly one #join-note and
+              one #cd-* set exist either way; the inline script below is
+              null-guarded on both and reads whichever position they are in. */}
+          {videoIsHero ? null : isLive ? (
             <button type="button" class="btn btn--cta js-join-btn player-card__cta" style={`background:${ctaColor}`}>▸ Join now</button>
           ) : !countdownActive ? null : (
             <div class="countdown">
@@ -529,8 +618,23 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
               `#join-note` lived here and is written to by the countdown script;
               it moves into the hero rather than being deleted, or that script
               throws on a null element and takes the countdown down with it. */}
-          <span class="player-card__joinnote" id="join-note"></span>
+          {!videoIsHero && <span class="player-card__joinnote" id="join-note"></span>}
         </div>
+        {videoIsHero && (
+          <div class="player-card__underbar">
+            {isLive ? (
+              <button type="button" class="btn btn--cta js-join-btn player-card__cta" style={`background:${ctaColor}`}>▸ Join now</button>
+            ) : countdownActive ? (
+              <div class="countdown">
+                <span class="countdown__unit"><span id="cd-d">00</span><em>DAYS</em></span>
+                <span class="countdown__unit"><span id="cd-h">00</span><em>HRS</em></span>
+                <span class="countdown__unit"><span id="cd-m">00</span><em>MIN</em></span>
+                <span class="countdown__unit"><span id="cd-s">00</span><em>SEC</em></span>
+              </div>
+            ) : null}
+            <span class="player-card__joinnote" id="join-note"></span>
+          </div>
+        )}
       </div>
 
       {/* [MEDIA-STRIP-1 2026-09-05] Only real media. The strip used to render
@@ -539,19 +643,48 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
           creator who uploaded nothing beyond the poster) showed a row of empty
           boxes advertising content that is not there. Owner's call: if there is
           nothing, show nothing. */}
-      {(stills.length > 0 || highlightUrl) && (
-        <div class="thumb-grid" data-count={String(stills.length + (highlightUrl ? 1 : 0))}>
+      {(stills.length > 0 || reelTileUrl) && (
+        <div class="thumb-grid" data-count={String(stills.length + (reelTileUrl ? 1 : 0))}>
+          {/* [PHOTO-STRIP-2] A thumbnail is a BUTTON now — it opens the full
+              photo in the lightbox below. `data-full` carries a wider render of
+              the same image than the 420px tile; the dialog never loads the raw
+              original (this page is the one most likely to be opened on a phone
+              on mobile data). */}
           {stills.map((u, i) => (
-            <div class={`thumb-tile thumb-tile--${['butter', 'brick', 'oat'][i % 3]}`}
-              style={`background-image:url(${cfImage(u, { width: 420 })});background-size:cover;background-position:center;`}></div>
+            <button
+              type="button"
+              class={`thumb-tile thumb-tile--${['butter', 'brick', 'oat'][i % 3]} js-photo-thumb`}
+              data-full={cfImage(u, { width: 1600 })}
+              data-index={String(i)}
+              aria-label={`Open photo ${i + 1} of ${stills.length}`}
+              style={`background-image:url(${cfImage(u, { width: 420 })});background-size:cover;background-position:center;`}
+            ></button>
           ))}
-          {highlightUrl && (
-            <a href={highlightUrl} target="_blank" rel="noopener" class="thumb-tile thumb-tile--teal thumb-tile--reel">
+          {/* [VIDEO-HERO-1] The HIGHLIGHT REEL tile is gone whenever the video is
+              embedded above — it would be the same asset twice, and the version
+              that leaves the page. It survives only for a video we will not
+              embed (see reelTileUrl). */}
+          {reelTileUrl && (
+            <a href={reelTileUrl} target="_blank" rel="noopener" class="thumb-tile thumb-tile--teal thumb-tile--reel">
               <span class="thumb-tile__play">▶</span>
               <span>{videoWhenLabel ? `HIGHLIGHT REEL · ${videoWhenLabel}` : 'HIGHLIGHT REEL'}</span>
             </a>
           )}
         </div>
+      )}
+
+      {/* [PHOTO-STRIP-2] The lightbox. A native <dialog> rather than a
+          hand-rolled overlay: Escape-to-close, focus trapping and inertness of
+          the page behind it are the browser's job, not ours, and this file
+          carries no client framework to lean on. Rendered only when there is
+          something to open. */}
+      {stills.length > 0 && (
+        <dialog id="photo-lightbox" class="lightbox" aria-label="Photo">
+          <form method="dialog" class="lightbox__closeform">
+            <button type="submit" class="lightbox__close" aria-label="Close photo">✕</button>
+          </form>
+          <img id="photo-lightbox-img" class="lightbox__img" src="" alt={`${listing.title} — photo`} />
+        </dialog>
       )}
 
       <div class="share-card">
@@ -613,6 +746,10 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
       </div>
       <div class="price-line">
         <span class="price-line__amount">{priceLine}{!isFree && <small>{priceUnitLabel}</small>}</span>
+        {/* [DETAIL-PROMO-1] Same two marks the card makes: the list price struck
+            through, and the shared EARLY BIRD chip. */}
+        {hasPromo && <span class="price-line__was">{inrOrFree(listPriceTokens)}</span>}
+        {promoChip && <span class="price-line__promo">{promoChip}</span>}
         <span class="price-line__note">FEES &amp; GST SHOWN BEFORE YOU BOOK</span>
       </div>
       {masala && (
@@ -1384,6 +1521,66 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
   document.addEventListener('ld:cta', (e) => {
     capture('listing_cta_click', { listing_id: meta.id, cta: e.detail?.cta });
   });
+
+  // ── [VIDEO-HERO-1] The hero video ────────────────────────────────────
+  // A cross-origin iframe gives us no play event without loading YouTube's
+  // IFrame API (another third-party script, on the page we just made
+  // cookie-free on purpose). The window losing focus to that iframe IS the
+  // press-play gesture, so that is what we listen for — once per page.
+  const heroVideo = document.getElementById('hero-video');
+  if (heroVideo) {
+    let firedVideoPlay = false;
+    window.addEventListener('blur', () => {
+      if (firedVideoPlay) return;
+      if (document.activeElement !== heroVideo) return;
+      firedVideoPlay = true;
+      capture('listing_video_play', {
+        listing_id: meta.id,
+        creator_uid: meta.creatorUid,
+        provider: 'youtube',
+        surface: 'hero',
+      });
+    });
+  }
+
+  // ── [PHOTO-STRIP-2] The photo lightbox ───────────────────────────────
+  const lightbox = document.getElementById('photo-lightbox');
+  const lightboxImg = document.getElementById('photo-lightbox-img');
+  const thumbs = Array.from(document.querySelectorAll('.js-photo-thumb'));
+  if (lightbox && lightboxImg && thumbs.length) {
+    thumbs.forEach((thumb) => {
+      thumb.addEventListener('click', () => {
+        const full = thumb.getAttribute('data-full');
+        if (!full) return;
+        lightboxImg.setAttribute('src', full);
+        try {
+          if (typeof lightbox.showModal === 'function') lightbox.showModal();
+          else lightbox.setAttribute('open', '');
+        } catch (err) {
+          // Already open, or <dialog> unsupported — never let a viewer end up
+          // with a photo they cannot see and cannot dismiss.
+          lightbox.setAttribute('open', '');
+        }
+        capture('listing_photo_open', {
+          listing_id: meta.id,
+          creator_uid: meta.creatorUid,
+          index: Number(thumb.getAttribute('data-index') || 0),
+          photo_count: thumbs.length,
+        });
+      });
+    });
+    // Click-outside: a <dialog>'s own box is the only thing inside its rect, so
+    // a click whose target is the dialog element itself landed on the backdrop.
+    lightbox.addEventListener('click', (e) => {
+      if (e.target === lightbox) lightbox.close();
+    });
+    // Escape is the browser's (showModal), but clear the src on the way out so a
+    // reopen never flashes the previous photo.
+    lightbox.addEventListener('close', () => { lightboxImg.setAttribute('src', ''); });
+    lightboxImg.addEventListener('error', () => {
+      capture('listing_photo_error', { listing_id: meta.id, creator_uid: meta.creatorUid, reason: 'image_load_failed' });
+    });
+  }
 </script>
 
 <style>
@@ -1448,6 +1645,16 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
   /* [MEDIA-STRIP-1] The strip is now variable-length — one to four tiles — so it
      lays out from the count rather than assuming four. */
   .thumb-tile--reel { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  /* [PHOTO-STRIP-2] The tiles are <button>s now — strip the UA chrome and give
+     them a visible focus ring, since they are keyboard-reachable controls. */
+  .js-photo-thumb { padding: 0; background-color: transparent; cursor: zoom-in; appearance: none; }
+  .js-photo-thumb:focus-visible { outline: 3px solid #d93825; outline-offset: 2px; }
+  .lightbox { border: 3px solid #161614; border-radius: 20px; background: #161614; padding: 0; max-width: min(96vw, 1200px); max-height: 92vh; overflow: hidden; }
+  .lightbox::backdrop { background: rgba(22, 22, 20, .82); }
+  .lightbox__img { display: block; max-width: min(96vw, 1200px); max-height: 92vh; width: auto; height: auto; }
+  .lightbox__closeform { position: absolute; top: 10px; right: 10px; margin: 0; z-index: 2; }
+  .lightbox__close { border: 2px solid #161614; border-radius: 100px; background: #fdf1d3; color: #161614; width: 38px; height: 38px; font-family: 'Nunito', sans-serif; font-weight: 900; font-size: 1rem; cursor: pointer; }
+  .lightbox__close:focus-visible { outline: 3px solid #d93825; outline-offset: 2px; }
   .thumb-tile__play { font-size: 1.25rem; line-height: 1; }
   .section-title { font-family: 'Comfortaa', 'Baloo 2', sans-serif; letter-spacing: .06em; font-size: clamp(28px, 2.6vw, 38px); text-transform: uppercase; margin: 0; word-spacing: .22em; }
   .section-title--sm { font-size: 1.5rem; }
@@ -1480,6 +1687,17 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
      `contain` shows all of it; the frame keeps the card's own paper behind the
      letterboxing so it reads as a mounted print rather than a gap. */
   .player-card__screen { height: clamp(420px, 62vw, 760px); position: relative; overflow: hidden; background: #1c1a17; }
+  /* [VIDEO-HERO-1] A player is 16:9 and must never exceed its container — the
+     aspect box does both, at every width, with no JS. */
+  .player-card__screen--video { height: auto; aspect-ratio: 16 / 9; max-width: 100%; background: #000; }
+  .player-card__video { position: absolute; inset: 0; }
+  .player-card__video iframe { display: block; width: 100%; height: 100%; border: 0; }
+  /* The countdown / join CTA / join note, moved out of the frame so they do not
+     sit on the player's own controls. */
+  .player-card__underbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 12px 14px; border-top: 3px solid #161614; background: #fdf1d3; }
+  .player-card__underbar .countdown { position: static; transform: none; left: auto; bottom: auto; }
+  .player-card__underbar .player-card__cta { position: static; transform: none; left: auto; bottom: auto; }
+  .player-card__underbar .player-card__joinnote { position: static; left: auto; right: auto; bottom: auto; margin-left: auto; color: #b82a19; text-shadow: none; }
   /* [POSTER-FIRST-1] The poster fills the hero as a real <img> so it can carry
      srcset. object-fit:cover keeps the painted lettering centred instead of
      squashing a 2:3 poster into a 16:9 frame. */
@@ -1494,6 +1712,9 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
      mounted inside a wide black letterbox. */
   @media (max-width: 639px) {
     .player-card__screen { height: auto; aspect-ratio: 2 / 3; }
+    /* [VIDEO-HERO-1] …but a video stays 16:9 on a phone. A 2:3 box around a
+       16:9 film is two black bands, not a bigger picture. */
+    .player-card__screen--video { aspect-ratio: 16 / 9; }
     .player-card__poster img { object-fit: cover; }
   }
   /* Only rendered when the artwork is deliberately textless — see
@@ -1594,6 +1815,9 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
   .price-line__amount { font-family: 'Comfortaa', 'Baloo 2', sans-serif; letter-spacing: .06em; font-size: 2.125rem; word-spacing: .22em; }
   .price-line__amount small { font-size: 1rem; letter-spacing: .04em; }
   .price-line__note { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.6875rem; letter-spacing: .08em; color: #8c6a52; }
+  /* [DETAIL-PROMO-1] The struck-through list price and the promo chip. */
+  .price-line__was { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 1rem; letter-spacing: .06em; color: #8c6a52; text-decoration: line-through; text-decoration-thickness: 2px; }
+  .price-line__promo { font-family: 'Nunito', sans-serif; font-weight: 900; font-size: 0.6875rem; letter-spacing: .1em; color: #fdf1d3; background: #d93825; border: 2px solid #161614; border-radius: 100px; padding: 5px 11px; }
   .masala-quote { margin-top: 16px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
   .masala-quote img { width: 112px; flex: none; transform: rotate(-4deg); }
   .masala-quote__text { font-family: 'Kalam', cursive; font-size: 1.25rem; color: #8c3a2c; transform: rotate(-2deg); }

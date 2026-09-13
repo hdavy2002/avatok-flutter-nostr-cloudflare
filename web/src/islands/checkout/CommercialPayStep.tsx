@@ -132,10 +132,90 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
   const [loadingBal, setLoadingBal] = useState(true);
 
   const attrs = (listing as unknown as { attrs?: Record<string, unknown> }).attrs ?? {};
-  const baseTokens = Math.trunc(Number(selection.requiredCoins ?? listing.price ?? listing.effective_price ?? 0));
+  // [CHECKOUT-PROMO-1 2026-09-13] `effective_price` before `price`. The operands
+  // were inverted, and because `price` is always a number the `??` chain never
+  // reached `effective_price` — a promoted listing was quoted at its list price
+  // here while the marketplace card (lib/card.ts:137) showed the discount.
+  const baseTokens = Math.trunc(Number(selection.requiredCoins ?? listing.effective_price ?? listing.price ?? 0));
   const breakdown = priceBreakdown(baseTokens);
   const clientTotal = breakdown?.total ?? 0;
   const policyText = policySummary(selection.kind, attrs);
+
+  /* [CHECKOUT-PROMO-1 2026-09-13] Buyer-entered promo code.
+   *
+   * THE CLIENT NEVER COMPUTES A DISCOUNTED TOTAL. The server verifies the code
+   * and the amount together (worker/src/routes/commercial_checkout.ts) and will
+   * reject a total it did not calculate, so a client-side "₹400 after your code"
+   * would be a number nobody had agreed to — and, when the code turned out to be
+   * expired, a number the buyer had already been shown. So the breakdown keeps
+   * showing the undiscounted total right up until a checkout response comes
+   * back, and only then does `confirmedTotal` say what was actually charged.
+   *
+   * "Apply" therefore stages the code for the payment call; it is not a
+   * validation round trip of its own (there is no endpoint for that, and adding
+   * one would let a code be probed without a purchase). An invalid code surfaces
+   * as HTTP 400 `invalid_promo_code` from the checkout POST — no charge is made,
+   * so the buyer can clear it and pay, or fix the code and pay.
+   */
+  const [promoInput, setPromoInput] = useState('');
+  const [appliedPromo, setAppliedPromo] = useState<string | null>(null);
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [confirmedTotal, setConfirmedTotal] = useState<number | null>(null);
+
+  function normalizePromo(raw: string): string {
+    return raw.trim().toUpperCase().slice(0, 24);
+  }
+
+  function applyPromo() {
+    const code = normalizePromo(promoInput);
+    if (!code) {
+      setPromoError('Enter a code first.');
+      return;
+    }
+    setPromoInput(code);
+    setAppliedPromo(code);
+    setPromoError(null);
+    try {
+      capture('checkout_promo_submitted', { listing_id: selection.listingId, kind: selection.kind, code_length: code.length });
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  function clearPromo() {
+    setAppliedPromo(null);
+    setPromoInput('');
+    setPromoError(null);
+  }
+
+  /** The one place a promo outcome is reported — after the SERVER has spoken. */
+  function capturePromoResult(result: 'success' | 'invalid', extra: Record<string, unknown> = {}) {
+    try {
+      capture('checkout_promo_applied', {
+        listing_id: selection.listingId,
+        kind: selection.kind,
+        result,
+        quoted_total: clientTotal,
+        ...extra,
+      });
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  /** True for the server's documented rejection of a bad/expired/exhausted code. */
+  function isInvalidPromo(e: unknown): boolean {
+    return e instanceof ApiError && e.status === 400 && e.error === 'invalid_promo_code';
+  }
+
+  function onInvalidPromo() {
+    setPromoError('That promo code isn’t valid any more. Remove it or try another — nothing has been charged.');
+    setAppliedPromo(null);
+    capturePromoResult('invalid');
+  }
+
+  /** The promo code as the request body carries it, or nothing at all. */
+  const promoBody = appliedPromo ? { promo_code: appliedPromo } : {};
 
   // [LIST-FREE-1] SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING.md §D "Free join" /
   // SPEC-2026-09-02-LISTING-TRUST-AND-VIBE.md §2.4, §3.4. `free_entry` is server
@@ -180,6 +260,11 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
           headers: { 'Idempotency-Key': idemKey },
           body: {
             accept_policy: true,
+            // [CHECKOUT-PROMO-1] Carried on this rail too. The free lane does not
+            // render the field (there is nothing to discount off ₹0), but the
+            // endpoint is the same one and a staged code must never be silently
+            // dropped by whichever branch happens to run.
+            ...promoBody,
             ...(selection.slot ? { slot: selection.slot, hold_id: slotHold?.hold_id } : {}),
           },
         },
@@ -204,7 +289,9 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
         /* best-effort */
       }
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409 && e.error === 'free_session_full') {
+      if (isInvalidPromo(e)) {
+        onInvalidPromo();
+      } else if (e instanceof ApiError && e.status === 409 && e.error === 'free_session_full') {
         setFreeFull(true);
         try {
           capture('checkout_free_refused', { reason: 'full' });
@@ -291,11 +378,20 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
           headers: { 'Idempotency-Key': idemKey },
           body: {
             accept_policy: true,
+            // [CHECKOUT-PROMO-1] The server verifies the code and decides the
+            // amount. The client sends the code and reads back what was charged.
+            ...promoBody,
             ...(selection.slot ? { slot: selection.slot, hold_id: slotHold?.hold_id } : {}),
           },
         },
       );
       const charged = result.amount_coins ?? result.charged_amount ?? result.gross_amount ?? baseTokens;
+      // [CHECKOUT-PROMO-1] Server-confirmed, so it is safe to show. Until this
+      // line runs, the breakdown above says the undiscounted total.
+      setConfirmedTotal(Math.trunc(Number(charged)));
+      if (appliedPromo) {
+        capturePromoResult('success', { charged_total: Math.trunc(Number(charged)) });
+      }
       onBooked({
         ok: true,
         booking_id: result.booking_id ?? result.order_id,
@@ -316,7 +412,9 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
         /* best-effort */
       }
     } catch (e) {
-      if (e instanceof ApiError && e.status === 402) {
+      if (isInvalidPromo(e)) {
+        onInvalidPromo();
+      } else if (e instanceof ApiError && e.status === 402) {
         // [WEB-COMM-PAY-2] No order_id ever arrives here — see the file header. This is
         // a dead end for the wallet rail, not a handoff; point the buyer at the gateway
         // picker instead of waiting for something the server will never send.
@@ -473,6 +571,17 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
                 <span className="font-display font-semibold text-[16px] text-ink">Total</span>
                 <span className="font-mono font-bold text-[16px] text-ink">{inr(breakdown.total)}</span>
               </div>
+              {/* [CHECKOUT-PROMO-1] Only ever rendered from a server-confirmed
+                  amount, and only when it actually differs from what was quoted
+                  above — no optimistic discount, ever. */}
+              {confirmedTotal != null && confirmedTotal !== breakdown.total && (
+                <div className="flex items-center justify-between border-t-zine border-inkMute pt-3">
+                  <span className="font-display font-semibold text-[16px] text-mintInk">
+                    Charged{appliedPromo ? ` (code ${appliedPromo})` : ''}
+                  </span>
+                  <span className="font-mono font-bold text-[16px] text-mintInk">{inr(confirmedTotal)}</span>
+                </div>
+              )}
             </>
           ) : (
             <div className="flex items-center justify-between border-t-zine border-inkMute pt-3">
@@ -481,6 +590,47 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
             </div>
           )}
         </div>
+      </Card>
+
+      {/* [CHECKOUT-PROMO-1] The promo code field. Deliberately next to the price
+          breakdown and not inside it: it changes what will be charged, but it
+          does NOT change any number on this screen until the server says so. */}
+      <Card fillClassName="bg-paper2" shadow="sm">
+        <p className="font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-inkSoft">Promo code</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            inputMode="text"
+            autoCapitalize="characters"
+            autoComplete="off"
+            spellCheck={false}
+            maxLength={24}
+            value={promoInput}
+            aria-label="Promo code"
+            placeholder="EARLYBIRD"
+            disabled={walletBusy}
+            onChange={(e) => setPromoInput(normalizePromo(e.target.value))}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                applyPromo();
+              }
+            }}
+            className="min-w-0 flex-1 rounded-zine border-zine border-ink bg-card px-3 py-2 font-mono font-bold uppercase tracking-[0.08em] text-[14px] text-ink"
+          />
+          <Button
+            label={appliedPromo ? 'Remove' : 'Apply'}
+            onClick={() => (appliedPromo ? clearPromo() : applyPromo())}
+            disabled={walletBusy}
+          />
+        </div>
+        {promoError && <p className="mt-2 font-body font-bold text-[14px] text-coral">⚠ {promoError}</p>}
+        {appliedPromo && !promoError && (
+          <p className="mt-2 font-body font-bold text-[13px] text-inkSoft">
+            {appliedPromo} will be checked when you pay from your wallet. The total above updates to the
+            amount actually charged once it is confirmed — a code that has expired is refused before any money moves.
+          </p>
+        )}
       </Card>
 
       <Card fillClassName="bg-paper2" shadow="sm">
@@ -534,6 +684,15 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
         <p className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">
           Or pay by card / UPI
         </p>
+        {/* [CHECKOUT-PROMO-1] Honest limitation: the gateway rail mints its own
+            order server-side (POST /api/pay/:gateway/order) and carries no promo
+            field today, so a code applied here only reaches the wallet rail. Say
+            so rather than let a buyer pay full price wondering where it went. */}
+        {appliedPromo && (
+          <p className="font-body font-bold text-[13px] text-inkSoft">
+            Promo codes apply to wallet payments only right now — paying by card or UPI charges the total shown above.
+          </p>
+        )}
         <GatewayPicker
           token={token}
           listingId={selection.listingId}

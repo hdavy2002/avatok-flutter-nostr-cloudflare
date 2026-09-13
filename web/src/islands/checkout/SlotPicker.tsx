@@ -165,7 +165,12 @@ export function SlotPicker({ listing, token, onNeedAuth, onSelect }: SlotPickerP
  *  not to schedule (SPEC §3.1). Hands off a `commercial` selection so PayStep
  *  routes to CommercialPayStep → POST /api/commercial/live/:id/checkout. */
 function LiveTicket({ listing, onSelect }: { listing: Listing; onSelect: (s: BookSelection) => void }) {
-  const price = Math.trunc(Number(listing.price ?? listing.effective_price ?? 0));
+  // [CHECKOUT-PROMO-1 2026-09-13] `effective_price` FIRST. The operands were
+  // inverted: `price` is always a number, so `??` never fell through and the
+  // discounted price was unreachable — the card advertised ₹400 and checkout
+  // charged ₹500. `price` is the fallback for a response that predates
+  // `effective_price`, not the preference.
+  const price = Math.trunc(Number(listing.effective_price ?? listing.price ?? 0));
   // [LISTING-EXPIRY-1] The checkout page can be reached from an old link or a tab left
   // open overnight. Checkout itself refuses a finished show (410), but the buyer should
   // be told here, before choosing a payment method, not after.
@@ -342,7 +347,8 @@ function ConsultAvailability({ listing, onSelect }: { listing: Listing; onSelect
         listingId: listing.id,
         title: listing.title,
         slot: { id: current.id, start_at: Number(current.start_at), end_at: Number(current.end_at) },
-        requiredCoins: Math.trunc(Number(listing.price ?? listing.effective_price ?? 0)),
+        // [CHECKOUT-PROMO-1] effective_price first — see LiveTicket above.
+        requiredCoins: Math.trunc(Number(listing.effective_price ?? listing.price ?? 0)),
       });
     } catch (e) {
       setSelectedSlot(null);
