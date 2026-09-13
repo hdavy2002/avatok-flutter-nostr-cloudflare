@@ -229,6 +229,11 @@ const ADMIN_EDITABLE = new Set([
   "title", "blurb", "description", "category",
   "price", "currency_display", "free_entry",
   "starts_at", "duration_min", "schedule_mode", "recurrence_days", "recurrence_time",
+  // [MAXBOOK-DARK-1 2026-09-13] `max_per_booking` stays listed so the switch is not a
+  // one-way door — it is GATED below (adminEditListing drops it from `norm` while
+  // `listingMaxPerBookingEnabled` is false), not removed. Removing it would make the
+  // field 400 `field_not_editable` today and require editing this list again to bring
+  // the feature back.
   "timezone", "capacity", "max_per_booking", "response_time_min",
   "location", "country", "video_url", "spoken_lang", "adults_only",
   "credential", "media_mode",
@@ -276,6 +281,22 @@ export async function adminEditListing(req: Request, env: Env, id: string): Prom
 
   // Same coercion the creator's own PUT applies — see normListingFields.
   const norm = normListingFields(patch);
+  // [MAXBOOK-DARK-1 2026-09-13] The per-person cap is shelved (listingMaxPerBookingEnabled,
+  // routes/config.ts, default false). The creator's own POST/PUT already drop the field;
+  // the admin editor is the one other surface that writes this column, and if it kept
+  // writing it, an admin-edited listing would carry a cap no booking path enforces while
+  // every other listing sat at the default 4 — the half-off state this change exists to
+  // remove. Same posture as the creator path: IGNORE, never 4xx (no money consequence,
+  // and refusing would break the admin console mid-edit), and emit telemetry so the
+  // surface still sending it is visible.
+  if (!(await readConfig(env)).listingMaxPerBookingEnabled) {
+    if ("max_per_booking" in (norm as any) || (patch as any)?.max_per_booking !== undefined) {
+      safeTrack(env, a.uid, "listing_max_per_booking_ignored", {
+        listing_id: id, submitted: (patch as any)?.max_per_booking ?? null, path: "admin_edit",
+      });
+      delete (norm as any).max_per_booking;
+    }
+  }
   const cols = Object.keys(norm).filter((k) => ADMIN_EDITABLE.has(k));
   if (!cols.length) return json({ error: "nothing to update" }, 400);
 

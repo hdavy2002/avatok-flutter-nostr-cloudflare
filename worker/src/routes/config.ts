@@ -1874,6 +1874,34 @@ export interface PlatformConfig {
   // numericKeys.
   listingPromotionsEnabled: boolean;
 
+  // [MAXBOOK-DARK-1 2026-09-13] "Max bookings per person" (`listings.max_per_booking`)
+  // — SHELVED by the same owner decision that shelved promotions above. Promotions
+  // were taken dark properly; this one was not: only the wizard field was removed
+  // (web/src/islands/dashboard/listing-form/wizardLogic.ts [WIZ-SIMPLIFY-1]) while the
+  // server went on validating, coercing, storing and reporting the field. A feature
+  // that is hidden in the UI and still live on the backend is exactly the half-off
+  // state the owner asked us to stop shipping. Default FALSE = off.
+  //
+  // With this false: `max_per_booking` is never read off a request body on any write
+  // path — the creator's POST/PUT (routes/listings.ts createListing/updateListing) and
+  // the admin editor (routes/admin_listings.ts adminEditListing) both drop it before
+  // the INSERT/SET is built — so every row keeps the column DEFAULT 4
+  // (worker/migrations/2026-09-02-listings-content.sql:44, NOT NULL DEFAULT 4), and
+  // every card/detail read reports 4, so no client can display a per-person cap that
+  // nothing is enforcing. No stored value is rewritten and no column is dropped.
+  //
+  // A submitted value is deliberately NOT 4xx'd. Unlike a promo code — where silently
+  // ignoring it would mislead a BUYER about money — this field has no money
+  // consequence, and refusing would break any stale client mid-flow for no benefit.
+  // It is ignored, normalised to 4, and a `listing_max_per_booking_ignored` event is
+  // emitted (with listing_id + the submitted value) so a client still sending it can
+  // be found.
+  //
+  // Flipping it back TRUE restores all of it in place: the 1-20 validation, the
+  // normFields coercion, the EDITABLE / ADMIN_EDITABLE entries (gated, never removed)
+  // and the read shape. Boolean -> NOT in numericKeys.
+  listingMaxPerBookingEnabled: boolean;
+
   // [FREE-ENTRY-GATE-1 2026-09-04] free_entry listings (freeSessionsEnabled)
   // are metered by a creator-declared attendee cap with no mid-session
   // cut-off (lib/free_session.ts checks headcount only at admission and
@@ -2588,6 +2616,10 @@ const DEFAULTS: PlatformConfig = {
   // [PROMO-DARK-1 2026-09-13] Listing promotions shelved — see the interface
   // comment above. Flip true in KV to bring early-bird + promo codes back.
   listingPromotionsEnabled: false,
+  // [MAXBOOK-DARK-1 2026-09-13] Max-bookings-per-person shelved — see the interface
+  // comment above. Flip true in KV to bring the per-person cap back:
+  //   ALLOW_PROD=1 scripts/flags.sh set listingMaxPerBookingEnabled=true
+  listingMaxPerBookingEnabled: false,
   // [FREE-ENTRY-GATE-1 2026-09-04] fail closed — see interface comment above.
   freeEntryAllowlistOnly: true,
   // [AGENT-LIVE-1] ship dark — flip in KV per Specs/SPEC-2026-09-12-

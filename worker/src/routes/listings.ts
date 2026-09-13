@@ -370,7 +370,7 @@ function commercialPolicyError(kind: string, raw: unknown): string | null {
 // checked directly (not the normalized `f`) so a caller always gets told about the
 // exact value they sent, the same reasoning encodeAttrs()/commercialPolicyError()
 // use elsewhere in this file. Returns null when nothing new-column-shaped is wrong.
-function listingContentFieldsError(raw: any): string | null {
+function listingContentFieldsError(raw: any, maxPerBookingOn = false): string | null {
   if (!raw || typeof raw !== "object") return null;
   if (raw.schedule_mode !== undefined && raw.schedule_mode !== null && !SCHEDULE_MODES.has(String(raw.schedule_mode))) {
     return "schedule_mode must be fixed_date, recurring, on_request or always_on";
@@ -399,7 +399,15 @@ function listingContentFieldsError(raw: any): string | null {
   if (raw.media_mode !== undefined && raw.media_mode !== null && !MEDIA_MODES.has(String(raw.media_mode))) {
     return "media_mode must be audio_video or audio_only";
   }
-  if (raw.max_per_booking !== undefined && raw.max_per_booking !== null) {
+  // [MAXBOOK-DARK-1 2026-09-13] Only validated while the per-person cap is ON
+  // (`listingMaxPerBookingEnabled`, routes/config.ts — default false). With the
+  // switch off the field is ignored outright by both write paths below, and
+  // 400ing a value we are about to drop anyway would break a stale client
+  // mid-flow for nothing. That is the deliberate difference from a promo code,
+  // which is refused plainly because swallowing one misleads a BUYER about money;
+  // a seat cap has no money consequence. The parameter defaults to `false`, so a
+  // caller that forgets to pass it fails DARK (ignore) rather than half-on.
+  if (maxPerBookingOn && raw.max_per_booking !== undefined && raw.max_per_booking !== null) {
     const n = Math.trunc(Number(raw.max_per_booking));
     if (!Number.isInteger(n) || n < 1 || n > 20) return "max_per_booking must be an integer from 1 to 20";
   }
@@ -679,7 +687,22 @@ async function promosForCards(env: Env, ids: string[]): Promise<Map<string, any[
   return promosFor(env, ids);
 }
 
-function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set<string>, stats?: Map<string, { seats_taken: number; watching: number; favorites: number }>) {
+/**
+ * [MAXBOOK-DARK-1 2026-09-13] Is the per-person booking cap live? Same shape and
+ * same reason as promosForCards above: one place asks the switch, every call site
+ * reads the answer, so the feature cannot be on in one lane and off in another.
+ *
+ * `listingMaxPerBookingEnabled` is false today (see routes/config.ts). With it off
+ * no write path reads `max_per_booking` off a request body, every row keeps the
+ * column DEFAULT 4, and shapeCard reports 4 — a card must never advertise a
+ * per-person cap that nothing is enforcing. readConfig is memoized, so calling this
+ * per request is a map lookup, not a KV read.
+ */
+async function maxPerBookingEnabled(env: Env): Promise<boolean> {
+  return (await readConfig(env)).listingMaxPerBookingEnabled === true;
+}
+
+function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set<string>, stats?: Map<string, { seats_taken: number; watching: number; favorites: number }>, maxPerBookingOn = false) {
   const now = Date.now();
   const promos = promosByListing?.get(r.id) ?? [];
   const { pct } = activePromoPct(promos.filter((p) => p.kind === "early_bird"), now);
@@ -766,7 +789,13 @@ function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set
     timezone: r.timezone ?? "Asia/Kolkata",
     billing_unit: r.billing_unit ?? null,
     free_entry: !!r.free_entry,
-    max_per_booking: r.max_per_booking != null ? Number(r.max_per_booking) : 4,
+    // [MAXBOOK-DARK-1] The per-person cap is shelved. While the switch is off this
+    // ALWAYS reports 4 — the column DEFAULT — no matter what the row happens to
+    // hold, because nothing enforces the cap at booking time and a client showing
+    // "max 2 per person" against an unenforced column is a lie to the buyer. Rows
+    // written before the switch went in are not rewritten, only not reported.
+    // Defaults to dark: a call site that forgets to pass the flag reports 4.
+    max_per_booking: maxPerBookingOn ? (r.max_per_booking != null ? Number(r.max_per_booking) : 4) : 4,
     response_time_min: r.response_time_min != null ? Number(r.response_time_min) : null,
     vibe_tags: parseJson(r.vibe_tags, [] as string[]),
     // [MKT-3GROUP-1] spec §3 — audio-only vs audio+video. FIELD ONLY: no call
@@ -1025,6 +1054,12 @@ const EDITABLE = ["title", "description", "category", "price", "currency_display
   // same generic SET-builder as everything else; its uniqueness/format check happens
   // in updateListing BEFORE `f.slug` is set, same pattern as the attrs validation above.
   "blurb", "slug", "schedule_mode", "recurrence_days", "recurrence_time", "timezone",
+  // [MAXBOOK-DARK-1 2026-09-13] `max_per_booking` stays listed here on purpose. It
+  // is GATED, not removed: updateListing deletes it from the normalized fields
+  // before this allowlist is filtered (`k in f`), so while
+  // `listingMaxPerBookingEnabled` is false it can never reach the SET clause, and
+  // flipping the flag true restores the edit path byte-for-byte. Deleting the entry
+  // instead would make the switch a one-way door.
   "billing_unit", "free_entry", "max_per_booking", "response_time_min", "vibe_tags", "credential",
   // [MKT-3GROUP-1] spec §3 — audio-only vs audio+video, field only (see the
   // migration + normFields for why it is NOT in REVIEW_MATERIAL_FIELDS).
@@ -1121,6 +1156,12 @@ const REVIEW_MATERIAL_FIELDS = [
   "translation_enabled", "spoken_lang", "agent_instructions", "agent_lang",
   "agent_voice_persona", "location", "expiry_days", "video_url", "blurb",
   "schedule_mode", "recurrence_days", "recurrence_time", "timezone", "billing_unit",
+  // [MAXBOOK-DARK-1 2026-09-13] `max_per_booking` also stays here, and this one MUST
+  // NOT be gated. reviewedContentHash() fingerprints the STORED row, and every stored
+  // row holds the column default 4 while the switch is off — so the field contributes
+  // a constant and the hash is unchanged in practice. Removing the entry, by contrast,
+  // would change the hash of every already-approved listing at once and make each one
+  // fail publish with `review_stale`. Gate the write paths, never the fingerprint.
   "free_entry", "max_per_booking", "response_time_min", "vibe_tags", "credential",
 ] as const;
 
@@ -1289,6 +1330,10 @@ function normFields(b: any): Record<string, unknown> {
   // MEDIA_MODES by listingContentFieldsError), not overwritten.
   if (b.media_mode !== undefined) out.media_mode = b.media_mode ? String(b.media_mode) : "audio_video";
   if (b.free_entry !== undefined) out.free_entry = b.free_entry ? 1 : 0;
+  // [MAXBOOK-DARK-1] Left intact so flipping `listingMaxPerBookingEnabled` true
+  // restores the exact coercion that shipped. normFields is sync and has no `env`,
+  // so the switch is applied by its CALLERS (createListing / updateListing /
+  // adminEditListing), each of which deletes this key again while the flag is off.
   if (b.max_per_booking !== undefined) out.max_per_booking = b.max_per_booking != null ? Math.trunc(Number(b.max_per_booking)) : 4;
   if (b.response_time_min !== undefined) out.response_time_min = b.response_time_min != null ? Math.trunc(Number(b.response_time_min)) : null;
   if (b.vibe_tags !== undefined) {
@@ -1358,9 +1403,23 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
   // poster to preserve, only one to refuse forging).
   if (b.attrs !== undefined) b.attrs = sanitizeCreatorAttrs(b.attrs, null);
   const f = normFields(b);
+  // [MAXBOOK-DARK-1 2026-09-13] The per-person cap is shelved (routes/config.ts).
+  // Drop it off the normalized fields BEFORE the INSERT builds its bind list, so the
+  // new row takes the column DEFAULT 4 and no request body can set it. Ignored
+  // rather than refused — see the config comment for why this differs from a promo
+  // code — but NOT silent: a client still sending the field is named in telemetry.
+  const maxPerBookingOn = await maxPerBookingEnabled(env);
+  if (!maxPerBookingOn) {
+    if (b.max_per_booking !== undefined) {
+      track(env, ctx.uid, "listing_max_per_booking_ignored", APP, {
+        listing_id: id, submitted: b.max_per_booking, path: "create", kind,
+      });
+    }
+    delete f.max_per_booking;
+  }
   // [LIST-CONTENT-2] spec §C.1 — new scalar columns (schedule_mode, timezone,
   // billing_unit, vibe_tags, …) validated before anything is written.
-  const fieldsError = listingContentFieldsError(b);
+  const fieldsError = listingContentFieldsError(b, maxPerBookingOn);
   if (fieldsError) return json({ ok: false, error: fieldsError, message: fieldsError, field: "listing" }, 400);
   // [Step0 C01-adjacent] free_entry is allowlist-gated (see free_entry_gate.ts) —
   // checked against the RESULTING state (f.free_entry, after normFields), not the
@@ -1503,6 +1562,9 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
     // sends billing_unit at all. Marketplace-goods kinds (sell/buy/social) keep
     // null — hourly billing is not their pricing model.
     f.billing_unit ?? (kind === "live_event" || kind === "consult" ? "hour" : null),
+    // [MAXBOOK-DARK-1] `f.max_per_booking` is deleted above while the switch is
+    // off, so this `?? 4` is what actually binds — the same value the column
+    // DEFAULT would have written.
     f.free_entry ?? 0, f.max_per_booking ?? 4, f.response_time_min ?? null,
     f.vibe_tags ?? null, f.credential ?? null,
     // [MKT-3GROUP-1] spec §3 — media_mode, defaults to the column default.
@@ -1553,8 +1615,22 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
     b.attrs = sanitizeCreatorAttrs(b.attrs, existingAttrs);
   }
   const f = normFields(b);
+  // [MAXBOOK-DARK-1 2026-09-13] Same gate as createListing. Deleting the key here is
+  // what takes `max_per_booking` out of the EDITABLE allowlist's EFFECTIVE behaviour:
+  // `keys` below is `EDITABLE.filter((k) => k in f)`, so with the key gone the column
+  // never reaches the SET clause and the stored value stays at the default 4. The
+  // allowlist entry itself is untouched, so flipping the flag restores the edit path.
+  const maxPerBookingOn = await maxPerBookingEnabled(env);
+  if (!maxPerBookingOn) {
+    if (b.max_per_booking !== undefined) {
+      track(env, ctx.uid, "listing_max_per_booking_ignored", APP, {
+        listing_id: id, submitted: b.max_per_booking, path: "update", kind: row.kind,
+      });
+    }
+    delete f.max_per_booking;
+  }
   // [LIST-CONTENT-2] spec §C.1 — new scalar columns.
-  const fieldsError = listingContentFieldsError(b);
+  const fieldsError = listingContentFieldsError(b, maxPerBookingOn);
   if (fieldsError) return json({ ok: false, error: fieldsError, message: fieldsError, field: "listing" }, 400);
   // E: the free lane forces price=0. normFields already did this when THIS call sets
   // free_entry=1, but a call that edits price alone while free_entry=1 was already
@@ -3426,7 +3502,9 @@ export async function myListings(req: Request, env: Env): Promise<Response> {
   // checkbox from admins/allowlisted testers too).
   const cfg = await readConfig(env);
   const freeEntry = freeEntryAllowed(env, cfg, ctx.uid);
-  return json({ listings: rows.map((r) => shapeCard(r, promos, favs, cardStats)), free_entry_allowed: freeEntry });
+  // [MAXBOOK-DARK-1] `cfg` is already in hand here — same switch maxPerBookingEnabled() reads.
+  const mpbOn = cfg.listingMaxPerBookingEnabled === true;
+  return json({ listings: rows.map((r) => shapeCard(r, promos, favs, cardStats, mpbOn)), free_entry_allowed: freeEntry });
 }
 
 // ---------------------------------------------------------------------------
@@ -3571,11 +3649,12 @@ export async function exploreBrowse(req: Request, env: Env): Promise<Response> {
   // the migration lands) so the client falls back rather than showing zeroes.
   const sectionCounts = await sectionCountsFor(env, req, uid);
 
+  const mpbOn = await maxPerBookingEnabled(env); // [MAXBOOK-DARK-1]
   return json({
     vertical,
     section: isSection(section) ? section : null,
     section_counts: sectionCounts,
-    listings: page.map((r) => shapeCard(r, promos, favs, cardStats)),
+    listings: page.map((r) => shapeCard(r, promos, favs, cardStats, mpbOn)),
     cursor: rows.length > limit ? String(offset + limit) : null,
   });
 }
@@ -3635,7 +3714,8 @@ export async function exploreLiveNow(req: Request, env: Env): Promise<Response> 
   const cardStats = await cardStatsFor(env, rows.map((r) => r.id));
   const favs = await favoritesFor(env, uid, rows.map((r) => String(r.id))); // [UI-MKT-3]
   trackImpressions(env, req, uid, APP, "live_now", rows.map((r) => String(r.id)));
-  return json({ vertical, listings: rows.map((r) => ({ ...shapeCard(r, promos, favs, cardStats), joinable: true })) });
+  const mpbOn = await maxPerBookingEnabled(env); // [MAXBOOK-DARK-1]
+  return json({ vertical, listings: rows.map((r) => ({ ...shapeCard(r, promos, favs, cardStats, mpbOn), joinable: true })) });
 }
 
 // GET /api/explore/search — A1: FTS5 + filters + sorts; partial title AND creator name hit.
@@ -3741,13 +3821,14 @@ export async function exploreSearch(req: Request, env: Env): Promise<Response> {
   const g = geoOf(req);
   track(env, uid ?? "guest", "explore_search", APP, { q: q.slice(0, 40), sort, n: page.length, guest: !uid, vertical, section: isSection(section) ? section : null, country: g.country, city: g.city });
   trackImpressions(env, req, uid, APP, "search", page.map((r) => String(r.id)));
+  const mpbOn = await maxPerBookingEnabled(env); // [MAXBOOK-DARK-1]
   return json({
     vertical,
     section: isSection(section) ? section : null,
     // [MARKET-SECTION-1] Search returns the same catalogue-wide counts as browse,
     // so the sidebar does not blank out the moment someone types a query.
     section_counts: await sectionCountsFor(env, req, uid),
-    listings: page.map((r) => shapeCard(r, promos, favs, cardStats)),
+    listings: page.map((r) => shapeCard(r, promos, favs, cardStats, mpbOn)),
     cursor: rows.length > limit ? String(offset + limit) : null,
   });
 }
@@ -3778,7 +3859,7 @@ export async function getListing(req: Request, env: Env, id: string): Promise<Re
   const promos = await promosForCards(env, [id]);
   const cardStats = await cardStatsFor(env, [id]);
   const favs = await favoritesFor(env, uid, [id]); // [UI-MKT-3] heart state on the detail page
-  const card = shapeCard(r, promos, favs, cardStats);
+  const card = shapeCard(r, promos, favs, cardStats, await maxPerBookingEnabled(env)); // [MAXBOOK-DARK-1]
   const reviews = await metaSession(env).prepare(
     `SELECT rv.id, rv.author_id, rv.rating, rv.body, rv.reply, rv.reply_at, rv.created_at, u.display_name AS author_name, u.avatar_url AS author_avatar
        FROM reviews rv LEFT JOIN users u ON u.uid=rv.author_id
@@ -3969,6 +4050,7 @@ export async function getCreator(req: Request, env: Env, id: string): Promise<Re
     const g = geoOf(req);
     track(env, uid ?? "guest", "creator_channel_viewed", APP, { creator_id: id, guest: !uid, country: g.country, city: g.city });
   }
+  const mpbOn = await maxPerBookingEnabled(env); // [MAXBOOK-DARK-1]
   return json({
     creator: {
       uid: user.uid, handle: user.handle, name: user.display_name, avatar_url: user.avatar_url,
@@ -3982,7 +4064,7 @@ export async function getCreator(req: Request, env: Env, id: string): Promise<Re
       intro_video_ref: prof?.intro_video_ref ?? null,
       pinned_listing_id: prof?.pinned_listing_id ?? null,
     },
-    listings: lrows.map((r) => shapeCard(r, promos, favs, cardStats)),
+    listings: lrows.map((r) => shapeCard(r, promos, favs, cardStats, mpbOn)),
     reviews: reviews.results ?? [],
     viewer: { following, notify },
   });
@@ -4208,7 +4290,8 @@ export async function listFavorites(req: Request, env: Env): Promise<Response> {
   const promos = await promosForCards(env, rows.map((r) => r.id));
   const cardStats = await cardStatsFor(env, rows.map((r) => r.id));
   const favs = new Set(rows.map((r) => String(r.id))); // all favorited by definition
-  return json({ vertical, listings: rows.map((r) => shapeCard(r, promos, favs, cardStats)) });
+  const mpbOn = await maxPerBookingEnabled(env); // [MAXBOOK-DARK-1]
+  return json({ vertical, listings: rows.map((r) => shapeCard(r, promos, favs, cardStats, mpbOn)) });
 }
 
 // ---------------------------------------------------------------------------
