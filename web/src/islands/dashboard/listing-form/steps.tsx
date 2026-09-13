@@ -280,9 +280,10 @@ export function Step2Pitch({ draft, patch, err, categories, creator, conferenceE
   // the listing into "Find your people" or "Book their time". The group is
   // never asked separately; it is derived from the category (spec §6 step 2).
   const groups = groupsForKind(draft.kind);
-  // [WIZ-AI-ASSIST-1] ONE shared call for all three fields — the endpoint
-  // returns title, blurb and description together, so three chips must never
-  // mean three requests. Each field then settles independently.
+  // [WIZ-AI-PERFIELD-1 2026-09-13] ONE CALL PER FIELD. Each of the three chips
+  // asks the worker about its OWN field only (`field: 'blurb'` etc.), and owns
+  // its own busy flag, result and error. Pressing the title chip cannot put a
+  // card above the blurb — which is exactly the bug this replaced.
   const copy = useCopyReview(draft);
   const allAssisted = aiAssisted.title && aiAssisted.blurb && aiAssisted.description;
   // [WIZ-LANGS-1] Set when a language was refused because the CSV would blow
@@ -335,13 +336,13 @@ export function Step2Pitch({ draft, patch, err, categories, creator, conferenceE
         {/* [WIZ-AI-ASSIST-1] The escape hatch. The check is a gate on Next, so a
             500 or a dead network must not be able to trap a creator on this
             step — one failed attempt is enough to earn the way out. */}
-        {copy.failed && !allAssisted && (
+        {copy.anyFailed && !allAssisted && (
           <Card fillClassName="bg-paper2">
             <p className="font-body font-bold text-[13px] text-coral">⚠ The AI check could not run.</p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <button type="button" onClick={() => void copy.run()} disabled={copy.busy}
+              <button type="button" onClick={() => void copy.retryFailed()} disabled={copy.anyBusy}
                 className="rounded-zineField border-zine border-ink bg-blue px-3 py-1.5 font-body font-bold text-[12px] text-ink shadow-zine-xs">
-                {copy.busy ? 'Trying again…' : 'Try again'}
+                {copy.anyBusy ? 'Trying again…' : 'Try again'}
               </button>
               <button type="button" onClick={onSkipAi}
                 className="rounded-zineField border-zine border-ink bg-card px-3 py-1.5 font-body font-bold text-[12px] text-inkSoft shadow-zine-xs">
