@@ -279,6 +279,36 @@ export async function adminEditListing(req: Request, env: Env, id: string): Prom
   }
   if (!requested.length) return json({ error: "nothing to update" }, 400);
 
+  // [ADMIN-SCHEDULE-LOCK-1 2026-09-14] A PUBLISHED event's date and time are frozen for
+  // everyone, admins included. The creator's own PUT has always refused this
+  // (routes/listings.ts: 409 "cannot move a published event — cancel and re-create"),
+  // but ADMIN_EDITABLE carried the schedule columns, so the admin console was a way
+  // around a rule the product depends on: tickets are sold against a start time, the
+  // confirmation email and the /j/ link quote it, and listing_schedule.ts decides from
+  // starts_at + duration_min whether a show is over. Moving either under a buyer who has
+  // already paid changes what he bought without telling him. Cancel and re-create, which
+  // refunds by policy and mails the buyer, is the supported path.
+  //
+  // Deliberately NOT frozen: capacity, price and the content fields — those have their
+  // own rules, and a reviewer fixing a typo on a published listing is the reason this
+  // route exists. Drafts and pending_review listings are untouched by this gate: nothing
+  // has been sold yet, so there is nobody to surprise.
+  const SCHEDULE_LOCKED = ["starts_at", "duration_min", "timezone", "schedule_mode", "recurrence_days", "recurrence_time"];
+  if (row.status === "published" || row.status === "live") {
+    const frozen = requested.filter((k) => SCHEDULE_LOCKED.includes(k));
+    if (frozen.length) {
+      safeTrack(env, a.uid, "listing_admin_schedule_edit_refused", {
+        listing_id: id, listing_status: row.status, fields: frozen.join(","),
+      });
+      return json({
+        error: "schedule_locked",
+        message: "A published event's date and time cannot be changed. Cancel it and create a new one — that refunds anyone who booked and tells them why.",
+        fields: frozen,
+        listing_status: row.status,
+      }, 409);
+    }
+  }
+
   // Same coercion the creator's own PUT applies — see normListingFields.
   const norm = normListingFields(patch);
   // [MAXBOOK-DARK-1 2026-09-13] The per-person cap is shelved (listingMaxPerBookingEnabled,
