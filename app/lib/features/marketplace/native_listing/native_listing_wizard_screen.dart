@@ -8,6 +8,7 @@ import '../../../core/analytics.dart';
 import '../../../core/ava_log.dart';
 import '../../../core/availability_time.dart';
 import '../../../core/cached_image.dart';
+import '../../../core/listing_groups.dart';
 import '../../../core/listings_api.dart';
 import '../../../core/remote_config.dart';
 import '../../../core/ui/avatok_dark.dart';
@@ -76,6 +77,15 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   // object.
   final _joinReq = <String, bool>{'mic': false, 'cam': false, 'listen_only': false, 'recording': false};
   String _scheduleMode = 'fixed_date';
+  /// [LIST-EDIT-1] `listings.status` as loaded — 'draft' until the creator
+  /// submits. Only [_firstIncompleteStep] reads it: a listing that is already
+  /// out of the creator's hands must not be reopened on a step demanding a
+  /// field the server has already accepted.
+  String _status = 'draft';
+  /// [LIST-EDIT-1] The row's stored `attrs` exactly as it loaded. `attrs` is a
+  /// FULL-COLUMN REPLACE on the server, so everything in here that this wizard
+  /// does not render has to be carried back out again — see [_attrs].
+  Map<String, dynamic> _loadedAttrs = const {};
   String? _id;
   String? _error;
   bool _loading = false, _freeEntry = false, _adultsOnly = false, _dirty = false;
@@ -115,6 +125,25 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   // equals what was reviewed does not re-run.
   final _aiSuggestion = <String, CopyReviewField>{};
   final _aiReviewedText = <String, String>{};
+  // [LIST-EDIT-1 2026-09-14] THE EDIT BLOCKER.
+  //
+  // `_aiReviewedText` above is written ONLY by an actual call to the
+  // copy-review route, so reopening a saved listing left it empty and
+  // `_validate()` case 1 refused to leave the Pitch step with "Run the AI check
+  // on your title, blurb and description before continuing" — on copy the
+  // reviewer had already approved. Three fresh AI calls to change a price.
+  //
+  // The copy the server hands back is, by definition, copy that has already
+  // been through this wizard. It is recorded HERE, in its own map, rather than
+  // folded into `_aiReviewedText`, so that:
+  //   * `_aiReviewedText` keeps meaning "this session ran the check" — the
+  //     blip still offers "Use AI" on loaded copy, and the idempotency
+  //     short-circuit at the top of [_runCopyReview] is untouched;
+  //   * the gate is satisfied by loaded copy only while it is UNCHANGED. The
+  //     moment the creator rewrites a box, that box re-arms the gate, which is
+  //     exactly the owner's rule: only text the creator actually changes needs
+  //     a fresh check.
+  final _aiLoadedText = <String, String>{};
   /// Per-field 'source' ('ai' | 'rules') and 'ai_status' from the call that
   /// produced that field's suggestion — two fields can differ (one reviewed
   /// while the model was up, the next after it fell over).
@@ -174,10 +203,27 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
+    // [LIST-EDIT-1] These used to share ONE try block, and they are three
+    // different failures with three different consequences. A categories fetch
+    // that fell over (a) told a creator starting a BRAND-NEW listing "Could not
+    // load this listing", which is not a thing that happened, and (b) left the
+    // Pitch step's dropdown empty — and `_validate()` case 1 refuses to advance
+    // without a category, so no new listing could be made at all while
+    // /api/explore/categories was down.
+    // `freeEntryAllowed()` fails closed inside itself and never throws.
+    _freeEntryAllowed = await ListingsApi.freeEntryAllowed();
     try {
-      _freeEntryAllowed = await ListingsApi.freeEntryAllowed();
       _categories = await ListingsApi.categories();
-      if (_id != null) {
+    } catch (_) {
+      _categories = const [];
+    }
+    // The generated mirror is the documented offline fallback for exactly this
+    // (see the header of core/listing_groups.dart). The fetched list still wins
+    // whenever it arrives, so a category added in D1 after this build is never
+    // hidden by it.
+    if (_categories.isEmpty) _categories = _offlineCategories();
+    if (_id != null) {
+      try {
         final raw = await ListingsApi.wizardGet(_id!);
         if (raw['ok'] != true) throw StateError('Could not load listing');
         final detail = ListingDetail.fromJson(raw);
@@ -193,11 +239,19 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
         _mediaMode = l.mediaMode;
         _scheduleMode = l.scheduleMode ?? _scheduleMode;
         _freeEntry = l.freeEntry;
+        // [LIST-EDIT-1] `adults_only` was WRITE-ONLY: `_body()` posts it on
+        // every save and nothing ever read it back, so editing an 18+ listing
+        // silently reset it to false and the listing lost its age gate. There
+        // is still no control for it in this wizard (flagged, not invented
+        // here) — this at least stops an edit from clearing what is set.
+        _adultsOnly = l.adultsOnly;
+        _status = l.status.isEmpty ? 'draft' : l.status;
         _startsAt.text = _epochToLocal(l.startsAt, (l.timezone ?? '').isEmpty ? 'Asia/Kolkata' : l.timezone!);
         _duration.text = '${l.durationMin ?? 60}';
         _capacity.text = '${l.capacity ?? 0}';
         _coverUrls.addAll(l.coverMedia.map((m) => m is Map ? m['url']?.toString() : null).whereType<String>().where((u) => u.isNotEmpty));
         final attrs = l.attrs;
+        _loadedAttrs = Map<String, dynamic>.from(attrs);
         // [LIST-WIZARD-CONTRACT-1] These are OBJECT lists on the server, and the
         // editor below is line-based, so they must be rendered back into the same
         // "Label: body" form the parser reads — `_asText` used to print raw Dart
@@ -245,12 +299,75 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
             }
           }
         }
-        _step = 7;
+        // The three copy boxes now hold server copy, which counts as reviewed
+        // until the creator changes it — see [_aiLoadedText].
+        _seedLoadedCopy();
+        // [LIST-EDIT-1] This was `_step = 7` unconditionally — the read-only
+        // summary, whatever state the draft was in. A half-finished draft
+        // therefore opened on a page that shows blanks and whose only button is
+        // Submit, which the server then refuses. Open where the work actually
+        // is. A finished listing still lands on the summary, and a brand-new
+        // listing is untouched: it starts at step 1 as it always did.
+        _step = _firstIncompleteStep();
+      } catch (e) {
+        _error = 'Could not load this listing. Try again.';
       }
-    } catch (e) {
-      _error = 'Could not load this listing. Try again.';
     }
     if (mounted) setState(() => _loading = false);
+  }
+
+  /// The offline category mirror, shaped as the fetched list. Entries behind a
+  /// platform flag are left out: this path only runs when the server could not
+  /// be asked, so it cannot know whether the flag is on, and offering a
+  /// category the platform has disabled produces a listing that cannot publish.
+  static List<ExploreCategory> _offlineCategories() => [
+        for (final c in kListingSubCategories)
+          if (c.requiresFlag == null)
+            ExploreCategory.fromJson({
+              'id': c.id,
+              'label': c.label,
+              'emoji': c.emoji,
+              'group_id': c.group,
+            }),
+      ];
+
+  /// Records the copy that arrived from the server as already-reviewed.
+  void _seedLoadedCopy() {
+    _aiLoadedText
+      ..clear()
+      ..addAll({for (final key in _kCopyFields) key: _copyController(key).text.trim()});
+  }
+
+  /// Has [key] satisfied the Pitch step's AI gate?
+  ///
+  /// The gate is on the TEXT, not on a visit: the words in the box must be
+  /// words that have been through the check — either because this session ran
+  /// it on exactly them ([_aiReviewedText], which [_applySuggestion] also
+  /// updates), or because they came back from the server untouched
+  /// ([_aiLoadedText]). Rewrite the box and it is gated again, per field. This
+  /// is the same rule the web wizard applies (`copyFieldReviewed`), so the two
+  /// surfaces cannot disagree about whether a listing's copy was reviewed.
+  bool _aiGateSatisfied(String key) {
+    final current = _copyController(key).text.trim();
+    return (_aiReviewedText.containsKey(key) && _aiReviewedText[key] == current) ||
+        (_aiLoadedText.containsKey(key) && _aiLoadedText[key] == current);
+  }
+
+  /// [LIST-EDIT-1] The step an EXISTING listing opens on: the first one that
+  /// still has something wrong with it, or the summary when nothing has.
+  /// Step 0 (Type) is skipped — the kind is already decided and is the one
+  /// thing a saved listing always has.
+  int _firstIncompleteStep() {
+    // Submitted, approved, live or rejected: there is nothing to fill in, and
+    // the summary is the screen that says so. (Same rule as the web wizard's
+    // `resumeStepFor`.) Notably it keeps an already-published live event off the
+    // Time step, where the "choose a future date" rule would otherwise fire on a
+    // start the server accepted long ago.
+    if (_status != 'draft') return _steps.length - 1;
+    for (var step = 1; step < _steps.length - 1; step++) {
+      if (_validateStep(step) != null) return step;
+    }
+    return _steps.length - 1;
   }
 
   /// A stored policy value is only reusable if the server would still accept it
@@ -364,6 +481,19 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   /// Creator-owned `attrs`, built to `contentAttrsError` + `commercialPolicyError`
   /// exactly. Every entry is conditional: a key the creator has not filled in is
   /// left out entirely rather than sent empty.
+  /// Every `attrs` key this wizard actually renders and rebuilds. Anything else
+  /// the row carries is passed straight through by [_attrs].
+  static const Set<String> _kOwnedAttrsKeys = {
+    'content_how_it_works',
+    'content_house_rules',
+    'content_what_you_get',
+    'content_faq',
+    'content_who_for',
+    'content_not_for',
+    'join_requirements',
+    'face_photo',
+  };
+
   Map<String, dynamic> _attrs() {
     final consult = _kind == 'consult';
     final how = _pairs(_how.text, 'label', 'body', 24, 240, 5);
@@ -374,6 +504,28 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
     final notFor = _capped(_notFor.text, 80, 3);
     final join = {for (final e in _joinReq.entries) if (e.value) e.key: true};
     return {
+      // [LIST-EDIT-1 2026-09-14] SILENT DATA LOSS ACROSS SURFACES.
+      //
+      // `attrs` is a full-column REPLACE, not a merge — the Worker says so in
+      // as many words (worker/src/routes/listings.ts:286) — and the only key it
+      // splices back for us is the server-owned `poster`. So every key this
+      // wizard does not render was being DELETED by any save made here. The web
+      // wizard writes four this screen has no control for
+      // (`content_house_rules_intro`, `content_join_lead_minutes`,
+      // `content_free_cap_tokens`, `content_sample_qa`), so a creator who
+      // touched a price in the app lost work they did on the web, with nothing
+      // said either way.
+      //
+      // Carrying them through is safe: `contentAttrsError` validates SHAPE and
+      // is not gated on kind (listings.ts:450), and every value here is one the
+      // server already accepted. Two exclusions: `commercial_*`, which IS
+      // kind-gated and which this wizard rebuilds per kind below, and `poster`,
+      // which is server-owned.
+      for (final entry in _loadedAttrs.entries)
+        if (!_kOwnedAttrsKeys.contains(entry.key) &&
+            !entry.key.startsWith('commercial_') &&
+            entry.key != 'poster')
+          entry.key: entry.value,
       if (how.isNotEmpty) 'content_how_it_works': how,
       if (rules.isNotEmpty) 'content_house_rules': rules,
       // 3 is the server's FLOOR for these two, not a nicety (listings.ts:503,
@@ -474,8 +626,12 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   /// a creator hears about a problem on the screen that owns the field instead of
   /// two steps later in the Worker's words. Every bound below is quoted from the
   /// rule it mirrors — when one changes on the server, change it here too.
-  String? _validate() {
-    switch (_step) {
+  String? _validate() => _validateStep(_step);
+
+  /// Split from [_validate] so [_firstIncompleteStep] can ask about a step
+  /// other than the one on screen without moving the creator to it.
+  String? _validateStep(int step) {
+    switch (step) {
       case 1:
         if (_title.text.trim().isEmpty || _description.text.trim().isEmpty) return 'Add a title and description.';
         if (_category.isEmpty) return 'Choose a category — a listing cannot be published without one.';
@@ -492,7 +648,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
         // succeeds, so a creator can never be held by a box the provider
         // refuses to review.
         if (!_aiUnavailable) {
-          final pending = _kCopyFields.where((f) => !_aiReviewedText.containsKey(f)).toList();
+          final pending = _kCopyFields.where((f) => !_aiGateSatisfied(f)).toList();
           if (pending.isNotEmpty) {
             return 'Run the AI check on ${pending.map((f) => _kCopyFieldLabels[f]!.toLowerCase()).join(', ')} before continuing.';
           }
@@ -579,6 +735,15 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
     'Asia/Kolkata', 'Asia/Dubai', 'Asia/Singapore', 'Europe/London',
     'Europe/Berlin', 'America/New_York', 'America/Los_Angeles', 'Australia/Sydney', 'UTC',
   ];
+
+  /// [LIST-EDIT-1] The picker's options, plus the LISTING's own zone when this
+  /// short list does not carry it. The web wizard offers more zones, so a
+  /// listing saved there as, say, `Europe/Paris` opened here reading
+  /// "Asia/Kolkata" while `_body()` went on sending Europe/Paris — the creator
+  /// was shown a zone their listing does not have, next to a start-time box
+  /// that is wall-clock in the real one.
+  List<String> get _zoneOptions =>
+      _kZones.contains(_zone) ? _kZones : [_zone, ..._kZones];
 
 
   // ---------------------------------------------------------------------------
@@ -1181,11 +1346,21 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
     );
   }
 
+  /// [LIST-LABEL-1 2026-09-14] The category is an ID on the wire
+  /// (`live_puja_ritual`); the summary must show the LABEL ("Puja"). This fell
+  /// back to the raw id whenever the fetched list did not carry the listing's
+  /// category — which is every time /api/explore/categories was unavailable, and
+  /// every listing filed under a category newer than the fetched list.
+  ///
+  /// Fetched list, then the generated offline mirror, then — only for an id no
+  /// build-time mirror can know — a humanised slug. Never the raw id.
   String _categoryLabel() {
     for (final c in _categories) {
-      if (c.id == _category) return '${c.emoji} ${c.label}';
+      if (c.id == _category) return '${c.emoji} ${c.label}'.trim();
     }
-    return _category;
+    final known = listingSubCategoryById(_category);
+    if (known != null) return '${known.emoji} ${known.label}'.trim();
+    return listingCategoryLabel(_category);
   }
 
   Widget _summaryLine(String label, String value) => Padding(
@@ -1240,6 +1415,9 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
         if (!_freeEntry && promoPct > 0)
           _summaryLine('Promo code', '${_promoCode.text.trim().toUpperCase()} · $promoPct% off'),
         _summaryLine('Media', _mediaMode == 'audio_only' ? 'Audio only' : 'Audio and video'),
+        // Only when it is set: this wizard cannot turn it on, so a line reading
+        // "No" on every listing would only ever be noise.
+        if (_adultsOnly) _summaryLine('Audience', 'Adults only — 18+'),
         _summaryLine('Schedule',
             _scheduleMode == 'fixed_date' ? 'Fixed date and time' : 'On request (from my availability)'),
         _summaryLine('Time zone', _zone),
@@ -1382,9 +1560,9 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
           // A free-text zone is checked against Intl and 400s on a typo
           // (listings.ts:386). A list cannot be mistyped.
           DropdownButtonFormField<String>(
-            value: _kZones.contains(_zone) ? _zone : _kZones.first,
+            value: _zoneOptions.contains(_zone) ? _zone : _kZones.first,
             decoration: const InputDecoration(labelText: 'Time zone'),
-            items: [for (final z in _kZones) DropdownMenuItem(value: z, child: Text(z))],
+            items: [for (final z in _zoneOptions) DropdownMenuItem(value: z, child: Text(z))],
             onChanged: (v) => setState(() { _timezone.text = v ?? _kZones.first; _dirty = true; }),
           ),
           const SizedBox(height: Msg.s3),

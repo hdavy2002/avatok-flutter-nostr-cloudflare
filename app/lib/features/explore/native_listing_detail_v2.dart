@@ -10,6 +10,7 @@ import '../../core/analytics.dart';
 import '../../core/availability_time.dart';
 import '../../core/avatar.dart';
 import '../../core/cached_image.dart';
+import '../../core/listing_groups.dart';
 import '../../core/listings_api.dart';
 import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
@@ -80,6 +81,18 @@ String? youTubeIdOf(String? url) {
   ).firstMatch(text);
   return match?.group(1);
 }
+
+/// [LIST-APP-PARITY-2 2026-09-14] The four `join_requirements` keys the server
+/// accepts (`worker/src/routes/listings.ts:534`), in the buyer's words. Kept in
+/// step with the creator-side copy in
+/// `features/marketplace/native_listing/native_listing_wizard_screen.dart`
+/// (`_kJoinRequirementLabels`), which is private to that screen.
+const Map<String, String> kJoinRequirementLabels = {
+  'mic': 'MIC NEEDED',
+  'cam': 'CAMERA NEEDED',
+  'listen_only': 'LISTENING ONLY',
+  'recording': 'THIS SESSION IS RECORDED',
+};
 
 /// [LISTING-EXPIRY-1] The one line a closed listing shows instead of a CTA.
 String _closedLabel(ListingCard l) {
@@ -662,7 +675,10 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
     return Padding(
         padding: const EdgeInsets.fromLTRB(2, 20, 2, 20),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(l.category.toUpperCase(),
+          // [LIST-LABEL-1 2026-09-14] `category` is an ID, not a label. This
+          // eyebrow printed it raw, so the buyer page for the new Puja category
+          // read "LIVE_PUJA_RITUAL" where "PUJA" belongs.
+          Text(listingCategoryLabel(l.category).toUpperCase(),
               style: ADText.sectionLabel(c: AD.textTertiary)),
           const SizedBox(height: 6),
           Text(l.title,
@@ -715,7 +731,11 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
                 horizontal: BorderSide(color: AD.textTertiary, width: 1))),
         child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
           _stat('${l.joinedCount}', 'BOOKED'),
-          _stat('${l.favorited ? '♥' : l.ratingCount}', 'FAVOURITES'),
+          // [LIST-APP-PARITY-2] This was labelled FAVOURITES and showed
+          // `ratingCount` — there is no favourite count on the wire at all, so
+          // the number under it was simply the wrong number. It is labelled what
+          // it is; a real favourites count needs a server field first.
+          _stat('${l.ratingCount}', 'RATINGS'),
           _stat('${creator?.listings.length ?? 1}', 'SHOWS LISTED'),
           _stat('${d.creatorRating?.toStringAsFixed(1) ?? '—'}', 'HOST RATING')
         ]));
@@ -823,6 +843,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
   Widget _sections(ListingDetail d) =>
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _section('HOW THE SHOW WORKS.', _howItWorks(d.listing)),
+        _extras(d.listing),
         _host(d),
         _rules(d.listing),
         _reviews(d),
@@ -885,6 +906,73 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
               padding: const EdgeInsets.only(top: 5),
               child: Text(body, style: ADText.preview()))
       ]));
+
+  /// Every `content_*` list is stored as plain strings (listings.ts:439) —
+  /// anything else in the row is dropped rather than printed as a Dart literal.
+  static List<String> _stringList(dynamic value) => value is List
+      ? value
+          .map((v) => (v ?? '').toString().trim())
+          .where((v) => v.isNotEmpty)
+          .toList()
+      : const <String>[];
+
+  /// [LIST-APP-PARITY-2 2026-09-14] Everything the wizard collects that this
+  /// page never showed.
+  ///
+  /// `spoken_lang`, `content_what_you_get`, `content_who_for`,
+  /// `content_not_for`, `content_faq` and `join_requirements` are all on the web
+  /// buyer page (`web/src/components/ListingDetailView.astro`) and none of them
+  /// were here — the wizard makes a creator write at least three FAQ entries and
+  /// pick their languages, and an app buyer was shown neither. Every section
+  /// disappears when its field is empty, so a listing that carries none of them
+  /// renders exactly as it did before.
+  Widget _extras(ListingCard l) {
+    final langs = (l.spokenLang ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    final whatGet = _stringList(l.attrs['content_what_you_get']);
+    final whoFor = _stringList(l.attrs['content_who_for']);
+    final notFor = _stringList(l.attrs['content_not_for']);
+    final rawFaq = l.attrs['content_faq'];
+    final faq = rawFaq is List ? rawFaq : const [];
+    final rawJoin = l.attrs['join_requirements'];
+    final join = rawJoin is Map
+        ? [
+            for (final e in kJoinRequirementLabels.entries)
+              if (rawJoin[e.key] == true) e.value
+          ]
+        : const <String>[];
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (whatGet.isNotEmpty)
+        _section('WHAT YOU GET.',
+            Column(children: [for (final line in whatGet) _infoCard(line)])),
+      if (whoFor.isNotEmpty || notFor.isNotEmpty)
+        _section(
+            'WHO IT IS FOR.',
+            Column(children: [
+              for (final line in whoFor) _infoCard('FOR YOU IF', body: line),
+              for (final line in notFor) _infoCard('NOT FOR YOU IF', body: line),
+            ])),
+      if (langs.isNotEmpty || join.isNotEmpty)
+        _section(
+            'GOOD TO KNOW.',
+            Wrap(spacing: 7, runSpacing: 7, children: [
+              for (final lang in langs)
+                _pill(lang.toUpperCase(), AD.cardHover, dark: true),
+              for (final need in join) _pill(need, AD.cardHover, dark: true),
+            ])),
+      if (faq.isNotEmpty)
+        _section(
+            'COMMON QUESTIONS.',
+            Column(children: [
+              for (final row in faq)
+                _infoCard(_pairHeading(row, 'q', 'QUESTION'),
+                    body: _pairBody(row, 'a'))
+            ])),
+    ]);
+  }
 
   Widget _host(ListingDetail d) {
     final c = creator;
