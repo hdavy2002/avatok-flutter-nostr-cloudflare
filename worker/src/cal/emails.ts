@@ -172,6 +172,26 @@ async function queueEmail(env: Env, uid: string, subject: string, html: string, 
   } catch { return "failed"; }
 }
 
+/** [LISTING-APPROVAL-EMAIL-1] Tell the creator as soon as moderation approves
+ * the listing. The outbox key makes retries and duplicate admin clicks safe. */
+export async function emailListingApproved(env: Env, c: { listingId: string; creatorId: string; title: string }): Promise<EmailQueueStatus> {
+  const dashboardUrl = `${webBase(env)}/dashboard/listings?status=approved`;
+  return queueEmail(
+    env,
+    c.creatorId,
+    `Listing approved: ${c.title}`,
+    shell(
+      "Your listing is approved",
+      `<p style="margin:0 0 8px;font-weight:600">${escapeHtml(c.title)}</p>
+       <p style="margin:0 0 8px">The team approved your listing. Your poster will be generated next from its title, category, tags and description.</p>
+       <p style="margin:0 0 8px">We’ll let you know when the poster is ready and the listing can go live.</p>`,
+      { label: "View your listing", url: dashboardUrl },
+    ),
+    undefined,
+    { outboxKey: `listing-approved:${c.listingId}:v1`, messageVersion: "listing-approved.v1", verified: true },
+  );
+}
+
 async function joinCta(env: Env, bookingId: string, start: number): Promise<{ label: string; url: string }> {
   // Token valid until 24h after start — covers reschedules + late joins.
   const token = await signJoinToken(env, bookingId, start + 86_400_000);

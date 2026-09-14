@@ -4,12 +4,13 @@ import { requireAdmin } from "./admin_money";
 import { track } from "../hooks";
 import { generateListingPoster, type PosterState } from "../lib/listing_poster";
 import { resolveCreatorSubject } from "../lib/poster_subject";
+import { emailListingApproved } from "../cal/emails";
 import { readConfig } from "./config";
 // [C03 MKT-PUBLISH-UNIFY-1] The one authoritative publish path — see the doc
 // comment on publishListingAuthoritative() in routes/listings.ts. `publish`
 // below no longer does its own raw status UPDATE; it defers to the same
 // function the creator's own publish endpoint calls.
-import { publishListingAuthoritative, reviewedContentHash, normListingFields, polishListingCopy } from "./listings";
+import { publishListingAuthoritative, reviewedContentHash, normListingFields, polishListingCopy, runAutoPosterGeneration } from "./listings";
 import { listingBlockers } from "../lib/listing_blockers";
 // [C01 MKT-STATUS-GATE-1] Same transition table setListingStatus()/publish use —
 // see item 4: `reject_listing` used to flip ANY status straight to 'rejected'
@@ -430,7 +431,7 @@ export async function adminEditListing(req: Request, env: Env, id: string): Prom
   });
 }
 
-export async function adminListingAction(req: Request, env: Env, id: string): Promise<Response> {
+export async function adminListingAction(req: Request, env: Env, id: string, exec?: ExecutionContext): Promise<Response> {
   const a = await requireAdmin(req, env); if (a instanceof Response) return a;
   const body = await req.json().catch(() => ({})) as any;
   const action = String(body.action || "");
@@ -645,6 +646,9 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
   }
 
   let next = row.status;
+  let generatePosterAfterApproval = false;
+  let posterAttemptAfterApproval = 0;
+  let approvalPosterCfg: any = null;
   if (action === "approve_listing") {
     const legacyRebind = String(row.status) === "approved" && !row.reviewed_content_hash;
     if (!legacyRebind) {
@@ -654,6 +658,23 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
       }
     }
     next = "approved";
+    // [LISTING-POSTER-PENDING-1] Approval is the first point at which the
+    // poster may be generated. Keep the approval response fast and run the
+    // image job under waitUntil after the approved row is committed.
+    const posterCfg = await readConfig(env);
+    approvalPosterCfg = posterCfg;
+    const priorPoster = attrs.poster ?? null;
+    const attempt = Number(priorPoster?.attempt ?? 0) + 1;
+    const manualCoverCount = safeParse<any[]>(row.cover_media, [])
+      .filter((c) => c && c.source !== "ai_poster").length;
+    generatePosterAfterApproval = (posterCfg as any).posterAutoGenerateOnSubmit === true
+      && (!priorPoster || priorPoster.status === "failed")
+      && attempt <= (Number((posterCfg as any).posterAutoGenerateMaxAttempts ?? 2) || 2)
+      && manualCoverCount < 5;
+    if (generatePosterAfterApproval) {
+      posterAttemptAfterApproval = attempt;
+      attrs.poster = { ...(priorPoster || {}), status: "generating", generated_at: now, auto: true, attempt };
+    }
   }
   if (action === "reject_listing") {
     const reason = String(body.reason || "").trim();
@@ -783,6 +804,35 @@ export async function adminListingAction(req: Request, env: Env, id: string): Pr
     creator_id: row.creator_id ?? null,
     reason_present: !!(reasonForHistory && reasonForHistory.length > 0),
   });
+
+  if (action === "approve_listing") {
+    const emailStatus = await emailListingApproved(env, {
+      listingId: id,
+      creatorId: String(row.creator_id || ""),
+      title: String(row.title || "Your listing"),
+    });
+    safeTrack(env, a.uid, "listing_approval_email_queued", {
+      listing_id: id, creator_id: row.creator_id ?? null, status: emailStatus,
+    });
+    if (generatePosterAfterApproval) {
+      const work = runAutoPosterGeneration(env, {
+        listingId: id,
+        ownerUid: String(row.creator_id || ""),
+        row: { ...row, status: "approved", attrs: JSON.stringify(attrs) },
+        actorUid: a.uid,
+        attempt: posterAttemptAfterApproval,
+        variants: approvalPosterCfg?.posterVariantsEnabled === true,
+        verify: approvalPosterCfg?.posterVerifyEnabled === true,
+        composeFallback: approvalPosterCfg?.posterComposeFallbackEnabled === true,
+        verifyMaxAttempts: Number(approvalPosterCfg?.posterVerifyMaxAttempts ?? 3) || 3,
+        subjectEnabled: approvalPosterCfg?.posterCreatorSubjectEnabled === true,
+        subjectPhoto: approvalPosterCfg?.posterCreatorPhotoEnabled === true,
+        dialogue: approvalPosterCfg?.posterDialogueEnabled === true,
+      }).catch((e) => console.error("listing_poster_after_approval_unhandled", { listing_id: id, error: String((e as any)?.message || e) }));
+      if (exec && typeof exec.waitUntil === "function") exec.waitUntil(work);
+      else void work;
+    }
+  }
 
   return json({ ok: true, id, status: next, poster: attrs.poster || null, admin_id: a.uid, reason: reasonForHistory || null });
 }

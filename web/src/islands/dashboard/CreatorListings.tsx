@@ -69,6 +69,23 @@ function coins(n?: number | null) {
   return inrOrFree(n);
 }
 
+/** [LISTING-POSTER-PENDING-1] Explain the temporary state without pretending
+ * that a generated poster already exists. */
+function PendingPosterPlaceholder() {
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-lilac px-4 text-center text-inkSoft" role="img" aria-label="Poster will be generated after listing approval">
+      <svg width="96" height="82" viewBox="0 0 96 82" fill="none" aria-hidden="true">
+        <rect x="18" y="8" width="60" height="66" rx="5" fill="#FFF3D6" stroke="#171717" strokeWidth="3" />
+        <path d="M27 57 40 43l9 8 9-12 11 18" stroke="#FFB800" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="40" cy="27" r="6" fill="#B9E769" stroke="#171717" strokeWidth="3" />
+        <path d="M80 18v12M74 24h12" stroke="#FF6B5F" strokeWidth="3" strokeLinecap="round" />
+        <path d="M84 48v10M79 53h10" stroke="#5AC8FA" strokeWidth="3" strokeLinecap="round" />
+      </svg>
+      <span className="font-mono text-[11px] font-bold uppercase tracking-[0.06em]">Poster after approval</span>
+    </div>
+  );
+}
+
 function Inner({ kind, createHref, emptyTitle, emptyBody }: {
   kind?: string; createHref: string; emptyTitle: string; emptyBody: string;
 }) {
@@ -205,7 +222,7 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
             {banner === 'submitted' ? (
               <>
                 <p className="font-body font-bold text-[15px] text-ink">Submitted for review.</p>
-                <p className="mt-1 font-body font-bold text-[13px] text-inkSoft">A poster is being generated for it now, and the team will check it before it goes live. We’ll let you know.</p>
+                <p className="mt-1 font-body font-bold text-[13px] leading-relaxed text-inkSoft">The team is checking your listing and will generate your poster after they approve it. This usually takes about an hour, but can take up to 48 hours if we need to resolve an issue or date conflict. We’ll email you when it’s approved.</p>
               </>
             ) : (
               <p className="font-body font-bold text-[15px] text-ink">Published.</p>
@@ -260,7 +277,7 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
                       ListingTile and missed here. toCardView resolves both. */}
                   {view.poster ? (
                     <img src={cfImage(view.poster, { width: 480 })} alt="" className="h-full w-full object-cover" loading="lazy" />
-                  ) : (
+                  ) : (st === 'pending_review' || st === 'approved') ? <PendingPosterPlaceholder /> : (
                     <div className="flex h-full w-full items-center justify-center font-mono text-[14px] text-inkMute font-bold">No cover photo</div>
                   )}
                   <span className={`absolute left-2 top-2 rounded-full border-zine border-ink px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.04em] shadow-zine-xs ${STATUS_TONE[st] ?? 'bg-paper2 text-inkSoft'}`}>{STATUS_LABEL[st] ?? st}</span>

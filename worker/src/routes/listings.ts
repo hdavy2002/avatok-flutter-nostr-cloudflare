@@ -1925,14 +1925,15 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
 
 // POST /api/listings/:id/submit — creator moves a draft into the approval queue.
 //
-// [MKT-POSTER-AUTO-1] Also kicks off AI poster generation so an admin opening
-// the review queue already has a poster waiting, rather than having to click
-// "generate" themselves. Gated behind `posterAutoGenerateOnSubmit` (default
+// [LISTING-POSTER-PENDING-1] Poster generation is deferred until an admin
+// approves the listing, rather than starting while it is still in the review
+// queue. Approval starts the detached image job after the approved row commits.
+/* Previous submit-time behavior was gated behind `posterAutoGenerateOnSubmit`.
 // false — declared in routes/config.ts DEFAULTS by a concurrent change; read
 // here via the normal readConfig() layering, never assumed from DEFAULTS
-// alone). Generation must never block this response: the synchronous D1
+// alone). Generation must never block the submit response: the synchronous D1
 // write below flips the poster into a `generating` placeholder so the admin
-// UI shows a spinner immediately, and the actual image call runs detached.
+// UI shows a spinner immediately, and the actual image call runs detached. */
 /** [COPY-PIPELINE-1 2026-09-05] What we keep so an admin can compare and revert. */
 export type ListingCopyOriginal = { title: string; blurb: string; description: string };
 export type ListingCopyPolishMeta = {
@@ -2101,10 +2102,11 @@ export async function submitListingForApproval(req: Request, env: Env, id: strin
     attrs.copy_polish = copyPolish.meta;
   }
 
-  // [MKT-POSTER-AUTO-1] Decide whether to auto-generate BEFORE the write so the
-  // placeholder poster state lands in the same batch as the status flip.
+  // [LISTING-POSTER-PENDING-1] Do not generate a poster on creator submission.
+  // Approval owns that side effect so the creator sees a truthful pending state
+  // while the team checks dates, conflicts and listing content.
   const cfg = await readConfig(env);
-  const autoOn = (cfg as any).posterAutoGenerateOnSubmit === true;
+  const autoOn = false;
   const maxAttempts = Number((cfg as any).posterAutoGenerateMaxAttempts ?? 2) || 2;
   const priorPoster = attrs.poster ?? null;
   const priorAttempt = Number(priorPoster?.attempt ?? 0) || 0;
@@ -2204,7 +2206,7 @@ export async function submitListingForApproval(req: Request, env: Env, id: strin
 // then re-reads the listing and merges the result back in — never a blind
 // overwrite, because an admin can act on the row (approve/reject/regenerate)
 // while generation is still in flight. If the row has moved on (no longer
-// pending_review, or the poster is no longer in the exact `generating` state
+// pending_review/approved, or the poster is no longer in the exact `generating` state
 // this call put it in), the write is abandoned rather than clobbering
 // whatever the admin did. Any failure — including an abandoned write — must
 // still land the poster on `failed`, never leave it stuck on `generating`.
@@ -2233,7 +2235,7 @@ async function persistPosterAttempt(
 ): Promise<{ ok: boolean; errorKind?: string; poster: PosterState }> {
   const db = metaDb(env);
   const claims = (attrs: any, status: any) =>
-    String(status) === "pending_review"
+    ["pending_review", "approved"].includes(String(status))
     && acceptStatuses.includes(String(attrs?.poster?.status))
     && Number(attrs?.poster?.attempt ?? -1) === attempt;
 
@@ -2256,7 +2258,7 @@ async function persistPosterAttempt(
   freshAttrs.poster = poster;
   const nextCoverMedia = coverMedia ? JSON.stringify(coverMedia) : fresh.cover_media;
   const saved = await db.prepare(
-    "UPDATE listings SET attrs=?2, cover_media=?3, updated_at=?4 WHERE id=?1 AND status='pending_review' AND authority_version=?5",
+    "UPDATE listings SET attrs=?2, cover_media=?3, updated_at=?4 WHERE id=?1 AND status IN ('pending_review','approved') AND authority_version=?5",
   ).bind(listingId, JSON.stringify(freshAttrs), nextCoverMedia, Date.now(), Number(fresh.authority_version ?? 0)).run();
   if (saved.meta?.changes ?? 0) return { ok: true, poster };
 
@@ -2292,7 +2294,7 @@ async function persistPosterAttempt(
   }
   latestAttrs.poster = terminalPoster;
   const retried = await db.prepare(
-    "UPDATE listings SET attrs=?2,cover_media=?3,updated_at=?4 WHERE id=?1 AND status='pending_review' AND authority_version=?5",
+    "UPDATE listings SET attrs=?2,cover_media=?3,updated_at=?4 WHERE id=?1 AND status IN ('pending_review','approved') AND authority_version=?5",
   ).bind(
     listingId,
     JSON.stringify(latestAttrs),
@@ -2306,7 +2308,7 @@ async function persistPosterAttempt(
   return { ok: !errorKind, errorKind, poster: terminalPoster };
 }
 
-async function runAutoPosterGeneration(
+export async function runAutoPosterGeneration(
   env: Env,
   opts: {
     listingId: string; ownerUid: string; row: Record<string, any>; actorUid: string; attempt: number;
