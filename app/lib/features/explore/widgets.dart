@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/avatar_cache.dart';
+import '../../core/listing_groups.dart';
 import '../../core/listings_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
@@ -137,7 +138,8 @@ class ListingCardTile extends StatelessWidget {
                     Container(width: 6, height: 6, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
                     const SizedBox(width: 4),
                   ],
-                  Text(live ? 'Live' : card.category,
+                  // [LIST-LABEL-1 2026-09-14] The LABEL, never the raw id.
+                  Text(live ? 'Live' : listingCategoryLabel(card.category),
                       style: ADText.statCaption(c: live ? Colors.white : AD.textPrimary)),
                 ]),
               )),

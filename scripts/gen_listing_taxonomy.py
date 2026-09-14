@@ -282,6 +282,40 @@ String? listingGroupForCategory(String? category) {
   return null;
 }
 
+/// The mirror's entry for a category id, or null when this build has never
+/// heard of it.
+ListingSubCategory? listingSubCategoryById(String? id) {
+  if (id == null || id.isEmpty) return null;
+  for (final c in kListingSubCategories) {
+    if (c.id == id) return c;
+  }
+  return null;
+}
+
+/// [LIST-LABEL-1 2026-09-14] Display text for a category id.
+///
+/// `listings.category` holds an ID on every wire and in every row
+/// (`live_puja_ritual`), never a label. Surfaces that printed it raw showed
+/// creators and buyers "LIVE_PUJA_RITUAL" where "Puja" belongs — the same
+/// defect the web wizard's step-8 summary had.
+///
+/// ⚠️ THE FETCHED LIST STILL WINS. A caller that has
+/// `GET /api/explore/categories` must try that first and only fall back here:
+/// a category added in D1 after this build exists only in the fetched list.
+/// A Title Cased slug is the last resort, for an id no build-time mirror can
+/// possibly know — the raw snake_case id is never returned.
+String listingCategoryLabel(String? id) {
+  final known = listingSubCategoryById(id);
+  if (known != null) return known.label;
+  final raw = (id ?? '').trim();
+  if (raw.isEmpty) return '';
+  return raw
+      .split(RegExp(r'[_\s]+'))
+      .where((w) => w.isNotEmpty)
+      .map((w) => w[0].toUpperCase() + w.substring(1))
+      .join(' ');
+}
+
 /// Fee split for one participant for one hour, in tokens (1 token = ₹1).
 ///
 /// ⚠️ FOR DISPLAY ONLY. The worker recomputes this when money actually moves;

@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
+import '../../core/listing_groups.dart';
 import '../../core/listings_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
@@ -91,9 +92,11 @@ class _QuickInfoSheet extends StatelessWidget {
                     children: [
                       // `category` is non-nullable on ListingCard — an empty
                       // string is the "unset" value, not null.
+                      // [LIST-LABEL-1 2026-09-14] The LABEL, never the id —
+                      // this read "LIVE_PUJA_RITUAL" on a Puja listing.
                       if (card.category.isNotEmpty)
                         Text(
-                          card.category.toUpperCase(),
+                          listingCategoryLabel(card.category).toUpperCase(),
                           style: ADText.preview(c: AD.textSecondary)
                               .copyWith(fontWeight: FontWeight.w700, letterSpacing: 1.6),
                         ),
