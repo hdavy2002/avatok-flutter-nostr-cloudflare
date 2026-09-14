@@ -91,10 +91,16 @@ export default function PosterPanel({
   // "working" from "frozen", which is exactly the doubt this panel is fixing.
   useEffect(() => {
     if (!inFlight) { setElapsed(0); return; }
-    setElapsed(0);
+    // Keep the timer anchored to the server's generated_at timestamp. A full
+    // page reload must not make an existing job look as if it started again.
+    const startedAt = Number(poster?.generated_at ?? 0);
+    const readElapsed = () => setElapsed(startedAt > 0
+      ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000))
+      : 0);
+    readElapsed();
     const id = window.setInterval(() => setElapsed((s) => s + 1), 1000);
     return () => window.clearInterval(id);
-  }, [inFlight]);
+  }, [inFlight, poster?.generated_at]);
 
   return (
     <div className="rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm">
@@ -133,6 +139,12 @@ export default function PosterPanel({
             {pollTimedOut && (
               <p className="font-body text-[13px] font-bold text-coral">Still generating after ~2 minutes — hit Refresh to keep checking, or investigate the poster job.</p>
             )}
+            <button type="button" disabled={busy} onClick={onPoll} className="rounded-full border-zine border-ink bg-paper px-4 py-2 font-mono text-[13px] font-bold uppercase tracking-[0.06em] text-ink shadow-zine-xs disabled:opacity-50">
+              Refresh poster status
+            </button>
+            <p className="max-w-xs font-body text-[12px] font-bold text-inkMute">
+              This only checks the current job. It will not start another poster generation.
+            </p>
             <style>{`
               /* A slow sweep across the empty frame, so the panel is visibly
                  alive even at the moments the spinner is between frames.

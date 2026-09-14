@@ -2416,10 +2416,10 @@ export async function runAutoPosterGeneration(
       if (fresh) {
         let freshAttrs: any = {};
         try { freshAttrs = fresh.attrs ? JSON.parse(String(fresh.attrs)) : {}; } catch { freshAttrs = {}; }
-        if (String(fresh.status) === "pending_review" && freshAttrs.poster?.status === "generating" && Number(freshAttrs.poster?.attempt ?? -1) === opts.attempt) {
+        if (["pending_review", "approved"].includes(String(fresh.status)) && freshAttrs.poster?.status === "generating" && Number(freshAttrs.poster?.attempt ?? -1) === opts.attempt) {
           freshAttrs.poster = { ...freshAttrs.poster, status: "failed", error: String((e as any)?.message || "unexpected error").slice(0, 180) };
           await db.prepare(
-            "UPDATE listings SET attrs=?2, updated_at=?3 WHERE id=?1 AND status='pending_review' AND authority_version=?4",
+            "UPDATE listings SET attrs=?2, updated_at=?3 WHERE id=?1 AND status IN ('pending_review','approved') AND authority_version=?4",
           ).bind(opts.listingId, JSON.stringify(freshAttrs), Date.now(), Number(fresh.authority_version ?? 0)).run();
         }
       }
@@ -3237,7 +3237,7 @@ export async function reconcileListingPublicationEffects(
   // permanently refusing regeneration. Reset stale attempts to a retryable failure.
   const stalePosters = await metaDb(env).prepare(
     `SELECT id,attrs,authority_version FROM listings
-      WHERE status='pending_review'
+      WHERE status IN ('pending_review','approved')
         AND json_extract(attrs,'$.poster.status')='generating'
         AND CAST(json_extract(attrs,'$.poster.generated_at') AS INTEGER)<=?1
       ORDER BY updated_at ASC LIMIT ?2`,
@@ -3251,7 +3251,7 @@ export async function reconcileListingPublicationEffects(
       error: "Poster generation was interrupted. Regenerate to try again.",
     };
     const reset = await metaDb(env).prepare(
-      "UPDATE listings SET attrs=?2,updated_at=?3 WHERE id=?1 AND status='pending_review' AND authority_version=?4",
+      "UPDATE listings SET attrs=?2,updated_at=?3 WHERE id=?1 AND status IN ('pending_review','approved') AND authority_version=?4",
     ).bind(row.id, JSON.stringify(attrs), Date.now(), Number(row.authority_version ?? 0)).run();
     if (reset.meta?.changes) repaired++;
   }
