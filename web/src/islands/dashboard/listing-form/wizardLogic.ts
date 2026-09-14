@@ -165,13 +165,23 @@ export function bodyForSave(d: ListingDraft, opts: { includeAttrs: boolean; incl
     schedule_mode: d.schedule_mode,
     title: d.title.trim(),
     blurb: d.blurb.trim() || undefined,
-    description: d.description.trim() || undefined,
+    /* [WIZ-EDIT-CLEAR-1 2026-09-14] SEND THE EMPTY STRING, do not drop the key.
+     *
+     * The server's PUT only touches keys that are PRESENT (normFields in
+     * worker/src/routes/listings.ts), so `|| undefined` meant a creator editing
+     * a saved listing could add to these fields but never empty one: delete the
+     * description, press Save and continue, reload — the old description is
+     * back, with no error and nothing to tell them the deletion did not take.
+     * normFields maps '' the way the control promises (description stores '',
+     * location and video_url store NULL), so the empty string is the right
+     * wire value for "the creator cleared this". */
+    description: d.description.trim(),
     category: d.category || undefined,
     // [MKT-3GROUP-1] The Vibe tags control is gone from the UI (owner decision
     // 2026-09-05) — always send an empty array rather than whatever an old
     // draft happened to load with, per spec §6 step 2.
     vibe_tags: [],
-    spoken_lang: d.spoken_lang.length ? d.spoken_lang.join(',') : undefined,
+    spoken_lang: d.spoken_lang.join(','),
     price: d.free_entry ? 0 : (d.price ? Math.round(Number(d.price)) : 0),
     // [PRICE-HOURLY-1] Every session is priced per hour now — the "Charged
     // per" dropdown is gone and the server forces this value anyway; send it
@@ -183,8 +193,8 @@ export function bodyForSave(d: ListingDraft, opts: { includeAttrs: boolean; incl
     // dropped the field (owner decision). The server defaults it to 4 when the
     // key is absent (worker/src/routes/listings.ts:1276 on PUT, :1490 on
     // create), so leaving it out is the same value the form used to send.
-    video_url: d.video_url.trim() || undefined,
-    location: d.location.trim() || undefined,
+    video_url: d.video_url.trim(),
+    location: d.location.trim(),
     adults_only: d.adults_only,
     credential: d.credential.trim() || undefined,
     cover_media: d.cover_media,
@@ -199,8 +209,12 @@ export function bodyForSave(d: ListingDraft, opts: { includeAttrs: boolean; incl
     body.duration_min = d.duration_min;
   }
   // Live events: the seat cap the booking box counts down. 0/blank = unlimited.
+  // [WIZ-EDIT-CLEAR-1] Always sent for a non-consult. Omitting it on 0 meant the
+  // seats field could be raised but never cleared — blanking "60" left 60 on the
+  // server, and the listing kept selling out at a cap the creator had removed.
+  // normFields turns a falsy capacity into NULL, which is exactly "unlimited".
   if (d.kind === 'consult') body.capacity = 1;
-  else if (d.capacity && d.capacity > 0) body.capacity = d.capacity;
+  else body.capacity = d.capacity && d.capacity > 0 ? d.capacity : 0;
   if (opts.includeAttrs) {
     body.attrs = withCommercialPolicy(buildAttrs(d), d, opts.includePolicy);
   }
@@ -209,15 +223,69 @@ export function bodyForSave(d: ListingDraft, opts: { includeAttrs: boolean; incl
 
 export interface FieldProblem { field: string; message: string }
 
-/** [WIZ-AI-ASSIST-1] Which of the three pitch fields have been through the AI
- *  check. A field counts once the creator has APPLIED a suggestion for it or
- *  explicitly kept their own words — both are a decision, which is all the gate
- *  is asking for. Lives outside `ListingDraft` on purpose: it is a record of
- *  what happened in this session, not listing data, and it is never sent. */
-export interface AiAssisted { title: boolean; blurb: boolean; description: boolean }
+/** [WIZ-AI-REVIEWED-TEXT-1 2026-09-14] The gate remembers TEXT, not booleans.
+ *
+ *  A boolean `aiAssisted` was session-only, so reopening a SAVED listing to edit
+ *  it (My listings -> Edit -> step 2) demanded three fresh AI calls on copy the
+ *  creator had already run the check on and the reviewer had already accepted.
+ *  That made an existing listing effectively uneditable.
+ *
+ *  What the gate actually wants is "Ava has seen the words you are about to
+ *  save". So each field records the exact text that was last settled — applied
+ *  from a suggestion, or explicitly kept — and a field is satisfied while its
+ *  current text still equals that. Seeded on load from what the SERVER returned
+ *  (see ListingWizard's load effect), which is copy that already went through
+ *  this gate before it was saved; edit that text and the field falls out of
+ *  agreement and is gated again, which is the original intent.
+ *
+ *  `null` means "never reviewed" — the state a brand-new draft starts in. It is
+ *  deliberately distinct from `''`, which is a legitimately reviewed empty
+ *  description on a saved listing.
+ *
+ *  Still client-side and still never sent: no new server attrs key exists for
+ *  this, by design.
+ */
+export interface ReviewedCopy { title: string | null; blurb: string | null; description: string | null }
+
+export const REVIEWED_COPY_NONE: ReviewedCopy = { title: null, blurb: null, description: null };
+
+const COPY_FIELDS = ['title', 'blurb', 'description'] as const;
+
+/** Text equality as the gate means it: trailing whitespace is not an edit. */
+function sameCopy(a: string | null, b: string | null): boolean {
+  return a !== null && b !== null && a.trim() === b.trim();
+}
+
+/** True when all three pitch fields still hold the text that was reviewed.
+ *  `skipped` is the "Continue without AI" escape after a failed call — it
+ *  releases the WHOLE gate for the rest of the sitting, so a dead endpoint can
+ *  never trap a creator on step 2 no matter what they type afterwards. */
+export function copyGateSatisfied(d: ListingDraft, reviewed: ReviewedCopy, skipped = false): boolean {
+  if (skipped) return true;
+  return COPY_FIELDS.every((f) => sameCopy(d[f] ?? '', reviewed[f]));
+}
+
+/** Which of the three fields is still out of agreement — drives the per-field
+ *  "✓ AI checked" vs. "Write my … for me" state on step 2. */
+export function copyFieldReviewed(d: ListingDraft, reviewed: ReviewedCopy, field: 'title' | 'blurb' | 'description', skipped = false): boolean {
+  return skipped || sameCopy(d[field] ?? '', reviewed[field]);
+}
 
 export const AI_ASSIST_GATE_MESSAGE =
   'Run the AI check on your title, blurb and description before continuing.';
+
+/** [WIZ-ERR-ONCE-1 2026-09-14] Fields whose step already renders an inline
+ *  <ErrLine> under the control. The wizard's general error banner skips these,
+ *  otherwise the identical sentence renders twice on the same screen — verified
+ *  in the DOM for `ai_assist` on step 2, but true of every field in this set.
+ *  Keep it in step with the ErrLine calls in steps.tsx. */
+export const INLINE_ERROR_FIELDS: ReadonlySet<string> = new Set([
+  'title', 'blurb', 'ai_assist', 'category',
+  'price', 'early_bird_pct', 'promo_code', 'promo_pct',
+  'timezone', 'availability_rules', 'starts_at', 'duration_min',
+  'recurrence_days', 'recurrence_time', 'response_time_min', 'capacity',
+  'face_photo', 'cover_media',
+]);
 
 /** Client mirror of listingContentFieldsError + contentAttrsError +
  *  commercialPolicyError, scoped to what a given step just collected. Returns
@@ -226,7 +294,7 @@ export const AI_ASSIST_GATE_MESSAGE =
 export function validateStep(
   d: ListingDraft,
   step: StepIndex,
-  opts: { aiAssisted?: AiAssisted } = {},
+  opts: { reviewedCopy?: ReviewedCopy; aiSkipped?: boolean } = {},
 ): FieldProblem | null {
   switch (step) {
     // [MKT-3GROUP-1] The free-show "token cap" is gone (owner decision
@@ -249,11 +317,15 @@ export function validateStep(
       // decoration: a creator leaves this step having seen what Ava would do
       // with each of the three fields. IDEMPOTENT — once all three are marked
       // this passes silently and nothing re-runs. When the call itself fails,
-      // Step2Pitch offers "Continue without AI", which marks all three, so a
-      // dead endpoint can never trap a creator on this step.
-      if (opts.aiAssisted) {
-        const a = opts.aiAssisted;
-        if (!a.title || !a.blurb || !a.description) {
+      // Step2Pitch offers "Continue without AI" (`aiSkipped`), which releases the
+      // gate outright, so a dead endpoint can never trap a creator on this step.
+      //
+      // [WIZ-AI-REVIEWED-TEXT-1] Satisfied by TEXT, not by a boolean: copy that
+      // came back from the server unchanged is already reviewed, so reopening a
+      // saved listing does not re-demand three calls. Edit a field and it falls
+      // out of agreement and is asked for again.
+      if (opts.reviewedCopy) {
+        if (!copyGateSatisfied(d, opts.reviewedCopy, opts.aiSkipped)) {
           return { field: 'ai_assist', message: AI_ASSIST_GATE_MESSAGE };
         }
       }
@@ -425,4 +497,33 @@ export function publishReadiness(d: ListingDraft): ReadinessCheck[] {
     { ok: true, info: true, label: d.content_how_it_works.length ? `How it works (${d.content_how_it_works.length} step${d.content_how_it_works.length === 1 ? '' : 's'})` : 'How it works — optional, left blank' },
     { ok: true, info: true, label: d.content_house_rules.length ? `House rules (${d.content_house_rules.length})` : 'House rules — optional, left blank' },
   ];
+}
+
+/* [WIZ-EDIT-RESUME-1 2026-09-14] Where to open an EXISTING listing.
+ *
+ * Reopening a listing that had been walked all the way to step 8 dropped the
+ * creator back on step 1 (Type) and made them press "Save and continue" seven
+ * times to reach the thing they came to change. There is no stored step to
+ * restore — the wizard has never persisted one, and inventing a server key for
+ * it is not warranted — so the progress signal is the draft ITSELF: walk the
+ * steps in order and stop at the first one that is still incomplete.
+ *
+ * That lands an unfinished draft on the first thing that actually needs
+ * attention (which is also the furthest point it could legitimately advance to
+ * on its own), and a complete listing on step 8, the summary. The AI copy gate
+ * is deliberately NOT consulted here: it is a gate on leaving step 2, not a
+ * statement about whether the step has data, and using it would park every
+ * reopened listing on Pitch.
+ *
+ * Brand-new drafts never call this — ListingWizard only uses it when ?id= was
+ * present — so the create flow still starts at step 1.
+ */
+export function resumeStepFor(d: ListingDraft): StepIndex {
+  // A listing that is out of the creator's hands (in review, approved, live,
+  // rejected) has nothing to fill in — step 8 is the screen that says so.
+  if (d.status && d.status !== 'draft') return 7;
+  for (let i = 0 as StepIndex; i < 7; i = (i + 1) as StepIndex) {
+    if (validateStep(d, i)) return i;
+  }
+  return 7;
 }

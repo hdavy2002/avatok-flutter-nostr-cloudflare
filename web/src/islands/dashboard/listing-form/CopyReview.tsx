@@ -39,7 +39,10 @@
  *     endpoint that is down must never be able to trap someone inside step 2.
  *  4. It does not re-run once a field is settled. `assisted` is checked by the
  *     caller before anything is offered, so a creator stepping back into step 2
- *     sees a quiet done state, not a fresh prompt.
+ *     sees a quiet done state, not a fresh prompt. Since
+ *     [WIZ-AI-REVIEWED-TEXT-1] "settled" means the field still holds the text
+ *     that was reviewed (or the text the server sent back for a saved listing),
+ *     so the quiet done state survives a reload and an edit re-opens the offer.
  */
 import { useCallback, useMemo, useState } from 'react';
 import { request } from '../../../lib/apiClient';
@@ -172,16 +175,22 @@ function eyebrowLine(label: string, slice: CopyFieldSlice): string {
 
 /** One field's blip row, rendered directly ABOVE that field on step 2. */
 export function CopyFieldAssist({
-  field, label, state, patch, assisted, onSettled,
+  field, label, state, patch, value, assisted, onSettled,
 }: {
   field: CopyField;
   label: string;
   state: CopyReviewState;
   patch: (p: Partial<ListingDraft>) => void;
+  /** [WIZ-AI-REVIEWED-TEXT-1] The field's CURRENT draft text. The gate records
+   *  the words that were settled, not a boolean, so "Keep mine" has to report
+   *  exactly what is in the box at that moment — the creator may have typed
+   *  since the check ran. */
+  value: string;
   /** Has this field already been through the check? Drives the quiet done state. */
   assisted: boolean;
-  /** Applied a suggestion, or kept their own words — either settles the field. */
-  onSettled: (how: 'applied' | 'kept') => void;
+  /** Applied a suggestion, or kept their own words — either settles the field,
+   *  and carries the text that was settled. */
+  onSettled: (how: 'applied' | 'kept', text: string) => void;
 }) {
   // The ONLY slice this component ever reads or acts on.
   const slice = state.fields[field];
@@ -236,7 +245,7 @@ export function CopyFieldAssist({
           <button type="button"
             onClick={() => {
               patch({ [field]: f.suggested } as Partial<ListingDraft>);
-              onSettled('applied');
+              onSettled('applied', f.suggested);
               capture('listing_copy_review_apply', { field, source: slice.source ?? 'rules' });
             }}
             className={`${chipBase} bg-lime text-ink`}>
@@ -245,7 +254,7 @@ export function CopyFieldAssist({
         )}
         <button type="button"
           onClick={() => {
-            onSettled('kept');
+            onSettled('kept', value);
             capture('listing_copy_review_keep', { field, source: slice.source ?? 'rules' });
           }}
           className={`${chipBase} bg-card text-inkSoft`}>

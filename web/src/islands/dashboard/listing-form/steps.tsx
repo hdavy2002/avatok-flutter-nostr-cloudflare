@@ -12,10 +12,10 @@ import { useCopyReview, CopyFieldAssist } from './CopyReview';
 import type { CopyField } from './CopyReview';
 import { TwoFieldListEditor, StringListEditor, ChatLineEditor, labelCls, inputCls, textareaCls, SectionHeader, charCount } from './Editors';
 import { REFUND_WINDOWS, BOOKING_NOTICE_HOURS, LISTING_PROMOTIONS_ENABLED } from './wizardLogic';
-import type { ReadinessCheck, AiAssisted } from './wizardLogic';
+import type { ReadinessCheck } from './wizardLogic';
 import { defaultsFor } from '../../../lib/listingDefaults';
 import { cfImage } from '../../../lib/config';
-import { MEDIA_MODES, PRICING, groupsForKind, subCategoriesFor, feeSplit } from '../../../lib/listingTaxonomy';
+import { MEDIA_MODES, PRICING, groupsForKind, subCategoriesFor, feeSplit, SUB_CATEGORIES } from '../../../lib/listingTaxonomy';
 import type { GroupId } from '../../../lib/listingTaxonomy';
 import type { ListingDraft, Kind, PosterMirror, AvailabilityRule } from './types';
 
@@ -268,10 +268,15 @@ export function Step2Pitch({ draft, patch, err, categories, creator, conferenceE
   /** [MKT-3GROUP-1] Hides the `adda_rooms` blip while the flag is off. */
   conferenceEnabled: boolean;
   /** [WIZ-AI-ASSIST-1] Which fields have been through the AI check — the gate
-   *  on Next reads the same object (wizardLogic.validateStep case 1). */
-  aiAssisted: AiAssisted;
-  onAssisted: (field: CopyField) => void;
-  /** The escape hatch after a failed call — marks all three and unblocks Next. */
+   *  on Next reads the same rule (wizardLogic.copyGateSatisfied). Since
+   *  [WIZ-AI-REVIEWED-TEXT-1] these are DERIVED per render from "does this
+   *  field still hold the text that was reviewed", so they go false again the
+   *  moment the creator edits one of the three boxes. */
+  aiAssisted: { title: boolean; blurb: boolean; description: boolean };
+  /** Carries the text that was settled, not just which field settled. */
+  onAssisted: (field: CopyField, text: string) => void;
+  /** The escape hatch after a failed call — releases the whole gate for the rest
+   *  of the sitting, including anything typed afterwards. */
   onSkipAi: () => void;
 }) {
   // [MKT-3GROUP-1] Sub-categories are DRIVEN BY THE STEP-1 KIND. `live_event`
@@ -309,23 +314,23 @@ export function Step2Pitch({ draft, patch, err, categories, creator, conferenceE
     <div className="mx-auto grid w-full max-w-2xl grid-cols-1 gap-6">
       <div className="flex flex-col gap-5">
         <div>
-          <CopyFieldAssist field="title" label="Title" state={copy} patch={patch}
-            assisted={aiAssisted.title} onSettled={() => onAssisted('title')} />
+          <CopyFieldAssist field="title" label="Title" state={copy} patch={patch} value={draft.title}
+            assisted={aiAssisted.title} onSettled={(_how, text) => onAssisted('title', text)} />
           <Field label="Title" placeholder="e.g. Friday night live cook-along" value={draft.title}
             onChange={(e) => patch({ title: e.target.value.slice(0, 140) })} />
           <ErrLine err={err} field="title" />
         </div>
         <div>
-          <CopyFieldAssist field="blurb" label="Blurb" state={copy} patch={patch}
-            assisted={aiAssisted.blurb} onSettled={() => onAssisted('blurb')} />
+          <CopyFieldAssist field="blurb" label="Blurb" state={copy} patch={patch} value={draft.blurb}
+            assisted={aiAssisted.blurb} onSettled={(_how, text) => onAssisted('blurb', text)} />
           <Field label="Blurb (one line)" placeholder="What fans get, in one punchy line" value={draft.blurb}
             onChange={(e) => patch({ blurb: e.target.value.slice(0, 120) })} />
           <div className="mt-1 flex">{charCount(draft.blurb, 120)}</div>
           <ErrLine err={err} field="blurb" />
         </div>
         <div>
-          <CopyFieldAssist field="description" label="Description" state={copy} patch={patch}
-            assisted={aiAssisted.description} onSettled={() => onAssisted('description')} />
+          <CopyFieldAssist field="description" label="Description" state={copy} patch={patch} value={draft.description}
+            assisted={aiAssisted.description} onSettled={(_how, text) => onAssisted('description', text)} />
           <label className="block">
             <span className={labelCls}>Description</span>
             <textarea className={textareaCls} rows={4} value={draft.description} maxLength={8000}
@@ -1045,6 +1050,29 @@ function humanizeId(id: string): string {
   return id ? id.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : '';
 }
 
+/* [WIZ-CAT-LABEL-1 2026-09-14] Step 8 was showing the category ID.
+ *
+ * `humanizeId('live_puja_ritual')` renders "Live Puja Ritual" — a slug with the
+ * underscores combed out, not a name anyone chose. The blip the creator pressed
+ * on step 2 said "🕉️ Puja", and the summary of what they are submitting has to
+ * say the same thing.
+ *
+ * Same source order as the chips (blipsForGroup): the fetched
+ * /api/explore/categories list first, because D1 is what the publish route
+ * validates against and a category added there must not go nameless until the
+ * next web deploy; then the generated SUB_CATEGORIES mirror; and only if the id
+ * is in neither — a category retired since this draft was written — the
+ * humanised id, so the row still says something rather than going blank. */
+function categoryLabel(
+  id: string,
+  categories: { id: string; label: string; emoji?: string | null }[],
+): string {
+  if (!id) return '';
+  const hit = categories.find((c) => c.id === id) ?? SUB_CATEGORIES.find((c) => c.id === id);
+  if (!hit) return humanizeId(id);
+  return hit.emoji ? `${hit.emoji} ${hit.label}` : hit.label;
+}
+
 const KIND_LABEL: Record<Kind, string> = {
   live_event: 'Live event',
   consult: '1:1 consult',
@@ -1085,9 +1113,12 @@ function youtubeId(url: string): string | null {
 }
 
 export function Step8Preview({ draft, checks, onSubmitForReview, publishing,
-  published, pendingReview, approvedAwaitingPublish, rejected, publicHref, error, creator,
+  published, pendingReview, approvedAwaitingPublish, rejected, publicHref, error, creator, categories = [],
 }: {
   draft: ListingDraft; checks: ReadinessCheck[];
+  /** [WIZ-CAT-LABEL-1] The same fetched list step 2's chips render from, so the
+   *  summary names the category the creator picked instead of its id. */
+  categories?: { id: string; label: string; emoji?: string | null; group_id?: string | null }[];
   /** [LIST-SUBMIT-REVIEW-1] Sends the draft into the admin approval queue —
    *  POST /api/listings/:id/submit, not the old direct-publish call. */
   onSubmitForReview: () => void; publishing: boolean;
@@ -1135,7 +1166,7 @@ export function Step8Preview({ draft, checks, onSubmitForReview, publishing,
             <SummaryText label="Title" value={draft.title} />
             <SummaryText label="Blurb" value={draft.blurb} />
             <SummaryText label="Description" value={draft.description} />
-            <SummaryText label="Category" value={humanizeId(draft.category)} />
+            <SummaryText label="Category" value={categoryLabel(draft.category, categories)} />
             <SummaryText label="Languages" value={draft.spoken_lang.join(', ')} />
             <SummaryRow label="Price">
               {draft.free_entry ? 'Free' : price > 0 ? `₹${price} per hour` : 'Not set'}

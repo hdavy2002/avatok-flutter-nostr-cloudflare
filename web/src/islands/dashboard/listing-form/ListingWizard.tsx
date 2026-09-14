@@ -25,8 +25,8 @@ import { fileNameHeader, UPLOAD_FALLBACK_MESSAGE } from '../../../lib/uploadHead
 import { isEmbedded, embedNotifyDirty, embedNotifySubmitted } from '../../../lib/embed';
 import { emptyDraft, STEP_LABELS } from './types';
 import type { ListingDraft, StepIndex } from './types';
-import { bodyForSave, buildAttrs, validateStep, publishReadiness, epochToLocal, normalizeTimezone, AI_ASSIST_GATE_MESSAGE, LISTING_PROMOTIONS_ENABLED } from './wizardLogic';
-import type { AiAssisted } from './wizardLogic';
+import { bodyForSave, buildAttrs, validateStep, publishReadiness, epochToLocal, normalizeTimezone, copyFieldReviewed, resumeStepFor, REVIEWED_COPY_NONE, INLINE_ERROR_FIELDS, LISTING_PROMOTIONS_ENABLED } from './wizardLogic';
+import type { ReviewedCopy } from './wizardLogic';
 import type { CopyField } from './CopyReview';
 import { defaultsFor } from '../../../lib/listingDefaults';
 import { getCreatorSchedule, saveCreatorSchedule, previewCalendarConflicts, epochForDateTime } from '../../../lib/availability';
@@ -129,12 +129,23 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
   const [fieldErr, setFieldErr] = useState<FieldErr>({ field: null, message: null });
   const [gate, setGate] = useState<'liveness' | 'kyc' | null>(null);
   const [publishing, setPublishing] = useState(false);
-  // [WIZ-AI-ASSIST-1 2026-09-13] Which of step 2's three fields have been
-  // through the AI copy check. Session-only and never sent: it records a
-  // decision the creator made in this sitting, not listing data. Step 2's Next
-  // is gated on all three (validateStep case 1 + the guard in next()), and a
-  // field counts once the creator applied a suggestion OR kept their own words.
-  const [aiAssisted, setAiAssisted] = useState<AiAssisted>({ title: false, blurb: false, description: false });
+  // [WIZ-AI-ASSIST-1 2026-09-13] Step 2's AI copy gate.
+  //
+  // [WIZ-AI-REVIEWED-TEXT-1 2026-09-14] It remembers the TEXT that was reviewed,
+  // not three booleans. The booleans were session-only, so reopening a saved
+  // listing to edit it demanded three fresh AI calls on copy that had already
+  // been through the check and already been accepted by a reviewer — a creator
+  // could never edit a listing without re-running the gate. Seeded from the
+  // server's own copy when a listing is loaded (see the ?id= effect below), so
+  // unchanged copy is already satisfied and an EDIT to any of the three re-arms
+  // the gate for that field, which is what the gate was for. Still client-side,
+  // still never sent: no new attrs key.
+  const [reviewedCopy, setReviewedCopy] = useState<ReviewedCopy>(REVIEWED_COPY_NONE);
+  // The "Continue without AI" escape after a failed call. Separate from the text
+  // above and deliberately sticky for the rest of the sitting: once the endpoint
+  // has failed, nothing the creator types afterwards may put them back behind a
+  // gate they cannot clear.
+  const [aiSkipped, setAiSkipped] = useState(false);
   // [WIZ-DISCOUNT-1] The promotions this listing ALREADY has on the server.
   // Without this the wizard could only ever INSERT, so every pass through step
   // 3 stacked another early-bird row on the same listing.
@@ -166,6 +177,25 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
   function patch(p: Partial<ListingDraft>) {
     setDraft((d) => ({ ...d, ...p }));
     setFieldErr({ field: null, message: null });
+  }
+
+  /* [WIZ-ERR-ONCE-1 2026-09-14] Show a field problem EXACTLY ONCE.
+   *
+   * Every step body already renders an <ErrLine> under the control a problem
+   * belongs to, and this island also renders a general error banner below the
+   * step. Setting both for the same problem printed the identical sentence twice
+   * on the same screen — reproduced in the DOM on step 2, where "Run the AI
+   * check on your title, blurb and description before continuing." appeared as
+   * two leaf nodes, and true of every field with an inline line.
+   *
+   * So: the inline line wins where one exists, and the banner is kept for the
+   * fields that have no inline line (the optional content steps 5 and 6, whose
+   * server-side length rules point at a field with no <ErrLine> of its own) and
+   * for everything that is not field-scoped at all — save failures, upload
+   * failures, the promo warning. */
+  function showProblem(field: string | null, message: string) {
+    setFieldErr({ field, message });
+    setError(field && INLINE_ERROR_FIELDS.has(field) ? null : message);
   }
 
   // [LIST-WIZ-HOST-1] The live-preview card's host chip (steps.tsx PreviewCard)
@@ -267,7 +297,24 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
         const token = await getActiveToken();
         const l = await request<any>(`/api/listings/${encodeURIComponent(id!)}`, { auth: token });
         const data = l?.listing ?? l ?? {};
-        setDraft((d) => ({ ...d, ...draftFromListing(data) }));
+        const fields = draftFromListing(data);
+        // Functional merge (nothing else writes `draft` before this lands, but a
+        // blind overwrite here would be a landmine for whatever does next);
+        // `hydrated` is the same value, needed synchronously below.
+        setDraft((d) => ({ ...d, ...fields }));
+        const hydrated: ListingDraft = { ...draft, ...fields };
+        // [WIZ-AI-REVIEWED-TEXT-1] Seed the copy gate from what the SERVER sent.
+        // This text has already been through the gate once (it could not have
+        // been saved otherwise) and, for a listing that came back from review,
+        // through a human reviewer too — so reopening it to change the price
+        // must not demand three fresh AI calls on words nobody touched. Change
+        // any of the three and that field stops matching its seed and is gated
+        // again, per field, which is the behaviour the gate exists for.
+        setReviewedCopy({ title: hydrated.title, blurb: hydrated.blurb, description: hydrated.description });
+        // [WIZ-EDIT-RESUME-1] Open an existing listing where there is still
+        // something to do, not back on step 1. `startAtPublish` (the /publish
+        // route) still pins step 8 and is left alone.
+        if (!startAtPublish) setStep(resumeStepFor(hydrated));
         // [WIZ-DISCOUNT-1] `early_bird_pct` / `promo_code` are not columns on
         // the listing — they are rows in `listing_promotions`, so
         // draftFromListing cannot see them and the fields came back empty on
@@ -432,8 +479,11 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
           )
         : 'Could not save. Try again.';
       const field = e instanceof ApiError && e.body && typeof e.body === 'object' && 'field' in (e.body as any) ? String((e.body as any).field) : null;
-      setError(msg);
-      if (field) setFieldErr({ field, message: msg });
+      // [WIZ-ERR-ONCE-1] Same "once only" rule as showProblem: a server error
+      // that names a field the step renders an <ErrLine> for goes inline, not in
+      // the banner as well.
+      if (field) showProblem(field, msg);
+      else setError(msg);
       // [FREE-ENTRY-GATE-1] Server-side refusal (worker/src/lib/free_entry_gate.ts) —
       // this account tried to create/hold free_entry=1 and isn't allowlisted. The
       // control should already be hidden for this account (see the config-driven
@@ -580,24 +630,25 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
 
   async function next() {
     if (savingRef.current) return;
-    const problem = validateStep(draft, step, { aiAssisted });
+    const problem = validateStep(draft, step, { reviewedCopy, aiSkipped });
     if (problem) {
-      setFieldErr({ field: problem.field, message: problem.message });
-      setError(problem.message);
+      showProblem(problem.field, problem.message);
       capture('listing_field_error', { field: problem.field, step: STEP_LABELS[step] });
+      if (problem.field === 'ai_assist') {
+        capture('listing_ai_assist_blocked', {
+          title: copyFieldReviewed(draft, reviewedCopy, 'title', aiSkipped),
+          blurb: copyFieldReviewed(draft, reviewedCopy, 'blurb', aiSkipped),
+          description: copyFieldReviewed(draft, reviewedCopy, 'description', aiSkipped),
+        });
+      }
       return;
     }
-    // [WIZ-AI-ASSIST-1] The same gate again, in the place that actually moves
-    // the step. validateStep is the shared rule; this guard is what stops a
-    // creator leaving step 2 with a field Ava has never seen. Idempotent by
-    // construction — once all three are marked it never fires again, and
-    // nothing re-runs.
-    if (step === 1 && !(aiAssisted.title && aiAssisted.blurb && aiAssisted.description)) {
-      setFieldErr({ field: 'ai_assist', message: AI_ASSIST_GATE_MESSAGE });
-      setError(AI_ASSIST_GATE_MESSAGE);
-      capture('listing_ai_assist_blocked', { ...aiAssisted });
-      return;
-    }
+    // [WIZ-AI-ASSIST-1] There is no second copy of the gate here any more.
+    // validateStep case 1 IS the gate (wizardLogic.copyGateSatisfied) and this
+    // is the only place that moves the step, so the duplicate guard that used to
+    // sit here could only ever repeat the same verdict — and it set the same
+    // message a second time, which is half of why step 2 rendered the sentence
+    // twice. One rule, one message, one place.
     // Steps 0 (Type) and 1 (Pitch) collect locally; the draft is created the
     // moment Pitch completes (spec: "create draft after step 2").
     if (step === 0) { setStep(1); return; }
@@ -823,9 +874,13 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
           <Step2Pitch
             draft={draft} patch={patch} err={fieldErr} categories={categories} creator={creatorInfo}
             conferenceEnabled={conferenceEnabled}
-            aiAssisted={aiAssisted}
-            onAssisted={(f: CopyField) => setAiAssisted((a) => ({ ...a, [f]: true }))}
-            onSkipAi={() => setAiAssisted({ title: true, blurb: true, description: true })}
+            aiAssisted={{
+              title: copyFieldReviewed(draft, reviewedCopy, 'title', aiSkipped),
+              blurb: copyFieldReviewed(draft, reviewedCopy, 'blurb', aiSkipped),
+              description: copyFieldReviewed(draft, reviewedCopy, 'description', aiSkipped),
+            }}
+            onAssisted={(f: CopyField, text: string) => setReviewedCopy((r) => ({ ...r, [f]: text }))}
+            onSkipAi={() => setAiSkipped(true)}
           />
         )}
         {step === 2 && <Step3Money draft={draft} patch={patch} err={fieldErr} />}
@@ -837,7 +892,7 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
           <Step8Preview
             draft={draft} checks={checks} onSubmitForReview={onSubmitForReview} publishing={publishing}
             published={published} pendingReview={pendingReview} approvedAwaitingPublish={approvedAwaitingPublish} rejected={rejected}
-            publicHref={publicHref} error={error} creator={creatorInfo}
+            publicHref={publicHref} error={error} creator={creatorInfo} categories={categories}
           />
         )}
       </div>
