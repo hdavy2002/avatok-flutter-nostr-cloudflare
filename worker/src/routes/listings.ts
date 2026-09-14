@@ -1204,8 +1204,18 @@ export async function reviewedContentHash(row: Record<string, unknown>): Promise
       // creator's photos. It may be added after listing approval, so including
       // it here makes an unchanged approved listing falsely fail publish with
       // review_stale. Creator-uploaded media remains fully review-bound.
-      const covers = typeof val === "string" ? parseJson<any[]>(val, []) : (Array.isArray(val) ? val : []);
-      material[f] = covers.filter((cover) => cover?.source !== "ai_poster");
+      const covers = typeof val === "string" ? parseJson<any[] | null>(val, null) : (Array.isArray(val) ? val : null);
+      if (covers == null) {
+        // Preserve the legacy NULL representation used by listings submitted
+        // without photos; otherwise NULL would become [] after poster attach
+        // and still look like a material edit to the old approval hash.
+        material[f] = null;
+      } else {
+        const manual = covers.filter((cover) => cover?.source !== "ai_poster");
+        material[f] = manual.length === 0 && covers.some((cover) => cover?.source === "ai_poster")
+          ? null
+          : manual;
+      }
     } else {
       material[f] = jsonField && typeof val === "string" ? parseJson(val, []) : (val ?? null);
     }
