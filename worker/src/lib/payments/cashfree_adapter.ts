@@ -31,6 +31,11 @@ export const cashfreeAdapter: GatewayAdapter = {
     return cashfreeConfigured(env);
   },
 
+  testMode(env) {
+    // [BETA-TESTMODE-1] CASHFREE_ENV is "sandbox" | "production" (types.ts).
+    return String(env.CASHFREE_ENV ?? "sandbox").toLowerCase() !== "production";
+  },
+
   async createOrder(env, a) {
     const created = await createCashfreeOrder(env, {
       orderId: a.orderId,

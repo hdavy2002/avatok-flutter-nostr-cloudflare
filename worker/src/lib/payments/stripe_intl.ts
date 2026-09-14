@@ -43,6 +43,11 @@ export const stripeIntlAdapter: GatewayAdapter = {
     return stripeIntlConfigured(env);
   },
 
+  testMode(env) {
+    // [BETA-TESTMODE-1] Stripe secret keys are self-describing: sk_test_… vs sk_live_….
+    return String(env.STRIPE_SECRET_KEY ?? "").startsWith("sk_test");
+  },
+
   async createOrder(env, a) {
     if (!stripeIntlConfigured(env)) return { error: "gateway_unconfigured", status: 503 };
     // Non-INR only — the whole reason this adapter exists alongside three INR ones.

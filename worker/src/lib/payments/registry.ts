@@ -33,7 +33,14 @@ const FLAG_FOR: Record<GatewayId, keyof PlatformConfig> = {
   cashfree: "cashfreeEnabled",
 };
 
-export type GatewayMethod = { gateway: GatewayId; label: string; sub: string; recommended: boolean };
+export type GatewayMethod = {
+  gateway: GatewayId; label: string; sub: string; recommended: boolean;
+  /** [BETA-TESTMODE-1] True only when this rail's own credentials are test/sandbox
+   *  credentials. The checkout UI shows its "no real money will be charged" beta
+   *  notice on exactly this, per gateway — never on a platform flag, and never for a
+   *  gateway the buyer did not pick. */
+  test_mode: boolean;
+};
 
 const LABELS: Record<GatewayId, { label: string; sub: string }> = {
   razorpay: { label: "Razorpay", sub: "UPI · Cards · Netbanking" },
@@ -59,7 +66,7 @@ export async function listEnabledMethods(env: Env, config: PlatformConfig): Prom
   for (const id of PICKER_ORDER) {
     if (!gatewayFlagOn(config, id)) continue;
     if (!ADAPTERS[id].configured(env)) continue;
-    out.push({ gateway: id, ...LABELS[id], recommended: false });
+    out.push({ gateway: id, ...LABELS[id], recommended: false, test_mode: ADAPTERS[id].testMode(env) === true });
   }
   return out;
 }

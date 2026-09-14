@@ -27,6 +27,7 @@ import { Spinner } from '../../components/Spinner';
 import { inr } from '../../lib/money';
 import { listingErrorMessage } from '../../lib/listingErrors';
 import { openGatewaySheet, createStripeElements, confirmStripePayment } from './gatewaySheet';
+import { BetaTestNotice } from './BetaTestNotice';
 import { stashPayReturn } from './PayReturn';
 import { readReturnParam } from '../../lib/urls';
 import { capture } from '../../lib/analytics';
@@ -502,6 +503,12 @@ export function GatewayPicker({
             );
           })}
         </div>
+      )}
+
+      {/* [BETA-TESTMODE-1] Only for the rail the buyer actually picked, and only when
+          the server says that rail is on test credentials. */}
+      {selected && methods.find((m) => m.gateway === selected)?.test_mode === true && (
+        <BetaTestNotice gateway={selected} listingId={listingId} />
       )}
 
       {error && (

@@ -211,6 +211,13 @@ export const paytmAdapter: GatewayAdapter = {
     return paytmConfigured(env);
   },
 
+  testMode(env) {
+    // [BETA-TESTMODE-1] Read the host that will ACTUALLY be called, not PAYTM_ENV:
+    // PAYTM_HOST overrides the env and can point a "staging" config at the live
+    // gateway. Anything that is not securegw.paytm.in is staging.
+    return !baseUrl(env).includes("securegw.paytm.in");
+  },
+
   async createOrder(env, a) {
     if (!paytmConfigured(env)) return { error: "gateway_unconfigured", status: 503 };
     if (a.currency.toUpperCase() !== "INR") return { error: "paytm_inr_only", status: 400 };

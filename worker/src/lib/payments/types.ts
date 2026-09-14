@@ -25,6 +25,16 @@ export interface GatewayOrder {
 export interface GatewayAdapter {
   readonly id: GatewayId;
   configured(env: Env): boolean;
+  /**
+   * [BETA-TESTMODE-1 2026-09-14] Is this rail pointed at the gateway's TEST/sandbox
+   * environment? It drives the buyer-facing "no real money will be charged" notice, so
+   * it must be a FACT about the credentials actually in use — never a platform flag.
+   * A flag can be flipped while live keys stay in place, and a wrong `true` tells a
+   * buyer his real card is safe when it is not. An adapter that cannot tell returns
+   * `false`: the notice then stays hidden, which is the only safe direction to be
+   * wrong in.
+   */
+  testMode(env: Env): boolean;
   createOrder(env: Env, a: {
     orderId: string; // OUR order id — becomes the gateway's receipt/notes
     amountPaise: number;

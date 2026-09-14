@@ -59,8 +59,16 @@ off before any real buyer is pointed at it.
 - Webhook endpoint the dashboard must point at:
   `https://api.avatok.ai/api/pay/razorpay/webhook`
   (events: `payment.captured`, `payment.failed`, `order.paid`, `refund.processed`).
-- Test cards: success `4111 1111 1111 1111`, any future expiry, any CVV, OTP `1111`.
+- Test cards (read off Razorpay Docs 2026-09-14, "Test Cards Details to Test Payments
+  and Subscriptions", India): Visa `4100 2800 0000 1007`, Mastercard
+  `5555 5100 0008 1006`, RuPay `6527 6589 0000 1005`. **Any random CVV and any future
+  expiry.** Test mode then shows a MOCK BANK PAGE with **Success** and **Failure**
+  buttons — that is how you test a declined payment.
   Test UPI success `success@razorpay`, failure `failure@razorpay`.
+  ⚠️ This line used to read `4111 1111 1111 1111` with OTP `1111`. **Neither appears in
+  Razorpay's current documentation** — there is no OTP field in test mode any more. Do
+  not restore them from an older note; re-read the docs. The same details are printed to
+  buyers by `web/src/islands/checkout/BetaTestNotice.tsx`, so the two must not drift.
 - Switch the rail off again with:
   `ALLOW_PROD=1 scripts/flags.sh set razorpayEnabled=false`
 - Going live later is only: new keys into `wrangler secret put RAZORPAY_KEY_ID/…SECRET`,

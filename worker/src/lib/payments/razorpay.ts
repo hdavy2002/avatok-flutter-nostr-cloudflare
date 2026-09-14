@@ -28,6 +28,12 @@ function authHeader(env: Env): string {
   return `Basic ${btoa(`${env.RAZORPAY_KEY_ID}:${env.RAZORPAY_KEY_SECRET}`)}`;
 }
 
+/** [BETA-TESTMODE-1] Razorpay key ids are self-describing: `rzp_test_…` vs `rzp_live_…`.
+ *  Read the key, not a config flag — see GatewayAdapter.testMode. */
+export function razorpayTestMode(env: Env): boolean {
+  return String(env.RAZORPAY_KEY_ID ?? "").startsWith("rzp_test");
+}
+
 function mapPaymentStatus(status: string | undefined): "paid" | "failed" | "refunded" | "pending" {
   switch (String(status ?? "").toLowerCase()) {
     case "captured": return "paid";
@@ -42,6 +48,10 @@ export const razorpayAdapter: GatewayAdapter = {
 
   configured(env) {
     return razorpayConfigured(env);
+  },
+
+  testMode(env) {
+    return razorpayTestMode(env);
   },
 
   async createOrder(env, a) {

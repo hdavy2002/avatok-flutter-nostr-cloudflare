@@ -89,6 +89,11 @@ export interface PayMethod {
   label: string;
   sub: string;
   recommended: boolean;
+  /** [BETA-TESTMODE-1] Server-derived from THIS rail's own credentials
+   *  (worker/src/lib/payments/registry.ts). Drives BetaTestNotice. Optional so an
+   *  older cached response simply shows no notice rather than crashing — absent is
+   *  treated as "not test mode", the safe direction. */
+  test_mode?: boolean;
 }
 
 export interface PayMethodsResponse {

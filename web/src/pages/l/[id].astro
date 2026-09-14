@@ -87,6 +87,17 @@ const isOwner = Boolean(listing.viewer?.is_owner);
     <script type="application/ld+json" set:html={JSON.stringify(crumbLd)} />
   </Fragment>
 
+  {/* [BETA-TESTMODE-1 2026-09-14] Beta status on the listing itself, so a buyer knows
+      before he reaches checkout. Deliberately makes NO claim about test mode: this page
+      is public and cannot verify which credentials the gateway rail is on
+      (GET /api/pay/methods is authenticated). The "no real money will be charged"
+      sentence lives in BetaTestNotice at checkout, where the server has told us the
+      selected rail is on test keys. Do not "improve" this by asserting test mode here. */}
+  <div style="max-width:100rem; margin:0 auto; padding:10px clamp(14px,4vw,40px) 0; display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.08em; text-transform:uppercase;">
+    <span style="display:inline-block; padding:4px 10px; border:2px solid #0e1116; border-radius:999px; background:#f7d046;">Beta demonstration</span>
+    <span style="text-transform:none; letter-spacing:0; font-size:13px; font-weight:700;">A demo listing published for avaTOK&rsquo;s beta soft launch. Payment details for the beta are shown at checkout.</span>
+  </div>
+
   {isOwner && (
     <div style="max-width:100rem; margin:0 auto; padding:10px clamp(14px,4vw,40px) 0; display:flex; align-items:center; gap:12px; font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.08em;">
       <span>YOU OWN THIS LISTING</span>
