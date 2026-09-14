@@ -284,7 +284,7 @@ export const INLINE_ERROR_FIELDS: ReadonlySet<string> = new Set([
   'price', 'early_bird_pct', 'promo_code', 'promo_pct',
   'timezone', 'availability_rules', 'starts_at', 'duration_min',
   'recurrence_days', 'recurrence_time', 'response_time_min', 'capacity',
-  'face_photo', 'cover_media',
+  'cover_media',
 ]);
 
 /** Client mirror of listingContentFieldsError + contentAttrsError +
@@ -455,13 +455,7 @@ export function validateStep(
         return { field: 'content_faq', message: 'Add 3–6 FAQ entries, or remove the section entirely.' };
       }
       return null;
-    case 6: // Photos & policy
-      // [FACE-PHOTO-1] Required, and checked on the step that collects it.
-      // The server enforces it too (a `face_photo_required` blocker), but a
-      // creator should hear it here rather than two steps later on Submit.
-      if ((d.kind === 'live_event' || d.kind === 'consult') && !d.face_photo) {
-        return { field: 'face_photo', message: 'Upload a photo of your face — your poster is painted from it. It is not shown on your listing.' };
-      }
+    case 6: // Photos & policy — all media is optional
       if (d.kind === 'consult' && d.commercial_preparation_instructions.length > 600) {
         return { field: 'commercial_preparation_instructions', message: 'Keep preparation instructions under 600 characters.' };
       }
@@ -493,7 +487,7 @@ export type ReadinessCheck = { ok: boolean; label: string; info?: boolean };
  */
 export function publishReadiness(d: ListingDraft): ReadinessCheck[] {
   return [
-    { ok: true, info: true, label: d.cover_media.length ? `Photos added (${d.cover_media.length}/5)` : 'No photos — the AI poster will be used' },
+    { ok: true, info: true, label: d.cover_media.length ? `Photos added (${d.cover_media.length}/5)` : 'No photos — a poster will be generated after submit' },
     { ok: true, info: true, label: d.content_how_it_works.length ? `How it works (${d.content_how_it_works.length} step${d.content_how_it_works.length === 1 ? '' : 's'})` : 'How it works — optional, left blank' },
     { ok: true, info: true, label: d.content_house_rules.length ? `House rules (${d.content_house_rules.length})` : 'House rules — optional, left blank' },
   ];

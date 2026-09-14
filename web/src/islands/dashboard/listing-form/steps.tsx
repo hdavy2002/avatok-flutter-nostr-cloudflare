@@ -896,70 +896,24 @@ export function Step6HouseRules({ draft, patch }: { draft: ListingDraft; patch: 
 }
 
 // ── Step 7 — Photos & policy ───────────────────────────────────────────────
-export function Step7Photos({ draft, patch, err, onUpload, onRemoveCover, uploading, onUploadFace }: {
+export function Step7Photos({ draft, patch, err, onUpload, onRemoveCover, uploading }: {
   draft: ListingDraft; patch: Patch; err: FieldErr;
   onUpload: (files: FileList | null) => void;
   onRemoveCover: (url: string) => void;
   uploading: boolean;
-  /** [FACE-PHOTO-1] Its own uploader — this photo never joins cover_media. */
-  onUploadFace: (files: FileList | null) => void;
 }) {
   const fileRef = useRef<HTMLInputElement | null>(null);
-  const faceRef = useRef<HTMLInputElement | null>(null);
   return (
     <div className="flex flex-col gap-6">
-      {/* [FACE-PHOTO-1 2026-09-05] The reference face, FIRST on the step and
-          required.
-
-          The poster is the listing's whole first impression, and without a face
-          the image model invents a person from the title — which is how "Cooking
-          with Davy" came back as a woman in a sari. The creator's profile avatar
-          was the stopgap, but an avatar is often a logo, a group shot, or years
-          old; this asks for a photo chosen knowing a poster will be painted from
-          it.
-
-          The promise on the label is load-bearing: it is stored in attrs, never
-          in cover_media, so it cannot appear in the public gallery. Say so, or a
-          creator reasonably assumes uploading their face publishes their face. */}
-      <div>
-        <span className={labelCls}>Your face (required)</span>
-        <p className="mt-1 font-body text-[13px] font-bold text-inkSoft">
-          We paint your poster from this photo, so it looks like you rather than someone
-          invented. <span className="text-ink">It is never shown on your listing</span> — it is
-          only the reference the artwork is drawn from.
-        </p>
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          {draft.face_photo ? (
-            <img src={draft.face_photo} alt="Your reference photo"
-              className="h-24 w-24 rounded-zineField border-zine border-ink object-cover" />
-          ) : (
-            <div className="flex h-24 w-24 items-center justify-center rounded-zineField border-zine border-ink bg-paper2 px-2 text-center font-body text-[12px] font-bold text-inkMute">
-              No photo yet
-            </div>
-          )}
-          <div className="flex flex-col gap-2">
-            <input ref={faceRef} type="file" accept="image/*" className="hidden"
-              onChange={(e) => { onUploadFace(e.target.files); e.currentTarget.value = ''; }} />
-            <Button variant="lime" label={draft.face_photo ? 'Replace photo' : 'Upload your photo'}
-              loading={uploading} onClick={() => faceRef.current?.click()} />
-            <span className="font-body text-[12px] font-bold text-inkMute">
-              One clear, forward-facing photo. JPG or PNG, up to 8 MB.
-            </span>
-          </div>
-        </div>
-        <ErrLine err={err} field="face_photo" />
-      </div>
       <div>
         <span className={labelCls}>Photos (optional · up to 5)</span>
-        {/* [POSTER-FIRST-1 2026-09-05] Says plainly where photos end up. The old
-            copy implied the poster only appears "if you skip this", which is
-            not true — the poster is always the primary image, and photos sit
-            below it. A creator who uploads a photo and then wonders why it is
-            not the cover has been misled by the form, not by the feature. */}
+        {/* [LISTING-POSTER-OPTIONAL-1] The gallery is optional. The poster is
+            generated after submit from the listing copy, even when this is left
+            empty. */}
         <p className="mt-1 font-body text-[13px] text-inkSoft">
-          Your poster is the main image either way. Photos you add here appear
-          below it on your listing page — and if you add one, your poster gets
-          painted from it.
+          Add up to five listing photos if you have them. They appear below the
+          poster, which is generated after submit from your title, category,
+          tags and description.
         </p>
         {/* [LIST-RESPONSIVE-1] Two up on a phone: three square thumbs at 360px
             are ~100px each, too small to judge a photo by or to hit the ✕ on. */}
@@ -1359,7 +1313,7 @@ function PosterPreview({ poster, draft, creator }: {
     ? 'Painting your poster… this takes a few minutes. You can leave this page.'
     : status === 'failed'
       ? `We couldn’t paint a poster this time${poster?.error ? ` (${poster.error})` : ''}. Submitting again will retry it.`
-      : 'Your poster is painted after you submit, from your title and blurb.';
+      : 'Your poster is generated after you submit, from your title, category, tags and description.';
 
   return (
     <div className="mx-auto w-full max-w-[320px]">

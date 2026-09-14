@@ -727,43 +727,6 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
       if (failures.length) setError(failures.join(' '));
     } finally { setUploading(false); }
   }
-  // [FACE-PHOTO-1] Its own uploader. It shares /upload/public with the gallery
-  // photos, but is stored in attrs and never added to cover_media — putting it
-  // through the cover path would publish the creator's face on their listing,
-  // which is the one thing this control promises not to do.
-  async function onUploadFace(files: FileList | null) {
-    const file = files?.[0];
-    if (!file || !draft.id) return;
-    setUploading(true);
-    setError(null);
-    try {
-      const token = await getActiveToken();
-      if (!token) { setError('Please sign in again to upload your photo.'); return; }
-      const mime = inferImageMime(file);
-      if (!mime) { setError('Photos only, please.'); return; }
-      if (file.size > MAX_BYTES) { setError('That photo is too large (max 8 MB).'); return; }
-      const res = await withTrace(() => fetch(`${API_BASE}/upload/public`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'x-content-type': mime, 'x-file-name': fileNameHeader(file.name), 'x-app': 'avatok' },
-        body: file,
-      }));
-      if (!res.ok) { setError(`Couldn't upload that photo (${res.status}).`); return; }
-      const body = await res.json() as { url?: string };
-      if (!body.url) { setError('Upload finished but no photo came back. Try again.'); return; }
-      patch({ face_photo: body.url });
-      await request(`/api/listings/${encodeURIComponent(draft.id)}`, {
-        method: 'PUT', auth: token, body: { attrs: buildAttrs({ ...draft, face_photo: body.url }) },
-      });
-      capture('listing_face_upload', { outcome: 'ok' });
-    } catch (e) {
-      // [UPLOAD-FILENAME-HDR-1] See the cover-upload catch above: the real error
-      // has to reach telemetry, and the filename must not.
-      setError(e instanceof ApiError ? e.error : UPLOAD_FALLBACK_MESSAGE);
-      captureException(e, { where: 'listing_face_upload' });
-      capture('listing_face_upload', { outcome: 'error', reason: e instanceof Error ? e.name : 'unknown' });
-    } finally { setUploading(false); }
-  }
-
   async function onRemoveCover(url: string) {
     if (!draft.id) return;
     const next = draft.cover_media.filter((c) => c.url !== url);
@@ -887,7 +850,7 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
         {step === 3 && <Step4Time draft={draft} patch={patch} err={fieldErr} />}
         {step === 4 && <Step5HowItWorks draft={draft} patch={patch} />}
         {step === 5 && <Step6HouseRules draft={draft} patch={patch} />}
-        {step === 6 && <Step7Photos draft={draft} patch={patch} err={fieldErr} onUpload={onUpload} onRemoveCover={onRemoveCover} uploading={uploading} onUploadFace={onUploadFace} />}
+        {step === 6 && <Step7Photos draft={draft} patch={patch} err={fieldErr} onUpload={onUpload} onRemoveCover={onRemoveCover} uploading={uploading} />}
         {step === 7 && (
           <Step8Preview
             draft={draft} checks={checks} onSubmitForReview={onSubmitForReview} publishing={publishing}

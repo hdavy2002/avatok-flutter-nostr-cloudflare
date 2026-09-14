@@ -17,10 +17,10 @@
  * The old form copy claimed the check happens at publish. It does not, and that
  * sentence sent people looking in the wrong place.
  *
- * RULE: every message here says what to DO. "cover_required" is not "cover required",
- * it is "add at least one photo". If a new worker error reaches this file with no
- * entry, `listingErrorMessage` falls back to a plain sentence rather than the code —
- * an unrecognised code is a gap in this map, never something to show a person.
+ * RULE: every message here says what to DO. If a new worker error reaches this
+ * file with no entry, `listingErrorMessage` falls back to a plain sentence rather
+ * than the code — an unrecognised code is a gap in this map, never something to
+ * show a person.
  */
 
 /** What the user should do about each refusal. Keys are the worker's `error` values. */
@@ -39,7 +39,6 @@ const MESSAGES: Record<string, string> = {
     'Publishing a paid session needs your identity verified first. This is a one-time check.',
 
   // --- publish requirements (worker listings.ts publishListing) ---
-  cover_required: 'Add at least one photo before publishing — you can add up to five.',
   'max 5 photos': 'That’s more than five photos. Remove a few and try again.',
   'title and category required': 'Give your listing a title and pick a category before publishing.',
   'unknown category': 'That category is no longer available. Pick another one.',
@@ -172,7 +171,7 @@ export function isKycGate(code: string): boolean {
 
 /**
  * Turn a worker error code into a sentence. `detail` is used when the worker sent a
- * human string alongside the code (publishListing does this for `cover_required`).
+ * human string alongside the code.
  */
 export function listingErrorMessage(code: unknown, detail?: unknown, message?: unknown): string {
   const key = typeof code === 'string' ? code : '';
