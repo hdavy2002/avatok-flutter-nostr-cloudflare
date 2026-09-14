@@ -121,8 +121,8 @@ const campaignImages = [...html.matchAll(/<meta property="og:image" content="([^
 assert.deepEqual(campaignImages, [
  'https://avatok.ai/assets/social/ganesh-live-detailed-v3-2026.jpg',
 ], 'Only the selected landscape is advertised to crawlers');
-assert.equal(meta(html, 'og:title'), 'Go live on avaTOK');
-assert.equal(meta(html, 'og:description'), 'Live stream your traditions. Bring everyone together.');
+assert.equal(meta(html, 'og:title'), 'Live stream your traditions on avaTOK');
+assert.equal(meta(html, 'og:description'), 'Celebrate Ganesh Chaturthi with avaTOK. Live stream your puja, share your traditions, and bring your celebrations to the world. Go live at avatok.ai.');
 assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'twitter:image'), campaignImages[0]);
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));
