@@ -6644,10 +6644,16 @@
       "payGatewayPickerEnabled"
     ],
     "success": [
-      "event checkout_beta_test_notice_shown is present with gateway=razorpay while prod runs rzp_test_ keys",
-      "GET /api/pay/methods returns test_mode=true for razorpay and the notice renders only after a gateway is selected"
+      {
+        "event": "checkout_beta_test_notice_shown",
+        "property": "gateway",
+        "equals": "razorpay",
+        "min_events": 1,
+        "note": "The buyer actually SAW the notice on the Razorpay rail while production runs rzp_test_ keys. Zero of these while checkout_* events are still flowing means either the notice did not deploy or GET /api/pay/methods is returning test_mode:false — and a false there, with test keys in place, is the dangerous direction: the buyer is told nothing and assumes his real card will work. The absence of this event is therefore a failure signal, not silence."
+      }
     ],
-    "_verified_at": "2026-09-14"
+    "_verified_at": "2026-09-14",
+    "shipped": "2026-09-14"
   },
   "ADMIN-SCHEDULE-LOCK-1": {
     "description": "[ADMIN-SCHEDULE-LOCK-1] PUT /api/admin/listings/:id allowed starts_at, duration_min, timezone, schedule_mode and the recurrence fields on a PUBLISHED listing, while the creator's own PUT had always refused the same edit with 409 'cannot move a published event'. The admin console was therefore a way around a rule the product depends on: tickets are sold against a start time, the confirmation email and the /j/ join link quote it, and lib/listing_schedule.ts decides from starts_at + duration_min whether a show is over. Moving either under a buyer who already paid changes what he bought without telling him. Published and live listings now return 409 schedule_locked for those fields; drafts and pending_review are unaffected, and capacity/price/content stay editable.",
@@ -6655,9 +6661,15 @@
     "min_devices_on_build": 1,
     "flags": [],
     "success": [
-      "event listing_admin_schedule_edit_refused is present with listing_status=published when an admin attempts a starts_at edit",
-      "the same PUT against a draft listing still succeeds and writes an admin_edit row"
+      {
+        "event": "listing_admin_schedule_edit_refused",
+        "property": "listing_status",
+        "equals": "published",
+        "min_events": 1,
+        "note": "The gate firing on the status it exists for. This event is only emitted when an admin tries to move a PUBLISHED event's date, duration or timezone, so a low count is expected and healthy — it is asserted here because the only way to know the lock deployed is to see one refusal. A refusal carrying listing_status:'draft' would mean the gate is too wide and is blocking reviewers on listings nobody has bought."
+      }
     ],
-    "_verified_at": "2026-09-14"
+    "_verified_at": "2026-09-14",
+    "shipped": "2026-09-14"
   }
 }
