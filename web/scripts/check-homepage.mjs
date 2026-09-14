@@ -115,3 +115,22 @@ assert(meta(ideas,'og:image')?.includes('/assets/ideas/guides/'),'Ideas-specific
 assert.equal(meta(ideas,'twitter:image'),meta(ideas,'og:image'));
 assert(meta(ideas,'og:title') && meta(ideas,'og:description'));
 console.log('Sharing metadata and discovery checks passed for ideas and all 115 articles.');
+
+// [WEB-GANESH-OG-1] Check the built HTML crawlers receive, including image order.
+const campaignImages = [...html.matchAll(/<meta property="og:image" content="([^"]+)"/g)].map(m => m[1]);
+assert.deepEqual(campaignImages, [
+ 'https://avatok.ai/assets/social/ganesh-live-landscape-2026.jpg',
+ 'https://avatok.ai/assets/social/ganesh-live-portrait-2026.jpg',
+], 'Landscape is primary; portrait is an alternate');
+assert.equal(meta(html, 'og:title'), 'Live stream your traditions on avaTOK');
+assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
+assert.equal(meta(html, 'twitter:image'), campaignImages[0]);
+assert.equal(meta(html, 'description'), meta(html, 'og:description'));
+assert.equal(meta(html, 'og:image:width'), '1200');
+assert.equal(meta(html, 'og:image:height'), '627');
+for (const image of campaignImages) {
+ const bytes = readFileSync(resolve(root, new URL(image).pathname.slice(1)));
+ assert.equal(bytes.readUInt16BE(0), 0xffd8, 'Campaign image is JPEG');
+ assert(bytes.length < 600000, 'Campaign image stays small for sharing crawlers');
+}
+console.log('Ganesh launch title, description and both social images passed.');
