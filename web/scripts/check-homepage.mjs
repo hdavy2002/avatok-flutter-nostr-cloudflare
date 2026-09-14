@@ -119,18 +119,18 @@ console.log('Sharing metadata and discovery checks passed for ideas and all 115 
 // [WEB-GANESH-OG-2] One compact preview prevents WhatsApp choosing the tall poster.
 const campaignImages = [...html.matchAll(/<meta property="og:image" content="([^"]+)"/g)].map(m => m[1]);
 assert.deepEqual(campaignImages, [
- 'https://avatok.ai/assets/social/ganesh-live-compact-v2-2026.jpg',
-], 'Only the compact landscape is advertised to crawlers');
+ 'https://avatok.ai/assets/social/ganesh-live-detailed-v3-2026.jpg',
+], 'Only the selected landscape is advertised to crawlers');
 assert.equal(meta(html, 'og:title'), 'Go live on avaTOK');
 assert.equal(meta(html, 'og:description'), 'Live stream your traditions. Bring everyone together.');
 assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'twitter:image'), campaignImages[0]);
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));
 assert.equal(meta(html, 'og:image:width'), '1200');
-assert.equal(meta(html, 'og:image:height'), '628');
+assert.equal(meta(html, 'og:image:height'), '627');
 for (const image of campaignImages) {
  const bytes = readFileSync(resolve(root, new URL(image).pathname.slice(1)));
  assert.equal(bytes.readUInt16BE(0), 0xffd8, 'Campaign image is JPEG');
  assert(bytes.length < 600000, 'Campaign image stays small for sharing crawlers');
 }
-console.log('Ganesh launch title, description and compact social image passed.');
+console.log('Ganesh launch title, description and selected social image passed.');
