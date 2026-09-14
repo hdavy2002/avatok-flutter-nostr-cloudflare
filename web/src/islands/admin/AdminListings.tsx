@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getActiveTokenWaited as getActiveToken } from '../../lib/clerk';
 import { request, ApiError } from '../../lib/apiClient';
 import { capture } from '../../lib/analytics';
+import { listingErrorMessage } from '../../lib/listingErrors';
 import { Spinner } from '../../components/Spinner';
 import QueueRail from './QueueRail';
 import SubmissionPanel from './SubmissionPanel';
@@ -168,7 +169,9 @@ export default function AdminListings() {
         { auth: t, method: 'POST', body: { action: act, ...payload } },
       ));
     } catch (e) {
-      setError(e instanceof ApiError ? e.error : 'Action failed.');
+      setError(e instanceof ApiError
+        ? listingErrorMessage(e.error, (e.body as any)?.detail, (e.body as any)?.message)
+        : 'Action failed.');
       setErrorAct(act);
     } finally {
       // [POSTER-PROGRESS-1] Re-fetch on BOTH paths, not just success. Poster

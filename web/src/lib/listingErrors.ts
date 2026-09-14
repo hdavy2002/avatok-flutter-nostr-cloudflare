@@ -54,6 +54,8 @@ const MESSAGES: Record<string, string> = {
   // hold (commercial_checkout.ts) — same code, same underlying fact.
   insufficient_funds: 'Your Token balance is too low for this. Add Tokens, or pay by card/UPI instead.',
   billing_unavailable: 'Publishing is temporarily unavailable. Please try again shortly.',
+  availability_unavailable:
+    'Publishing is paused because the creator’s connected Google Calendar is unavailable. Reconnect Google Calendar and refresh its status before trying again.',
 
   // --- edit refusals ---
   'cannot move a published event — cancel and re-create':
