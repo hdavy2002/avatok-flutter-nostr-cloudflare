@@ -139,7 +139,7 @@ export default function PosterPanel({
             {pollTimedOut && (
               <p className="font-body text-[13px] font-bold text-coral">Still generating after ~2 minutes — hit Refresh to keep checking, or investigate the poster job.</p>
             )}
-            <button type="button" disabled={busy} onClick={onPoll} className="rounded-full border-zine border-ink bg-paper px-4 py-2 font-mono text-[13px] font-bold uppercase tracking-[0.06em] text-ink shadow-zine-xs disabled:opacity-50">
+            <button type="button" onClick={onPoll} className="rounded-full border-zine border-ink bg-paper px-4 py-2 font-mono text-[13px] font-bold uppercase tracking-[0.06em] text-ink shadow-zine-xs">
               Refresh poster status
             </button>
             <p className="max-w-xs font-body text-[12px] font-bold text-inkMute">

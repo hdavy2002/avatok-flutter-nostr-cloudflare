@@ -2322,6 +2322,10 @@ export async function runAutoPosterGeneration(
     dialogue?: boolean;
   },
 ): Promise<void> {
+  // A provider or detached Worker invocation must never leave a listing in
+  // `generating` indefinitely. The UI can keep polling, but the server must
+  // eventually expose a retryable failure instead of pretending work is alive.
+  const POSTER_GENERATION_MAX_MS = 10 * 60_000;
   const t0 = Date.now();
   let outcome: "draft" | "failed" = "failed";
   let errorKind: string | undefined;
@@ -2358,7 +2362,7 @@ export async function runAutoPosterGeneration(
     // the resolved copy (the filmy tagline is written by an LLM inside
     // generateListingPoster), and building it in two places is how the prompt
     // and the read-back verifier end up disagreeing about what was asked for.
-    const { poster, coverMedia } = await generateListingPoster(env, {
+    const generation = generateListingPoster(env, {
       subject,
       dialogue: opts.dialogue === true,
       listingId: opts.listingId,
@@ -2386,6 +2390,10 @@ export async function runAutoPosterGeneration(
         });
       },
     });
+    const timeout = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("poster_generation_timeout: provider exceeded 10 minutes")), POSTER_GENERATION_MAX_MS);
+    });
+    const { poster, coverMedia } = await Promise.race([generation, timeout]);
     outcome = poster.status === "draft" ? "draft" : "failed";
     if (poster.status === "failed") errorKind = "generation_failed";
 

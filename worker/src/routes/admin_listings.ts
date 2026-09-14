@@ -57,6 +57,24 @@ export async function adminListingDetail(req: Request, env: Env, id: string): Pr
   const attrs: Record<string, any> = { ...attrsRaw };
   for (const key of Object.keys(attrs)) if (key.startsWith("__")) delete attrs[key];
 
+  // A status refresh is also a safe recovery point. If a detached provider
+  // call outlived its Worker isolate, make the stale attempt retryable when
+  // the admin checks it instead of displaying an endless spinner.
+  const posterStartedAt = Number(attrs.poster?.generated_at ?? 0);
+  if (["pending_review", "approved"].includes(String(row.status))
+      && attrs.poster?.status === "generating"
+      && posterStartedAt > 0
+      && Date.now() - posterStartedAt >= 10 * 60_000) {
+    attrs.poster = {
+      ...attrs.poster,
+      status: "failed",
+      error: "Poster generation timed out. Refresh the status, then try again.",
+    };
+    await db.prepare(
+      "UPDATE listings SET attrs=?2,updated_at=?3 WHERE id=?1 AND status IN ('pending_review','approved') AND authority_version=?4",
+    ).bind(id, JSON.stringify(attrs), Date.now(), Number(row.authority_version ?? 0)).run();
+  }
+
   const listing: Record<string, any> = { ...row };
   listing.attrs = attrs;
   listing.cover_media = safeParse(row.cover_media, [] as any[]);
