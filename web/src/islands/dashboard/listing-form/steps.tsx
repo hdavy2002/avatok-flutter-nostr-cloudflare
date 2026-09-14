@@ -622,6 +622,12 @@ export function Step4Time({ draft, patch, err }: {
   };
   return (
     <div className="flex flex-col gap-5">
+      {draft.kind === 'live_event' && (
+        <Card fillClassName="bg-paper2">
+          <p className="font-body font-bold text-[13px] text-ink">For a live event, you do not need to reserve the event time here first.</p>
+          <p className="mt-1 font-body text-[12px] text-inkSoft">Set working hours only when you offer consultations. We check your connected Google Calendar for existing busy events; after this listing is published, the event itself becomes a protected commitment.</p>
+        </Card>
+      )}
       <label className="block">
         <span className={labelCls}>Timezone</span>
         <select className={inputCls} value={tzOther ? TZ_OTHER : draft.timezone}
@@ -1082,7 +1088,9 @@ export function Step8Preview({ draft, checks, onSubmitForReview, publishing,
   publicHref: string | null; error: string | null;
   creator?: CreatorInfo;
 }) {
-  const isDraftState = !published && !pendingReview && !approvedAwaitingPublish && !rejected;
+  // A rejected listing is an editable draft that must expose the same submit
+  // action after the creator fixes the requested changes.
+  const isDraftState = !published && !pendingReview && !approvedAwaitingPublish;
   const price = Number(draft.price) || 0;
   const startsAt = draft.starts_at ? draft.starts_at.replace('T', ' at ') : '';
   const schedule = draft.schedule_mode === 'fixed_date'
@@ -1259,8 +1267,8 @@ export function Step8Preview({ draft, checks, onSubmitForReview, publishing,
           <>
             {/* [LIST-FORM-2] Renamed per spec §6 step 8 — "Submit for review"
                 didn't say who reviews it or how long that takes. */}
-            <Button variant="lime" label="Submit for human review" loading={publishing} onClick={onSubmitForReview} fullWidth />
-            <p className="font-body font-bold text-[12px] text-inkSoft">Takes 24–48 hours. We’ll email you once it passes.</p>
+            <Button variant="lime" label={rejected ? "Submit changes for review" : "Submit for human review"} loading={publishing} onClick={onSubmitForReview} fullWidth />
+            <p className="font-body font-bold text-[12px] text-inkSoft">Usually checked within an hour; calendar or content issues can take up to 48 hours. We’ll email you when it is published or if more changes are needed.</p>
           </>
         )}
       </div>
@@ -1312,7 +1320,7 @@ function PosterPreview({ poster, draft, creator }: {
   const message = status === 'generating'
     ? 'Painting your poster… this takes a few minutes. You can leave this page.'
     : status === 'failed'
-      ? `We couldn’t paint a poster this time${poster?.error ? ` (${poster.error})` : ''}. Submitting again will retry it.`
+      ? `We couldn’t paint a poster this time${poster?.error ? ` (${poster.error})` : ''}. Your next submission will keep this poster state; the team can retry it separately.`
       : 'Your poster is generated after you submit, from your title, category, tags and description.';
 
   return (

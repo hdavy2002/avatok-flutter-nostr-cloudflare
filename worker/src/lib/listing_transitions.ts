@@ -112,6 +112,7 @@ export const TERMINAL_STATUSES: readonly ListingStatus[] = ["completed", "cancel
 export const TRANSITIONS: readonly TransitionRule[] = [
   // --- creator ---
   { from: "draft", to: "pending_review", actors: ["creator"], requires: "none", id: "creator_submit" },
+  { from: "rejected", to: "pending_review", actors: ["creator"], requires: "none", id: "creator_resubmit" },
   // Revision path. Caller MUST clear stale approval / poster-approved state and force
   // a fresh pending_review on next submit — see the file header. This table only says
   // the status move itself is legal.

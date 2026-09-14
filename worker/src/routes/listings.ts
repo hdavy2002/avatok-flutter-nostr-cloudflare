@@ -2051,7 +2051,12 @@ export async function submitListingForApproval(req: Request, env: Env, id: strin
   // capacity and category columns the old hand-picked list did not include.
   const row = await db.prepare("SELECT * FROM listings WHERE id=?1").bind(id).first<any>();
   if (!row || row.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
-  if (String(row.status) !== "draft") return json({ error: "listing not draft", status: row.status }, 409);
+  // A rejected listing is an editable revision and may be sent back without
+  // first requiring a separate draft transition. This keeps the creator's
+  // resubmission action available after changes are requested.
+  if (!["draft", "rejected"].includes(String(row.status))) {
+    return json({ error: "listing not editable for submission", status: row.status }, 409);
+  }
   // [PRICE-HOURLY-1] spec §4.2 — the floor's LAST word before a listing goes
   // into the approval queue, independent of whichever create/edit call set
   // the price: a draft can accumulate its price across several PUTs (each of
@@ -2150,7 +2155,7 @@ export async function submitListingForApproval(req: Request, env: Env, id: strin
   const submitted = await db.prepare(
     `UPDATE listings SET status='pending_review', attrs=?2, updated_at=?3,
             title=?5, blurb=?6, description=?7
-      WHERE id=?1 AND status='draft' AND authority_version=?4`,
+      WHERE id=?1 AND status IN ('draft','rejected') AND authority_version=?4`,
   ).bind(
     id, JSON.stringify(attrs), now, Number(row.authority_version ?? 0),
     row.title ?? null, row.blurb ?? null, row.description ?? null,

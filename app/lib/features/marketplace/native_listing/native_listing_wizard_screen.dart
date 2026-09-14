@@ -358,12 +358,12 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   /// Step 0 (Type) is skipped — the kind is already decided and is the one
   /// thing a saved listing always has.
   int _firstIncompleteStep() {
-    // Submitted, approved, live or rejected: there is nothing to fill in, and
+    // Submitted, approved or live: there is nothing to fill in, and
     // the summary is the screen that says so. (Same rule as the web wizard's
     // `resumeStepFor`.) Notably it keeps an already-published live event off the
     // Time step, where the "choose a future date" rule would otherwise fire on a
     // start the server accepted long ago.
-    if (_status != 'draft') return _steps.length - 1;
+    if (_status != 'draft' && _status != 'rejected') return _steps.length - 1;
     for (var step = 1; step < _steps.length - 1; step++) {
       if (_validateStep(step) != null) return step;
     }

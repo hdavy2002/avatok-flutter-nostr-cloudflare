@@ -180,13 +180,13 @@ class ListingStep8Preview extends StatelessWidget {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       if (status == 'draft' || status == 'rejected')
         fullWidthButton(
-            label: 'Submit for human review',
+            label: status == 'rejected' ? 'Submit changes for review' : 'Submit for human review',
             loading: submitting,
             onPressed: submitting ? null : onSubmit),
       if (status == 'draft' || status == 'rejected')
         const Padding(
             padding: EdgeInsets.only(top: 8),
-            child: Text('Takes 24–48 hours. We’ll email you once it passes.')),
+            child: Text('Usually checked within an hour, but it can take up to 48 hours. We’ll email you when it is approved or needs more changes.')),
       if (live) ...[
         const SizedBox(height: 12),
         Text('Runs every week?',
