@@ -1199,7 +1199,16 @@ export async function reviewedContentHash(row: Record<string, unknown>): Promise
   for (const f of REVIEW_MATERIAL_FIELDS) {
     const val = row[f];
     const jsonField = ["badges", "cover_media", "recurrence_days", "vibe_tags"].includes(f);
-    material[f] = jsonField && typeof val === "string" ? parseJson(val, []) : (val ?? null);
+    if (f === "cover_media") {
+      // The AI poster is server-owned moderation state stored alongside the
+      // creator's photos. It may be added after listing approval, so including
+      // it here makes an unchanged approved listing falsely fail publish with
+      // review_stale. Creator-uploaded media remains fully review-bound.
+      const covers = typeof val === "string" ? parseJson<any[]>(val, []) : (Array.isArray(val) ? val : []);
+      material[f] = covers.filter((cover) => cover?.source !== "ai_poster");
+    } else {
+      material[f] = jsonField && typeof val === "string" ? parseJson(val, []) : (val ?? null);
+    }
   }
   const canonical = stableStringify(material);
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
