@@ -174,7 +174,7 @@ class MediaService {
       // the sender's AvaLibrary entry (never used to scan — it can't read them).
       'x-content-type': contentType,
       'x-real-mime': contentType,
-      'x-file-name': name,
+      'x-file-name': fileNameHeader(name),
       'x-app': 'avatok',
     };
     // (b) In-call → paced streamed PUT; otherwise the normal single POST.
@@ -248,7 +248,7 @@ class MediaService {
   }) async {
     final extraHeaders = {
       'x-real-mime': contentType,
-      'x-file-name': name,
+      'x-file-name': fileNameHeader(name),
       'x-app': 'avatok',
       'x-encrypted': '0',
     };
@@ -299,7 +299,7 @@ class MediaService {
   }) async {
     final extraHeaders = {
       'x-real-mime': contentType,
-      'x-file-name': name,
+      'x-file-name': fileNameHeader(name),
       'x-app': 'ava',
       'x-encrypted': '0',
       'x-ava-readable': '1',

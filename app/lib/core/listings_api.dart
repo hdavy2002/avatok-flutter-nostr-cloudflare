@@ -1337,7 +1337,7 @@ class ListingsApi {
       extraHeaders: {
         'x-content-type': contentType,
         'x-app': 'avatok',
-        if (fileName != null && fileName.isNotEmpty) 'x-file-name': fileName,
+        if (fileName != null && fileName.isNotEmpty) 'x-file-name': fileNameHeader(fileName),
       },
       timeout: const Duration(seconds: 60),
     );
@@ -1672,7 +1672,7 @@ class ListingsApi {
 
   static Future<Map<String, dynamic>> wizardUpload(List<int> bytes, {required String mime, String? fileName}) async {
     final r = await ApiAuth.postBytes('https://$kSignalingHost/upload/public', bytes,
-        extraHeaders: {'x-content-type': mime, if (fileName != null) 'x-file-name': fileName, 'x-app': 'avatok'});
+        extraHeaders: {'x-content-type': mime, if (fileName != null) 'x-file-name': fileNameHeader(fileName), 'x-app': 'avatok'});
     return {..._j(r.body), 'status': r.statusCode, 'ok': r.statusCode >= 200 && r.statusCode < 300};
   }
 

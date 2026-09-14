@@ -1,7 +1,7 @@
 // Two upload paths + AvaLibrary + ICE. Reads are served by blossom.avatok.ai
 // (public R2 bucket) — never through this Worker. Worker handles WRITES only.
 import type { Env } from "../types";
-import { json, sha256Hex, CORS } from "../util";
+import { json, sha256Hex, CORS, decodeFileNameHeader } from "../util";
 import { mediaSession, moderationSession } from "../db/shard";
 import { requireUser, isFail } from "../authz";
 import { walletOp } from "./wallet";
@@ -234,7 +234,9 @@ export async function uploadPublic(req: Request, env: Env, exec: ExecutionContex
   const r2Key = userKey(ctx.uid, "public", hash);    // per-user storage path → clear ownership
   const url = `${env.BLOSSOM_BASE_URL}/${r2Key}`;
   const ct = req.headers.get("x-content-type") || req.headers.get("content-type") || "application/octet-stream";
-  const fileName = req.headers.get("x-file-name") || defaultName(ct, hash);
+  // [UPLOAD-UTF8-1] x-file-name arrives percent-encoded (util.ts) - a non-Latin-1
+  // filename cannot legally ride in a header. Decodes to itself for old clients.
+  const fileName = decodeFileNameHeader(req.headers.get("x-file-name")) || defaultName(ct, hash);
   const app = (req.headers.get("x-app") || "avatweet").toLowerCase();
   // VIDPOL-2: hard 64 MB cap on video uploads (mirrors the client's 720p H.264
   // transcode gate). Rejected before R2/quota work with the exact client message.
@@ -382,7 +384,8 @@ export async function uploadPrivate(req: Request, env: Env, exec?: ExecutionCont
   // Library entry — never to scan (ciphertext is unscannable by design;
   // plaintext-but-private scanning is a follow-on, not this issue's scope).
   const realMime = req.headers.get("x-real-mime") || "application/octet-stream";
-  const fileName = req.headers.get("x-file-name") || defaultName(realMime, hash);
+  // [UPLOAD-UTF8-1] percent-decoded + path-sanitised - see util.ts.
+  const fileName = decodeFileNameHeader(req.headers.get("x-file-name")) || defaultName(realMime, hash);
   const app = (req.headers.get("x-app") || "avachat").toLowerCase();
   const sourceKind = isAvaReadableCopy ? "ava_readable_copy" : "sent";
   // VIDPOL-2: same 64 MB ceiling either way (ciphertext/plaintext are ~same size as source).

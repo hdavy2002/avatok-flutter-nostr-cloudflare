@@ -11,6 +11,7 @@ import { request } from '../../lib/apiClient';
 import { API_BASE } from '../../lib/config';
 import { getActiveTokenWaited as getActiveToken } from '../../lib/clerk';
 import { capture, captureException } from '../../lib/analytics';
+import { fileNameHeader, UPLOAD_FALLBACK_MESSAGE } from '../../lib/uploadHeaders';
 import { Spinner } from '../../components/Spinner';
 import VoicePicker from './VoicePicker';
 import KnowledgePanel from './KnowledgePanel';
@@ -155,7 +156,7 @@ export default function AgentEditor({ agentId }: { agentId: string | null }) {
       if (file.size > MAX_COVER_BYTES) { setError('That photo is too large (max 8 MB).'); return; }
       const res = await fetch(`${API_BASE}/upload/public`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'x-content-type': mime, 'x-file-name': file.name, 'x-app': 'avatok' },
+        headers: { Authorization: `Bearer ${token}`, 'x-content-type': mime, 'x-file-name': fileNameHeader(file.name), 'x-app': 'avatok' },
         body: file,
       });
       if (!res.ok) { setError(`Couldn't upload that photo (${res.status}).`); return; }
@@ -163,7 +164,7 @@ export default function AgentEditor({ agentId }: { agentId: string | null }) {
       if (!body.url) { setError('Upload finished but no photo came back. Try again.'); return; }
       patch({ coverMedia: [{ url: body.url, type: 'image' }] });
     } catch (e) {
-      setError('Could not upload that photo.');
+      setError(UPLOAD_FALLBACK_MESSAGE);
       captureException(e, { where: 'agent_admin_cover_upload' });
     } finally {
       setUploading(false);

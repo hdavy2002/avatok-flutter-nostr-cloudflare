@@ -23,6 +23,7 @@
  */
 import { API_BASE } from './config';
 import { withTrace } from './analytics';
+import { fileNameHeader } from './uploadHeaders';
 
 /** Owner-stated cap for a session-chat attachment. */
 export const ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
@@ -100,7 +101,7 @@ export async function uploadChatAttachment(file: File, jwt: string): Promise<Cha
       headers: {
         Authorization: `Bearer ${jwt}`,
         'x-content-type': mime,
-        'x-file-name': file.name,
+        'x-file-name': fileNameHeader(file.name),
         'x-app': 'avatok',
       },
       body: file,

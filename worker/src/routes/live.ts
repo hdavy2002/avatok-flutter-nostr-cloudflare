@@ -14,7 +14,7 @@
 // Access control: join tokens are issued ONLY to users holding a paid (or free)
 // order for the listing — and never to users the creator has blocked (A5).
 import type { Env } from "../types";
-import { json } from "../util";
+import { json, encodeHeaderText } from "../util";
 import { requireUser, isFail } from "../authz";
 import { metaDb } from "../db/shard";
 import { rateLimit, RL } from "../money";
@@ -230,7 +230,10 @@ export async function liveRoom(req: Request, env: Env): Promise<Response> {
   const h = new Headers(req.headers);
   h.set("x-session-uid", p.uid);
   h.set("x-session-role", p.role);
-  h.set("x-session-name", p.name);
+  // [UPLOAD-UTF8-1] a display name is user-typed text and is routinely non-Latin-1
+  // (Devanagari). `Headers.set` throws on such a value, so this line 500'd every
+  // room join by a user whose name is not Latin-1. Encoded here, decoded in the DO.
+  h.set("x-session-name", encodeHeaderText(p.name));
   if (p.order) h.set("x-session-order", p.order);
   return sessionStub(env, `live:${id}`).fetch(new Request(req.url, { method: "GET", headers: h }));
 }

@@ -9,6 +9,42 @@ import '../identity/identity.dart';
 import 'analytics.dart';
 import 'net/ava_dns.dart';
 
+/// [UPLOAD-HDRNAME-1 2026-09-13] Percent-encode a USER-SUPPLIED file name before it
+/// goes into the `x-file-name` HTTP header. Never put a raw gallery/file-picker name
+/// in a header — on EVERY platform it is a bug, just a different one.
+///
+/// Reproduced live against production from a browser: a name with any code point
+/// outside ISO-8859-1 throws before the request is even sent —
+///   `पूजा.png` / `photo–dash.png` (en-dash) / `emoji🙏.png`
+///     -> TypeError: ... String contains non ISO-8859-1 code point
+///   `plain.png` / `café.png` -> 200
+///
+/// The Flutter app fails EARLIER and on MORE names than the browser does. On the
+/// native (dart:io) client, `package:http` hands every header to
+/// `HttpHeaders.set()` (io_client.dart `_ioRequest.headers.set(name, value)`),
+/// which validates each value with `_isValueChar(byte) => (byte > 31 && byte < 128)
+/// || byte == HT` (dart:io `_http/http_parser.dart`) and throws
+/// `FormatException("Invalid HTTP header field value: …")` from
+/// `_HttpHeaders._validateValue` (`_http/http_headers.dart`) on ANY code unit >= 128.
+/// So `café.png` — which uploads fine from the browser — throws on the phone. There
+/// is no silent-mangling path to rely on and no platform on which a raw non-ASCII
+/// name is safe.
+///
+/// THE WIRE CONTRACT: the value is `Uri.encodeComponent(name)` (the exact equivalent
+/// of JS `encodeURIComponent`), which is always pure ASCII and therefore always a
+/// legal header value everywhere. The Worker decodes it with `decodeURIComponent`
+/// inside a try/catch that falls back to the raw value (worker/src/util.ts
+/// `decodeHeaderText` / `decodeFileNameHeader`), so a plain ASCII name is
+/// byte-identical to what we sent before and every already-shipped client keeps
+/// working. Do NOT "simplify" this back to the raw name.
+///
+/// Mirror-image precedent: worker/src/util.ts `[UPLOAD-CORS-1 2026-08-30]` records an
+/// upload-header bug that broke the BROWSER while the app was unaffected (CORS
+/// preflight, which native HTTP does not do). This one is the other way round — it
+/// breaks the browser hard AND the app harder — which is why the fix has to land on
+/// both clients, not just the one that was tested.
+String fileNameHeader(String name) => Uri.encodeComponent(name);
+
 /// Central authenticated-HTTP helper for the `/api/*` Worker contract.
 ///
 /// Auth is the Clerk session JWT (Bearer): the Worker verifies it and derives the

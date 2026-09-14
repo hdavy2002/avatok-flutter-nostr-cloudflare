@@ -111,7 +111,7 @@ class PlatformApi {
       _json((await ApiAuth.postJson('$kOlxBase/listings', {'kind': kind, 'title': title, if (notes != null) 'notes': notes, if (category != null) 'category': category, if (priceTokens != null) 'price_coins': priceTokens, if (location != null) 'location': location, if (imageHashes != null) 'image_hashes': imageHashes})).body);
   /// Upload the digital deliverable bytes for a digital listing (seller).
   static Future<Map<String, dynamic>> olxUploadFile(String listingId, List<int> bytes, {String fileName = 'download.bin', String mime = 'application/octet-stream'}) async =>
-      _json((await ApiAuth.postBytes('$kOlxBase/listings/$listingId/file', bytes, extraHeaders: {'x-file-name': fileName, 'x-content-type': mime})).body);
+      _json((await ApiAuth.postBytes('$kOlxBase/listings/$listingId/file', bytes, extraHeaders: {'x-file-name': fileNameHeader(fileName), 'x-content-type': mime})).body);
   static Future<Map<String, dynamic>> olxBuy(String listingId) async =>
       _json((await ApiAuth.postJson('$kOlxBase/buy', {'listing_id': listingId})).body);
   static Future<Map<String, dynamic>> olxRefund(String purchaseId) async =>

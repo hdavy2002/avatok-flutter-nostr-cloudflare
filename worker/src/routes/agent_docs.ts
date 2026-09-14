@@ -8,7 +8,7 @@
 // Flag-gated on `voiceAgent` throughout (plan §4/§7 item 9) — when off every
 // route here 403s, matching agent_profiles.ts's flagOff() pattern exactly.
 import type { Env } from "../types";
-import { json } from "../util";
+import { json, decodeFileNameHeader } from "../util";
 import { requireUser, isFail } from "../authz";
 import { metaDb } from "../db/shard";
 import { readConfig } from "./config";
@@ -67,7 +67,10 @@ export async function uploadAgentDoc(req: Request, env: Env): Promise<Response> 
   const raw = await req.arrayBuffer();
   if (!raw.byteLength || raw.byteLength > 25 * 1024 * 1024) return json({ error: "body must be 1 byte..25MB" }, 400);
   const bytes = new Uint8Array(raw);
-  const filename = (req.headers.get("x-file-name") || "document").slice(0, 200);
+  // [UPLOAD-UTF8-1] percent-decoded (util.ts); the 200-char cap is applied AFTER
+  // decoding so it is not spent on escapes, and path separators are stripped -
+  // this value is interpolated into the R2 key below.
+  const filename = decodeFileNameHeader(req.headers.get("x-file-name"), 200) || "document";
   const contentType = req.headers.get("x-content-type") || req.headers.get("content-type") || "application/octet-stream";
 
   // 1. Store the raw doc in R2 (source of truth — survives even if the Grok

@@ -20,7 +20,8 @@ import { listingErrorMessage, isKycGate, isLivenessGate, apiErrorCode } from '..
 import { Card } from '../../../components/Card';
 import { Button } from '../../../components/Button';
 import { IslandBoundary } from '../../../components/IslandBoundary';
-import { capture, withTrace } from '../../../lib/analytics';
+import { capture, captureException, withTrace } from '../../../lib/analytics';
+import { fileNameHeader, UPLOAD_FALLBACK_MESSAGE } from '../../../lib/uploadHeaders';
 import { isEmbedded, embedNotifyDirty, embedNotifySubmitted } from '../../../lib/embed';
 import { emptyDraft, STEP_LABELS } from './types';
 import type { ListingDraft, StepIndex } from './types';
@@ -646,13 +647,21 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
         try {
           const res = await withTrace(() => fetch(`${API_BASE}/upload/public`, {
             method: 'POST',
-            headers: { Authorization: `Bearer ${token}`, 'x-content-type': mime, 'x-file-name': file.name, 'x-app': 'avatok' },
+            headers: { Authorization: `Bearer ${token}`, 'x-content-type': mime, 'x-file-name': fileNameHeader(file.name), 'x-app': 'avatok' },
             body: file,
           }));
           if (!res.ok) { failures.push(`Couldn't upload ${file.name} (${res.status}).`); continue; }
           const body = await res.json() as { url?: string };
           if (body.url) added.push({ type: 'image', url: body.url });
         } catch (e) {
+          // [UPLOAD-FILENAME-HDR-1] Report the real error. A `fetch` that throws
+          // here never reached the network, so `request()`'s `api_error` hook
+          // never fires and nothing else in telemetry would show it — swallowing
+          // it is what made the ISO-8859-1 filename bug (see lib/uploadHeaders.ts)
+          // invisible until someone reproduced it in a live browser. The
+          // filename itself is user content and stays out of telemetry.
+          captureException(e, { where: 'listing_cover_upload' });
+          capture('listing_cover_upload', { outcome: 'error', reason: e instanceof Error ? e.name : 'unknown' });
           failures.push(`Couldn't upload ${file.name}: ${e instanceof Error ? e.message : 'unknown error'}`);
         }
       }
@@ -684,7 +693,7 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
       if (file.size > MAX_BYTES) { setError('That photo is too large (max 8 MB).'); return; }
       const res = await withTrace(() => fetch(`${API_BASE}/upload/public`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'x-content-type': mime, 'x-file-name': file.name, 'x-app': 'avatok' },
+        headers: { Authorization: `Bearer ${token}`, 'x-content-type': mime, 'x-file-name': fileNameHeader(file.name), 'x-app': 'avatok' },
         body: file,
       }));
       if (!res.ok) { setError(`Couldn't upload that photo (${res.status}).`); return; }
@@ -696,8 +705,11 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
       });
       capture('listing_face_upload', { outcome: 'ok' });
     } catch (e) {
-      setError(e instanceof ApiError ? e.error : 'Could not upload that photo.');
-      capture('listing_face_upload', { outcome: 'error' });
+      // [UPLOAD-FILENAME-HDR-1] See the cover-upload catch above: the real error
+      // has to reach telemetry, and the filename must not.
+      setError(e instanceof ApiError ? e.error : UPLOAD_FALLBACK_MESSAGE);
+      captureException(e, { where: 'listing_face_upload' });
+      capture('listing_face_upload', { outcome: 'error', reason: e instanceof Error ? e.name : 'unknown' });
     } finally { setUploading(false); }
   }
 

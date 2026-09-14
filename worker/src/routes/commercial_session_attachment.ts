@@ -34,7 +34,7 @@
 //      shape) `entitlement()` in commercial_stream_sessions.ts queries -- so a
 //      forged or stale token still can't upload without a real entitlement.
 import type { Env } from "../types";
-import { json } from "../util";
+import { json, decodeFileNameHeader } from "../util";
 import { requireUser, isFail } from "../authz";
 import { metaDb } from "../db/shard";
 import { rateLimit } from "../money";
@@ -140,7 +140,9 @@ export async function commercialSessionAttachmentUpload(req: Request, env: Env):
     const declaredLen = Number(req.headers.get("content-length") || "0");
     if (declaredLen > ATTACH_MAX_BYTES) return json({ error: "file too large", max: ATTACH_MAX_BYTES }, 413);
     bytes = await req.arrayBuffer();
-    rawName = req.headers.get("x-file-name");
+    // [UPLOAD-UTF8-1] percent-decoded (util.ts). The multipart branch above needs no
+    // decoding - a form part name is not a header and carries UTF-8 natively.
+    rawName = decodeFileNameHeader(req.headers.get("x-file-name"), 120) || null;
   }
 
   if (!ATTACH_MIME_OK.test(mime)) return json({ error: "unsupported file type" }, 415);

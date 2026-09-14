@@ -18,7 +18,7 @@
 //
 // Instance naming: `live:<listingId>` (AvaLive) | `consult:<bookingId>`.
 import type { Env } from "../types";
-import { json } from "../util";
+import { json, decodeHeaderText } from "../util";
 import { endLiveOnHostNoReturn } from "../lib/live_grace";
 
 const FLUSH_MS = 5_000;
@@ -234,7 +234,9 @@ export class StreamSessionDO {
     const u = new URL(req.url);
     const uid = (req.headers.get("x-session-uid") || u.searchParams.get("uid") || "").slice(0, 64);
     const role = (req.headers.get("x-session-role") || "viewer").slice(0, 16);
-    const name = (req.headers.get("x-session-name") || "Someone").slice(0, 48);
+    // [UPLOAD-UTF8-1] percent-encoded by routes/live.ts / routes/consult.ts (a raw
+    // non-Latin-1 display name cannot ride in a header). Cap applied after decoding.
+    const name = decodeHeaderText(req.headers.get("x-session-name"), 48) || "Someone";
     const orderId = req.headers.get("x-session-order");
     if (!uid) return new Response("uid required", { status: 400 });
     const banned = this.sql.exec("SELECT state FROM modlist WHERE uid=?1", uid).toArray() as any[];

@@ -11,7 +11,7 @@
 //   GET    /api/olx/downloads             my purchases
 //   GET    /api/olx/downloads/:id/file    signed download (marks downloaded)
 import type { Env } from "../types";
-import { json, sha256Hex } from "../util";
+import { json, sha256Hex, decodeFileNameHeader } from "../util";
 import { requireUser, isFail, kycVerified } from "../authz";
 import { mediaSession, mediaDb } from "../db/shard";
 import { transferTokens } from "./wallet";
@@ -162,7 +162,8 @@ export async function olxUploadFile(req: Request, env: Env, id: string): Promise
 
   const bytes = await req.arrayBuffer();
   if (!bytes.byteLength) return json({ error: "empty body" }, 400);
-  const fileName = req.headers.get("x-file-name") || "download.bin";
+  // [UPLOAD-UTF8-1] percent-decoded + path-sanitised - see util.ts.
+  const fileName = decodeFileNameHeader(req.headers.get("x-file-name")) || "download.bin";
   const mime = req.headers.get("x-content-type") || "application/octet-stream";
   const r2Key = `u/${ctx.uid}/digital/${id}/${await sha256Hex(bytes)}`;
   await env.DIGITAL.put(r2Key, bytes, { httpMetadata: { contentType: mime } });

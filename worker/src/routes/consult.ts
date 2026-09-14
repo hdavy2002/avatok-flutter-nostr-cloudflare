@@ -14,7 +14,7 @@
 //   GET  /api/consult/probe                 pre-call RTT probe (A3)
 //   GET  /api/consult/probe/blob            ~256 KB for a 2 s bandwidth estimate (A3)
 import type { Env } from "../types";
-import { json } from "../util";
+import { json, encodeHeaderText } from "../util";
 import { requireUser, isFail } from "../authz";
 import { metaDb } from "../db/shard";
 import { checkAvailability } from "../cal/engine";
@@ -159,7 +159,9 @@ export async function consultRoom(req: Request, env: Env): Promise<Response> {
   const h = new Headers(req.headers);
   h.set("x-session-uid", p.uid);
   h.set("x-session-role", p.role);
-  h.set("x-session-name", p.name);
+  // [UPLOAD-UTF8-1] see routes/live.ts - non-Latin-1 display names throw in
+  // `Headers.set`. Encoded here, decoded in do/stream_session.ts.
+  h.set("x-session-name", encodeHeaderText(p.name));
   if (p.order) h.set("x-session-order", p.order);
   return sessionStub(env, `consult:${id}`).fetch(new Request(req.url, { method: "GET", headers: h }));
 }

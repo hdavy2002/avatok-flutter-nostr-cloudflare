@@ -265,7 +265,7 @@ class LibraryApi {
   }) async {
     final r = await ApiAuth.postBytes(kUploadPublicUrl, bytes, extraHeaders: {
       'x-content-type': mime,
-      'x-file-name': name,
+      'x-file-name': fileNameHeader(name),
       'x-app': app,
       if (folderId != null) 'x-folder': folderId,
     }, timeout: const Duration(seconds: 90));

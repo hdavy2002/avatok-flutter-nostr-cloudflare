@@ -167,3 +167,99 @@ export function normalizePhone(raw: string): string {
 export function canonicalMsgId(createdMs: number): string {
   return `${String(createdMs).padStart(13, "0")}.${crypto.randomUUID().slice(0, 8)}`;
 }
+
+/**
+ * [UPLOAD-UTF8-1 2026-09-13] HTTP HEADER VALUES ARE ISO-8859-1 (Latin-1) ONLY.
+ *
+ * A header value is a ByteString in the fetch spec, so a browser throws BEFORE the
+ * request is sent the moment a value carries a code point above U+00FF:
+ *
+ *     TypeError: Failed to execute 'fetch': Failed to read the 'headers' property
+ *     from 'RequestInit': String contains non ISO-8859-1 code point.
+ *
+ * The clients put the raw picked filename into `x-file-name`. Reproduced live against
+ * production, in a real browser:
+ *     plain.png       -> 200
+ *     पूजा.png         -> TypeError (above) - no request, no status code, no server log
+ *     photo-dash.png  -> same TypeError when the dash is U+2013 EN DASH (a macOS/Word
+ *                        autocorrect artefact, so this is trivially easy to hit)
+ *     emoji.png       -> same TypeError when the name carries an emoji
+ *     café.png        -> 200 (é IS in Latin-1, which is why casual accent testing passed)
+ *
+ * Because the web upload is a raw `fetch()` and not the `request()` helper, the throw did
+ * not even produce an `api_error` telemetry event - the user saw only the generic
+ * "Could not upload that photo." For an Indian marketplace this is critical: every
+ * Devanagari filename was unuploadable from the web.
+ *
+ * THE ASYMMETRY THAT LET THIS SURVIVE is exactly the one already documented in the
+ * [UPLOAD-CORS-1 2026-08-30] block at the top of this file: the Flutter app's native HTTP
+ * stack has no browser preflight and no ByteString check on header values, so it happily
+ * sent UTF-8 bytes and the feature "worked" on the platform that gets tested. A web-only
+ * failure on the platform that is NOT the one usually exercised - the same shape, twice,
+ * on the same two headers. Whenever a header carries user-typed text, assume the browser
+ * will reject it and the app will not tell you.
+ *
+ * THE WIRE CONTRACT: clients now send `x-file-name` percent-encoded
+ * (`encodeURIComponent(name)`), which is always pure ASCII and therefore always a legal
+ * header value. This is the server half: it decodes.
+ */
+
+/**
+ * Decode one percent-encoded header value, with a hard length cap.
+ *
+ * `decodeURIComponent` THROWS a URIError on a malformed sequence - a legacy client that
+ * sent a literal `%` in a filename (`100%.png`), or any stray `%zz` - which would
+ * otherwise turn a working upload into a 500. We catch it and fall back to the RAW
+ * value: that is the whole reason for the try/catch. An already-shipped client that
+ * sends a plain unencoded name keeps working byte-for-byte, because a plain ASCII
+ * string decodes to itself.
+ *
+ * The cap is applied AFTER decoding, so a cap is never spent on percent-escapes
+ * (`%E0%A4%AA` is 9 characters on the wire but one character once decoded).
+ */
+export function decodeHeaderText(raw: string | null | undefined, maxLen = 255): string {
+  if (!raw) return "";
+  let out: string;
+  try {
+    out = decodeURIComponent(raw);
+  } catch {
+    out = raw; // malformed escape (legacy client / literal '%') - never fail the request
+  }
+  // Control characters (incl. NUL, CR, LF) are never legitimate here and are a
+  // log/JSON/header-injection shape once the value is stored and echoed back.
+  out = out.replace(/[\x00-\x1F\x7F]/g, "");
+  return out.slice(0, maxLen).trim();
+}
+
+/**
+ * Decode a percent-encoded `x-file-name` into a name that is safe to STORE.
+ *
+ * Beyond decodeHeaderText: this value lands in `user_media.file_name`, is used as an R2
+ * key segment on some routes (agent_docs, commercial attachments), and is echoed straight
+ * back to clients. Percent-encoding means a decoded name can now contain anything at all
+ * - including `%2F` -> `/` and `%2E%2E` -> `..`, which was NOT reachable before this
+ * change - so path separators and dot-runs are neutralised here, once, for every reader,
+ * and a decoded name can never be read as a path.
+ *
+ * Returns "" when nothing usable survives, so the existing `|| defaultName(...)`
+ * fallbacks at the call sites keep behaving exactly as they do today.
+ */
+export function decodeFileNameHeader(raw: string | null | undefined, maxLen = 255): string {
+  const decoded = decodeHeaderText(raw, maxLen);
+  if (!decoded) return "";
+  return decoded
+    .replace(/[\/\\]/g, "_") // no path separators - one flat name, never a path
+    .replace(/\.{2,}/g, ".") // no `..` traversal segment
+    .trim();
+}
+
+/**
+ * Percent-encode a value we put into a header OURSELVES. Same ISO-8859-1 constraint as
+ * above, but server-side: `Headers.set()` in the Worker runtime throws on a non-Latin-1
+ * value, which surfaces as a 500 instead of a client TypeError. Pair it with
+ * decodeHeaderText() on the reader; both halves ship together, so there is no
+ * old-client compatibility window on these internal headers.
+ */
+export function encodeHeaderText(value: string | null | undefined): string {
+  return encodeURIComponent(value ?? "");
+}
