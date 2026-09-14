@@ -46,6 +46,7 @@ export default function AdminListings() {
   // [ADMIN-EDIT-1] Set when the admin clicks "Fix <field>" on a blocker, so the
   // editor opens scrolled to the field that is actually the problem.
   const [focusField, setFocusField] = useState<string | null>(null);
+  const [listingChecked, setListingChecked] = useState(false);
 
   const [detail, setDetail] = useState<AdminListingDetailResponse | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -153,6 +154,7 @@ export default function AdminListings() {
 
   useEffect(() => {
     if (!token || !selected) { setDetail(null); return; }
+    setListingChecked(false);
     void loadDetail(selected);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, selected]);
@@ -168,6 +170,8 @@ export default function AdminListings() {
         `/api/admin/listings/${encodeURIComponent(id)}`,
         { auth: t, method: 'POST', body: { action: act, ...payload } },
       ));
+      if (act === 'check_listing') setListingChecked(true);
+      if (act === 'publish' || act === 'reject_listing') setListingChecked(false);
     } catch (e) {
       setError(e instanceof ApiError
         ? listingErrorMessage(e.error, (e.body as any)?.detail, (e.body as any)?.message)
@@ -306,10 +310,10 @@ export default function AdminListings() {
                   listingStatus={detail.listing.status as string | undefined}
                   poster={detail.poster}
                   busy={isBusy}
-                  onApproveListing={() => void action(detail.listing.id, 'approve_listing')}
+                  onCheckListing={() => void action(detail.listing.id, 'check_listing')}
                   onRejectListing={(reason) => void action(detail.listing.id, 'reject_listing', { reason })}
                   onPublish={() => void action(detail.listing.id, 'publish')}
-                  onReapprove={() => void action(detail.listing.id, 'reapprove_content')}
+                  checked={listingChecked}
                   publishable={detail.publishable}
                 />
                 <PosterPanel

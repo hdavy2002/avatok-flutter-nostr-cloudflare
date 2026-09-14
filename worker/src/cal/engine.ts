@@ -387,7 +387,7 @@ export function fixedLiveAdmission(creator:string,listing:string,start:string,en
  AND COALESCE(s.starts_at,l.starts_at)<${end} AND COALESCE(s.ends_at,l.starts_at+COALESCE(l.duration_min,60)*60000)>${start})`;
 }
 
-async function unifiedConflicts(env: Env, creatorId: string, listingId: string, startAt: number, endAt: number, bufferMin: number, excludeReservationId?: string | null, excludeBookingId?: string | null): Promise<UnifiedConflict[]> {
+export async function unifiedConflicts(env: Env, creatorId: string, listingId: string, startAt: number, endAt: number, bufferMin: number, excludeReservationId?: string | null, excludeBookingId?: string | null): Promise<UnifiedConflict[]> {
   const db = metaDb(env), lo = startAt - Math.max(0, bufferMin) * 60_000, hi = endAt + Math.max(0, bufferMin) * 60_000, now = Date.now();
   const out: UnifiedConflict[] = await loadFixedLiveCommitments(env,creatorId,lo,hi,listingId);
   try {
@@ -431,7 +431,7 @@ export async function validateListingSlot(env: Env, listingId: string, startAt: 
   if (!listing) return { ok: false, listingId, reason: "listing_not_found" };
   if (!["published", "live"].includes(listing.status)) return { ok: false, listingId, creatorId: listing.creator_id, reason: "listing_unpublished" };
   if (!(Number.isSafeInteger(startAt) && Number.isSafeInteger(endAt) && startAt > 0 && startAt % 60_000 === 0 && endAt > startAt)) return { ok: false, listingId, creatorId: listing.creator_id, reason: "bad_interval" };
-  if(!(await gcalAvailabilityReady(env,listing.creator_id)).ready)return {ok:false,listingId,creatorId:listing.creator_id,reason:'calendar_refresh_pending'};
+  if(!(await gcalAvailabilityReady(env,listing.creator_id, undefined, true)).ready)return {ok:false,listingId,creatorId:listing.creator_id,reason:'calendar_refresh_pending'};
   const schedule = await loadUnifiedSchedule(env, listing.creator_id, listingId);
   const shared = schedule.listing_id ? await loadUnifiedSchedule(env, listing.creator_id, null) : schedule;
   const hasFixed=await metaDb(env).prepare('SELECT id FROM listing_slots WHERE listing_id=?1 LIMIT 1').bind(listingId).first();
@@ -543,7 +543,7 @@ export async function claimExclusiveReservation(env: Env, a: ExclusiveReservatio
   const owner = await listingOwner(env, a.listingId);
   if (!owner || owner.creator_id !== a.creatorId) return { ok: false, reason: "listing_membership" };
   if (!(Number.isFinite(a.startAt) && Number.isFinite(a.endAt) && a.endAt > a.startAt)) return { ok: false, reason: "bad_interval" };
-  if(!(await gcalAvailabilityReady(env,a.creatorId)).ready)return {ok:false,reason:'availability_unavailable'};
+  if(!(await gcalAvailabilityReady(env,a.creatorId, undefined, true)).ready)return {ok:false,reason:'availability_unavailable'};
   if (a.sourceRef) {
     const existing = await metaDb(env).prepare("SELECT id,listing_id,kind,status,hold_expires_at,starts_at,ends_at FROM availability_reservations WHERE creator_id=?1 AND source_ref=?2").bind(a.creatorId, a.sourceRef).first<any>();
     if (existing) {

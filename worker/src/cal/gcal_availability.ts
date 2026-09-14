@@ -10,16 +10,17 @@ export async function gcalAvailabilityReady(
   env: Env,
   uid: string,
   maxAgeMs = 30 * 60_000,
+  requireConnected = false,
 ): Promise<{ ready: boolean; reason?: "disconnected" | "no_selected_calendars" | "pending" | "stale" | "error"; age_ms?: number }> {
   let account: { user_id: string } | null;
   try { account = await metaDb(env).prepare("SELECT user_id FROM gcal_accounts WHERE user_id=?1").bind(uid).first<{ user_id: string }>(); } catch { return { ready: false, reason: "error" }; }
-  if (!account) return { ready: true, reason: "disconnected" };
+  if (!account) return requireConnected ? { ready: false, reason: "disconnected" } : { ready: true, reason: "disconnected" };
   let rows: { results?: Array<{ selected: number; last_success_at: number | null; last_error: string | null }> };
   try { rows = await metaDb(env).prepare("SELECT selected,last_success_at,last_error FROM gcal_calendars WHERE user_id=?1").bind(uid).all<{ selected: number; last_success_at: number | null; last_error: string | null }>(); } catch { return { ready: false, reason: "error" }; }
   const calendars = rows.results ?? [];
   if (!calendars.length) return { ready: false, reason: "pending" };
   const selected = calendars.filter((row) => row.selected === 1);
-  if (!selected.length) return { ready: true, reason: "no_selected_calendars" };
+  if (!selected.length) return requireConnected ? { ready: false, reason: "no_selected_calendars" } : { ready: true, reason: "no_selected_calendars" };
   if (selected.some((row) => row.last_error)) return { ready: false, reason: "error" };
   if (selected.some((row) => !row.last_success_at)) return { ready: false, reason: "pending" };
   const age = Math.max(...selected.map((row) => Date.now() - (row.last_success_at ?? 0)));

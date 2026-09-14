@@ -192,6 +192,16 @@ export async function emailListingApproved(env: Env, c: { listingId: string; cre
   );
 }
 
+export async function emailListingChangesRequested(env: Env, c: { listingId: string; creatorId: string; title: string; reason: string }): Promise<EmailQueueStatus> {
+  return queueEmail(env, c.creatorId, `Changes requested: ${c.title}`, shell("Changes requested on your listing", `<p style="font-weight:600">${escapeHtml(c.title)}</p><p>The team needs you to update this listing before it can be published.</p><p><strong>Reason:</strong> ${escapeHtml(c.reason)}</p><p>Fix the issue and submit the listing again for review.</p>`, { label: "Review your listing", url: `${webBase(env)}/dashboard/listings` }), undefined, { outboxKey: `listing-changes-requested:${c.listingId}:${c.reason}:v1`, messageVersion: "listing-changes-requested.v1", verified: true });
+}
+
+export async function emailListingPublished(env: Env, c: { listingId: string; creatorId: string; title: string; start: number; end: number }): Promise<EmailQueueStatus> {
+  const url = `${webBase(env)}/live/${encodeURIComponent(c.listingId)}`;
+  const ics = { name: "avaTOK-event.ics", content: icsB64(buildIcs({ uid: c.listingId, title: c.title, start: c.start, end: c.end, url })) };
+  return queueEmail(env, c.creatorId, `Your listing is live: ${c.title}`, shell("Your listing is now live", `<p style="font-weight:600">${escapeHtml(c.title)}</p><p>Starts: ${whenUtc(c.start)}</p><p>Ends: ${whenUtc(c.end)}</p><p>Your calendar invite is attached. We’ll send an email reminder 24 hours before the event and an app notification 30 minutes before it starts.</p>`, { label: "Open your live listing", url }), ics, { outboxKey: `listing-published:${c.listingId}:v1`, messageVersion: "listing-published.v1", verified: true });
+}
+
 async function joinCta(env: Env, bookingId: string, start: number): Promise<{ label: string; url: string }> {
   // Token valid until 24h after start — covers reschedules + late joins.
   const token = await signJoinToken(env, bookingId, start + 86_400_000);

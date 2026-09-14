@@ -1161,8 +1161,14 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
     }
   }
 
-  static String _serverMessage(Map<String, dynamic> result) =>
-      (result['message'] ?? result['detail'] ?? result['error'] ?? result['reason'] ?? 'Could not save this listing.').toString();
+  static String _serverMessage(Map<String, dynamic> result) {
+    final blockers = result['blockers'];
+    if (blockers is List) {
+      final messages = blockers.whereType<Map>().map((b) => (b['message'] ?? '').toString()).where((m) => m.isNotEmpty).toList();
+      if (messages.isNotEmpty) return messages.join(' ');
+    }
+    return (result['message'] ?? result['detail'] ?? result['error'] ?? result['reason'] ?? 'Could not save this listing.').toString();
+  }
 
   /// [LIST-APP-PARITY-1] `live: true` rebuilds the step on every keystroke. Only
   /// the price and discount boxes need it — they feed the running "what the
@@ -1460,7 +1466,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
       const SizedBox(height: Msg.s4),
       AdCard(
           child: Text(
-              'Submitting sends this listing for review. Reviews take 24 to 48 hours, and you will be told as soon as it is approved or sent back with changes.',
+              'Submitting sends this listing for review. The team usually checks it within an hour, but it can take up to 48 hours if there are calendar conflicts or other issues. You will get an email when it is published or if changes are needed.',
               style: ADText.preview(c: AD.textPrimary))),
     ]);
   }

@@ -4,7 +4,8 @@ import { requireAdmin } from "./admin_money";
 import { track } from "../hooks";
 import { generateListingPoster, type PosterState } from "../lib/listing_poster";
 import { resolveCreatorSubject } from "../lib/poster_subject";
-import { emailListingApproved } from "../cal/emails";
+import { emailListingChangesRequested, emailListingPublished } from "../cal/emails";
+import { notifyUser } from "../notify";
 import { readConfig } from "./config";
 // [C03 MKT-PUBLISH-UNIFY-1] The one authoritative publish path — see the doc
 // comment on publishListingAuthoritative() in routes/listings.ts. `publish`
@@ -225,7 +226,7 @@ function approvalRequired(listing: { id: string; status: string; poster_status?:
   }, 409);
 }
 
-const ALLOWED_ACTIONS = ["approve_listing", "reject_listing", "generate_poster", "regenerate_poster", "approve_poster", "reject_poster", "publish", "reapprove_content", "regenerate_copy", "restore_copy"];
+const ALLOWED_ACTIONS = ["check_listing", "approve_listing", "reject_listing", "generate_poster", "regenerate_poster", "approve_poster", "reject_poster", "publish", "reapprove_content", "regenerate_copy", "restore_copy"];
 
 // [ADMIN-EDIT-1 2026-09-05] What a reviewer may change on someone else's listing.
 //
@@ -460,6 +461,10 @@ export async function adminListingAction(req: Request, env: Env, id: string, exe
   if (!ALLOWED_ACTIONS.includes(action)) return json({ error: "invalid action" }, 400);
   let attrs: any = {}; try { attrs = row.attrs ? JSON.parse(row.attrs) : {}; } catch { attrs = {}; }
   for (const key of Object.keys(attrs)) if (key.startsWith("__")) delete attrs[key];
+  if (action === "check_listing") {
+    const blockers = await listingBlockers(env, row);
+    if (blockers.length) return json({ ok: false, publishable: false, blockers }, 409);
+  }
   let generatedCoverMedia: any[] | null = null;
   // [COPY-PIPELINE-1] Set by regenerate_copy / restore_copy; written in the same
   // statement as everything else below so the copy change and the attrs that
@@ -660,6 +665,10 @@ export async function adminListingAction(req: Request, env: Env, id: string, exe
     });
 
     if (!result.ok) return json(result.body, result.status);
+    const start = Number(row.starts_at || 0);
+    const end = start + Math.max(5, Number(row.duration_min || 60)) * 60000;
+    const emailStatus = await emailListingPublished(env, { listingId: id, creatorId: String(row.creator_id || ""), title: String(row.title || "Your listing"), start, end });
+    safeTrack(env, a.uid, "listing_published_email_queued", { listing_id: id, creator_id: row.creator_id ?? null, status: emailStatus });
     return json({ ok: true, id, status: nextStatus, poster: attrs.poster || null, admin_id: a.uid, reason: null, ...result.body });
   }
 
@@ -667,8 +676,8 @@ export async function adminListingAction(req: Request, env: Env, id: string, exe
   let generatePosterAfterApproval = false;
   let posterAttemptAfterApproval = 0;
   let approvalPosterCfg: any = null;
-  if (action === "approve_listing") {
-    const legacyRebind = String(row.status) === "approved" && !row.reviewed_content_hash;
+  if (action === "approve_listing" || action === "check_listing") {
+    const legacyRebind = String(row.status) === "approved" && (!row.reviewed_content_hash || action === "check_listing");
     if (!legacyRebind) {
       const check = checkTransition(String(row.status), "approved", "admin");
       if (!check.ok) {
@@ -754,7 +763,7 @@ export async function adminListingAction(req: Request, env: Env, id: string, exe
   let reviewedHash: string | null = row.reviewed_content_hash ?? null;
   let reviewedAt: number | null = row.reviewed_at ?? null;
   let reviewedBy: string | null = row.reviewed_by ?? null;
-  if (action === "approve_listing" || action === "reapprove_content") {
+  if (action === "approve_listing" || action === "check_listing" || action === "reapprove_content") {
     // Hash the content as it will actually be WRITTEN below: `attrs`/`coverMedia`
     // already reflect this request's poster-generation cover-cap merge (if any),
     // and every other listing field is untouched by this action.
@@ -823,15 +832,17 @@ export async function adminListingAction(req: Request, env: Env, id: string, exe
     reason_present: !!(reasonForHistory && reasonForHistory.length > 0),
   });
 
-  if (action === "approve_listing") {
-    const emailStatus = await emailListingApproved(env, {
-      listingId: id,
-      creatorId: String(row.creator_id || ""),
-      title: String(row.title || "Your listing"),
-    });
-    safeTrack(env, a.uid, "listing_approval_email_queued", {
-      listing_id: id, creator_id: row.creator_id ?? null, status: emailStatus,
-    });
+  if (action === "reject_listing") {
+    const reason = String(body.reason || "").trim();
+    const emailStatus = await emailListingChangesRequested(env, { listingId: id, creatorId: String(row.creator_id || ""), title: String(row.title || "Your listing"), reason });
+    await notifyUser(env, String(row.creator_id || ""), { type: "moderation", title: "Changes requested on your listing", body: String(row.title || "Your listing") + ": " + reason, data: { listing_id: id, reason, deeplink: "/dashboard/listings" } }, { id: "listing-changes-requested:" + id + ":" + now });
+    safeTrack(env, a.uid, "listing_changes_requested_notified", { listing_id: id, creator_id: row.creator_id ?? null, email_status: emailStatus });
+  }
+  if (action === "check_listing") {
+    safeTrack(env, a.uid, "listing_check_passed", { listing_id: id, creator_id: row.creator_id ?? null });
+  }
+  if (action === "approve_listing" || action === "check_listing") {
+    safeTrack(env, a.uid, "legacy_listing_approval", { listing_id: id, check: action === "check_listing" });
     if (generatePosterAfterApproval) {
       const work = runAutoPosterGeneration(env, {
         listingId: id,

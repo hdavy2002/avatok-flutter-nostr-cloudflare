@@ -36,7 +36,7 @@ export async function publishFixedListing(
   env: Env,
   input: FixedListingPublication,
 ): Promise<FixedListingPublicationResult> {
-  if (!(await gcalAvailabilityReady(env,input.creatorId)).ready) return {ok:false,reason:"availability_unavailable"};
+  if (!(await gcalAvailabilityReady(env,input.creatorId, undefined, true)).ready) return {ok:false,reason:"availability_unavailable"};
   const db = metaDb(env);
   const now = Date.now();
   const baseSourceRef = `listing:${input.listingId}:fixed:${input.expectedAuthorityVersion}`;

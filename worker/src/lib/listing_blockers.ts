@@ -1,4 +1,5 @@
-import {loadUnifiedSchedule,windowsForDate,localParts} from "../cal/engine";
+import {loadUnifiedSchedule,windowsForDate,localParts,unifiedConflicts} from "../cal/engine";
+import { gcalAvailabilityReady } from "../cal/gcal_availability";
 // [LISTING-BLOCKERS-1 2026-09-05] ONE definition of "can this listing publish?".
 //
 // WHY THIS FILE EXISTS
@@ -192,6 +193,22 @@ export async function listingBlockers(
         legacy: { status: 400, body: { error: "starts_at (future) and duration_min (5–480) required" } },
       });
     }
+    const creatorUid = String(l?.creator_id ?? "");
+    if (creatorUid && start > Date.now() && dur >= 5 && dur <= 480) {
+      const cal = await gcalAvailabilityReady(env, creatorUid, undefined, true);
+      if (!cal.ready) {
+        const message = cal.reason === "disconnected" ? "Connect Google Calendar before submitting this event." : cal.reason === "no_selected_calendars" ? "Select at least one Google Calendar before submitting this event." : "Refresh Google Calendar before submitting this event so conflicts can be checked.";
+        out.push({ code: "calendar_not_ready", field: null, message, legacy: { status: 409, body: { error: "calendar_unavailable", detail: message } } });
+      } else {
+        try {
+          const schedule = await loadUnifiedSchedule(env, creatorUid, String(l?.id ?? ""));
+          const conflicts = await unifiedConflicts(env, creatorUid, String(l?.id ?? ""), start, start + dur * 60000, schedule.buffer_min);
+          if (conflicts.length) out.push({ code: "calendar_conflict", field: "starts_at", message: `This time conflicts with ${conflicts[0].title || "another calendar commitment"}. Pick a different date or time.`, legacy: { status: 409, body: { error: "availability_unavailable", detail: "You already have something booked at that time. Pick a different slot." } } });
+        } catch {
+          out.push({ code: "calendar_check_failed", field: null, message: "Calendar availability could not be checked. Refresh Google Calendar and try again.", legacy: { status: 503, body: { error: "calendar_unavailable", detail: "Calendar availability could not be checked." } } });
+        }
+      }
+    }
   } else {
     if (Number(l?.capacity)!==1) {
       out.push({
@@ -203,6 +220,7 @@ export async function listingBlockers(
     }
     // Availability belongs to the CREATOR, not to whoever is publishing.
     const creatorUid = String(l?.creator_id ?? "");
+    if (creatorUid && !(await gcalAvailabilityReady(env, creatorUid, undefined, true)).ready) out.push({ code: "calendar_not_ready", field: null, message: "Connect and refresh Google Calendar before submitting this consultation.", legacy: { status: 409, body: { error: "calendar_unavailable", detail: "Connect and refresh Google Calendar before submitting this consultation." } } });
     let hasRules = false;
     try {
       const schedule=await loadUnifiedSchedule(env,creatorUid,String(l?.id??''));
