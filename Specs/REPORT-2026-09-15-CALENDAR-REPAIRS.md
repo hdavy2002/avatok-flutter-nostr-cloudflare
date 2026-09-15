@@ -1,7 +1,7 @@
 # Calendar repairs — simple-English report
 15 September 2026
 
-**The calendar repairs are implemented and all focused calendar checks pass. Nothing has been deployed to production or shipped to Android. The wider release still has existing readiness blockers and needs your approval.**
+**The calendar repairs are implemented and all focused calendar checks pass. The approved production web, Worker, and Android release completed on 15 September 2026. The wider verify workflow still reports 28 older release-readiness definitions that are separate from the Android ship workflow.**
 
 ## Are web and Android using the same calendar?
 Yes: they use the same saved schedules and the same server checks for bookings. They have separate screens. This work brings the creator controls and their behaviour closer together.
@@ -71,7 +71,16 @@ Authenticated browser interaction, an installed Android build with these changes
 Before calling the release fully accepted, test: whole-day blocks, two breaks, a holiday, shared versus listing-only scope, a conflicting event/1:1, simultaneous booking attempts, moving/cancelling a booking, Google sync failure/recovery, and switching accounts/devices.
 
 ## Release status
-No merge to main, production deployment, APK/AAB packaging, Play submission or update notification was performed. Your separate approval is still required for production deployment and Android shipping. Existing release-readiness failures also remain visible and must be resolved before declaring the entire release healthy.
+The approved calendar source reached `main` at commit `278328e4`.
+
+- Production web deployment: [run 34920550276](https://github.com/hdavy2002/avatok-flutter-nostr-cloudflare/actions/runs/34920550276) completed successfully. A live request to `https://avatok.ai/` returned HTTP 200.
+- Production Worker deployment: `scripts/cf.sh worker deploy` with `ALLOW_PROD=1` completed with version `9eb16f26-1152-4c9e-9ab9-727ec49e4fe8`. A live request to `https://api.avatok.ai/health` returned HTTP 200 and `ok: true`.
+- Android production release: [run 34920643144](https://github.com/hdavy2002/avatok-flutter-nostr-cloudflare/actions/runs/34920643144) completed successfully from `main` with `prod`, both artifacts, and Closed Alpha. The production environment approval was recorded for this exact run.
+- Build `10661`: the versioned arm64 APK is [available for sideload](https://github.com/hdavy2002/avatok-flutter-nostr-cloudflare/releases/download/calltest-latest/avatok-call-arm64-b10661.apk). The signed AAB is [available from the release](https://github.com/hdavy2002/avatok-flutter-nostr-cloudflare/releases/download/calltest-latest/avatok-call.aab).
+- Google Play Closed Alpha: the AAB upload committed successfully, then passed the configured 45-minute processing wait.
+- Update pointer and FCM: `latestAppBuild=10661` and `inAppUpdateEnabled=true` are live. The release log verified `update_broadcast_last_build=10661` and `update_broadcast_completed_build=10661`.
+
+The wider verify workflow still reports 28 older issue definitions without a success entry in `tool/ship_manifest.json` for its default seven-day window. This is pre-existing readiness debt; it was neither baselined nor bypassed, and it is separate from the successful Android release workflow. No production telemetry was fabricated.
 
 ## Saved work and records
 The code is on [codex/calendar-creator-repairs](https://github.com/hdavy2002/avatok-flutter-nostr-cloudflare/tree/codex/calendar-creator-repairs), isolated from main. The original audit and repair plan remain alongside this report.
