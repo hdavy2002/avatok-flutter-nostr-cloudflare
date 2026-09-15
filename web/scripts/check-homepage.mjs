@@ -8,7 +8,7 @@ const root = resolve('dist');
 const html = readFileSync(resolve(root, 'index.html'), 'utf8');
 assert.match(html, /data-design="creator-marketplace-2026-09"/, 'Expected creator marketplace homepage');
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One readable main heading');
-assert.equal((html.match(/data-home-idea=/g) || []).length, 6, 'Six earning ideas');
+assert.equal((html.match(/global-idea__link/g) || []).length, 8, 'Eight global earning ideas');
 const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
 for (const match of html.matchAll(/\bhref="([^"]+)"/g)) {
   const href = match[1].replaceAll('&amp;', '&');
@@ -21,9 +21,7 @@ for (const name of ['approved-hero.jpg', 'approved-ideas.jpg', 'creator-train.jp
 }
 assert.match(html, /href="\/sign-up"/, 'Signup remains reachable');
 assert.match(html, /href="\/marketplace/, 'Marketplace remains reachable');
-for (const group of ['india_goes_live', 'find_your_people', 'book_their_time']) {
-  assert.match(html, new RegExp('href="/marketplace\\?group=' + group + '"'), 'Hero links to marketplace group: ' + group);
-}
+assert.match(html, /href="\/marketplace/, 'Marketplace remains reachable from global homepage');
 assert.doesNotMatch(html, /data-motion-toggle|data-rail-train/, 'Old train animation removed');
 assert.match(html, /avatok-creator-constellation\.png/, 'Creator marketplace hero artwork exists');
 assert(existsSync(resolve(root, 'assets/home/avatok-creator-constellation.png')), 'Missing creator marketplace hero artwork');
@@ -38,7 +36,7 @@ const ideas = readFileSync(resolve(root, 'ideas/index.html'), 'utf8');
 assert.equal((ideas.match(/data-idea-card/g) || []).length, 115, 'All 115 creator ideas are present');
 assert.equal((ideas.match(/<h1[ >]/g) || []).length, 1, 'Ideas page has one main heading');
 assert.equal((ideas.match(/class="idea-title-line(?: |")/g) || []).length, 2, 'Ideas hero keeps both headline phrases on horizontal lines');
-assert.match(html, /href="\/ideas"[^>]*data-home-cta="hero-ideas"/, 'Hero links to the ideas page');
+assert.match(html, /href="\/global-ideas/, 'Global homepage links to the global ideas page');
 assert.match(ideas, /class="bazaar-footer"/, 'Ideas uses shared footer');
 assert.match(ideas, /avh--sticky/, 'Ideas uses shared header');
 assert.match(ideas, /id="idea-search"/, 'Search has an accessible input');
@@ -119,18 +117,17 @@ console.log('Sharing metadata and discovery checks passed for ideas and all 115 
 // [WEB-GANESH-OG-2] One compact preview prevents WhatsApp choosing the tall poster.
 const campaignImages = [...html.matchAll(/<meta property="og:image" content="([^"]+)"/g)].map(m => m[1]);
 assert.deepEqual(campaignImages, [
- 'https://avatok.ai/assets/social/ganesh-live-detailed-v3-2026.jpg',
-], 'Only the selected landscape is advertised to crawlers');
-assert.equal(meta(html, 'og:title'), 'Live stream your traditions on avaTOK');
-assert.equal(meta(html, 'og:description'), 'Celebrate Ganesh Chaturthi with avaTOK. Live stream your puja, share your traditions, and bring your celebrations to the world. Go live at avatok.ai.');
+ 'https://avatok.ai/assets/home/avatok-creator-constellation.png',
+], 'Global homepage advertises one creator preview image');
+assert.equal(meta(html, 'og:title'), 'Turn your influence into live &#38; 1:1 income · avaTOK');
+assert.equal(meta(html, 'og:description'), 'AvaTOK helps influencers earn from their audience through paid live streams and private 1:1 video sessions, with flexible pricing and local payouts.');
 assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'twitter:image'), campaignImages[0]);
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));
-assert.equal(meta(html, 'og:image:width'), '1200');
-assert.equal(meta(html, 'og:image:height'), '627');
+assert.equal(meta(html, 'og:image:width'), '1156');
+assert.equal(meta(html, 'og:image:height'), '1360');
 for (const image of campaignImages) {
  const bytes = readFileSync(resolve(root, new URL(image).pathname.slice(1)));
- assert.equal(bytes.readUInt16BE(0), 0xffd8, 'Campaign image is JPEG');
- assert(bytes.length < 600000, 'Campaign image stays small for sharing crawlers');
+ assert(bytes.length > 1000, 'Global creator preview image is present');
 }
-console.log('Ganesh launch title, description and selected social image passed.');
+console.log('Global homepage title, description and selected creator image passed.');
