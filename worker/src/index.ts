@@ -108,7 +108,7 @@ import { getAvailabilitySchedule, putAvailabilitySchedule, getListingAvailabilit
 import { listBookings, getPolicies, putPolicies, proposeReschedule, respondReschedule, listReschedules, joinInfo } from "./routes/booking";
 import { joinLinkSession } from "./routes/join_link";
 import { routeAgentLive, runAgentLiveSweeps } from "./routes/agent_live/index";
-import { gcalConnect, gcalCallback, gcalStatus, gcalDisconnect, gcalWebhook, gcalCalendars, gcalSaveCalendars } from "./cal/gcal";
+import { gcalConnect, gcalCallback, gcalStatus, gcalSyncNow, gcalDisconnect, gcalWebhook, gcalCalendars, gcalSaveCalendars } from "./cal/gcal";
 import { payoutSetup, payoutAccounts, payoutRequest, payoutStatus, wiseWebhook } from "./routes/payout";
 import { upiAccount, upiAccountGet, upiPayoutQuote, upiPayoutRequest, upiPayoutRequests, adminUpiPayouts, adminUpiAccountVerify, adminUpiApprove, adminUpiReject, adminUpiPaid, adminUpiReconcile } from "./routes/upi_payout";
 import { olxCreate, olxBrowse, olxGet, olxUpdate, olxDelete, olxUploadFile, olxBuy, olxRefund, olxDownloads, olxDownloadFile } from "./routes/olx";
@@ -1392,6 +1392,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/calendar/gcal/calendars" && req.method === "GET") return await gcalCalendars(req, env);
       if (p === "/api/calendar/gcal/calendars" && req.method === "PUT") return await gcalSaveCalendars(req, env);
       if (p === "/api/calendar/gcal/status" && req.method === "GET") return await gcalStatus(req, env);
+      // Import busy times NOW (distinct from refreshing the calendar list).
+      if (p === "/api/calendar/gcal/sync" && req.method === "POST") return await gcalSyncNow(req, env);
       if (p === "/api/calendar/gcal" && req.method === "DELETE") return await gcalDisconnect(req, env);
       if (p === "/webhooks/gcal" && req.method === "POST") return await gcalWebhook(req, env);
       if (p === "/api/booking/list" && req.method === "GET") return await listBookings(req, env);

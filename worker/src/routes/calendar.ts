@@ -256,6 +256,166 @@ export async function listEvents(req: Request, env: Env): Promise<Response> {
   return json({ events: rs.results ?? [] });
 }
 
+type BlockRow = {
+  id: string; source_app: string; source_ref: string | null;
+  starts_at: number; ends_at: number; title: string | null; status: string;
+};
+
+type BlockMetadata = {
+  booking_id: string | null;
+  listing_id: string | null;
+  booking_kind: string | null;
+  booking_status: string | null;
+};
+
+type BookingRow = {
+  id: string; creator_id: string; buyer_id: string; listing_id: string | null;
+  kind: string | null; status: string | null; starts_at: number | null; ends_at: number | null;
+};
+
+type ReservationRow = {
+  id: string; creator_id: string; listing_id: string | null; kind: string | null;
+  status: string | null; starts_at: number; ends_at: number; source_ref: string | null;
+};
+
+const EMPTY_BLOCK_METADATA: BlockMetadata = { booking_id: null, listing_id: null, booking_kind: null, booking_status: null };
+const ACTIVE_BOOKING_STATUSES = "'confirmed','scheduled','pending','completed'";
+
+/** Booking id embedded in a block/reservation source ref, when unambiguous. */
+function refBookingId(ref: string | null | undefined): string | null {
+  const match = String(ref ?? "").match(/^(?:booking|commercial):([A-Za-z0-9-]{1,64})(?::|$)/);
+  return match ? match[1] : null;
+}
+
+/** Gateway order id embedded in a commercial availability reservation ref. */
+function refOrderId(ref: string | null | undefined): string | null {
+  const match = String(ref ?? "").match(/^commercial-availability:[^:]{1,64}:([A-Za-z0-9._:-]{1,128})$/);
+  return match ? match[1] : null;
+}
+
+function bookingForReservation(reservation: ReservationRow, bookings: Map<string, BookingRow>): BookingRow | null {
+  const explicit = refBookingId(reservation.source_ref);
+  if (explicit) return bookings.get(explicit) ?? null;
+  const orderId = refOrderId(reservation.source_ref);
+  if (!orderId) return null;
+  for (const booking of bookings.values()) {
+    if (String(booking.listing_id ?? "") !== String(reservation.listing_id ?? "")) continue;
+    if (Number(booking.starts_at) !== Number(reservation.starts_at)) continue;
+    if (Number(booking.ends_at) !== Number(reservation.ends_at)) continue;
+    return booking;
+  }
+  return null;
+}
+
+/**
+ * [A1 / audit-7] Owner-scoped commercial metadata for diary blocks.
+ *
+ * A creator's diary row for a modern booking is an `availability` block whose
+ * source_ref is the reservation id; buyers additionally get an `avaconsult`
+ * projection of the same booking. Neither carried a booking id, so the phone
+ * fell back to a legacy action and one booking could render twice (as a busy
+ * block AND as an appointment event). This resolves each block to the booking
+ * it belongs to only when the caller owns that row and the match is unique: an
+ * unresolved block stays null rather than pointing at the wrong booking.
+ */
+async function resolveBlockMetadata(env: Env, uid: string, rows: BlockRow[]): Promise<Map<string, BlockMetadata>> {
+  const resolved = new Map<string, BlockMetadata>();
+  if (!rows.length) return resolved;
+  const db = metaDb(env);
+  const reservationIds = [...new Set(rows
+    .filter((row) => row.source_app === "availability" && row.source_ref)
+    .map((row) => String(row.source_ref)))].slice(0, 500);
+  const reservations = new Map<string, ReservationRow>();
+  if (reservationIds.length) {
+    try {
+      const rs = await db.prepare(
+        "SELECT id,creator_id,listing_id,kind,status,starts_at,ends_at,source_ref FROM availability_reservations WHERE creator_id=?1 AND id IN (SELECT value FROM json_each(?2)) LIMIT 500",
+      ).bind(uid, JSON.stringify(reservationIds)).all<ReservationRow>();
+      for (const row of (rs.results ?? [])) reservations.set(String(row.id), row);
+    } catch { /* deployment without the unified availability tables */ }
+  }
+  const explicitIds = new Set<string>();
+  const orderIds = new Set<string>();
+  const considerRef = (ref: string | null | undefined): void => {
+    const bookingId = refBookingId(ref);
+    if (bookingId) explicitIds.add(bookingId);
+    const orderId = refOrderId(ref);
+    if (orderId) orderIds.add(orderId);
+  };
+  for (const row of rows) {
+    // Legacy AvaBooking blocks store the bare booking id in source_ref.
+    if (row.source_app === "avabooking" && row.source_ref) explicitIds.add(String(row.source_ref));
+    if (row.source_app === "availability" || row.source_app === "avabooking" || row.source_app === "avaconsult") considerRef(row.source_ref);
+  }
+  for (const row of reservations.values()) considerRef(row.source_ref);
+  const bookings = new Map<string, BookingRow>();
+  const loadBookings = async (ids: string[]): Promise<void> => {
+    const unique = [...new Set(ids)].filter((id) => id && !bookings.has(id)).slice(0, 500);
+    if (!unique.length) return;
+    try {
+      // Owner-scoped: the requester must be a party to the booking.
+      const rs = await db.prepare(
+        "SELECT id,creator_id,buyer_id,listing_id,kind,status,starts_at,ends_at FROM bookings WHERE id IN (SELECT value FROM json_each(?1)) AND (creator_id=?2 OR buyer_id=?2) LIMIT 500",
+      ).bind(JSON.stringify(unique), uid).all<BookingRow>();
+      for (const row of (rs.results ?? [])) bookings.set(String(row.id), row);
+    } catch { /* legacy deployment without the bookings table */ }
+  };
+  await loadBookings([...explicitIds]);
+  if (orderIds.size) {
+    try {
+      const rs = await db.prepare(
+        "SELECT booking_id FROM orders WHERE id IN (SELECT value FROM json_each(?1)) AND creator_id=?2 AND booking_id IS NOT NULL LIMIT 500",
+      ).bind(JSON.stringify([...orderIds]), uid).all<{ booking_id: string }>();
+      await loadBookings((rs.results ?? []).map((row) => String(row.booking_id)));
+    } catch { /* deployment without the escrow order table */ }
+  }
+  const unresolved: ReservationRow[] = [];
+  for (const reservation of reservations.values()) {
+    if (reservation.kind !== "booking" && reservation.kind !== "hold") continue;
+    if (!bookingForReservation(reservation, bookings)) unresolved.push(reservation);
+  }
+  // Last resort: one booking at the exact listing and interval is safe; two
+  // candidates leave the block unattributed instead of guessing.
+  for (const reservation of unresolved.slice(0, 50)) {
+    try {
+      const rs = await db.prepare(
+        `SELECT id,creator_id,buyer_id,listing_id,kind,status,starts_at,ends_at FROM bookings WHERE (creator_id=?1 OR buyer_id=?1) AND listing_id=?2 AND starts_at=?3 AND ends_at=?4 AND status IN (${ACTIVE_BOOKING_STATUSES}) LIMIT 2`,
+      ).bind(uid, reservation.listing_id, reservation.starts_at, reservation.ends_at).all<BookingRow>();
+      const matches = rs.results ?? [];
+      if (matches.length === 1) bookings.set(String(matches[0].id), matches[0]);
+    } catch { /* ignore unresolved metadata */ }
+  }
+  for (const row of rows) {
+    const meta: BlockMetadata = { ...EMPTY_BLOCK_METADATA };
+    if (row.source_app === "availability") {
+      const reservation = row.source_ref ? reservations.get(String(row.source_ref)) : undefined;
+      if (reservation && String(reservation.creator_id) === uid) {
+        meta.listing_id = reservation.listing_id ?? null;
+        meta.booking_kind = reservation.kind ?? null;
+        meta.booking_status = reservation.status ?? null;
+        const booking = bookingForReservation(reservation, bookings);
+        if (booking) {
+          meta.booking_id = booking.id;
+          meta.listing_id = booking.listing_id ?? meta.listing_id;
+          meta.booking_kind = booking.kind ?? meta.booking_kind;
+          meta.booking_status = booking.status ?? meta.booking_status;
+        }
+      }
+    } else if (row.source_app === "avabooking" || row.source_app === "avaconsult") {
+      const bookingId = row.source_app === "avabooking" ? String(row.source_ref ?? "") : refBookingId(row.source_ref);
+      const booking = bookingId ? bookings.get(bookingId) : undefined;
+      if (booking) {
+        meta.booking_id = booking.id;
+        meta.listing_id = booking.listing_id ?? null;
+        meta.booking_kind = booking.kind ?? null;
+        meta.booking_status = booking.status ?? null;
+      }
+    }
+    resolved.set(row.id, meta);
+  }
+  return resolved;
+}
+
 // GET /api/calendar/blocks?from=&to= — my cross-app occupancy (month render).
 export async function listBlocks(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
@@ -266,7 +426,12 @@ export async function listBlocks(req: Request, env: Env): Promise<Response> {
   const rs = await metaSession(env).prepare(
     "SELECT id, source_app, source_ref, starts_at, ends_at, title, status FROM calendar_blocks WHERE user_id=?1 AND status='busy' AND starts_at < ?3 AND ends_at > ?2 ORDER BY starts_at LIMIT 500",
   ).bind(ctx.uid, from, to).all();
-  return json({ blocks: rs.results ?? [] });
+  const blocks = ((rs.results ?? []) as BlockRow[]).map((row) => ({
+    id: row.id, source_app: row.source_app, source_ref: row.source_ref,
+    starts_at: row.starts_at, ends_at: row.ends_at, title: row.title, status: row.status,
+  }));
+  const metadata = await resolveBlockMetadata(env, ctx.uid, blocks);
+  return json({ blocks: blocks.map((row) => ({ ...row, ...(metadata.get(row.id) ?? EMPTY_BLOCK_METADATA) })) });
 }
 
 // GET/PUT /api/calendar/rules — availability rules editor (replace-set).

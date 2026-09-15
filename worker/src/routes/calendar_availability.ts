@@ -1,4 +1,4 @@
-import { gcalAvailabilityReady } from '../cal/gcal_availability';
+import { gcalReadiness } from '../cal/gcal_availability';
 // [AVAILABILITY-1] Unified creator schedules and listing-aware availability.
 // Route wiring intentionally lives in index.ts so legacy calendar routes remain
 // independently deployable while clients migrate to this contract.
@@ -11,6 +11,7 @@ import { zonedEpoch, validateListingSlot, previewListingConflicts, loadUnifiedSc
 
 const APP = "avacalendar";
 const MAX_RANGE_DAYS = 62;
+const MAX_EXCEPTIONS = 100;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 type Rule = { weekday: number; start_min: number; end_min: number };
@@ -24,7 +25,63 @@ function dateRange(from: string, to: string): string[] {
   return out;
 }
 function intervalValid(start: number, end: number): boolean { return Number.isInteger(start) && Number.isInteger(end) && start >= 0 && end <= 1440 && end > start; }
-function scheduleShape(s: any, creatorId: string, listingId: string | null, rules: Rule[], exceptions: Exception[]): any {
+/**
+ * [AUDIT-10] Plain-English inheritance: which values come from the listing's
+ * own schedule, which fall back to the creator-wide schedule, and how the
+ * commercial booking notice and the buffer are applied. Purely additive
+ * reporting — no policy value is changed here.
+ */
+async function effectivePolicy(env: Env, creatorId: string, listingId: string | null, schedule: any, hasListingRow: boolean): Promise<any> {
+  const db = metaDb(env);
+  const global = await db.prepare(
+    "SELECT id,timezone,mode,duration_min,slot_interval_min,buffer_min,min_notice_min,max_per_day,horizon_days FROM availability_schedules WHERE creator_id=?1 AND listing_id IS NULL",
+  ).bind(creatorId).first<any>().catch(() => null);
+  let listingRow: any = null;
+  if (listingId) {
+    listingRow = await db.prepare(
+      "SELECT duration_min,slot_interval_min,buffer_min,min_notice_min,max_per_day,horizon_days FROM availability_schedules WHERE creator_id=?1 AND listing_id=?2",
+    ).bind(creatorId, listingId).first<any>().catch(() => null);
+  }
+  let commercialNoticeMin: number | null = null;
+  if (listingId) {
+    const listing = await db.prepare("SELECT attrs FROM listings WHERE id=?1").bind(listingId).first<{ attrs: string | null }>().catch(() => null);
+    let hours = 24;
+    if (listing?.attrs) { try { const attrs = JSON.parse(listing.attrs); if (attrs?.commercial_booking_notice_hours !== undefined) hours = Math.max(0, Number(attrs.commercial_booking_notice_hours)); } catch { hours = 24; } }
+    commercialNoticeMin = Number.isFinite(hours) ? hours * 60 : 1440;
+  }
+  const inheritedNotice = Number(listingRow?.min_notice_min ?? global?.min_notice_min ?? 120);
+  const effectiveNotice = Math.max(0, Number(schedule?.min_notice_min ?? inheritedNotice));
+  const comm = commercialNoticeMin ?? 0;
+  const policyFields = (row: any): any => row ? {
+    duration_min: row.duration_min ?? null, slot_interval_min: row.slot_interval_min ?? null,
+    buffer_min: row.buffer_min ?? null, min_notice_min: row.min_notice_min ?? null,
+    max_per_day: row.max_per_day ?? null, horizon_days: row.horizon_days ?? null,
+  } : null;
+  return {
+    inherited_from: listingId ? (hasListingRow ? "listing" : "global") : "global",
+    global_schedule_id: global?.id ?? null,
+    global: policyFields(global),
+    listing_overrides: policyFields(listingRow),
+    calendar_min_notice_min: inheritedNotice,
+    listing_commercial_notice_min: commercialNoticeMin,
+    // The commercial notice is a floor, so the effective notice is the larger of
+    // the two — a "2 hour" calendar can still produce no same-day slots.
+    notice_source: comm > inheritedNotice ? "listing_commercial" : "calendar",
+    effective: {
+      timezone: schedule?.timezone ?? "UTC",
+      mode: schedule?.mode ?? "shared",
+      duration_min: schedule?.duration_min ?? null,
+      slot_interval_min: schedule?.slot_interval_min ?? null,
+      buffer_min: schedule?.buffer_min ?? null,
+      buffer_scope: "before_and_after",
+      min_notice_min: effectiveNotice,
+      max_per_day: schedule?.max_per_day ?? null,
+      horizon_days: schedule?.horizon_days ?? null,
+    },
+  };
+}
+
+function scheduleShape(s: any, creatorId: string, listingId: string | null, rules: Rule[], exceptions: Exception[], effective: any = null): any {
   return {
     listing_id: listingId,
     timezone: s?.timezone ?? "UTC", mode: s?.mode === "custom" || s?.mode === "exclusive" ? s.mode : "shared",
@@ -32,6 +89,7 @@ function scheduleShape(s: any, creatorId: string, listingId: string | null, rule
     buffer_min: Math.max(0, Number(s?.buffer_min ?? 10)), min_notice_min: Math.max(0, Number(s?.min_notice_min ?? 120)),
     max_per_day: Math.max(1, Number(s?.max_per_day ?? 8)), horizon_days: Math.min(366, Math.max(1, Number(s?.horizon_days ?? 60))),
     version: Number(s?.version ?? 0), rules: rules.map((r) => ({ weekday: r.weekday, start_min: r.start_min, end_min: r.end_min })),
+    ...(effective ? { effective } : {}),
     exceptions: exceptions.map((x) => ({ id: x.id, date: x.date, start_min: x.start_min, end_min: x.end_min, status: x.status, ...(x.listing_id ? { listing_id: x.listing_id } : {}) })),
   };
 }
@@ -50,7 +108,8 @@ async function readSchedule(env: Env, creatorId: string, listingId: string | nul
   // row is absent. Its exception list is already creator/listing scoped.
   const own = await metaDb(env).prepare("SELECT id,version FROM availability_schedules WHERE creator_id=?1 AND listing_id IS ?2").bind(creatorId, listingId).first<{id:string;version:number}>();
   const exceptions = own ? ((await metaDb(env).prepare("SELECT id,date,start_min,end_min,status,listing_id FROM availability_exceptions WHERE schedule_id=?1").bind(own.id).all()).results ?? []) as Exception[] : [];
-  return scheduleShape({...s, version: own?.version ?? 0}, creatorId, listingId, s.rules, exceptions);
+  const effective = await effectivePolicy(env, creatorId, listingId, s, !!own);
+  return scheduleShape({...s, version: own?.version ?? 0}, creatorId, listingId, s.rules, exceptions, effective);
 }
 
 /** GET/PUT /api/calendar/schedule?listing_id=... */
@@ -76,7 +135,7 @@ export async function putSchedule(req: Request, env: Env): Promise<Response> {
   if (!isZone(timezone) || !Number.isInteger(version) || version < 0) return json({ error: "timezone and non-negative version required" }, 400);
   const modes = new Set(["shared", "custom", "exclusive"]); if (!modes.has(input.mode)) return json({ error: "invalid mode" }, 400);
   const rules = Array.isArray(input.rules) ? input.rules : null, exceptions = Array.isArray(input.exceptions) ? input.exceptions : null;
-  if (!rules || !exceptions || rules.length > 50 || exceptions.length > 100) return json({ error: "rules/exceptions invalid or too large" }, 400);
+  if (!rules || !exceptions || rules.length > 50 || exceptions.length > MAX_EXCEPTIONS) return json({ error: "rules/exceptions invalid or too large" }, 400);
   const parsedRules: Rule[] = [];
   for (const r of rules) {
     const x = { weekday: Number(r.weekday), start_min: Number(r.start_min), end_min: Number(r.end_min) };
@@ -93,7 +152,19 @@ export async function putSchedule(req: Request, env: Env): Promise<Response> {
       const owned = await ownerForSchedule(env, ctx.uid, e.listing_id);
       if ('error' in owned) return json({error:'exception listing ownership required'},403);
     }
-    parsedExceptions.push(e);
+    // [AUDIT-2/3] "From this date through this date": a holiday is ONE range in
+    // the editor and one row per date on the server, so a multi-day closure
+    // round-trips as ordinary exceptions on every client.
+    const rangeEnd = x.end_date === undefined || x.end_date === null ? null : String(x.end_date);
+    const isRange = !!rangeEnd && rangeEnd !== e.date;
+    if (isRange && rangeEnd) {
+      if (!validDate(rangeEnd)) return json({ error: "invalid exception end_date" }, 400);
+      if (dateDiff(e.date, rangeEnd) < 0) return json({ error: "exception end_date is before its date" }, 400);
+      if (dateDiff(e.date, rangeEnd) >= MAX_RANGE_DAYS) return json({ error: `an exception range is limited to ${MAX_RANGE_DAYS} days` }, 400);
+    }
+    const dates = isRange && rangeEnd ? dateRange(e.date, rangeEnd) : [e.date];
+    for (const date of dates) parsedExceptions.push({ ...e, id: date === e.date ? e.id : undefined, date });
+    if (parsedExceptions.length > MAX_EXCEPTIONS) return json({ error: `at most ${MAX_EXCEPTIONS} exceptions` }, 400);
   }
   const numeric = (key: string, fallback: number, min: number, max: number): number | null => {
     const n = input[key] === undefined ? fallback : Number(input[key]);
@@ -101,17 +172,55 @@ export async function putSchedule(req: Request, env: Env): Promise<Response> {
   };
   const duration = numeric('duration_min',60,5,480), interval = numeric('slot_interval_min',60,5,240),
     buffer = numeric('buffer_min',10,0,240), notice = numeric('min_notice_min',120,0,43200),
-    cap = numeric('max_per_day',8,1,100), horizon = numeric('horizon_days',60,1,62);
-  if ([duration,interval,buffer,notice,cap,horizon].includes(null)) return json({error:'Invalid duration, interval, buffer, notice, daily limit or horizon'},400);
+    cap = numeric('max_per_day',8,1,100), submittedHorizon = numeric('horizon_days',60,1,62);
+  if ([duration,interval,buffer,notice,cap,submittedHorizon].includes(null)) return json({error:'Invalid duration, interval, buffer, notice, daily limit or horizon'},400);
   const db = metaDb(env), now = Date.now(), nextVersion = version + 1, token = crypto.randomUUID();
-  const existing = await db.prepare("SELECT id,version FROM availability_schedules WHERE creator_id=?1 AND listing_id IS ?2").bind(own.creatorId, listingId).first<{ id: string; version: number }>();
+  const existing = await db.prepare("SELECT id,version,horizon_days FROM availability_schedules WHERE creator_id=?1 AND listing_id IS ?2").bind(own.creatorId, listingId).first<{ id: string; version: number; horizon_days: number }>();
   if ((existing?.version ?? 0) !== version) return json({error:'schedule version conflict',schedule:await readSchedule(env,own.creatorId,listingId)},409);
+  // [AUDIT-10] A horizon the creator already chose is preserved: an update that
+  // omits it inherits the stored (or creator-wide) value instead of silently
+  // snapping back to the 62-day default. The 62-day ceiling still applies.
+  let horizon = Number(submittedHorizon);
+  if (input.horizon_days === undefined) {
+    let inherited: number | undefined = existing ? Number(existing.horizon_days) : undefined;
+    if (inherited === undefined && listingId) {
+      const globalRow = await db.prepare("SELECT horizon_days FROM availability_schedules WHERE creator_id=?1 AND listing_id IS NULL").bind(own.creatorId).first<{ horizon_days: number }>().catch(() => null);
+      if (globalRow) inherited = Number(globalRow.horizon_days);
+    }
+    if (inherited !== undefined && Number.isFinite(inherited) && inherited >= 1) horizon = Math.min(62, Math.max(1, Math.trunc(inherited)));
+  }
   const otherZones = await db.prepare("SELECT timezone FROM availability_schedules WHERE creator_id=?1 AND id!=?2 LIMIT 101").bind(own.creatorId,existing?.id??'').all<{timezone:string}>();
   if ((otherZones.results??[]).some(s=>s.timezone!==timezone)) return json({error:'All listing schedules use the creator calendar timezone. Keep the existing timezone while other schedules exist.'},400);
   const id = existing?.id ?? crypto.randomUUID();
   // Reuse only IDs read from this schedule. Unchanged reserved windows remain
   // intact when their appointments are already booked and other rules change.
-  const previous = existing ? ((await db.prepare("SELECT e.*,r.status AS reservation_status,r.starts_at,r.ends_at FROM availability_exceptions e LEFT JOIN availability_reservations r ON r.id=e.reservation_id WHERE e.schedule_id=?1").bind(id).all()).results??[]) as any[] : [];
+  const previous = existing ? ((await db.prepare("SELECT e.*,r.status AS reservation_status,r.starts_at,r.ends_at,r.source_ref AS reservation_source_ref FROM availability_exceptions e LEFT JOIN availability_reservations r ON r.id=e.reservation_id WHERE e.schedule_id=?1").bind(id).all()).results??[]) as any[] : [];
+  // [AUDIT-3] An interval the caller did not mention must not be erased by
+  // accident. Two callers exist:
+  //   * a caller that sends `removed_exception_ids` opts into explicit removal:
+  //     every unmentioned interval is kept (delete one by naming it);
+  //   * a legacy caller keeps whole-set replacement (existing behaviour, so its
+  //     Edit/Remove flow cannot silently duplicate intervals), EXCEPT that an
+  //     interval backed by a live booking/hold reservation is always kept.
+  const explicitRemoval = Array.isArray(input.removed_exception_ids);
+  const removedExceptionIds = explicitRemoval
+    ? [...new Set((input.removed_exception_ids as unknown[]).filter((value): value is string => typeof value === "string" && value.length > 0))]
+    : [];
+  if (removedExceptionIds.length > MAX_EXCEPTIONS) return json({ error: `at most ${MAX_EXCEPTIONS} removed exceptions` }, 400);
+  const submitted = new Set(parsedExceptions.map((e) => `${e.date}:${e.start_min}:${e.end_min}`));
+  const commitmentBacked = (row: any): boolean =>
+    !!row.reservation_id
+    && ['reserved', 'confirmed'].includes(String(row.reservation_status))
+    && !String(row.reservation_source_ref ?? '').startsWith('schedule:');
+  const retainedRows = !existing || input.replace_all === true
+    ? []
+    : previous.filter((row) => {
+      if (!row.id) return false;
+      if (removedExceptionIds.includes(String(row.id))) return false;
+      if (submitted.has(`${row.date}:${row.start_min}:${row.end_min}`)) return false;
+      return explicitRemoval ? true : commitmentBacked(row);
+    });
+  if (parsedExceptions.length + retainedRows.length > MAX_EXCEPTIONS) return json({ error: `at most ${MAX_EXCEPTIONS} exceptions` }, 400);
   const keys=new Set<string>();
   for(const e of parsedExceptions){const key=`${e.date}:${e.start_min}:${e.end_min}`;if(keys.has(key))return json({error:'Duplicate date interval'},400);keys.add(key);}
   const normalized = parsedExceptions.map(e => {
@@ -130,8 +239,17 @@ export async function putSchedule(req: Request, env: Env): Promise<Response> {
     if (reservations.slice(i+1).some(b=>a.start<b.end && b.start<a.end)) return json({error:'Date reservations overlap each other'},409);
   }
   for(const r of reservations){const p=r.exception.prior;if(p?.reservation_id && ['reserved','confirmed'].includes(p.reservation_status) && p.starts_at===r.start && p.ends_at===r.end){r.id=p.reservation_id;r.retained=true;}}
+  // Retained rows are replayed verbatim (same id, same reservation link) so a
+  // booking-backed or blocked interval keeps protecting the creator's time and
+  // keeps its existing reservation instead of being re-created.
+  const retainedRanges = retainedRows
+    .filter((row) => row.status === 'reserved' || (row.status === 'unavailable' && listingId === null))
+    .map((row) => ({ start: zonedEpoch(row.date,row.start_min,timezone), end: zonedEpoch(row.date,row.end_min,timezone) }));
+  for (const a of reservations) {
+    if (retainedRanges.some((b) => a.start < b.end && b.start < a.end)) return json({error:'This interval overlaps another date exception on the same day. Send the full exception set or remove the overlapping one first.'},409);
+  }
   const intervals = JSON.stringify(reservations.filter(r=>!r.retained).map(r=>({start:r.start,end:r.end})));
-  const retainedIds=JSON.stringify(reservations.filter(r=>r.retained).map(r=>r.id));
+  const retainedIds=JSON.stringify([...reservations.filter(r=>r.retained).map(r=>r.id), ...retainedRows.map((row)=>row.reservation_id).filter((value): value is string => typeof value === 'string' && value.length > 0)]);
   // The admission and every child mutation use one unguessable write token.
   // A competing save that loses the version comparison changes no child rows.
   const noConflict = `NOT EXISTS (
@@ -163,6 +281,11 @@ export async function putSchedule(req: Request, env: Env): Promise<Response> {
     stmts.push(db.prepare("INSERT INTO availability_exceptions(id,creator_id,schedule_id,listing_id,date,start_min,end_min,status,reservation_id,created_at) SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10 WHERE EXISTS(SELECT 1 FROM availability_schedules WHERE id=?3 AND write_token=?11)").bind(e.id,own.creatorId,id,e.listing_id??listingId,e.date,e.start_min,e.end_min,e.status,r?.id??null,now,token));
     if (r && !r.retained) stmts.push(db.prepare("INSERT INTO availability_reservations(id,creator_id,listing_id,kind,status,starts_at,ends_at,title,source_ref,created_at,updated_at) SELECT ?1,?2,?3,?4,'reserved',?5,?6,?7,?8,?9,?9 WHERE EXISTS(SELECT 1 FROM availability_schedules WHERE id=?10 AND write_token=?11)").bind(r.id,own.creatorId,r.listing,r.kind,r.start,r.end,r.kind==='block'?'Unavailable':'Reserved for listing',`schedule:${id}:${e.id}`,now,id,token));
   }
+  // Unmentioned intervals survive the write with their original id and
+  // reservation, so a one-row edit can never erase the rest of the day.
+  for (const row of retainedRows) {
+    stmts.push(db.prepare("INSERT INTO availability_exceptions(id,creator_id,schedule_id,listing_id,date,start_min,end_min,status,reservation_id,created_at) SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10 WHERE EXISTS(SELECT 1 FROM availability_schedules WHERE id=?3 AND write_token=?11)").bind(row.id,own.creatorId,id,row.listing_id??null,row.date,row.start_min,row.end_min,row.status,row.reservation_id??null,row.created_at??now,token));
+  }
   try {
     const results = await db.batch(stmts);
     if (Number(results[0]?.meta?.changes ?? 0) !== 1) return json({error:'schedule conflict',message:'The schedule changed or these times overlap an existing commitment. Refresh and choose another time.'},409);
@@ -178,7 +301,13 @@ export async function listingAvailability(req: Request, env: Env, listingId: str
   const listing = await metaDb(env).prepare("SELECT id,creator_id,status,kind FROM listings WHERE id=?1").bind(listingId).first<{ id: string; creator_id: string; status: string; kind: string }>();
   if (!listing || !["published", "live"].includes(listing.status)) return json({ error: "listing not found" }, 404);
   if (listing.kind && !["consult", "consultation"].includes(listing.kind)) return json({ error: "availability not offered" }, 404);
-  if(!(await gcalAvailabilityReady(env,listing.creator_id)).ready)return json({error:'The creator calendar is refreshing. Please try again shortly.',code:'calendar_refresh_pending'},503);
+  // Same readiness predicate the booking authority uses (validateListingSlot):
+  // preview, booking and publish must agree. A disconnected account, a failed
+  // source or a stale selected calendar must never produce bookable preview
+  // slots, so the grid is returned with every slot marked unavailable instead
+  // of an optimistic (or empty) 200.
+  const readiness = await gcalReadiness(env, listing.creator_id, { requireConnected: true });
+  const calendarReady = readiness.ready;
   const u = new URL(req.url), from = u.searchParams.get("from") ?? "", to = u.searchParams.get("to") ?? "", timezone = u.searchParams.get("timezone") || "UTC";
   if (!validDate(from) || !validDate(to) || dateDiff(from, to) < 0 || dateDiff(from, to) >= MAX_RANGE_DAYS || !isZone(timezone)) return json({ error: "from/to/timezone invalid" }, 400);
   const viewerDates = dateRange(from, to), schedule = await loadUnifiedSchedule(env, listing.creator_id, listingId), shared = await loadUnifiedSchedule(env, listing.creator_id, null), now = Date.now();
@@ -220,14 +349,23 @@ export async function listingAvailability(req: Request, env: Env, listingId: str
       const id = `availability:${listingId}:${startAt}:${endAt}`; if (emitted.has(id)) continue; emitted.add(id);
       const closed=[...shared.exceptions,...schedule.exceptions].some(x=>x.date===date&&x.status==='unavailable'&&x.start_min<actual.minutes+(endAt-startAt)/60000&&x.end_min>actual.minutes);
       const hit = candidate.blocked || closed || dayFull || [...liveBlocks, ...effectiveBlocks, ...conflictingReservations, ...bookings].find((x) => Number(x.starts_at) < endAt + schedule.buffer_min * 60_000 && Number(x.ends_at) > startAt - schedule.buffer_min * 60_000 && !(x.kind === "exclusive" && x.listing_id === listingId));
-      const item = { id, start_at: startAt, end_at: endAt, available: !hit, ...(hit ? { reason: dayFull ? "max_per_day" : "unavailable" } : {}) };
+      const item = calendarReady
+        ? { id, start_at: startAt, end_at: endAt, available: !hit, ...(hit ? { reason: dayFull ? "max_per_day" : "unavailable" } : {}) }
+        : { id, start_at: startAt, end_at: endAt, available: false, reason: "calendar_not_ready" };
       daySlots.push(item); slots.push(item);
     }
 
   }
   slots.sort((a,b)=>a.start_at-b.start_at);
   const days = viewerDates.map(date=>({date,available_count:slots.filter(s=>s.available && localParts(s.start_at,timezone).date===date).length}));
-  return json({ timezone, version: schedule.version, generated_at: Date.now(), days, slots });
+  return json({
+    timezone, version: schedule.version, generated_at: Date.now(), days, slots,
+    // Additive readiness contract: same shape as GET /api/calendar/gcal/status.
+    ready: calendarReady,
+    reason: calendarReady ? null : readiness.reason,
+    last_success_at: readiness.oldest_selected_success_at,
+    age_ms: readiness.age_ms,
+  });
 }
 
 /** POST /api/calendar/conflicts/preview — authenticated creator preview. */
