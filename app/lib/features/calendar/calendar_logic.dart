@@ -8,6 +8,7 @@
 // formatting — is regression-testable without an emulator or a live backend.
 import 'calendar_data.dart';
 import '../../core/availability_time.dart';
+import '../../core/listings_api.dart';
 
 /// A4 — Agenda is the useful phone default; a wide window still opens on Month.
 enum CalendarView { month, week, agenda }
@@ -249,19 +250,483 @@ List<AvailabilityException> holidayRangeExceptions({
   return rows;
 }
 
+/// Merges [additions] into [existing], SKIPPING any addition whose
+/// (date, start, end) key is already present. The server rejects duplicate date
+/// intervals outright, so a blind append used to turn "block a holiday" into a
+/// 400 whenever the range contained an already-blocked day. Prefer
+/// [planHolidayRange] for ranges; this stays for simple additive merges.
 List<AvailabilityException> mergeExceptions(
   List<AvailabilityException> existing,
   List<AvailabilityException> additions,
-) =>
-    [...existing, ...additions];
+) {
+  final keys = <String>{...existing.map(exceptionIntervalKey)};
+  final out = List<AvailabilityException>.from(existing);
+  for (final row in additions) {
+    if (keys.add(exceptionIntervalKey(row))) out.add(row);
+  }
+  return out;
+}
 
 String? validateExceptionCount(int count) => count > kMaxExceptions
     ? 'A schedule can hold at most $kMaxExceptions exceptions. Remove some before adding more.'
     : null;
 
+/// The server's duplicate key for one date interval ("Duplicate date interval").
+String exceptionIntervalKey(AvailabilityException row) =>
+    '${row.date}:${row.startMin}:${row.endMin}';
+
+/// A provisional id the day editor gives an interval it added locally and that
+/// the server has never seen. It is stripped before the schedule is saved.
+bool isProvisionalExceptionId(String id) => id.startsWith('local:');
+
+
 /// True when [value] describes an interval the server will accept.
 bool isValidMinuteRange(int startMin, int endMin) =>
     startMin >= 0 && endMin <= AvailabilityException.allDayEndMin && endMin > startMin;
+
+// ── End of day is an explicit choice (finding 2 regression) ────────────────
+/// Minutes since midnight for a picked clock time.
+///
+/// Ending at midnight is an EXPLICIT, independent choice ([endOfDay]) — it is
+/// NOT the same as "All day". Without it, a partial 18:00→24:00 interval is
+/// mapped to 18:00→00:00 and refused as "end before start", so a creator simply
+/// cannot save an evening block any more. With it, the interval keeps the
+/// contract's 1440 end-of-day value for partial intervals AND weekly hours.
+int pickedMinutes({
+  required bool endOfDay,
+  required int hour,
+  required int minute,
+}) {
+  if (endOfDay) return AvailabilityException.allDayEndMin;
+  final value = hour * 60 + minute;
+  if (value < 0) return 0;
+  return value > AvailabilityException.allDayEndMin
+      ? AvailabilityException.allDayEndMin
+      : value;
+}
+
+/// Why a picked range cannot be saved, in creator language, or null when it can.
+String? pickedRangeError(int startMin, int endMin) {
+  if (endMin > startMin && startMin >= 0 &&
+      endMin <= AvailabilityException.allDayEndMin) {
+    return null;
+  }
+  if (endMin == AvailabilityException.allDayStartMin && startMin > 0) {
+    return 'Midnight is the START of a day. Turn on "Ends at midnight" to run '
+        'until the end of the day, or pick an earlier end time.';
+  }
+  return 'The end time must be after the start time.';
+}
+
+// ── Scope-safe day edits (review item 1) ───────────────────────────────────
+/// The creator's INTENDED change to one date: additions (never seen by the
+/// server), edits keyed by the server id they replace, and removals by id.
+///
+/// A delta is always derived against the scope that was actually loaded, so
+/// applying it to another scope cannot transplant that scope's rows — and
+/// cannot drop rows the creator never touched.
+class DayEditDelta {
+  final String date;
+  final List<AvailabilityException> added;
+  final Map<String, AvailabilityException> edited;
+  final Set<String> removedIds;
+
+  const DayEditDelta({
+    required this.date,
+    this.added = const <AvailabilityException>[],
+    this.edited = const <String, AvailabilityException>{},
+    this.removedIds = const <String>{},
+  });
+
+  bool get isEmpty => added.isEmpty && edited.isEmpty && removedIds.isEmpty;
+}
+
+/// Difference between the intervals a scope held before editing and the
+/// intended set afterwards. Removals only ever name ids the loaded scope had;
+/// a locally-added interval that is then removed simply never appears.
+DayEditDelta dayEditDelta({
+  required String date,
+  required List<AvailabilityException> before,
+  required List<AvailabilityException> after,
+}) {
+  final beforeById = <String, AvailabilityException>{
+    for (final row in before)
+      if (row.id.isNotEmpty && !isProvisionalExceptionId(row.id)) row.id: row,
+  };
+  final afterIds = <String>{
+    for (final row in after)
+      if (row.id.isNotEmpty && !isProvisionalExceptionId(row.id)) row.id,
+  };
+  final added = <AvailabilityException>[];
+  final edited = <String, AvailabilityException>{};
+  for (final row in after) {
+    if (row.id.isEmpty || isProvisionalExceptionId(row.id)) {
+      added.add(row);
+      continue;
+    }
+    final previous = beforeById[row.id];
+    if (previous == null) {
+      // The loaded scope never held this row: treat it as an addition rather
+      // than an edit, so nothing is invented in the target scope.
+      added.add(row.copyWith(id: ''));
+      continue;
+    }
+    if (!_sameException(previous, row)) edited[row.id] = row;
+  }
+  final removedIds = <String>{
+    for (final row in before)
+      if (row.id.isNotEmpty &&
+          !isProvisionalExceptionId(row.id) &&
+          !afterIds.contains(row.id))
+        row.id,
+  };
+  return DayEditDelta(
+      date: date, added: added, edited: edited, removedIds: removedIds);
+}
+
+bool _sameException(AvailabilityException a, AvailabilityException b) =>
+    a.date == b.date &&
+    a.startMin == b.startMin &&
+    a.endMin == b.endMin &&
+    a.status == b.status &&
+    a.listingId == b.listingId;
+
+class DayEditApplication {
+  final List<AvailabilityException> exceptions;
+
+  /// Ids the target schedule did NOT hold. A concurrent save on another device
+  /// can produce these; the app surfaces them instead of silently writing a row
+  /// into the wrong scope.
+  final List<String> skippedIds;
+
+  const DayEditApplication(this.exceptions, this.skippedIds);
+
+  bool get hadSkipped => skippedIds.isNotEmpty;
+}
+
+/// Applies [delta] to [target] ONLY. Every other date — and every interval on
+/// the edited date the creator did not touch — survives verbatim. Provisional
+/// ids are stripped so the server assigns the real ids.
+DayEditApplication applyDayEditDelta(
+    List<AvailabilityException> target, DayEditDelta delta) {
+  final targetIds = <String>{
+    for (final row in target)
+      if (row.date == delta.date && row.id.isNotEmpty) row.id,
+  };
+  final out = <AvailabilityException>[];
+  for (final existing in target) {
+    if (existing.date != delta.date) {
+      out.add(existing);
+      continue;
+    }
+    if (delta.removedIds.contains(existing.id)) continue;
+    final edit = delta.edited[existing.id];
+    if (edit != null) {
+      out.add(edit);
+      continue;
+    }
+    out.add(existing);
+  }
+  final skipped = <String>[
+    for (final id in <String>{...delta.edited.keys, ...delta.removedIds})
+      if (!targetIds.contains(id)) id,
+  ];
+  final keys = <String>{
+    for (final row in out)
+      if (row.date == delta.date) exceptionIntervalKey(row),
+  };
+  for (final row in delta.added) {
+    if (keys.add(exceptionIntervalKey(row))) {
+      out.add(row.id.isEmpty ? row : row.copyWith(id: ''));
+    }
+  }
+  return DayEditApplication(out, skipped);
+}
+
+/// Difference between two FULL schedule exception lists, across every date.
+///
+/// [dayEditDelta] is deliberately date-scoped: the day editor only ever changes
+/// one date. A holiday range changes several dates at once, so replaying a
+/// failed range save needs the same rule WITHOUT the single-date filter —
+/// otherwise the retry reports every other date's intended change as somebody
+/// else's edit and aborts, silently dropping the creator's block.
+class ScheduleDelta {
+  final List<AvailabilityException> added;
+  final Map<String, AvailabilityException> edited;
+  final Set<String> removedIds;
+
+  const ScheduleDelta({
+    this.added = const <AvailabilityException>[],
+    this.edited = const <String, AvailabilityException>{},
+    this.removedIds = const <String>{},
+  });
+
+  bool get isEmpty => added.isEmpty && edited.isEmpty && removedIds.isEmpty;
+}
+
+ScheduleDelta scheduleDelta({
+  required List<AvailabilityException> before,
+  required List<AvailabilityException> after,
+}) {
+  final beforeById = <String, AvailabilityException>{
+    for (final row in before)
+      if (row.id.isNotEmpty && !isProvisionalExceptionId(row.id)) row.id: row,
+  };
+  final afterIds = <String>{
+    for (final row in after)
+      if (row.id.isNotEmpty && !isProvisionalExceptionId(row.id)) row.id,
+  };
+  final added = <AvailabilityException>[];
+  final edited = <String, AvailabilityException>{};
+  for (final row in after) {
+    if (row.id.isEmpty || isProvisionalExceptionId(row.id)) {
+      added.add(row);
+      continue;
+    }
+    final previous = beforeById[row.id];
+    if (previous == null) {
+      added.add(row.copyWith(id: ''));
+      continue;
+    }
+    if (!_sameException(previous, row)) edited[row.id] = row;
+  }
+  final removedIds = <String>{
+    for (final row in before)
+      if (row.id.isNotEmpty &&
+          !isProvisionalExceptionId(row.id) &&
+          !afterIds.contains(row.id))
+        row.id,
+  };
+  return ScheduleDelta(added: added, edited: edited, removedIds: removedIds);
+}
+
+/// Applies a whole-schedule [delta] to [target] ONLY: every interval the
+/// creator did not touch survives verbatim, a locally-added provisional id is
+/// stripped so the server assigns the real one, and an edit or removal naming an
+/// id the target no longer holds is reported instead of invented.
+DayEditApplication applyScheduleDelta(
+    List<AvailabilityException> target, ScheduleDelta delta) {
+  final targetIds = <String>{
+    for (final row in target)
+      if (row.id.isNotEmpty) row.id,
+  };
+  final out = <AvailabilityException>[];
+  for (final existing in target) {
+    if (delta.removedIds.contains(existing.id)) continue;
+    out.add(delta.edited[existing.id] ?? existing);
+  }
+  final skipped = <String>[
+    for (final id in <String>{...delta.edited.keys, ...delta.removedIds})
+      if (!targetIds.contains(id)) id,
+  ];
+  final keys = <String>{for (final row in out) exceptionIntervalKey(row)};
+  for (final row in delta.added) {
+    if (keys.add(exceptionIntervalKey(row))) {
+      out.add(row.id.isEmpty ? row : row.copyWith(id: ''));
+    }
+  }
+  return DayEditApplication(out, skipped);
+}
+
+// ── Holiday ranges (review item 3) ─────────────────────────────────────────
+class HolidayRangePlan {
+  final List<AvailabilityException> exceptions;
+  final Set<String> removedIds;
+  final List<AvailabilityException> added;
+
+  /// Dates that already held intervals which the range replaces. The UI asks
+  /// for explicit confirmation before these windows are covered.
+  final List<String> replacedDates;
+
+  /// Dates already blocked for the same scope: kept as-is, never duplicated.
+  final List<String> alreadyBlockedDates;
+
+  /// Dates holding a reserved window: the window is preserved and the day is
+  /// blocked around it, because the server refuses overlapping date
+  /// reservations and AvaTOK never cancels reserved commitments silently.
+  final List<String> reservationDates;
+
+  final int blockedDays;
+
+  /// The stored horizon is outside 1..62, so it will be omitted on save and the
+  /// server default applies. The UI explains that instead of implying the
+  /// horizon it shows was enforced.
+  final bool horizonUnknown;
+
+  final String? error;
+
+  const HolidayRangePlan({
+    required this.exceptions,
+    this.removedIds = const <String>{},
+    this.added = const <AvailabilityException>[],
+    this.replacedDates = const <String>[],
+    this.alreadyBlockedDates = const <String>[],
+    this.reservationDates = const <String>[],
+    this.blockedDays = 0,
+    this.horizonUnknown = false,
+    this.error,
+  });
+
+  bool get ok => error == null;
+  int get replacedDateCount => replacedDates.length;
+}
+
+/// Builds the holiday-range edit for ONE schedule scope without touching
+/// unrelated dates, duplicating an already-blocked day, or removing a reserved
+/// window. Bounded by the schedule's OWN policy horizon (never forced to 62),
+/// the 62-day hard cap and the 100-exception ceiling.
+HolidayRangePlan planHolidayRange({
+  required List<AvailabilityException> existing,
+  required DateTime from,
+  required DateTime to,
+  String? scopeListingId,
+  int? horizonDays,
+  int maxExceptions = kMaxExceptions,
+  AvailabilityExceptionStatus status = AvailabilityExceptionStatus.unavailable,
+}) {
+  final start = dateOnly(from);
+  final end = dateOnly(to);
+  if (end.isBefore(start)) {
+    return HolidayRangePlan(
+        exceptions: existing, error: 'Choose an end date on or after the start date.');
+  }
+  final days = <DateTime>[];
+  var cursor = start;
+  var guard = 0;
+  while (!cursor.isAfter(end) && guard < 400) {
+    guard++;
+    days.add(cursor);
+    cursor = DateTime(cursor.year, cursor.month, cursor.day + 1);
+  }
+  if (days.length > kMaxHorizonDays) {
+    return HolidayRangePlan(
+        exceptions: existing,
+        error:
+            'A holiday can cover at most $kMaxHorizonDays days at a time. Split it into shorter ranges.');
+  }
+  final horizonValid =
+      horizonDays != null && horizonDays >= 1 && horizonDays <= kMaxHorizonDays;
+  if (horizonValid && days.length > horizonDays!) {
+    return HolidayRangePlan(
+        exceptions: existing,
+        error:
+            'This schedule can be booked $horizonDays day(s) ahead, so a ${days.length}-day holiday goes past it. Shorten the range or raise the booking horizon in Booking policy.');
+  }
+
+  final removedIds = <String>{};
+  final added = <AvailabilityException>[];
+  final replaced = <String>[];
+  final alreadyBlocked = <String>[];
+  final reservedDates = <String>[];
+
+  for (final day in days) {
+    final key = dateKey(day);
+    final dayRows = existing.where((row) => row.date == key).toList();
+    final reserved = dayRows
+        .where((row) => row.status == AvailabilityExceptionStatus.reserved)
+        .toList();
+    final replaceable = dayRows
+        .where((row) => row.status != AvailabilityExceptionStatus.reserved)
+        .toList();
+    final alreadyWholeDay = reserved.isEmpty &&
+        replaceable.length == 1 &&
+        replaceable.single.status == status &&
+        replaceable.single.isAllDay &&
+        (replaceable.single.listingId ?? null) == (scopeListingId ?? null);
+    if (alreadyWholeDay) {
+      alreadyBlocked.add(key);
+      continue;
+    }
+    if (reserved.isNotEmpty) reservedDates.add(key);
+    if (replaceable.isNotEmpty) replaced.add(key);
+    for (final row in replaceable) {
+      if (row.id.isNotEmpty) removedIds.add(row.id);
+    }
+    if (reserved.isEmpty) {
+      added.add(_wholeDayBlock(key, status, scopeListingId));
+    } else {
+      added.addAll(
+          _blocksAroundReserved(key, reserved, status, scopeListingId));
+    }
+  }
+
+  final next = <AvailabilityException>[
+    for (final row in existing)
+      if (!removedIds.contains(row.id)) row,
+    ...added,
+  ];
+  final tooMany = validateExceptionCount(next.length);
+  if (tooMany != null) {
+    return HolidayRangePlan(exceptions: existing, error: tooMany);
+  }
+  return HolidayRangePlan(
+    exceptions: next,
+    removedIds: removedIds,
+    added: added,
+    replacedDates: replaced,
+    alreadyBlockedDates: alreadyBlocked,
+    reservationDates: reservedDates,
+    blockedDays: days.length,
+    horizonUnknown: !horizonValid,
+  );
+}
+
+AvailabilityException _wholeDayBlock(
+        String key, AvailabilityExceptionStatus status, String? listingId) =>
+    AvailabilityException(
+      id: '',
+      date: key,
+      startMin: AvailabilityException.allDayStartMin,
+      endMin: AvailabilityException.allDayEndMin,
+      status: status,
+      listingId: listingId,
+    );
+
+List<AvailabilityException> _blocksAroundReserved(
+  String key,
+  List<AvailabilityException> reserved,
+  AvailabilityExceptionStatus status,
+  String? listingId,
+) {
+  final ordered = [...reserved]
+    ..sort((a, b) => a.startMin.compareTo(b.startMin));
+  final out = <AvailabilityException>[];
+  var cursor = 0;
+  for (final row in ordered) {
+    final from = _clampMinute(row.startMin);
+    final to = _clampMinute(row.endMin);
+    if (from > cursor) {
+      out.add(AvailabilityException(
+        id: '',
+        date: key,
+        startMin: cursor,
+        endMin: from,
+        status: status,
+        listingId: listingId,
+      ));
+    }
+    if (to > cursor) cursor = to;
+  }
+  if (cursor < AvailabilityException.allDayEndMin) {
+    out.add(AvailabilityException(
+      id: '',
+      date: key,
+      startMin: cursor,
+      endMin: AvailabilityException.allDayEndMin,
+      status: status,
+      listingId: listingId,
+    ));
+  }
+  return out;
+}
+
+int _clampMinute(int value) {
+  if (value < 0) return 0;
+  if (value > AvailabilityException.allDayEndMin) {
+    return AvailabilityException.allDayEndMin;
+  }
+  return value;
+}
 
 // ── Policy numbers (finding 10, A3) ────────────────────────────────────────
 String? validateIntInRange(int? value,
@@ -355,6 +820,7 @@ List<CalBlock> dedupeBookingBlocks(List<CalBlock> blocks) {
       listingId: previous.listingId ?? block.listingId,
       bookingKind: previous.bookingKind ?? block.bookingKind,
       bookingStatus: previous.bookingStatus ?? block.bookingStatus,
+      bookingRole: previous.bookingRole ?? block.bookingRole,
     );
     byBooking[bookingId] = merged;
     out[out.indexOf(previous)] = merged;
@@ -367,7 +833,18 @@ List<CalBlock> dedupeBookingBlocks(List<CalBlock> blocks) {
 /// (`availability`) and commercial commitments (`avaconsult`) must route to the
 /// commercial appointment/session screens with their canonical booking id —
 /// never into the legacy /api/calendar/cancel + /reschedule endpoints.
-enum BookingManagement { none, legacy, creatorAppointments, creatorEvents, customerSessions }
+///
+/// [review] is the honest answer when the response does not prove whether this
+/// account is the creator or the customer: the app offers the safe generic
+/// choices instead of guessing an owner.
+enum BookingManagement {
+  none,
+  legacy,
+  creatorAppointments,
+  creatorEvents,
+  customerSessions,
+  review,
+}
 
 class BookingRoute {
   final BookingManagement management;
@@ -375,11 +852,16 @@ class BookingRoute {
   final String? listingId;
   final String? actionLabel;
 
+  /// True when the commitment is a live event, so the generic "review" choice
+  /// can offer the creator's EVENT console rather than their appointments list.
+  final bool isEvent;
+
   const BookingRoute({
     required this.management,
     this.bookingId,
     this.listingId,
     this.actionLabel,
+    this.isEvent = false,
   });
 
   bool get hasManagementAction => management != BookingManagement.none;
@@ -409,10 +891,6 @@ BookingRoute bookingRouteForBlock(
   String? bookingRole,
   Set<String> ownedListingIds = const <String>{},
 }) {
-  final bookingId = block.bookingId;
-  final kind = (block.bookingKind ?? '').toLowerCase();
-  final role = (bookingRole ?? '').toLowerCase();
-
   // Legacy AvaBooking rows keep their existing popup actions (they are served
   // by the legacy booking endpoints that already own them).
   if (block.sourceApp == 'avabooking') {
@@ -428,52 +906,66 @@ BookingRoute bookingRouteForBlock(
     );
   }
 
-  final isEvent = block.sourceApp == 'avalive' || _eventKinds.contains(kind);
+  final isEvent = block.sourceApp == 'avalive' || _eventKinds.contains(
+      (block.bookingKind ?? '').toLowerCase());
   final isCommercialSource = block.sourceApp == 'availability' ||
       block.sourceApp == 'avaconsult' ||
       isEvent ||
-      _appointmentKinds.contains(kind);
+      _appointmentKinds.contains((block.bookingKind ?? '').toLowerCase());
   if (!isCommercialSource) {
     return const BookingRoute(management: BookingManagement.none);
   }
 
-  if (isEvent) {
+  final bookingId = block.bookingId;
+  final listingId = block.listingId;
+  final hasBookingId = bookingId != null && bookingId.isNotEmpty;
+
+  // The server's authoritative role decides FIRST — for events as well as
+  // consultations. A purchased live event (role=customer) must never open the
+  // creator's event console.
+  final role = (block.bookingRole ?? bookingRole ?? '').trim().toLowerCase();
+  if (role == 'customer') {
     return BookingRoute(
-      management: BookingManagement.creatorEvents,
-      bookingId: bookingId,
-      listingId: block.listingId,
-      actionLabel: 'Open live event',
+      management: BookingManagement.customerSessions,
+      bookingId: hasBookingId ? bookingId : null,
+      listingId: listingId,
+      actionLabel: hasBookingId ? 'Manage booking' : 'Open my bookings',
+    );
+  }
+  if (role == 'creator') {
+    return BookingRoute(
+      management:
+          isEvent ? BookingManagement.creatorEvents : BookingManagement.creatorAppointments,
+      bookingId: hasBookingId ? bookingId : null,
+      listingId: listingId,
+      actionLabel: isEvent ? 'Open live event' : 'Manage appointment',
+      isEvent: isEvent,
     );
   }
 
-  final listingId = block.listingId;
-  // A listing the creator provably does NOT own means this occupancy is their
-  // own purchase → the customer session screen. With no ownership data (older
-  // backend / listings not loaded) the creator surface stays the default: this
-  // is the creator diary.
-  final knownForeignListing = listingId != null &&
-      ownedListingIds.isNotEmpty &&
-      !ownedListingIds.contains(listingId);
-  if (role == 'customer' || knownForeignListing) {
-    if (bookingId == null || bookingId.isEmpty) {
-      return BookingRoute(
-        management: BookingManagement.customerSessions,
-        listingId: listingId,
-        actionLabel: 'Open my bookings',
-      );
-    }
+  // No role from the server. Positive ownership evidence is still usable when
+  // the creator's listings actually loaded AND contain this listing; an empty
+  // or failed listing fetch proves nothing, so it must not be read as "mine".
+  final ownershipProven = listingId != null &&
+      listingId.isNotEmpty &&
+      ownedListingIds.contains(listingId);
+  if (ownershipProven) {
     return BookingRoute(
-      management: BookingManagement.customerSessions,
-      bookingId: bookingId,
+      management:
+          isEvent ? BookingManagement.creatorEvents : BookingManagement.creatorAppointments,
+      bookingId: hasBookingId ? bookingId : null,
       listingId: listingId,
-      actionLabel: 'Manage booking',
+      actionLabel: isEvent ? 'Open live event' : 'Manage appointment',
+      isEvent: isEvent,
     );
   }
+  // Unknown role and no ownership proof: offer both safe choices, claim neither.
   return BookingRoute(
-    management: BookingManagement.creatorAppointments,
-    bookingId: bookingId,
+    management: BookingManagement.review,
+    bookingId: hasBookingId ? bookingId : null,
     listingId: listingId,
-    actionLabel: 'Manage appointment',
+    actionLabel: 'Review this booking',
+    isEvent: isEvent,
   );
 }
 
@@ -544,6 +1036,230 @@ String blockScopeLabel({required bool listingScoped, String? listingTitle}) =>
     listingScoped
         ? 'Only this listing${listingTitle == null ? '' : ' ($listingTitle)'}'
         : 'All listings (personal busy time)';
+
+// ── Effective notice + horizon honesty (finding 10, review item 6) ─────────
+/// The server's fallback when a listing does not set a commercial notice:
+/// 24 hours (worker/src/cal/engine.ts — `commercial_booking_notice_hours ?? 24`).
+const int kDefaultCommercialNoticeMin = 24 * 60;
+
+/// A listing's own commercial booking notice in minutes, matching the server
+/// rule. The LISTING attrs are read directly (never [ListingCard]'s convenience
+/// getter, whose fallback is 2 h) so the app cannot under-report a listing that
+/// relies on the server's 24 h default.
+int commercialNoticeMinutesFromAttrs(Map<String, dynamic>? attrs) {
+  final raw = attrs == null ? null : attrs['commercial_booking_notice_hours'];
+  if (raw is num) {
+    final minutes = (raw * 60).round();
+    return minutes < 0 ? 0 : minutes;
+  }
+  return kDefaultCommercialNoticeMin;
+}
+
+class NoticePolicySummary {
+  final int effectiveMinNoticeMin;
+  final int calendarNoticeMin;
+  final int? listingCommercialNoticeMin;
+  final bool fromServerEffective;
+  final String? listingTitle;
+
+  const NoticePolicySummary({
+    required this.effectiveMinNoticeMin,
+    required this.calendarNoticeMin,
+    this.listingCommercialNoticeMin,
+    this.fromServerEffective = false,
+    this.listingTitle,
+  });
+}
+
+/// The effective notice a customer actually faces. When the backend exposes an
+/// authoritative effective value (additive `effective_min_notice_min`), that
+/// wins; otherwise the app applies the same "larger value applies" rule the
+/// engine uses, with the listing's commercial notice defaulting to 24 h.
+NoticePolicySummary noticePolicySummary({
+  required int calendarNoticeMin,
+  int? listingCommercialNoticeMin,
+  int? authoritativeEffectiveMinNoticeMin,
+  String? listingTitle,
+}) {
+  final calendar = calendarNoticeMin < 0 ? 0 : calendarNoticeMin;
+  if (authoritativeEffectiveMinNoticeMin != null &&
+      authoritativeEffectiveMinNoticeMin >= 0) {
+    return NoticePolicySummary(
+      effectiveMinNoticeMin: authoritativeEffectiveMinNoticeMin,
+      calendarNoticeMin: calendar,
+      listingCommercialNoticeMin: listingCommercialNoticeMin,
+      fromServerEffective: true,
+      listingTitle: listingTitle,
+    );
+  }
+  final listing = listingCommercialNoticeMin;
+  final effective =
+      listing == null || calendar >= listing ? calendar : listing;
+  return NoticePolicySummary(
+    effectiveMinNoticeMin: effective,
+    calendarNoticeMin: calendar,
+    listingCommercialNoticeMin: listing,
+    listingTitle: listingTitle,
+  );
+}
+
+String noticeMinutesLabel(int minutes) {
+  if (minutes <= 0) return 'no minimum';
+  if (minutes % 1440 == 0) {
+    final days = minutes ~/ 1440;
+    return days == 1 ? '1 day' : '$days days';
+  }
+  if (minutes % 60 == 0) return '${minutes ~/ 60} h';
+  return '$minutes min';
+}
+
+String noticePolicyLine(NoticePolicySummary summary) {
+  if (summary.listingTitle == null) {
+    return 'Effective minimum notice: ${noticeMinutesLabel(summary.effectiveMinNoticeMin)} '
+        'from your calendar. A listing can require longer notice; the larger value applies.';
+  }
+  if (summary.fromServerEffective) {
+    return 'Effective minimum notice for ${summary.listingTitle}: '
+        '${noticeMinutesLabel(summary.effectiveMinNoticeMin)} (confirmed by the server).';
+  }
+  if (summary.listingCommercialNoticeMin == null) {
+    return 'Effective minimum notice for ${summary.listingTitle}: at least '
+        '${noticeMinutesLabel(summary.effectiveMinNoticeMin)} from your calendar. This '
+        'listing\u2019s commercial notice could not be read, so the real value may be longer.';
+  }
+  return 'Effective minimum notice for ${summary.listingTitle}: '
+      '${noticeMinutesLabel(summary.effectiveMinNoticeMin)} — the larger of the calendar '
+      '(${noticeMinutesLabel(summary.calendarNoticeMin)}) and the listing\u2019s commercial notice '
+      '(${noticeMinutesLabel(summary.listingCommercialNoticeMin!)}, 24 h when unset).';
+}
+
+/// The stored horizon the server will actually accept, or null when the cached
+/// value is outside 1..62 and the next save omits it.
+int? storedHorizonDays(AvailabilitySchedule schedule) =>
+    schedule.horizonDays >= 1 && schedule.horizonDays <= kMaxHorizonDays
+        ? schedule.horizonDays
+        : null;
+
+/// Explains an omitted horizon instead of implying the value on screen was saved.
+String? horizonPersistenceNotice(AvailabilitySchedule schedule) {
+  if (storedHorizonDays(schedule) != null) return null;
+  return 'Your stored booking horizon (${schedule.horizonDays} days) is outside the '
+      'supported 1–$kMaxHorizonDays-day range. AvaTOK will not save a horizon until you set '
+      'one, so listings fall back to the server default.';
+}
+
+// ── View orchestration (review item 7) ─────────────────────────────────────
+enum CalendarNoticeKind { error, stale, google, partial }
+
+class CalendarNotice {
+  final CalendarNoticeKind kind;
+  final String message;
+
+  const CalendarNotice({required this.kind, required this.message});
+}
+
+/// The diary's banners as data, so the orchestration (which failure produces
+/// which warning) is testable without an emulator. An empty list means the page
+/// may be treated as complete.
+List<CalendarNotice> calendarNotices({
+  String? error,
+  bool stale = false,
+  GcalReadiness? gcal,
+  List<String> failedSources = const <String>[],
+}) {
+  final notices = <CalendarNotice>[];
+  if (error != null && error.isNotEmpty) {
+    notices.add(CalendarNotice(kind: CalendarNoticeKind.error, message: error));
+  }
+  if (stale) {
+    notices.add(const CalendarNotice(
+        kind: CalendarNoticeKind.stale,
+        message: 'Showing a saved snapshot until the refresh completes.'));
+  }
+  if (gcal != null && gcal.pausesBookings) {
+    notices.add(CalendarNotice(
+        kind: CalendarNoticeKind.google,
+        message: 'Google Calendar: ${gcal.detail}'));
+  }
+  if (failedSources.isNotEmpty) {
+    notices.add(CalendarNotice(
+        kind: CalendarNoticeKind.partial,
+        message: partialFailureMessage(failedSources)));
+  }
+  return notices;
+}
+
+String partialFailureMessage(List<String> failedSources) {
+  if (failedSources.isEmpty) return '';
+  return 'Some calendar data could not be refreshed (${failedSources.join(', ')}). '
+      'Time you cannot see here is NOT confirmed free — pull to refresh before relying on this day.';
+}
+
+/// Foreground refresh gate. The first resume after opening always refreshes; a
+/// second resume inside [minGap] does not, so a creator flicking between apps
+/// does not hammer the API.
+bool shouldRefreshOnResume({
+  DateTime? lastRefreshAt,
+  required DateTime now,
+  Duration minGap = const Duration(seconds: 20),
+}) {
+  if (lastRefreshAt == null) return true;
+  final elapsed = now.difference(lastRefreshAt);
+  if (elapsed.isNegative) return true;
+  return elapsed >= minGap;
+}
+
+/// Identity is the account, not the load counter: an async load that started
+/// under account A must never render or save under account B.
+bool accountScopeChanged({String? captured, required String? current}) =>
+    captured != current;
+
+class GcalSyncOutcome {
+  final GcalReadiness? readiness;
+  final bool reloadStatus;
+  final String message;
+  final String messageIfReloadFails;
+
+  const GcalSyncOutcome({
+    this.readiness,
+    this.reloadStatus = false,
+    required this.message,
+    String? messageIfReloadFails,
+  }) : messageIfReloadFails = messageIfReloadFails ?? message;
+}
+
+/// What the manual-sync button may say. A 404/405 means the deployed backend
+/// has no sync route: that is "not synced", never "synced".
+GcalSyncOutcome gcalSyncOutcome({
+  required bool ok,
+  required bool routeUnavailable,
+  Map<String, dynamic> json = const <String, dynamic>{},
+  String? error,
+}) {
+  if (routeUnavailable) {
+    return GcalSyncOutcome(
+        message:
+            'This server does not offer manual sync yet. Busy times still import automatically — nothing was reported as synced.');
+  }
+  if (!ok) {
+    return GcalSyncOutcome(
+      reloadStatus: true,
+      message: error ?? 'Google sync failed. Nothing was reported as synced.',
+    );
+  }
+  if (json['connected'] is bool) {
+    final readiness = gcalReadinessFromStatus(json);
+    return GcalSyncOutcome(
+      readiness: readiness,
+      message: readiness.isReady ? 'Busy times synced.' : readiness.detail,
+    );
+  }
+  return GcalSyncOutcome(
+    reloadStatus: true,
+    message: 'Sync request sent. Busy times were re-checked.',
+    messageIfReloadFails: 'Sync ran, but the new status could not be read.',
+  );
+}
 
 // ── Google readiness (findings 5, 6) ───────────────────────────────────────
 enum GcalState { notConnected, checking, syncing, ready, needsAttention, unknown }

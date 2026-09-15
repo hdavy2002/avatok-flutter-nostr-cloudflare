@@ -22,6 +22,7 @@ import '../../core/availability_api.dart';
 import '../../core/listings_api.dart';
 import '../../core/platform_api.dart';
 import '../../core/time_sync.dart';
+import '../../identity/identity.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
@@ -67,13 +68,66 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
   int _settingsRevision = 0;
   DateTime? _lastForegroundRefresh;
 
+  /// Names of the sources that failed in the last load. They were collected but
+  /// never declared, so the partial-load banner could not compile (review item 7).
+  List<String> _failedSources = const <String>[];
+
+  /// The account this screen's data belongs to. Generation alone is not account
+  /// identity: a load or a save that started under another account must not
+  /// render, and must not continue, under this one (review item 5).
+  String? _accountScope = AccountScope.id;
+  bool _scopeResetScheduled = false;
+  _PendingExceptionEdit? _pendingEdit;
+
+  bool _scopeIsCurrent(String? captured) =>
+      captured == _accountScope && captured == AccountScope.id;
+
+  bool get _accountChanged => AccountScope.id != _accountScope;
+
   @override
   void initState() {
     super.initState();
     TimeSync.init();
+    _accountScope = AccountScope.id;
     WidgetsBinding.instance.addObserver(this);
     CalendarSignals.availabilityRevision.addListener(_onAvailabilitySaved);
     _bootstrap();
+  }
+
+  /// An account switch invalidates everything on this screen. Nothing from the
+  /// previous account may stay rendered while the new account loads.
+  void _resetForAccountChange() {
+    _accountScope = AccountScope.id;
+    _scopeResetScheduled = false;
+    setState(() {
+      _blocks = const [];
+      _listings = const [];
+      _selectedListingId = null;
+      _schedule = null;
+      _availability = null;
+      _gcal = null;
+      _error = null;
+      _failedSources = const [];
+      _pendingEdit = null;
+      _stale = true;
+      _updatedAt = null;
+      _loading = true;
+      _refreshing = false;
+      _loadGeneration++;
+      final now = TimeSync.now();
+      _selected = now;
+      _month = DateTime(now.year, now.month, 1);
+    });
+    _bootstrap();
+  }
+
+  void _scheduleScopeReset() {
+    if (_scopeResetScheduled) return;
+    _scopeResetScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _resetForAccountChange();
+    });
   }
 
   @override
@@ -88,10 +142,13 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
+    if (_accountChanged) {
+      _resetForAccountChange();
+      return;
+    }
     // 12 — an already-open diary must not keep showing yesterday's answer.
     final now = TimeSync.now();
-    if (_lastForegroundRefresh != null &&
-        now.difference(_lastForegroundRefresh!) < const Duration(seconds: 20)) {
+    if (!shouldRefreshOnResume(lastRefreshAt: _lastForegroundRefresh, now: now)) {
       return;
     }
     _lastForegroundRefresh = now;
@@ -99,23 +156,41 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
   }
 
   Future<void> _bootstrap() async {
+    if (_accountChanged) {
+      _resetForAccountChange();
+      return;
+    }
     await _loadListings();
+    if (_accountChanged) {
+      _resetForAccountChange();
+      return;
+    }
     await _loadData();
   }
 
   Future<void> _loadListings() async {
+    final scope = AccountScope.id;
     try {
       final listings = await ListingsApi.mine();
-      if (!mounted) return;
+      if (!mounted || !_scopeIsCurrent(scope)) return;
       setState(() => _listings = listings);
     } catch (e) {
-      if (mounted) setState(() => _error = _friendlyError(e));
+      if (!mounted || !_scopeIsCurrent(scope)) return;
+      setState(() => _error = _friendlyError(e));
     }
   }
 
   Future<void> _loadData({bool showBusy = true}) async {
     final generation = ++_loadGeneration;
-    bool current() => mounted && generation == _loadGeneration;
+    final scope = AccountScope.id;
+    // Generation guards overlap; the account scope guards identity. Both are
+    // required: a reload of account B must not adopt a response for account A.
+    bool current() =>
+        mounted && generation == _loadGeneration && _scopeIsCurrent(scope);
+    if (_accountChanged) {
+      _resetForAccountChange();
+      return;
+    }
     final listingId = _selectedListingId;
     final range = _monthRange;
     final from = dateKey(range.$1);
@@ -248,20 +323,16 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
     setState(() {
       _loading = false;
       _refreshing = false;
-      _failedSources = failed;
+      _failedSources = List<String>.unmodifiable(failed);
       _updatedAt = TimeSync.now();
       if (failed.isEmpty) {
         _error = null;
         _stale = false;
       } else {
-        _error = _partialMessage(failed);
+        _error = partialFailureMessage(failed);
       }
     });
   }
-
-  String _partialMessage(List<String> failed) =>
-      'Some calendar data could not be refreshed (${failed.join(', ')}). '
-      'Time you cannot see here is NOT confirmed free — pull to refresh before relying on this day.';
 
   String _friendlyError(Object error) => error is AvailabilityApiException
       ? error.message
@@ -269,21 +340,46 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
 
   Future<void> _refresh() async {
     if (_refreshing) return;
+    if (_accountChanged) {
+      _resetForAccountChange();
+      return;
+    }
     setState(() => _refreshing = true);
     await _loadData(showBusy: false);
   }
 
   Future<void> _openSettings() async {
     final before = _settingsRevision;
+    final scope = AccountScope.id;
     await Navigator.push<void>(
         context, MaterialPageRoute(builder: (_) => const CalendarSettingsScreen()));
     if (!mounted) return;
+    if (!_scopeIsCurrent(scope)) {
+      _resetForAccountChange();
+      return;
+    }
     await _loadData(showBusy: false);
     if (!mounted) return;
     if (_settingsRevision != before) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Working hours updated')));
     }
+  }
+
+  NoticePolicySummary get _noticeSummary {
+    final schedule = _schedule;
+    ListingCard? listing;
+    for (final row in _listings) {
+      if (row.id == _selectedListingId) listing = row;
+    }
+    final filtered = _selectedListingId != null;
+    return noticePolicySummary(
+      calendarNoticeMin: schedule?.minNoticeMin ?? 0,
+      listingCommercialNoticeMin:
+          listing == null ? null : commercialNoticeMinutesFromAttrs(listing.attrs),
+      authoritativeEffectiveMinNoticeMin: schedule?.effectiveMinNoticeMin,
+      listingTitle: filtered ? (listing?.title ?? 'this listing') : null,
+    );
   }
 
   (DateTime, DateTime) get _monthRange => (
@@ -343,6 +439,16 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (_accountChanged) {
+      // The account switched under us. Never render the previous account's
+      // diary while the new one loads.
+      _scheduleScopeReset();
+      return Scaffold(
+        backgroundColor: AD.bg,
+        body: const Center(
+            child: CircularProgressIndicator(color: Msg.accent)),
+      );
+    }
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: ZineAppBar(
@@ -431,6 +537,12 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
             selectedListingId: _selectedListingId, listings: _listings),
         style: ADText.statCaption(c: AD.textSecondary),
       ),
+      if (_schedule != null) ...[
+        const SizedBox(height: Msg.s1),
+        // Finding 10 — the notice a customer actually faces, including the
+        // listing's commercial notice (24 h when the listing does not set one).
+        Text(noticePolicyLine(_noticeSummary), style: calSub(12)),
+      ],
       const SizedBox(height: Msg.s2),
       Wrap(spacing: Msg.s2, runSpacing: Msg.s2, children: [
         ZineChip(
@@ -474,31 +586,67 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
   }
 
   List<Widget> _banners() {
-    final widgets = <Widget>[];
-    if (_error != null) {
-      widgets.add(calendarMessageCard(
-          _error!,
-          PhosphorIcons.warningCircle(PhosphorIconsStyle.regular),
-          AD.danger));
-    }
-    if (_stale) {
-      widgets.add(calendarMessageCard(
-          'Showing a saved snapshot until the refresh completes.',
-          PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.regular),
-          AD.textSecondary));
-    }
-    final gcal = _gcal;
-    if (gcal != null && gcal.pausesBookings) {
-      widgets.add(calendarMessageCard(
-          'Google Calendar: ${gcal.detail}',
-          PhosphorIcons.googleLogo(PhosphorIconsStyle.regular),
-          AD.haldi));
-    }
-    if (_failedSources.isNotEmpty) {
-      // A partial failure must name its sources; "no error" used to mean "ready"
-      // even when blocks or events had failed to load (finding 4).
-      widgets.add(Text('Not refreshed: ${_failedSources.join(', ')}',
-          style: ADText.statCaption(c: AD.textSecondary)));
+    // The notice list (which failure produces which warning, and whether an
+    // empty day may be trusted) is built by a pure helper so it is covered by
+    // tests instead of only by eye (review item 7).
+    final notices = calendarNotices(
+      error: _error,
+      stale: _stale,
+      gcal: _gcal,
+      failedSources: _failedSources,
+    );
+    final widgets = <Widget>[
+      for (final notice in notices)
+        switch (notice.kind) {
+          CalendarNoticeKind.error => calendarMessageCard(
+              notice.message,
+              PhosphorIcons.warningCircle(PhosphorIconsStyle.regular),
+              AD.danger),
+          CalendarNoticeKind.stale => calendarMessageCard(
+              notice.message,
+              PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.regular),
+              AD.textSecondary),
+          CalendarNoticeKind.google => calendarMessageCard(
+              notice.message,
+              PhosphorIcons.googleLogo(PhosphorIconsStyle.regular),
+              AD.haldi),
+          CalendarNoticeKind.partial => calendarMessageCard(
+              notice.message,
+              PhosphorIcons.warningDiamond(PhosphorIconsStyle.regular),
+              AD.haldi),
+        },
+    ];
+    final pending = _pendingEdit;
+    if (pending != null) {
+      widgets.add(ZineCard(
+        radius: Msg.rMd,
+        boxShadow: Msg.none,
+        padding: const EdgeInsets.all(Msg.s3),
+        borderColor: AD.danger,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Your last change was not saved', style: calValue(14)),
+          const SizedBox(height: 2),
+          Text(
+              '${pending.day.day} ${monthShort(pending.day)} could not be saved. The edit is '
+              'still here — retry when you have a connection.',
+              style: calSub(12, c: AD.textSecondary)),
+          const SizedBox(height: Msg.s2),
+          Wrap(spacing: Msg.s2, children: [
+            ZineButton(
+                label: 'Retry save',
+                variant: ZineButtonVariant.blue,
+                fontSize: 13,
+                trailingIcon: false,
+                onPressed: _retryPendingEdit),
+            ZineButton(
+                label: 'Discard',
+                variant: ZineButtonVariant.ghost,
+                fontSize: 13,
+                trailingIcon: false,
+                onPressed: () => setState(() => _pendingEdit = null)),
+          ]),
+        ]),
+      ));
     }
     if (widgets.isEmpty) return const [];
     return [
@@ -775,7 +923,10 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
           ZineLink('Use normal hours',
               underline: AD.textSecondary,
               onTap: () => _saveDayExceptions(
-                  day: _selected, dayExceptions: const [], scopeListingId: _schedule?.listingId)),
+                  day: _selected,
+                  before: _exceptionsFor(_selected),
+                  after: const <AvailabilityException>[],
+                  scopeListingId: _schedule?.listingId)),
       ]),
       const SizedBox(height: Msg.s3),
       if (blocks.isNotEmpty) ...[
@@ -829,8 +980,8 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
             tooltip: 'Remove this interval',
             onTap: () => _saveDayExceptions(
                 day: _selected,
-                dayExceptions:
-                    removeException(_exceptionsFor(_selected), exception.id),
+                before: _exceptionsFor(_selected),
+                after: removeException(_exceptionsFor(_selected), exception.id),
                 scopeListingId: _schedule?.listingId),
           ),
         ]),
@@ -881,6 +1032,9 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
           statusLabel: statusLabel,
           listingId: block.listingId,
           bookingKind: block.bookingKind,
+          // The server's authoritative role is consumed FIRST: a purchased live
+          // event must never open the creator's event console (review item 4).
+          bookingRole: block.bookingRole,
           timezone: _timezone,
           ownedListingIds: {for (final listing in _listings) listing.id},
           onChanged: _refresh,
@@ -968,26 +1122,137 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
 
   String _hm(DateTime date) => hm(date);
 
-  // ── Day editing (findings 2, 3, A8) ──────────────────────────────────────
+  // ── Day editing (findings 2, 3, A8; review items 1, 3 and 6) ─────────────
   Future<void> _openDayEditor(DateTime day, {bool startBlocked = false}) async {
+    final scope = AccountScope.id;
+    final loaded = _schedule;
+    if (loaded == null) {
+      // Without a loaded schedule there is no scope to edit and no way to tell
+      // which schedule a save would target, so editing is refused outright.
+      setState(() => _error =
+          'Working hours are not loaded yet, so this day cannot be edited. Pull to refresh and try again.');
+      return;
+    }
+    final targetScopeListingId = loaded.listingId;
     final result = await showCalendarDayEditor(
       context,
       day: day,
-      timezone: _schedule?.timezone ?? _availability?.timezone,
+      timezone: loaded.timezone,
       exceptions: _exceptionsFor(day),
       listings: _listings
           .where((listing) =>
               _selectedListingId == null || listing.id == _selectedListingId)
           .toList(),
-      selectedListingId: _selectedListingId,
+      selectedListingId: targetScopeListingId,
+      horizonDays: loaded.horizonDays,
+      loadScope: (listingId) => _loadScopeDay(day: day, listingId: listingId),
       startBlocked: startBlocked,
     );
     if (result == null || !mounted) return;
+    if (!_scopeIsCurrent(scope)) {
+      _resetForAccountChange();
+      return;
+    }
     await _applyDayEdit(day, result);
+  }
+
+  /// Loads the day's intervals from ONE scope so the editor can render the
+  /// TARGET schedule's own hours BEFORE anything is edited (review item 1).
+  Future<List<AvailabilityException>> _loadScopeDay({
+    required DateTime day,
+    required String? listingId,
+  }) async {
+    final schedule = await AvailabilityApi.fetchSchedule(listingId: listingId);
+    if (schedule.listingId != listingId) {
+      throw StateError('The server returned a different schedule scope.');
+    }
+    return exceptionsOnDate(schedule.exceptions, dateKey(day));
+  }
+
+  /// Applies the day edit to the schedule that was actually edited. Never
+  /// replaces a whole date in another scope: only the creator's intended
+  /// additions, edits and removals are written.
+  Future<void> _applyDayEdit(DateTime day, CalendarDayEditResult result) async {
+    final scope = AccountScope.id;
+    if (!result.scopeLoaded) {
+      setState(() => _error =
+          'That day was not saved: the chosen schedule scope could not be loaded, so AvaTOK '
+          'could not prove where the change belongs.');
+      return;
+    }
+    final target = await _resolveTargetSchedule(result.scopeListingId, scope);
+    if (target == null || !mounted) return;
+
+    final application = applyDayEditDelta(target.exceptions, result.delta);
+    if (application.hadSkipped) {
+      setState(() => _error =
+          'This day changed elsewhere (${application.skippedIds.length} interval(s) are no '
+          'longer on that schedule). Nothing was saved — pull to refresh and try again.');
+      return;
+    }
+    var exceptions = application.exceptions;
+
+    if (result.hasHolidayRange) {
+      final planned = planHolidayRange(
+        existing: exceptions,
+        from: result.holidayFrom!,
+        to: result.holidayTo!,
+        scopeListingId: target.listingId,
+        horizonDays: storedHorizonDays(target),
+      );
+      if (!planned.ok) {
+        setState(() => _error = planned.error);
+        return;
+      }
+      final confirmed = await _confirmHolidayRange(result, planned, target);
+      if (confirmed != true || !mounted) return;
+      exceptions = planned.exceptions;
+    }
+
+    final tooMany = validateExceptionCount(exceptions.length);
+    if (tooMany != null) {
+      setState(() => _error = tooMany);
+      return;
+    }
+    await _persistExceptions(target, exceptions, day, scope: scope);
+  }
+
+  /// Resolves the schedule a change belongs to. The loaded one is reused when it
+  /// IS the target; otherwise the target is fetched and verified. A failed fetch
+  /// returns null so the caller refuses to save (review item 1).
+  Future<AvailabilitySchedule?> _resolveTargetSchedule(
+      String? scopeListingId, String? scope,
+      {bool forceRefresh = false}) async {
+    if (!_scopeIsCurrent(scope)) return null;
+    final loaded = _schedule;
+    if (!forceRefresh && loaded != null && loaded.listingId == scopeListingId) {
+      return loaded;
+    }
+    try {
+      final fetched =
+          await AvailabilityApi.fetchSchedule(listingId: scopeListingId);
+      if (!mounted || !_scopeIsCurrent(scope)) return null;
+      if (fetched.listingId != scopeListingId) {
+        setState(() => _error =
+            'That schedule scope could not be loaded, so nothing was saved. Pull to refresh '
+            'and try again.');
+        return null;
+      }
+      return fetched;
+    } catch (e) {
+      if (!mounted || !_scopeIsCurrent(scope)) return null;
+      setState(() => _error =
+          'That schedule scope could not be loaded, so nothing was saved. ${_friendlyError(e)}');
+      return null;
+    }
   }
 
   Future<void> _editSingleException(AvailabilityException exception) async {
     final day = _selected;
+    final scope = AccountScope.id;
+    final loaded = _schedule;
+    if (loaded == null) return;
+    final before = _exceptionsFor(day);
     final updated = await showCalendarExceptionDialog(
       context,
       day: day,
@@ -998,59 +1263,26 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
       timezone: _timezone,
     );
     if (updated == null || !mounted) return;
+    if (!_scopeIsCurrent(scope)) {
+      _resetForAccountChange();
+      return;
+    }
     await _saveDayExceptions(
       day: day,
-      dayExceptions: upsertException(_exceptionsFor(day), updated,
-          replacingId: exception.id),
-      scopeListingId: _schedule?.listingId,
+      before: before,
+      after: upsertException(before, updated, replacingId: exception.id),
+      scopeListingId: loaded.listingId,
     );
   }
 
-  Future<void> _applyDayEdit(DateTime day, CalendarDayEditResult result) async {
-    var schedule = _schedule;
-    if (schedule == null) return;
-    final scopeListingId = result.scopeListingId;
-    if (schedule.listingId != scopeListingId) {
-      // Scope and filter are separate (finding 9): blocking "All listings"
-      // while a listing is filtered must write the creator-wide schedule.
-      try {
-        final shared = await AvailabilityApi.fetchSchedule();
-        if (shared.listingId != scopeListingId) {
-          if (mounted) {
-            setState(() => _error =
-                'That schedule scope could not be loaded. Pull to refresh and try again.');
-          }
-          return;
-        }
-        schedule = shared;
-      } catch (e) {
-        if (mounted) setState(() => _error = _friendlyError(e));
-        return;
-      }
-    }
-
-    var exceptions = replaceDateExceptions(
-        schedule.exceptions, dateKey(day), result.exceptions);
-    if (result.hasHolidayRange) {
-      final confirmed = await _confirmHolidayRange(result);
-      if (confirmed != true || !mounted) return;
-      final additions = holidayRangeExceptions(
-        from: result.holidayFrom!,
-        to: result.holidayTo!,
-      ).where((row) => row.date != dateKey(day)).toList(growable: false);
-      exceptions = mergeExceptions(exceptions, additions);
-    }
-    final tooMany = validateExceptionCount(exceptions.length);
-    if (tooMany != null) {
-      if (mounted) setState(() => _error = tooMany);
-      return;
-    }
-    await _persistExceptions(schedule, exceptions, day);
-  }
-
-  /// Adding a range can touch days that already hold confirmed appointments:
-  /// list them and make it explicit that AvaTOK will not cancel anything.
-  Future<bool?> _confirmHolidayRange(CalendarDayEditResult result) {
+  /// Adding a range can touch days that already hold confirmed appointments or
+  /// saved breaks: list them and make it explicit what is replaced, what is
+  /// kept, and that AvaTOK will not cancel anything.
+  Future<bool?> _confirmHolidayRange(
+    CalendarDayEditResult result,
+    HolidayRangePlan plan,
+    AvailabilitySchedule target,
+  ) {
     final from = dayBoundsUtcMs(result.holidayFrom!, _timezone)?.from ??
         DateTime.utc(result.holidayFrom!.year, result.holidayFrom!.month,
                 result.holidayFrom!.day)
@@ -1062,6 +1294,9 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
     final affected = _blocks
         .where((block) => block.startsAt < to && block.endsAt > from)
         .toList(growable: false);
+    final scopeLabel = target.listingId == null
+        ? 'all your listings'
+        : _listingTitle(target.listingId);
     return showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -1070,34 +1305,69 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
             borderRadius: Msg.brLg,
             side: const BorderSide(color: AD.borderControl)),
         title: Text('Block this range?', style: calTitle(17)),
-        content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                  '${result.holidayFrom!.day} ${monthShort(result.holidayFrom!)} – '
-                  '${result.holidayTo!.day} ${monthShort(result.holidayTo!)} will be blocked across '
-                  '${result.scopeListingId == null ? 'all your listings' : _listingTitle(result.scopeListingId)}.',
-                  style: calSub(13)),
-              if (affected.isEmpty) ...[
-                const SizedBox(height: Msg.s3),
-                Text('No existing commitments fall inside this range.',
+        content: SingleChildScrollView(
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                    '${result.holidayFrom!.day} ${monthShort(result.holidayFrom!)} – '
+                    '${result.holidayTo!.day} ${monthShort(result.holidayTo!)} will be blocked across '
+                    '$scopeLabel (${plan.blockedDays} day(s)).',
                     style: calSub(13)),
-              ] else ...[
-                const SizedBox(height: Msg.s3),
-                Text(
-                    '${affected.length} existing commitment(s) fall inside this range:',
-                    style: calValue(13)),
-                const SizedBox(height: Msg.s2),
-                ...affected.take(6).map((block) => Text(
-                    '· ${fmtDate(block.startsAt)} ${blockTimeLabel(startMs: block.startsAt, endMs: block.endsAt, timezone: _timezone)} ${styleFor(block.sourceApp).label}',
-                    style: calSub(12))),
-                const SizedBox(height: Msg.s2),
-                Text(
-                    'AvaTOK never cancels a confirmed booking automatically. Reschedule or cancel each one individually.',
-                    style: calSub(12, c: AD.danger)),
-              ],
-            ]),
+                if (plan.replacedDateCount > 0) ...[
+                  const SizedBox(height: Msg.s3),
+                  Text(
+                      '${plan.replacedDateCount} of those day(s) already had hours or breaks '
+                      'saved. Those windows are replaced by one all-day block. Days outside the '
+                      'range keep every interval untouched.',
+                      style: calSub(13)),
+                ],
+                if (plan.alreadyBlockedDates.isNotEmpty) ...[
+                  const SizedBox(height: Msg.s3),
+                  Text(
+                      '${plan.alreadyBlockedDates.length} day(s) were already blocked for this '
+                      'scope and are left exactly as they are.',
+                      style: calSub(13)),
+                ],
+                if (plan.reservationDates.isNotEmpty) ...[
+                  const SizedBox(height: Msg.s3),
+                  Text(
+                      '${plan.reservationDates.length} day(s) hold time kept for a listing. '
+                      'Those reserved windows stay reserved and AvaTOK blocks the rest of the day '
+                      'around them.',
+                      style: calSub(13)),
+                ],
+                if (plan.horizonUnknown) ...[
+                  const SizedBox(height: Msg.s3),
+                  Text(
+                      'This schedule has no supported booking horizon stored, so the range is '
+                      'capped at $kMaxHorizonDays days and the server default applies until you '
+                      'set one.',
+                      style: calSub(13)),
+                ],
+                if (affected.isEmpty) ...[
+                  const SizedBox(height: Msg.s3),
+                  Text('No existing commitments fall inside this range.',
+                      style: calSub(13)),
+                ] else ...[
+                  const SizedBox(height: Msg.s3),
+                  Text(
+                      '${affected.length} existing commitment(s) fall inside this range:',
+                      style: calValue(13)),
+                  const SizedBox(height: Msg.s2),
+                  ...affected.take(6).map((block) => Text(
+                      '· ${fmtDate(block.startsAt)} ${blockTimeLabel(startMs: block.startsAt, endMs: block.endsAt, timezone: _timezone)} ${styleFor(block.sourceApp).label}',
+                      style: calSub(12))),
+                  const SizedBox(height: Msg.s2),
+                  Text(
+                      'AvaTOK never cancels a confirmed booking automatically. If one still '
+                      'overlaps the range the server refuses the block instead of cancelling it, '
+                      'so reschedule or cancel each one first — your edit is kept for retry.',
+                      style: calSub(12, c: AD.danger)),
+                ],
+              ]),
+        ),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
@@ -1114,53 +1384,131 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
 
   Future<void> _saveDayExceptions({
     required DateTime day,
-    required List<AvailabilityException> dayExceptions,
-    String? scopeListingId,
+    required List<AvailabilityException> before,
+    required List<AvailabilityException> after,
+    required String? scopeListingId,
   }) async {
-    final schedule = _schedule;
-    if (schedule == null) return;
-    if (schedule.listingId != scopeListingId) {
-      await _applyDayEdit(
-        day,
-        CalendarDayEditResult(
-            exceptions: dayExceptions, scopeListingId: scopeListingId),
-      );
+    final scope = AccountScope.id;
+    final target = await _resolveTargetSchedule(scopeListingId, scope);
+    if (target == null || !mounted) return;
+    final delta =
+        dayEditDelta(date: dateKey(day), before: before, after: after);
+    final application = applyDayEditDelta(target.exceptions, delta);
+    if (application.hadSkipped) {
+      setState(() => _error =
+          'This day changed elsewhere. Nothing was saved — pull to refresh and try again.');
       return;
     }
-    final exceptions =
-        replaceDateExceptions(schedule.exceptions, dateKey(day), dayExceptions);
-    final tooMany = validateExceptionCount(exceptions.length);
+    final tooMany = validateExceptionCount(application.exceptions.length);
     if (tooMany != null) {
-      if (mounted) setState(() => _error = tooMany);
+      setState(() => _error = tooMany);
       return;
     }
-    await _persistExceptions(schedule, exceptions, day);
+    await _persistExceptions(target, application.exceptions, day, scope: scope);
   }
 
-  Future<void> _persistExceptions(AvailabilitySchedule schedule,
-      List<AvailabilityException> exceptions, DateTime day) async {
+  /// Retries a failed save against a FRESH copy of the same scope and re-derives
+  /// the delta from the creator's intent, so nothing another device added is
+  /// dropped and the version conflict is resolved instead of replayed.
+  ///
+  /// The delta is whole-schedule ([scheduleDelta]): a holiday range changes
+  /// several dates in one action, so a single-date delta would report the other
+  /// dates as somebody else's edits and refuse to retry — dropping the range.
+  Future<void> _retryPendingEdit() async {
+    final pending = _pendingEdit;
+    if (pending == null) return;
+    if (!_scopeIsCurrent(pending.scope)) {
+      _resetForAccountChange();
+      return;
+    }
+    setState(() => _pendingEdit = null);
+    final target = await _resolveTargetSchedule(
+        pending.schedule.listingId, pending.scope,
+        forceRefresh: true);
+    if (target == null || !mounted) return;
+    final delta = scheduleDelta(
+        before: pending.baseExceptions, after: pending.dayExceptions);
+    final application = applyScheduleDelta(target.exceptions, delta);
+    if (application.hadSkipped) {
+      setState(() => _error =
+          'The schedule changed elsewhere since the failed save (${application.skippedIds.length} '
+          'interval(s) are no longer there). Nothing was written — review it and try again.');
+      return;
+    }
+    final tooMany = validateExceptionCount(application.exceptions.length);
+    if (tooMany != null) {
+      setState(() => _error = tooMany);
+      return;
+    }
+    await _persistExceptions(target, application.exceptions, pending.day,
+        scope: pending.scope);
+  }
+
+  Future<void> _persistExceptions(
+      AvailabilitySchedule schedule, List<AvailabilityException> exceptions,
+      DateTime day, {required String? scope}) async {
+    if (!_scopeIsCurrent(scope)) {
+      _resetForAccountChange();
+      return;
+    }
+    final displayedScope = _schedule?.listingId;
+    final pending = _PendingExceptionEdit(
+      schedule: schedule,
+      baseExceptions: schedule.exceptions,
+      dayExceptions: exceptions,
+      day: day,
+      scope: scope,
+    );
     try {
-      final saved =
-          await AvailabilityApi.saveSchedule(schedule.copyWith(exceptions: exceptions));
+      final saved = await AvailabilityApi.saveSchedule(
+          schedule.copyWith(exceptions: exceptions));
       if (!mounted) return;
-      if (saved.listingId == _selectedListingId) {
-        setState(() {
-          _schedule = saved;
-          _error = null;
-        });
-      } else {
-        setState(() => _error = null);
+      if (!_scopeIsCurrent(scope)) {
+        _resetForAccountChange();
+        return;
       }
+      setState(() {
+        _pendingEdit = null;
+        _error = null;
+        if (saved.listingId == displayedScope) _schedule = saved;
+      });
       await _loadData(showBusy: false);
-      if (!mounted) return;
-      final scope = saved.listingId == null
+      if (!mounted || !_scopeIsCurrent(scope)) return;
+      final label = saved.listingId == null
           ? 'all your listings'
           : _listingTitle(saved.listingId);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(
-              'Saved — ${day.day} ${monthShort(day)} now follows these hours for $scope.')));
+              'Saved — ${day.day} ${monthShort(day)} now follows these hours for $label.')));
     } catch (e) {
-      if (mounted) setState(() => _error = _friendlyError(e));
+      if (!mounted || !_scopeIsCurrent(scope)) return;
+      setState(() {
+        // The edit is NEVER dropped on a failed save; the banner offers retry.
+        _pendingEdit = pending;
+        _error = '${_friendlyError(e)} Your change is still here — use Retry save.';
+      });
     }
   }
+}
+
+/// An availability edit that could not be saved, kept so the creator can retry
+/// instead of rebuilding the whole day.
+class _PendingExceptionEdit {
+  final AvailabilitySchedule schedule;
+
+  /// The target scope's intervals as they were loaded for this edit, and the
+  /// intended set afterwards. Retrying re-derives the delta from these so the
+  /// intent is replayed rather than the whole date overwritten.
+  final List<AvailabilityException> baseExceptions;
+  final List<AvailabilityException> dayExceptions;
+  final DateTime day;
+  final String? scope;
+
+  const _PendingExceptionEdit({
+    required this.schedule,
+    required this.baseExceptions,
+    required this.dayExceptions,
+    required this.day,
+    required this.scope,
+  });
 }

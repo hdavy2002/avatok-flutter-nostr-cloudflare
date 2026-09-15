@@ -26,6 +26,7 @@ void main() {
       expect(block.listingId, isNull);
       expect(block.bookingKind, isNull);
       expect(block.bookingStatus, isNull);
+      expect(block.bookingRole, isNull);
       // The legacy fields are untouched.
       expect(block.sourceRef, 'res-1');
       expect(styleFor(block.sourceApp).label, 'Appointment');
@@ -57,11 +58,47 @@ void main() {
         'source_app': 'availability',
         'booking_id': '',
         'listing_id': '',
+        'booking_role': '',
       });
       expect(block.bookingId, isNull);
       expect(block.listingId, isNull);
+      expect(block.bookingRole, isNull);
+      // Nothing proves the role and nothing proves ownership, so the diary
+      // offers the safe generic choice instead of claiming this is the
+      // creator's own appointment (review item 4).
       expect(bookingRouteForBlock(block).management,
-          BookingManagement.creatorAppointments);
+          BookingManagement.review);
+    });
+
+    test('booking_role is read and round-trips through the cache', () {
+      final block = CalBlock.fromJson({
+        'id': 'b1',
+        'source_app': 'avalive',
+        'source_ref': 'ev-1',
+        'starts_at': 1000,
+        'ends_at': 2000,
+        'booking_id': 'bk-1',
+        'listing_id': 'L9',
+        'booking_kind': 'live',
+        'booking_role': 'customer',
+      });
+      expect(block.bookingRole, 'customer');
+      expect(bookingRouteForBlock(block).management,
+          BookingManagement.customerSessions);
+      final cached = CalBlock('b1', 'avalive', 'ev-1', 1000, 2000, 'Live',
+          bookingId: 'bk-1',
+          listingId: 'L9',
+          bookingKind: 'live',
+          bookingRole: 'customer');
+      final json = cached.toJson();
+      expect(json['booking_role'], 'customer');
+      expect(CalBlock.fromJson(json).bookingRole, 'customer');
+      // A block without the field never invents one.
+      expect(
+          CalBlock('b2', 'manual', null, 1, 2, 'Busy')
+              .toJson()
+              .containsKey('booking_role'),
+          isFalse);
     });
 
     test('the cache round-trips the additive fields without inventing them', () {

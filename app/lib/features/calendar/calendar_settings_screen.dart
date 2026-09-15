@@ -16,6 +16,7 @@ import '../../core/ava_log.dart';
 import '../../core/availability_api.dart';
 import '../../core/platform_api.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../identity/identity.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'calendar_data.dart';
@@ -41,15 +42,26 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
   String? _gcalMessage;
   static const _days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+  /// The account this screen's data belongs to. An async load or save that
+  /// started under another account must not render, or write, under this one
+  /// (review item 5).
+  String? _accountScope = AccountScope.id;
+
+  bool _scopeIsCurrent(String? captured) =>
+      captured == _accountScope && captured == AccountScope.id;
+
   @override
   void initState() {
     super.initState();
+    _accountScope = AccountScope.id;
     _load();
   }
 
   Future<void> _load() async {
+    final scope = AccountScope.id;
     final cached = await AvailabilityApi.cachedSchedule();
-    if (mounted && cached != null) {
+    if (!mounted || !_scopeIsCurrent(scope)) return;
+    if (cached != null) {
       setState(() {
         _schedule = cached.value;
         _loading = false;
@@ -58,7 +70,7 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
     final failed = <String>[];
     try {
       final schedule = await AvailabilityApi.fetchSchedule();
-      if (!mounted) return;
+      if (!mounted || !_scopeIsCurrent(scope)) return;
       setState(() {
         _schedule = schedule;
         _loading = false;
@@ -66,7 +78,7 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
       });
     } catch (e) {
       failed.add('working hours');
-      if (mounted) {
+      if (mounted && _scopeIsCurrent(scope)) {
         setState(() {
           _loading = false;
           _error =
@@ -74,17 +86,19 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
         });
       }
     }
-    if (!await _loadGcal() && mounted) failed.add('Google Calendar');
-    if (mounted && failed.isNotEmpty && _error == null) {
+    if (!await _loadGcal(scope) && mounted && _scopeIsCurrent(scope)) {
+      failed.add('Google Calendar');
+    }
+    if (mounted && _scopeIsCurrent(scope) && failed.isNotEmpty && _error == null) {
       setState(() => _error =
           'Some settings could not be refreshed: ${failed.join(', ')}.');
     }
   }
 
-  Future<bool> _loadGcal() async {
+  Future<bool> _loadGcal(String scope) async {
     try {
       final result = await PlatformApi.gcalStatusResult();
-      if (!mounted) return true;
+      if (!mounted || !_scopeIsCurrent(scope)) return true;
       setState(() {
         _gcal = result.ok
             ? gcalReadinessFromStatus(result.json)
@@ -93,7 +107,7 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
       });
       return result.ok;
     } catch (_) {
-      if (mounted) {
+      if (mounted && _scopeIsCurrent(scope)) {
         setState(() => _gcal = gcalUnknown(
             'Google Calendar status could not be read. Treat Google busy times as unverified.'));
       }
@@ -300,51 +314,45 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
       );
 
   Future<void> _syncNow() async {
+    final scope = AccountScope.id;
     setState(() {
       _gcalBusy = true;
       _gcalMessage = null;
     });
     try {
       final result = await PlatformApi.gcalSyncResult();
-      if (!mounted) return;
-      if (result.routeUnavailable) {
+      if (!mounted || !_scopeIsCurrent(scope)) return;
+      // The orchestration (what may be claimed, and whether the status must be
+      // re-read) lives in a pure helper so CI covers it without a live account.
+      final outcome = gcalSyncOutcome(
+        ok: result.ok,
+        routeUnavailable: result.routeUnavailable,
+        json: result.json,
+        error: result.error,
+      );
+      if (outcome.readiness != null) {
         setState(() {
           _gcalBusy = false;
-          _gcalMessage =
-              'This server does not offer manual sync yet. Busy times still import automatically — nothing was reported as synced.';
+          _gcal = outcome.readiness;
+          _gcalMessage = outcome.message;
         });
         return;
       }
-      if (!result.ok) {
+      if (outcome.reloadStatus) {
+        final ok = await _loadGcal(scope);
+        if (!mounted || !_scopeIsCurrent(scope)) return;
         setState(() {
           _gcalBusy = false;
-          _gcalMessage =
-              result.error ?? 'Google sync failed. Nothing was reported as synced.';
+          _gcalMessage = ok ? outcome.message : outcome.messageIfReloadFails;
         });
-        await _loadGcal();
         return;
       }
-      if (result.json['connected'] is bool) {
-        final readiness = gcalReadinessFromStatus(result.json);
-        setState(() {
-          _gcalBusy = false;
-          _gcal = readiness;
-          _gcalMessage = readiness.isReady
-              ? 'Busy times synced.'
-              : readiness.detail;
-        });
-      } else {
-        final ok = await _loadGcal();
-        if (!mounted) return;
-        setState(() {
-          _gcalBusy = false;
-          _gcalMessage = ok
-              ? 'Sync request sent. Busy times were re-checked.'
-              : 'Sync ran, but the new status could not be read.';
-        });
-      }
+      setState(() {
+        _gcalBusy = false;
+        _gcalMessage = outcome.message;
+      });
     } catch (_) {
-      if (mounted) {
+      if (mounted && _scopeIsCurrent(scope)) {
         setState(() {
           _gcalBusy = false;
           _gcalMessage = 'Google sync could not run. Nothing was reported as synced.';
@@ -401,6 +409,7 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
   }
 
   Future<void> _chooseCalendars(List<GcalCalendarStatus> calendars) async {
+    final scope = AccountScope.id;
     final selected = <String>{
       for (final calendar in calendars)
         if (calendar.selected) calendar.id
@@ -487,7 +496,7 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
         },
       ),
     );
-    if (saved != true || !mounted) return;
+    if (saved != true || !mounted || !_scopeIsCurrent(scope)) return;
     setState(() {
       _gcalBusy = true;
       _gcalMessage = null;
@@ -495,14 +504,14 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
     try {
       final result = await PlatformApi.gcalSaveCalendarsResult(
           readCalendarIds: selected.toList(), destinationCalendarId: destination);
-      if (!mounted) return;
+      if (!mounted || !_scopeIsCurrent(scope)) return;
       setState(() {
         _gcalBusy = false;
         _gcalMessage = result.ok
             ? 'Calendar selection saved.'
             : (result.error ?? 'Calendar selection could not be saved.');
       });
-      if (result.ok) await _loadGcal();
+      if (result.ok) await _loadGcal(scope);
     } catch (_) {
       if (mounted) {
         setState(() {
@@ -640,20 +649,29 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
                 )),
         _settingLine(
             'Booking horizon',
-            '${schedule.horizonDays} days',
+            storedHorizonDays(schedule) == null
+                ? 'Not stored'
+                : '${schedule.horizonDays} days',
             () => showCalendarNumberDialog(
                   context,
                   title: 'Booking horizon',
                   helper:
                       'How far ahead customers can book. Up to $kMaxHorizonDays days; the value you choose is kept.',
-                  initialValue: schedule.horizonDays,
+                  initialValue: storedHorizonDays(schedule),
                   min: 1,
                   max: kMaxHorizonDays,
                   validate: validateHorizonDays,
                   onSave: (value) =>
                       _save(schedule.copyWith(horizonDays: value)),
                 )),
-        const SizedBox(height: Msg.s2),
+        if (horizonPersistenceNotice(schedule) != null) ...[
+          const SizedBox(height: Msg.s2),
+          calendarMessageCard(
+              horizonPersistenceNotice(schedule)!,
+              PhosphorIcons.warningCircle(PhosphorIconsStyle.regular),
+              AD.haldi),
+        ],
+        const SizedBox(height: Msg.s3),
         Text('Schedule mode', style: ADText.sectionLabel()),
         const SizedBox(height: Msg.s2),
         Wrap(spacing: Msg.s2, children: [
@@ -665,6 +683,13 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
         ]),
         const SizedBox(height: Msg.s3),
         Text(_effectiveRules(schedule), style: calSub(12)),
+        const SizedBox(height: Msg.s2),
+        Text(
+            noticePolicyLine(noticePolicySummary(
+              calendarNoticeMin: schedule.minNoticeMin,
+              authoritativeEffectiveMinNoticeMin: schedule.effectiveMinNoticeMin,
+            )),
+            style: calSub(12)),
       ]));
 
   String _effectiveRules(AvailabilitySchedule schedule) {
@@ -682,7 +707,10 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
         ? 'holds at most ${schedule.maxPerDay} appointment(s) per day'
         : 'has no daily limit stored (set one before publishing)');
     parts.add('reserves a ${schedule.bufferMin} min buffer around each session');
-    parts.add('is bookable up to ${schedule.horizonDays} days ahead');
+    final horizon = storedHorizonDays(schedule);
+    parts.add(horizon == null
+        ? 'has no stored booking horizon, so the server default applies'
+        : 'is bookable up to $horizon days ahead');
     return 'Effective rules: this schedule ${parts.join(', ')}.';
   }
 
@@ -727,13 +755,14 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
       };
 
   Future<void> _save(AvailabilitySchedule value) async {
+    final scope = AccountScope.id;
     setState(() {
       _saving = true;
       _error = null;
     });
     try {
       final saved = await AvailabilityApi.saveSchedule(value);
-      if (!mounted) return;
+      if (!mounted || !_scopeIsCurrent(scope)) return;
       setState(() {
         _schedule = saved;
         _saving = false;
@@ -741,10 +770,15 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
       // [A6] The diary listens for this so returning from settings shows the
       // new hours immediately instead of a stale schedule.
       CalendarSignals.availabilitySaved();
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Availability updated')));
+      // A horizon outside 1..62 is omitted from the wire payload (the server
+      // refuses it), so say that plainly instead of implying it was saved.
+      final omitted = horizonPersistenceNotice(saved);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(omitted == null
+              ? 'Availability updated'
+              : 'Availability updated. $omitted')));
     } catch (e) {
-      if (mounted) {
+      if (mounted && _scopeIsCurrent(scope)) {
         setState(() {
           _saving = false;
           _error = e is AvailabilityApiException
@@ -756,9 +790,11 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
   }
 
   Future<void> _addRule() async {
+    final scope = AccountScope.id;
     final result = await showDialog<AvailabilityRule>(
-        context: context, builder: (_) => const _RuleDialog());
-    if (result != null && _schedule != null) {
+        context: context, builder: (_) => const CalendarRuleDialog());
+    if (result == null || !mounted || !_scopeIsCurrent(scope)) return;
+    if (_schedule != null) {
       await _save(_schedule!.copyWith(rules: [..._schedule!.rules, result]));
     }
   }
@@ -818,10 +854,11 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
       }
       return;
     }
+    final scope = AccountScope.id;
     try {
       await FlutterWebAuth2.authenticate(
           url: url, callbackUrlScheme: 'avatokauth');
-      await _loadGcal();
+      await _loadGcal(scope);
     } on PlatformException catch (error) {
       if (error.code == 'CANCELED' || error.code == 'CANCELLED') return;
       AvaLog.I
@@ -845,21 +882,22 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
   }
 
   Future<void> _disconnectGcal() async {
+    final scope = AccountScope.id;
     setState(() {
       _gcalBusy = true;
       _gcalMessage = null;
     });
     try {
       await PlatformApi.gcalDisconnect();
-      await _loadGcal();
-      if (mounted) {
+      await _loadGcal(scope);
+      if (mounted && _scopeIsCurrent(scope)) {
         setState(() {
           _gcalBusy = false;
           _gcalMessage = 'Google Calendar disconnected.';
         });
       }
     } catch (_) {
-      if (mounted) {
+      if (mounted && _scopeIsCurrent(scope)) {
         setState(() {
           _gcalBusy = false;
           _gcalMessage = 'Google Calendar could not be disconnected.';
@@ -869,17 +907,21 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
   }
 }
 
-class _RuleDialog extends StatefulWidget {
-  const _RuleDialog();
+/// Adds one weekly working-hours window. "Ends at midnight" is an explicit,
+/// independent choice so a late window (18:00→24:00) keeps the server's 1440
+/// end-of-day value instead of collapsing to minute 0 (audit finding 2).
+class CalendarRuleDialog extends StatefulWidget {
+  const CalendarRuleDialog({super.key});
 
   @override
-  State<_RuleDialog> createState() => _RuleDialogState();
+  State<CalendarRuleDialog> createState() => _RuleDialogState();
 }
 
-class _RuleDialogState extends State<_RuleDialog> {
+class _RuleDialogState extends State<CalendarRuleDialog> {
   int _weekday = 1;
   TimeOfDay _start = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay _end = const TimeOfDay(hour: 17, minute: 0);
+  bool _endOfDay = false;
   String? _error;
 
   @override
@@ -920,12 +962,27 @@ class _RuleDialogState extends State<_RuleDialog> {
                         }))),
             const SizedBox(width: Msg.s2),
             Expanded(
-                child: _timeTile('To', _end,
-                    (value) => setState(() {
-                          _end = value;
-                          _error = null;
-                        })))
+                child: _endOfDay
+                    ? _readOnlyTile('To', '24:00 · end of day')
+                    : _timeTile('To', _end,
+                        (value) => setState(() {
+                              _end = value;
+                              _error = null;
+                            })))
           ]),
+          const SizedBox(height: Msg.s2),
+          ZineButton(
+              label: _endOfDay ? 'Ends at midnight: on' : 'Ends at midnight',
+              variant: _endOfDay
+                  ? ZineButtonVariant.blue
+                  : ZineButtonVariant.ghost,
+              fontSize: 13,
+              trailingIcon: false,
+              fullWidth: true,
+              onPressed: () => setState(() {
+                    _endOfDay = !_endOfDay;
+                    _error = null;
+                  })),
           if (_error != null) ...[
             const SizedBox(height: Msg.s3),
             Align(
@@ -942,11 +999,13 @@ class _RuleDialogState extends State<_RuleDialog> {
               variant: ZineButtonVariant.blue,
               fontSize: 14,
               onPressed: () {
-                final startMin = _start.hour * 60 + _start.minute;
-                final endMin = _end.hour * 60 + _end.minute;
-                if (endMin <= startMin) {
-                  setState(() => _error =
-                      'The end time must be after the start time.');
+                final startMin = pickedMinutes(
+                    endOfDay: false, hour: _start.hour, minute: _start.minute);
+                final endMin = pickedMinutes(
+                    endOfDay: _endOfDay, hour: _end.hour, minute: _end.minute);
+                final error = pickedRangeError(startMin, endMin);
+                if (error != null) {
+                  setState(() => _error = error);
                   return;
                 }
                 Navigator.pop(
@@ -958,6 +1017,16 @@ class _RuleDialogState extends State<_RuleDialog> {
               })
         ],
       );
+
+  Widget _readOnlyTile(String label, String text) => ZineCard(
+      radius: Msg.rMd,
+      boxShadow: Msg.none,
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: ADText.sectionLabel()),
+        const SizedBox(height: 2),
+        Text(text, style: calValue(14))
+      ]));
 
   Widget _timeTile(
           String label, TimeOfDay value, ValueChanged<TimeOfDay> onChanged) =>

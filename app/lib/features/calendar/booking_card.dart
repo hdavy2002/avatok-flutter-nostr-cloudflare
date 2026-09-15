@@ -83,18 +83,25 @@ Future<void> showBookingCard(
   String? statusLabel,
   String? listingId,
   String? bookingKind,
+  String? bookingRole,
   String? timezone,
   Set<String> ownedListingIds = const <String>{},
-  bool amCreator = false,
+  bool? amCreator,
   VoidCallback? onChanged,
 }) async {
   final st = styleFor(sourceApp);
+  // The caller only ever passes `true` when IT resolved the signed-in account
+  // against the row (e.g. CreatorAppointments' `creator_id == AccountScope.id`).
+  // `false`/absent means "not proved", which is NOT the same as "customer".
+  final effectiveRole =
+      bookingRole ?? (amCreator == true ? 'creator' : null);
   final route = bookingRouteForBlock(
     CalBlock('', sourceApp, bookingId, startsAt, endsAt, title,
         bookingId: bookingId,
         listingId: listingId,
         bookingKind: bookingKind,
-        bookingStatus: status),
+        bookingStatus: status,
+        bookingRole: effectiveRole),
     ownedListingIds: ownedListingIds,
   );
   final zone = timezone ?? 'UTC';
@@ -174,7 +181,7 @@ Future<void> showBookingCard(
                     trailingIcon: false,
                     onPressed: () async {
                       Navigator.pop(sheetCtx);
-                      await showReschedulePicker(context, bookingId: bookingId, counterpartCreator: counterpart ?? '', amCreator: amCreator);
+                      await showReschedulePicker(context, bookingId: bookingId, counterpartCreator: counterpart ?? '', amCreator: amCreator ?? false);
                       onChanged?.call();
                     },
                   ),
@@ -244,7 +251,9 @@ Future<void> showBookingCard(
               ),
               const SizedBox(height: Msg.s2),
               Text(
-                'Opens the booking’s own screen. Reserved time is never cancelled or moved from the diary.',
+                route.management == BookingManagement.review
+                    ? 'AvaTOK could not confirm whether this account is the creator or the customer, so you choose which screen to open. Each screen only shows what this account is allowed to see.'
+                    : 'Opens the booking’s own screen. Reserved time is never cancelled or moved from the diary.',
                 style: ADText.statCaption(c: AD.textSecondary),
               ),
             ] else if (bookingId != null) ...[
@@ -285,10 +294,85 @@ Future<void> openBookingManagement(BuildContext context, BookingRoute route) asy
                   focusBookingId: route.bookingId,
                   focusListingId: route.listingId)));
       return;
+    case BookingManagement.review:
+      await _chooseBookingManagement(context, route);
+      return;
     case BookingManagement.legacy:
     case BookingManagement.none:
       return;
   }
+}
+
+/// Neither role could be proven, so the creator picks — both destinations are
+/// server-authorized and neither is labelled as if ownership were known.
+Future<void> _chooseBookingManagement(
+    BuildContext context, BookingRoute route) async {
+  final choice = await showModalBottomSheet<String>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: AD.overlaySheet,
+    shape: const RoundedRectangleBorder(
+      borderRadius: Msg.brSheetTop,
+      side: BorderSide(color: AD.borderHairline, width: 1),
+    ),
+    builder: (sheetCtx) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s5),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Where should this open?', style: _cardTitle),
+            const SizedBox(height: Msg.s2),
+            Text(
+              'This booking did not say whether you are the creator or the customer. '
+              'AvaTOK will only show what this account is allowed to see.',
+              style: ADText.preview().copyWith(fontSize: 14, height: 1.42),
+            ),
+            const SizedBox(height: Msg.s4),
+            ZineButton(
+              label: 'I’m the customer — my tickets & appointments',
+              fullWidth: true,
+              fontSize: 15,
+              trailingIcon: false,
+              onPressed: () => Navigator.pop(sheetCtx, 'customer'),
+            ),
+            const SizedBox(height: Msg.s2),
+            ZineButton(
+              label: route.isEvent
+                  ? 'I’m the creator — live events'
+                  : 'I’m the creator — appointments',
+              variant: ZineButtonVariant.ghost,
+              fullWidth: true,
+              fontSize: 15,
+              trailingIcon: false,
+              onPressed: () => Navigator.pop(sheetCtx, 'creator'),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+  if (choice == null || !context.mounted) return;
+  if (choice == 'customer') {
+    await Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (_) => MySessionsScreen(
+                focusBookingId: route.bookingId,
+                focusListingId: route.listingId)));
+    return;
+  }
+  if (route.isEvent) {
+    await Navigator.push(context,
+        MaterialPageRoute(builder: (_) => const CreatorLiveEventsScreen()));
+    return;
+  }
+  await Navigator.push(
+      context,
+      MaterialPageRoute(
+          builder: (_) =>
+              CreatorAppointmentsScreen(focusListingId: route.listingId)));
 }
 
 Widget _row(IconData icon, String text, {bool money = false}) => Padding(

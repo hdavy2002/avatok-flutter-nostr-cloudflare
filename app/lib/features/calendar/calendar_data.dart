@@ -10,6 +10,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/api_auth.dart';
 import '../../core/config.dart';
 import '../../core/disk_cache.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../identity/identity.dart';
 
 DateTime? _availabilityDateTime(Object? value) {
@@ -55,7 +56,7 @@ final kSourceStyles = <String, SourceStyle>{
   // with source_app='availability' (commercial commitments can also arrive as
   // 'avaconsult'). Both used to fall through to the generic "Busy" label, which
   // is why a creator could not tell an appointment from a manual block.
-  'availability': SourceStyle('Appointment', const Color(0xFF7C3AED),
+  'availability': SourceStyle('Appointment', AD.tabCalls,
       PhosphorIcons.calendarPlus(PhosphorIconsStyle.regular)),
   'gcal': SourceStyle('Google Calendar', const Color(0xFF4285F4),
       PhosphorIcons.calendarDots(PhosphorIconsStyle.regular)),
@@ -86,12 +87,20 @@ class CalBlock {
   final String? bookingKind;
   final String? bookingStatus;
 
+  /// [REVIEW-4 2026-09-15] The SERVER's authoritative role for this account:
+  /// 'creator', 'customer' or null when it could not prove either. It is
+  /// consumed before any client-side ownership guess (an incomplete listing
+  /// fetch used to look like "not mine" or "mine" depending on the guess), and
+  /// it is what stops a PURCHASED live event from opening the creator console.
+  final String? bookingRole;
+
   CalBlock(this.id, this.sourceApp, this.sourceRef, this.startsAt, this.endsAt,
       this.title,
       {this.bookingId,
       this.listingId,
       this.bookingKind,
-      this.bookingStatus});
+      this.bookingStatus,
+      this.bookingRole});
 
   factory CalBlock.fromJson(Map<String, dynamic> j) => CalBlock(
         j['id'] as String? ?? '',
@@ -104,6 +113,7 @@ class CalBlock {
         listingId: _optionalString(j['listing_id']),
         bookingKind: _optionalString(j['booking_kind']),
         bookingStatus: _optionalString(j['booking_status']),
+        bookingRole: _optionalString(j['booking_role']),
       );
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -116,6 +126,7 @@ class CalBlock {
         if (listingId != null) 'listing_id': listingId,
         if (bookingKind != null) 'booking_kind': bookingKind,
         if (bookingStatus != null) 'booking_status': bookingStatus,
+        if (bookingRole != null) 'booking_role': bookingRole,
       };
 }
 
@@ -289,6 +300,12 @@ class AvailabilitySchedule {
   final List<AvailabilityRule> rules;
   final List<AvailabilityException> exceptions;
 
+  /// [REVIEW-6 2026-09-15] Additive, server-computed effective minimum notice
+  /// (the notice a customer actually faces once the listing's commercial notice
+  /// is applied). Null on every backend that does not send it — the app then
+  /// derives the same "larger value applies" rule itself.
+  final int? effectiveMinNoticeMin;
+
   const AvailabilitySchedule({
     this.listingId,
     this.timezone = 'UTC',
@@ -302,6 +319,7 @@ class AvailabilitySchedule {
     this.version = 0,
     this.rules = const <AvailabilityRule>[],
     this.exceptions = const <AvailabilityException>[],
+    this.effectiveMinNoticeMin,
   });
 
   factory AvailabilitySchedule.fromJson(Map<String, dynamic> json) {
@@ -326,6 +344,7 @@ class AvailabilitySchedule {
       version: (json['version'] as num?)?.toInt() ?? 0,
       rules: rules ?? const <AvailabilityRule>[],
       exceptions: exceptions ?? const <AvailabilityException>[],
+      effectiveMinNoticeMin: _effectiveNoticeMinutes(json),
     );
   }
 
@@ -371,6 +390,7 @@ class AvailabilitySchedule {
     int? version,
     List<AvailabilityRule>? rules,
     List<AvailabilityException>? exceptions,
+    int? effectiveMinNoticeMin,
   }) =>
       AvailabilitySchedule(
         listingId: listingId ?? this.listingId,
@@ -385,7 +405,29 @@ class AvailabilitySchedule {
         version: version ?? this.version,
         rules: rules ?? this.rules,
         exceptions: exceptions ?? this.exceptions,
+        effectiveMinNoticeMin:
+            effectiveMinNoticeMin ?? this.effectiveMinNoticeMin,
       );
+}
+
+/// Reads the additive effective-notice metadata when a backend sends it, from
+/// either a top-level key or an `effective` object. Anything else is absent —
+/// never guessed.
+int? _effectiveNoticeMinutes(Map<String, dynamic> json) {
+  final top = json['effective_min_notice_min'];
+  if (top is num) {
+    final value = top.toInt();
+    return value >= 0 ? value : null;
+  }
+  final effective = json['effective'];
+  if (effective is Map) {
+    final nested = effective['min_notice_min'];
+    if (nested is num) {
+      final value = nested.toInt();
+      return value >= 0 ? value : null;
+    }
+  }
+  return null;
 }
 
 class AvailabilityDay {
