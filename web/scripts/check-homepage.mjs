@@ -8,6 +8,8 @@ import sharp from 'sharp';
 const root = resolve('dist');
 const html = readFileSync(resolve(root, 'index.html'), 'utf8');
 assert.match(html, /data-design="creator-marketplace-2026-09"/, 'Expected creator marketplace homepage');
+assert.doesNotMatch(html, /In India\? Open your India experience/, 'Removed standalone India callout stays removed');
+assert.match(html, /href="\/india"/, 'India remains available through global navigation');
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One readable main heading');
 assert.equal((html.match(/href="\/blog\/global-creator-ideas\//g) || []).length, 8, 'Eight global earning ideas');
 const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
@@ -94,6 +96,16 @@ for (const page of [html, globalIdeas]) {
  assert.doesNotMatch(page, /class="global-idea__copy"|class="global-format__copy"/, 'No duplicate text layered over printed artwork');
 }
 const originalManifest = JSON.parse(readFileSync(resolve('scripts/global-original-crops.json'), 'utf8'));
+assert(originalManifest.protectedRegions?.length >= 3, 'Protect complete labels and paper edges, not just crop pixel identity');
+for (const region of originalManifest.protectedRegions) {
+ const [left, top, right, bottom] = region.box;
+ for (const name of region.crops) {
+  const crop = originalManifest.crops[name];
+  assert.equal(crop.source, region.source, 'Protected region uses the correct original');
+  const [cropLeft, cropTop, cropRight, cropBottom] = crop.box;
+  assert(cropLeft <= left && cropTop <= top && cropRight >= right && cropBottom >= bottom, name + ' must retain ' + region.description);
+ }
+}
 for (const [name, crop] of Object.entries(originalManifest.crops)) {
  const [left, top, right, bottom] = crop.box;
  const source = resolve(root, 'assets/global-original', originalManifest.sources[crop.source]);

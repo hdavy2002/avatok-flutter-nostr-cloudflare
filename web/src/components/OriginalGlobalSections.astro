@@ -39,7 +39,6 @@ const categories = [
   </div>
   <div class="original-availability">
     <p>Artwork shows illustrative payouts, currencies and coverage. Available countries, payment methods, fees and the amount you keep depend on eligibility and current terms. <a href="/payouts">Check payout details</a>.</p>
-    <a class="original-india-link" href="/india">🇮🇳 In India? Open your India experience <span aria-hidden="true">→</span></a>
   </div>
 </section>}
 
@@ -50,33 +49,33 @@ const categories = [
       <h2 id="original-formats-title" class="original-sr">Turn your following into a business.</h2>
       <p class="original-sr">One place to go live, get booked, and get paid around the world.</p>
       <div class="original-desktop original-panel">
-        <picture><source type="image/webp" srcset={`${root}formats-desktop.webp`} /><img src={`${root}formats-desktop.png`} width="1024" height="576" alt="" loading="lazy" decoding="async" /></picture>
+        <picture><source type="image/webp" srcset={`${root}formats-desktop.webp`} /><img src={`${root}formats-desktop.png`} width="1024" height="555" alt="" loading="lazy" decoding="async" /></picture>
         {formats.map((format, index) => <a class="original-hotspot original-format-hotspot" style={`left:${index * 32.3 + 1.3}%;`} href={format.href} aria-label={format.label}><span class="original-sr">{format.label}</span></a>)}
       </div>
       <div class="original-mobile original-formats-mobile">
         <picture class="original-mobile-heading"><source type="image/webp" srcset={`${root}formats-heading.webp`} /><img src={`${root}formats-heading.png`} width="630" height="116" alt="" loading="lazy" decoding="async" /></picture>
         <p class="original-mobile-intro">One place to go live, get booked, and get paid around the world.</p>
         <div class="original-format-stack">{formats.map(format => <a href={format.href} aria-label={format.label}><picture><source type="image/webp" srcset={`${root}format-${format.name}.webp`} /><img src={`${root}format-${format.name}.png`} width={format.width} height={format.height} alt={format.label} loading="lazy" decoding="async" /></picture></a>)}</div>
-        <img class="original-paper-divider" src={`${root}paper-divider.webp`} width="1024" height="24" alt="" loading="lazy" />
+        <img class="original-paper-divider" src={`${root}paper-divider.webp`} width="420" height="29" alt="" loading="lazy" />
       </div>
     </section>
   </div>
   <section id="payouts" class="original-payouts" aria-labelledby="original-payouts-title">
     <h2 id="original-payouts-title" class="original-sr">Your money should feel local.</h2>
     <p class="original-sr">Fans pay in their currency. You receive in yours. Bank transfer, UPI in India and other local methods depend on country, eligibility and availability.</p>
-    <a class="original-desktop original-panel" href="/payouts" aria-label="Your money should feel local. Read payout availability, currencies and fees."><picture><source type="image/webp" srcset={`${root}payouts-desktop.webp`} /><img src={`${root}payouts-desktop.png`} width="1024" height="293" alt="" loading="lazy" decoding="async" /></picture></a>
+    <a class="original-desktop original-panel" href="/payouts" aria-label="Your money should feel local. Read payout availability, currencies and fees."><picture><source type="image/webp" srcset={`${root}payouts-desktop.webp`} /><img src={`${root}payouts-desktop.png`} width="1024" height="321" alt="" loading="lazy" decoding="async" /></picture></a>
     <div class="original-mobile original-payouts-mobile">
-      <picture class="original-mobile-heading"><source type="image/webp" srcset={`${root}payouts-heading.webp`} /><img src={`${root}payouts-heading.png`} width="411" height="119" alt="" loading="lazy" decoding="async" /></picture>
+      <div class="original-mobile-heading original-payout-title-lines" aria-hidden="true"><picture><source type="image/webp" srcset={`${root}payouts-heading-top.webp`} /><img src={`${root}payouts-heading-top.png`} width="336" height="60" alt="" loading="lazy" decoding="async" /></picture><picture><source type="image/webp" srcset={`${root}payouts-heading-bottom.webp`} /><img src={`${root}payouts-heading-bottom.png`} width="427" height="57" alt="" loading="lazy" decoding="async" /></picture></div>
       <p class="original-mobile-intro">Fans pay in their currency. You receive in yours.</p>
-      <a class="original-payout-map" href="/payouts" aria-label="See supported payout currencies and payment methods"><picture><source type="image/webp" srcset={`${root}payouts-map.webp`} /><img src={`${root}payouts-map.png`} width="596" height="292" alt="Original world collage with USD, EUR, JPY, BRL, NGN and INR examples. Illustration, not confirmation of availability." loading="lazy" decoding="async" /></picture></a>
+      <a class="original-payout-map" href="/payouts" aria-label="See supported payout currencies and payment methods"><picture><source type="image/webp" srcset={`${root}payouts-map.webp`} /><img src={`${root}payouts-map.png`} width="596" height="321" alt="Original world collage with USD, EUR, JPY, BRL, NGN and INR examples. Illustration, not confirmation of availability." loading="lazy" decoding="async" /></picture></a>
       <picture class="original-payout-sticker"><source type="image/webp" srcset={`${root}payouts-sticker.webp`} /><img src={`${root}payouts-sticker.png`} width="324" height="74" alt="No currency scavenger hunt." loading="lazy" decoding="async" /></picture>
-      <img class="original-paper-divider" src={`${root}paper-divider.webp`} width="1024" height="24" alt="" loading="lazy" />
+      <img class="original-paper-divider" src={`${root}paper-divider.webp`} width="420" height="29" alt="" loading="lazy" />
     </div>
   </section>
   <section class="original-categories" aria-labelledby="original-categories-title">
     <h2 class="original-sr" id="original-categories-title">Built for the internet’s most interesting people.</h2>
     <div class="original-desktop original-panel">
-      <picture><source type="image/webp" srcset={`${root}categories-desktop.webp`} /><img src={`${root}categories-desktop.png`} width="1024" height="257" alt="" loading="lazy" decoding="async" /></picture>
+      <picture><source type="image/webp" srcset={`${root}categories-desktop.webp`} /><img src={`${root}categories-desktop.png`} width="1024" height="244" alt="" loading="lazy" decoding="async" /></picture>
       {categories.map((category, index) => <a class="original-hotspot original-category-hotspot" style={`left:${index * 12.5}%;`} href="/global-ideas" aria-label={`Explore ${category.name} creator ideas`}><span class="original-sr">{category.name}</span></a>)}
     </div>
     <div class="original-mobile original-categories-mobile">
@@ -92,7 +91,7 @@ const categories = [
 {part === 'cta' && <section class="original-cta" aria-labelledby="original-cta-title">
   <h2 class="original-sr" id="original-cta-title">Your people are waiting.</h2>
   <div class="original-desktop original-panel">
-    <picture><source type="image/webp" srcset={`${root}cta-desktop.webp`} /><img src={`${root}cta-desktop.png`} width="1024" height="138" alt="" loading="lazy" decoding="async" /></picture>
+    <picture><source type="image/webp" srcset={`${root}cta-desktop.webp`} /><img src={`${root}cta-desktop.png`} width="1024" height="144" alt="" loading="lazy" decoding="async" /></picture>
     <a class="original-hotspot original-cta-hotspot" href={signup} aria-label="Create your free listing"><span class="original-sr">Create your free listing</span></a>
   </div>
   <div class="original-mobile original-cta-mobile">

@@ -5,6 +5,8 @@
     "middle": "middle-source.png"
   },
   "crops": {
+    "payouts-heading-top": { "source": "middle", "box": [34, 673, 370, 733] },
+    "payouts-heading-bottom": { "source": "middle", "box": [34, 735, 461, 792] },
     "hero-desktop": {
       "source": "hero",
       "box": [
@@ -92,7 +94,7 @@
         0,
         74,
         1024,
-        650
+        629
       ]
     },
     "formats-heading": {
@@ -135,18 +137,18 @@
       "source": "middle",
       "box": [
         0,
-        629,
-        1024,
-        653
+        920,
+        420,
+        949
       ]
     },
     "payouts-desktop": {
       "source": "middle",
       "box": [
         0,
-        650,
+        629,
         1024,
-        943
+        950
       ]
     },
     "payouts-heading": {
@@ -162,9 +164,9 @@
       "source": "middle",
       "box": [
         428,
-        647,
+        629,
         1024,
-        939
+        950
       ]
     },
     "payouts-sticker": {
@@ -180,9 +182,9 @@
       "source": "middle",
       "box": [
         0,
-        943,
+        950,
         1024,
-        1200
+        1194
       ]
     },
     "categories-heading": {
@@ -270,7 +272,7 @@
       "source": "middle",
       "box": [
         0,
-        1200,
+        1194,
         1024,
         1338
       ]
@@ -329,5 +331,49 @@
         998
       ]
     }
-  }
+  },
+  "protectedRegions": [
+    { "source": "middle", "box": [34, 735, 461, 792], "crops": ["payouts-heading-bottom"], "description": "Complete should feel local. mobile title, including final period." },
+    {
+      "source": "middle",
+      "box": [
+        952,
+        639,
+        1015,
+        738
+      ],
+      "crops": [
+        "payouts-desktop",
+        "payouts-map"
+      ],
+      "description": "Complete DIFFERENT PLACES SAME CREATIVE ENERGY note and heart; first dark DIFFERENT pixel at y=642."
+    },
+    {
+      "source": "middle",
+      "box": [
+        961,
+        861,
+        1015,
+        939
+      ],
+      "crops": [
+        "payouts-desktop",
+        "payouts-map"
+      ],
+      "description": "Complete MONEY FLOWS PEOPLE GROW note and heart; last dark pixel at y=935."
+    },
+    {
+      "source": "middle",
+      "box": [
+        0,
+        1194,
+        1024,
+        1210
+      ],
+      "crops": [
+        "cta-desktop"
+      ],
+      "description": "Complete red CTA torn-paper upper edge; first red pixels at y=1197."
+    }
+  ]
 }

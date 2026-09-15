@@ -1,6 +1,7 @@
 ---
 import { globalCreatorIdeas } from '../lib/globalCreatorIdeas';
 import GlobalIdeaCard from './GlobalIdeaCard.astro';
+import '../styles/global-spacing.css';
 interface Props { mainHeading?: boolean }
 const { mainHeading = false } = Astro.props;
 const Heading = mainHeading ? 'h1' : 'h2';
