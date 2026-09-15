@@ -1,6 +1,6 @@
 # Calendar repair plan — 15 September 2026
 Scope: production-targeted source changes only. Owner approval is required before production deployment and Android release.
-Coordinator: runtime-confirmed GPT-6 Astra. Implementers: actual DeepSeek CLI workers through DeepAstra, model deepseek-flash (V4.1 Flash), high requested effort.
+Coordinator: runtime-confirmed GPT-6 Astra. Initial implementation: actual DeepSeek CLI workers through DeepAstra. After the provider balance failure, the owner explicitly selected GPT-5.5 workers; three parallel GPT-5.5 workers are finishing web, Android and backend corrections.
 
 ## Delivery stages
 1. Preserve existing dirty files and prepare private isolated source copies without secrets, live datasets or credentials.
