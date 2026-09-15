@@ -1,0 +1,333 @@
+{
+  "purpose": "Exact, unretouched pixel crops of the owner-approved original screenshots. Rectangles are left, top, right, bottom in source pixels. No generated replacements.",
+  "sources": {
+    "hero": "hero-source.png",
+    "middle": "middle-source.png"
+  },
+  "crops": {
+    "hero-desktop": {
+      "source": "hero",
+      "box": [
+        0,
+        100,
+        1536,
+        1024
+      ]
+    },
+    "hero-heading": {
+      "source": "hero",
+      "box": [
+        65,
+        178,
+        657,
+        500
+      ]
+    },
+    "hero-description": {
+      "source": "hero",
+      "box": [
+        71,
+        506,
+        614,
+        599
+      ]
+    },
+    "hero-start": {
+      "source": "hero",
+      "box": [
+        68,
+        611,
+        357,
+        678
+      ]
+    },
+    "hero-how": {
+      "source": "hero",
+      "box": [
+        365,
+        611,
+        606,
+        678
+      ]
+    },
+    "hero-benefits": {
+      "source": "hero",
+      "box": [
+        50,
+        684,
+        613,
+        783
+      ]
+    },
+    "hero-art": {
+      "source": "hero",
+      "box": [
+        655,
+        132,
+        1536,
+        951
+      ]
+    },
+    "hero-skyline": {
+      "source": "hero",
+      "box": [
+        0,
+        790,
+        651,
+        949
+      ]
+    },
+    "paper": {
+      "source": "hero",
+      "box": [
+        315,
+        110,
+        400,
+        160
+      ]
+    },
+    "formats-desktop": {
+      "source": "middle",
+      "box": [
+        0,
+        74,
+        1024,
+        650
+      ]
+    },
+    "formats-heading": {
+      "source": "middle",
+      "box": [
+        203,
+        86,
+        833,
+        202
+      ]
+    },
+    "format-live": {
+      "source": "middle",
+      "box": [
+        14,
+        228,
+        349,
+        636
+      ]
+    },
+    "format-call": {
+      "source": "middle",
+      "box": [
+        350,
+        228,
+        676,
+        636
+      ]
+    },
+    "format-paid": {
+      "source": "middle",
+      "box": [
+        675,
+        228,
+        1019,
+        636
+      ]
+    },
+    "paper-divider": {
+      "source": "middle",
+      "box": [
+        0,
+        629,
+        1024,
+        653
+      ]
+    },
+    "payouts-desktop": {
+      "source": "middle",
+      "box": [
+        0,
+        650,
+        1024,
+        943
+      ]
+    },
+    "payouts-heading": {
+      "source": "middle",
+      "box": [
+        34,
+        673,
+        445,
+        792
+      ]
+    },
+    "payouts-map": {
+      "source": "middle",
+      "box": [
+        428,
+        647,
+        1024,
+        939
+      ]
+    },
+    "payouts-sticker": {
+      "source": "middle",
+      "box": [
+        9,
+        846,
+        333,
+        920
+      ]
+    },
+    "categories-desktop": {
+      "source": "middle",
+      "box": [
+        0,
+        943,
+        1024,
+        1200
+      ]
+    },
+    "categories-heading": {
+      "source": "middle",
+      "box": [
+        108,
+        950,
+        939,
+        998
+      ]
+    },
+    "category-music": {
+      "source": "middle",
+      "box": [
+        8,
+        1000,
+        139,
+        1196
+      ]
+    },
+    "category-beauty": {
+      "source": "middle",
+      "box": [
+        140,
+        1000,
+        261,
+        1196
+      ]
+    },
+    "category-gaming": {
+      "source": "middle",
+      "box": [
+        262,
+        1000,
+        383,
+        1196
+      ]
+    },
+    "category-food": {
+      "source": "middle",
+      "box": [
+        384,
+        1000,
+        506,
+        1196
+      ]
+    },
+    "category-fitness": {
+      "source": "middle",
+      "box": [
+        507,
+        1000,
+        636,
+        1196
+      ]
+    },
+    "category-fashion": {
+      "source": "middle",
+      "box": [
+        637,
+        1000,
+        758,
+        1196
+      ]
+    },
+    "category-language": {
+      "source": "middle",
+      "box": [
+        759,
+        1000,
+        894,
+        1196
+      ]
+    },
+    "category-culture": {
+      "source": "middle",
+      "box": [
+        895,
+        1000,
+        1017,
+        1196
+      ]
+    },
+    "cta-desktop": {
+      "source": "middle",
+      "box": [
+        0,
+        1200,
+        1024,
+        1338
+      ]
+    },
+    "cta-heading": {
+      "source": "middle",
+      "box": [
+        127,
+        1231,
+        659,
+        1289
+      ]
+    },
+    "cta-button": {
+      "source": "middle",
+      "box": [
+        684,
+        1239,
+        918,
+        1294
+      ]
+    },
+    "cta-paper": {
+      "source": "middle",
+      "box": [
+        370,
+        1210,
+        410,
+        1230
+      ]
+    },
+    "cta-edge": {
+      "source": "middle",
+      "box": [
+        0,
+        1313,
+        1024,
+        1338
+      ]
+    },
+    "categories-heading-top": {
+      "source": "middle",
+      "box": [
+        108,
+        950,
+        596,
+        998
+      ]
+    },
+    "categories-heading-bottom": {
+      "source": "middle",
+      "box": [
+        600,
+        950,
+        939,
+        998
+      ]
+    }
+  }
+}

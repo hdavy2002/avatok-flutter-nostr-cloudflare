@@ -1,14 +1,21 @@
 ---
+import { globalCreatorIdeas } from '../lib/globalCreatorIdeas';
 interface Props {
   idea: { slug: string; platform: string; title: string; description: string; color: string; eyebrow: string };
   headingLevel?: 'h2' | 'h3';
 }
 const { idea, headingLevel = 'h3' } = Astro.props;
 const Heading = headingLevel;
+const index = globalCreatorIdeas.findIndex(item => item.slug === idea.slug);
+const width = [396, 376, 368, 396][index % 4];
 ---
-<a class:list={['global-idea', `global-idea--${idea.color}`]} href={`/blog/global-creator-ideas/${idea.slug}/`}>
-  <picture><source type="image/webp" srcset={`/assets/global/idea-${idea.slug}-480.webp 480w, /assets/global/idea-${idea.slug}-960.webp 960w`} sizes="(max-width: 430px) 95vw, (max-width: 1100px) 46vw, 24vw" /><img class="global-idea__image" src={`/assets/global/idea-${idea.slug}.png`} alt="" width="1254" height="1254" loading="lazy" decoding="async" /></picture>
-  <span class="global-idea__platform">{idea.platform.split(' + ').map((platform, index) => <>{index > 0 && <span aria-hidden="true"> + </span>}<span class:list={['global-platform-icon', `global-platform-icon--${platform.toLowerCase()}`]} aria-hidden="true">{platform === 'YouTube' ? '▶' : platform === 'TikTok' ? '♪' : '◎'}</span> {platform}</>)}</span>
-  <div class="global-idea__copy"><Heading><span>{idea.title}</span></Heading><p>{idea.description}</p><span class="global-idea__link">Read the guide <span aria-hidden="true">↗</span></span></div>
-  <span class="global-idea__note" aria-hidden="true">Real fans.<br />Real connection. ♡</span>
+<a class="original-idea-card" href={`/blog/global-creator-ideas/${idea.slug}/`} aria-label={`${idea.title} — read the ${idea.platform} creator guide`}>
+  <img src={`/assets/global-original/ideas-${idea.slug}.png`} alt="" width={width} height={index < 4 ? 308 : 320} loading="lazy" decoding="async" />
+  <div class="original-idea-card__text"><Heading>{idea.title}</Heading><span>{idea.platform}. {idea.description} Read the guide.</span></div>
 </a>
+<style>
+  .original-idea-card{display:block;position:relative;min-width:0;width:100%;text-decoration:none;background:transparent}
+  .original-idea-card img{display:block;width:100%;height:auto;opacity:1;visibility:visible;transform:none;animation:none}
+  .original-idea-card__text{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+  .original-idea-card:focus-visible{outline:4px solid #ed2924;outline-offset:-4px}
+</style>

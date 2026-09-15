@@ -1,0 +1,111 @@
+/* Exact original screenshot edition. Scoped to this page; India is untouched. */
+.global-home.original-home {
+  width: 100%;
+  max-width: 1536px;
+  margin-inline: auto;
+  background: #f8f3e6 url('/assets/global-original/paper.webp') repeat;
+  overflow: visible;
+  isolation: isolate;
+}
+.original-home .original-sr {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+.original-home > section,
+.original-home .original-anchor-wrap,
+.original-home .original-panel,
+.original-home picture,
+.original-home img {
+  /* Source artwork remains static in normal flow, including on reverse scroll. */
+  animation: none !important;
+  transition: none !important;
+  transform: none !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  content-visibility: visible !important;
+  filter: none !important;
+  mix-blend-mode: normal !important;
+  will-change: auto !important;
+}
+.original-home picture,
+.original-home img { display: block; width: 100%; max-width: 100%; }
+.original-home img { height: auto; object-fit: contain; }
+.original-home .original-panel { position: relative; width: 100%; margin: 0; }
+.original-home .original-desktop { display: block; }
+.original-home .original-mobile { display: none; }
+.original-home .original-hotspot {
+  position: absolute;
+  display: block;
+  min-width: 44px;
+  min-height: 44px;
+  z-index: 2;
+  border-radius: 12px;
+  color: inherit;
+}
+.original-home a:focus-visible { outline: 4px solid #087a88; outline-offset: 3px; }
+.original-home .original-hotspot:hover { outline: 2px dashed #171714; outline-offset: 2px; }
+.original-home .original-hero-start { left: 4.6875%; top: 55.7359%; width: 18.2943%; height: 6.3853%; }
+.original-home .original-hero-how { left: 24.0885%; top: 55.7359%; width: 15.1042%; height: 6.3853%; }
+.original-home .original-format-hotspot { top: 25.5%; width: 32%; height: 72%; }
+.original-home .original-category-hotspot { top: 22%; width: 12.5%; height: 77%; }
+.original-home .original-cta-hotspot { left: 67.1%; top: 30%; width: 22.3%; height: 37%; }
+.original-home .original-anchor-wrap,
+.original-home .original-formats { position: relative; }
+.original-home .original-anchor { position: absolute; top: 0; }
+.original-home .original-availability {
+  padding: 14px max(24px, 5vw) 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 28px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.original-home .original-availability p { margin: 0; max-width: 900px; }
+.original-home .original-availability a { color: #171714; text-underline-offset: 3px; }
+.original-home .original-india-link { display: inline-flex; align-items: center; min-height: 44px; gap: 7px; flex-shrink: 0; font-size: 14px; font-weight: 700; }
+@media (max-width: 900px) {
+  .original-home .original-desktop { display: none; }
+  .original-home .original-mobile { display: block; }
+  .original-home .original-hero-mobile-copy { width: min(100% - 32px, 560px); margin: 0 auto; padding-top: 22px; }
+  .original-home .original-hero-mobile-copy > picture:nth-child(2) { margin-top: 8px; }
+  .original-home .original-hero-mobile-buttons { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 12px; margin: 14px 0 8px; }
+  .original-home .original-hero-mobile-buttons a { display: block; max-width: 100%; min-height: 44px; }
+  .original-home .original-hero-mobile-buttons a:first-child { width: 289px; }
+  .original-home .original-hero-mobile-buttons a:last-child { width: 241px; }
+  .original-home .original-hero-mobile-art { width: min(100%, 700px); margin: 12px auto 0; }
+  .original-home .original-hero-mobile > picture:last-child { width: min(100%, 700px); margin: -1px auto 0; }
+  .original-home .original-availability { display: block; padding: 18px 20px; font-size: 12px; }
+  .original-home .original-india-link { margin-top: 8px; font-size: 13px; }
+  .original-home .original-formats-mobile { padding-top: 14px; }
+  .original-home .original-mobile-heading { width: min(100% - 32px, 540px); margin: 0 auto; }
+  .original-home .original-mobile-intro { text-align: center; font-size: 16px; line-height: 1.4; margin: 12px auto 18px; padding: 0 20px; max-width: 540px; }
+  .original-home .original-format-stack { display: grid; gap: 14px; width: min(100% - 32px, 440px); margin: 0 auto 12px; }
+  .original-home .original-format-stack a { display: block; width: 100%; min-width: 0; }
+  .original-home .original-paper-divider { width: 100%; height: 16px; object-fit: fill; }
+  .original-home .original-payouts-mobile { padding-top: 22px; }
+  .original-home .original-payouts-mobile .original-mobile-heading { max-width: 411px; }
+  .original-home .original-payout-map { display: block; position: relative; width: min(100% - 16px, 596px); margin: 0 auto; }
+  /* Only trim the adjacent headline's 29px sliver from the map crop's blank left
+     margin. All map artwork and country cards remain complete source pixels. */
+  .original-home .original-payout-map picture { clip-path: polygon(0 0,100% 0,100% 100%,0 100%,0 67%,5% 67%,5% 29%,0 29%); }
+  .original-home .original-payout-sticker { width: min(80%, 324px); margin: 16px auto 18px; }
+  .original-home .original-categories-mobile { padding: 22px 12px 28px; }
+  .original-home .original-category-mobile-title { width: min(100% - 16px, 488px); margin: 0 auto 18px; }
+  .original-home .original-category-mobile-title img:last-child { width: 69.4672%; margin: 2px auto 0; }
+  .original-home .original-category-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; max-width: 600px; margin: auto; }
+  .original-home .original-category-grid a { min-width: 0; display: block; }
+  .original-home .original-category-grid img { height: auto; }
+  .original-home .original-cta-mobile { position: relative; padding: 32px 18px 36px; background: #f7392f url('/assets/global-original/cta-paper.webp') repeat; }
+  .original-home .original-cta-mobile-title { width: min(100%, 532px); margin: 0 auto 24px; }
+  .original-home .original-cta-mobile > a { display: block; width: 234px; max-width: 100%; margin: auto; }
+  .original-home .original-cta-edge { position: absolute; bottom: 0; left: 0; width: 100%; height: 18px; object-fit: fill; }
+}

@@ -15,6 +15,9 @@
 .global-editorial a { color: inherit; }
 .global-editorial [id] { scroll-margin-top: 120px; }
 .global-editorial a:focus-visible { outline: 3px solid #006a86; outline-offset: 6px; }
+.global-editorial.ge-catalog { max-width: 1536px; padding-inline: 0; }
+.ge-catalog-back { margin: 0 clamp(18px, 3vw, 48px) 24px; }
+.ge-catalog > .ge-start { margin-inline: clamp(18px, 3vw, 48px); }
 .global-editorial h1, .global-editorial h2, .global-editorial h3 {
   font-family: var(--ge-serif);
   font-weight: 900;
@@ -113,14 +116,14 @@
 /* Guide pages: editorial cover, useful side notes and readable long-form body. */
 .ge-article-top { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 36px; }
 .ge-series { font-size: 11px; letter-spacing: .1em; font-weight: 800; }
-.ge-article-hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: clamp(28px, 5vw, 76px); align-items: center; margin-bottom: 64px; }
+.ge-article-hero { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: clamp(28px, 5vw, 76px); align-items: center; margin-bottom: 64px; }
 .ge-article-heading h1 { font-size: clamp(53px, 6.3vw, 91px); margin: 12px 0 26px; max-width: 620px; }
 .ge-article-heading h1 > span { color: var(--ge-red); }
 .ge-article-heading .ge-lead { margin: 0; max-width: 520px; }
 .ge-byline { font-size: 12px; color: #555148; margin: 22px 0; }
-.ge-article-art { margin: 0; background: var(--ge-card); position: relative; transform: rotate(1.5deg); box-shadow: 8px 9px 0 #171511; }
-.ge-article-art img { width: 100%; height: auto; display: block; aspect-ratio: 1; object-fit: cover; }
-.ge-article-art figcaption { position: absolute; bottom: 20px; left: 16px; background: #fff9e9; padding: 10px 15px; font-family: 'Kalam', cursive; font-size: 16px; font-weight: 700; transform: rotate(-4deg); border: 1px solid #171511; }
+.ge-article-art { margin: 0; width: 100%; min-width: 0; }
+/* Exact approved crops include their own labels: preserve the complete image. */
+.ge-article-art img { width: 100%; height: auto; display: block; opacity: 1; visibility: visible; transform: none; animation: none; }
 .ge-article-layout { display: grid; grid-template-columns: 280px minmax(0, 760px); justify-content: space-between; gap: 55px; }
 .ge-at-a-glance { align-self: start; border-top: 3px solid var(--ge-ink); padding: 24px 0; }
 .ge-at-a-glance h2 { font-size: 34px; margin: 0 0 28px; }
@@ -150,6 +153,7 @@
 .ge-start--article { background: #f4e9d1; padding: 34px; margin: 40px 0 60px; border: 1px solid #171511; }
 .ge-related-heading { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 25px; }
 .ge-related-heading h2 { font-size: clamp(32px, 3.5vw, 48px); margin: 0; }
+.ge-related-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
 .ge-ideas-grid--related { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .ge-ideas-grid--related .ge-idea { min-height: 310px; aspect-ratio: 1.2; }
 .ge-ideas-grid--related .ge-idea h3 { font-size: 32px; }
@@ -176,9 +180,9 @@
   .global-editorial { padding-top: 24px; }
   .ge-article-top { margin-bottom: 27px; }
   .ge-series { display: none; }
-  .ge-article-hero { grid-template-columns: 1fr; margin-bottom: 38px; gap: 35px; }
+  .ge-article-hero { grid-template-columns: minmax(0, 1fr); margin-bottom: 38px; gap: 35px; }
   .ge-article-heading h1 { font-size: clamp(52px, 10vw, 76px); max-width: 550px; margin-bottom: 20px; }
-  .ge-article-art { max-width: 470px; width: calc(100% - 12px); justify-self: center; }
+  .ge-article-art { max-width: 470px; width: 100%; justify-self: center; }
   .ge-article-layout { grid-template-columns: 1fr; gap: 12px; }
   .ge-at-a-glance { background: #f4e9d1; padding: 24px; display: block; }
   .ge-at-a-glance dl { display: grid; grid-template-columns: 1fr 2fr; gap: 15px 20px; }
@@ -197,6 +201,7 @@
   .ge-ideas-grid--related .ge-idea h3 { font-size: 35px; }
   .ge-ideas-grid--related .ge-idea__copy > p { font-size: 16px; max-width: 185px; }
   .ge-related-heading { align-items: flex-start; flex-direction: column; }
+  .ge-related-grid { grid-template-columns: minmax(0, 1fr); max-width: 420px; margin-inline: auto; }
 }
 @media (max-width: 560px) {
   .ge-intro .ge-back { margin-bottom: 26px; }

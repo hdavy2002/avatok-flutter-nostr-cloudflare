@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import sharp from 'sharp';
 
 const root = resolve('dist');
 const html = readFileSync(resolve(root, 'index.html'), 'utf8');
@@ -23,7 +24,7 @@ assert.match(html, /href="\/sign-up(?:\?|\")/, 'Signup remains reachable');
 assert.match(html, /href="\/marketplace/, 'Marketplace remains reachable');
 assert.match(html, /href="\/marketplace/, 'Marketplace remains reachable from global homepage');
 assert.doesNotMatch(html, /data-motion-toggle|data-rail-train/, 'Old train animation removed');
-assert.match(html, /<img\b[^>]*src="\/assets\/global\/hero-creators\.png"/, 'Approved global creator collage is visible, not just metadata');
+assert.match(html, /<img\b[^>]*src="\/assets\/global-original\/hero[^\"]*\.png"/, 'Original hero pixels are visible, not a regenerated collage');
 assert.equal((html.match(/<header\b/g) || []).length, 1, 'Exactly one homepage header');
 assert.equal((html.match(/<footer\b/g) || []).length, 1, 'Exactly one homepage footer');
 for (const name of ['hero-creators', 'format-live', 'format-call', 'format-paid', 'payout-world', 'creator-marketplace-og']) {
@@ -38,7 +39,7 @@ for (const image of html.matchAll(/<img\b[^>]*src="(\/assets\/global\/[^\"]+)"/g
 }
 const india = readFileSync(resolve(root, 'india/index.html'), 'utf8');
 assert.match(india, /avatok-creator-constellation\.png/, 'Original India creator artwork remains');
-assert.doesNotMatch(india, /\/assets\/global\//, 'Global artwork must not replace the India design');
+assert.doesNotMatch(india, /\/assets\/global(?:-original)?\//, 'Global artwork must not replace the India design');
 assert.equal((india.match(/<header\b/g) || []).length, 1, 'India retains one header');
 assert.equal((india.match(/<footer\b/g) || []).length, 1, 'India retains one footer');
 const indiaFooter = india.match(/<footer\b[\s\S]*?<\/footer>/)?.[0] || '';
@@ -68,13 +69,41 @@ for (const href of globalLinks) {
  assert.equal((page.match(/<footer\b/g) || []).length, 1, 'One guide footer: ' + slug);
  assert(page.includes('data-global-guide="' + slug + '"'), 'Distinct global guide identity: ' + slug);
  assert.match(page, /BlogPosting/, 'Global guide structured data: ' + slug);
- const asset = '/assets/global/idea-' + slug + '.png';
+ const asset = '/assets/global-original/ideas-' + slug + '.png';
  assert(html.includes(asset) && globalIdeas.includes(asset) && page.includes(asset), 'Guide artwork in home, catalog and article: ' + slug);
  const hash = createHash('sha256').update(readFileSync(resolve(root, asset.slice(1)))).digest('hex');
  assert(!globalImageHashes.has(hash), 'Each idea needs its own artwork: ' + slug);
  globalImageHashes.add(hash);
  assert.match(page, /href="\/global-ideas/, 'Guide links back to catalog');
 }
+
+// Owner-approved pixels must remain literal crops, not regenerated lookalikes.
+const originalIdeas = resolve(root, 'assets/global-original/ideas-source.png');
+const cropEdges = [0, 396, 772, 1140, 1536];
+for (const [index, href] of globalLinks.entries()) {
+ const slug = href.split('/').filter(Boolean).at(-1);
+ const column = index % 4;
+ const expected = await sharp(originalIdeas).extract({left:cropEdges[column], top:index < 4 ? 228 : 536, width:cropEdges[column + 1] - cropEdges[column], height:index < 4 ? 308 : 320}).removeAlpha().raw().toBuffer();
+ const actual = await sharp(resolve(root, 'assets/global-original/ideas-' + slug + '.png')).removeAlpha().raw().toBuffer();
+ assert(expected.equals(actual), 'Idea preserves every original pixel: ' + slug);
+}
+for (const page of [html, globalIdeas]) {
+ for (const image of page.matchAll(/<img\b[^>]*src="(\/assets\/global-original\/[^\"]+)"/g)) {
+  assert(existsSync(resolve(root, image[1].slice(1))), 'Original image resolves: ' + image[1]);
+ }
+ assert.doesNotMatch(page, /class="global-idea__copy"|class="global-format__copy"/, 'No duplicate text layered over printed artwork');
+}
+const originalManifest = JSON.parse(readFileSync(resolve('scripts/global-original-crops.json'), 'utf8'));
+for (const [name, crop] of Object.entries(originalManifest.crops)) {
+ const [left, top, right, bottom] = crop.box;
+ const source = resolve(root, 'assets/global-original', originalManifest.sources[crop.source]);
+ const expected = await sharp(source).extract({ left, top, width: right - left, height: bottom - top }).removeAlpha().raw().toBuffer();
+ for (const extension of ['png', 'webp']) {
+  const actual = await sharp(resolve(root, 'assets/global-original', name + '.' + extension)).removeAlpha().raw().toBuffer();
+  assert(expected.equals(actual), 'Original source pixels preserved in ' + name + '.' + extension);
+ }
+}
+console.log('Exact original artwork checks passed: hero, middle sections and all eight idea cards.');
 
 // Creator inspiration is a separate editorial route, never fake marketplace inventory.
 const ideas = readFileSync(resolve(root, 'ideas/index.html'), 'utf8');
@@ -162,7 +191,7 @@ console.log('Sharing metadata and discovery checks passed for ideas and all 115 
 // [WEB-GANESH-OG-2] One compact preview prevents WhatsApp choosing the tall poster.
 const campaignImages = [...html.matchAll(/<meta property="og:image" content="([^"]+)"/g)].map(m => m[1]);
 assert.deepEqual(campaignImages, [
- 'https://avatok.ai/assets/global/creator-marketplace-og.png',
+ 'https://avatok.ai/assets/global-original/hero-source.png',
 ], 'Global homepage advertises one creator preview image');
 assert.equal(meta(html, 'og:title'), 'Turn your influence into live &#38; 1:1 income · avaTOK');
 assert.equal(meta(html, 'og:description'), 'AvaTOK helps influencers earn from their audience through paid live streams and private 1:1 video sessions, with flexible pricing and local payouts.');

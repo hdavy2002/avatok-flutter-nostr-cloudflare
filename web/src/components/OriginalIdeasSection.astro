@@ -1,0 +1,36 @@
+---
+import { globalCreatorIdeas } from '../lib/globalCreatorIdeas';
+import GlobalIdeaCard from './GlobalIdeaCard.astro';
+interface Props { mainHeading?: boolean }
+const { mainHeading = false } = Astro.props;
+const Heading = mainHeading ? 'h1' : 'h2';
+---
+<section class="original-ideas" id="group-sessions" aria-labelledby="original-ideas-heading">
+  <div class="original-ideas__heading">
+    <img src="/assets/global-original/ideas-heading.png" alt="" width="1536" height="138" loading="lazy" />
+    <div class="original-ideas__mobile-heading"><p>YOUR NEXT CREATOR BUSINESS</p><Heading id="original-ideas-heading">Turn your content into <em>moments people can book.</em></Heading><p>Eight starting points for YouTube, TikTok and Instagram creators.</p></div>
+  </div>
+  <div class="original-ideas__grid">{globalCreatorIdeas.map(idea => <GlobalIdeaCard idea={idea} headingLevel={mainHeading ? 'h2' : 'h3'} />)}</div>
+  <a class="original-ideas__explore" href="/global-ideas" aria-label="Explore all ideas"><img src="/assets/global-original/ideas-explore.png" alt="Explore all ideas →" width="414" height="67" loading="lazy" /></a>
+  <img class="original-ideas__tape" src="/assets/global-original/ideas-tape.png" alt="Live events · Private 1:1 · Group sessions · Local payouts. Start with what your audience already asks you." width="1536" height="101" loading="lazy" />
+</section>
+<style is:global>
+  .original-ideas{width:100%;max-width:1536px;margin:0 auto;background:#f8f4e8;color:#14130f}
+  .original-ideas img{display:block;width:100%;height:auto;opacity:1;visibility:visible;transform:none;animation:none;content-visibility:visible}
+  .original-ideas__heading{position:relative}
+  .original-ideas__mobile-heading{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+  .original-ideas__grid{display:grid;grid-template-columns:396fr 376fr 368fr 396fr;gap:0;align-items:start}
+  .original-ideas__explore{display:block;width:27%;min-width:250px;max-width:414px;margin:auto;min-height:44px}
+  .original-ideas a:focus-visible{outline:4px solid #ed2924;outline-offset:-4px}
+  @media(max-width:760px){
+    .original-ideas__heading>img{display:none}
+    .original-ideas__mobile-heading{position:static;width:auto;height:auto;overflow:visible;clip-path:none;text-align:center;padding:28px 20px 20px}
+    .original-ideas__mobile-heading p:first-child{font-family:Kalam,cursive;color:#ef2925;font-weight:700;margin:0 0 10px}
+    .original-ideas__mobile-heading h1,.original-ideas__mobile-heading h2{font-family:Fraunces,Georgia,serif;font-weight:900;font-size:clamp(30px,7vw,44px);line-height:1.05;margin:0 0 14px}
+    .original-ideas__mobile-heading em{color:#ef2925;font-style:normal}
+    .original-ideas__mobile-heading p:last-child{font-size:17px;line-height:1.4;margin:0}
+    .original-ideas__grid{grid-template-columns:1fr;max-width:420px;margin:auto}
+    .original-ideas__explore{width:80%;margin:12px auto}
+    .original-ideas__tape{min-height:60px;object-fit:contain}
+  }
+</style>

@@ -3,6 +3,7 @@ export const prerender = true;
 import Base from '../../../layouts/Base.astro';
 import SiteHeader from '../../../components/SiteHeader.astro';
 import SiteFooter from '../../../components/SiteFooter.astro';
+import GlobalIdeaCard from '../../../components/GlobalIdeaCard.astro';
 import { globalCreatorIdeas, globalCreatorGuides } from '../../../lib/globalCreatorIdeas';
 import '../../../styles/global-editorial.css';
 export function getStaticPaths(){ return globalCreatorIdeas.map(idea => ({ params: { slug: idea.slug }, props: { idea } })); }
@@ -10,7 +11,10 @@ const { idea } = Astro.props;
 const guide = globalCreatorGuides[idea.slug];
 const ideaIndex = globalCreatorIdeas.findIndex(item => item.slug === idea.slug);
 const related = [1, 2, 3].map(offset => globalCreatorIdeas[(ideaIndex + offset) % globalCreatorIdeas.length]);
-const image = `/assets/global/idea-${idea.slug}.png`;
+const image = `/assets/global-original/ideas-${idea.slug}.png`;
+const imageWidth = [396, 376, 368, 396][ideaIndex % 4];
+const imageHeight = ideaIndex < 4 ? 308 : 320;
+const imageAlt = `${idea.platform}: ${idea.title}. ${idea.description}`;
 const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://avatok.ai').href;
 const articleLd = {
   '@context': 'https://schema.org', '@type': 'BlogPosting', headline: idea.title,
@@ -21,7 +25,7 @@ const articleLd = {
   articleSection: 'Global creator ideas',
 };
 ---
-<Base chrome={false} title={`${idea.title}: a practical creator session guide · avaTOK`} description={guide.promise} image={image} imageAlt={guide.imageAlt} imageWidth={1254} imageHeight={1254} ogType="article">
+<Base chrome={false} title={`${idea.title}: a practical creator session guide · avaTOK`} description={guide.promise} image={image} imageAlt={imageAlt} imageWidth={imageWidth} imageHeight={imageHeight} ogType="article">
   <script slot="head" type="application/ld+json" set:html={JSON.stringify(articleLd).replace(/</g, '\\u003c')} />
   <SiteHeader variant="global" />
   <main class="global-editorial" id="main-content" data-global-guide={idea.slug}>
@@ -29,7 +33,7 @@ const articleLd = {
       <div class="ge-article-top"><a class="ge-back" href="/global-ideas">← All global creator ideas</a><span class="ge-series">THE CREATOR PLAYBOOK / 0{ideaIndex + 1}</span></div>
       <div class="ge-article-hero">
         <div class="ge-article-heading"><p class="ge-kicker">{idea.platform} · {idea.eyebrow}</p><h1>{idea.title}<span aria-hidden="true">.</span></h1><p class="ge-lead">{guide.promise}</p><p class="ge-byline">A practical guide from avaTOK · Suggested session plan</p><a class="ge-button" href="#session-plan">Build your session ↓</a></div>
-        <figure class:list={['ge-article-art', `ge-colour--${idea.color}`]}><picture><source type="image/webp" srcset={`/assets/global/idea-${idea.slug}-480.webp 480w, /assets/global/idea-${idea.slug}-960.webp 960w`} sizes="(max-width: 760px) min(90vw, 470px), 44vw" /><img src={image} alt={guide.imageAlt} width="1254" height="1254" fetchpriority="high" loading="eager" decoding="async" /></picture><figcaption>{idea.eyebrow} · MAKE IT YOURS ↗</figcaption></figure>
+        <figure class="ge-article-art"><img src={image} alt={imageAlt} width={imageWidth} height={imageHeight} fetchpriority="high" loading="eager" decoding="async" /></figure>
       </div>
       <div class="ge-article-layout">
         <aside class="ge-at-a-glance" aria-labelledby="session-snapshot"><p class="ge-kicker">THE SHORT VERSION</p><h2 id="session-snapshot">One good session.</h2><dl><dt>Suggested format</dt><dd>{guide.duration}</dd><dt>Made for</dt><dd>{guide.audience}</dd><dt>What you are selling</dt><dd>Your time, perspective and a clearly described experience.</dd></dl><nav aria-label="In this guide"><a href="#before-you-open-bookings">Get ready →</a><a href="#session-plan">The session plan →</a><a href="#invitation">Your invitation →</a><a href="#boundaries">Set boundaries →</a><a href="#payouts-and-pricing">Pricing & payouts →</a></nav></aside>
@@ -45,7 +49,7 @@ const articleLd = {
       </div>
     </article>
     <section class="ge-start ge-start--article"><div><p class="ge-kicker">YOUR IDEA. YOUR PEOPLE.</p><h2>Make this one yours.</h2><p>Start with a clear promise, an honest description and a session you are excited to host.</p></div><div class="ge-start__actions"><a class="ge-button" href="/sign-up?role=creator&country=global">Start creating →</a><a class="ge-text-link" href="/global-ideas">Explore all eight ideas ↗</a></div></section>
-    <section class="ge-related" aria-labelledby="related-ideas"><div class="ge-related-heading"><div><p class="ge-kicker">KEEP THE IDEAS COMING</p><h2 id="related-ideas">Another way to connect.</h2></div><a class="ge-text-link" href="/global-ideas">All global ideas →</a></div><div class="ge-ideas-grid ge-ideas-grid--related">{related.map(item => <a class:list={['ge-idea', `ge-colour--${item.color}`]} href={`/blog/global-creator-ideas/${item.slug}/`}><picture><source type="image/webp" srcset={`/assets/global/idea-${item.slug}-480.webp 480w, /assets/global/idea-${item.slug}-960.webp 960w`} sizes="(max-width: 760px) calc(100vw - 36px), 30vw" /><img src={`/assets/global/idea-${item.slug}.png`} alt={globalCreatorGuides[item.slug].imageAlt} width="1254" height="1254" loading="lazy" decoding="async" /></picture><div class="ge-idea__copy"><span class="ge-platform">{item.platform}</span><h3><span>{item.title}</span></h3><p>{item.description}</p><span class="ge-idea__link">Read the guide ↗</span></div></a>)}</div></section>
+    <section class="ge-related" aria-labelledby="related-ideas"><div class="ge-related-heading"><div><p class="ge-kicker">KEEP THE IDEAS COMING</p><h2 id="related-ideas">Another way to connect.</h2></div><a class="ge-text-link" href="/global-ideas">All global ideas →</a></div><div class="ge-related-grid">{related.map(item => <GlobalIdeaCard idea={item} headingLevel="h3" />)}</div></section>
   </main>
   <SiteFooter variant="global" />
 </Base>

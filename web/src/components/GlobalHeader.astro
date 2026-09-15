@@ -22,9 +22,9 @@ const links = [
   } catch (_) { document.documentElement.setAttribute('data-avatok-auth', 'out'); }
 </script>
 <header class:list={['avh', 'global-header', sticky && 'global-header--sticky']}>
-  <div class="global-header__doodle" aria-hidden="true"><span></span><b>◎</b><span></span><i>Good creators<br />brighter tomorrows</i><span></span></div>
+  <div class="global-header__doodle original-header-doodle" aria-hidden="true"><img src="/assets/global-original/ideas-header-doodle.png" alt="" width="1536" height="30" /></div>
   <div class="global-header__bar">
-    <a class="global-wordmark" href="/" aria-label="avaTOK global home"><img src="/avatok-logo.png" alt="avaTOK" width="231" height="90" /></a>
+    <a class="global-wordmark" href="/" aria-label="avaTOK global home"><img src="/assets/global-original/ideas-header-logo.png" alt="avaTOK" width="168" height="57" /></a>
     <nav class="global-header__nav" aria-label="Main">{links.map(link => <a href={link.href}>{link.label}</a>)}</nav>
     <div class="global-header__actions">
       <GlobalLocaleControls />
@@ -47,6 +47,10 @@ const links = [
     </details>
   </div>
 </header>
+<style>
+  .original-header-doodle{padding:0;height:22px}
+  .original-header-doodle img{display:block;width:100%;height:100%;object-fit:cover;object-position:center;opacity:1;transform:none}
+</style>
 <script>
   document.querySelectorAll<HTMLAnchorElement>('.global-header a').forEach(link => {
     link.addEventListener('click', () => {
