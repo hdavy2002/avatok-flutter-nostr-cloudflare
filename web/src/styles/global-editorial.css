@@ -49,6 +49,9 @@
   position: relative;
   isolation: isolate;
   display: block;
+  /* Grid width is authoritative; minimum height must not widen the aspect ratio. */
+  width: 100%;
+  min-width: 0;
   min-height: 330px;
   aspect-ratio: 1 / 1.05;
   background: var(--ge-card);
@@ -188,7 +191,7 @@
   .ge-start { flex-direction: column; gap: 25px; }
   .ge-start__actions { max-width: none; }
   .ge-start--article { padding: 26px; margin-top: 22px; }
-  .ge-ideas-grid--related { grid-template-columns: 1fr; }
+  .ge-ideas-grid--related { grid-template-columns: minmax(0, 1fr); }
   .ge-ideas-grid--related .ge-idea { aspect-ratio: 1.25; min-height: 320px; }
   .ge-ideas-grid--related .ge-idea__copy { max-width: 64%; padding: 24px; }
   .ge-ideas-grid--related .ge-idea h3 { font-size: 35px; }
@@ -199,7 +202,7 @@
   .ge-intro .ge-back { margin-bottom: 26px; }
   .ge-intro h1 { font-size: 40px; }
   .ge-lead { font-size: 18px; }
-  .ge-ideas-grid { grid-template-columns: 1fr; gap: 21px; }
+  .ge-ideas-grid { grid-template-columns: minmax(0, 1fr); gap: 21px; }
   .ge-idea { min-height: 340px; aspect-ratio: 1.08; }
   .ge-idea h2, .ge-idea h3 { font-size: 35px; }
   .ge-idea__copy { max-width: 69%; padding: 23px 19px; }
