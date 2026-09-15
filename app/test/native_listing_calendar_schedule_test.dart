@@ -161,6 +161,26 @@ void main() {
       expect(saved.maxPerDay, 6);
       expect(saved.listingId, 'listing-1');
     });
+
+    test('uses the listing duration for schedule saves', () {
+      final saved = NativeListingSchedulePlan(
+        mode: AvailabilityMode.shared,
+        rules: const <AvailabilityRule>[],
+        listingTimezone: 'Asia/Kolkata',
+        durationMin: 90,
+      ).applyTo(_scheduleFromServer());
+
+      expect(saved.durationMin, 90);
+      expect(
+        NativeListingSchedulePlan(
+          mode: AvailabilityMode.shared,
+          rules: const <AvailabilityRule>[],
+          listingTimezone: 'Asia/Kolkata',
+          durationMin: 3,
+        ).applyTo(_scheduleFromServer()).durationMin,
+        5,
+      );
+    });
   });
 
   group('NativeListingSchedulePlan.validate', () {

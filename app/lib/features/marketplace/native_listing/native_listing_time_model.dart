@@ -150,17 +150,20 @@ class NativeListingSchedulePlan {
     required this.mode,
     required this.rules,
     required this.listingTimezone,
+    this.durationMin,
   });
 
   final AvailabilityMode mode;
   final List<AvailabilityRule> rules;
   final String listingTimezone;
+  final int? durationMin;
 
   static NativeListingSchedulePlan fromSchedule(AvailabilitySchedule schedule, {required String listingTimezone}) =>
       NativeListingSchedulePlan(
         mode: schedule.mode,
         rules: List<AvailabilityRule>.of(schedule.rules),
         listingTimezone: listingTimezone,
+        durationMin: schedule.durationMin,
       );
 
   /// Applies the creator's choice to the schedule the SERVER returned, changing
@@ -176,13 +179,16 @@ class NativeListingSchedulePlan {
   ///    blocked and reserved time.
   AvailabilitySchedule applyTo(AvailabilitySchedule base) {
     final zone = nativeListingScheduleZone(base, listingTimezone);
+    final listingDuration = durationMin ?? base.durationMin;
     return base.copyWith(
       listingId: base.listingId,
       timezone: zone,
       mode: mode,
       // putSchedule() accepts duration_min 5..480 only, and the listing's own
       // duration_min is what the engine actually uses for windows.
-      durationMin: base.durationMin < 5 ? 5 : (base.durationMin > 480 ? 480 : base.durationMin),
+      durationMin: listingDuration < 5
+          ? 5
+          : (listingDuration > 480 ? 480 : listingDuration),
       slotIntervalMin: base.slotIntervalMin,
       bufferMin: base.bufferMin,
       minNoticeMin: base.minNoticeMin,

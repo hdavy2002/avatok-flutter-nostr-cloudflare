@@ -76,9 +76,17 @@ void main() {
   group('availability persistence', () {
     test('saves the listing schedule through the existing shared API', () {
       expect(screen, contains('AvailabilityApi.saveSchedule(plan.applyTo(base))'));
-      expect(screen, contains('AvailabilityApi.fetchSchedule(listingId: _id)'));
-      expect(screen, contains('AvailabilityApi.cachedSchedule(listingId: _id)'),
+      expect(screen, contains('AvailabilityApi.fetchSchedule(listingId: listingId)'));
+      expect(screen, contains('AvailabilityApi.cachedSchedule(listingId: listingId)'),
           reason: 'an offline edit must still open on the saved mode and windows');
+      expect(screen, contains('_scheduleVerifiedForSave'));
+      expect(screen, contains('schedule_not_loaded'));
+      expect(screen, contains('existingBase.version != value.version'));
+      expect(screen, contains("This listing\\'s availability changed somewhere else"));
+      expect(screen, contains('_timeStepEditingEnabled'));
+      expect(screen, contains('Discard edits and reload'));
+      expect(screen, contains('_confirmDiscardAndReloadSchedule'));
+      expect(screen, contains("if (_kind == 'consult' && _scheduleBase == null)"));
     });
 
     test('a brand-new listing saves the draft first', () {
@@ -91,13 +99,15 @@ void main() {
     });
 
     test('a failed schedule save must not advance or claim success', () {
-      expect(screen, contains('if (_step == 3 && !await _commitTimeStep()) return;'));
+      expect(screen, contains('if (!await _commitTimeStep()) return;'));
+      expect(screen, contains('if (!mounted || AccountScope.id != chainScope || _id != chainListingId)'));
       expect(screen, contains('return _saveListingSchedule();'));
       expect(screen, contains("_error = message;"));
     });
 
     test('publishing follows a successful schedule save', () {
       expect(screen, contains('if (_scheduleDirty && !await _saveListingSchedule()) return;'));
+      expect(screen, contains('AccountScope.id != chainScope || _id != chainListingId'));
     });
 
     test('preserves the creator horizon and unrelated exceptions', () {
@@ -108,7 +118,8 @@ void main() {
     });
 
     test('a version conflict is preserved, not overwritten', () {
-      expect(screen, contains('if (error.statusCode == 409) await _hydrateListingSchedule();'));
+      expect(screen, isNot(contains('if (error.statusCode == 409) await _hydrateListingSchedule();')));
+      expect(screen, contains('Reload the listing, review the latest hours'));
       expect(timeModel, contains('version: base.version'));
     });
   });
@@ -125,6 +136,8 @@ void main() {
       expect(conflict, contains('bool isCurrent(int token)'));
       expect(conflict, contains('if (!isCurrent(token)) return;'));
       expect(screen, contains('_conflicts.debounce(() => _runConflictPreview(window, token))'));
+      expect(screen, contains('AccountScope.id != accountScope'));
+      expect(screen, contains('_id != listingId'));
     });
 
     test('a failed check is unknown, never free', () {
@@ -151,6 +164,7 @@ void main() {
       expect(screen, contains('NativeListingGcalReadinessCard('));
       expect(screen, contains('_refreshGcalReadiness'));
       expect(screen, contains('_gcalSummary()'));
+      expect(screen, contains('AccountScope.id == accountScope && _id == listingId'));
     });
   });
 

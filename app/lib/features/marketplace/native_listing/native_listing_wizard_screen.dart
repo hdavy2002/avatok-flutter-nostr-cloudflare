@@ -19,6 +19,7 @@ import '../../../core/ui/zine_widgets.dart';
 import '../../../core/ui/motion/motion.dart';
 import '../../calendar/avacalendar_screen.dart';
 import '../../calendar/calendar_data.dart';
+import '../../identity/identity.dart';
 import '../../identity/listing_liveness_gate.dart';
 import '../../identity/public_action_gate.dart' show isIdentityRequired;
 import 'native_listing_conflict_state.dart';
@@ -103,6 +104,8 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   AvailabilitySchedule? _scheduleBase;
   bool _scheduleDirty = false;
   bool _scheduleBusy = false;
+  bool _scheduleVerifiedForSave = false;
+  bool _scheduleHydrating = false;
   String? _scheduleError;
   /// Live conflict feedback with stale-response protection (AUDIT §11).
   final NativeListingConflictController _conflicts = NativeListingConflictController();
@@ -498,6 +501,12 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   /// an existing row keeps its zone and a brand-new one adopts the listing's.
   String get _scheduleTimezone => nativeListingScheduleZone(_scheduleBase, _zone);
 
+  bool get _timeStepEditingEnabled =>
+      !_saving &&
+      !_scheduleBusy &&
+      !_scheduleHydrating &&
+      (_kind != 'consult' || _scheduleBase != null);
+
   /// The concrete window the creator has chosen, or null when there is none
   /// (nothing picked yet, an unparsable/DST-invalid wall clock, or an
   /// on-request consult with no fixed time).
@@ -514,55 +523,151 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   /// account-scoped cache, and a failure that only DISABLES saving — it must
   /// never make a listing look like it has no availability.
   Future<void> _hydrateListingSchedule() async {
+    final listingId = _id;
+    final accountScope = AccountScope.id;
+    final wasDirty = _scheduleDirty;
+    if (listingId == null || listingId.isEmpty || accountScope == null) {
+      if (mounted) {
+        setState(() {
+          _scheduleVerifiedForSave = false;
+          _scheduleError =
+              'Save the draft before setting this listing\'s availability.';
+        });
+      }
+      return;
+    }
+    if (mounted) setState(() => _scheduleHydrating = true);
     try {
       AvailabilitySchedule? loaded;
+      var verified = false;
       try {
-        loaded = await AvailabilityApi.fetchSchedule(listingId: _id);
+        loaded = await AvailabilityApi.fetchSchedule(listingId: listingId);
+        verified = true;
       } catch (_) {
-        final cached = await AvailabilityApi.cachedSchedule(listingId: _id);
+        final cached = await AvailabilityApi.cachedSchedule(listingId: listingId);
         loaded = cached?.value;
       }
       final value = loaded;
-      if (value == null || !mounted) return;
+      if (!mounted) return;
+      if (AccountScope.id != accountScope || _id != listingId) {
+        setState(() => _scheduleHydrating = false);
+        return;
+      }
+      if (value == null) {
+        setState(() {
+          _scheduleVerifiedForSave = false;
+          _scheduleHydrating = false;
+          _scheduleError =
+              'Could not load this listing\'s availability. Retry before changing the Time step.';
+        });
+        return;
+      }
+      final preserveUserEdits = wasDirty || _scheduleDirty;
+      final existingBase = _scheduleBase;
+      if (preserveUserEdits &&
+          existingBase != null &&
+          existingBase.version != value.version) {
+        setState(() {
+          _scheduleVerifiedForSave = false;
+          _scheduleHydrating = false;
+          _scheduleError =
+              'This listing\'s availability changed somewhere else. Reload the listing, review the latest hours, then apply your change again.';
+        });
+        return;
+      }
       setState(() {
         _scheduleBase = value;
-        _availabilityMode = value.mode;
-        _availabilityRules = List<AvailabilityRule>.of(value.rules);
+        if (!preserveUserEdits) {
+          _availabilityMode = value.mode;
+          _availabilityRules = List<AvailabilityRule>.of(value.rules);
+        }
         // The backend reserves a fixed consult only when the LISTING is
         // `schedule_mode: fixed_date` AND the schedule is `exclusive`
         // (listings.ts publishFixedListing branch). Repair only that direction:
         // an exclusive row must not be left advertising an on-request mode, and
         // a listing stored any other way is left exactly as the creator set it.
-        if (_kind == 'consult' && value.mode == AvailabilityMode.exclusive) {
+        if (!preserveUserEdits &&
+            _kind == 'consult' &&
+            value.mode == AvailabilityMode.exclusive) {
           _scheduleMode = 'fixed_date';
         }
-        _scheduleDirty = false;
-        _scheduleError = null;
+        if (!preserveUserEdits) _scheduleDirty = false;
+        _scheduleVerifiedForSave = verified;
+        _scheduleHydrating = false;
+        _scheduleError = verified
+            ? null
+            : 'Showing saved availability from this device. Retry before saving so the latest server version can be checked.';
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _scheduleError =
-          'Could not load this listing\'s availability. Reopen the listing before changing the Time step.');
+      if (AccountScope.id != accountScope || _id != listingId) {
+        setState(() => _scheduleHydrating = false);
+        return;
+      }
+      setState(() {
+        _scheduleVerifiedForSave = false;
+        _scheduleHydrating = false;
+        _scheduleError =
+            'Could not load this listing\'s availability. Retry before changing the Time step.';
+      });
     }
+  }
+
+  Future<void> _retryHydrateSchedule() async {
+    if (_scheduleDirty) {
+      await _confirmDiscardAndReloadSchedule();
+      return;
+    }
+    await _hydrateListingSchedule();
+  }
+
+  Future<void> _confirmDiscardAndReloadSchedule() async {
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AD.card,
+        title: const Text('Reload availability?'),
+        content: const Text(
+            'This discards the availability edits on this step and reloads the latest saved hours for this listing.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Keep editing')),
+          FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Discard and reload')),
+        ],
+      ),
+    );
+    if (discard != true || !mounted) return;
+    setState(() {
+      _scheduleDirty = false;
+      _scheduleError = null;
+    });
+    await _hydrateListingSchedule();
   }
 
   Future<AvailabilitySchedule> _fetchScheduleForSave() async {
     final base = _scheduleBase;
-    try {
-      return await AvailabilityApi.fetchSchedule(listingId: _id);
-    } catch (_) {
-      if (base != null && base.listingId == _id) return base;
-      rethrow;
+    if (base == null || base.listingId != _id || !_scheduleVerifiedForSave) {
+      throw const AvailabilityApiException(
+        statusCode: 0,
+        code: 'schedule_not_loaded',
+        message:
+            'Availability could not be verified against the server. Retry loading this listing before saving.',
+      );
     }
+    return base;
   }
 
   static String _scheduleErrorMessage(AvailabilityApiException error) {
     // [CAL-TIME-1] A version conflict is preserved, never overwritten: the row
     // changed elsewhere (usually the web calendar) between our read and our
-    // write. We reload it so the retry is a genuine compare-and-swap.
+    // write. The dirty form is left intact and the user must explicitly reload
+    // before reapplying it, so a stale edit is never silently rebased.
     if (error.statusCode == 409) {
       return 'Your availability changed somewhere else (for example the web calendar). '
-          'We reloaded it — check the hours and save again.';
+          'Reload the listing, review the latest hours, then apply your change again.';
     }
     final message = error.message.trim();
     return message.isEmpty ? 'Could not save this listing\'s availability.' : message;
@@ -577,8 +682,19 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
     // listing_id) and silently overwrite the hours every other listing reads,
     // so this must fail closed.
     final listingId = _id;
+    final accountScope = AccountScope.id;
     if (listingId == null || listingId.isEmpty) {
       const message = 'Save the draft before setting this listing\'s availability.';
+      if (mounted) {
+        setState(() {
+          _scheduleError = message;
+          _error = message;
+        });
+      }
+      return false;
+    }
+    if (accountScope == null) {
+      const message = 'Choose an account before saving availability.';
       if (mounted) {
         setState(() {
           _scheduleError = message;
@@ -591,6 +707,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
       mode: _availabilityMode,
       rules: _availabilityRules,
       listingTimezone: _zone,
+      durationMin: int.tryParse(_duration.text.trim()),
     );
     final problem = plan.validate();
     if (problem != null) {
@@ -606,13 +723,17 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
     });
     try {
       final base = await _fetchScheduleForSave();
+      if (!mounted || AccountScope.id != accountScope || _id != listingId) {
+        return false;
+      }
       final saved = await AvailabilityApi.saveSchedule(plan.applyTo(base));
-      if (!mounted) return false;
+      if (!mounted || AccountScope.id != accountScope || _id != listingId) return false;
       setState(() {
         _scheduleBase = saved;
         _availabilityMode = saved.mode;
         _availabilityRules = List<AvailabilityRule>.of(saved.rules);
         _scheduleDirty = false;
+        _scheduleVerifiedForSave = true;
         _scheduleError = null;
         _error = null;
       });
@@ -631,7 +752,6 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
           _error = message;
         });
       }
-      if (error.statusCode == 409) await _hydrateListingSchedule();
       return false;
     } catch (_) {
       const message = 'Could not save this listing\'s availability. Check your connection and try again.';
@@ -691,15 +811,34 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
 
   Future<void> _runConflictPreview(NativeListingWindow window, int token) async {
     if (!mounted || !_conflicts.isCurrent(token)) return;
+    final accountScope = AccountScope.id;
+    final listingId = _id;
+    if (accountScope == null) {
+      _conflicts.fail(token, 'Choose an account before checking this time.');
+      if (mounted) setState(() {});
+      return;
+    }
     try {
       final preview = await AvailabilityApi.previewConflicts(
-        listingId: _id,
+        listingId: listingId,
         startAt: window.startAt,
         endAt: window.endAt,
         timezone: window.timezone,
       );
+      if (!mounted ||
+          AccountScope.id != accountScope ||
+          _id != listingId ||
+          !_conflicts.isCurrent(token)) {
+        return;
+      }
       _conflicts.complete(token, preview);
     } catch (error) {
+      if (!mounted ||
+          AccountScope.id != accountScope ||
+          _id != listingId ||
+          !_conflicts.isCurrent(token)) {
+        return;
+      }
       _conflicts.fail(
         token,
         error is AvailabilityApiException && error.message.trim().isNotEmpty
@@ -731,9 +870,18 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   /// and leaves the creator on the step when anything would make the save or the
   /// claim untrue.
   Future<bool> _commitTimeStep() async {
+    final accountScope = AccountScope.id;
+    final listingId = _id;
+    if (accountScope == null) {
+      setState(() => _error = 'Choose an account before saving this listing.');
+      return false;
+    }
     final window = _currentWindow();
     if (window != null) {
       await _checkWindowNow(window);
+      if (!mounted || AccountScope.id != accountScope || _id != listingId) {
+        return false;
+      }
       if (_conflicts.state.status == NativeListingConflictStatus.conflicts) {
         final message = nativeListingConflictSaveError(_conflicts.state.firstConflict, window.timezone);
         setState(() {
@@ -747,6 +895,9 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
       // saying "not verified" either way.
     }
     if (_kind != 'consult') return true;
+    if (!mounted || AccountScope.id != accountScope || _id != listingId) {
+      return false;
+    }
     return _saveListingSchedule();
   }
 
@@ -757,17 +908,30 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   // ---------------------------------------------------------------------------
 
   Future<void> _refreshGcalReadiness() async {
+    final accountScope = AccountScope.id;
+    final listingId = _id;
+    if (accountScope == null) {
+      if (mounted) {
+        setState(() => _gcal = NativeListingGcalReadiness.unavailable(
+            'Choose an account before checking Google Calendar.'));
+      }
+      return;
+    }
     if (mounted) setState(() => _gcalBusy = true);
     try {
       final status = await nativeListingReadGcalStatus();
-      if (mounted) setState(() => _gcal = NativeListingGcalReadiness.fromStatus(status));
+      if (mounted && AccountScope.id == accountScope && _id == listingId) {
+        setState(() => _gcal = NativeListingGcalReadiness.fromStatus(status));
+      }
     } catch (error) {
-      if (mounted) {
+      if (mounted && AccountScope.id == accountScope && _id == listingId) {
         setState(() => _gcal = NativeListingGcalReadiness.unavailable(
             error is NativeListingGcalStatusException ? error.message : null));
       }
     } finally {
-      if (mounted) setState(() => _gcalBusy = false);
+      if (mounted && AccountScope.id == accountScope && _id == listingId) {
+        setState(() => _gcalBusy = false);
+      }
     }
   }
 
@@ -1098,6 +1262,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
               mode: _availabilityMode,
               rules: _availabilityRules,
               listingTimezone: _zone,
+              durationMin: int.tryParse(_duration.text.trim()),
             ).validate();
             if (problem != null) return problem;
           }
@@ -1476,11 +1641,20 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   }
 
   Future<bool> _save() async {
+    final scope = AccountScope.id;
+    if (scope == null) {
+      setState(() => _error = 'Choose an account before saving this listing.');
+      return false;
+    }
+    final requestedId = _id;
     setState(() { _saving = true; _error = null; });
     try {
       final result = _id == null
           ? await ListingsApi.wizardCreate(_kind, _body())
           : await ListingsApi.wizardUpdate(_id!, _body());
+      if (!mounted || AccountScope.id != scope || _id != requestedId) {
+        return false;
+      }
       if (result['ok'] != true) throw StateError(_serverMessage(result));
       _id ??= result['listing_id']?.toString();
       if (_id == null) throw StateError('The server did not return a listing id.');
@@ -1510,23 +1684,53 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
     final problem = _validate();
     if (problem != null) { setState(() => _error = problem); return; }
     if (_step == 0) { setState(() => _step = 1); return; }
+    final chainScope = AccountScope.id;
+    if (chainScope == null) {
+      setState(() => _error = 'Choose an account before saving this listing.');
+      return;
+    }
     if (!await _save()) return;
+    final chainListingId = _id;
+    if (!mounted || AccountScope.id != chainScope || chainListingId == null) {
+      return;
+    }
     // [LIST-APP-PARITY-1] Discounts are separate rows, written once the listing
     // has an id — which `_save()` above has just guaranteed. A failure here does
     // not advance, so the creator sees it on the step that owns the field.
     if (_step == 2) {
       await _syncPromotions();
+      if (!mounted || AccountScope.id != chainScope || _id != chainListingId) {
+        return;
+      }
       if (_error != null) return;
     }
     // [CAL-TIME-1] The Time step owns the listing's availability. A conflict the
     // server already confirmed, or a failed schedule save, must leave the creator
     // on this step: neither is allowed to look like a successful save.
-    if (_step == 3 && !await _commitTimeStep()) return;
+    if (_step == 3) {
+      if (!mounted || AccountScope.id != chainScope || _id != chainListingId) {
+        return;
+      }
+      if (!await _commitTimeStep()) return;
+      if (!mounted || AccountScope.id != chainScope || _id != chainListingId) {
+        return;
+      }
+    }
     if (mounted && _step < _steps.length - 1) {
       setState(() => _step++);
       // Entering the Time step checks the window that is already picked (an
       // edit opens on it), so the creator is never shown a stale "free".
-      if (_step == 3) _onTimeInputChanged();
+      if (_step == 3) {
+        if (_kind == 'consult' && _scheduleBase == null) {
+          await _hydrateListingSchedule();
+          if (!mounted ||
+              AccountScope.id != chainScope ||
+              _id != chainListingId) {
+            return;
+          }
+        }
+        _onTimeInputChanged();
+      }
     }
   }
 
@@ -1562,7 +1766,16 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   Future<void> _submit() async {
     final problem = _validate();
     if (problem != null) { setState(() => _error = problem); return; }
+    final chainScope = AccountScope.id;
+    if (chainScope == null) {
+      setState(() => _error = 'Choose an account before submitting this listing.');
+      return;
+    }
     if (_id == null && !await _save()) return;
+    final chainListingId = _id;
+    if (!mounted || AccountScope.id != chainScope || chainListingId == null) {
+      return;
+    }
     // [CAL-TIME-1] Publishing follows a successful schedule save. The Worker
     // reads `availability_schedules.mode` at publication to decide whether an
     // exclusive fixed consult gets its window reserved (listings.ts), so
@@ -1572,6 +1785,9 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
       final window = _currentWindow();
       if (window != null && _showsStartPicker) {
         await _checkWindowNow(window);
+        if (!mounted || AccountScope.id != chainScope || _id != chainListingId) {
+          return;
+        }
         if (_conflicts.state.status == NativeListingConflictStatus.conflicts) {
           setState(() => _error =
               nativeListingConflictSaveError(_conflicts.state.firstConflict, window.timezone));
@@ -1579,23 +1795,41 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
         }
       }
       if (_scheduleDirty && !await _saveListingSchedule()) return;
+      if (!mounted || AccountScope.id != chainScope || _id != chainListingId) {
+        return;
+      }
     }
     // Last chance to write a discount the creator typed but never left the
     // Money step with (back-navigation, an interrupted save).
     await _syncPromotions();
+    if (!mounted || AccountScope.id != chainScope || _id != chainListingId) {
+      return;
+    }
     if (_error != null) return;
     setState(() { _publishing = true; _error = null; });
     try {
       final review = await ListingsApi.wizardReview(_id!);
+      if (!mounted || AccountScope.id != chainScope || _id != chainListingId) {
+        return;
+      }
       if (review['ok'] != true) throw StateError(_serverMessage(review));
       if (review['verdict']?.toString() == 'fail') {
         final issues = (review['issues'] as List? ?? const []).map((x) => x is Map ? (x['message'] ?? '').toString() : '').where((x) => x.isNotEmpty).join(' ');
         throw StateError(issues.isEmpty ? 'The server review found issues to fix before submitting.' : issues);
       }
       var result = await ListingsApi.wizardSubmit(_id!);
+      if (!mounted || AccountScope.id != chainScope || _id != chainListingId) {
+        return;
+      }
       if (isIdentityRequired((result['status'] as num?)?.toInt() ?? 0, jsonEncode(result))) {
         if (!mounted || !await ensureListingLiveness(context)) throw StateError('Verify your identity to submit this listing.');
+        if (!mounted || AccountScope.id != chainScope || _id != chainListingId) {
+          return;
+        }
         result = await ListingsApi.wizardSubmit(_id!);
+        if (!mounted || AccountScope.id != chainScope || _id != chainListingId) {
+          return;
+        }
       }
       if (result['ok'] != true) throw StateError(_serverMessage(result));
       Analytics.capture('listing_native_wizard_submitted', {'listing_id': _id!, 'source': widget.source});
@@ -1622,10 +1856,11 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   /// the price and discount boxes need it — they feed the running "what the
   /// customer pays / what you keep" sum, which would otherwise sit one edit
   /// behind. Every other field keeps the cheap `_dirty`-only path.
-  Widget _field(String label, TextEditingController controller, {int maxLines = 1, String? hint, bool live = false, ValueChanged<String>? onChanged}) => Padding(
+  Widget _field(String label, TextEditingController controller, {int maxLines = 1, String? hint, bool live = false, bool enabled = true, ValueChanged<String>? onChanged}) => Padding(
         padding: const EdgeInsets.only(bottom: Msg.s3),
         child: TextField(
           controller: controller,
+          enabled: enabled,
           maxLines: maxLines,
           onChanged: (value) {
             _dirty = true;
@@ -2061,7 +2296,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
             NativeListingAvailabilityModeField(
               value: _availabilityMode,
               onChanged: _setAvailabilityMode,
-              enabled: !_saving && !_scheduleBusy,
+              enabled: _timeStepEditingEnabled,
             ),
             const SizedBox(height: Msg.s3),
           ],
@@ -2069,7 +2304,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
             NativeListingWeeklyHoursField(
               rules: _availabilityRules,
               timezone: _scheduleTimezone,
-              enabled: !_saving && !_scheduleBusy,
+              enabled: _timeStepEditingEnabled,
               onChanged: (rules) {
                 setState(() {
                   _availabilityRules = rules;
@@ -2089,7 +2324,7 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
               label: _kind == 'consult' ? 'Date and time to reserve' : 'Starts',
               value: _startsAt.text,
               timezone: _zone,
-              enabled: !_saving && !_scheduleBusy,
+              enabled: _timeStepEditingEnabled,
               help: _kind == 'consult'
                   ? 'Publishing reserves this exact window for this listing — drafts do not.'
                   : 'Shown to customers in $_zone.',
@@ -2103,7 +2338,10 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
             ),
             const SizedBox(height: Msg.s3),
           ],
-          _field('Duration (minutes)', _duration, hint: '5 to 480', onChanged: (_) => _onTimeInputChanged()),
+          _field('Duration (minutes)', _duration,
+              hint: '5 to 480',
+              enabled: _timeStepEditingEnabled,
+              onChanged: (_) => _onTimeInputChanged()),
           if (_showsStartPicker) ...[
             const SizedBox(height: Msg.s2),
             NativeListingConflictFeedback(
@@ -2133,7 +2371,22 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
           ),
           if (_scheduleError != null) ...[
             const SizedBox(height: Msg.s2),
-            AdCard(child: Text(_scheduleError!, style: ADText.preview(c: AD.danger))),
+            AdCard(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                  Text(_scheduleError!, style: ADText.preview(c: AD.danger)),
+                  const SizedBox(height: Msg.s2),
+                  Wrap(spacing: Msg.s2, runSpacing: Msg.s2, children: [
+                    OutlinedButton(
+                        onPressed: _scheduleHydrating
+                            ? null
+                            : () => unawaited(_retryHydrateSchedule()),
+                        child: Text(_scheduleDirty
+                            ? 'Discard edits and reload'
+                            : 'Retry loading availability')),
+                  ]),
+                ])),
           ],
           const SizedBox(height: Msg.s3),
           // Capacity is a live-event idea. A consult always has one seat and the
@@ -2237,9 +2490,9 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
                 _stepBody(),
                 const SizedBox(height: Msg.s4),
                 Row(children: [
-                  if (_step > 0) TextButton(onPressed: _saving || _publishing || _scheduleBusy ? null : _goBack, child: const Text('Back')),
+                  if (_step > 0) TextButton(onPressed: _saving || _publishing || _scheduleBusy || _scheduleHydrating ? null : _goBack, child: const Text('Back')),
                   const Spacer(),
-                  FilledButton(onPressed: _saving || _publishing || _scheduleBusy ? null : (_step == 7 ? _submit : _next), child: Text(_step == 7 ? (_publishing ? 'Submitting…' : 'Submit for review') : (_saving || _scheduleBusy ? 'Saving…' : 'Save and continue'))),
+                  FilledButton(onPressed: _saving || _publishing || _scheduleBusy || _scheduleHydrating ? null : (_step == 7 ? _submit : _next), child: Text(_step == 7 ? (_publishing ? 'Submitting…' : 'Submit for review') : (_saving || _scheduleBusy || _scheduleHydrating ? 'Saving…' : 'Save and continue'))),
                 ]),
               ])));
             })),
