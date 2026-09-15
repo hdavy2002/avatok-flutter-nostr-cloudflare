@@ -565,7 +565,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
               PhosphorIcons.broadcast(PhosphorIconsStyle.bold)),
           _subRow('customerappointments', 'Customer Appointments',
               PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)),
-          _subRow('availability', 'Availability',
+          _subRow('availability', 'Calendar & availability',
               PhosphorIcons.clock(PhosphorIconsStyle.bold)),
           _subRow('archived', 'Archived',
               PhosphorIcons.archive(PhosphorIconsStyle.bold)),

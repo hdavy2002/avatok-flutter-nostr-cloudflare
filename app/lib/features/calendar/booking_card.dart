@@ -8,7 +8,11 @@ import '../../core/platform_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../booking/commercial_customer_screens.dart';
+import '../booking/creator_schedule_screen.dart';
 import '../consult/prejoin_screen.dart';
+import 'calendar_logic.dart';
+import 'calendar_ui.dart';
 import 'calendar_data.dart';
 
 /// Card / dialog / sheet title — the dark-system stand-in for the old
@@ -59,8 +63,13 @@ ZineSticker zineStatusSticker(String status) => ZineSticker(
       },
     );
 
-/// Opens the detail card for a booking/event/block. Pass whatever ids exist:
-/// [bookingId] enables cancel/reschedule; gcal/manual blocks are read-only.
+/// Opens the detail card for a booking/event/block.
+///
+/// [AUDIT-A1 2026-09-15] Legacy `avabooking` rows keep the legacy
+/// cancel/reschedule actions they were created with. A MODERN unified
+/// reservation (`availability`) or commercial commitment (`avaconsult`) must
+/// never be fed into those endpoints — those rows carry a canonical booking id
+/// and are managed on the commercial appointment/session screen instead.
 Future<void> showBookingCard(
   BuildContext context, {
   required String sourceApp,
@@ -71,10 +80,25 @@ Future<void> showBookingCard(
   String? counterpart,
   int? priceTokens,
   String? status,
+  String? statusLabel,
+  String? listingId,
+  String? bookingKind,
+  String? timezone,
+  Set<String> ownedListingIds = const <String>{},
   bool amCreator = false,
   VoidCallback? onChanged,
 }) async {
   final st = styleFor(sourceApp);
+  final route = bookingRouteForBlock(
+    CalBlock('', sourceApp, bookingId, startsAt, endsAt, title,
+        bookingId: bookingId,
+        listingId: listingId,
+        bookingKind: bookingKind,
+        bookingStatus: status),
+    ownedListingIds: ownedListingIds,
+  );
+  final zone = timezone ?? 'UTC';
+  final resolvedStatus = statusLabel ?? status;
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -100,17 +124,24 @@ Future<void> showBookingCard(
                   Text(st.label, style: ADText.sectionLabel()),
                 ]),
               ),
-              if (status != null) zineStatusSticker(status),
+              if (resolvedStatus != null)
+                calendarStatusSticker(resolvedStatus, status ?? ''),
             ]),
             const SizedBox(height: Msg.s4),
             _row(PhosphorIcons.calendarBlank(PhosphorIconsStyle.regular), fmtDate(startsAt)),
-            _row(PhosphorIcons.clock(PhosphorIconsStyle.regular), '${fmtRange(startsAt, endsAt)} · ${fmtTimeBoth(startsAt)}'),
+            // Finding 8 — the primary time is the SCHEDULE timezone and it says
+            // so; the device clock is a clearly labelled second line.
+            _row(PhosphorIcons.clock(PhosphorIconsStyle.regular),
+                '${blockTimeLabel(startMs: startsAt, endMs: endsAt, timezone: zone)} · $zone'),
+            _row(PhosphorIcons.globe(PhosphorIconsStyle.regular),
+                deviceTimeLabel(startsAt)),
             if (counterpart != null && counterpart.isNotEmpty)
               _row(PhosphorIcons.user(PhosphorIconsStyle.regular), counterpart),
             if ((priceTokens ?? 0) > 0)
               _row(PhosphorIcons.coins(PhosphorIconsStyle.regular),
                   '\u20b9${priceTokens!}', money: true),
             const SizedBox(height: Msg.s4),
+            if (route.management == BookingManagement.legacy) ...[
             // Phase 7 — join the delivered session (room opens 10 min early;
             // rejoin within the slot always works — same order, new token).
             if (bookingId != null && status == 'confirmed' &&
@@ -198,11 +229,66 @@ Future<void> showBookingCard(
                   ),
                 ),
               ]),
+            ] else if (route.hasManagementAction) ...[
+              // Modern booking: open the screen that actually owns it. No
+              // legacy cancel/reschedule is offered from the diary.
+              ZineButton(
+                label: route.actionLabel ?? 'Manage booking',
+                fullWidth: true,
+                fontSize: 16,
+                icon: PhosphorIcons.caretRight(PhosphorIconsStyle.regular),
+                onPressed: () {
+                  Navigator.pop(sheetCtx);
+                  openBookingManagement(context, route);
+                },
+              ),
+              const SizedBox(height: Msg.s2),
+              Text(
+                'Opens the booking’s own screen. Reserved time is never cancelled or moved from the diary.',
+                style: ADText.statCaption(c: AD.textSecondary),
+              ),
+            ] else if (bookingId != null) ...[
+              Text(
+                'This commitment has no management action from the diary. Open it from its listing or from My tickets & appointments.',
+                style: ADText.statCaption(c: AD.textSecondary),
+              ),
+            ],
           ],
         ),
       ),
     ),
   );
+}
+
+/// Routes a diary item to the existing commercial screen that owns it.
+///
+/// Nothing here calls the legacy booking endpoints: those only ever served the
+/// `avabooking` rows, which stay in [BookingManagement.legacy].
+Future<void> openBookingManagement(BuildContext context, BookingRoute route) async {
+  switch (route.management) {
+    case BookingManagement.creatorAppointments:
+      await Navigator.push(
+          context,
+          MaterialPageRoute(
+              builder: (_) =>
+                  CreatorAppointmentsScreen(focusListingId: route.listingId)));
+      return;
+    case BookingManagement.creatorEvents:
+      await Navigator.push(context,
+          MaterialPageRoute(builder: (_) => const CreatorLiveEventsScreen()));
+      return;
+    case BookingManagement.customerSessions:
+      await Navigator.push(
+          context,
+          MaterialPageRoute(
+              builder: (_) => MySessionsScreen(
+                  focusBookingId: route.bookingId,
+                  focusListingId: route.listingId)));
+      return;
+    case BookingManagement.legacy:
+    case BookingManagement.none:
+      return;
+  }
 }
 
 Widget _row(IconData icon, String text, {bool money = false}) => Padding(

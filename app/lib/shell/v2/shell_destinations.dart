@@ -105,8 +105,14 @@ void openShellDestination(BuildContext context, String dest) {
     case 'customerappointments':
       push(const CreatorAppointmentsScreen());
       return;
+    // [AUDIT-A2 2026-09-15] "Calendar & availability" must open the DIARY (where
+    // time is blocked), not the settings screen. Working hours and connected
+    // calendars stay one tap away inside the diary, and their settings screens
+    // still live inside this calendar flow.
     case 'availability':
-      push(const CalendarSettingsScreen());
+    case 'calendar':
+    case 'avacalendar':
+      push(const AvaCalendarScreen());
       return;
     case 'mylistings':
       push(const MyListingsScreen());

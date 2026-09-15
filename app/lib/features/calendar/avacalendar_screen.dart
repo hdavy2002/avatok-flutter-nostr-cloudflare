@@ -1,15 +1,24 @@
-// Native creator calendar. The view adapts to the available window: phones
-// lead with an agenda, while wide windows keep the diary and inspector visible.
+// Native creator calendar — the diary.
+//
+// Audit fixes covered here (15 September 2026):
+//  * 3 / A8 — every interval on a selected day is listed and can be edited or
+//    removed on its own; "Block time" starts in a blocked state and states its
+//    scope explicitly.
+//  * 4 — a partial load says WHICH sources failed instead of marking the page
+//    ready, and unknown availability is never rendered as zero.
+//  * 5 / 6 — Google readiness is surfaced with its last successful sync, and an
+//    unverifiable status is never shown as healthy.
+//  * 7 / A1 — one card per booking, with a route to the commercial appointment
+//    or session screen that actually owns it.
+//  * 8 — one explicit schedule timezone for every card, heading and slot.
+//  * 12 / A6 — refresh on foreground + a visible "Updated at", and a reload
+//    with a confirmation after settings close.
+//  * A4 / A5 — Agenda renders once and is the phone default; the arrows move
+//    the active view (month, week or day) and the selected date with it.
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/analytics.dart';
-import '../../core/ava_log.dart';
 import '../../core/availability_api.dart';
-import '../../core/availability_time.dart';
 import '../../core/listings_api.dart';
 import '../../core/platform_api.dart';
 import '../../core/time_sync.dart';
@@ -18,29 +27,13 @@ import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'booking_card.dart';
 import 'calendar_data.dart';
+import 'calendar_day_editor.dart';
+import 'calendar_logic.dart';
+import 'calendar_settings_screen.dart';
+import 'calendar_signals.dart';
+import 'calendar_ui.dart';
 
-TextStyle _title(double size) => ADText.threadName()
-    .copyWith(fontSize: size, height: 1.1, letterSpacing: -0.2);
-TextStyle _sub(double size, {Color c = AD.textSecondary}) =>
-    ADText.preview(c: c).copyWith(fontSize: size, height: 1.42);
-TextStyle _value(double size, {FontWeight w = FontWeight.w600}) =>
-    ADText.rowName().copyWith(fontSize: size, fontWeight: w);
-TextStyle get _link => ADText.rowName(c: Msg.accent).copyWith(fontSize: 13);
-
-Widget _calendarMessageCard(String message, IconData icon, Color color) =>
-    ZineCard(
-      radius: Msg.rMd,
-      boxShadow: Msg.none,
-      padding: const EdgeInsets.all(Msg.s3),
-      borderColor: color,
-      child: Row(children: [
-        PhosphorIcon(icon, size: 20, color: color),
-        const SizedBox(width: Msg.s2),
-        Expanded(child: Text(message, style: _sub(13, c: color))),
-      ]),
-    );
-
-enum _CalendarView { month, week, agenda }
+export 'calendar_settings_screen.dart';
 
 class AvaCalendarScreen extends StatefulWidget {
   const AvaCalendarScreen({super.key});
@@ -49,26 +42,60 @@ class AvaCalendarScreen extends StatefulWidget {
   State<AvaCalendarScreen> createState() => _AvaCalendarScreenState();
 }
 
-class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
-  DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
-  DateTime _selected = DateTime.now();
-  _CalendarView _view = _CalendarView.month;
+class _AvaCalendarScreenState extends State<AvaCalendarScreen>
+    with WidgetsBindingObserver {
+  DateTime _month = DateTime(TimeSync.now().year, TimeSync.now().month);
+  DateTime _selected = TimeSync.now();
+
+  /// null → adaptive default: Agenda on a phone, Month on a wide window.
+  CalendarView? _viewOverride;
+  bool _monthOverview = false;
+
   List<CalBlock> _blocks = const [];
   List<ListingCard> _listings = const [];
   String? _selectedListingId;
   AvailabilitySchedule? _schedule;
   ListingAvailability? _availability;
+  GcalReadiness? _gcal;
+
   bool _loading = true;
   bool _refreshing = false;
   String? _error;
   bool _stale = false;
+  DateTime? _updatedAt;
   int _loadGeneration = 0;
+  int _settingsRevision = 0;
+  DateTime? _lastForegroundRefresh;
 
   @override
   void initState() {
     super.initState();
     TimeSync.init();
+    WidgetsBinding.instance.addObserver(this);
+    CalendarSignals.availabilityRevision.addListener(_onAvailabilitySaved);
     _bootstrap();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    CalendarSignals.availabilityRevision.removeListener(_onAvailabilitySaved);
+    super.dispose();
+  }
+
+  void _onAvailabilitySaved() => _settingsRevision++;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    // 12 — an already-open diary must not keep showing yesterday's answer.
+    final now = TimeSync.now();
+    if (_lastForegroundRefresh != null &&
+        now.difference(_lastForegroundRefresh!) < const Duration(seconds: 20)) {
+      return;
+    }
+    _lastForegroundRefresh = now;
+    _refresh();
   }
 
   Future<void> _bootstrap() async {
@@ -91,15 +118,18 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
     bool current() => mounted && generation == _loadGeneration;
     final listingId = _selectedListingId;
     final range = _monthRange;
-    final from = _dateKey(range.$1);
-    final to = _dateKey(range.$2);
-    if (showBusy && current())
+    final from = dateKey(range.$1);
+    final to = dateKey(range.$2);
+    if (showBusy && current()) {
       setState(() {
         _loading = true;
         _error = null;
         _availability = null;
         _stale = true;
       });
+    }
+
+    final failed = <String>[];
 
     final cachedBlocks = await CalendarStore.cached();
     if (current() && cachedBlocks.isNotEmpty) {
@@ -147,8 +177,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
     if (current() && (cachedSchedule != null || cachedAvailability != null)) {
       setState(() {
         if (cachedSchedule != null) _schedule = cachedSchedule.value;
-        if (cachedAvailability != null)
-          _availability = cachedAvailability!.value;
+        if (cachedAvailability != null) _availability = cachedAvailability!.value;
         _stale = (cachedSchedule?.isStale() ?? false) ||
             (cachedAvailability?.isStale(maxAge: const Duration(minutes: 30)) ??
                 false);
@@ -156,7 +185,6 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
       });
     }
 
-    final errors = <String>[];
     try {
       final blocks = await CalendarStore.refresh(
         from: range.$1.subtract(const Duration(days: 7)).millisecondsSinceEpoch,
@@ -164,23 +192,33 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
       );
       if (current()) setState(() => _blocks = blocks);
     } catch (e) {
-      errors.add(_friendlyError(e));
+      failed.add('busy blocks');
     }
+
+    AvailabilitySchedule? fetchedSchedule;
     try {
-      final schedule =
-          await AvailabilityApi.fetchSchedule(listingId: listingId);
-      if (current())
+      fetchedSchedule = await AvailabilityApi.fetchSchedule(listingId: listingId);
+      if (current()) {
         setState(() {
-          _schedule = schedule;
+          _schedule = fetchedSchedule;
           if (listingId == null) _stale = false;
         });
-      if (listingId != null) {
+      }
+    } catch (e) {
+      failed.add(listingId == null ? 'working hours' : 'this listing’s schedule');
+      fetchedSchedule = cachedSchedule?.value;
+    }
+
+    if (listingId != null) {
+      if (fetchedSchedule == null) {
+        failed.add('bookable slots');
+      } else {
         try {
           final availability = await AvailabilityApi.fetchListingAvailability(
             listingId: listingId,
             from: from,
             to: to,
-            timezone: schedule.timezone,
+            timezone: fetchedSchedule.timezone,
           );
           if (current())
             setState(() {
@@ -188,20 +226,42 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
               _stale = false;
             });
         } catch (e) {
-          errors.add(_friendlyError(e));
+          failed.add('bookable slots');
         }
       }
+    }
+
+    try {
+      final result = await PlatformApi.gcalStatusResult();
+      if (current()) {
+        setState(() => _gcal = result.ok
+            ? gcalReadinessFromStatus(result.json)
+            : gcalUnknown(result.error ??
+                'Google Calendar status could not be read, so it cannot be verified.'));
+      }
     } catch (e) {
-      errors.add(_friendlyError(e));
+      if (current()) setState(() => _gcal = null);
+      failed.add('Google Calendar');
     }
-    if (current()) {
-      setState(() {
-        _loading = false;
-        _refreshing = false;
-        if (errors.isNotEmpty) _error = errors.first;
-      });
-    }
+
+    if (!current()) return;
+    setState(() {
+      _loading = false;
+      _refreshing = false;
+      _failedSources = failed;
+      _updatedAt = TimeSync.now();
+      if (failed.isEmpty) {
+        _error = null;
+        _stale = false;
+      } else {
+        _error = _partialMessage(failed);
+      }
+    });
   }
+
+  String _partialMessage(List<String> failed) =>
+      'Some calendar data could not be refreshed (${failed.join(', ')}). '
+      'Time you cannot see here is NOT confirmed free — pull to refresh before relying on this day.';
 
   String _friendlyError(Object error) => error is AvailabilityApiException
       ? error.message
@@ -213,48 +273,72 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
     await _loadData(showBusy: false);
   }
 
+  Future<void> _openSettings() async {
+    final before = _settingsRevision;
+    await Navigator.push<void>(
+        context, MaterialPageRoute(builder: (_) => const CalendarSettingsScreen()));
+    if (!mounted) return;
+    await _loadData(showBusy: false);
+    if (!mounted) return;
+    if (_settingsRevision != before) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Working hours updated')));
+    }
+  }
+
   (DateTime, DateTime) get _monthRange => (
         DateTime(_month.year, _month.month, 1),
         DateTime(_month.year, _month.month + 1, 1),
       );
 
-  String _dateKey(DateTime date) =>
-      '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  CalendarView _viewFor(bool wide) =>
+      _viewOverride ?? defaultCalendarView(wide: wide);
+
+  String get _timezone => _schedule?.timezone ?? _availability?.timezone ?? 'UTC';
 
   List<CalBlock> _onDay(DateTime day) {
-    final zone = _schedule?.timezone ?? 'UTC';
-    final start = AvailabilityTime.wallTimeToUtc(date: day,minutes:0,timezone:zone).millisecondsSinceEpoch;
-    final end = AvailabilityTime.wallTimeToUtc(date:DateTime(day.year,day.month,day.day+1),minutes:0,timezone:zone).millisecondsSinceEpoch;
-    return (_blocks.where((b) => b.startsAt < end && b.endsAt > start).toList()
-      ..sort((a, b) => a.startsAt.compareTo(b.startsAt)));
+    final bounds = dayBoundsUtcMs(day, _timezone);
+    final from = bounds?.from ?? DateTime.utc(day.year, day.month, day.day).millisecondsSinceEpoch;
+    final to = bounds?.to ??
+        DateTime.utc(day.year, day.month, day.day + 1).millisecondsSinceEpoch;
+    final rows = _blocks
+        .where((b) => b.startsAt < to && b.endsAt > from)
+        .toList(growable: false);
+    return dedupeBookingBlocks(rows);
   }
 
   List<AvailabilitySlot> _slotsOnDay(DateTime day) {
-    final key = _dateKey(day);
-    final timezone = _schedule?.timezone ?? _availability?.timezone ?? 'UTC';
-    return (_availability?.slots ?? const <AvailabilitySlot>[])
-        .where((slot) =>
-            _dateKey(AvailabilityTime.inTimezone(slot.startAt, timezone)) ==
-            key)
-        .toList()
-      ..sort((a, b) => a.startAt.compareTo(b.startAt));
+    final key = dateKey(day);
+    final timezone = _timezone;
+    final rows = (_availability?.slots ?? const <AvailabilitySlot>[])
+        .where((slot) => dateKey(calendarTime(slot.startAt, timezone)) == key)
+        .toList();
+    rows.sort((a, b) => a.startAt.compareTo(b.startAt));
+    return rows;
   }
 
-  AvailabilityException? _exceptionOnDay(DateTime day) {
-    final key = _dateKey(day);
-    for (final item
-        in _schedule?.exceptions ?? const <AvailabilityException>[]) {
-      if (item.date == key) return item;
-    }
-    return null;
-  }
+  List<AvailabilityException> _exceptionsFor(DateTime day) =>
+      exceptionsOnDate(_schedule?.exceptions ?? const [], dateKey(day));
 
   int? _availableCount(DateTime day) {
-    final key = _dateKey(day);
+    final key = dateKey(day);
     for (final row in _availability?.days ?? const <AvailabilityDay>[]) {
       if (row.date == key) return row.availableCount;
     }
     return null;
+  }
+
+  DateTime _scheduleTime(DateTime instant) => calendarTime(instant, _timezone);
+
+  bool _sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  String _listingTitle(String? id) {
+    if (id == null) return 'this listing';
+    for (final listing in _listings) {
+      if (listing.id == id) return listing.title;
+    }
+    return 'this listing';
   }
 
   @override
@@ -272,10 +356,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
           const SizedBox(width: Msg.s2),
           ZineBackButton(
               icon: PhosphorIcons.gearSix(PhosphorIconsStyle.regular),
-              onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const CalendarSettingsScreen()))),
+              onTap: _openSettings),
         ],
       ),
       body: RefreshIndicator(
@@ -284,36 +365,31 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
         onRefresh: _refresh,
         child: LayoutBuilder(builder: (context, constraints) {
           final wide = constraints.maxWidth >= 760;
-          final diary = _calendarPanel();
-          final inspector = _agendaPanel();
+          final view = _viewFor(wide);
           return ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(Msg.s4),
             children: [
-              _topControls(wide),
-              if (_error != null) ...[
-                const SizedBox(height: Msg.s3),
-                _messageCard(
-                    _error!,
-                    PhosphorIcons.warningCircle(PhosphorIconsStyle.regular),
-                    AD.danger),
-              ],
-              if (_stale) ...[
-                const SizedBox(height: Msg.s3),
-                _messageCard(
-                    'Showing a saved snapshot. Pull to refresh for current availability.',
-                    PhosphorIcons.clockCounterClockwise(
-                        PhosphorIconsStyle.regular),
-                    AD.textSecondary),
-              ],
+              _topControls(wide, view),
+              ..._banners(),
               const SizedBox(height: Msg.s3),
-              if (wide)
+              if (view == CalendarView.agenda) ...[
+                if (!wide) ...[
+                  _agendaNavBar(view),
+                  if (_monthOverview) ...[
+                    const SizedBox(height: Msg.s3),
+                    _monthCard(),
+                  ],
+                ],
+                _agendaPanel(),
+              ] else if (wide)
                 Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Expanded(flex: 6, child: diary),
+                  Expanded(flex: 6, child: _calendarPanel(view)),
                   const SizedBox(width: Msg.s4),
-                  Expanded(flex: 4, child: inspector),
+                  Expanded(flex: 4, child: _agendaPanel()),
                 ])
-              else ...[diary, const SizedBox(height: Msg.s4), inspector],
+              else
+                _calendarPanel(view),
               const SizedBox(height: Msg.s6),
             ],
           );
@@ -322,7 +398,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
     );
   }
 
-  Widget _topControls(bool wide) {
+  Widget _topControls(bool wide, CalendarView view) {
     final items = <DropdownMenuItem<String>>[
       const DropdownMenuItem(value: '', child: Text('All listings')),
       ..._listings.map((listing) =>
@@ -348,120 +424,210 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
           ),
         )
       else
-        Text('Showing your creator schedule', style: _sub(14)),
-      const SizedBox(height: Msg.s3),
+        Text('Showing your creator schedule', style: calSub(14)),
+      const SizedBox(height: Msg.s1),
+      Text(
+        editingScopeLabel(
+            selectedListingId: _selectedListingId, listings: _listings),
+        style: ADText.statCaption(c: AD.textSecondary),
+      ),
+      const SizedBox(height: Msg.s2),
       Wrap(spacing: Msg.s2, runSpacing: Msg.s2, children: [
         ZineChip(
             label: 'Month',
-            active: _view == _CalendarView.month,
-            onTap: () => setState(() => _view = _CalendarView.month)),
+            active: view == CalendarView.month,
+            onTap: () => setState(() => _viewOverride = CalendarView.month)),
         ZineChip(
             label: 'Week',
-            active: _view == _CalendarView.week,
-            onTap: () => setState(() => _view = _CalendarView.week)),
+            active: view == CalendarView.week,
+            onTap: () => setState(() => _viewOverride = CalendarView.week)),
         ZineChip(
             label: 'Agenda',
-            active: _view == _CalendarView.agenda,
-            onTap: () => setState(() => _view = _CalendarView.agenda)),
+            active: view == CalendarView.agenda,
+            onTap: () => setState(() => _viewOverride = CalendarView.agenda)),
         ZineButton(
             label: 'Block time',
             variant: ZineButtonVariant.ghost,
             fontSize: 13,
             icon: PhosphorIcons.prohibit(PhosphorIconsStyle.regular),
-            onPressed: () => _editException(_selected)),
+            trailingIcon: false,
+            onPressed: () => _openDayEditor(_selected, startBlocked: true)),
+        ZineButton(
+            label: 'Refresh',
+            variant: ZineButtonVariant.ghost,
+            fontSize: 13,
+            loading: _refreshing,
+            icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.regular),
+            trailingIcon: false,
+            onPressed: _refresh),
+      ]),
+      const SizedBox(height: Msg.s2),
+      Row(children: [
+        ZineLink('Working hours', onTap: _openSettings),
+        const SizedBox(width: Msg.s3),
+        ZineLink('Connected calendars', onTap: _openSettings),
+        const Spacer(),
+        Text(updatedAtLabel(_updatedAt),
+            style: ADText.statCaption(c: AD.textSecondary)),
       ]),
     ]);
   }
 
-  Widget _calendarPanel() => ZineCard(
+  List<Widget> _banners() {
+    final widgets = <Widget>[];
+    if (_error != null) {
+      widgets.add(calendarMessageCard(
+          _error!,
+          PhosphorIcons.warningCircle(PhosphorIconsStyle.regular),
+          AD.danger));
+    }
+    if (_stale) {
+      widgets.add(calendarMessageCard(
+          'Showing a saved snapshot until the refresh completes.',
+          PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.regular),
+          AD.textSecondary));
+    }
+    final gcal = _gcal;
+    if (gcal != null && gcal.pausesBookings) {
+      widgets.add(calendarMessageCard(
+          'Google Calendar: ${gcal.detail}',
+          PhosphorIcons.googleLogo(PhosphorIconsStyle.regular),
+          AD.haldi));
+    }
+    if (_failedSources.isNotEmpty) {
+      // A partial failure must name its sources; "no error" used to mean "ready"
+      // even when blocks or events had failed to load (finding 4).
+      widgets.add(Text('Not refreshed: ${_failedSources.join(', ')}',
+          style: ADText.statCaption(c: AD.textSecondary)));
+    }
+    if (widgets.isEmpty) return const [];
+    return [
+      for (final widget in widgets) ...[
+        const SizedBox(height: Msg.s3),
+        widget,
+      ]
+    ];
+  }
+
+  // ── Navigation (A4, A5) ──────────────────────────────────────────────────
+  void _shift(CalendarView view, int direction) {
+    final nav = calendarNavigate(
+        view: view, direction: direction, selected: _selected, month: _month);
+    setState(() {
+      _month = nav.month;
+      _selected = nav.selected;
+      _availability = null;
+    });
+    _loadData();
+  }
+
+  void _goToday() {
+    final now = TimeSync.now();
+    setState(() {
+      _selected = now;
+      _month = DateTime(now.year, now.month, 1);
+      _availability = null;
+    });
+    _loadData();
+  }
+
+  Widget _navArrows(CalendarView view) => Row(mainAxisSize: MainAxisSize.min, children: [
+        ZineBackButton(
+            icon: PhosphorIcons.caretLeft(PhosphorIconsStyle.regular),
+            onTap: () => _shift(view, -1)),
+        const SizedBox(width: Msg.s2),
+        ZineBackButton(
+            icon: PhosphorIcons.caretRight(PhosphorIconsStyle.regular),
+            onTap: () => _shift(view, 1)),
+      ]);
+
+  Widget _agendaNavBar(CalendarView view) => Row(children: [
+        _navArrows(view),
+        const SizedBox(width: Msg.s2),
+        Expanded(
+            child: Text(
+                calendarRangeLabel(
+                    view: view, month: _month, selected: _selected),
+                style: calTitle(17))),
+        ZineChip(
+            label: _monthOverview ? 'Hide month' : 'Month overview',
+            active: _monthOverview,
+            onTap: () => setState(() => _monthOverview = !_monthOverview)),
+        const SizedBox(width: Msg.s2),
+        ZineLink('Today', onTap: _goToday),
+      ]);
+
+  // ── Month ────────────────────────────────────────────────────────────────
+  Widget _calendarPanel(CalendarView view) => ZineCard(
         radius: Msg.rLg,
         padding: const EdgeInsets.all(Msg.s4),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          _monthHeader(),
+          if (view == CalendarView.month) _monthHeader(),
+          if (view == CalendarView.week) _weekHeader(),
           const SizedBox(height: Msg.s3),
-          if (_view == _CalendarView.month) _monthGrid(),
-          if (_view == _CalendarView.week) _weekView(),
-          if (_view == _CalendarView.agenda) _agendaPanel(compact: true),
+          if (view == CalendarView.month) _monthGrid(),
+          if (view == CalendarView.week) _weekView(),
           const SizedBox(height: Msg.s3),
           _legend(),
         ]),
       );
 
-  Widget _monthHeader() {
-    final name = const [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec'
-    ][_month.month - 1];
-    return Row(children: [
-      ZineBackButton(
-          icon: PhosphorIcons.caretLeft(PhosphorIconsStyle.regular),
-          onTap: () {
-            setState(() {
-              _month = DateTime(_month.year, _month.month - 1);
-              _availability = null;
-            });
-            _loadData();
-          }),
-      const SizedBox(width: Msg.s2),
-      Expanded(
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('$name ${_month.year}', style: _title(20)),
-        const SizedBox(height: 2),
-        Text(
-            _schedule == null
-                ? 'Schedule'
-                : '${_schedule!.timezone} · ${_schedule!.durationMin} min slots',
-            style: _sub(12)),
-      ])),
-      ZineLink('Today', onTap: () {
-        final now = TimeSync.now();
-        setState(() {
-          _selected = now;
-          _month = DateTime(now.year, now.month);
-          _availability = null;
-        });
-        _loadData();
-      }),
-      const SizedBox(width: Msg.s3),
-      ZineBackButton(
-          icon: PhosphorIcons.caretRight(PhosphorIconsStyle.regular),
-          onTap: () {
-            setState(() {
-              _month = DateTime(_month.year, _month.month + 1);
-              _availability = null;
-            });
-            _loadData();
-          }),
-    ]);
-  }
+  Widget _monthCard() => ZineCard(
+        radius: Msg.rLg,
+        padding: const EdgeInsets.all(Msg.s4),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _monthHeader(),
+          const SizedBox(height: Msg.s3),
+          _monthGrid(),
+          const SizedBox(height: Msg.s3),
+          _legend(),
+        ]),
+      );
+
+  Widget _monthHeader() => Row(children: [
+        _navArrows(CalendarView.month),
+        const SizedBox(width: Msg.s2),
+        Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(calendarRangeLabel(view: CalendarView.month, month: _month, selected: _selected),
+              style: calTitle(20)),
+          const SizedBox(height: 2),
+          Text(
+              _schedule == null
+                  ? timezoneLabel(null)
+                  : '${_schedule!.timezone} · ${_schedule!.durationMin} min slots',
+              style: calSub(12)),
+        ])),
+        ZineLink('Today', onTap: _goToday),
+      ]);
+
+  Widget _weekHeader() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          _navArrows(CalendarView.week),
+          const SizedBox(width: Msg.s2),
+          Expanded(
+              child: Text(
+                  calendarRangeLabel(
+                      view: CalendarView.week, month: _month, selected: _selected),
+                  style: calTitle(20))),
+          ZineLink('Today', onTap: _goToday),
+        ]),
+        const SizedBox(height: Msg.s1),
+        calendarTimezoneNote(_timezone),
+      ]);
 
   Widget _monthGrid() {
     final first = DateTime(_month.year, _month.month, 1);
     final lead = (first.weekday + 6) % 7;
     final days = DateTime(_month.year, _month.month + 1, 0).day;
     final cells = <Widget>[
-      ...const [
-        'M',
-        'T',
-        'W',
-        'T',
-        'F',
-        'S',
-        'S'
-      ].map((label) => Center(child: Text(label, style: ADText.sectionLabel())))
+      ...const ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+          .map((label) => Center(child: Text(label, style: ADText.sectionLabel())))
     ];
-    for (var i = 0; i < lead; i++) cells.add(const SizedBox());
+    for (var i = 0; i < lead; i++) {
+      cells.add(const SizedBox());
+    }
     final today = TimeSync.now();
     for (var dayNo = 1; dayNo <= days; dayNo++) {
       final day = DateTime(_month.year, _month.month, dayNo);
@@ -469,11 +635,11 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
       final selected = _sameDay(day, _selected);
       final isToday = _sameDay(day, today);
       final count = _availableCount(day);
-      final exception = _exceptionOnDay(day);
+      final exceptions = _exceptionsFor(day);
       cells.add(GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => setState(() => _selected = day),
-        onLongPress: () => _editException(day),
+        onLongPress: () => _openDayEditor(day),
         child: Padding(
             padding: const EdgeInsets.symmetric(vertical: Msg.s1),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -501,8 +667,8 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
                   child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        if (exception != null)
-                          _dot(_exceptionColor(exception.status)),
+                        if (exceptions.isNotEmpty)
+                          _dot(_exceptionColor(exceptions.first.status)),
                         for (final block in blocks.take(2))
                           _dot(zineSourceColor(block.sourceApp)),
                         if (count != null)
@@ -521,11 +687,12 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
         children: cells);
   }
 
+  // ── Week (A7: real commitments, honest open counts) ──────────────────────
   Widget _weekView() {
-    final start =
-        _selected.subtract(Duration(days: (_selected.weekday + 6) % 7));
-    final days = List.generate(
-        7, (i) => DateTime(start.year, start.month, start.day + i));
+    final start = startOfWeek(_selected);
+    final days =
+        List.generate(7, (i) => DateTime(start.year, start.month, start.day + i));
+    final listingSelected = _selectedListingId != null;
     return Column(children: [
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         for (final day in days)
@@ -533,6 +700,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
               child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => setState(() => _selected = day),
+            onLongPress: () => _openDayEditor(day),
             child: Padding(
                 padding: const EdgeInsets.only(right: Msg.s1),
                 child: ZineCard(
@@ -544,99 +712,155 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
                         ? Msg.accent
                         : AD.borderControl,
                     child: Column(children: [
-                      Text(
-                          const [
-                            'Mon',
-                            'Tue',
-                            'Wed',
-                            'Thu',
-                            'Fri',
-                            'Sat',
-                            'Sun'
-                          ][day.weekday - 1],
-                          style: ADText.sectionLabel()),
+                      Text(weekdayShort(day), style: ADText.sectionLabel()),
                       const SizedBox(height: Msg.s1),
-                      Text('${day.day}', style: _value(16)),
+                      Text('${day.day}', style: calValue(16)),
                       const SizedBox(height: Msg.s2),
-                      Text('${_availableCount(day) ?? 0} open',
+                      Text(
+                          weekAvailabilityLabel(
+                              availableCount: _availableCount(day),
+                              listingSelected: listingSelected),
                           style: ADText.statCaption(c: AD.textSecondary)),
                       const SizedBox(height: Msg.s2),
-                      ..._slotsOnDay(day).take(4).map((slot) => Padding(
+                      ..._onDay(day).take(3).map((block) => Padding(
                           padding: const EdgeInsets.only(bottom: 3),
-                          child: Text(_hm(_scheduleTime(slot.startAt)),
-                              style: ADText.statCaption(
-                                  c: slot.available
-                                      ? AD.online
-                                      : AD.textTertiary)))),
-                      if (_slotsOnDay(day).isEmpty)
-                        Text('—', style: ADText.statCaption(c: AD.textFaint)),
+                          child: Text(
+                              '${_hm(_scheduleTime(DateTime.fromMillisecondsSinceEpoch(block.startsAt)))} ${styleFor(block.sourceApp).label}',
+                              textAlign: TextAlign.center,
+                              style: ADText.statCaption(c: AD.textSecondary)))),
+                      if (_onDay(day).isEmpty)
+                        Text('No commitments',
+                            textAlign: TextAlign.center,
+                            style: ADText.statCaption(c: AD.textFaint)),
                     ]))),
           ))
       ]),
       const SizedBox(height: Msg.s3),
       Text(
-          'Tap a day to inspect its bookings and exceptions. Long press in Month view to edit a date.',
-          style: _sub(12)),
+          'Tap a day to inspect it, long press to change its hours. '
+          '${availabilityHint(listingSelected: listingSelected)}',
+          style: calSub(12)),
     ]);
   }
 
-  String _hm(DateTime date) =>
-      '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-
-  DateTime _scheduleTime(DateTime instant) => AvailabilityTime.inTimezone(
-      instant, _schedule?.timezone ?? _availability?.timezone ?? 'UTC');
-
-  Widget _agendaPanel({bool compact = false}) {
+  // ── Agenda (A4: rendered exactly once) ───────────────────────────────────
+  Widget _agendaPanel() {
     final blocks = _onDay(_selected);
     final slots = _slotsOnDay(_selected);
-    final exception = _exceptionOnDay(_selected);
-    final monthName = const [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec'
-    ][_selected.month - 1];
+    final exceptions = _exceptionsFor(_selected);
+    final listingSelected = _selectedListingId != null;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      if (!compact) ...[
-        Row(children: [
-          Expanded(child: Text('Agenda', style: _title(19))),
-          ZineLink('Edit date', onTap: () => _editException(_selected))
-        ]),
-        const SizedBox(height: Msg.s1),
-      ],
-      Text('${_selected.day} $monthName ${_selected.year}',
-          style: ADText.sectionLabel()),
-      if (exception != null) ...[
-        const SizedBox(height: Msg.s2),
-        _exceptionBadge(exception)
-      ],
+      Row(children: [
+        Expanded(
+            child: Text(
+                calendarRangeLabel(
+                    view: CalendarView.agenda, month: _month, selected: _selected),
+                style: calTitle(19))),
+        ZineLink('Edit day', onTap: () => _openDayEditor(_selected)),
+      ]),
+      const SizedBox(height: Msg.s1),
+      calendarTimezoneNote(_timezone,
+          deviceNote: 'your device is ${DateTime.now().timeZoneName}'),
+      const SizedBox(height: Msg.s3),
+      Text('Hours for this day', style: calTitle(15)),
+      const SizedBox(height: Msg.s2),
+      if (exceptions.isEmpty)
+        Text('Your usual working hours apply.', style: calSub(13))
+      else
+        ...exceptions.map(_exceptionRow),
+      const SizedBox(height: Msg.s2),
+      Wrap(spacing: Msg.s2, runSpacing: Msg.s2, children: [
+        ZineLink("Add another time", onTap: () => _openDayEditor(_selected)),
+        if (exceptions.isNotEmpty)
+          ZineLink('Use normal hours',
+              underline: AD.textSecondary,
+              onTap: () => _saveDayExceptions(
+                  day: _selected, dayExceptions: const [], scopeListingId: _schedule?.listingId)),
+      ]),
       const SizedBox(height: Msg.s3),
       if (blocks.isNotEmpty) ...[
-        Text('Bookings & blocks', style: _title(15)),
+        Text('Commitments', style: calTitle(15)),
         const SizedBox(height: Msg.s2),
         ...blocks.map(_blockCard),
       ],
       if (slots.isNotEmpty) ...[
-        const SizedBox(height: Msg.s2),
-        Text('Bookable slots', style: _title(15)),
+        Text('Bookable slots', style: calTitle(15)),
         const SizedBox(height: Msg.s2),
         ...slots.map(_slotCard),
       ],
-      if (blocks.isEmpty && slots.isEmpty) _emptyAgenda(),
+      if (blocks.isEmpty && slots.isEmpty)
+        _emptyAgenda(listingSelected: listingSelected),
+      if (!listingSelected) ...[
+        const SizedBox(height: Msg.s2),
+        Text(availabilityHint(listingSelected: false), style: calSub(12)),
+      ],
     ]);
+  }
+
+  Widget _exceptionRow(AvailabilityException exception) {
+    final range = exception.isAllDay || exception.looksLikeMidnightToMidnight
+        ? 'All day'
+        : minutesRangeLabel(exception.startMin, exception.endMin);
+    final label = switch (exception.status) {
+      AvailabilityExceptionStatus.available => "I'm available",
+      AvailabilityExceptionStatus.unavailable => "I'm busy",
+      AvailabilityExceptionStatus.reserved =>
+        'Kept for ${_listingTitle(exception.listingId)}',
+    };
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Msg.s2),
+      child: ZineCard(
+        radius: Msg.rMd,
+        boxShadow: Msg.none,
+        padding:
+            const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
+        child: Row(children: [
+          Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Text('$label · $range', style: calValue(14)),
+              ])),
+          ZineLink('Edit', onTap: () => _editSingleException(exception)),
+          const SizedBox(width: Msg.s2),
+          calendarIconAction(
+            icon: PhosphorIcons.trash(PhosphorIconsStyle.regular),
+            color: AD.danger,
+            tooltip: 'Remove this interval',
+            onTap: () => _saveDayExceptions(
+                day: _selected,
+                dayExceptions:
+                    removeException(_exceptionsFor(_selected), exception.id),
+                scopeListingId: _schedule?.listingId),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _emptyAgenda({required bool listingSelected}) {
+    if (_loading) {
+      return const Padding(
+          padding: EdgeInsets.all(Msg.s5),
+          child: Center(child: CircularProgressIndicator(color: Msg.accent)));
+    }
+    if (_schedule == null) {
+      return calendarMessageCard(
+          'Working hours are not configured yet. Add them in Availability settings to show bookable slots.',
+          PhosphorIcons.clock(PhosphorIconsStyle.regular),
+          AD.textSecondary);
+    }
+    return calendarMessageCard(
+        listingSelected
+            ? 'No bookings, blocks or exceptions are shown for this day.'
+            : 'No bookings or blocks are shown for this day. Availability is unknown until a listing is selected.',
+        PhosphorIcons.calendarCheck(PhosphorIconsStyle.regular),
+        AD.textSecondary);
   }
 
   Widget _blockCard(CalBlock block) {
     final style = styleFor(block.sourceApp);
-    final isBooking = block.sourceApp == 'avabooking';
+    final statusLabel = blockStatusLabel(block);
     return Padding(
       padding: const EdgeInsets.only(bottom: Msg.s2),
       child: ZineCard(
@@ -648,8 +872,17 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
           title: block.title ?? style.label,
           startsAt: block.startsAt,
           endsAt: block.endsAt,
-          bookingId: isBooking ? block.sourceRef : null,
-          status: isBooking ? 'confirmed' : null,
+          // Legacy AvaBooking rows keep their booking id; modern unified
+          // reservations use the canonical booking_id the server resolved.
+          bookingId: block.bookingId ??
+              (block.sourceApp == 'avabooking' ? block.sourceRef : null),
+          status: block.bookingStatus ??
+              (block.sourceApp == 'avabooking' ? 'confirmed' : null),
+          statusLabel: statusLabel,
+          listingId: block.listingId,
+          bookingKind: block.bookingKind,
+          timezone: _timezone,
+          ownedListingIds: {for (final listing in _listings) listing.id},
           onChanged: _refresh,
         ),
         child: Row(children: [
@@ -662,13 +895,15 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                 Text(
-                    '${fmtRange(block.startsAt, block.endsAt)} · ${style.label}',
+                    '${blockTimeLabel(startMs: block.startsAt, endMs: block.endsAt, timezone: _timezone)} · ${style.label}',
                     style: ADText.sectionLabel()),
                 const SizedBox(height: 2),
                 Text(block.title ?? style.label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: _value(14)),
+                    style: calValue(14)),
+                const SizedBox(height: 2),
+                Text(statusLabel, style: ADText.statCaption(c: AD.textSecondary)),
               ])),
           PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.regular),
               size: 16, color: AD.textSecondary),
@@ -698,54 +933,13 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
           Expanded(
               child: Text(
                   '${_hm(_scheduleTime(slot.startAt))}–${_hm(_scheduleTime(slot.endAt))}',
-                  style: _value(14))),
+                  style: calValue(14))),
           Text(free ? 'Open' : (slot.reason ?? 'Unavailable'),
               style: ADText.statCaption(c: free ? AD.online : AD.textTertiary)),
         ]),
       ),
     );
   }
-
-  Widget _emptyAgenda() {
-    if (_loading)
-      return const Padding(
-          padding: EdgeInsets.all(Msg.s5),
-          child: Center(child: CircularProgressIndicator(color: Msg.accent)));
-    if (_schedule == null)
-      return _messageCard(
-          'Working hours are not configured yet. Add them in Settings to show bookable slots.',
-          PhosphorIcons.clock(PhosphorIconsStyle.regular),
-          AD.textSecondary);
-    return _messageCard(
-        'Nothing is scheduled for this day.',
-        PhosphorIcons.calendarCheck(PhosphorIconsStyle.regular),
-        AD.textSecondary);
-  }
-
-  Widget _exceptionBadge(AvailabilityException exception) {
-    final label = switch (exception.status) {
-      AvailabilityExceptionStatus.available => 'Date opened manually',
-      AvailabilityExceptionStatus.unavailable => 'Blocked for this date',
-      AvailabilityExceptionStatus.reserved =>
-        'Reserved for ${_listingTitle(exception.listingId)}',
-    };
-    return ZineSticker(label,
-        kind: exception.status == AvailabilityExceptionStatus.available
-            ? ZineStickerKind.ok
-            : ZineStickerKind.no);
-  }
-
-  Widget _messageCard(String message, IconData icon, Color color) => ZineCard(
-        radius: Msg.rMd,
-        boxShadow: Msg.none,
-        padding: const EdgeInsets.all(Msg.s3),
-        borderColor: color,
-        child: Row(children: [
-          PhosphorIcon(icon, size: 20, color: color),
-          const SizedBox(width: Msg.s2),
-          Expanded(child: Text(message, style: _sub(13, c: color)))
-        ]),
-      );
 
   Widget _legend() => Wrap(spacing: Msg.s3, runSpacing: Msg.s2, children: [
         _legendItem(AD.online, 'Open'),
@@ -760,6 +954,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
         const SizedBox(width: Msg.s1),
         Text(label, style: ADText.statCaption(c: AD.textSecondary))
       ]);
+
   Widget _dot(Color color) => Container(
       width: 7,
       height: 7,
@@ -771,664 +966,201 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
         AvailabilityExceptionStatus.reserved => Msg.accent,
       };
 
-  String _listingTitle(String? id) {
-    if (id == null) return 'this listing';
-    for (final listing in _listings) {
-      if (listing.id == id) return listing.title;
-    }
-    return 'this listing';
+  String _hm(DateTime date) => hm(date);
+
+  // ── Day editing (findings 2, 3, A8) ──────────────────────────────────────
+  Future<void> _openDayEditor(DateTime day, {bool startBlocked = false}) async {
+    final result = await showCalendarDayEditor(
+      context,
+      day: day,
+      timezone: _schedule?.timezone ?? _availability?.timezone,
+      exceptions: _exceptionsFor(day),
+      listings: _listings
+          .where((listing) =>
+              _selectedListingId == null || listing.id == _selectedListingId)
+          .toList(),
+      selectedListingId: _selectedListingId,
+      startBlocked: startBlocked,
+    );
+    if (result == null || !mounted) return;
+    await _applyDayEdit(day, result);
   }
 
-  bool _sameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
-
-  Future<void> _editException(DateTime day) async {
-    final result = await showDialog<AvailabilityException>(
-        context: context,
-        builder: (_) => _ExceptionDialog(
-            day: day, initial: _exceptionOnDay(day), listings: _listings.where((l)=>_selectedListingId==null || l.id==_selectedListingId).toList()));
-    if (result == null || _schedule == null) return;
-    final exceptions = [..._schedule!.exceptions]
-      ..removeWhere((e) => e.date == _dateKey(day) && e.id == _exceptionOnDay(day)?.id);
-    exceptions.add(result);
-    try {
-      final saved = await AvailabilityApi.saveSchedule(
-          _schedule!.copyWith(exceptions: exceptions));
-      if (!mounted) return;
-      setState(() {
-        _schedule = saved;
-        _error = null;
-      });
-      await _loadData(showBusy: false);
-    } catch (e) {
-      if (mounted) setState(() => _error = _friendlyError(e));
-    }
-  }
-}
-
-class _ExceptionDialog extends StatefulWidget {
-  final DateTime day;
-  final AvailabilityException? initial;
-  final List<ListingCard> listings;
-  const _ExceptionDialog(
-      {required this.day, required this.initial, required this.listings});
-  @override
-  State<_ExceptionDialog> createState() => _ExceptionDialogState();
-}
-
-class _ExceptionDialogState extends State<_ExceptionDialog> {
-  late AvailabilityExceptionStatus _status;
-  late TimeOfDay _start;
-  late TimeOfDay _end;
-  String? _listingId;
-
-  @override
-  void initState() {
-    super.initState();
-    final initial = widget.initial;
-    _status = initial?.status ?? AvailabilityExceptionStatus.unavailable;
-    _start = TimeOfDay(
-        hour: (initial?.startMin ?? 0) ~/ 60,
-        minute: (initial?.startMin ?? 0) % 60);
-    _end = TimeOfDay(
-        hour: ((initial?.endMin ?? 1440) ~/ 60) % 24,
-        minute: (initial?.endMin ?? 1440) % 60);
-    _listingId = initial?.listingId;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final title = '${widget.day.day} ${const [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec'
-    ][widget.day.month - 1]}';
-    return AlertDialog(
-      backgroundColor: AD.card,
-      shape: RoundedRectangleBorder(
-          borderRadius: Msg.brLg,
-          side: const BorderSide(color: AD.borderControl, width: 1)),
-      title: Text('Date exception · $title', style: _title(17)),
-      content: SingleChildScrollView(
-          child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-            Text('Choose what this date means for the shared creator resource.',
-                style: _sub(13)),
-            const SizedBox(height: Msg.s3),
-            Wrap(spacing: Msg.s2, runSpacing: Msg.s2, children: [
-              ZineChip(
-                  label: 'Available',
-                  active: _status == AvailabilityExceptionStatus.available,
-                  onTap: () => setState(
-                      () => _status = AvailabilityExceptionStatus.available)),
-              ZineChip(
-                  label: 'Unavailable',
-                  active: _status == AvailabilityExceptionStatus.unavailable,
-                  onTap: () => setState(
-                      () => _status = AvailabilityExceptionStatus.unavailable)),
-              ZineChip(
-                  label: 'Reserved',
-                  active: _status == AvailabilityExceptionStatus.reserved,
-                  onTap: () => setState(
-                      () => _status = AvailabilityExceptionStatus.reserved)),
-            ]),
-            const SizedBox(height: Msg.s3),
-            Row(children: [
-              Expanded(
-                  child: _timeTile('From', _start,
-                      (value) => setState(() => _start = value))),
-              const SizedBox(width: Msg.s2),
-              Expanded(
-                  child: _timeTile(
-                      'To', _end, (value) => setState(() => _end = value)))
-            ]),
-            if (_status == AvailabilityExceptionStatus.reserved &&
-                widget.listings.isNotEmpty) ...[
-              const SizedBox(height: Msg.s3),
-              ZineDropdown<String>(
-                  label: 'Reserved listing',
-                  value: _listingId,
-                  hint: 'Choose a listing',
-                  items: widget.listings
-                      .map((listing) => DropdownMenuItem(
-                          value: listing.id, child: Text(listing.title)))
-                      .toList(),
-                  onChanged: (value) => setState(() => _listingId = value)),
-            ],
-          ])),
-      actions: [
-        TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: _link)),
-        ZineButton(
-            label: 'Save exception',
-            variant: ZineButtonVariant.blue,
-            fontSize: 14,
-            onPressed: () {
-              Navigator.pop(
-                  context,
-                  AvailabilityException(
-                      id: widget.initial?.id ?? '',
-                      date:
-                          '${widget.day.year.toString().padLeft(4, '0')}-${widget.day.month.toString().padLeft(2, '0')}-${widget.day.day.toString().padLeft(2, '0')}',
-                      startMin: _start.hour * 60 + _start.minute,
-                      endMin: _end.hour == 0 && _end.minute == 0 ? 1440 : _end.hour * 60 + _end.minute,
-                      status: _status,
-                      listingId: _status == AvailabilityExceptionStatus.reserved
-                          ? _listingId
-                          : null));
-            }),
-      ],
+  Future<void> _editSingleException(AvailabilityException exception) async {
+    final day = _selected;
+    final updated = await showCalendarExceptionDialog(
+      context,
+      day: day,
+      initial: exception,
+      defaultStatus: exception.status,
+      listings: _listings,
+      defaultListingId: exception.listingId ?? _selectedListingId,
+      timezone: _timezone,
+    );
+    if (updated == null || !mounted) return;
+    await _saveDayExceptions(
+      day: day,
+      dayExceptions: upsertException(_exceptionsFor(day), updated,
+          replacingId: exception.id),
+      scopeListingId: _schedule?.listingId,
     );
   }
 
-  Widget _timeTile(
-          String label, TimeOfDay value, ValueChanged<TimeOfDay> onChanged) =>
-      ZineCard(
-          radius: Msg.rMd,
-          boxShadow: Msg.none,
-          padding:
-              const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
-          onTap: () async {
-            final next =
-                await showTimePicker(context: context, initialTime: value);
-            if (next != null) onChanged(next);
-          },
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(label, style: ADText.sectionLabel()),
-            const SizedBox(height: 2),
-            Text(value.format(context), style: _value(15))
-          ]));
-}
-
-class CalendarSettingsScreen extends StatefulWidget {
-  const CalendarSettingsScreen({super.key});
-  @override
-  State<CalendarSettingsScreen> createState() => _CalendarSettingsScreenState();
-}
-
-class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
-  AvailabilitySchedule? _schedule;
-  bool? _gcalConnected;
-  bool _loading = true;
-  bool _saving = false;
-  String? _error;
-  static const _days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final cached = await AvailabilityApi.cachedSchedule();
-    if (mounted && cached != null)
-      setState(() {
-        _schedule = cached.value;
-        _loading = false;
-      });
-    try {
-      final results = await Future.wait<dynamic>(
-          [AvailabilityApi.fetchSchedule(), PlatformApi.gcalStatus()]);
-      if (!mounted) return;
-      setState(() {
-        _schedule = results[0] as AvailabilitySchedule;
-        _gcalConnected =
-            (results[1] as Map<String, dynamic>)['connected'] == true;
-        _loading = false;
-        _error = null;
-      });
-    } catch (e) {
-      if (mounted)
-        setState(() {
-          _loading = false;
-          _error = e is AvailabilityApiException
-              ? e.message
-              : 'Settings could not be refreshed.';
-        });
+  Future<void> _applyDayEdit(DateTime day, CalendarDayEditResult result) async {
+    var schedule = _schedule;
+    if (schedule == null) return;
+    final scopeListingId = result.scopeListingId;
+    if (schedule.listingId != scopeListingId) {
+      // Scope and filter are separate (finding 9): blocking "All listings"
+      // while a listing is filtered must write the creator-wide schedule.
+      try {
+        final shared = await AvailabilityApi.fetchSchedule();
+        if (shared.listingId != scopeListingId) {
+          if (mounted) {
+            setState(() => _error =
+                'That schedule scope could not be loaded. Pull to refresh and try again.');
+          }
+          return;
+        }
+        schedule = shared;
+      } catch (e) {
+        if (mounted) setState(() => _error = _friendlyError(e));
+        return;
+      }
     }
-  }
 
-  @override
-  Widget build(BuildContext context) {
-    final schedule = _schedule;
-    return Scaffold(
-      backgroundColor: AD.bg,
-      appBar: const ZineAppBar(
-          title: 'Availability settings',
-          markWord: 'settings',
-          tag: 'Calendar & availability'),
-      body: LayoutBuilder(builder: (context, constraints) {
-        final max = constraints.maxWidth >= 760 ? 820.0 : double.infinity;
-        return ListView(padding: const EdgeInsets.all(Msg.s4), children: [
-          Center(
-              child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: max),
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                            'Set the hours buyers can request. AvaTOK remains the authority for conflicts, holds and confirmed bookings.',
-                            style: _sub(14)),
-                        if (_error != null) ...[
-                          const SizedBox(height: Msg.s3),
-                          _settingsMessage(_error!)
-                        ],
-                        const SizedBox(height: Msg.s4),
-                        _googleCard(),
-                        const SizedBox(height: Msg.s4),
-                        if (_loading && schedule == null)
-                          const Center(
-                              child: Padding(
-                                  padding: EdgeInsets.all(Msg.s5),
-                                  child: CircularProgressIndicator(
-                                      color: Msg.accent)))
-                        else if (schedule != null) ...[
-                          _hoursCard(schedule),
-                          const SizedBox(height: Msg.s4),
-                          _policyCard(schedule)
-                        ],
-                      ])))
-        ]);
-      }),
-    );
-  }
-
-  Widget _googleCard() => ZineCard(
-      radius: Msg.rLg,
-      padding: const EdgeInsets.all(Msg.s4),
-      child: Row(children: [
-        ZineIconBadge(
-            icon: PhosphorIcons.googleLogo(PhosphorIconsStyle.regular),
-            color: AD.familyByName('sky').solid),
-        const SizedBox(width: Msg.s3),
-        Expanded(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Google Calendar', style: _title(16)),
-          const SizedBox(height: 2),
-          Text(
-              _gcalConnected == null
-                  ? 'Checking…'
-                  : _gcalConnected!
-                      ? 'Connected — busy events are imported'
-                      : 'Not connected',
-              style: _sub(13))
-        ])),
-        if (_gcalConnected == true)
-          ZineLink('Disconnect',
-              underline: AD.danger, fontSize: 12, onTap: _disconnectGcal)
-        else
-          ZineButton(
-              label: 'Connect',
-              variant: ZineButtonVariant.blue,
-              fontSize: 14,
-              onPressed: _connectGcal),
-      ]));
-
-  Widget _hoursCard(AvailabilitySchedule schedule) => ZineCard(
-      radius: Msg.rLg,
-      padding: const EdgeInsets.all(Msg.s4),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                Text('Working hours', style: _title(17)),
-                const SizedBox(height: 2),
-                Text('${schedule.timezone} · ${_modeLabel(schedule.mode)}',
-                    style: _sub(13))
-              ])),
-          ZineButton(
-              label: 'Add hours',
-              variant: ZineButtonVariant.ghost,
-              fontSize: 13,
-              icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
-              onPressed: _addRule)
-        ]),
-        const SizedBox(height: Msg.s3),
-        if (schedule.rules.isEmpty)
-          Text(
-              'No working hours yet. Add a weekday range to make the schedule bookable.',
-              style: _sub(13))
-        else
-          ...schedule.rules
-              .asMap()
-              .entries
-              .map((entry) => _ruleRow(entry.key, entry.value)),
-        const SizedBox(height: Msg.s3),
-        _settingLine(
-            'Timezone',
-            schedule.timezone,
-            () => _editText('Timezone', schedule.timezone,
-                (value) => _save(schedule.copyWith(timezone: value)))),
-        _settingLine(
-            'Slot duration',
-            '${schedule.durationMin} min',
-            () => _editNumber('Slot duration', schedule.durationMin,
-                (value) => _save(schedule.copyWith(durationMin: value)))),
-        _settingLine(
-            'Slot interval',
-            '${schedule.slotIntervalMin} min',
-            () => _editNumber('Slot interval', schedule.slotIntervalMin,
-                (value) => _save(schedule.copyWith(slotIntervalMin: value)))),
-      ]));
-
-  Widget _policyCard(AvailabilitySchedule schedule) => ZineCard(
-      radius: Msg.rLg,
-      padding: const EdgeInsets.all(Msg.s4),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Booking policy', style: _title(17)),
-        const SizedBox(height: Msg.s2),
-        Text('These limits are shared by every listing owned by this creator.',
-            style: _sub(13)),
-        const SizedBox(height: Msg.s3),
-        _settingLine(
-            'Buffer between sessions',
-            '${schedule.bufferMin} min',
-            () => _editNumber('Buffer between sessions', schedule.bufferMin,
-                (value) => _save(schedule.copyWith(bufferMin: value)))),
-        _settingLine(
-            'Minimum notice',
-            '${schedule.minNoticeMin} min',
-            () => _editNumber('Minimum notice', schedule.minNoticeMin,
-                (value) => _save(schedule.copyWith(minNoticeMin: value)))),
-        _settingLine(
-            'Maximum per day',
-            schedule.maxPerDay == 0 ? 'No limit' : '${schedule.maxPerDay}',
-            () => _editNumber(
-                'Maximum per day (0 = no limit)',
-                schedule.maxPerDay,
-                (value) => _save(schedule.copyWith(maxPerDay: value)))),
-        _settingLine(
-            'Booking horizon',
-            '${schedule.horizonDays} days',
-            () => _editNumber('Booking horizon', schedule.horizonDays,
-                (value) => _save(schedule.copyWith(horizonDays: value)))),
-        const SizedBox(height: Msg.s2),
-        Text('Schedule mode', style: ADText.sectionLabel()),
-        const SizedBox(height: Msg.s2),
-        Wrap(spacing: Msg.s2, children: [
-          for (final mode in AvailabilityMode.values)
-            ZineChip(
-                label: _modeLabel(mode),
-                active: schedule.mode == mode,
-                onTap: () => _save(schedule.copyWith(mode: mode)))
-        ]),
-      ]));
-
-  Widget _ruleRow(int index, AvailabilityRule rule) => Padding(
-      padding: const EdgeInsets.only(bottom: Msg.s2),
-      child: ZineCard(
-          radius: Msg.rMd,
-          boxShadow: Msg.none,
-          padding:
-              const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
-          child: Row(children: [
-            Expanded(
-                child: Text(
-                    '${_days[(rule.weekday + 7) % 7]}  ${_hmMinutes(rule.startMin)}–${_hmMinutes(rule.endMin)}',
-                    style: _value(14))),
-            GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  final next = [...?_schedule?.rules]..removeAt(index);
-                  _save(_schedule!.copyWith(rules: next));
-                },
-                child: Padding(
-                    padding: const EdgeInsets.all(Msg.s1),
-                    child: PhosphorIcon(
-                        PhosphorIcons.trash(PhosphorIconsStyle.regular),
-                        size: 18,
-                        color: AD.danger))),
-          ])));
-
-  Widget _settingLine(String label, String value, VoidCallback onTap) =>
-      ListTile(
-          contentPadding: EdgeInsets.zero,
-          title: Text(label, style: _sub(14)),
-          trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-            Text(value, style: _value(14)),
-            const SizedBox(width: Msg.s2),
-            PhosphorIcon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.regular),
-                size: 17, color: AD.textSecondary)
-          ]),
-          onTap: onTap);
-  Widget _settingsMessage(String text) => _calendarMessageCard(
-      text, PhosphorIcons.warningCircle(PhosphorIconsStyle.regular), AD.danger);
-
-  Future<void> _save(AvailabilitySchedule value) async {
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
-    try {
-      final saved = await AvailabilityApi.saveSchedule(value);
-      if (mounted)
-        setState(() {
-          _schedule = saved;
-          _saving = false;
-        });
-    } catch (e) {
-      if (mounted)
-        setState(() {
-          _saving = false;
-          _error = e is AvailabilityApiException
-              ? e.message
-              : 'Could not save availability.';
-        });
+    var exceptions = replaceDateExceptions(
+        schedule.exceptions, dateKey(day), result.exceptions);
+    if (result.hasHolidayRange) {
+      final confirmed = await _confirmHolidayRange(result);
+      if (confirmed != true || !mounted) return;
+      final additions = holidayRangeExceptions(
+        from: result.holidayFrom!,
+        to: result.holidayTo!,
+      ).where((row) => row.date != dateKey(day)).toList(growable: false);
+      exceptions = mergeExceptions(exceptions, additions);
     }
-  }
-
-  Future<void> _addRule() async {
-    final result = await showDialog<AvailabilityRule>(
-        context: context, builder: (_) => const _RuleDialog());
-    if (result != null && _schedule != null)
-      await _save(_schedule!.copyWith(rules: [..._schedule!.rules, result]));
-  }
-
-  Future<void> _editNumber(
-      String label, int value, ValueChanged<int> onSave) async {
-    final controller = TextEditingController(text: '$value');
-    final result = await showDialog<int>(
-        context: context,
-        builder: (_) => AlertDialog(
-                backgroundColor: AD.card,
-                shape: RoundedRectangleBorder(
-                    borderRadius: Msg.brLg,
-                    side: const BorderSide(color: AD.borderControl)),
-                title: Text(label, style: _title(17)),
-                content: ZineField(
-                    controller: controller,
-                    keyboardType: TextInputType.number,
-                    autofocus: true),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: Text('Cancel', style: _link)),
-                  ZineButton(
-                      label: 'Save',
-                      variant: ZineButtonVariant.blue,
-                      fontSize: 14,
-                      onPressed: () =>
-                          Navigator.pop(context, int.tryParse(controller.text)))
-                ]));
-    if (result != null && result >= 0) onSave(result);
-  }
-
-  Future<void> _editText(
-      String label, String value, ValueChanged<String> onSave) async {
-    final controller = TextEditingController(text: value);
-    final result = await showDialog<String>(
-        context: context,
-        builder: (_) => AlertDialog(
-                backgroundColor: AD.card,
-                shape: RoundedRectangleBorder(
-                    borderRadius: Msg.brLg,
-                    side: const BorderSide(color: AD.borderControl)),
-                title: Text(label, style: _title(17)),
-                content: ZineField(controller: controller, autofocus: true),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: Text('Cancel', style: _link)),
-                  ZineButton(
-                      label: 'Save',
-                      variant: ZineButtonVariant.blue,
-                      fontSize: 14,
-                      onPressed: () =>
-                          Navigator.pop(context, controller.text.trim()))
-                ]));
-    if (result != null && result.isNotEmpty) onSave(result);
-  }
-
-  String _hmMinutes(int minutes) =>
-      '${(minutes ~/ 60).toString().padLeft(2, '0')}:${(minutes % 60).toString().padLeft(2, '0')}';
-  String _modeLabel(AvailabilityMode mode) => switch (mode) {
-        AvailabilityMode.shared => 'Shared',
-        AvailabilityMode.custom => 'Custom',
-        AvailabilityMode.exclusive => 'Exclusive'
-      };
-
-  Future<void> _connectGcal() async {
-    final result = await PlatformApi.gcalConnect();
-    final url = result['url'] as String?;
-    if (url == null) {
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(result['error']?.toString() ??
-                'Google sync is not configured yet.')));
+    final tooMany = validateExceptionCount(exceptions.length);
+    if (tooMany != null) {
+      if (mounted) setState(() => _error = tooMany);
       return;
     }
-    try {
-      await FlutterWebAuth2.authenticate(
-          url: url, callbackUrlScheme: 'avatokauth');
-      await _load();
-    } on PlatformException catch (error) {
-      if (error.code == 'CANCELED' || error.code == 'CANCELLED') return;
-      AvaLog.I
-          .log('gcal', 'web auth failed (${error.code}); falling back to tab');
-      try {
-        final opened =
-            await launchUrl(Uri.parse(url), mode: LaunchMode.inAppBrowserView);
-        if (opened && mounted)
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Finish in Google, then refresh this page.')));
-      } catch (_) {}
-    } catch (error) {
-      Analytics.error(
-          domain: 'calendar',
-          code: 'gcal_connect_failed',
-          message: error.toString(),
-          screen: 'calendar_settings',
-          action: 'connect');
-    }
+    await _persistExceptions(schedule, exceptions, day);
   }
 
-  Future<void> _disconnectGcal() async {
-    try {
-      await PlatformApi.gcalDisconnect();
-      await _load();
-    } catch (_) {
-      if (mounted)
-        setState(() => _error = 'Google Calendar could not be disconnected.');
-    }
-  }
-}
-
-class _RuleDialog extends StatefulWidget {
-  const _RuleDialog();
-  @override
-  State<_RuleDialog> createState() => _RuleDialogState();
-}
-
-class _RuleDialogState extends State<_RuleDialog> {
-  int _weekday = 1;
-  TimeOfDay _start = const TimeOfDay(hour: 9, minute: 0);
-  TimeOfDay _end = const TimeOfDay(hour: 17, minute: 0);
-
-  @override
-  Widget build(BuildContext context) => AlertDialog(
+  /// Adding a range can touch days that already hold confirmed appointments:
+  /// list them and make it explicit that AvaTOK will not cancel anything.
+  Future<bool?> _confirmHolidayRange(CalendarDayEditResult result) {
+    final from = dayBoundsUtcMs(result.holidayFrom!, _timezone)?.from ??
+        DateTime.utc(result.holidayFrom!.year, result.holidayFrom!.month,
+                result.holidayFrom!.day)
+            .millisecondsSinceEpoch;
+    final to = dayBoundsUtcMs(result.holidayTo!, _timezone)?.to ??
+        DateTime.utc(result.holidayTo!.year, result.holidayTo!.month,
+                result.holidayTo!.day + 1)
+            .millisecondsSinceEpoch;
+    final affected = _blocks
+        .where((block) => block.startsAt < to && block.endsAt > from)
+        .toList(growable: false);
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
         backgroundColor: AD.card,
         shape: RoundedRectangleBorder(
             borderRadius: Msg.brLg,
             side: const BorderSide(color: AD.borderControl)),
-        title: Text('Add working hours', style: _title(17)),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          ZineDropdown<int>(
-              value: _weekday,
-              items: List.generate(
-                  7,
-                  (index) => DropdownMenuItem(
-                      value: index,
-                      child: Text(const [
-                        'Sun',
-                        'Mon',
-                        'Tue',
-                        'Wed',
-                        'Thu',
-                        'Fri',
-                        'Sat'
-                      ][index]))),
-              onChanged: (value) => setState(() => _weekday = value ?? 1)),
-          const SizedBox(height: Msg.s3),
-          Row(children: [
-            Expanded(
-                child: _timeTile(
-                    'From', _start, (value) => setState(() => _start = value))),
-            const SizedBox(width: Msg.s2),
-            Expanded(
-                child: _timeTile(
-                    'To', _end, (value) => setState(() => _end = value)))
-          ]),
-        ]),
+        title: Text('Block this range?', style: calTitle(17)),
+        content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                  '${result.holidayFrom!.day} ${monthShort(result.holidayFrom!)} – '
+                  '${result.holidayTo!.day} ${monthShort(result.holidayTo!)} will be blocked across '
+                  '${result.scopeListingId == null ? 'all your listings' : _listingTitle(result.scopeListingId)}.',
+                  style: calSub(13)),
+              if (affected.isEmpty) ...[
+                const SizedBox(height: Msg.s3),
+                Text('No existing commitments fall inside this range.',
+                    style: calSub(13)),
+              ] else ...[
+                const SizedBox(height: Msg.s3),
+                Text(
+                    '${affected.length} existing commitment(s) fall inside this range:',
+                    style: calValue(13)),
+                const SizedBox(height: Msg.s2),
+                ...affected.take(6).map((block) => Text(
+                    '· ${fmtDate(block.startsAt)} ${blockTimeLabel(startMs: block.startsAt, endMs: block.endsAt, timezone: _timezone)} ${styleFor(block.sourceApp).label}',
+                    style: calSub(12))),
+                const SizedBox(height: Msg.s2),
+                Text(
+                    'AvaTOK never cancels a confirmed booking automatically. Reschedule or cancel each one individually.',
+                    style: calSub(12, c: AD.danger)),
+              ],
+            ]),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text('Cancel', style: _link)),
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text('Back', style: calLinkStyle)),
           ZineButton(
-              label: 'Add hours',
+              label: 'Block range',
               variant: ZineButtonVariant.blue,
               fontSize: 14,
-              onPressed: () => Navigator.pop(
-                  context,
-                  AvailabilityRule(
-                      weekday: _weekday,
-                      startMin: _start.hour * 60 + _start.minute,
-                      endMin: _end.hour * 60 + _end.minute)))
+              onPressed: () => Navigator.pop(dialogContext, true)),
         ],
-      );
+      ),
+    );
+  }
 
-  Widget _timeTile(
-          String label, TimeOfDay value, ValueChanged<TimeOfDay> onChanged) =>
-      ZineCard(
-          radius: Msg.rMd,
-          boxShadow: Msg.none,
-          padding:
-              const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
-          onTap: () async {
-            final next =
-                await showTimePicker(context: context, initialTime: value);
-            if (next != null) onChanged(next);
-          },
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(label, style: ADText.sectionLabel()),
-            const SizedBox(height: 2),
-            Text(value.format(context), style: _value(14))
-          ]));
+  Future<void> _saveDayExceptions({
+    required DateTime day,
+    required List<AvailabilityException> dayExceptions,
+    String? scopeListingId,
+  }) async {
+    final schedule = _schedule;
+    if (schedule == null) return;
+    if (schedule.listingId != scopeListingId) {
+      await _applyDayEdit(
+        day,
+        CalendarDayEditResult(
+            exceptions: dayExceptions, scopeListingId: scopeListingId),
+      );
+      return;
+    }
+    final exceptions =
+        replaceDateExceptions(schedule.exceptions, dateKey(day), dayExceptions);
+    final tooMany = validateExceptionCount(exceptions.length);
+    if (tooMany != null) {
+      if (mounted) setState(() => _error = tooMany);
+      return;
+    }
+    await _persistExceptions(schedule, exceptions, day);
+  }
+
+  Future<void> _persistExceptions(AvailabilitySchedule schedule,
+      List<AvailabilityException> exceptions, DateTime day) async {
+    try {
+      final saved =
+          await AvailabilityApi.saveSchedule(schedule.copyWith(exceptions: exceptions));
+      if (!mounted) return;
+      if (saved.listingId == _selectedListingId) {
+        setState(() {
+          _schedule = saved;
+          _error = null;
+        });
+      } else {
+        setState(() => _error = null);
+      }
+      await _loadData(showBusy: false);
+      if (!mounted) return;
+      final scope = saved.listingId == null
+          ? 'all your listings'
+          : _listingTitle(saved.listingId);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              'Saved — ${day.day} ${monthShort(day)} now follows these hours for $scope.')));
+    } catch (e) {
+      if (mounted) setState(() => _error = _friendlyError(e));
+    }
+  }
 }

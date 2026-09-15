@@ -1,7 +1,32 @@
 import 'dart:convert';
 
+import 'package:http/http.dart' as http;
+
 import 'api_auth.dart';
 import 'config.dart';
+
+/// A JSON response together with its HTTP status.
+///
+/// The calendar's additive Google endpoints need the status: a 404/405 means
+/// THIS DEPLOYMENT does not serve the route yet (older backend), which must
+/// degrade to "unavailable" rather than being presented as a successful sync.
+class PlatformResult {
+  final int statusCode;
+  final Map<String, dynamic> json;
+
+  const PlatformResult(this.statusCode, this.json);
+
+  bool get ok => statusCode >= 200 && statusCode < 300;
+
+  /// True when the server does not implement this route at all.
+  bool get routeUnavailable => statusCode == 404 || statusCode == 405;
+
+  String? get error {
+    final value = json['error'];
+    if (value is Map) return value['message']?.toString() ?? value.toString();
+    return value?.toString();
+  }
+}
 
 /// Typed client for the v5.2 platform + agentic backend (Phases 1-8). All calls
 /// are dual-auth (NIP-98 + Clerk) via [ApiAuth]; identity is derived server-side
@@ -11,6 +36,8 @@ class PlatformApi {
   static Map<String, dynamic> _json(String body) {
     try { return jsonDecode(body) as Map<String, dynamic>; } catch (_) { return {}; }
   }
+  static PlatformResult _result(http.Response response) =>
+      PlatformResult(response.statusCode, _json(response.body));
   static List<Map<String, dynamic>> _list(Map<String, dynamic> j, String key) =>
       ((j[key] as List?) ?? const []).map((e) => (e as Map).cast<String, dynamic>()).toList();
 
@@ -74,6 +101,30 @@ class PlatformApi {
       _json((await ApiAuth.getSigned('$kCalendarBase/gcal/connect?return=app')).body);
   static Future<Map<String, dynamic>> gcalDisconnect() async =>
       _json((await ApiAuth.deleteSigned('$kCalendarBase/gcal')).body);
+  // ── Google readiness / import (audit findings 5, 6; A8) ──────────────────
+  /// Status WITH its HTTP status code, so the settings screen can distinguish
+  /// "route not deployed" from "server said no" and never show a false Ready.
+  static Future<PlatformResult> gcalStatusResult() async =>
+      _result(await ApiAuth.getSigned('$kCalendarBase/gcal/status'));
+  /// POST /api/calendar/gcal/sync — imports busy times now (bounded, rate
+  /// limited server-side). Returns the same readiness payload as the status
+  /// endpoint so callers can update in place.
+  static Future<PlatformResult> gcalSyncResult() async =>
+      _result(await ApiAuth.postJson('$kCalendarBase/gcal/sync', const {}));
+  /// GET /api/calendar/gcal/calendars — refreshes the Google CALENDAR LIST.
+  /// Distinct from a busy-time sync; keep the two controls separate.
+  static Future<PlatformResult> gcalCalendarsResult() async =>
+      _result(await ApiAuth.getSigned('$kCalendarBase/gcal/calendars'));
+  /// PUT /api/calendar/gcal/calendars — which Google calendars block time and
+  /// which one receives AvaTOK bookings.
+  static Future<PlatformResult> gcalSaveCalendarsResult({
+    required List<String> readCalendarIds,
+    required String destinationCalendarId,
+  }) async =>
+      _result(await ApiAuth.putJson('$kCalendarBase/gcal/calendars', {
+        'read_calendar_ids': readCalendarIds,
+        'destination_calendar_id': destinationCalendarId,
+      }));
   static Future<List<Map<String, dynamic>>> bookings({String role = 'all', String when = 'upcoming'}) async =>
       _list(_json((await ApiAuth.getSigned('$kBookingBase/list?role=$role&when=$when')).body), 'bookings');
   static Future<Map<String, dynamic>> bookingPolicies() async =>

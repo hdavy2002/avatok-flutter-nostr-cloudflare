@@ -381,8 +381,10 @@ class _AvaShellState extends State<AvaShell> {
       case 'customerappointments':
         _push(const CreatorAppointmentsScreen());
         return;
+      // [AUDIT-A2 2026-09-15] Opens the diary (see the 'calendar' case below);
+      // working hours and connected calendars stay reachable inside it.
       case 'availability':
-        _push(const CalendarSettingsScreen());
+        _push(const AvaCalendarScreen());
         return;
       case 'explore':
         // Legacy AvaExplore creator grid (events/consults) — kept for deep links.

@@ -51,6 +51,12 @@ final kSourceStyles = <String, SourceStyle>{
       PhosphorIcons.broadcast(PhosphorIconsStyle.regular)),
   'avaconsult': SourceStyle('AvaConsult', const Color(0xFF22C9C0),
       PhosphorIcons.videoCamera(PhosphorIconsStyle.regular)),
+  // [AUDIT-A1 2026-09-15] Modern unified reservations land in calendar_blocks
+  // with source_app='availability' (commercial commitments can also arrive as
+  // 'avaconsult'). Both used to fall through to the generic "Busy" label, which
+  // is why a creator could not tell an appointment from a manual block.
+  'availability': SourceStyle('Appointment', const Color(0xFF7C3AED),
+      PhosphorIcons.calendarPlus(PhosphorIconsStyle.regular)),
   'gcal': SourceStyle('Google Calendar', const Color(0xFF4285F4),
       PhosphorIcons.calendarDots(PhosphorIconsStyle.regular)),
   'manual': SourceStyle('Manual block', const Color(0xFF737A86),
@@ -69,8 +75,23 @@ class CalBlock {
   final int startsAt;
   final int endsAt;
   final String? title;
+
+  /// [AUDIT-A1 2026-09-15] Additive fields the blocks endpoint now resolves
+  /// server-side when it can safely prove ownership (booking_id, listing_id,
+  /// booking_kind, booking_status). Every one of them is OPTIONAL: a deployed
+  /// backend that predates them simply returns nothing, and `null` must never
+  /// be read as "no booking" — only as "not verifiable from this response".
+  final String? bookingId;
+  final String? listingId;
+  final String? bookingKind;
+  final String? bookingStatus;
+
   CalBlock(this.id, this.sourceApp, this.sourceRef, this.startsAt, this.endsAt,
-      this.title);
+      this.title,
+      {this.bookingId,
+      this.listingId,
+      this.bookingKind,
+      this.bookingStatus});
 
   factory CalBlock.fromJson(Map<String, dynamic> j) => CalBlock(
         j['id'] as String? ?? '',
@@ -79,6 +100,10 @@ class CalBlock {
         (j['starts_at'] as num?)?.toInt() ?? 0,
         (j['ends_at'] as num?)?.toInt() ?? 0,
         j['title'] as String?,
+        bookingId: _optionalString(j['booking_id']),
+        listingId: _optionalString(j['listing_id']),
+        bookingKind: _optionalString(j['booking_kind']),
+        bookingStatus: _optionalString(j['booking_status']),
       );
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -87,7 +112,18 @@ class CalBlock {
         'starts_at': startsAt,
         'ends_at': endsAt,
         'title': title,
+        if (bookingId != null) 'booking_id': bookingId,
+        if (listingId != null) 'listing_id': listingId,
+        if (bookingKind != null) 'booking_kind': bookingKind,
+        if (bookingStatus != null) 'booking_status': bookingStatus,
       };
+}
+
+/// Empty-string JSON values are treated as absent so a half-populated response
+/// never invents an id that the app then tries to open.
+String? _optionalString(Object? value) {
+  if (value is String && value.isNotEmpty) return value;
+  return null;
 }
 
 /// The server-owned availability schedule shared by the creator calendar and
@@ -178,6 +214,12 @@ class AvailabilityException {
   final AvailabilityExceptionStatus status;
   final String? listingId;
 
+  /// [AUDIT-2/A8 2026-09-15] The contract's end-of-day value. 1440 is midnight
+  /// of the NEXT day, not minute zero, and the app must round-trip it unchanged
+  /// so a whole-day block saved here still reads as a whole-day block in web.
+  static const int allDayStartMin = 0;
+  static const int allDayEndMin = 1440;
+
   const AvailabilityException({
     required this.id,
     required this.date,
@@ -186,6 +228,15 @@ class AvailabilityException {
     required this.status,
     this.listingId,
   });
+
+  bool get isAllDay =>
+      startMin <= allDayStartMin && endMin >= allDayEndMin;
+
+  /// Legacy rows stored as 00:00–00:00 (before all-day was explicit) are also
+  /// whole-day blocks; the app repairs them to 0–1440 on the next edit rather
+  /// than rendering them as an empty range.
+  bool get looksLikeMidnightToMidnight =>
+      startMin == allDayStartMin && (endMin == allDayEndMin || endMin == 0);
 
   factory AvailabilityException.fromJson(Map<String, dynamic> json) =>
       AvailabilityException(
@@ -278,20 +329,34 @@ class AvailabilitySchedule {
     );
   }
 
-  Map<String, dynamic> toJson() => <String, dynamic>{
-        'listing_id': listingId,
-        'timezone': timezone,
-        'mode': availabilityModeToWire(mode),
-        'duration_min': durationMin,
-        'slot_interval_min': slotIntervalMin,
-        'buffer_min': bufferMin,
-        'min_notice_min': minNoticeMin,
-        'max_per_day': maxPerDay,
-        'horizon_days': horizonDays,
-        'version': version,
-        'rules': rules.map((e) => e.toJson()).toList(growable: false),
-        'exceptions': exceptions.map((e) => e.toJson()).toList(growable: false),
-      };
+  /// Wire payload for PUT /api/calendar/schedule.
+  ///
+  /// [AUDIT-A3 2026-09-15] The server accepts max_per_day 1..100 and horizon_days
+  /// 1..62, and REFUSES anything outside those ranges instead of clamping. A
+  /// cached/default value that falls outside them (the model default used to be
+  /// 0 per day and 90 days) is therefore omitted rather than sent, so a save of
+  /// an unrelated field cannot fail with "Invalid duration, interval, buffer,
+  /// notice, daily limit or horizon".
+  Map<String, dynamic> toJson() {
+    final dailyCap =
+        maxPerDay >= 1 && maxPerDay <= 100 ? maxPerDay : null;
+    final horizon =
+        horizonDays >= 1 && horizonDays <= 62 ? horizonDays : null;
+    return <String, dynamic>{
+      'listing_id': listingId,
+      'timezone': timezone,
+      'mode': availabilityModeToWire(mode),
+      'duration_min': durationMin,
+      'slot_interval_min': slotIntervalMin,
+      'buffer_min': bufferMin,
+      'min_notice_min': minNoticeMin,
+      if (dailyCap != null) 'max_per_day': dailyCap,
+      if (horizon != null) 'horizon_days': horizon,
+      'version': version,
+      'rules': rules.map((e) => e.toJson()).toList(growable: false),
+      'exceptions': exceptions.map((e) => e.toJson()).toList(growable: false),
+    };
+  }
 
   AvailabilitySchedule copyWith({
     String? listingId,
