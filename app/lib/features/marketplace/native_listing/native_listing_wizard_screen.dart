@@ -19,7 +19,7 @@ import '../../../core/ui/zine_widgets.dart';
 import '../../../core/ui/motion/motion.dart';
 import '../../calendar/avacalendar_screen.dart';
 import '../../calendar/calendar_data.dart';
-import '../../identity/identity.dart';
+import '../../../identity/identity.dart';
 import '../../identity/listing_liveness_gate.dart';
 import '../../identity/public_action_gate.dart' show isIdentityRequired;
 import 'native_listing_conflict_state.dart';
