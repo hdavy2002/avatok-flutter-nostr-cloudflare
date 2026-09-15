@@ -19,7 +19,7 @@ for (const match of html.matchAll(/\bhref="([^"]+)"/g)) {
 for (const name of ['approved-hero.jpg', 'approved-ideas.jpg', 'creator-train.jpg']) {
   assert(existsSync(resolve(root, 'assets/railway', name)), 'Missing art: ' + name);
 }
-assert.match(html, /href="\/sign-up"/, 'Signup remains reachable');
+assert.match(html, /href="\/sign-up(?:\?|\")/, 'Signup remains reachable');
 assert.match(html, /href="\/marketplace/, 'Marketplace remains reachable');
 assert.match(html, /href="\/marketplace/, 'Marketplace remains reachable from global homepage');
 assert.doesNotMatch(html, /data-motion-toggle|data-rail-train/, 'Old train animation removed');
