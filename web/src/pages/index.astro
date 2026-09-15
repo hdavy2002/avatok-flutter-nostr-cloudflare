@@ -1,20 +1,176 @@
 ---
 export const prerender = true;
-import Base from '../layouts/Base.astro';
-import SiteHeader from '../components/SiteHeader.astro';
-import SiteFooter from '../components/SiteFooter.astro';
-import OriginalGlobalSections from '../components/OriginalGlobalSections.astro';
-import OriginalIdeasSection from '../components/OriginalIdeasSection.astro';
-import '../styles/global-home.css';
-import '../styles/global-original.css';
+import '../styles/global-retro.css';
+import { orgJsonLd } from '../lib/org';
+const title = 'Turn your influence into live & 1:1 income · avaTOK';
+const description = 'AvaTOK helps influencers earn from their audience through paid live streams and private 1:1 video sessions, with flexible pricing and local payouts.';
+const canonical = 'https://avatok.ai/';
+const ogImage = 'https://avatok.ai/assets/global-original/hero-source.png';
+const structuredData = orgJsonLd({ canonical, title, description, ogImage });
+const formats = [
+  { id: 'live-streaming', title: 'Go live.', text: 'Your crowd. Your front-row moment.', tag: '01 / LIVE EVENTS', image: 'live-stage-70s.png', alt: 'A 70s soul singer in mustard bell sleeves and chocolate flares performs beside an acoustic guitar and filming phone.', href: '/marketplace', style: 'orange' },
+  { id: 'live-friends', title: 'Go 1:1.', text: 'Less scrolling. More real connection.', tag: '02 / PRIVATE SESSIONS', image: 'private-session-80s.png', alt: 'Two women in 80s pink and teal fashion, with angular shoulder pads and geometric earrings, share a private styling video session.', href: '/marketplace?group=book_their_time', style: 'blue' },
+  { id: 'group-sessions', title: 'Make a little club.', text: 'Teach your thing. Find your people.', tag: '03 / GROUP SESSIONS', image: 'group-session-90s.png', alt: 'A 90s streetwear dance crew in lime and burgundy sports shirts, baggy denim cargos, bucket hats and chunky trainers learns a routine.', href: '/marketplace?group=book_their_time', style: 'pink' },
+];
+const categories = [
+  ['music', 'Music'], ['beauty', 'Beauty'], ['gaming', 'Gaming'], ['food', 'Food'],
+  ['fitness', 'Fitness'], ['fashion', 'Fashion'], ['language', 'Language'], ['culture', 'Culture'],
+];
+const columns = [
+  { title: 'Bazaar', links: [['Live streaming', '/#live-streaming'], ['Find your people', '/#live-friends'], ['Explore marketplace', '/marketplace']] },
+  { title: 'Creators', links: [['Start selling', '/sign-up'], ['Creator dashboard', '/dashboard'], ['Payouts', '/payouts'], ['Safety', '/community-guidelines']] },
+  { title: 'Company', links: [['About', '/about'], ['Help centre', '/help'], ['Careers', '/careers'], ['Contact', '/contact'], ['Terms of Service', '/terms'], ['Privacy Policy', '/privacy']] },
+];
+const legal = [['Help centre','help'],['Terms','terms'],['Privacy','privacy'],['Cookies','cookies'],['Refunds','refunds'],['Marketplace Terms','marketplace-terms'],['Consultation Terms','consultation-terms'],['Acceptable Use','acceptable-use'],['Recording & Consent','recording'],['Biometric Data','biometric-retention'],['DMCA','dmca'],['Community Guidelines','community-guidelines'],['Child Safety','child-safety'],['Grievance Redressal','grievance'],['Contact & Report','contact'],['Pricing & Fees','pricing-fees'],['Tokens & Wallet','tokens']];
 ---
-<Base title="Turn your influence into live & 1:1 income · avaTOK" description="AvaTOK helps influencers earn from their audience through paid live streams and private 1:1 video sessions, with flexible pricing and local payouts." image="/assets/global-original/hero-source.png" imageAlt="A global home for creators to host paid live streams and private 1:1 video sessions." imageWidth={1536} imageHeight={1024} chrome={false}>
-  <SiteHeader variant="global" />
-  <main class="global-home original-home" data-design="creator-marketplace-2026-09" data-artwork="original-pixel-crops" id="main-content">
-    <OriginalGlobalSections part="hero" />
-    <OriginalGlobalSections part="middle" />
-    <OriginalIdeasSection />
-    <OriginalGlobalSections part="cta" />
-  </main>
-  <SiteFooter variant="global" />
-</Base>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="index,follow,max-image-preview:large" />
+    <link rel="canonical" href={canonical} />
+    <link rel="sitemap" href="/sitemap.xml" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="avaTOK" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:alt" content="International creators earning through live events and private sessions on avaTOK" />
+    <meta property="og:image:width" content="1536" />
+    <meta property="og:image:height" content="1024" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+    <script type="application/ld+json" set:html={JSON.stringify(structuredData)} />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#f7f0de" />
+    <title>{title}</title>
+    <link rel="preload" href="/fonts/Fredoka-Bold.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'%3E%3Crect width='80' height='80' rx='40' fill='%23f04d2d'/%3E%3Ctext x='40' y='58' text-anchor='middle' font-size='64' fill='%23f7f0de'%3Ea%3C/text%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <div class="top-note">GOOD PEOPLE. GOOD ENERGY. GREAT BIG WORLD. <span aria-hidden="true">✳</span></div>
+    <header class="site-header">
+      <a class="wordmark" href="/" aria-label="avaTOK global home">ava<span>TOK</span><i aria-hidden="true">✳</i></a>
+      <nav class="desktop-nav" aria-label="Main">
+        <a href="#ways">Ways to earn</a><a href="#ideas">Find your thing</a><a href="#payouts">Get paid</a>
+      </nav>
+      <button class="menu-toggle" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu"><span></span><span></span><span></span></button>
+      <div class="header-menu" id="mobile-menu">
+      <nav class="mobile-nav" aria-label="Mobile navigation"><a href="#ways">Ways to earn ↗</a><a href="#ideas">Find your thing ↗</a><a href="#payouts">Get paid ↗</a><a href="#how-it-works">How it works ↗</a><a href="/sign-in">Log in ↗</a></nav>
+      <div class="header-actions">
+        <div class="locale-field"><span aria-hidden="true">◎</span><label class="sr-only" for="country">Country experience</label><select id="country"><option value="global">Global</option><option value="india">India</option></select></div>
+        <div class="locale-field language-field"><label class="sr-only" for="language">Language</label><select id="language"><option value="en">English</option><option value="hi">हिन्दी · India</option></select></div>
+        <a class="login" href="/sign-in">Log in ↗</a>
+        <a class="button small" href="/sign-up?role=creator&country=global">Start creating <span>↗</span></a>
+      </div>
+      </div>
+    </header>
+    <main id="main" data-design="creator-marketplace-2026-09" data-artwork="global-retro-decades">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="dot"></span> FOR CREATORS WITHOUT BORDERS</p>
+          <h1 id="hero-title">Big creator<br/>energy.<br/><span class="orange-text">Worldwide.</span></h1>
+          <p class="hero-description">Go live. Get booked.<br/>Get paid in your local currency.</p>
+          <div class="hero-actions"><a class="button" href="/sign-up?role=creator&country=global">Find your earning era <span>↗</span></a><a class="text-link" href="#how-it-works">How it works <span>↓</span></a></div>
+          
+        </div>
+        <div class="hero-visual">
+          
+          <img src="/assets/global-retro/creator-club-clean.png" width="1536" height="1024" alt="Four creators in colourful retro fashion: flared trousers, big collars and baggy outfits, filming, singing and playing music." fetchpriority="high" />
+          <div class="hero-art-footer"><span class="handwritten">Different time zones.<br/>Same big energy. ↗</span><span class="round-sticker">BE YOUR<br/><strong>own kind</strong><br/>OF ICON. <b aria-hidden="true">✦</b></span></div>
+        </div>
+      </section>
+      <div class="ticker torn" aria-label="Live events, private sessions, group sessions and local payouts">
+        <div>GO LIVE <b>✳</b> GET BOOKED <b>✳</b> GET PAID LOCALLY <b>✳</b> STAY YOU <b>✳</b> GO LIVE <b>✳</b> GET BOOKED <b>✳</b> GET PAID LOCALLY <b>✳</b> STAY YOU <b>✳</b></div>
+      </div>
+      <section class="ways section-pad" id="ways" aria-labelledby="ways-title">
+        <div class="section-heading"><p class="eyebrow">YOUR TALENT. YOUR TERMS.</p><h2 id="ways-title">One you.<br/><span class="underlined">So many possibilities.</span></h2></div>
+        <div class="format-grid" id="formats">
+          {formats.map((format) => <a class={'format illustrated-format ' + format.style} id={format.id} href={format.href}>
+            <div class="format-art"><img src={'/assets/global-retro/' + format.image} alt={format.alt} width="1254" height="1254" loading="lazy" /></div>
+            <p class="eyebrow">{format.tag}</p><h3>{format.title}<span aria-hidden="true">↗</span></h3><p>{format.text}</p>
+          </a>)}
+        </div>
+      </section>
+      <section class="money torn section-pad" id="payouts" aria-labelledby="money-title">
+        <div class="money-copy"><p class="eyebrow">GLOBAL FANS. LOCAL PAYDAYS.</p><h2 id="money-title">Big world.<br/>Local money.<br/><span>Your bank.</span></h2><p>Paid in your currency.<br/>Straight to your bank.</p><a class="button cream" href="/payouts">Explore payouts <span>↗</span></a></div>
+        <div class="money-visual">
+          <img class="payday-art" src="/assets/global-retro/local-payday.png" width="1448" height="1086" alt="A happy creator beside a globe follows the path from global fans to a bank payment on their phone." loading="lazy" />
+          <div class="payout-strip"><span>LOCAL CURRENCY</span><b>→</b><span>YOUR BANK / LOCAL METHOD</span></div>
+          <p class="money-note">UPI in India where available. Methods, currencies and fees vary by country.</p>
+        </div>
+      </section>
+      <section class="ideas section-pad" id="ideas" aria-labelledby="ideas-title">
+        <div class="category-heading"><p class="eyebrow">WHATEVER YOUR THING IS.</p><h2 id="ideas-title">There’s a crowd<br/><span class="orange-text">for your kind of loud.</span></h2><a class="text-link" href="/global-ideas">Find your earning idea <span>↗</span></a></div>
+        <div class="category-wall">{categories.map(([slug, label]) => <a class="category-cutout" href="/global-ideas" aria-label={'Explore ' + label.toLowerCase() + ' creator ideas'}><img src={'/assets/global-original/category-' + slug + '.png'} alt={label} width="180" height="260" loading="lazy" /></a>)}</div>
+      </section>
+      <section class="how torn section-pad" id="how-it-works" aria-labelledby="how-title">
+        <div class="how-top"><p class="eyebrow">YOUR NEXT LITTLE BIG THING.</p><h2 id="how-title">Make it happen.</h2><span class="how-star" aria-hidden="true">✴</span></div>
+        <ol class="steps"><li><span class="step-num">1</span><h3>Pick your thing.</h3></li><li><span class="step-num">2</span><h3>Set your price.</h3></li><li><span class="step-num">3</span><h3>Share your link.</h3></li><li><span class="step-num">4</span><h3>Show up. Shine.</h3></li></ol>
+      </section>
+      <section class="world section-pad" aria-labelledby="world-title">
+        <div class="world-word" aria-hidden="true">hello. <span>नमस्ते.</span> hola.</div>
+        <div class="world-copy"><h2 id="world-title">Your world.<br/><span class="orange-text">Your local flavour.</span></h2><a class="text-link" href="/india">Explore the India experience <span>↗</span></a></div>
+      </section>
+      <section class="faq section-pad" aria-labelledby="faq-title">
+        <div><p class="eyebrow">THE LITTLE DETAILS.</p><h2 id="faq-title">Good questions.</h2></div>
+        <div class="faq-list">
+          <details><summary>Do I need a huge following?<span aria-hidden="true">+</span></summary><p>Start with a clear offer and people who care about it. You can offer a private session, a small group or a live event. A following doesn’t guarantee bookings or income.</p></details>
+          <details><summary>How do I get paid?<span aria-hidden="true">+</span></summary><p>Available payouts depend on your country, eligibility and the supported payment methods. Check local currency, bank transfer options, fees and payout timing on the <a href="/payouts">payouts page</a>. UPI is an India-specific option where available.</p></details>
+          <details><summary>Can I use avaTOK in my country?<span aria-hidden="true">+</span></summary><p>The global page welcomes an international audience. Creator onboarding and payouts still depend on country support. Review availability before setting up your paid offer.</p></details>
+          <details><summary>What happens when I choose India?<span aria-hidden="true">+</span></summary><p>You’ll open the existing India website with Indian creator ideas, local language and the current India experience. More country experiences will come later.</p></details>
+        </div>
+      </section>
+      <section class="closing torn section-pad" id="get-started" aria-labelledby="closing-title">
+        <span class="closing-star" aria-hidden="true">✳</span><p class="eyebrow">THE WORLD DOESN’T NEED ANOTHER COPY.</p><h2 id="closing-title">It needs<br/><span>your kind of you.</span></h2><p>Your people are waiting.</p><a class="button cream" href="/sign-up?role=creator&country=global">Let’s make your first listing <span>↗</span></a><span class="closing-spark" aria-hidden="true">✦</span>
+      </section>
+    </main>
+    <footer class="site-footer bazaar-footer">
+      <div class="footer-top"><div class="footer-brand"><a class="wordmark" href="/" aria-label="avaTOK global home">ava<span>TOK</span><i aria-hidden="true">✳</i></a><p>A creator marketplace.<br/>A whole world of you.</p><span class="footer-hand">See you out there. ♡</span></div>
+        {columns.map((column) => <nav aria-label={column.title}><h2>{column.title}</h2>{column.links.map(([label, href]) => <a href={href}>{label}</a>)}</nav>)}
+      </div>
+      <nav class="legal-links" aria-label="Legal and safety">{legal.map(([label, path]) => <a href={'/' + path}>{label}</a>)}</nav>
+      <div class="footer-bottom"><span>© 2026 avaTOK</span><span>MADE FOR REAL PEOPLE. EVERYWHERE.</span><a href="#main">Back to top ↑</a></div>
+      <div class="footer-big" aria-hidden="true">stay you. ✳</div>
+    </footer>
+    <script>
+      import { initAnalytics, capture } from '../lib/analytics';
+      initAnalytics();
+      document.addEventListener('click', event => {
+        const link = event.target instanceof Element ? event.target.closest('a') : null;
+        if (link) capture(link.getAttribute('href')?.startsWith('/sign-up') ? 'creator_signup_click' : 'nav_click', {
+          source: 'global_retro_home', href: link.getAttribute('href'), label: link.textContent?.trim(),
+        });
+      });
+      const menuToggle = document.querySelector<HTMLButtonElement>('.menu-toggle');
+      const menu = document.querySelector<HTMLElement>('#mobile-menu');
+      const setMenuOpen = (open: boolean) => {
+        menu?.classList.toggle('is-open', open);
+        menuToggle?.setAttribute('aria-expanded', String(open));
+        menuToggle?.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+      };
+      menuToggle?.addEventListener('click', () => setMenuOpen(menuToggle.getAttribute('aria-expanded') !== 'true'));
+      menu?.querySelectorAll('a').forEach(link => link.addEventListener('click', () => setMenuOpen(false)));
+      document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && menuToggle?.getAttribute('aria-expanded') === 'true') {
+          setMenuOpen(false); menuToggle.focus();
+        }
+      });
+      document.addEventListener('click', event => {
+        if (event.target instanceof Node && !document.querySelector('.site-header')?.contains(event.target)) setMenuOpen(false);
+      });
+      window.matchMedia('(max-width: 960px)').addEventListener('change', () => setMenuOpen(false));
+      const country = document.querySelector<HTMLSelectElement>('#country');
+      const language = document.querySelector<HTMLSelectElement>('#language');
+      country?.addEventListener('change', () => { capture('locale_change', { source: 'global_retro_home', country: country.value }); if (country.value === 'india') window.location.assign('/india'); });
+      language?.addEventListener('change', () => { capture('locale_change', { source: 'global_retro_home', language: language.value }); if (language.value === 'hi') window.location.assign('/india'); });
+      window.addEventListener('pageshow', () => { if(country) country.value = 'global'; if(language) language.value = 'en'; });
+    </script>
+  </body>
+</html>

@@ -11,7 +11,7 @@ assert.match(html, /data-design="creator-marketplace-2026-09"/, 'Expected creato
 assert.doesNotMatch(html, /In India\? Open your India experience/, 'Removed standalone India callout stays removed');
 assert.match(html, /href="\/india"/, 'India remains available through global navigation');
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One readable main heading');
-assert.equal((html.match(/href="\/blog\/global-creator-ideas\//g) || []).length, 8, 'Eight global earning ideas');
+assert.equal((html.match(/class="category-cutout"/g) || []).length, 8, 'Eight illustrated creator categories');
 const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
 for (const match of html.matchAll(/\bhref="([^"]+)"/g)) {
   const href = match[1].replaceAll('&amp;', '&');
@@ -26,7 +26,14 @@ assert.match(html, /href="\/sign-up(?:\?|\")/, 'Signup remains reachable');
 assert.match(html, /href="\/marketplace/, 'Marketplace remains reachable');
 assert.match(html, /href="\/marketplace/, 'Marketplace remains reachable from global homepage');
 assert.doesNotMatch(html, /data-motion-toggle|data-rail-train/, 'Old train animation removed');
-assert.match(html, /<img\b[^>]*src="\/assets\/global-original\/hero[^\"]*\.png"/, 'Original hero pixels are visible, not a regenerated collage');
+assert.match(html, /<img\b[^>]*src="\/assets\/global-retro\/creator-club-clean\.png"/, 'Approved global hero is visible');
+assert.match(html, /aria-controls="mobile-menu"/, 'Mobile menu is accessible');
+assert.match(html, /href="\/sign-up\?role=creator(?:&amp;|&#38;|&)country=global"/, 'Creator CTA carries global country');
+assert.doesNotMatch(html, /start-dialog|This design preview|noindex/, 'Production page has no preview placeholder or search exclusion');
+for (const name of ['creator-club-clean', 'live-stage-70s', 'private-session-80s', 'group-session-90s', 'local-payday']) {
+ assert(html.includes('/assets/global-retro/' + name + '.png'), 'Approved illustration is visible: ' + name);
+ assert(existsSync(resolve(root, 'assets/global-retro', name + '.png')), 'Approved illustration resolves: ' + name);
+}
 assert.equal((html.match(/<header\b/g) || []).length, 1, 'Exactly one homepage header');
 assert.equal((html.match(/<footer\b/g) || []).length, 1, 'Exactly one homepage footer');
 for (const name of ['hero-creators', 'format-live', 'format-call', 'format-paid', 'payout-world', 'creator-marketplace-og']) {
@@ -60,7 +67,7 @@ console.log('Homepage smoke checks passed: eight ideas, real artwork, anchors, s
 const globalIdeas = readFileSync(resolve(root, 'global-ideas/index.html'), 'utf8');
 assert.equal((globalIdeas.match(/<header\b/g) || []).length, 1, 'Global catalog has no duplicate header');
 assert.equal((globalIdeas.match(/<footer\b/g) || []).length, 1, 'Global catalog has no duplicate footer');
-const globalLinks = [...html.matchAll(/href="(\/blog\/global-creator-ideas\/[^\"]+)"/g)].map(m => m[1]);
+const globalLinks = [...globalIdeas.matchAll(/href="(\/blog\/global-creator-ideas\/[^\"]+)"/g)].map(m => m[1]);
 assert.equal(new Set(globalLinks).size, 8, 'Eight distinct global guides');
 const globalImageHashes = new Set();
 for (const href of globalLinks) {
@@ -72,7 +79,7 @@ for (const href of globalLinks) {
  assert(page.includes('data-global-guide="' + slug + '"'), 'Distinct global guide identity: ' + slug);
  assert.match(page, /BlogPosting/, 'Global guide structured data: ' + slug);
  const asset = '/assets/global-original/ideas-' + slug + '.png';
- assert(html.includes(asset) && globalIdeas.includes(asset) && page.includes(asset), 'Guide artwork in home, catalog and article: ' + slug);
+ assert(globalIdeas.includes(asset) && page.includes(asset), 'Guide artwork in catalog and article: ' + slug);
  const hash = createHash('sha256').update(readFileSync(resolve(root, asset.slice(1)))).digest('hex');
  assert(!globalImageHashes.has(hash), 'Each idea needs its own artwork: ' + slug);
  globalImageHashes.add(hash);
