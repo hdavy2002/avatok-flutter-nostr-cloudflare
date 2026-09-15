@@ -121,6 +121,20 @@ function seed(db: any, timezone = "UTC") {
     .run("consult", "creator", "consult", "Consult", "published", 60);
   db.prepare("INSERT INTO listings (id,creator_id,kind,title,status,duration_min) VALUES (?,?,?,?,?,?)")
     .run("short", "creator", "consult", "Short", "published", 30);
+  // The booking/publish authority REQUIRES a connected, freshly-synced selected
+  // Google calendar (gcalAvailabilityReady(..., requireConnected=true)). Without
+  // this readiness row every claim would be refused `calendar_refresh_pending`
+  // before the duration/hours/concurrency/conflict assertion it exercises.
+  markGcalReady(db);
+}
+
+/** Seed the readiness predicate's happy path: one selected calendar synced now.
+ *  Callers that want a stale or disconnected source re-mark or delete rows. */
+function markGcalReady(db: any, uid = "creator", lastSuccessAt = Date.now()) {
+  db.prepare("DELETE FROM gcal_calendars WHERE user_id=?").run(uid);
+  db.prepare("INSERT OR REPLACE INTO gcal_accounts (user_id) VALUES (?)").run(uid);
+  db.prepare("INSERT INTO gcal_calendars (user_id,selected,last_success_at,last_error) VALUES (?,?,?,NULL)")
+    .run(uid, 1, lastSuccessAt);
 }
 
 let db: any;
@@ -187,6 +201,43 @@ describe("unified availability engine against SQLite", () => {
     });
     expect(near.ok).toBe(false);
     expect(near.reason).toBe("conflict");
+  });
+
+  it("refuses listing validation until a selected Google calendar has a fresh sync", async () => {
+    const slot = futureSlot();
+    db.prepare("DELETE FROM gcal_calendars").run();
+    db.prepare("DELETE FROM gcal_accounts").run();
+    const disconnected = await engine.validateListingSlot(env, "consult", slot.start, slot.end, { now: Date.now() - 1_000 });
+    expect(disconnected.ok).toBe(false);
+    expect(disconnected.reason).toBe("calendar_refresh_pending");
+
+    // A selected source older than the readiness window is stale, not healthy.
+    markGcalReady(db, "creator", Date.now() - 45 * 60_000);
+    const stale = await engine.validateListingSlot(env, "consult", slot.start, slot.end, { now: Date.now() - 1_000 });
+    expect(stale.ok).toBe(false);
+    expect(stale.reason).toBe("calendar_refresh_pending");
+
+    markGcalReady(db);
+    const fresh = await engine.validateListingSlot(env, "consult", slot.start, slot.end, { now: Date.now() - 1_000 });
+    expect(fresh.ok).toBe(true);
+  });
+
+  it("refuses an exclusive publication reservation while Google readiness is unverified", async () => {
+    const slot = futureSlot();
+    db.prepare("DELETE FROM gcal_calendars").run();
+    db.prepare("DELETE FROM gcal_accounts").run();
+    const refused = await engine.claimExclusiveReservation(env, {
+      creatorId: "creator", listingId: "consult", startAt: slot.start, endAt: slot.end, sourceRef: "live:consult:unverified",
+    });
+    expect(refused.ok).toBe(false);
+    expect(refused.reason).toBe("availability_unavailable");
+    expect(db.prepare("SELECT COUNT(*) AS n FROM availability_reservations").get().n).toBe(0);
+
+    markGcalReady(db);
+    const allowed = await engine.claimExclusiveReservation(env, {
+      creatorId: "creator", listingId: "short", startAt: slot.start, endAt: slot.end, sourceRef: "live:short:verified",
+    });
+    expect(allowed.ok).toBe(true);
   });
 
   it("round-trips India wall time and refuses a New York DST gap", () => {

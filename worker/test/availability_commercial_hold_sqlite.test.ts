@@ -95,6 +95,13 @@ function setup() {
   }
   db.prepare("INSERT INTO listings (id,creator_id,kind,title,status,duration_min) VALUES (?,?,?,?,?,?)")
     .run("consult", "creator", "consult", "Consult", "published", 60);
+  // The booking authority requires a connected, freshly-synced selected Google
+  // calendar (gcalAvailabilityReady(..., requireConnected=true)); without it the
+  // hold would be refused `calendar_refresh_pending` before the ownership and
+  // expiry assertions below ever run.
+  db.prepare("INSERT INTO gcal_accounts (user_id) VALUES (?)").run("creator");
+  db.prepare("INSERT INTO gcal_calendars (user_id,selected,last_success_at,last_error) VALUES (?,?,?,NULL)")
+    .run("creator", 1, now);
   return { db, env: { DB_META: d1(db) } };
 }
 
@@ -149,5 +156,27 @@ describe("commercial availability holds against SQLite", () => {
     });
     expect(expiredClaim.ok).toBe(false);
     expect(["hold_expired", "hold_unavailable"]).toContain((expiredClaim as any).reason);
+  });
+
+  it("refuses to hold a slot while the creator's Google Calendar readiness is unverified", async () => {
+    const { db, env } = setup();
+    currentDb = db;
+    const start = Math.ceil((Date.now() + 72 * 60 * 60_000) / 3_600_000) * 3_600_000;
+    const slotId = `availability:consult:${start}:${start + 60 * 60_000}`;
+
+    // A selected source that has not synced within the readiness window.
+    db.prepare("UPDATE gcal_calendars SET last_success_at=? WHERE user_id='creator'").run(Date.now() - 45 * 60_000);
+    const stale = await commercial.commercialHold(holdRequest(slotId, "hold-stale"), env as any);
+    expect(stale.status).toBe(409);
+    expect((await stale.json() as any).error).toBe("calendar_refresh_pending");
+
+    // Never connected at all — unknown availability must not read as free.
+    db.prepare("DELETE FROM gcal_calendars").run();
+    db.prepare("DELETE FROM gcal_accounts").run();
+    const disconnected = await commercial.commercialHold(holdRequest(slotId, "hold-disconnected"), env as any);
+    expect(disconnected.status).toBe(409);
+    expect((await disconnected.json() as any).error).toBe("calendar_refresh_pending");
+
+    expect(db.prepare("SELECT COUNT(*) AS n FROM availability_reservations").get().n).toBe(0);
   });
 });

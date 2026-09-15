@@ -158,6 +158,12 @@ function setup(simulateCasLoss = false) {
     .run("event-2", "booking-1", oldStart, oldEnd, "confirmed");
   db.prepare("INSERT INTO availability_reservations (id,creator_id,listing_id,kind,status,starts_at,ends_at,title,source_ref,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
     .run("old-reservation", "creator", "listing-1", "booking", "reserved", oldStart, oldEnd, "Consult", "commercial-availability:buyer:order-1", now, now);
+  // Reschedule runs through validateListingSlot, which REQUIRES a connected,
+  // freshly-synced selected Google calendar. Seed readiness so the move
+  // assertions execute; the separate refusal test below removes/marks it stale.
+  db.prepare("INSERT INTO gcal_accounts (user_id) VALUES (?)").run("creator");
+  db.prepare("INSERT INTO gcal_calendars (user_id,selected,last_success_at,last_error) VALUES (?,?,?,NULL)")
+    .run("creator", 1, now);
   const mutate = simulateCasLoss ? () => db.prepare("UPDATE bookings SET reschedule_count=9 WHERE id='booking-1'").run() : undefined;
   return { db, env: { DB_META: d1(db, mutate) }, oldStart, oldEnd, newStart, newEnd };
 }
@@ -208,5 +214,18 @@ describe("commercial reschedule route against SQLite", () => {
     expect(fixture.db.prepare("SELECT status,starts_at,ends_at FROM availability_reservations WHERE id='old-reservation'").get())
       .toMatchObject({ status: "reserved", starts_at: fixture.oldStart, ends_at: fixture.oldEnd });
     expect(fixture.db.prepare("SELECT COUNT(*) AS n FROM availability_reservations WHERE starts_at=? AND ends_at=? AND status IN ('reserved','confirmed')").get(fixture.newStart, fixture.newEnd).n).toBe(0);
+  });
+
+  it("refuses to reschedule while the creator's Google Calendar readiness is stale", async () => {
+    const fixture = setup(); currentDb = fixture.db;
+    fixture.db.prepare("UPDATE gcal_calendars SET last_success_at=? WHERE user_id='creator'").run(Date.now() - 45 * 60_000);
+    const response = await lifecycle.commercialLifecycle(request(fixture.newStart, fixture.newEnd, "reschedule-stale"), fixture.env as any);
+    expect(response.status, await response.clone().text()).toBe(409);
+    expect((await response.json() as any).reason).toBe("calendar_refresh_pending");
+    // The original booking and its reservation are untouched.
+    expect(fixture.db.prepare("SELECT starts_at,ends_at,reschedule_count FROM bookings WHERE id='booking-1'").get())
+      .toMatchObject({ starts_at: fixture.oldStart, ends_at: fixture.oldEnd, reschedule_count: 0 });
+    expect(fixture.db.prepare("SELECT status FROM availability_reservations WHERE id='old-reservation'").get().status).toBe("reserved");
+    expect(fixture.db.prepare("SELECT COUNT(*) AS n FROM availability_reservations WHERE id!='old-reservation'").get().n).toBe(0);
   });
 });

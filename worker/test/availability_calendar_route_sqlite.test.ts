@@ -207,6 +207,34 @@ describe("calendar availability routes against SQLite", () => {
     expect(body.reason).toBe("disconnected");
     expect(body.slots).toBeUndefined();
   });
+
+  it("refuses the preview with 503 stale instead of a 200 grid for a stale selected calendar", async () => {
+    const { db, env } = setup();
+    currentDb = db;
+    // A fully-open week so the only reason the grid is withheld is readiness.
+    db.prepare(
+      "INSERT INTO availability_schedules (id,creator_id,listing_id,timezone,mode,duration_min,slot_interval_min,buffer_min,min_notice_min,max_per_day,horizon_days,version,write_token,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    ).run("shared", "creator", null, "UTC", "shared", 60, 60, 0, 0, 8, 62, 1, "", Date.now());
+    for (let weekday = 0; weekday < 7; weekday++) {
+      db.prepare("INSERT INTO availability_schedule_rules (id,schedule_id,weekday,start_min,end_min) VALUES (?,?,?,?,?)")
+        .run(`rule-${weekday}`, "shared", weekday, 0, 1440);
+    }
+    // Connected and selected, but the last successful sync is older than the
+    // readiness window: a stale source must never be labelled healthy.
+    db.prepare("INSERT INTO gcal_accounts (user_id) VALUES (?)").run("creator");
+    db.prepare("INSERT INTO gcal_calendars (user_id,selected,last_success_at,last_error) VALUES (?,?,?,NULL)")
+      .run("creator", 1, Date.now() - 45 * 60_000);
+
+    const response = await calendar.listingAvailability(
+      new Request("https://api.test/api/listings/consult/availability?from=2026-12-02&to=2026-12-02&timezone=UTC"),
+      env as any,
+      "consult",
+    );
+    expect(response.status).toBe(503);
+    const body = await response.json() as any;
+    expect(body).toMatchObject({ error: "calendar_refresh_pending", ready: false, reason: "stale" });
+    expect(body.slots).toBeUndefined();
+  });
 });
 
 function calendarDate(epoch: number, timezone: string): string {
