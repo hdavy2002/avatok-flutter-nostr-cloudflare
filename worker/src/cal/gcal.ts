@@ -88,11 +88,11 @@ function calendarResponse(row: GcalCalendarRow, maxAgeMs = GCAL_READY_MAX_AGE_MS
     id: row.calendar_id, summary: row.summary, timezone: row.timezone, access_role: row.access_role,
     primary: !!row.primary_calendar, selected: !!row.selected, destination: !!row.destination,
     last_sync_at: row.last_sync_at, last_success_at: row.last_success_at, last_error: row.last_error,
-    // Additive per-source freshness: a source that never synced or whose last
-    // success is older than the readiness window is stale, so it is never
-    // rendered as healthy. `selected` is reported separately and is what gates
-    // booking readiness; an unselected stale source is shown but tolerated.
-    stale: lastSuccess === null || now - lastSuccess > maxAgeMs,
+    // Additive per-source freshness: a source with an error, no successful
+    // sync, or an old snapshot is stale, so it is never rendered as healthy.
+    // `selected` is reported separately and is what gates booking readiness;
+    // an unselected stale source is shown but tolerated.
+    stale: !!row.last_error || lastSuccess === null || now - lastSuccess > maxAgeMs,
   };
 }
 async function ensurePrimaryFallback(env: Env, uid: string): Promise<GcalCalendarRow[]> { const account = await metaDb(env).prepare("SELECT sync_token FROM gcal_accounts WHERE user_id=?1").bind(uid).first<{ sync_token: string | null }>(); await metaDb(env).prepare("INSERT OR IGNORE INTO gcal_calendars(user_id,calendar_id,summary,timezone,primary_calendar,selected,destination,sync_token,updated_at) VALUES(?1,'primary','Google Calendar','UTC',1,1,1,?2,?3)").bind(uid, account?.sync_token ?? null, Date.now()).run(); const rows = await metaDb(env).prepare("SELECT * FROM gcal_calendars WHERE user_id=?1 AND selected=1 ORDER BY primary_calendar DESC,calendar_id").bind(uid).all<GcalCalendarRow>(); return (rows.results ?? []) as GcalCalendarRow[]; }

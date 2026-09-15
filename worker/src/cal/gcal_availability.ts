@@ -110,7 +110,13 @@ export async function gcalReadiness(
   const successAts = selected.map(successAt);
   const synced = successAts.filter((value): value is number => value !== null);
   const ages = synced.map((value) => now - value);
-  const stale = ages.filter((age) => age > maxAgeMs).length;
+  // never_synced_count remains only selected sources with no error and no
+  // positive success. stale_count mirrors each selected calendar row's stale
+  // predicate exactly: error OR missing positive success OR too old, counted once.
+  const stale = selected.filter((row) => {
+    const lastSuccess = successAt(row);
+    return !!row.last_error || lastSuccess === null || now - lastSuccess > maxAgeMs;
+  }).length;
   const allSynced = selected.length > 0 && successAts.every((value) => value !== null);
   const base: Partial<GcalReadiness> = {
     max_age_ms: maxAgeMs,

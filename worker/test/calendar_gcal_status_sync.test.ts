@@ -233,6 +233,29 @@ describe("Google Calendar status freshness", () => {
     expect(body.calendars.find((row: any) => row.id === "fresh").stale).toBe(false);
   });
 
+  it("counts each selected stale source once across failed, pending and old calendars", async () => {
+    const { db, env, now } = setup();
+    currentDb = db;
+    H.uid = "creator-mixed-stale";
+    connectAccount(db, H.uid, now);
+    addCalendar(db, H.uid, "failed-fresh", { lastSuccess: now - 60_000, lastError: "Google event sync failed (500)" });
+    addCalendar(db, H.uid, "pending", { lastSuccess: null });
+    addCalendar(db, H.uid, "old", { lastSuccess: now - 2 * HOUR });
+    addCalendar(db, H.uid, "fresh", { lastSuccess: now - 60_000 });
+
+    const body = await (await gcal.gcalStatus(new Request("https://api.test/api/calendar/gcal/status"), env as any)).json() as any;
+    expect(body.ready).toBe(false);
+    expect(body.reason).toBe("error");
+    expect(body.selected_count).toBe(4);
+    expect(body.failed_count).toBe(1);
+    expect(body.never_synced_count).toBe(1);
+    expect(body.stale_count).toBe(3);
+    expect(body.calendars.find((row: any) => row.id === "failed-fresh").stale).toBe(true);
+    expect(body.calendars.find((row: any) => row.id === "pending").stale).toBe(true);
+    expect(body.calendars.find((row: any) => row.id === "old").stale).toBe(true);
+    expect(body.calendars.find((row: any) => row.id === "fresh").stale).toBe(false);
+  });
+
   it("ignores an unselected stale calendar for readiness but still flags it", async () => {
     const { db, env, now } = setup();
     currentDb = db;
