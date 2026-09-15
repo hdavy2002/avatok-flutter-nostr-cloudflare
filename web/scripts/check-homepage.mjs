@@ -8,7 +8,7 @@ const root = resolve('dist');
 const html = readFileSync(resolve(root, 'index.html'), 'utf8');
 assert.match(html, /data-design="creator-marketplace-2026-09"/, 'Expected creator marketplace homepage');
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One readable main heading');
-assert.equal((html.match(/global-idea__link/g) || []).length, 8, 'Eight global earning ideas');
+assert.equal((html.match(/href="\/blog\/global-creator-ideas\//g) || []).length, 8, 'Eight global earning ideas');
 const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
 for (const match of html.matchAll(/\bhref="([^"]+)"/g)) {
   const href = match[1].replaceAll('&amp;', '&');
