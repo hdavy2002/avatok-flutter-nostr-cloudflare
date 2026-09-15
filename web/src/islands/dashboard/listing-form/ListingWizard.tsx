@@ -32,7 +32,7 @@ import type { CopyField } from './CopyReview';
 import { defaultsFor } from '../../../lib/listingDefaults';
 import { getCreatorSchedule, saveCreatorSchedule, previewCalendarConflicts, epochForDateTime } from '../../../lib/availability';
 import type { CreatorSchedule } from '../../../lib/availability';
-import { buildListingAvailabilitySchedule } from '../../../lib/calendarCore';
+import { availabilityDraftSignature, buildListingAvailabilitySchedule, hydratedAvailabilityMismatchMessage, shouldApplyHydratedAvailability } from '../../../lib/calendarCore';
 import {
   Step1Type, Step2Pitch, Step3Money, Step4Time, Step5HowItWorks, Step6HouseRules, Step7Photos, Step8Preview,
 } from './steps';
@@ -115,6 +115,8 @@ function draftFromListing(l: any): Partial<ListingDraft> {
 }
 
 interface CreatorInfo { name?: string | null; handle?: string | null; avatar?: string | null }
+interface AvailabilityHydrateState { status: 'idle' | 'loading' | 'ready' | 'error'; listingId: string | null; message: string | null; generation: number; signature: string | null }
+const AVAILABILITY_DRAFT_FIELDS = new Set<keyof ListingDraft>(['timezone', 'availability_mode', 'availability_rules', 'duration_min']);
 
 /** [WIZ-DISCOUNT-1] One row of `listing_promotions` as the server hands it back
  *  (GET /api/listings/:id/promotions). Kept so a re-save can be idempotent —
@@ -153,6 +155,8 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
   // 3 stacked another early-bird row on the same listing.
   const [promoRows, setPromoRows] = useState<PromoRow[]>([]);
   const [availabilitySchedule, setAvailabilitySchedule] = useState<CreatorSchedule | null>(null);
+  const [availabilityHydrate, setAvailabilityHydrate] = useState<AvailabilityHydrateState>({ status: 'idle', listingId: null, message: null, generation: 0, signature: null });
+  const [availabilityHydrateNonce, setAvailabilityHydrateNonce] = useState(0);
   const [categories, setCategories] = useState<{ id: string; label: string; emoji?: string | null; group_id?: string | null }[]>([]);
   // [MKT-3GROUP-1] `adda_rooms` is a `find_your_people` blip gated on
   // `conferenceEnabled`, which is FALSE in production (verified on the live
@@ -175,8 +179,15 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
   // background saves (which could double-POST the draft before its id comes
   // back) — a ref because it must be read synchronously, not after a re-render.
   const savingRef = useRef(false);
+  const availabilityEditGenerationRef = useRef(0);
+  const availabilityBootstrapListingRef = useRef<string | null>(null);
+  const draftRef = useRef(draft);
+  useEffect(() => { draftRef.current = draft; }, [draft]);
 
   function patch(p: Partial<ListingDraft>) {
+    if (Object.keys(p).some((key) => AVAILABILITY_DRAFT_FIELDS.has(key as keyof ListingDraft))) {
+      availabilityEditGenerationRef.current += 1;
+    }
     setDraft((d) => ({ ...d, ...p }));
     setFieldErr({ field: null, message: null });
   }
@@ -241,30 +252,60 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
   // when the draft is known; a shared schedule still comes back through the
   // same endpoint and keeps one creator timezone across all listings.
   useEffect(() => {
-    if (!draft.id || draft.kind !== 'consult') return;
+    if (!draft.id || draft.kind !== 'consult') {
+      setAvailabilityHydrate({ status: 'idle', listingId: null, message: null, generation: availabilityEditGenerationRef.current, signature: null });
+      return;
+    }
+    const listingId = draft.id;
+    const requestGeneration = availabilityEditGenerationRef.current;
+    const requestSignature = availabilityDraftSignature(draft);
     let alive = true;
+    setAvailabilityHydrate({ status: 'loading', listingId, message: null, generation: requestGeneration, signature: requestSignature });
     void (async () => {
       try {
         const token = await getActiveToken();
-        // [WIZ-TYPES-1] getActiveTokenWaited resolves to null when nothing
-        // signs in inside the timeout. This hydrate is authenticated, so a null
-        // token could only ever produce a 401 — skip it rather than send one.
-        if (!token) return;
-        const r = await getCreatorSchedule(token, draft.id);
         if (!alive) return;
+        if (!token) throw new Error('Sign in again to load this listing’s calendar schedule.');
+        const r = await getCreatorSchedule(token, listingId);
+        if (!alive) return;
+        const currentDraft = draftRef.current;
+        const applySchedule = currentDraft.id === listingId && currentDraft.kind === 'consult' && shouldApplyHydratedAvailability({
+          requestedListingId: listingId,
+          currentListingId: currentDraft.id,
+          requestedGeneration: requestGeneration,
+          currentGeneration: availabilityEditGenerationRef.current,
+          requestedSignature: requestSignature,
+          currentSignature: availabilityDraftSignature(currentDraft),
+        });
+        if (!applySchedule) {
+          const message = hydratedAvailabilityMismatchMessage({ firstLoad: availabilitySchedule == null });
+          setAvailabilityHydrate({ status: 'error', listingId, message, generation: availabilityEditGenerationRef.current, signature: availabilityDraftSignature(currentDraft) });
+          setError(message);
+          setFieldErr({ field: 'availability_rules', message });
+          return;
+        }
         setAvailabilitySchedule(r.schedule);
-        setDraft((d) => ({
-          ...d,
-          timezone: r.schedule.timezone || d.timezone,
-          availability_mode: r.schedule.mode,
-          availability_rules: r.schedule.rules,
-          availability_version: r.schedule.version,
-          duration_min: r.schedule.duration_min || d.duration_min,
-        }));
-      } catch { /* availability is optional until a consult is saved */ }
+        setAvailabilityHydrate({ status: 'ready', listingId, message: null, generation: availabilityEditGenerationRef.current, signature: availabilityDraftSignature(r.schedule) });
+        setDraft((d) => {
+          if (d.id !== listingId || d.kind !== 'consult') return d;
+          return {
+            ...d,
+            timezone: r.schedule.timezone || d.timezone,
+            availability_mode: r.schedule.mode,
+            availability_rules: r.schedule.rules,
+            availability_version: r.schedule.version,
+            duration_min: r.schedule.duration_min || d.duration_min,
+          };
+        });
+      } catch (e) {
+        if (!alive) return;
+        const message = e instanceof Error ? e.message : 'Could not load this listing’s calendar schedule.';
+        setAvailabilitySchedule(null);
+        setAvailabilityHydrate({ status: 'error', listingId, message, generation: availabilityEditGenerationRef.current, signature: availabilityDraftSignature(draft) });
+      }
     })();
     return () => { alive = false; };
-  }, [draft.id, draft.kind]);
+  }, [draft.id, draft.kind, availabilityHydrateNonce]);
 
   // categories — same source publishListing validates against, so nothing
   // picked here can be rejected at publish for not existing.
@@ -447,9 +488,12 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
       });
       const ms = Date.now() - startedAt;
       if (!id) { setError('Could not save the draft. Try again.'); capture('listing_save', { outcome: 'error', status: 0, reason: 'no_id', step: STEP_LABELS[currentStep], ms, fields }); return false; }
-      if (id !== draft.id) setDraft((d) => ({ ...d, id }));
+      if (id !== draft.id) {
+        availabilityBootstrapListingRef.current = id;
+        setDraft((d) => ({ ...d, id }));
+      }
       if (currentStep === 3) {
-        const availabilityResult = await saveListingAvailability(token, { ...draft, id });
+        const availabilityResult = await saveListingAvailability(token, { ...draft, id }, { allowBootstrapFetch: draft.id === null || availabilityBootstrapListingRef.current === id });
         if (!availabilityResult.ok) return false;
         if (availabilityResult.schedule) {
           const schedule = availabilityResult.schedule;
@@ -504,7 +548,11 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
     }
   }
 
-  async function saveListingAvailability(token: string | null, d: ListingDraft & { id: string | null }): Promise<{ ok: boolean; schedule?: CreatorSchedule }> {
+  async function saveListingAvailability(
+    token: string | null,
+    d: ListingDraft & { id: string | null },
+    opts: { allowBootstrapFetch?: boolean } = {},
+  ): Promise<{ ok: boolean; schedule?: CreatorSchedule }> {
     // [WIZ-TYPES-1] `token` is `string | null` (getActiveTokenWaited). Every
     // call below is authenticated, and the listing save that got us here has
     // already succeeded with the same token, so a null here means the session
@@ -532,10 +580,40 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
       }
     }
     if (d.kind !== 'consult') return { ok: true };
+    if (!opts.allowBootstrapFetch && availabilityHydrate.status !== 'ready') {
+      const msg = availabilityHydrate.status === 'loading'
+        ? 'Wait for this listing’s calendar schedule to finish loading before saving availability.'
+        : 'Reload this listing’s calendar schedule before saving availability.';
+      setError(msg);
+      setFieldErr({ field: 'availability_rules', message: msg });
+      capture('availability_schedule_saved', { listing_id: d.id, outcome: `blocked_hydrate_${availabilityHydrate.status}` });
+      return { ok: false };
+    }
     try {
       const targetListing = d.id;
       let current = availabilitySchedule;
-      if (!current || current.listing_id !== targetListing) current = (await getCreatorSchedule(token, targetListing)).schedule;
+      if (!current || current.listing_id !== targetListing) {
+        if (!opts.allowBootstrapFetch) {
+          const msg = 'Could not load this listing’s calendar schedule. Refresh the page before saving availability.';
+          setError(msg);
+          setFieldErr({ field: 'availability_rules', message: msg });
+          capture('availability_schedule_saved', { listing_id: targetListing, outcome: 'blocked_missing_schedule' });
+          return { ok: false };
+        }
+        current = (await getCreatorSchedule(token, targetListing)).schedule;
+      }
+      if (current.version !== d.availability_version) {
+        const msg = 'This listing’s calendar changed since the wizard loaded it. Refresh before saving availability.';
+        setError(msg);
+        setFieldErr({ field: 'availability_rules', message: msg });
+        capture('availability_schedule_saved', {
+          listing_id: targetListing,
+          outcome: 'blocked_stale_version',
+          loaded_version: current.version,
+          draft_version: d.availability_version,
+        });
+        return { ok: false };
+      }
       // [CAL-AUDIT-2026-09-15 · #10] `horizon_days: 62` used to be hard-coded
       // here, so every consult save silently reset a deliberately shorter (or
       // longer, up to the server's 62) horizon. buildListingAvailabilitySchedule
@@ -543,6 +621,8 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
       const schedule: CreatorSchedule = buildListingAvailabilitySchedule(current, { ...d, id: targetListing });
       const saved = await saveCreatorSchedule(token, schedule);
       capture('availability_schedule_saved', { listing_id: targetListing, mode: schedule.mode, version: saved.schedule.version });
+      availabilityBootstrapListingRef.current = null;
+      setAvailabilityHydrate({ status: 'ready', listingId: targetListing, message: null, generation: availabilityEditGenerationRef.current, signature: availabilityDraftSignature(saved.schedule) });
       return { ok: true, schedule: saved.schedule };
     } catch (e) {
       const msg = e instanceof ApiError ? listingErrorMessage(e.error, (e.body as any)?.detail, (e.body as any)?.message) : 'Could not save consult availability.';
@@ -782,6 +862,7 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
   const approvedAwaitingPublish = draft.status === 'approved';
   const rejected = draft.status === 'rejected';
   const publicHref = draft.id ? `/l/${encodeURIComponent(draft.id)}` : null;
+  const availabilityStepReady = draft.kind !== 'consult' || !draft.id || availabilityHydrate.status === 'ready';
 
   if (loading) return <div className="font-body font-bold text-inkSoft">Loading…</div>;
 
@@ -845,11 +926,23 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
         {step === 2 && <Step3Money draft={draft} patch={patch} err={fieldErr} />}
         {step === 3 && (
         <>
-          <Step4Time draft={draft} patch={patch} err={fieldErr} />
+          {draft.kind === 'consult' && draft.id && availabilityHydrate.status !== 'ready' && (
+            <Card fillClassName="bg-paper2" className="mb-4">
+              <p className="font-body font-bold text-[14px] text-inkSoft">
+                {availabilityHydrate.status === 'loading'
+                  ? 'Loading this listing’s calendar schedule before availability can be saved…'
+                  : availabilityHydrate.message || 'Could not load this listing’s calendar schedule.'}
+              </p>
+              {availabilityHydrate.status === 'error' && (
+                <Button variant="ghost" label="Discard availability edits and reload" onClick={() => setAvailabilityHydrateNonce((value) => value + 1)} className="mt-3" />
+              )}
+            </Card>
+          )}
+          {availabilityStepReady && <Step4Time draft={draft} patch={patch} err={fieldErr} />}
           {/* [CAL-AUDIT-2026-09-15 · #11] The conflict answer arrives while the
            *  creator is choosing, not after they press Continue, and it never
            *  writes anything — see TimeConflictPreview. */}
-          <TimeConflictPreview draft={draft} listingId={draft.id} onUseTime={(value) => patch({ starts_at: value })} />
+          {availabilityStepReady && <TimeConflictPreview draft={draft} listingId={draft.id} onUseTime={(value) => patch({ starts_at: value })} />}
         </>
       )}
         {step === 4 && <Step5HowItWorks draft={draft} patch={patch} />}

@@ -22,7 +22,7 @@
  */
 import type {
   AvailabilityException, AvailabilityRule, CalendarBlock, CalendarEvent, CreatorSchedule,
-  ExceptionStatus, GoogleCalendar, GoogleCalendarStatus,
+  ConflictAlternative, ConflictItem, ExceptionStatus, GoogleCalendar, GoogleCalendarStatus,
 } from './availability';
 
 /** Minute 1440 is the END of the day. It is NOT midnight and must never be
@@ -52,9 +52,15 @@ export function minutesToClock(value: number): string {
 }
 
 /** "24:00" and "00:00" are both accepted; anything else invalid is null so the
- *  caller can show a message instead of writing a wrong interval. */
+ *  caller can show a message instead of writing a wrong interval.
+ *
+ *  [CAL-AUDIT-2026-09-15 · #2] Exactly two digits are required for the hour.
+ *  A browser `<input type="time">` only ever produces "HH:MM" (or "" when the
+ *  value is not a legal time), so a one-digit hour means the caller built the
+ *  string by hand — and ACCEPTING it would quietly write a window the creator
+ *  never saw in the field. Refusing it makes the caller explain instead. */
 export function clockToMinutes(value: string): number | null {
-  const match = /^(\d{1,2}):(\d{2})$/.exec(String(value ?? '').trim());
+  const match = /^(\d{2}):(\d{2})$/.exec(String(value ?? '').trim());
   if (!match) return null;
   const hours = Number(match[1]);
   const minutes = Number(match[2]);
@@ -65,6 +71,62 @@ export function clockToMinutes(value: string): number | null {
 
 export function intervalLabel(startMin: number, endMin: number): string {
   return isAllDayInterval(startMin, endMin) ? 'All day' : `${minutesToClock(startMin)}–${minutesToClock(endMin)}`;
+}
+
+/* ── editor clock fields (#2) ───────────────────────────────────────────────
+ * AN <input type="time"> CANNOT HOLD "24:00". A partial interval that ends at
+ * minute 1440 (18:00..24:00) is a legal saved window — the server validates
+ * `end <= 1440` — but feeding `minutesToClock(1440) === "24:00"` into the
+ * browser input leaves it BLANK, so re-saving the window silently rewrote the
+ * end to something else. Minute 1440 is therefore carried by an explicit
+ * `endOfDay` flag, and the input only ever receives a value it accepts. */
+/** 23:59 — the last minute an `<input type="time">` accepts. It is only ever a
+ *  placeholder for the field; `endOfDay` is what decides the saved minute. */
+export const LAST_CLOCK_MIN = ALL_DAY_END_MIN - 1;
+
+export interface ClockIntervalFields {
+  /** Always a valid `<input type="time">` value ("HH:MM"), never "24:00". */
+  start: string;
+  end: string;
+  /** start 00:00 and end 24:00 — the whole day. */
+  allDay: boolean;
+  /** A partial window whose end is minute 1440 (e.g. 18:00..24:00). */
+  endOfDay: boolean;
+}
+
+/** True for a PARTIAL window that runs to the end of the day. All-day is a
+ *  different control (`isAllDayInterval`) and must not be reported here. */
+export function isEndOfDayInterval(startMin: number, endMin: number): boolean {
+  return !isAllDayInterval(startMin, endMin) && endMin >= ALL_DAY_END_MIN;
+}
+
+function clampClockMinute(value: number, fallback = 0): number {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.min(LAST_CLOCK_MIN, n));
+}
+
+/** Saved interval → the editor's fields, WITHOUT loss: an 18:00..24:00 window
+ *  comes back as start 18:00, end 23:59 and endOfDay true, which
+ *  `clockFieldsToInterval` turns back into 18:00..1440. */
+export function intervalToClockFields(startMin: number, endMin: number): ClockIntervalFields {
+  const allDay = isAllDayInterval(startMin, endMin);
+  const endOfDay = isEndOfDayInterval(startMin, endMin);
+  const start = clampClockMinute(startMin);
+  const end = endOfDay ? LAST_CLOCK_MIN : Math.max(start, clampClockMinute(endMin, start));
+  return { start: minutesToClock(start), end: minutesToClock(end), allDay, endOfDay };
+}
+
+/** Editor fields → a savable interval, or null when the input is impossible.
+ *  Never returns end 1440 for a partial window unless endOfDay was chosen. */
+export function clockFieldsToInterval(fields: ClockIntervalFields): { start_min: number; end_min: number } | null {
+  if (fields.allDay) return { start_min: ALL_DAY_START_MIN, end_min: ALL_DAY_END_MIN };
+  const start = clockToMinutes(fields.start);
+  if (start === null || start >= ALL_DAY_END_MIN) return null;
+  if (fields.endOfDay) return { start_min: start, end_min: ALL_DAY_END_MIN };
+  const end = clockToMinutes(fields.end);
+  if (end === null || end <= start) return null;
+  return { start_min: start, end_min: end };
 }
 
 /** "12 hours", "90 minutes", "1 hour 30 minutes". */
@@ -105,6 +167,37 @@ export function isValidDateKey(key: string): boolean {
 
 export function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+}
+
+/**
+ * [CAL-AUDIT-2026-09-15 · #1/#4] The civil date of an instant in a NAMED zone.
+ *
+ * "Today" is the schedule's civil date, not the device's. A creator in
+ * Asia/Kolkata planning a calendar that runs on America/Los_Angeles is already
+ * on the next date for part of every day, so opening the day editor on the
+ * device's date shows the wrong day — and a "block today" click would land on
+ * yesterday's window. The schedule already states its zone and the booking
+ * engine works in it, so the editor opens on the same date the server would.
+ *
+ * Returns null for a missing or unknown zone so the caller falls back to
+ * something it can explain rather than guessing a date.
+ */
+export function civilDateKey(epochMs: number, timezone: string | null | undefined): string | null {
+  if (!timezone || typeof timezone !== 'string') return null;
+  const instant = Number(epochMs);
+  if (!Number.isFinite(instant)) return null;
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(new Date(instant));
+    const part = (type: string) => parts.find((entry) => entry.type === type)?.value ?? '';
+    const key = `${part('year')}-${part('month')}-${part('day')}`;
+    return isValidDateKey(key) ? key : null;
+  } catch {
+    // An unknown IANA zone throws a RangeError; a caller must not get a date it
+    // cannot trust out of that.
+    return null;
+  }
 }
 
 // ── exceptions: several per day, edited individually ───────────────────────
@@ -170,8 +263,12 @@ export function planIntervalUpsert(
   target: IntervalTarget,
   opts: { newId: string; creatorWide: boolean },
 ): IntervalPlan {
-  const isHard = (item: AvailabilityException) =>
-    item.status === 'reserved' || (opts.creatorWide && item.status === 'unavailable');
+  // [CAL-AUDIT-2026-09-15] Takes the STATUS, not a whole exception: the caller
+  // asks the same question about a saved `AvailabilityException` and about the
+  // `IntervalTarget` being written (whose `id` is optional), and the two must
+  // never be forced into each other's shape just to share this predicate.
+  const isHard = (status: ExceptionStatus) =>
+    status === 'reserved' || (opts.creatorWide && status === 'unavailable');
   const others = schedule.exceptions.filter((item) => item.id !== target.id);
   const kept: AvailabilityException[] = [];
   const removed: AvailabilityException[] = [];
@@ -193,8 +290,8 @@ export function planIntervalUpsert(
       kept.push(existing);
       continue;
     }
-    if (covered && isHard(target)) { removed.push(existing); continue; }
-    if (isHard(existing) && isHard(target)) {
+    if (covered && isHard(target.status)) { removed.push(existing); continue; }
+    if (isHard(existing.status) && isHard(target.status)) {
       conflicts.push(`This overlaps an existing blocked window ${intervalLabel(existing.start_min, existing.end_min)} on this date. Edit that window instead of adding a second one.`);
       kept.push(existing);
       continue;
@@ -217,6 +314,118 @@ export function planIntervalUpsert(
 /** Remove one interval by id; every other interval survives. */
 export function removeInterval(schedule: CreatorSchedule, id: string): AvailabilityException[] {
   return schedule.exceptions.filter((item) => item.id !== id);
+}
+
+export interface MultiDateIntervalPlan {
+  /** The full exception list to PUT — unrelated exceptions are preserved. */
+  next: AvailabilityException[];
+  /** Human-readable reasons the save must NOT proceed. */
+  conflicts: string[];
+  /** Existing windows the save would delete because the new one fully covers them. */
+  removed: AvailabilityException[];
+  /** Existing windows whose date+start+end key the save re-writes. */
+  replaced: AvailabilityException[];
+  /** Whether this save touches a window that already existed. */
+  changesExisting: boolean;
+}
+
+/**
+ * [CAL-AUDIT-2026-09-15 · #5] Plan an add/edit over one OR SEVERAL dates.
+ *
+ * The date-range ("block several days") save used to run this loop inline in
+ * the panel, so the "N covered windows were replaced" line only appeared AFTER
+ * the write. Doing it here means the same computation drives the confirmation
+ * the creator sees BEFORE anything is saved, and a unit test can prove that
+ * unrelated windows and days survive.
+ *
+ * `newId` is injected (the panel passes `crypto.randomUUID`) so this stays a
+ * pure function with no runtime imports.
+ */
+export function planIntervalUpserts(
+  schedule: CreatorSchedule,
+  template: IntervalTarget,
+  dates: string[],
+  opts: { newId: () => string; creatorWide: boolean; labelForDate?: (date: string) => string },
+): MultiDateIntervalPlan {
+  let exceptions = schedule.exceptions;
+  const conflicts: string[] = [];
+  const removed: AvailabilityException[] = [];
+  const replaced: AvailabilityException[] = [];
+  for (const date of dates) {
+    const plan = planIntervalUpsert(
+      { ...schedule, exceptions },
+      { ...template, date, id: dates.length === 1 ? template.id : undefined },
+      { newId: opts.newId(), creatorWide: opts.creatorWide },
+    );
+    if (plan.conflicts.length) {
+      const prefix = dates.length > 1 && opts.labelForDate ? `${opts.labelForDate(date)}: ` : '';
+      conflicts.push(`${prefix}${plan.conflicts[0]}`);
+      continue;
+    }
+    exceptions = plan.next;
+    if (plan.replaced) replaced.push(plan.replaced);
+    removed.push(...plan.removed);
+  }
+  return { next: exceptions, conflicts, removed, replaced, changesExisting: removed.length > 0 || replaced.length > 0 };
+}
+
+/**
+ * [CAL-AUDIT-2026-09-15 · #3] Should the cosmetic server conflict preview run?
+ *
+ * POST /api/calendar/conflicts/preview takes no "ignore this window" argument,
+ * so it reports the creator's own saved window as a conflict when that window
+ * is the one being changed — and it would refuse an edit of a block because the
+ * block overlaps itself. It is therefore only a COSMETIC pre-check for a save
+ * that cannot touch an existing window. An edit, a range, or a save that
+ * replaces/covers a window relies on the PUT, which is atomic and already
+ * excludes this schedule's own prior reservation mirrors
+ * (worker/src/routes/calendar_availability.ts: `r.source_ref LIKE
+ * 'schedule:<id>:%'`). Actual commitment checks are NOT weakened: the PUT still
+ * refuses a confirmed booking or another schedule's reservation.
+ */
+export function shouldRunConflictPreview(input: {
+  mode: 'add' | 'edit';
+  dates: number;
+  conflicts: string[];
+  removed: AvailabilityException[];
+  replaced: AvailabilityException[];
+}): boolean {
+  if (input.mode !== 'add') return false;
+  if (input.conflicts.length > 0) return false;
+  if (input.dates !== 1) return false;
+  if (input.removed.length > 0 || input.replaced.length > 0) return false;
+  return true;
+}
+
+/**
+ * [CAL-AUDIT-2026-09-15 · #5] Identity of one save PLAN, so a confirmation can
+ * only ever be reused for the plan it described.
+ *
+ * The confirm button and the plan are computed in different renders. Without an
+ * identity, changing the window after "Confirm: replace 2 windows" appeared —
+ * a different end time, another suggested slot, another scope — left the OLD
+ * confirmation armed, and the next click wrote a replace-set the creator never
+ * saw. Two different plans therefore produce different signatures, and only an
+ * identical signature may skip the confirmation and write.
+ */
+export function planSignature(input: {
+  mode: 'add' | 'edit';
+  dates: string[];
+  startMin: number;
+  endMin: number;
+  status: string;
+  listingId?: string | null;
+  /** ids of the existing windows this plan would remove or re-write. */
+  affectedIds: string[];
+}): string {
+  return [
+    input.mode,
+    input.dates.join(','),
+    `${input.startMin}-${input.endMin}`,
+    input.status,
+    input.listingId ?? '',
+    input.affectedIds.join(','),
+  ].join('|');
 }
 
 export interface RangeOptions {
@@ -440,6 +649,29 @@ export function minutesAgo(ms: number): string {
 }
 
 // ── one card per booking ───────────────────────────────────────────────────
+/** [CAL-AUDIT-2026-09-15 · #6] The backend states the booking role explicitly
+ *  (`creator` | `customer` | null). It is NEVER inferred from a title or from
+ *  an overlapping interval. */
+export type BookingRole = 'creator' | 'customer' | null;
+
+/** Read the role the server supplied. `booking_role` wins; the older `role`
+ *  column is normalised (host→creator, attendee→customer) instead of guessed. */
+export function bookingRoleOf(event: { booking_role?: string | null; role?: string | null }): BookingRole {
+  const stated = String(event.booking_role ?? '').trim().toLowerCase();
+  const legacy = String(event.role ?? '').trim().toLowerCase();
+  const value = stated || legacy;
+  if (value === 'creator' || value === 'host') return 'creator';
+  if (value === 'customer' || value === 'attendee' || value === 'buyer') return 'customer';
+  return null;
+}
+
+/** Plain-English label for a stated role; null when the server did not say. */
+export function bookingRoleLabel(role: BookingRole): string | null {
+  if (role === 'creator') return 'you host';
+  if (role === 'customer') return 'you booked';
+  return null;
+}
+
 export interface DayItem {
   key: string;
   kind: 'booking' | 'busy';
@@ -450,6 +682,8 @@ export interface DayItem {
   tone: string;
   listingId: string | null;
   bookingId: string | null;
+  /** Stated by the server (`booking_role`), never derived from title/interval. */
+  bookingRole: BookingRole;
   /** Busy blocks folded into this card instead of being shown again. */
   internalBlockIds: string[];
 }
@@ -464,22 +698,31 @@ function overlaps(start: number, end: number, from: number, to: number): boolean
  * A confirmed consultation writes BOTH a calendar event and a busy
  * reservation/block; the old day view concatenated them, so one booking showed
  * up as "Blocked time" AND "Booked" and inflated the busy count. With the new
- * `/api/calendar/blocks` fields (`booking_id`) the match is exact; against an
- * older backend the same interval from a non-Google source is treated as the
- * booking's own busy block, and only unmatched blocks stay visible.
+ * `/api/calendar/blocks` fields (`booking_id`) the match is exact, and ONLY a
+ * canonical id may fold a block into a booking card.
+ *
+ * [CAL-AUDIT-2026-09-15 · #6] Two things are deliberately NOT used as identity:
+ *   • `slot_id` — a group slot can hold several bookings, so collapsing on it
+ *     would hide an unrelated session;
+ *   • an identical interval — two different commitments can share a timespan,
+ *     and folding/merging on that would attribute one booking's busy block to
+ *     the other. Without the canonical id the block stays visible as its own
+ *     card: an honest duplicate is better than a wrong link.
  * Google blocks are never folded: they are external busy time, not bookings.
  */
 export function dayItemsForRange(blocks: CalendarBlock[], events: CalendarEvent[], from: number, to: number): DayItem[] {
   const bookings: DayItem[] = [];
   const seenBookings = new Set<string>();
-  for (const event of events) {
+  for (let index = 0; index < events.length; index += 1) {
+    const event = events[index];
     if (!overlaps(event.start_at, event.end_at, from, to)) continue;
     const bookingId = event.booking_id ?? null;
-    const key = bookingId ?? event.slot_id ?? `${event.start_at}-${event.end_at}`;
-    if (seenBookings.has(`booking:${key}`)) continue;
-    seenBookings.add(`booking:${key}`);
+    if (bookingId) {
+      if (seenBookings.has(bookingId)) continue;
+      seenBookings.add(bookingId);
+    }
     bookings.push({
-      key: `booking:${key}`,
+      key: bookingId ? `booking:${bookingId}` : `booking:event:${index}:${event.start_at}`,
       kind: 'booking',
       title: event.title || 'Booked session',
       start: event.start_at,
@@ -488,23 +731,19 @@ export function dayItemsForRange(blocks: CalendarBlock[], events: CalendarEvent[
       tone: 'calendar-event-booked',
       listingId: event.listing_id ?? null,
       bookingId,
+      bookingRole: bookingRoleOf(event),
       internalBlockIds: [],
     });
   }
   const bookingIds = new Set(bookings.map((item) => item.bookingId).filter((value): value is string => !!value));
-  const bookingIntervals = new Set(bookings.map((item) => `${item.start}:${item.end}`));
   const items: DayItem[] = [...bookings];
   for (const block of blocks) {
     if (!overlaps(block.starts_at, block.ends_at, from, to)) continue;
     const source = String(block.source_app ?? '').toLowerCase();
     const external = source === 'gcal';
-    const ownedByBooking = !external && (
-      (!!block.booking_id && bookingIds.has(block.booking_id)) ||
-      bookingIntervals.has(`${block.starts_at}:${block.ends_at}`)
-    );
+    const ownedByBooking = !external && !!block.booking_id && bookingIds.has(block.booking_id);
     if (ownedByBooking) {
-      const owner = items.find((item) => item.bookingId && block.booking_id === item.bookingId)
-        ?? items.find((item) => item.start === block.starts_at && item.end === block.ends_at);
+      const owner = items.find((item) => item.bookingId && block.booking_id === item.bookingId);
       if (owner) owner.internalBlockIds.push(block.id);
       continue;
     }
@@ -518,6 +757,7 @@ export function dayItemsForRange(blocks: CalendarBlock[], events: CalendarEvent[
       tone: external ? 'calendar-event-google' : 'calendar-event-block',
       listingId: block.listing_id ?? null,
       bookingId: block.booking_id ?? null,
+      bookingRole: bookingRoleOf(block),
       internalBlockIds: [],
     });
   }
@@ -656,4 +896,167 @@ export function listingReservationSentence(status: string | null | undefined): s
 
 export function isReservedListingStatus(status: string | null | undefined): boolean {
   return status === 'published' || status === 'live';
+}
+
+/* ── preview state machine (#7, #11) ───────────────────────────────────────
+ * The preview's verdict belongs to ONE (listing, start, end, timezone) key.
+ * Keeping the transitions here — instead of inside the React effect — makes two
+ * rules testable without a DOM:
+ *   • a slow answer for a key that is no longer on screen is DROPPED (never
+ *     overwrites a newer verdict, never resurrects a green one);
+ *   • the moment the inputs change, the previous verdict is cleared, and a
+ *     failure CLEARS any previous "free" state rather than leaving it showing. */
+export type PreviewStatus = 'idle' | 'checking' | 'free' | 'conflict' | 'error';
+
+export interface PreviewStateShape {
+  status: PreviewStatus;
+  /** The conflictPreviewKey this verdict belongs to; null while idle. */
+  key: string | null;
+  conflicts: ConflictItem[];
+  alternatives: ConflictAlternative[];
+  message: string | null;
+}
+
+export type PreviewEvent =
+  | { type: 'reset' }
+  | { type: 'start'; key: string }
+  | { type: 'result'; key: string; ok: boolean; conflicts: ConflictItem[]; alternatives: ConflictAlternative[] }
+  | { type: 'failure'; key: string; message: string };
+
+export const IDLE_PREVIEW_STATE: PreviewStateShape = { status: 'idle', key: null, conflicts: [], alternatives: [], message: null };
+
+export function reducePreview(state: PreviewStateShape, event: PreviewEvent): PreviewStateShape {
+  if (event.type === 'reset') return IDLE_PREVIEW_STATE;
+  if (event.type === 'start') {
+    // Inputs changed: drop the old verdict immediately, even though the answer
+    // is still debouncing. A verdict for a time nobody is looking at is wrong.
+    if (state.status === 'checking' && state.key === event.key) return state;
+    return { status: 'checking', key: event.key, conflicts: [], alternatives: [], message: null };
+  }
+  // Late answers for a superseded key never apply.
+  if (state.key !== event.key) return state;
+  if (event.type === 'result') {
+    return {
+      status: event.ok ? 'free' : 'conflict',
+      key: event.key,
+      conflicts: event.conflicts,
+      alternatives: event.alternatives,
+      message: null,
+    };
+  }
+  return { status: 'error', key: event.key, conflicts: [], alternatives: [], message: event.message };
+}
+
+/**
+ * [CAL-AUDIT-2026-09-15 · #7/#11] Wording for the draft preview.
+ *
+ * "Free" here means "no clash with the commitments on your calendar yet" — it
+ * is NEVER "bookable": Google readiness, working hours, the notice window, the
+ * gap before/after a session and the listing's own policy are applied when the
+ * listing is saved/published and again when a customer books. Claiming a draft
+ * is bookable would be a promise this preview cannot keep.
+ */
+export function previewHeadline(input: { status: PreviewStatus; firstTitle?: string | null; message?: string | null }): string {
+  switch (input.status) {
+    case 'checking': return 'Checking your calendar…';
+    case 'free': return 'No clash with the commitments on your calendar yet.';
+    case 'conflict': return input.firstTitle
+      ? `This overlaps ${input.firstTitle}.`
+      : 'This time conflicts with another commitment.';
+    case 'error': return `Could not check this time: ${input.message ?? 'the preview failed'}`;
+    default: return 'Checking this time against your calendar…';
+  }
+}
+
+/* ── listing wizard availability hydration ────────────────────────────────
+ * Late schedule loads are allowed to update the loaded CAS version, but they
+ * must not overwrite edits the creator made while the request was in flight.
+ * The signature only covers draft fields owned by AvaCalendar. */
+export interface AvailabilityDraftFingerprintInput {
+  timezone?: string | null;
+  availability_mode?: string | null;
+  mode?: string | null;
+  availability_rules?: { weekday: number; start_min: number; end_min: number }[] | null;
+  rules?: { weekday: number; start_min: number; end_min: number }[] | null;
+  duration_min?: number | null;
+}
+
+export function availabilityDraftSignature(input: AvailabilityDraftFingerprintInput): string {
+  const rules = (input.availability_rules ?? input.rules ?? [])
+    .map((rule) => ({ weekday: rule.weekday, start_min: rule.start_min, end_min: rule.end_min }))
+    .sort((a, b) => a.weekday - b.weekday || a.start_min - b.start_min || a.end_min - b.end_min);
+  return JSON.stringify({
+    timezone: input.timezone || '',
+    mode: input.availability_mode || input.mode || '',
+    duration_min: Number(input.duration_min) || 0,
+    rules,
+  });
+}
+
+export function shouldApplyHydratedAvailability(input: {
+  requestedListingId: string | null;
+  currentListingId: string | null;
+  requestedGeneration: number;
+  currentGeneration: number;
+  requestedSignature: string;
+  currentSignature: string;
+}): boolean {
+  return input.requestedListingId === input.currentListingId
+    && input.requestedGeneration === input.currentGeneration
+    && input.requestedSignature === input.currentSignature;
+}
+
+export function hydratedAvailabilityMismatchMessage(input: { firstLoad: boolean }): string {
+  return input.firstLoad
+    ? 'This listing’s calendar schedule loaded after you began editing availability. Discard those availability edits and reload the schedule before saving.'
+    : 'This listing’s calendar schedule changed while you were editing. Discard local availability edits and reload before saving.';
+}
+
+/* ── account isolation (#1) ────────────────────────────────────────────────
+ * Retained calendar state is per ACCOUNT. Signing into a different account in
+ * the same tab must not leave the previous account's schedule, listings, blocks
+ * or Google status on screen. The session token itself cannot be used as the
+ * key — Clerk re-mints it periodically for the SAME user — so the stable subject
+ * claim is used instead. This is a cache key ONLY: it never authorises anything,
+ * and an unrecognised token shape returns null (no key, no invalidation) rather
+ * than a guess. */
+const BASE64URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+
+function decodeBase64Url(value: string): string | null {
+  let bits = 0;
+  let count = 0;
+  let out = '';
+  for (const char of value) {
+    const index = BASE64URL.indexOf(char);
+    if (index < 0) return null;
+    bits = (bits << 6) | index;
+    count += 6;
+    if (count >= 8) {
+      count -= 8;
+      out += String.fromCharCode((bits >> count) & 0xff);
+    }
+  }
+  return out;
+}
+
+/** Stable, non-secret account identity for cache invalidation, or null when the
+ *  token shape is unknown. */
+export function tokenAccountKey(token: string | null | undefined): string | null {
+  if (!token || typeof token !== 'string') return null;
+  try {
+    const parts = token.split('.');
+    if (parts.length === 3) {
+      const payload = decodeBase64Url(parts[1] ?? '');
+      if (!payload) return null;
+      const claims = JSON.parse(payload) as { sub?: unknown; sid?: unknown };
+      if (typeof claims.sub === 'string' && claims.sub) return claims.sub;
+      if (typeof claims.sid === 'string' && claims.sid) return claims.sid;
+      return null;
+    }
+    // Legacy guest session: g1.<uid>.<exp>.<hmac>
+    if (token.startsWith('g1.')) return parts[1] || null;
+    return null;
+  } catch {
+    return null;
+  }
 }

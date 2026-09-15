@@ -14,10 +14,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  ALL_DAY_END_MIN, MAX_EXCEPTIONS, buildListingAvailabilitySchedule, clampHorizonDays, clockToMinutes,
+  ALL_DAY_END_MIN, IDLE_PREVIEW_STATE, LAST_CLOCK_MIN, MAX_EXCEPTIONS, availabilityDraftSignature, bookingRoleLabel, bookingRoleOf,
+  buildListingAvailabilitySchedule, civilDateKey, clampHorizonDays, clockFieldsToInterval, clockToMinutes,
   conflictPreviewKey, createRequestGate, dayItemsForRange, deriveGoogleReadiness, effectiveNoticeMinutes,
-  exceptionBudget, intervalLabel, isAllDayInterval, isValidDateKey, listingReservationSentence,
-  minutesToClock, planDateRange, planIntervalUpsert, policySummaryLines, removeInterval, weeklyRepeatDates,
+  exceptionBudget, intervalLabel, intervalToClockFields, isAllDayInterval, isEndOfDayInterval,
+  isValidDateKey, listingReservationSentence, minutesToClock, planDateRange, planIntervalUpsert,
+  planIntervalUpserts, planSignature, policySummaryLines, hydratedAvailabilityMismatchMessage, previewHeadline, reducePreview, removeInterval,
+  shouldApplyHydratedAvailability, shouldRunConflictPreview, tokenAccountKey, weeklyRepeatDates,
 } from '../src/lib/calendarCore.ts';
 import type { AvailabilityException, CalendarBlock, CalendarEvent, CreatorSchedule, GoogleCalendar, GoogleCalendarStatus } from '../src/lib/availability.ts';
 
@@ -39,7 +42,7 @@ function block(overrides: Partial<CalendarBlock> = {}): CalendarBlock {
 }
 /** `booking_id: null` drops the key entirely — an older backend OMITS the
  *  field, it does not send null, and the fallback path keys off its absence. */
-function event(overrides: Partial<CalendarEvent> & { booking_id?: string | null } = {}): CalendarEvent {
+function event(overrides: Omit<Partial<CalendarEvent>, 'booking_id'> & { booking_id?: string | null } = {}): CalendarEvent {
   const merged = { booking_id: 'bk1', title: 'Consultation', start_at: 1_000, end_at: 2_000, status: 'confirmed', ...overrides };
   const created = merged as CalendarEvent;
   if (overrides.booking_id === null) delete created.booking_id;
@@ -86,6 +89,50 @@ test('an all-day weekly window is detected, and every timed window is a valid cl
   }
 });
 
+// ── end-of-day for PARTIAL windows (audit #2) ──────────────────────────────
+// A time input accepts "00:00".."23:59" and nothing else. 18:00..24:00 is a
+// legal SAVED window (the server allows end 1440), so the editor carries the
+// end-of-day flag and never hands "24:00" to the field.
+const CLOCK_INPUT_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+test('a partial window ending at minute 1440 round-trips through valid clock fields', () => {
+  const fields = intervalToClockFields(18 * 60, ALL_DAY_END_MIN);
+  assert.equal(fields.allDay, false);
+  assert.equal(fields.endOfDay, true);
+  assert.equal(fields.start, '18:00');
+  assert.match(fields.end, CLOCK_INPUT_RE);
+  assert.equal(fields.end, '23:59');
+  assert.deepEqual(clockFieldsToInterval(fields), { start_min: 1080, end_min: 1440 });
+});
+
+test('editing a saved partial or whole-day window never feeds 24:00 to the field', () => {
+  for (const [start, end] of [[0, 1440], [0, 1439], [540, 1440], [540, 1020], [1439, 1440]]) {
+    const fields = intervalToClockFields(start, end);
+    assert.match(fields.start, CLOCK_INPUT_RE, `start of ${start}..${end}`);
+    assert.match(fields.end, CLOCK_INPUT_RE, `end of ${start}..${end}`);
+    assert.deepEqual(clockFieldsToInterval(fields), { start_min: start, end_min: end }, `round-trip ${start}..${end}`);
+  }
+  // All-day is its own control, not the end-of-day flag.
+  assert.equal(intervalToClockFields(0, 1440).allDay, true);
+  assert.equal(intervalToClockFields(0, 1440).endOfDay, false);
+  assert.equal(isEndOfDayInterval(0, 1440), false);
+  assert.equal(isEndOfDayInterval(540, 1440), true);
+  assert.equal(isEndOfDayInterval(540, 1439), false);
+  // A rule written by the app (a weekly window to midnight) keeps minute 1440.
+  assert.equal(clockFieldsToInterval({ start: '09:00', end: '23:59', allDay: false, endOfDay: true })?.end_min, 1440);
+});
+
+test('impossible clock fields are refused instead of guessed', () => {
+  assert.equal(clockFieldsToInterval({ start: '17:00', end: '17:00', allDay: false, endOfDay: false }), null);
+  assert.equal(clockFieldsToInterval({ start: '18:00', end: '09:00', allDay: false, endOfDay: false }), null);
+  assert.equal(clockFieldsToInterval({ start: '', end: '09:00', allDay: false, endOfDay: false }), null);
+  assert.equal(clockFieldsToInterval({ start: '24:00', end: '23:59', allDay: false, endOfDay: true }), null);
+  assert.equal(clockFieldsToInterval({ start: 'nonsense', end: '09:00', allDay: false, endOfDay: true }), null);
+  // endOfDay wins over whatever stale value the (disabled) field still holds.
+  assert.deepEqual(clockFieldsToInterval({ start: '09:00', end: '10:00', allDay: false, endOfDay: true }), { start_min: 540, end_min: 1440 });
+  assert.equal(LAST_CLOCK_MIN, 1439);
+});
+
 // ── several intervals on one day (audit #3) ────────────────────────────────
 test('a second break on the same day is added beside the first, not over it', () => {
   const base = schedule({ exceptions: [exception({ id: 'lunch', date: DAY, start_min: 780, end_min: 840 })] });
@@ -127,6 +174,70 @@ test('intervals on other dates survive an edit and a removal untouched', () => {
   assert.equal(plan.next.some((item) => item.id === 'other'), true);
   assert.equal(removeInterval({ ...base, exceptions: plan.next }, 'a').some((item) => item.id === 'other'), true);
   assert.equal(removeInterval(base, 'a').length, 1);
+});
+
+// ── multi-date planning + replace confirmation (audit #5) ──────────────────
+let idCounter = 0;
+const nextId = () => `id${(idCounter += 1)}`;
+
+test('a date range is planned over every date and reports what it would replace', () => {
+  const base = schedule({
+    exceptions: [
+      exception({ id: 'lunch', date: '2026-10-05', start_min: 780, end_min: 840 }),
+      exception({ id: 'far', date: '2026-12-01', start_min: 600, end_min: 660 }),
+    ],
+  });
+  const plan = planIntervalUpserts(base, { date: '2026-10-05', start_min: 0, end_min: 1440, status: 'unavailable' }, ['2026-10-05', '2026-10-06', '2026-10-07'], { newId: nextId, creatorWide: true });
+  assert.deepEqual(plan.conflicts, []);
+  assert.equal(plan.next.filter((item) => item.date.startsWith('2026-10-0')).length, 3);
+  // The covered lunch window is REPORTED before the write, not silently dropped.
+  assert.deepEqual(plan.removed.map((item) => item.id), ['lunch']);
+  assert.equal(plan.changesExisting, true);
+  // The unrelated December window is untouched, on every date.
+  assert.equal(plan.next.some((item) => item.id === 'far'), true);
+  assert.equal(plan.next.length, 4);
+});
+
+test('a range that would cover a reserved window changes nothing and says which date', () => {
+  const base = schedule({
+    exceptions: [
+      exception({ id: 'hold', date: '2026-10-06', start_min: 600, end_min: 660, status: 'reserved', listing_id: 'l1' }),
+      exception({ id: 'keep', date: '2026-10-07', start_min: 600, end_min: 660 }),
+    ],
+  });
+  const plan = planIntervalUpserts(
+    base,
+    { date: '2026-10-05', start_min: 0, end_min: 1440, status: 'unavailable' },
+    ['2026-10-05', '2026-10-06', '2026-10-07'],
+    { newId: nextId, creatorWide: true, labelForDate: (key) => key },
+  );
+  assert.equal(plan.conflicts.length, 1);
+  assert.match(plan.conflicts[0], /^2026-10-06: /);
+  assert.equal(plan.next.some((item) => item.id === 'hold'), true);
+  // The date that could not be applied is NOT added either (nothing partial).
+  assert.equal(plan.next.some((item) => item.date === '2026-10-06' && item.id !== 'hold'), false);
+  // 10-05 and 10-07 were still planned, and 10-07's block is still there.
+  assert.equal(plan.next.some((item) => item.date === '2026-10-05' && item.id !== 'keep' && item.id !== 'hold'), true);
+  assert.equal(plan.next.some((item) => item.id === 'keep'), true);
+});
+
+test('an edit excludes its OWN window from the plan instead of refusing it (#3)', () => {
+  const base = schedule({ exceptions: [exception({ id: 'mine', date: DAY, start_min: 540, end_min: 600 })] });
+  const plan = planIntervalUpsert(base, { id: 'mine', date: DAY, start_min: 540, end_min: 720, status: 'unavailable' }, { newId: 'unused', creatorWide: true });
+  assert.deepEqual(plan.conflicts, []);
+  assert.equal(plan.next.length, 1);
+  assert.equal(plan.next[0].id, 'mine');
+  assert.equal(plan.next[0].end_min, 720);
+});
+
+test('the cosmetic conflict preview never runs for an edit or a replace-set (#3)', () => {
+  const none: AvailabilityException[] = [];
+  assert.equal(shouldRunConflictPreview({ mode: 'edit', dates: 1, conflicts: [], removed: none, replaced: none }), false);
+  assert.equal(shouldRunConflictPreview({ mode: 'add', dates: 2, conflicts: [], removed: none, replaced: none }), false);
+  assert.equal(shouldRunConflictPreview({ mode: 'add', dates: 1, conflicts: [], removed: [exception({ id: 'covered' })], replaced: none }), false);
+  assert.equal(shouldRunConflictPreview({ mode: 'add', dates: 1, conflicts: [], removed: none, replaced: [exception({ id: 'samekey' })] }), false);
+  assert.equal(shouldRunConflictPreview({ mode: 'add', dates: 1, conflicts: ['overlaps a booking'], removed: none, replaced: none }), false);
+  assert.equal(shouldRunConflictPreview({ mode: 'add', dates: 1, conflicts: [], removed: none, replaced: none }), true);
 });
 
 test('creator-wide unavailable windows and a listing schedule draw different budgets', () => {
@@ -200,14 +311,68 @@ test('a booking and its own busy block render as ONE card', () => {
   assert.deepEqual(items[0].internalBlockIds, ['blk']);
 });
 
-test('an older backend without booking_id still folds the matching interval', () => {
+test('without a canonical booking id the busy block is NOT folded into a booking (#6)', () => {
+  // An older backend omits booking_id. Guessing ownership from an identical
+  // interval could attribute this block to the WRONG commitment, so it stays
+  // visible as its own card — an honest duplicate beats a wrong link.
   const items = dayItemsForRange(
     [block({ id: 'blk', starts_at: 1_000, ends_at: 2_000 })],
     [event({ booking_id: null, start_at: 1_000, end_at: 2_000 })],
     0, 10_000,
   );
-  assert.equal(items.length, 1);
-  assert.equal(items[0].kind, 'booking');
+  assert.equal(items.length, 2);
+  assert.equal(items.filter((item) => item.kind === 'booking').length, 1);
+  assert.equal(items.filter((item) => item.kind === 'busy').length, 1);
+  assert.deepEqual(items.find((item) => item.kind === 'booking')?.internalBlockIds, []);
+});
+
+test('each booking keeps its OWN busy block when two share a timespan (#6)', () => {
+  const items = dayItemsForRange(
+    [
+      block({ id: 'blk-a', booking_id: 'bk1', starts_at: 1_000, ends_at: 2_000 }),
+      block({ id: 'blk-b', booking_id: 'bk2', starts_at: 1_000, ends_at: 2_000 }),
+    ],
+    [
+      event({ booking_id: 'bk1', start_at: 1_000, end_at: 2_000 }),
+      event({ booking_id: 'bk2', start_at: 1_000, end_at: 2_000 }),
+    ],
+    0, 10_000,
+  );
+  assert.equal(items.length, 2);
+  assert.deepEqual(items.find((item) => item.bookingId === 'bk1')?.internalBlockIds, ['blk-a']);
+  assert.deepEqual(items.find((item) => item.bookingId === 'bk2')?.internalBlockIds, ['blk-b']);
+});
+
+test('two sessions on one group slot are never collapsed into one card (#6)', () => {
+  const items = dayItemsForRange([], [
+    event({ booking_id: 'bk1', slot_id: 'slot9', start_at: 1_000, end_at: 2_000 }),
+    event({ booking_id: 'bk2', slot_id: 'slot9', start_at: 1_000, end_at: 2_000 }),
+  ], 0, 10_000);
+  assert.equal(items.length, 2);
+  assert.deepEqual(items.map((item) => item.bookingId).sort(), ['bk1', 'bk2']);
+});
+
+test('events without a canonical id are never merged even when the interval matches (#6)', () => {
+  const items = dayItemsForRange([], [
+    event({ booking_id: null, start_at: 1_000, end_at: 2_000 }),
+    event({ booking_id: null, start_at: 1_000, end_at: 2_000 }),
+  ], 0, 10_000);
+  assert.equal(items.length, 2);
+  assert.notEqual(items[0].key, items[1].key);
+});
+
+test('the booking role is the one the server stated, never guessed (#6)', () => {
+  assert.equal(bookingRoleOf({ booking_role: 'creator', role: 'attendee' }), 'creator');
+  assert.equal(bookingRoleOf({ booking_role: 'customer' }), 'customer');
+  assert.equal(bookingRoleOf({ booking_role: '  CREATOR ' }), 'creator');
+  assert.equal(bookingRoleOf({ role: 'host' }), 'creator');
+  assert.equal(bookingRoleOf({ role: 'attendee' }), 'customer');
+  assert.equal(bookingRoleOf({}), null);
+  assert.equal(bookingRoleLabel('creator'), 'you host');
+  assert.equal(bookingRoleLabel('customer'), 'you booked');
+  assert.equal(bookingRoleLabel(null), null);
+  const items = dayItemsForRange([], [event({ booking_id: 'bk9', booking_role: 'customer', title: 'Untitled' })], 0, 10_000);
+  assert.equal(items[0].bookingRole, 'customer');
 });
 
 test('Google busy time is never folded into a booking and unmatched blocks stay visible', () => {
@@ -306,6 +471,49 @@ test('a stale preview response cannot overwrite a newer one', () => {
   assert.equal(gate.isCurrent(second), true);
 });
 
+test('a preview answer for a superseded time never lands, and a new key clears the old verdict', () => {
+  const free = reducePreview(
+    reducePreview(IDLE_PREVIEW_STATE, { type: 'start', key: 'K1' }),
+    { type: 'result', key: 'K1', ok: true, conflicts: [], alternatives: [] },
+  );
+  assert.equal(free.status, 'free');
+  // The creator edits the time: the green verdict is dropped AT ONCE, before the
+  // debounced answer for the new time exists.
+  const checking = reducePreview(free, { type: 'start', key: 'K2' });
+  assert.equal(checking.status, 'checking');
+  assert.deepEqual(checking.conflicts, []);
+  // A slow answer for the OLD time arrives: it must not resurrect "free".
+  assert.equal(reducePreview(checking, { type: 'result', key: 'K1', ok: true, conflicts: [], alternatives: [] }).status, 'checking');
+  const conflicted = reducePreview(checking, { type: 'result', key: 'K2', ok: false, conflicts: [{ title: 'Client call', start_at: 1, end_at: 2 }], alternatives: [] });
+  assert.equal(conflicted.status, 'conflict');
+  assert.equal(conflicted.conflicts.length, 1);
+  // A late failure for the OLD key cannot clear the newer conflict.
+  assert.equal(reducePreview(conflicted, { type: 'failure', key: 'K1', message: 'network' }).status, 'conflict');
+});
+
+test('a failed preview clears an earlier green verdict instead of leaving it showing', () => {
+  const free = reducePreview(
+    reducePreview(IDLE_PREVIEW_STATE, { type: 'start', key: 'K1' }),
+    { type: 'result', key: 'K1', ok: true, conflicts: [], alternatives: [] },
+  );
+  assert.equal(free.status, 'free');
+  const failed = reducePreview(free, { type: 'failure', key: 'K1', message: 'server said no' });
+  assert.equal(failed.status, 'error');
+  assert.deepEqual(failed.conflicts, []);
+  assert.deepEqual(failed.alternatives, []);
+  assert.match(failed.message ?? '', /server said no/);
+  assert.equal(reducePreview(failed, { type: 'reset' }).status, 'idle');
+});
+
+test('the preview never calls a draft bookable, only free of clashes (#7)', () => {
+  assert.match(previewHeadline({ status: 'free' }), /no clash with the commitments on your calendar/i);
+  assert.doesNotMatch(previewHeadline({ status: 'free' }), /bookable|fully booked|will be booked|guaranteed/i);
+  assert.equal(previewHeadline({ status: 'conflict', firstTitle: 'Client call' }), 'This overlaps Client call.');
+  assert.equal(previewHeadline({ status: 'conflict', firstTitle: null }), 'This time conflicts with another commitment.');
+  assert.match(previewHeadline({ status: 'error', message: 'offline' }), /offline/);
+  assert.match(previewHeadline({ status: 'checking' }), /Checking/);
+});
+
 test('the preview key is stable, and absent until there is a real interval', () => {
   const key = conflictPreviewKey({ listingId: 'l1', startAt: 1_000, endAt: 4_600, timezone: 'Asia/Kolkata' });
   assert.equal(key, 'l1|1000|4600|Asia/Kolkata');
@@ -364,4 +572,169 @@ test('the listing schedule builder preserves the horizon and applies the chosen 
     id: 'l2', timezone: 'UTC', availability_mode: 'exclusive', availability_rules: [], duration_min: 30,
   });
   assert.equal(overMax.horizon_days, 62);
+});
+
+// ── the newest load wins, and account changes invalidate retained state (#1) ─
+//
+// The diary takes its sequence ticket BEFORE awaiting the Clerk token renewal
+// (CalendarPanel.load). Taken afterwards, an older request that renewed slowly
+// could be handed the higher ticket and land LAST, overwriting the month and
+// filter the creator is actually looking at with stale data. The property the
+// fix relies on is that a ticket only counts while no later one was taken.
+test('a load ticket stops being current the moment a later one is taken', () => {
+  const sequence = createRequestGate();
+  const mountLoad = sequence.next();
+  assert.equal(sequence.isCurrent(mountLoad), true);
+  const focusReload = sequence.next();
+  assert.equal(sequence.isCurrent(mountLoad), false);
+  assert.equal(sequence.isCurrent(focusReload), true);
+});
+
+test('today is the schedule timezone civil date, not the device date (#1)', () => {
+  const instant = Date.UTC(2026, 0, 1, 2, 30, 0);
+  assert.equal(civilDateKey(instant, 'America/Los_Angeles'), '2025-12-31');
+  assert.equal(civilDateKey(instant, 'Asia/Kolkata'), '2026-01-01');
+  assert.equal(civilDateKey(instant, 'UTC'), '2026-01-01');
+  assert.equal(civilDateKey(instant, 'No/Such_Zone'), null);
+  assert.equal(civilDateKey(Number.NaN, 'UTC'), null);
+});
+
+test('a replace confirmation only applies to the identical save plan (#5)', () => {
+  const first = planSignature({
+    mode: 'add',
+    dates: ['2026-10-05'],
+    startMin: 540,
+    endMin: 1020,
+    status: 'unavailable',
+    listingId: null,
+    affectedIds: ['old'],
+  });
+  assert.equal(first, planSignature({
+    mode: 'add',
+    dates: ['2026-10-05'],
+    startMin: 540,
+    endMin: 1020,
+    status: 'unavailable',
+    listingId: null,
+    affectedIds: ['old'],
+  }));
+  assert.notEqual(first, planSignature({
+    mode: 'add',
+    dates: ['2026-10-05'],
+    startMin: 540,
+    endMin: 1080,
+    status: 'unavailable',
+    listingId: null,
+    affectedIds: ['old'],
+  }));
+  assert.notEqual(first, planSignature({
+    mode: 'add',
+    dates: ['2026-10-05'],
+    startMin: 540,
+    endMin: 1020,
+    status: 'unavailable',
+    listingId: 'listing_1',
+    affectedIds: ['old'],
+  }));
+});
+
+/** Test-local base64url encoder, so a fixture never depends on the decoder
+ *  under test (a shared bug in both would otherwise go unnoticed). */
+function b64url(value: string): string {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  const bytes = Array.from(value, (char) => char.charCodeAt(0));
+  let out = '';
+  for (let index = 0; index < bytes.length; index += 3) {
+    const a = bytes[index] ?? 0;
+    const b = bytes[index + 1] ?? 0;
+    const c = bytes[index + 2] ?? 0;
+    out += alphabet[(a >> 2) & 63];
+    out += alphabet[((a & 3) << 4) | ((b >> 4) & 15)];
+    if (index + 1 < bytes.length) out += alphabet[((b & 15) << 2) | ((c >> 6) & 3)];
+    if (index + 2 < bytes.length) out += alphabet[c & 63];
+  }
+  return out;
+}
+const jwt = (claims: Record<string, unknown>) => `header.${b64url(JSON.stringify(claims))}.signature`;
+
+test('the account key is stable across token refreshes and changes with the account (#1)', () => {
+  // Same account, re-minted token (new exp/iat): NOT a reason to wipe the view.
+  assert.equal(tokenAccountKey(jwt({ sub: 'user_a', exp: 1 })), 'user_a');
+  assert.equal(tokenAccountKey(jwt({ sub: 'user_a', exp: 2 })), 'user_a');
+  // A different account: different key, so retained state is dropped.
+  assert.notEqual(tokenAccountKey(jwt({ sub: 'user_a' })), tokenAccountKey(jwt({ sub: 'user_b' })));
+  // Session-scoped tokens fall back to `sid`; a guest session to its uid.
+  assert.equal(tokenAccountKey(jwt({ sid: 'sess_1' })), 'sess_1');
+  assert.equal(tokenAccountKey('g1.user_9.123.hmac'), 'user_9');
+});
+
+test('an unreadable token yields no account key rather than a guess (#1)', () => {
+  assert.equal(tokenAccountKey(null), null);
+  assert.equal(tokenAccountKey(undefined), null);
+  assert.equal(tokenAccountKey(''), null);
+  assert.equal(tokenAccountKey('opaque-host-token'), null);
+  assert.equal(tokenAccountKey('a.@@@.c'), null);
+  assert.equal(tokenAccountKey(jwt({})), null);
+});
+
+
+test('availability hydrate signatures ignore rule order but catch calendar edits (#1)', () => {
+  const a = availabilityDraftSignature({
+    timezone: 'Asia/Kolkata',
+    availability_mode: 'shared',
+    duration_min: 45,
+    availability_rules: [
+      { weekday: 2, start_min: 600, end_min: 900 },
+      { weekday: 1, start_min: 540, end_min: 720 },
+    ],
+  });
+  const b = availabilityDraftSignature({
+    timezone: 'Asia/Kolkata',
+    availability_mode: 'shared',
+    duration_min: 45,
+    availability_rules: [
+      { weekday: 1, start_min: 540, end_min: 720 },
+      { weekday: 2, start_min: 600, end_min: 900 },
+    ],
+  });
+  assert.equal(a, b);
+  assert.notEqual(a, availabilityDraftSignature({ timezone: 'Asia/Kolkata', availability_mode: 'shared', duration_min: 60, availability_rules: [] }));
+});
+
+test('late availability hydration applies only to the listing and draft generation it loaded for (#1)', () => {
+  const signature = availabilityDraftSignature({ timezone: 'Asia/Kolkata', availability_mode: 'shared', duration_min: 60, availability_rules: [] });
+  assert.equal(shouldApplyHydratedAvailability({
+    requestedListingId: 'list_a', currentListingId: 'list_a', requestedGeneration: 2, currentGeneration: 2, requestedSignature: signature, currentSignature: signature,
+  }), true);
+  assert.equal(shouldApplyHydratedAvailability({
+    requestedListingId: 'list_a', currentListingId: 'list_a', requestedGeneration: 2, currentGeneration: 3, requestedSignature: signature, currentSignature: signature,
+  }), false);
+  assert.equal(shouldApplyHydratedAvailability({
+    requestedListingId: 'list_a', currentListingId: 'list_b', requestedGeneration: 2, currentGeneration: 2, requestedSignature: signature, currentSignature: signature,
+  }), false);
+  assert.equal(shouldApplyHydratedAvailability({
+    requestedListingId: 'list_a', currentListingId: 'list_a', requestedGeneration: 2, currentGeneration: 2, requestedSignature: signature, currentSignature: availabilityDraftSignature({ timezone: 'UTC', availability_mode: 'shared', duration_min: 60, availability_rules: [] }),
+  }), false);
+});
+
+test('late availability hydration mismatch does not adopt the fetched schedule version (#1)', () => {
+  const draftBefore = { id: 'list_a', timezone: 'Asia/Kolkata', availability_mode: 'shared', duration_min: 60, availability_rules: [], availability_version: 7 };
+  const requestedSignature = availabilityDraftSignature(draftBefore);
+  const draftAfterUserEdit = { ...draftBefore, duration_min: 90 };
+  const fetchedSchedule = schedule({ listing_id: 'list_a', timezone: 'UTC', mode: 'exclusive', duration_min: 30, version: 8, rules: [{ weekday: 1, start_min: 540, end_min: 720 }] });
+  const mayApply = shouldApplyHydratedAvailability({
+    requestedListingId: 'list_a',
+    currentListingId: draftAfterUserEdit.id,
+    requestedGeneration: 4,
+    currentGeneration: 5,
+    requestedSignature,
+    currentSignature: availabilityDraftSignature(draftAfterUserEdit),
+  });
+  assert.equal(mayApply, false);
+  // The component's mismatch branch preserves the old draft and reports a
+  // discard/reload conflict; it must not combine old edits with version 8.
+  const draftAfterMismatch = mayApply ? { ...draftAfterUserEdit, availability_version: fetchedSchedule.version } : draftAfterUserEdit;
+  assert.equal(draftAfterMismatch.availability_version, 7);
+  assert.equal(draftAfterMismatch.duration_min, 90);
+  assert.match(hydratedAvailabilityMismatchMessage({ firstLoad: true }), /Discard those availability edits and reload/);
 });

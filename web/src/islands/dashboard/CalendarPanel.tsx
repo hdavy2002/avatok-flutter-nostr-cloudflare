@@ -28,7 +28,7 @@
  *   #12 the diary refreshes on window focus and shows "Updated at …" plus an
  *       explicit Refresh action.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { getActiveTokenWaited as getActiveToken } from '../../lib/clerk';
 import { request, ApiError } from '../../lib/apiClient';
 import type { Card as ListingCard } from '../../lib/types';
@@ -45,10 +45,11 @@ import type {
   ExceptionStatus, GoogleCalendar, GoogleCalendarStatus,
 } from '../../lib/availability';
 import {
-  MAX_EXCEPTIONS, addDays, clampHorizonDays, clockToMinutes, dayItemsForRange,
-  deriveGoogleReadiness, exceptionBudget, intervalsForDate, intervalLabel, isAllDayInterval,
-  isValidDateKey, minutesAgo, minutesToClock, planDateRange, planIntervalUpsert,
-  policySummaryLines, scopeLabel, weeklyRepeatDates,
+  LAST_CLOCK_MIN, MAX_EXCEPTIONS, addDays, bookingRoleLabel, clampHorizonDays, clockFieldsToInterval,
+  civilDateKey, dayItemsForRange, deriveGoogleReadiness, exceptionBudget, intervalsForDate, intervalLabel,
+  intervalToClockFields, isAllDayInterval, isEndOfDayInterval, isValidDateKey, minutesAgo,
+  minutesToClock, planDateRange, planIntervalUpserts, planSignature, policySummaryLines, scopeLabel,
+  removeInterval, shouldRunConflictPreview, tokenAccountKey, weeklyRepeatDates,
 } from '../../lib/calendarCore';
 import type { DayItem, GoogleReadiness, IntervalTarget } from '../../lib/calendarCore';
 
@@ -70,6 +71,19 @@ function errorText(error: unknown) {
   const e = error as { message?: string; body?: { error?: string; reason?: string; message?: string } };
   return e?.body?.reason || e?.body?.message || e?.body?.error || e?.message || 'Something went wrong. Try again.';
 }
+
+type ClerkAccountSurface = {
+  user?: { id?: string | null } | null;
+  session?: { id?: string | null; user?: { id?: string | null } | null } | null;
+  addListener?: (cb: () => void) => () => void;
+};
+
+function clerkAccountKey(): string | null {
+  if (typeof window === 'undefined') return null;
+  const clerk = (window as unknown as { Clerk?: ClerkAccountSurface }).Clerk;
+  return clerk?.user?.id || clerk?.session?.user?.id || clerk?.session?.id || null;
+}
+
 function epochRangeLabel(start: number, end: number, timezone: string, withDate = false) {
   const options: Intl.DateTimeFormatOptions = { ...(withDate ? { month: 'short', day: 'numeric' } : {}), hour: 'numeric', minute: '2-digit', timeZone: timezone };
   return `${new Date(start).toLocaleString(undefined, options)}–${new Date(end).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', timeZone: timezone })}`;
@@ -190,7 +204,7 @@ function WeekGrid({ selectedDate, onSelect, schedule, itemsByDay }: {
             {!items.length && !intervals.length && <span className="calendar-week-empty">No commitments</span>}
             {items.map((row) => (
               <span className={`calendar-event ${row.tone}`} key={row.key}>
-                <b>{row.title}</b><small>{epochRangeLabel(row.start, row.end, schedule.timezone)}</small>
+                <b>{row.title}</b><small>{epochRangeLabel(row.start, row.end, schedule.timezone)}{bookingRoleLabel(row.bookingRole) ? ` · ${bookingRoleLabel(row.bookingRole)}` : ''}</small>
               </span>
             ))}
           </button>
@@ -227,7 +241,7 @@ function Agenda({ selectedDate, onSelect, schedule, itemsByDay, listings, days =
               {items.map((row) => (
                 <span className={`calendar-event ${row.tone}`} key={row.key}>
                   <b>{row.title}</b>
-                  <small>{epochRangeLabel(row.start, row.end, schedule.timezone)} · {row.status}</small>
+                  <small>{epochRangeLabel(row.start, row.end, schedule.timezone)} · {row.status}{bookingRoleLabel(row.bookingRole) ? ` · ${bookingRoleLabel(row.bookingRole)}` : ''}</small>
                 </span>
               ))}
               {!intervals.length && !items.length && <span className="calendar-agenda-empty">No commitments or exceptions</span>}
@@ -266,6 +280,11 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
   const [composer, setComposer] = useState<Composer>({ mode: 'closed' });
   const [status, setStatus] = useState<ExceptionStatus>('unavailable');
   const [allDay, setAllDay] = useState(false);
+  /* [audit #2] A PARTIAL window can also end at minute 1440 (18:00..24:00).
+   * "All day" only covers 00:00..1440, so the end needs its own explicit
+   * control — otherwise the stored "24:00" was fed to a time input the browser
+   * rejects and re-saving the window silently changed it. */
+  const [endOfDay, setEndOfDay] = useState(false);
   const [start, setStart] = useState('09:00');
   const [end, setEnd] = useState('17:00');
   const [scope, setScope] = useState<'creator' | 'listing'>('creator');
@@ -282,6 +301,9 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
   const [alternatives, setAlternatives] = useState<{ start_at: number; end_at: number }[]>([]);
   const [pendingRemove, setPendingRemove] = useState<string | null>(null);
   const [pendingClear, setPendingClear] = useState(false);
+  /* [audit #5] A save that would delete or re-write an existing window shows
+   * exactly which windows are affected and waits for a second click. */
+  const [replaceConfirm, setReplaceConfirm] = useState<{ kind: 'window' | 'range'; signature: string; windows: AvailabilityException[] } | null>(null);
 
   const dayLabel = dateLabel(date);
   const listingTitle = listings.find((listing) => listing.id === selectedListing)?.title ?? '';
@@ -291,6 +313,7 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
     setComposer(preset ? { mode: 'add' } : { mode: 'closed' });
     setStatus(preset ?? 'unavailable');
     setAllDay(false);
+    setEndOfDay(false);
     setStart('09:00');
     setEnd('17:00');
     setScope('creator');
@@ -306,6 +329,7 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
     setAlternatives([]);
     setPendingRemove(null);
     setPendingClear(false);
+    setReplaceConfirm(null);
     // The schedule version changes after every successful save; resetting here
     // keeps a stale id from being written back onto a newer schedule.
   }, [date, schedule.version, schedule.listing_id, selectedListing, requestedStatus]);
@@ -314,6 +338,7 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
     setComposer({ mode: 'add' });
     setStatus(preset);
     setAllDay(false);
+    setEndOfDay(false);
     setStart('09:00');
     setEnd('17:00');
     // [audit #9] A personal busy block is ALWAYS creator-wide by default, even
@@ -326,15 +351,17 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
     setNotice(null);
     setConflicts([]);
     setAlternatives([]);
+    setReplaceConfirm(null);
   }
 
   function openEdit(exception: AvailabilityException) {
+    const fields = intervalToClockFields(exception.start_min, exception.end_min);
     setComposer({ mode: 'edit', exception });
     setStatus(exception.status);
-    const wholeDay = isAllDayInterval(exception.start_min, exception.end_min);
-    setAllDay(wholeDay);
-    setStart(wholeDay ? '00:00' : minutesToClock(exception.start_min));
-    setEnd(wholeDay ? '17:00' : minutesToClock(exception.end_min));
+    setAllDay(fields.allDay);
+    setEndOfDay(fields.endOfDay);
+    setStart(fields.start);
+    setEnd(fields.end);
     setScope('creator');
     setListingId(exception.listing_id ?? selectedListing ?? '');
     setRepeat('none');
@@ -342,16 +369,24 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
     setNotice(null);
     setConflicts([]);
     setAlternatives([]);
+    setReplaceConfirm(null);
+  }
+
+  /** Epoch span of one saved interval. Minute 1440 means the END of the day, so
+   *  it must resolve to the NEXT day's 00:00, never to midnight of the same
+   *  day (that would collapse a whole-day window to zero length). */
+  function intervalSpan(date: string, startMin: number, endMin: number): { start: number; end: number } | null {
+    try {
+      const startAt = epochForDateTime(date, minutesToClock(startMin), schedule.timezone);
+      const endAt = endMin >= 1440
+        ? epochForDateTime(addDays(date, 1), '00:00', schedule.timezone)
+        : epochForDateTime(date, minutesToClock(endMin), schedule.timezone);
+      return { start: startAt, end: endAt };
+    } catch { return null; }
   }
 
   function exceptionRange(exception: AvailabilityException): { start: number; end: number } | null {
-    try {
-      const startAt = epochForDateTime(exception.date, minutesToClock(exception.start_min), schedule.timezone);
-      const endAt = exception.end_min >= 1440
-        ? epochForDateTime(addDays(exception.date, 1), '00:00', schedule.timezone)
-        : epochForDateTime(exception.date, minutesToClock(exception.end_min), schedule.timezone);
-      return { start: startAt, end: endAt };
-    } catch { return null; }
+    return intervalSpan(exception.date, exception.start_min, exception.end_min);
   }
 
   function holdsCommitment(exception: AvailabilityException): boolean {
@@ -365,12 +400,16 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
     let startMin = 0;
     let endMin = 1440;
     if (!allDay) {
-      const s = clockToMinutes(start);
-      const e = clockToMinutes(end);
-      if (s === null || e === null) return { error: 'Enter a valid start and end time.' };
-      if (e <= s) return { error: 'End time must be after start time. Use All day to cover the whole day.' };
-      startMin = s;
-      endMin = e;
+      const fields = clockFieldsToInterval({ start, end, allDay: false, endOfDay });
+      if (!fields) {
+        return {
+          error: endOfDay
+            ? 'Choose a start time earlier than the end of the day.'
+            : 'Enter a valid start and end time, with the end after the start — or tick “Ends at end of day”.',
+        };
+      }
+      startMin = fields.start_min;
+      endMin = fields.end_min;
     }
     const reserved = status === 'reserved';
     if (reserved && !listingId) return { error: 'Choose the listing that owns this reserved time.' };
@@ -409,21 +448,36 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
     } catch (e) { setError(errorText(e)); return null; }
   }
 
-  function applyPlan(base: CreatorSchedule, dates: string[], template: IntervalTarget, creatorWide: boolean) {
-    let exceptions = base.exceptions;
-    const conflicts: string[] = [];
-    let covered = 0;
-    for (const targetDate of dates) {
-      const plan = planIntervalUpsert(
-        { ...base, exceptions },
-        { ...template, date: targetDate, id: dates.length === 1 ? template.id : undefined },
-        { newId: crypto.randomUUID(), creatorWide },
-      );
-      if (plan.conflicts.length) { conflicts.push(`${dates.length > 1 ? `${dateLabel(targetDate)}: ` : ''}${plan.conflicts[0]}`); continue; }
-      exceptions = plan.next;
-      covered += plan.removed.length;
-    }
-    return { exceptions, conflicts, covered };
+  /** The one planner used by an add, an edit AND the date range. It never drops
+   *  an unrelated window, refuses to cover a reserved one, and reports what it
+   *  would replace BEFORE the write (see planIntervalUpserts). */
+  function planSave(base: CreatorSchedule, dates: string[], template: IntervalTarget, creatorWide: boolean) {
+    return planIntervalUpserts(base, template, dates, {
+      newId: () => crypto.randomUUID(),
+      creatorWide,
+      labelForDate: dates.length > 1 ? (key) => dateLabel(key) : undefined,
+    });
+  }
+
+  function signatureForPlan(dates: string[], template: IntervalTarget, affected: AvailabilityException[]): string {
+    return planSignature({
+      mode: composer.mode,
+      dates,
+      startMin: template.start_min,
+      endMin: template.end_min,
+      status: template.status,
+      listingId: template.listing_id ?? null,
+      affectedIds: affected.map((item) => item.id).sort(),
+    });
+  }
+
+  function replacementSentence(windows: AvailabilityException[]): string {
+    const list = windows
+      .slice(0, 3)
+      .map((item) => `${intervalLabel(item.start_min, item.end_min)} (${statusWordForException(item.status)})`)
+      .join(', ');
+    const rest = windows.length > 3 ? ` and ${windows.length - 3} more` : '';
+    return `${list}${rest}`;
   }
 
   function describeSaved(built: { dates: string[]; creatorWide: boolean }) {
@@ -431,16 +485,18 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
     const verb = status === 'reserved' ? 'Kept' : status === 'available' ? 'Opened' : 'Blocked';
     if (repeat !== 'none' && built.dates.length > 1) return `${verb} ${built.dates.length} weekly windows ${scopeText}, starting ${dateLabel(built.dates[0])}.`;
     if (built.dates.length > 1) return `${verb} ${built.dates.length} days ${scopeText}, starting ${dateLabel(built.dates[0])}.`;
-    return `${verb} ${dayLabel} ${allDay ? 'all day' : `${start}–${end}`} ${scopeText}.`;
+    return `${verb} ${dayLabel} ${allDay ? 'all day' : `${start}–${endOfDay ? '24:00' : end}`} ${scopeText}.`;
   }
 
   async function previewSingle(auth: string, template: IntervalTarget, creatorWide: boolean, targetListing: string | null) {
     const hard = template.status === 'reserved' || (creatorWide && template.status === 'unavailable');
     if (!hard) return null;
     try {
-      const startAt = allDay ? epochForDateTime(date, '00:00', schedule.timezone) : epochForDateTime(date, minutesToClock(template.start_min), schedule.timezone);
-      const endAt = allDay ? epochForDateTime(addDays(date, 1), '00:00', schedule.timezone) : epochForDateTime(date, minutesToClock(template.end_min), schedule.timezone);
-      const preview = await previewCalendarConflicts(auth, { listing_id: targetListing, start_at: startAt, end_at: endAt, timezone: schedule.timezone });
+      // Built from the template's own minutes, not from the composer's `allDay`
+      // flag, so the preview always checks the interval that will be saved.
+      const span = intervalSpan(date, template.start_min, template.end_min);
+      if (!span) return null;
+      const preview = await previewCalendarConflicts(auth, { listing_id: targetListing, start_at: span.start, end_at: span.end, timezone: schedule.timezone });
       if (preview.ok && !preview.conflicts.length) return null;
       return {
         conflicts: preview.conflicts ?? [],
@@ -464,21 +520,38 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
       await withCalendarAuth(async (auth) => {
         const resolved = await resolveTargetSchedule(auth);
         if (!resolved) return;
-        const preview = composer.mode === 'add' && built.dates.length === 1
-          ? await previewSingle(auth, built.template, resolved.creatorWide, resolved.listingId)
-          : null;
-        if (preview) {
-          setConflicts(preview.conflicts);
-          setAlternatives(preview.alternatives);
-          if (preview.message) setError(preview.message);
+        // [audit #5] The plan runs FIRST: it is the check that refuses to cover a
+        // reserved window and never drops an unrelated one, and it is what the
+        // confirmation below describes.
+        const plan = planSave(resolved.target, built.dates, built.template, resolved.creatorWide);
+        if (plan.conflicts.length) { setError(plan.conflicts.join(' ')); return; }
+        // [audit #3] Cosmetic pre-check only. An edit (or any save that
+        // replaces/covers a window) is never run through it — the server preview
+        // cannot exclude the window being changed, so it would report the block
+        // as clashing with itself. Those saves rely on the atomic PUT, which
+        // excludes this schedule's own prior reservation mirrors and still
+        // refuses a real booking or another schedule's reservation.
+        if (shouldRunConflictPreview({ mode: composer.mode, dates: built.dates.length, conflicts: plan.conflicts, removed: plan.removed, replaced: plan.replaced })) {
+          const preview = await previewSingle(auth, built.template, resolved.creatorWide, resolved.listingId);
+          if (preview) {
+            setConflicts(preview.conflicts);
+            setAlternatives(preview.alternatives);
+            if (preview.message) setError(preview.message);
+            return;
+          }
+        }
+        const affected = [...plan.removed, ...plan.replaced];
+        const signature = signatureForPlan(built.dates, built.template, affected);
+        if (affected.length && (replaceConfirm?.kind !== 'window' || replaceConfirm.signature !== signature)) {
+          setReplaceConfirm({ kind: 'window', signature, windows: affected });
+          setError(`This would replace ${affected.length} existing window${affected.length === 1 ? '' : 's'} on ${dayLabel}: ${replacementSentence(affected)}. Nothing has been saved — confirm to continue.`);
           return;
         }
-        const plan = applyPlan(resolved.target, built.dates, built.template, resolved.creatorWide);
-        if (plan.conflicts.length) { setError(plan.conflicts.join(' ')); return; }
-        const response = await saveCreatorSchedule(auth, { ...resolved.target, exceptions: plan.exceptions });
-        setNotice(`${describeSaved(built)}${plan.covered ? ` ${plan.covered} covered window${plan.covered === 1 ? '' : 's'} were replaced.` : ''}`);
+        const response = await saveCreatorSchedule(auth, { ...resolved.target, exceptions: plan.next });
+        setNotice(`${describeSaved(built)}${affected.length ? ` ${affected.length} existing window${affected.length === 1 ? '' : 's'} were replaced.` : ''}`);
         onSaved(response.schedule);
         onStatusConsumed();
+        setReplaceConfirm(null);
         setComposer({ mode: 'closed' });
       });
     } catch (e) { setError(errorText(e)); } finally { setBusy(false); }
@@ -502,16 +575,27 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
         setRangeMessages(plan.messages);
         if (!plan.dates.length) { setError(plan.messages[0] ?? 'No dates to block.'); return; }
         const target: IntervalTarget = { ...template, listing_id: listingId || undefined };
-        const applied = applyPlan(resolved.target, plan.dates, target, resolved.creatorWide);
+        const applied = planSave(resolved.target, plan.dates, target, resolved.creatorWide);
         if (applied.conflicts.length) {
           setError(`Nothing was saved. ${applied.conflicts.slice(0, 2).join(' ')}`);
           return;
         }
-        const response = await saveCreatorSchedule(auth, { ...resolved.target, exceptions: applied.exceptions });
+        // [audit #5] A range that would delete or re-write existing windows is
+        // confirmed first, and the exact windows are named. Reserved windows are
+        // refused above, never replaced here.
+        const replacedWindows = [...applied.removed, ...applied.replaced];
+        const signature = signatureForPlan(plan.dates, target, replacedWindows);
+        if (replacedWindows.length && (replaceConfirm?.kind !== 'range' || replaceConfirm.signature !== signature)) {
+          setReplaceConfirm({ kind: 'range', signature, windows: replacedWindows });
+          setError(`Nothing was saved. ${plan.dates.length} date${plan.dates.length === 1 ? '' : 's'} would be added, replacing ${replacedWindows.length} existing window${replacedWindows.length === 1 ? '' : 's'}: ${replacementSentence(replacedWindows)}. Confirm to continue, or keep them.`);
+          return;
+        }
+        const response = await saveCreatorSchedule(auth, { ...resolved.target, exceptions: applied.next });
         const affected = plan.dates.filter((key) => (itemsByDay.get(key) ?? []).some((item) => item.kind === 'booking'));
         const rangeVerb = status === 'reserved' ? 'Kept' : status === 'available' ? 'Opened' : 'Blocked';
-        setNotice(`${rangeVerb} all day on ${plan.dates.length} date${plan.dates.length === 1 ? '' : 's'} ${resolved.creatorWide ? 'across all your listings' : `for ${listingTitle || 'this listing'}`}.${affected.length ? ` ${affected.length} date${affected.length === 1 ? '' : 's'} already hold a booking; those appointments are NOT cancelled — open them to reschedule or cancel.` : ''}`);
+        setNotice(`${rangeVerb} all day on ${plan.dates.length} date${plan.dates.length === 1 ? '' : 's'} ${resolved.creatorWide ? 'across all your listings' : `for ${listingTitle || 'this listing'}`}.${replacedWindows.length ? ` ${replacedWindows.length} existing window${replacedWindows.length === 1 ? '' : 's'} were replaced.` : ''}${affected.length ? ` ${affected.length} date${affected.length === 1 ? '' : 's'} already hold a booking; those appointments are NOT cancelled — open them to reschedule or cancel.` : ''}`);
         onSaved(response.schedule);
+        setReplaceConfirm(null);
         setRangeOpen(false);
       });
     } catch (e) { setError(errorText(e)); } finally { setBusy(false); }
@@ -522,7 +606,9 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
     setBusy(true); setError(null); setNotice(null);
     try {
       await withCalendarAuth(async (auth) => {
-        const response = await saveCreatorSchedule(auth, { ...schedule, exceptions: schedule.exceptions.filter((item) => item.id !== exception.id) });
+        // [audit #5] Removing ONE window keeps every other exception, on this
+        // date and on every other date — the same rule the unit test asserts.
+        const response = await saveCreatorSchedule(auth, { ...schedule, exceptions: removeInterval(schedule, exception.id) });
         setNotice(`Removed the ${intervalLabel(exception.start_min, exception.end_min)} ${exception.status} window on ${dayLabel}.`);
         onSaved(response.schedule);
         setPendingRemove(null);
@@ -653,7 +739,18 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
               All day (00:00–24:00)
             </label>
             {!allDay && <label>Starts<input className={CONTROL} type="time" value={start} onChange={(event) => setStart(event.target.value)} /></label>}
-            {!allDay && <label>Ends<input className={CONTROL} type="time" value={end} onChange={(event) => setEnd(event.target.value)} /></label>}
+            {!allDay && (
+              <label>Ends
+                <input className={CONTROL} type="time" value={end} disabled={endOfDay} onChange={(event) => setEnd(event.target.value)} />
+                {/* [audit #2] The explicit end-of-day control. "24:00" is a legal
+                 *  SAVED value but never a legal <input type="time"> value, so the
+                 *  flag — not the field — decides the minute that is saved. */}
+                <span className="calendar-check">
+                  <input type="checkbox" checked={endOfDay} onChange={(event) => setEndOfDay(event.target.checked)} />
+                  ends at end of day (24:00)
+                </span>
+              </label>
+            )}
             {!editing && (
               <label>Repeat
                 <select className={CONTROL} value={repeat} onChange={(event) => setRepeat(event.target.value as 'none' | 'weekly')}>
@@ -669,7 +766,7 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
             </p>
           )}
           <p className="calendar-muted">
-            {allDay ? 'All day' : `${start}–${end}`}
+            {allDay ? 'All day' : `${start}–${endOfDay ? '24:00' : end}`}
             {' · '}
             {status === 'reserved' ? `kept for ${chosenListingTitle ?? 'the chosen listing'}` : status === 'available' ? 'open for booking' : 'blocked'}
             {' · '}
@@ -704,12 +801,27 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
           {error && <p className="calendar-form-message" role="alert">{error}</p>}
           {notice && <p className="calendar-form-message" role="status">{notice}</p>}
 
+          {/* [audit #5] No silent data loss: every window this save would delete
+           *  or re-write is named here, and nothing is written until the creator
+           *  confirms. Reserved windows never appear here — the plan refuses them. */}
+          {replaceConfirm && (
+            <div className="calendar-conflict" role="alert">
+              <b>This replaces {replaceConfirm.windows.length} existing window{replaceConfirm.windows.length === 1 ? '' : 's'}</b>
+              {replaceConfirm.windows.map((item) => (
+                <span key={item.id}>
+                  {dateLabel(item.date, { month: 'short', day: 'numeric' })} · {intervalLabel(item.start_min, item.end_min)} · {statusWordForException(item.status)}
+                </span>
+              ))}
+              <span>Nothing has been saved yet. Confirm to replace them, or keep them.</span>
+            </div>
+          )}
+
           <div className="calendar-interval-actions">
             <button type="button" className={`${ACTION} calendar-primary`} onClick={() => void save()} disabled={busy}>
-              {busy ? 'Saving…' : editing ? 'Save this window' : 'Add this time'}
+              {busy ? 'Saving…' : replaceConfirm?.kind === 'window' ? `Confirm: replace ${replaceConfirm.windows.length} window${replaceConfirm.windows.length === 1 ? '' : 's'}` : editing ? 'Save this window' : 'Add this time'}
             </button>
-            <button type="button" className={`${ACTION} calendar-secondary`} onClick={() => { setComposer({ mode: 'closed' }); setConflicts([]); setAlternatives([]); setError(null); onStatusConsumed(); }} disabled={busy}>Cancel</button>
-            {!editing && <button type="button" className={`${ACTION} calendar-secondary`} onClick={() => setRangeOpen((open) => !open)} disabled={busy}>{rangeOpen ? 'Hide date range' : 'Block several days'}</button>}
+            <button type="button" className={`${ACTION} calendar-secondary`} onClick={() => { setComposer({ mode: 'closed' }); setConflicts([]); setAlternatives([]); setError(null); setReplaceConfirm(null); onStatusConsumed(); }} disabled={busy}>{replaceConfirm?.kind === 'window' ? 'Keep them' : 'Cancel'}</button>
+            {!editing && <button type="button" className={`${ACTION} calendar-secondary`} onClick={() => { setRangeOpen((open) => !open); setReplaceConfirm((current) => (current?.kind === 'range' ? null : current)); }} disabled={busy}>{rangeOpen ? 'Hide date range' : 'Block several days'}</button>}
           </div>
 
           {!editing && rangeOpen && (
@@ -728,7 +840,10 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
               </p>
               {rangePreview.messages.map((line) => <p className="calendar-form-message calendar-warning" key={line}>{line}</p>)}
               {rangeMessages.map((line) => <p className="calendar-form-message calendar-warning" key={line}>{line}</p>)}
-              <button type="button" className={`${ACTION} calendar-primary`} onClick={() => void saveRange()} disabled={busy}>{busy ? 'Saving…' : 'Apply to these days'}</button>
+              <div className="calendar-interval-actions">
+                <button type="button" className={`${ACTION} calendar-primary`} onClick={() => void saveRange()} disabled={busy}>{busy ? 'Saving…' : replaceConfirm?.kind === 'range' ? `Confirm: replace ${replaceConfirm.windows.length} window${replaceConfirm.windows.length === 1 ? '' : 's'}` : 'Apply to these days'}</button>
+                {replaceConfirm?.kind === 'range' && <button type="button" className={`${ACTION} calendar-secondary`} onClick={() => setReplaceConfirm(null)} disabled={busy}>Keep them</button>}
+              </div>
             </div>
           )}
         </div>
@@ -804,6 +919,11 @@ function WorkingHours({ schedule, token, listings, selectedListing, onSaved }: {
         <div className="calendar-rule-list">
           {draft.rules.map((rule, index) => {
             const wholeDay = isAllDayInterval(rule.start_min, rule.end_min);
+            /* [audit #2] A weekly window can also END at minute 1440 (e.g.
+             *  18:00–24:00). "All day" does not cover that, and the clock field
+             *  cannot hold "24:00", so the rule carries an explicit end-of-day
+             *  flag and the input is only ever fed an accepted value. */
+            const endOfDay = isEndOfDayInterval(rule.start_min, rule.end_min);
             return (
               <div className="calendar-rule" key={`${rule.weekday}-${index}`}>
                 <label>Day
@@ -812,10 +932,16 @@ function WorkingHours({ schedule, token, listings, selectedListing, onSaved }: {
                   </select>
                 </label>
                 {!wholeDay && (
-                  <label>Starts<input className={CONTROL} type="time" value={minutesToClock(rule.start_min)} onChange={(event) => updateRule(index, { start_min: timeToMinutes(event.target.value) })} /></label>
+                  <label>Starts<input className={CONTROL} type="time" value={minutesToClock(Math.min(rule.start_min, LAST_CLOCK_MIN))} onChange={(event) => updateRule(index, { start_min: timeToMinutes(event.target.value) })} /></label>
                 )}
                 {!wholeDay && (
-                  <label>Ends<input className={CONTROL} type="time" value={minutesToClock(rule.end_min)} onChange={(event) => updateRule(index, { end_min: timeToMinutes(event.target.value) })} /></label>
+                  <label>Ends
+                    <input className={CONTROL} type="time" value={minutesToClock(Math.min(rule.end_min, LAST_CLOCK_MIN))} disabled={endOfDay} onChange={(event) => updateRule(index, { end_min: timeToMinutes(event.target.value) })} />
+                    <span className="calendar-check">
+                      <input type="checkbox" checked={endOfDay} onChange={(event) => updateRule(index, { end_min: event.target.checked ? 1440 : LAST_CLOCK_MIN })} />
+                      ends at end of day (24:00)
+                    </span>
+                  </label>
                 )}
                 <label className="calendar-check">
                   <input type="checkbox" checked={wholeDay} onChange={(event) => updateRule(index, event.target.checked ? { start_min: 0, end_min: 1440 } : { start_min: 9 * 60, end_min: 17 * 60 })} />
@@ -1052,6 +1178,13 @@ function Inner() {
   const listingRef = useRef('');
   const lastLoadedRef = useRef<number | null>(null);
   const lastMutationRef = useRef(0);
+  const selectedDateTouchedRef = useRef(false);
+  /* [audit #1] The account the retained state belongs to. Signing into another
+   * account in the same tab must clear it, never show the previous account's
+   * calendar. */
+  const accountKeyRef = useRef<string | null>(null);
+  const clerkObservedAccountRef = useRef<string | null>(null);
+  const clerkChangeSequenceRef = useRef(0);
 
   const [token, setToken] = useState<string | null>(null);
   const [checked, setChecked] = useState(false);
@@ -1073,11 +1206,105 @@ function Inner() {
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
   const [googleStatus, setGoogleStatus] = useState<GoogleCalendarStatus | null>(null);
   const [requestedStatus, setRequestedStatus] = useState<ExceptionStatus | null>(null);
+  /* Bumped when the signed-in account changes, so the load effect runs again
+   * against the cleared state instead of reusing the old account's data. */
+  const [dataEpoch, setDataEpoch] = useState(0);
 
-  useEffect(() => { void (async () => { setToken(await getActiveToken()); setChecked(true); })(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const nextToken = await getActiveToken();
+        if (cancelled) return;
+        const currentClerkKey = clerkAccountKey();
+        const clerkLoaded = typeof window !== 'undefined' && Boolean((window as unknown as { Clerk?: ClerkAccountSurface }).Clerk);
+        const nextTokenKey = tokenAccountKey(nextToken);
+        if (nextToken && ((currentClerkKey && nextTokenKey && nextTokenKey !== currentClerkKey) || (clerkLoaded && !currentClerkKey && nextTokenKey && !nextToken.startsWith('g1.')))) {
+          setToken(null);
+          accountKeyRef.current = null;
+          resetAccountState('error', 'Sign in to manage your calendar and availability.');
+          return;
+        }
+        setToken(nextToken);
+        if (!nextToken) {
+          accountKeyRef.current = null;
+          resetAccountState('error', 'Sign in to manage your calendar and availability.');
+        }
+      } catch {
+        if (!cancelled) {
+          setToken(null);
+          accountKeyRef.current = null;
+          resetAccountState('error', 'Could not check your sign-in. Try again.');
+        }
+      } finally { if (!cancelled) setChecked(true); }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   useEffect(() => { tokenRef.current = token; }, [token]);
   useEffect(() => { listingRef.current = selectedListing; }, [selectedListing]);
   useEffect(() => { lastLoadedRef.current = lastLoadedAt; }, [lastLoadedAt]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let unsub: (() => void) | undefined;
+    async function refreshForClerkAccountChange(nextAccountKey: string | null) {
+      if (cancelled) return;
+      if (nextAccountKey === clerkObservedAccountRef.current) return;
+      const previousAccountKey = clerkObservedAccountRef.current;
+      clerkObservedAccountRef.current = nextAccountKey;
+      const ticket = ++clerkChangeSequenceRef.current;
+      if (!nextAccountKey) {
+        loadSequence.current += 1;
+        setToken(null);
+        tokenRef.current = null;
+        accountKeyRef.current = null;
+        resetAccountState('error', 'Sign in to manage your calendar and availability.');
+        setChecked(true);
+        return;
+      }
+      if (previousAccountKey !== null || (accountKeyRef.current && accountKeyRef.current !== nextAccountKey)) {
+        loadSequence.current += 1;
+        accountKeyRef.current = nextAccountKey;
+        setToken(null);
+        tokenRef.current = null;
+        resetAccountState();
+        setDataEpoch((value) => value + 1);
+      }
+      try {
+        const nextToken = await getActiveToken(5000, { skipCache: true });
+        if (cancelled || ticket !== clerkChangeSequenceRef.current || clerkAccountKey() !== nextAccountKey) return;
+        if (!nextToken) {
+          setToken(null);
+          tokenRef.current = null;
+          resetAccountState('error', 'Sign in to manage your calendar and availability.');
+          return;
+        }
+        const tokenKey = tokenAccountKey(nextToken);
+        if (tokenKey && tokenKey !== nextAccountKey) return;
+        setToken(nextToken);
+        setChecked(true);
+      } catch {
+        if (!cancelled && ticket === clerkChangeSequenceRef.current && clerkAccountKey() === nextAccountKey) {
+          setToken(null);
+          tokenRef.current = null;
+          resetAccountState('error', 'Could not refresh your sign-in. Try again.');
+        }
+      }
+    }
+    function attach(): boolean {
+      if (typeof window === 'undefined') return false;
+      const clerk = (window as unknown as { Clerk?: ClerkAccountSurface }).Clerk;
+      if (!clerk) return false;
+      clerkObservedAccountRef.current = clerkAccountKey();
+      if (!unsub && clerk.addListener) unsub = clerk.addListener(() => { void refreshForClerkAccountChange(clerkAccountKey()); });
+      return true;
+    }
+    if (!attach()) {
+      const poll = window.setInterval(() => { if (attach()) window.clearInterval(poll); }, 300);
+      return () => { cancelled = true; window.clearInterval(poll); try { unsub?.(); } catch { /* ignore */ } };
+    }
+    return () => { cancelled = true; try { unsub?.(); } catch { /* ignore */ } };
+  }, []);
 
   const range = useMemo(() => {
     const first = startOfCalendarWeek(new Date(cursor.getFullYear(), cursor.getMonth(), 1));
@@ -1085,25 +1312,74 @@ function Inner() {
     return { from: first, to: last, fromKey: formatDateKey(first), toKey: formatDateKey(last) };
   }, [cursor]);
 
+  /** Drop everything that belonged to the previous account. */
+  function resetAccountState(nextState: LoadState = 'loading', message: string | null = null) {
+    selectedDateTouchedRef.current = false;
+    setListings([]);
+    setSchedule(null);
+    setBlocks([]);
+    setEvents([]);
+    setAvailability(new Map());
+    setAvailabilityChecked(false);
+    setAvailabilityError(null);
+    setGoogleStatus(null);
+    setDegraded([]);
+    setError(message);
+    setLastLoadedAt(null);
+    setRequestedStatus(null);
+    setSelectedListing('');
+    setState(nextState);
+  }
+
   async function load(auth: string, listingId: string, silent = false) {
+    // [audit #1] Take the ticket BEFORE the token-renewal await. Renewing can
+    // take seconds; when the ticket was taken afterwards, an OLDER request that
+    // renewed slowly could be handed the HIGHER sequence and land last,
+    // overwriting the newer month/filter with stale data.
+    const sequence = ++loadSequence.current;
     // Refresh Clerk's session before a dashboard reload: an idle/backgrounded
     // tab can otherwise reuse an expired JWT.
-    const refreshed = await getActiveToken(5000, { skipCache: true });
-    if (refreshed) auth = refreshed;
-    const sequence = ++loadSequence.current;
+    let refreshed: string | null = null;
+    try {
+      refreshed = await getActiveToken(5000, { skipCache: true });
+    } catch {
+      if (sequence !== loadSequence.current) return;
+      setToken(null);
+      tokenRef.current = null;
+      accountKeyRef.current = null;
+      resetAccountState('error', 'Could not refresh your sign-in. Try again.');
+      return;
+    }
+    if (sequence !== loadSequence.current) return;
+    if (!refreshed) {
+      setToken(null);
+      tokenRef.current = null;
+      accountKeyRef.current = null;
+      resetAccountState('error', 'Sign in to manage your calendar and availability.');
+      return;
+    }
+    auth = refreshed;
+    // [audit #1] Account isolation, before anything from the old account can be
+    // merged with the new one's response.
+    const accountKey = tokenAccountKey(auth);
+    if (accountKey && accountKey !== accountKeyRef.current) {
+      clerkObservedAccountRef.current = accountKey;
+      accountKeyRef.current = accountKey;
+      resetAccountState();
+      setDataEpoch((value) => value + 1);
+      return;
+    }
     if (!silent) setState('loading');
     setError(null);
     setAvailabilityError(null);
-    const results = await Promise.allSettled([
+    const [listingResult, scheduleResult, blocksResult, eventsResult, googleResult] = await Promise.allSettled([
       request<{ listings: ListingCard[] }>('/api/listings/mine', { auth }),
       getCreatorSchedule(auth, listingId || null),
       getCalendarBlocks(auth, addCalendarDays(range.from, -2).getTime(), addCalendarDays(range.to, 3).getTime()),
       getCalendarEvents(auth),
       getGoogleCalendarStatus(auth),
-      ...(listingId ? [getListingAvailability(listingId, range.fromKey, range.toKey, schedule?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', auth)] : []),
     ]);
     if (sequence !== loadSequence.current) return;
-    const [listingResult, scheduleResult, blocksResult, eventsResult, googleResult, availabilityResult] = results;
     const failures: string[] = [];
     if (listingResult.status === 'fulfilled') setListings((listingResult.value.listings ?? []).filter((listing) => listing.kind === 'consult' || listing.kind === 'live_event'));
     else failures.push(`your listings (${errorText(listingResult.reason)})`);
@@ -1115,23 +1391,31 @@ function Inner() {
     else failures.push(`appointments (${errorText(eventsResult.reason)})`);
     if (googleResult.status === 'fulfilled') setGoogleStatus(googleResult.value);
     else failures.push(`Google Calendar status (${errorText(googleResult.reason)})`);
-    if (listingId && availabilityResult) {
-      if (availabilityResult.status === 'fulfilled') {
-        setAvailability(new Map(availabilityResult.value.days.map((day) => [day.date, day.available_count])));
-        setAvailabilityChecked(true);
-      } else {
-        setAvailability(new Map());
-        setAvailabilityChecked(false);
-        setAvailabilityError(errorText(availabilityResult.reason));
-      }
-    } else {
-      setAvailability(new Map());
-      setAvailabilityChecked(false);
-    }
     setDegraded(failures);
     setError(failures.length ? `Could not load ${failures[0]}.` : null);
     setState(scheduleResult.status === 'rejected' ? 'error' : 'ready');
     setLastLoadedAt(Date.now());
+
+    /* [audit #4] Slot counts are asked for AFTER phase 1, in the timezone of the
+     * schedule that was just returned. Issuing this call in parallel used the
+     * timezone captured from the PREVIOUS schedule (or a guessed browser zone),
+     * so after a timezone change the counts belonged to the wrong day window.
+     * The same reasoning forbids using the counts when the schedule itself
+     * failed: there is no trustworthy zone, so the days stay UNKNOWN. */
+    setAvailability(new Map());
+    setAvailabilityChecked(false);
+    if (listingId && scheduleResult.status === 'fulfilled') {
+      const timezone = scheduleResult.value.schedule.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      try {
+        const availabilityResult = await getListingAvailability(listingId, range.fromKey, range.toKey, timezone, auth);
+        if (sequence !== loadSequence.current) return;
+        setAvailability(new Map((availabilityResult.days ?? []).map((day) => [day.date, day.available_count])));
+        setAvailabilityChecked(true);
+      } catch (availabilityFailure) {
+        if (sequence !== loadSequence.current) return;
+        setAvailabilityError(errorText(availabilityFailure));
+      }
+    }
   }
 
   useEffect(() => {
@@ -1139,13 +1423,28 @@ function Inner() {
     if (!token) { setState('error'); setError('Sign in to manage your calendar and availability.'); return; }
     void load(token, selectedListing);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [checked, token, selectedListing, range.fromKey, range.toKey]);
+  }, [checked, token, selectedListing, range.fromKey, range.toKey, dataEpoch]);
 
   useEffect(() => { setRequestedStatus(null); }, [selectedDate]);
+
+  useEffect(() => {
+    if (!schedule || selectedDateTouchedRef.current) return;
+    const todayKey = civilDateKey(Date.now(), schedule.timezone);
+    if (!todayKey) return;
+    setSelectedDate(todayKey);
+    setCursor(parseDateKey(todayKey));
+  }, [schedule?.timezone]);
 
   // [audit #12] An open tab is not a live view. Refreshing on focus (and when a
   // backgrounded tab becomes visible again) keeps the diary from silently
   // showing yesterday's commitments.
+  //
+  // [audit #1] The listener must call the load that matches the range on SCREEN
+  // NOW. Registered once with `[]`, it closed over the mount render's `load`,
+  // so after paging to a future month a focus/visibility reload fetched the
+  // month that was on screen at mount and could overwrite the newer data. The
+  // range keys are the only closure values `load` still reads, so they are the
+  // effect's dependencies; the listener is re-registered when they change.
   useEffect(() => {
     function maybeRefresh() {
       const auth = tokenRef.current;
@@ -1161,7 +1460,7 @@ function Inner() {
       document.removeEventListener('visibilitychange', maybeRefresh);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [range.fromKey, range.toKey, dataEpoch]);
 
   const calendarTimezone = schedule?.timezone || 'UTC';
   const itemsByDay = useMemo(() => {
@@ -1188,7 +1487,16 @@ function Inner() {
   }, [itemsByDay, range.fromKey]);
 
   function moveCursor(amount: number) { setCursor((value) => new Date(value.getFullYear(), value.getMonth() + amount, 1)); }
-  function goToday() { const today = new Date(); setCursor(today); setSelectedDate(formatDateKey(today)); }
+  function selectDate(value: string) {
+    selectedDateTouchedRef.current = true;
+    setSelectedDate(value);
+  }
+  function goToday() {
+    const key = civilDateKey(Date.now(), calendarTimezone) ?? formatDateKey(new Date());
+    selectedDateTouchedRef.current = true;
+    setCursor(parseDateKey(key));
+    setSelectedDate(key);
+  }
   function refresh() { if (token) void load(token, selectedListing, true); }
   function handleSaved(value: CreatorSchedule) {
     lastMutationRef.current = Date.now();
@@ -1271,7 +1579,7 @@ function Inner() {
 
           {availabilityError && (
             <p className="calendar-form-message calendar-warning" role="status">
-              Bookable slot counts are unavailable right now. The calendar still shows confirmed commitments; it will not infer open slots.
+              Bookable slot counts are unknown right now ({availabilityError}). The calendar still shows confirmed commitments and will not show “0 open” for a day it could not check.
             </p>
           )}
           {!availabilityChecked && !selectedListing && listings.length > 0 && (
@@ -1294,16 +1602,16 @@ function Inner() {
               </div>
               <details className="calendar-phone-month">
                 <summary>Show month overview</summary>
-                <CalendarGrid cursor={cursor} selectedDate={selectedDate} onSelect={setSelectedDate} schedule={schedule} itemsByDay={itemsByDay} availability={availability} availabilityChecked={availabilityChecked} />
+                <CalendarGrid cursor={cursor} selectedDate={selectedDate} onSelect={selectDate} schedule={schedule} itemsByDay={itemsByDay} availability={availability} availabilityChecked={availabilityChecked} />
               </details>
-              {view === 'month' && <CalendarGrid cursor={cursor} selectedDate={selectedDate} onSelect={setSelectedDate} schedule={schedule} itemsByDay={itemsByDay} availability={availability} availabilityChecked={availabilityChecked} />}
-              {view === 'week' && <WeekGrid selectedDate={selectedDate} onSelect={setSelectedDate} schedule={schedule} itemsByDay={itemsByDay} />}
+              {view === 'month' && <CalendarGrid cursor={cursor} selectedDate={selectedDate} onSelect={selectDate} schedule={schedule} itemsByDay={itemsByDay} availability={availability} availabilityChecked={availabilityChecked} />}
+              {view === 'week' && <WeekGrid selectedDate={selectedDate} onSelect={selectDate} schedule={schedule} itemsByDay={itemsByDay} />}
               {view === 'month' && (
                 <div className="calendar-phone-agenda">
-                  <Agenda selectedDate={selectedDate} onSelect={setSelectedDate} schedule={schedule} itemsByDay={itemsByDay} listings={listings} />
+                  <Agenda selectedDate={selectedDate} onSelect={selectDate} schedule={schedule} itemsByDay={itemsByDay} listings={listings} />
                 </div>
               )}
-              {view === 'agenda' && <Agenda selectedDate={selectedDate} onSelect={setSelectedDate} schedule={schedule} itemsByDay={itemsByDay} listings={listings} />}
+              {view === 'agenda' && <Agenda selectedDate={selectedDate} onSelect={selectDate} schedule={schedule} itemsByDay={itemsByDay} listings={listings} />}
               {!monthItemCount && !schedule.rules.length && (
                 <div className="calendar-empty calendar-empty-small" style={{ marginTop: '1rem' }}>
                   <b>Your calendar is quiet</b>
@@ -1319,7 +1627,7 @@ function Inner() {
               selectedListing={selectedListing}
               requestedStatus={requestedStatus}
               itemsByDay={itemsByDay}
-              onSelectDate={setSelectedDate}
+              onSelectDate={selectDate}
               onSaved={handleSaved}
               onStatusConsumed={() => setRequestedStatus(null)}
             />

@@ -6,10 +6,10 @@
  * authenticated POST /api/calendar/conflicts/preview — never a write — while the
  * date/time/duration fields change, and says one of four things:
  *
- *   "Checking your calendar…"   · the debounced request is in flight
- *   "This time is free…"        · ok
- *   "This overlaps <title>."    · with the free times the server offered
- *   "Could not check…"          · the preview itself failed
+ *   "Checking your calendar…"            · the debounced request is in flight
+ *   "No clash with the commitments…"     · ok (never "bookable" — see #7 below)
+ *   "This overlaps <title>."             · with the free times the server offered
+ *   "Could not check…"                   · the preview itself failed
  *
  * Two rules it must not break:
  *   • NO automatic write on preview. It only reads; the server re-validates at
@@ -17,29 +17,23 @@
  *   • A slow answer for an OLD time must never overwrite the answer for the
  *     time on screen now — see createRequestGate in lib/calendarCore, which
  *     tickets every request and lets only the newest one set state.
+ *
+ * [CAL-AUDIT-2026-09-15 · #7] This preview checks occupancy on the creator's
+ * calendar, nothing more. A draft holds no time, and Google readiness, working
+ * hours, the notice window and the listing's own policy are all applied later.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getActiveTokenWaited as getActiveToken } from '../../../lib/clerk';
 import { epochForDateTime, previewCalendarConflicts } from '../../../lib/availability';
-import type { ConflictAlternative, ConflictItem } from '../../../lib/availability';
-import { conflictPreviewKey, createRequestGate, listingReservationSentence } from '../../../lib/calendarCore';
+import {
+  IDLE_PREVIEW_STATE, conflictPreviewKey, createRequestGate, listingReservationSentence,
+  previewHeadline, reducePreview,
+} from '../../../lib/calendarCore';
+import type { PreviewStateShape } from '../../../lib/calendarCore';
 import { epochToLocal } from './wizardLogic';
 import type { ListingDraft } from './types';
 
-type PreviewStatus = 'idle' | 'checking' | 'free' | 'conflict' | 'error';
-
 const PREVIEW_DEBOUNCE_MS = 450;
-
-interface PreviewState {
-  status: PreviewStatus;
-  conflicts: ConflictItem[];
-  alternatives: ConflictAlternative[];
-  message: string | null;
-  /** The conflictPreviewKey this answer belongs to; null while idle. */
-  forKey: string | null;
-}
-
-const IDLE: PreviewState = { status: 'idle', conflicts: [], alternatives: [], message: null, forKey: null };
 
 function previewErrorText(error: unknown): string {
   const e = error as { message?: string; body?: { reason?: string; error?: string } };
@@ -51,7 +45,7 @@ export function TimeConflictPreview({ draft, listingId, onUseTime }: {
   listingId: string | null;
   onUseTime?: (localDateTime: string) => void;
 }) {
-  const [state, setState] = useState<PreviewState>(IDLE);
+  const [state, setState] = useState<PreviewStateShape>(IDLE_PREVIEW_STATE);
   const gate = useRef(createRequestGate());
 
   const isExclusiveConsult = draft.kind === 'consult' && draft.availability_mode === 'exclusive';
@@ -71,38 +65,43 @@ export function TimeConflictPreview({ draft, listingId, onUseTime }: {
   const key = conflictPreviewKey({ listingId, startAt, endAt, timezone: draft.timezone });
 
   useEffect(() => {
-    if (!checkable) { setState(IDLE); return; }
-    if (!key) { setState(IDLE); return; }
+    if (!checkable || !key) {
+      setState((current) => reducePreview(current, { type: 'reset' }));
+      return;
+    }
+    setState((current) => reducePreview(current, { type: 'start', key }));
     let cancelled = false;
     const controller = new AbortController();
+    const ticket = gate.current.next();
     const timer = window.setTimeout(async () => {
-      const token = await getActiveToken();
-      if (cancelled) return;
-      if (!token) {
-        setState({ status: 'error', conflicts: [], alternatives: [], message: 'Sign in again to check this time.', forKey: key });
-        return;
-      }
-      const ticket = gate.current.next();
-      setState((current) => ({ ...current, status: 'checking', message: null, forKey: key }));
       try {
+        const token = await getActiveToken();
+        if (cancelled || !gate.current.isCurrent(ticket)) return;
+        if (!token) {
+          setState((current) => reducePreview(current, { type: 'failure', key, message: 'Sign in again to check this time.' }));
+          return;
+        }
         const response = await previewCalendarConflicts(token, { listing_id: listingId, start_at: startAt!, end_at: endAt!, timezone: draft.timezone }, controller.signal);
         if (cancelled || !gate.current.isCurrent(ticket)) return;
-        setState({
-          status: response.ok ? 'free' : 'conflict',
+        setState((current) => reducePreview(current, {
+          type: 'result',
+          key,
+          ok: !!response.ok,
           conflicts: response.conflicts ?? [],
           alternatives: response.alternatives ?? [],
-          message: null,
-          forKey: key,
-        });
+        }));
       } catch (error) {
         if (cancelled || !gate.current.isCurrent(ticket)) return;
-        setState({ status: 'error', conflicts: [], alternatives: [], message: previewErrorText(error), forKey: key });
+        setState((current) => reducePreview(current, { type: 'failure', key, message: previewErrorText(error) }));
       }
     }, PREVIEW_DEBOUNCE_MS);
     return () => { cancelled = true; controller.abort(); window.clearTimeout(timer); };
   }, [checkable, key, listingId, startAt, endAt, draft.timezone]);
 
   const reservation = listingReservationSentence(draft.status);
+  const visibleState: PreviewStateShape = key && state.key !== key
+    ? { ...IDLE_PREVIEW_STATE, status: 'checking', key }
+    : state;
 
   if (!checkable) {
     return (
@@ -124,25 +123,24 @@ export function TimeConflictPreview({ draft, listingId, onUseTime }: {
   return (
     <div className="mt-3 flex flex-col gap-2 rounded-zine border-zine border-dashed border-ink p-3" role="status" aria-live="polite">
       <div className="font-body text-[13px] font-bold text-ink">
-        {state.status === 'checking' ? 'Checking your calendar…'
-          : state.status === 'free' ? 'This time is free on your calendar.'
-            : state.status === 'conflict' ? (state.conflicts[0] ? `This overlaps ${state.conflicts[0].title || 'another commitment'}.` : 'This time conflicts with another commitment.')
-              : state.status === 'error' ? `Could not check this time: ${state.message}`
-                : 'Checking this time against your calendar…'}
+        {previewHeadline({ status: visibleState.status, firstTitle: visibleState.conflicts[0]?.title ?? null, message: visibleState.message })}
       </div>
-      {state.conflicts.length > 0 && (
+      <p className="font-body text-[12px] font-bold text-inkSoft">
+        This checks for calendar clashes only. Working hours, booking notice, gaps, Google readiness and listing policy are still applied when you save and when a customer books.
+      </p>
+      {visibleState.conflicts.length > 0 && (
         <ul className="flex flex-col gap-1 font-body text-[12px] font-bold text-inkSoft">
-          {state.conflicts.map((conflict) => (
+          {visibleState.conflicts.map((conflict) => (
             <li key={`${conflict.title}-${conflict.start_at}`}>
               {conflict.title || 'Commitment'} · {new Date(conflict.start_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone: draft.timezone })}
             </li>
           ))}
         </ul>
       )}
-      {state.alternatives.length > 0 && (
+      {visibleState.alternatives.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 font-body text-[12px] font-bold text-ink">
           <span>Free times nearby:</span>
-          {state.alternatives.map((slot) => (
+          {visibleState.alternatives.map((slot) => (
             <button
               key={slot.start_at}
               type="button"

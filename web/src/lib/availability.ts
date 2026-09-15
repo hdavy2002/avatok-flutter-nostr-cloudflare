@@ -87,17 +87,25 @@ export interface CalendarBlock {
   listing_id?: string;
   /* [CAL-AUDIT-2026-09-15] Additive fields on GET /api/calendar/blocks once a
    * newer backend is deployed: they are present only when the block is safely
-   * owner-resolved, so every consumer must keep working without them (see
-   * calendarCore.dayItemsForRange, which falls back to interval matching). */
+   * owner-resolved, so every consumer must keep working without them. Without
+   * `booking_id` the block is shown as its own card — calendarCore
+   * .dayItemsForRange NEVER guesses ownership from an identical interval. */
   booking_id?: string | null;
   booking_kind?: string | null;
   booking_status?: string | null;
+  /** creator | customer | null — stated by the server, never guessed from a
+   *  title or from an overlapping interval (see calendarCore.bookingRoleOf). */
+  booking_role?: string | null;
 }
 
 export interface CalendarEvent {
   booking_id?: string;
   slot_id?: string;
   role?: string;
+  /** [CAL-AUDIT-2026-09-15] Additive on a newer backend: creator | customer |
+   *  null for a booking the server could resolve to this account. Absent on an
+   *  older one, where `role` (host/attendee) is normalised instead. */
+  booking_role?: string | null;
   title?: string;
   start_at: number;
   end_at: number;
