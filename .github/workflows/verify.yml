@@ -21,11 +21,20 @@ on:
         description: 'Run focused commercial media checks; full verification remains the default'
         type: boolean
         default: false
+      # [CAL-2026-09-15] Focused calendar/availability validation for the
+      # undeployed review branch. Default false ⇒ the full gate is unchanged.
+      # When true, only the calendar-owned SQL suites, web calendar/device
+      # checks, focused Flutter analysis + calendar tests and the design guard
+      # run (plus offline flags+manifest). It never builds, packages or deploys.
+      calendar_only:
+        description: 'Run focused calendar/availability checks; full verification remains the default'
+        type: boolean
+        default: false
 
 
 jobs:
   worker-ts:
-    if: ${{ !inputs.commercial_only }}
+    if: ${{ !inputs.commercial_only && !inputs.calendar_only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -59,8 +68,51 @@ jobs:
         # failure. (A bare positional "test" is a NAME FILTER and still matches
         # that stub's filename — must be --dir.)
         run: npx vitest run --dir test
+
+  # [CAL-2026-09-15] Focused calendar/availability worker gate. This is the
+  # `calendar_only` counterpart to worker-ts: the same Node 22 runtime and
+  # worker typecheck, but the vitest subset is limited to the calendar-owned
+  # SQL suites. Files are discovered dynamically so a newly added
+  # availability_*.test.ts / calendar_*.test.ts is exercised without editing
+  # the workflow, and the step FAILS if the discovery is empty (a green run
+  # over zero suites is not a pass). It builds and deploys nothing.
+  calendar-worker-ts:
+    if: ${{ inputs.calendar_only }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # node:sqlite (used by every *_sqlite.test.ts shim) needs Node 22.5+.
+          node-version: 22
+      - name: Install worker deps
+        working-directory: worker
+        run: npm ci --no-audit --no-fund --silent
+      - name: Type-check worker (tsc --noEmit)
+        working-directory: worker
+        run: npm run typecheck
+      - name: Focused availability + calendar SQL suites (discovered, fail if none)
+        working-directory: worker
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(test/availability_*.test.ts test/calendar_*.test.ts)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "verify[calendar_only]: no availability/calendar suites discovered under worker/test" >&2
+            exit 1
+          fi
+          names=()
+          for f in "${files[@]}"; do names+=("${f#test/}"); done
+          printf 'verify[calendar_only]: running %d focused worker suite(s):\n' "${#names[@]}"
+          printf '  %s\n' "${names[@]}"
+          # --dir test prevents the pre-existing src/spam/scoring.test.ts stub
+          # (no suite) from being collected. Positional args are file filters,
+          # so the bare basenames narrow the run to the discovered files only.
+          # Never glob all of test/ here.
+          npx vitest run --dir test "${names[@]}"
+
   consumers-ts:
-    if: ${{ !inputs.commercial_only }}
+    if: ${{ !inputs.commercial_only && !inputs.calendar_only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -126,7 +178,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # --check manifest reads `git log --since`
+      # [CAL-2026-09-15] Focused calendar runs target an UNDEPLOYED review
+      # branch, so the production telemetry verdict is meaningless there (and
+      # would need a network secret). The offline checks still run: `flags`
+      # (a client key the Worker never declares is a fake flag) and `manifest`
+      # (every shipped issue declares its success value). No telemetry is
+      # queried and no POSTHOG key is passed in this mode.
+      - name: Flags + success manifest (offline; focused review branch)
+        if: ${{ inputs.calendar_only }}
+        run: |
+          python3 tool/check_ship_readiness.py --check flags
+          python3 tool/check_ship_readiness.py --check manifest
       - name: Flags + success manifest + production telemetry -- run locally with `python3 tool/check_ship_readiness.py --check all`
+        if: ${{ !inputs.calendar_only }}
         env:
           POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
         run: python3 tool/check_ship_readiness.py --check all
@@ -179,9 +243,19 @@ jobs:
       # fatal — that is the purpose of this gate. Warning cleanup is tracked
       # separately.
       - name: Analyze (fatal on errors)
-        if: ${{ !inputs.commercial_only }}
+        if: ${{ !inputs.commercial_only && !inputs.calendar_only }}
         working-directory: app
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      # [CAL-2026-09-15] Focused calendar analysis. Scoped to the calendar
+      # feature and the actual native listing wizard the audit found missing the
+      # shared/custom/exclusive controls, so the ~84 pre-existing repo-wide
+      # lint warnings do not mask a regression in the owned surface. Standard
+      # mode still runs the FULL analyze above, unchanged.
+      - name: Analyze calendar + native listing wizard (fatal on errors)
+        if: ${{ inputs.calendar_only }}
+        working-directory: app
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings lib/features/calendar lib/features/marketplace/native_listing
 
       - name: Analyze commercial media (fatal on errors)
         if: ${{ inputs.commercial_only }}
@@ -193,8 +267,27 @@ jobs:
         working-directory: app
         run: flutter test test/features/commercial_getstream test/commercial_speaker_test.dart
 
+      # Dynamically discover the owned Flutter regression tests by name prefix.
+      # A missing discovery is a FAILURE (a pass over zero files is not a pass);
+      # when the native-listing worker lands test/native_listing_calendar*_test.dart
+      # it is picked up without editing this workflow.
+      - name: Focused calendar + native listing tests (discovered, fail if none)
+        if: ${{ inputs.calendar_only }}
+        working-directory: app
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(test/calendar*_test.dart test/native_listing_calendar*_test.dart)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "verify[calendar_only]: no calendar/native-listing Flutter tests discovered under app/test" >&2
+            exit 1
+          fi
+          printf 'verify[calendar_only]: running %d focused Flutter test file(s):\n' "${#files[@]}"
+          printf '  %s\n' "${files[@]}"
+          flutter test "${files[@]}"
+
       - name: Flutter unit tests
-        if: ${{ !inputs.commercial_only }}
+        if: ${{ !inputs.commercial_only && !inputs.calendar_only }}
         working-directory: app
         run: flutter test
 
@@ -209,7 +302,31 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
         working-directory: web
+      # [CAL-2026-09-15] The baseline `tsc --noEmit` run fails on
+      # src/lib/help.ts implicit-any because those errors are caused by the
+      # MISSING Astro generated content types (`astro:content`), not by the
+      # code. `astro sync` regenerates `.astro/types.d.ts` (which tsconfig
+      # includes) from src/content.config.ts — it is a type-generation step,
+      # NOT a build, and it does not weaken TS or edit help.ts.
+      - name: Generate Astro content types (npx astro sync)
+        working-directory: web
+        run: npx astro sync
       - run: npx tsc --noEmit
         working-directory: web
-      - run: node --experimental-strip-types --test test/device_checks.test.ts
+      # [WEB-TESTS-1] node:test + node:assert is this folder's runner (see
+      # test/sendMail.test.ts), and every file in test/*.test.ts is a real
+      # regression gate — the calendar/availability tests land in the same
+      # directory, so the glob is what keeps them RUNNING alongside the device
+      # checks. Node 22 above covers node:sqlite and --experimental-strip-types;
+      # a test that needs JSX or a bundler does not belong in this step (it does
+      # not transform .tsx).
+      - name: Web unit tests (node:test) — full device checks + calendar regressions
+        if: ${{ !inputs.calendar_only }}
         working-directory: web
+        run: node --experimental-strip-types --test test/*.test.ts
+      # Focused calendar run: the explicit calendar and device files, so the
+      # subset cannot silently widen or narrow with an unrelated glob change.
+      - name: Web unit tests (node:test) — focused calendar + device checks
+        if: ${{ inputs.calendar_only }}
+        working-directory: web
+        run: node --experimental-strip-types --test test/calendar_core.test.ts test/device_checks.test.ts
