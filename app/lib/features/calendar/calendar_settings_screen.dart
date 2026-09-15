@@ -48,7 +48,7 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
   String? _accountScope = AccountScope.id;
 
   bool _scopeIsCurrent(String? captured) =>
-      captured == _accountScope && captured == AccountScope.id;
+      captured != null && captured == _accountScope && captured == AccountScope.id;
 
   @override
   void initState() {
@@ -59,13 +59,32 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
 
   Future<void> _load() async {
     final scope = AccountScope.id;
-    final cached = await AvailabilityApi.cachedSchedule();
-    if (!mounted || !_scopeIsCurrent(scope)) return;
-    if (cached != null) {
-      setState(() {
-        _schedule = cached.value;
-        _loading = false;
-      });
+    if (scope == null) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Choose an account before changing calendar settings.';
+        });
+      }
+      return;
+    }
+    try {
+      final cached = await AvailabilityApi.cachedSchedule();
+      if (!mounted || !_scopeIsCurrent(scope)) return;
+      if (cached != null) {
+        setState(() {
+          _schedule = cached.value;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted && _scopeIsCurrent(scope)) {
+        setState(() {
+          _loading = false;
+          _error =
+              'Saved calendar settings could not be read. Refreshing from the server…';
+        });
+      }
     }
     final failed = <String>[];
     try {
@@ -95,7 +114,8 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
     }
   }
 
-  Future<bool> _loadGcal(String scope) async {
+  Future<bool> _loadGcal(String? scope) async {
+    if (scope == null) return false;
     try {
       final result = await PlatformApi.gcalStatusResult();
       if (!mounted || !_scopeIsCurrent(scope)) return true;
@@ -315,6 +335,11 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
 
   Future<void> _syncNow() async {
     final scope = AccountScope.id;
+    if (scope == null) {
+      setState(() => _gcalMessage =
+          'Choose an account before syncing Google Calendar.');
+      return;
+    }
     setState(() {
       _gcalBusy = true;
       _gcalMessage = null;
@@ -410,6 +435,11 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
 
   Future<void> _chooseCalendars(List<GcalCalendarStatus> calendars) async {
     final scope = AccountScope.id;
+    if (scope == null) {
+      setState(() => _gcalMessage =
+          'Choose an account before changing Google calendars.');
+      return;
+    }
     final selected = <String>{
       for (final calendar in calendars)
         if (calendar.selected) calendar.id
@@ -756,6 +786,11 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
 
   Future<void> _save(AvailabilitySchedule value) async {
     final scope = AccountScope.id;
+    if (scope == null) {
+      setState(() => _error =
+          'Choose an account before saving calendar settings.');
+      return;
+    }
     setState(() {
       _saving = true;
       _error = null;
@@ -791,6 +826,11 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
 
   Future<void> _addRule() async {
     final scope = AccountScope.id;
+    if (scope == null) {
+      setState(() => _error =
+          'Choose an account before changing calendar settings.');
+      return;
+    }
     final result = await showDialog<AvailabilityRule>(
         context: context, builder: (_) => const CalendarRuleDialog());
     if (result == null || !mounted || !_scopeIsCurrent(scope)) return;
@@ -855,6 +895,13 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
       return;
     }
     final scope = AccountScope.id;
+    if (scope == null) {
+      if (mounted) {
+        setState(() => _gcalMessage =
+            'Choose an account before connecting Google Calendar.');
+      }
+      return;
+    }
     try {
       await FlutterWebAuth2.authenticate(
           url: url, callbackUrlScheme: 'avatokauth');
@@ -883,6 +930,11 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
 
   Future<void> _disconnectGcal() async {
     final scope = AccountScope.id;
+    if (scope == null) {
+      setState(() => _gcalMessage =
+          'Choose an account before disconnecting Google Calendar.');
+      return;
+    }
     setState(() {
       _gcalBusy = true;
       _gcalMessage = null;

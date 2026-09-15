@@ -908,6 +908,9 @@ BookingRoute bookingRouteForBlock(
 
   final isEvent = block.sourceApp == 'avalive' || _eventKinds.contains(
       (block.bookingKind ?? '').toLowerCase());
+  if (isPersonalAvailabilityBlock(block)) {
+    return const BookingRoute(management: BookingManagement.none);
+  }
   final isCommercialSource = block.sourceApp == 'availability' ||
       block.sourceApp == 'avaconsult' ||
       isEvent ||
@@ -1555,6 +1558,14 @@ String blockTimeLabel({
     return 'All day · ${start.day} ${monthShort(start)} – ${end.day} ${monthShort(end)}';
   }
   return clockRangeInZone(startMs, endMs, timezone);
+}
+
+String blockDateLabel({
+  required int epochMs,
+  required String timezone,
+}) {
+  final day = calendarTime(DateTime.fromMillisecondsSinceEpoch(epochMs), timezone);
+  return '${day.day} ${monthShort(day)} ${day.year}';
 }
 
 String minutesRangeLabel(int startMin, int endMin) {

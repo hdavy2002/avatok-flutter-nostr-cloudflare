@@ -69,6 +69,19 @@ SourceStyle styleFor(String? sourceApp) =>
     SourceStyle('Busy', const Color(0xFF737A86),
         PhosphorIcons.calendarX(PhosphorIconsStyle.regular));
 
+bool isPersonalAvailabilityBlock(CalBlock block) {
+  final kind = (block.bookingKind ?? '').trim().toLowerCase();
+  final id = (block.bookingId ?? '').trim();
+  final listing = (block.listingId ?? '').trim();
+  return block.sourceApp == 'availability' &&
+      kind == 'block' &&
+      id.isEmpty &&
+      listing.isEmpty;
+}
+
+String blockSourceLabel(CalBlock block) =>
+    isPersonalAvailabilityBlock(block) ? 'Blocked time' : styleFor(block.sourceApp).label;
+
 class CalBlock {
   final String id;
   final String sourceApp;

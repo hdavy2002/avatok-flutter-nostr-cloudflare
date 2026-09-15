@@ -332,6 +332,21 @@ void main() {
       expect(route.bookingId, 'bk2');
     });
 
+    test('personal availability busy blocks do not open commercial management',
+        () {
+      final personalBusy = block(
+        bookingId: null,
+        listingId: null,
+        kind: 'block',
+        role: 'creator',
+      );
+
+      final route = bookingRouteForBlock(personalBusy);
+
+      expect(route.management, BookingManagement.none);
+      expect(blockSourceLabel(personalBusy), 'Blocked time');
+    });
+
     test('a PURCHASED live event never opens the creator event console', () {
       final route = bookingRouteForBlock(
           block(source: 'avalive', bookingId: 'ev9', listingId: 'L9',
@@ -392,6 +407,21 @@ void main() {
           .management, BookingManagement.none);
       expect(bookingRouteForBlock(CalBlock('b', 'manual', null, 1, 2, 'Busy'))
           .management, BookingManagement.none);
+    });
+
+    test('schedule-zone date labels match the primary schedule-zone time', () {
+      final epoch = DateTime.utc(2026, 1, 1, 23, 30).millisecondsSinceEpoch;
+
+      expect(blockDateLabel(epochMs: epoch, timezone: 'UTC'), '1 Jan 2026');
+      expect(blockDateLabel(epochMs: epoch, timezone: 'Asia/Kolkata'),
+          '2 Jan 2026');
+      expect(
+        blockTimeLabel(
+            startMs: epoch,
+            endMs: epoch + const Duration(minutes: 30).inMilliseconds,
+            timezone: 'Asia/Kolkata'),
+        '05:00–05:30',
+      );
     });
 
     test('status text never claims a confirmation the server did not send', () {

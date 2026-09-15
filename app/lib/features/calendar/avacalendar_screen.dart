@@ -71,6 +71,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
   /// Names of the sources that failed in the last load. They were collected but
   /// never declared, so the partial-load banner could not compile (review item 7).
   List<String> _failedSources = const <String>[];
+  bool _listingLoadFailed = false;
 
   /// The account this screen's data belongs to. Generation alone is not account
   /// identity: a load or a save that started under another account must not
@@ -80,7 +81,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
   _PendingExceptionEdit? _pendingEdit;
 
   bool _scopeIsCurrent(String? captured) =>
-      captured == _accountScope && captured == AccountScope.id;
+      captured != null && captured == _accountScope && captured == AccountScope.id;
 
   bool get _accountChanged => AccountScope.id != _accountScope;
 
@@ -108,6 +109,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
       _gcal = null;
       _error = null;
       _failedSources = const [];
+      _listingLoadFailed = false;
       _pendingEdit = null;
       _stale = true;
       _updatedAt = null;
@@ -170,19 +172,46 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
 
   Future<void> _loadListings() async {
     final scope = AccountScope.id;
+    if (scope == null) {
+      if (!mounted) return;
+      setState(() {
+        _listingLoadFailed = true;
+        _error = 'Choose an account before opening the calendar.';
+        _stale = true;
+      });
+      return;
+    }
     try {
       final listings = await ListingsApi.mine();
       if (!mounted || !_scopeIsCurrent(scope)) return;
-      setState(() => _listings = listings);
+      setState(() {
+        _listings = listings;
+        _listingLoadFailed = false;
+      });
     } catch (e) {
       if (!mounted || !_scopeIsCurrent(scope)) return;
-      setState(() => _error = _friendlyError(e));
+      setState(() {
+        _listingLoadFailed = true;
+        _error = _friendlyError(e);
+        _stale = true;
+      });
     }
   }
 
   Future<void> _loadData({bool showBusy = true}) async {
     final generation = ++_loadGeneration;
     final scope = AccountScope.id;
+    if (scope == null) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _refreshing = false;
+        _failedSources = const <String>['account'];
+        _error = 'Choose an account before opening the calendar.';
+        _stale = true;
+      });
+      return;
+    }
     // Generation guards overlap; the account scope guards identity. Both are
     // required: a reload of account B must not adopt a response for account A.
     bool current() =>
@@ -204,7 +233,9 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
       });
     }
 
-    final failed = <String>[];
+    final failed = <String>[
+      if (_listingLoadFailed) 'listings',
+    ];
 
     final cachedBlocks = await CalendarStore.cached();
     if (current() && cachedBlocks.isNotEmpty) {
@@ -330,6 +361,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
         _stale = false;
       } else {
         _error = partialFailureMessage(failed);
+        _stale = true;
       }
     });
   }
@@ -345,6 +377,12 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
       return;
     }
     setState(() => _refreshing = true);
+    await _loadListings();
+    if (!mounted) return;
+    if (_accountChanged) {
+      _resetForAccountChange();
+      return;
+    }
     await _loadData(showBusy: false);
   }
 
@@ -873,7 +911,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
                       ..._onDay(day).take(3).map((block) => Padding(
                           padding: const EdgeInsets.only(bottom: 3),
                           child: Text(
-                              '${_hm(_scheduleTime(DateTime.fromMillisecondsSinceEpoch(block.startsAt)))} ${styleFor(block.sourceApp).label}',
+                              '${_hm(_scheduleTime(DateTime.fromMillisecondsSinceEpoch(block.startsAt)))} ${blockSourceLabel(block)}',
                               textAlign: TextAlign.center,
                               style: ADText.statCaption(c: AD.textSecondary)))),
                       if (_onDay(day).isEmpty)
@@ -1357,7 +1395,7 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen>
                       style: calValue(13)),
                   const SizedBox(height: Msg.s2),
                   ...affected.take(6).map((block) => Text(
-                      '· ${fmtDate(block.startsAt)} ${blockTimeLabel(startMs: block.startsAt, endMs: block.endsAt, timezone: _timezone)} ${styleFor(block.sourceApp).label}',
+                      '· ${blockDateLabel(epochMs: block.startsAt, timezone: _timezone)} ${blockTimeLabel(startMs: block.startsAt, endMs: block.endsAt, timezone: _timezone)} ${blockSourceLabel(block)}',
                       style: calSub(12))),
                   const SizedBox(height: Msg.s2),
                   Text(

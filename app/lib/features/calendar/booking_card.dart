@@ -105,6 +105,12 @@ Future<void> showBookingCard(
     ownedListingIds: ownedListingIds,
   );
   final zone = timezone ?? 'UTC';
+  final sourceLabel = sourceApp == 'availability' &&
+          (bookingKind ?? '').trim().toLowerCase() == 'block' &&
+          (bookingId ?? '').trim().isEmpty &&
+          (listingId ?? '').trim().isEmpty
+      ? 'Blocked time'
+      : st.label;
   final resolvedStatus = statusLabel ?? status;
   await showModalBottomSheet<void>(
     context: context,
@@ -128,14 +134,15 @@ Future<void> showBookingCard(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(title, style: _cardTitle),
                   const SizedBox(height: 2),
-                  Text(st.label, style: ADText.sectionLabel()),
+                  Text(sourceLabel, style: ADText.sectionLabel()),
                 ]),
               ),
               if (resolvedStatus != null)
                 calendarStatusSticker(resolvedStatus, status ?? ''),
             ]),
             const SizedBox(height: Msg.s4),
-            _row(PhosphorIcons.calendarBlank(PhosphorIconsStyle.regular), fmtDate(startsAt)),
+            _row(PhosphorIcons.calendarBlank(PhosphorIconsStyle.regular),
+                blockDateLabel(epochMs: startsAt, timezone: zone)),
             // Finding 8 — the primary time is the SCHEDULE timezone and it says
             // so; the device clock is a clearly labelled second line.
             _row(PhosphorIcons.clock(PhosphorIconsStyle.regular),
