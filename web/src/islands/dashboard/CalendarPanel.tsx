@@ -459,9 +459,9 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
     });
   }
 
-  function signatureForPlan(dates: string[], template: IntervalTarget, affected: AvailabilityException[]): string {
+  function signatureForPlan(mode: 'add' | 'edit', dates: string[], template: IntervalTarget, affected: AvailabilityException[]): string {
     return planSignature({
-      mode: composer.mode,
+      mode,
       dates,
       startMin: template.start_min,
       endMin: template.end_min,
@@ -513,6 +513,8 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
 
   async function save() {
     if (!token) { setError('Your session ended. Sign in again to change your calendar.'); return; }
+    const saveMode = composer.mode;
+    if (saveMode === 'closed') { setError('Open a time window before saving.'); return; }
     const built = intervalFromForm();
     if ('error' in built) { setError(built.error); return; }
     setBusy(true); setError(null); setNotice(null); setConflicts([]); setAlternatives([]);
@@ -531,7 +533,7 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
         // as clashing with itself. Those saves rely on the atomic PUT, which
         // excludes this schedule's own prior reservation mirrors and still
         // refuses a real booking or another schedule's reservation.
-        if (shouldRunConflictPreview({ mode: composer.mode, dates: built.dates.length, conflicts: plan.conflicts, removed: plan.removed, replaced: plan.replaced })) {
+        if (shouldRunConflictPreview({ mode: saveMode, dates: built.dates.length, conflicts: plan.conflicts, removed: plan.removed, replaced: plan.replaced })) {
           const preview = await previewSingle(auth, built.template, resolved.creatorWide, resolved.listingId);
           if (preview) {
             setConflicts(preview.conflicts);
@@ -541,7 +543,7 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
           }
         }
         const affected = [...plan.removed, ...plan.replaced];
-        const signature = signatureForPlan(built.dates, built.template, affected);
+        const signature = signatureForPlan(saveMode, built.dates, built.template, affected);
         if (affected.length && (replaceConfirm?.kind !== 'window' || replaceConfirm.signature !== signature)) {
           setReplaceConfirm({ kind: 'window', signature, windows: affected });
           setError(`This would replace ${affected.length} existing window${affected.length === 1 ? '' : 's'} on ${dayLabel}: ${replacementSentence(affected)}. Nothing has been saved — confirm to continue.`);
@@ -584,7 +586,7 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
         // confirmed first, and the exact windows are named. Reserved windows are
         // refused above, never replaced here.
         const replacedWindows = [...applied.removed, ...applied.replaced];
-        const signature = signatureForPlan(plan.dates, target, replacedWindows);
+        const signature = signatureForPlan('add', plan.dates, target, replacedWindows);
         if (replacedWindows.length && (replaceConfirm?.kind !== 'range' || replaceConfirm.signature !== signature)) {
           setReplaceConfirm({ kind: 'range', signature, windows: replacedWindows });
           setError(`Nothing was saved. ${plan.dates.length} date${plan.dates.length === 1 ? '' : 's'} would be added, replacing ${replacedWindows.length} existing window${replacedWindows.length === 1 ? '' : 's'}: ${replacementSentence(replacedWindows)}. Confirm to continue, or keep them.`);
