@@ -25,7 +25,7 @@ assert.match(html, /href="\/marketplace/, 'Marketplace remains reachable from gl
 assert.doesNotMatch(html, /data-motion-toggle|data-rail-train/, 'Old train animation removed');
 assert.match(html, /avatok-creator-constellation\.png/, 'Creator marketplace hero artwork exists');
 assert(existsSync(resolve(root, 'assets/home/avatok-creator-constellation.png')), 'Missing creator marketplace hero artwork');
-assert.match(html, /class="bazaar-footer"/, 'Existing footer remains');
+assert.match(html, /class="[^"]*bazaar-footer/, 'Existing footer remains');
 const archive = readFileSync(resolve(root, 'archive/home-2026-09-09/index.html'), 'utf8');
 assert.match(archive, /noindex, nofollow/, 'Archive must not compete in search');
 assert.match(archive, /hero-poster-nonav.png/, 'Previous hero remains archived');
