@@ -14,6 +14,10 @@ import { TwoFieldListEditor, StringListEditor, ChatLineEditor, labelCls, inputCl
 import { REFUND_WINDOWS, BOOKING_NOTICE_HOURS, LISTING_PROMOTIONS_ENABLED } from './wizardLogic';
 import type { ReadinessCheck } from './wizardLogic';
 import { defaultsFor } from '../../../lib/listingDefaults';
+/* [CAL-AUDIT-2026-09-15 · #2] An all-day window is stored as minute 0..1440.
+ * `minutesToClock(1440)` is "24:00", which an <input type="time"> refuses, so
+ * the row renders an explicit All-day control instead of a blank time field. */
+import { isAllDayInterval, minutesToClock } from '../../../lib/calendarCore';
 import { cfImage } from '../../../lib/config';
 import { MEDIA_MODES, PRICING, groupsForKind, subCategoriesFor, feeSplit, SUB_CATEGORIES } from '../../../lib/listingTaxonomy';
 import type { GroupId } from '../../../lib/listingTaxonomy';
@@ -658,17 +662,48 @@ export function Step4Time({ draft, patch, err }: {
               </button>
             ))}
           </div>
+          {/* [CAL-AUDIT-2026-09-15 · #10] Say what is inherited and what is
+           *  overridden. A creator could not tell whether the notice, the gap
+           *  between sessions, the daily limit or the horizon changed here, or
+           *  whether they still came from the calendar. */}
+          <p className="mt-2 font-body text-[12px] font-bold text-inkSoft">
+            {draft.availability_mode === 'shared'
+              ? 'This listing inherits your calendar’s working hours, notice, gap before and after each session, daily limit and booking horizon. Change them any time in Calendar & availability.'
+              : draft.availability_mode === 'custom'
+                ? 'These weekly windows replace your usual hours for this listing only. Notice, gap before and after each session, daily limit and booking horizon still come from your calendar policy.'
+                : 'These windows are kept for this listing so no other listing can use that time. Notice, gap before and after each session, daily limit and booking horizon still come from your calendar policy.'}
+          </p>
           {draft.availability_mode === 'custom' && (
             <div className="mt-3 flex flex-col gap-2 rounded-zine border-zine border-dashed border-ink p-3">
               <p className="font-body font-bold text-[12px] text-inkSoft">Add at least one weekly window. Times use {draft.timezone}.</p>
-              {rules.map((rule, index) => (
-                <div key={`${index}-${rule.weekday}`} className="grid grid-cols-[1fr_1fr_1fr_auto] items-end gap-2">
-                  <label className="block"><span className={labelCls}>Day</span><select className={inputCls} value={rule.weekday} onChange={(e) => patchRule(index, { weekday: Number(e.target.value) })}>{RECUR_DAYS.map((day, i) => <option key={day} value={i}>{day}</option>)}</select></label>
-                  <label className="block"><span className={labelCls}>Starts</span><input className={inputCls} type="time" value={`${String(Math.floor(rule.start_min / 60)).padStart(2, '0')}:${String(rule.start_min % 60).padStart(2, '0')}`} onChange={(e) => { const [h, m] = e.target.value.split(':').map(Number); patchRule(index, { start_min: h * 60 + m }); }} /></label>
-                  <label className="block"><span className={labelCls}>Ends</span><input className={inputCls} type="time" value={`${String(Math.floor(rule.end_min / 60)).padStart(2, '0')}:${String(rule.end_min % 60).padStart(2, '0')}`} onChange={(e) => { const [h, m] = e.target.value.split(':').map(Number); patchRule(index, { end_min: h * 60 + m }); }} /></label>
-                  <button type="button" className="pb-2 font-body font-bold text-[12px] text-coral" onClick={() => patch({ availability_rules: rules.filter((_, i) => i !== index) })}>Remove</button>
-                </div>
-              ))}
+              {rules.map((rule, index) => {
+                /* [CAL-AUDIT-2026-09-15 · #2] An all-day window (0..1440) from
+                 * the app must be visible and editable here, not shown as an
+                 * empty time field: "24:00" is not a value <input type="time">
+                 * can hold, so the two time fields are replaced by the All-day
+                 * control while the stored 1440 end is preserved untouched. */
+                const wholeDay = isAllDayInterval(rule.start_min, rule.end_min);
+                return (
+                  <div key={`${index}-${rule.weekday}`} className="grid grid-cols-[1fr_1fr_1fr_auto] items-end gap-2">
+                    <label className="block"><span className={labelCls}>Day</span><select className={inputCls} value={rule.weekday} onChange={(e) => patchRule(index, { weekday: Number(e.target.value) })}>{RECUR_DAYS.map((day, i) => <option key={day} value={i}>{day}</option>)}</select></label>
+                    {wholeDay ? (
+                      <p className="col-span-2 pb-2 font-body font-bold text-[12px] text-inkSoft">Whole day (00:00–24:00)</p>
+                    ) : (
+                      <>
+                        <label className="block"><span className={labelCls}>Starts</span><input className={inputCls} type="time" value={minutesToClock(rule.start_min)} onChange={(e) => { const [h, m] = e.target.value.split(':').map(Number); patchRule(index, { start_min: h * 60 + m }); }} /></label>
+                        <label className="block"><span className={labelCls}>Ends</span><input className={inputCls} type="time" value={minutesToClock(rule.end_min)} onChange={(e) => { const [h, m] = e.target.value.split(':').map(Number); patchRule(index, { end_min: h * 60 + m }); }} /></label>
+                      </>
+                    )}
+                    <div className="flex items-end justify-between gap-2 pb-2">
+                      <label className="flex items-center gap-1 font-body font-bold text-[12px] text-ink">
+                        <input type="checkbox" checked={wholeDay} onChange={(e) => patchRule(index, e.target.checked ? { start_min: 0, end_min: 1440 } : { start_min: 9 * 60, end_min: 17 * 60 })} />
+                        All day
+                      </label>
+                      <button type="button" className="font-body font-bold text-[12px] text-coral" onClick={() => patch({ availability_rules: rules.filter((_, i) => i !== index) })}>Remove</button>
+                    </div>
+                  </div>
+                );
+              })}
               <button type="button" className="self-start font-body font-bold text-[13px] text-blueInk underline" onClick={() => patch({ availability_rules: [...rules, { weekday: 1, start_min: 9 * 60, end_min: 17 * 60 }] })}>+ Add weekly window</button>
               <ErrLine err={err} field="availability_rules" />
             </div>
@@ -681,6 +716,9 @@ export function Step4Time({ draft, patch, err }: {
           {(draft.kind !== 'consult' || draft.availability_mode === 'exclusive') && <div>
             <Field label="Starts" type="datetime-local" value={draft.starts_at} onChange={(e) => patch({ starts_at: e.target.value })} />
             <ErrLine err={err} field="starts_at" />
+            <p className="mt-1 font-body text-[12px] font-bold text-inkSoft">
+              This exact time is checked against your calendar as you type. It is reserved only once the listing is published (and a booking is confirmed) — a saved draft holds nothing.
+            </p>
           </div>}
           <label className="block">
             <span className={labelCls}>Length (minutes)</span>
@@ -1230,6 +1268,21 @@ export function Step8Preview({ draft, checks, onSubmitForReview, publishing,
             </div>
           ))}
         </div>
+
+        {/* [CAL-AUDIT-2026-09-15 · #5/#6] Publishing, the step-4 preview and the
+            booking check all read the same Google readiness rule: the engine
+            refuses a slot while the creator's Google source is not Ready
+            (worker/src/cal/engine.ts → gcalAvailabilityReady). Say it here, in
+            the same words the calendar uses, instead of letting the creator
+            find out from a refused booking. */}
+        {isDraftState && (
+          <Card fillClassName="bg-paper2">
+            <p className="font-body font-bold text-[13px] text-ink">Before your first booking</p>
+            <p className="mt-1 font-body text-[12px] text-inkSoft">
+              Bookings are accepted only while Calendar &amp; availability → Connected calendars shows <b>Ready</b> and names the calendars that block your time. If it shows Syncing or Needs attention, open that screen and use “Sync busy times now” (or Reconnect) before this listing goes live. The time you chose in step 4 is checked against the same rule.
+            </p>
+          </Card>
+        )}
 
         {/* [WIZ-SUBMIT-PLAIN-1] The server's answer on submit lands here — with
             the local pre-check gone, this is where a creator finds out that a

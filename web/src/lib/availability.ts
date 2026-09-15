@@ -85,6 +85,13 @@ export interface CalendarBlock {
   title?: string;
   status?: string;
   listing_id?: string;
+  /* [CAL-AUDIT-2026-09-15] Additive fields on GET /api/calendar/blocks once a
+   * newer backend is deployed: they are present only when the block is safely
+   * owner-resolved, so every consumer must keep working without them (see
+   * calendarCore.dayItemsForRange, which falls back to interval matching). */
+  booking_id?: string | null;
+  booking_kind?: string | null;
+  booking_status?: string | null;
 }
 
 export interface CalendarEvent {
@@ -108,6 +115,13 @@ export interface GoogleCalendarStatus {
   last_error?: string | null;
   destination_calendar_id?: string | null;
   calendars?: GoogleCalendar[];
+  /* [CAL-AUDIT-2026-09-15] Additive readiness fields. An older deployed Worker
+   * omits all three, which is why they are optional and why the UI shows
+   * "not verified" instead of "Ready" when they are absent: readiness must be
+   * derived from the OLDEST SELECTED calendar's success, never the newest. */
+  ready?: boolean;
+  reason?: string | null;
+  last_success_at?: number | null;
 }
 
 export interface GoogleCalendar {
@@ -176,6 +190,15 @@ export function getGoogleCalendarStatus(token: string, signal?: AbortSignal): Pr
   return request<GoogleCalendarStatus>('/api/calendar/gcal/status', { auth: token, signal });
 }
 
+/** POST /api/calendar/gcal/sync — import busy times NOW (bounded + rate-limited
+ *  server-side) and return the same status shape as the GET. Distinct from
+ *  GET /api/calendar/gcal/calendars, which only refreshes the CALENDAR LIST.
+ *  A backend that predates this route answers 404/405; callers must say so
+ *  plainly instead of reporting a healthy sync. */
+export function syncGoogleCalendarNow(token: string, signal?: AbortSignal): Promise<GoogleCalendarStatus> {
+  return request<GoogleCalendarStatus>('/api/calendar/gcal/sync', { method: 'POST', auth: token, signal });
+}
+
 export function getGoogleCalendarConnectUrl(token: string, signal?: AbortSignal): Promise<{ url: string }> {
   return request<{ url: string }>('/api/calendar/gcal/connect', { auth: token, signal });
 }
@@ -222,9 +245,17 @@ export function daysInCalendarMonth(date: Date): number {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
 }
 
+/** [CAL-AUDIT-2026-09-15 · all-day round-trip] Minute 1440 is the END of the
+ *  day and must come back as "24:00" — the old `% 24` turned it into "00:00",
+ *  which read back as minute 0 and made a whole-day block unsavable on web
+ *  while the native app stored 0..1440. `timeToMinutes` already maps "24:00"
+ *  back to 1440, so the pair now round-trips. Use `isAllDayInterval` /
+ *  `intervalLabel` (lib/calendarCore) for display, and the editor's explicit
+ *  "All day" control instead of relying on a browser time input to accept it. */
 export function minutesToTime(value: number): string {
   const normalized = Math.max(0, Math.min(1440, Math.round(value)));
-  return `${String(Math.floor(normalized / 60) % 24).padStart(2, '0')}:${String(normalized % 60).padStart(2, '0')}`;
+  if (normalized === 1440) return '24:00';
+  return `${String(Math.floor(normalized / 60)).padStart(2, '0')}:${String(normalized % 60).padStart(2, '0')}`;
 }
 
 export function timeToMinutes(value: string): number {

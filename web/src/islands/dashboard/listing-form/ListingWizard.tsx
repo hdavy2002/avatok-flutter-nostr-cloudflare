@@ -26,11 +26,13 @@ import { isEmbedded, embedNotifyDirty, embedNotifySubmitted } from '../../../lib
 import { emptyDraft, STEP_LABELS } from './types';
 import type { ListingDraft, StepIndex } from './types';
 import { bodyForSave, buildAttrs, validateStep, publishReadiness, epochToLocal, normalizeTimezone, copyFieldReviewed, resumeStepFor, REVIEWED_COPY_NONE, INLINE_ERROR_FIELDS, LISTING_PROMOTIONS_ENABLED } from './wizardLogic';
+import { TimeConflictPreview } from './TimeConflictPreview';
 import type { ReviewedCopy } from './wizardLogic';
 import type { CopyField } from './CopyReview';
 import { defaultsFor } from '../../../lib/listingDefaults';
 import { getCreatorSchedule, saveCreatorSchedule, previewCalendarConflicts, epochForDateTime } from '../../../lib/availability';
 import type { CreatorSchedule } from '../../../lib/availability';
+import { buildListingAvailabilitySchedule } from '../../../lib/calendarCore';
 import {
   Step1Type, Step2Pitch, Step3Money, Step4Time, Step5HowItWorks, Step6HouseRules, Step7Photos, Step8Preview,
 } from './steps';
@@ -534,17 +536,11 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
       const targetListing = d.id;
       let current = availabilitySchedule;
       if (!current || current.listing_id !== targetListing) current = (await getCreatorSchedule(token, targetListing)).schedule;
-      const schedule: CreatorSchedule = {
-        ...current,
-        listing_id: targetListing,
-        timezone: d.timezone,
-        mode: d.availability_mode,
-        duration_min: d.duration_min,
-        slot_interval_min: Math.max(5, current.slot_interval_min || d.duration_min),
-        horizon_days: 62,
-        rules: d.availability_mode === 'custom' ? d.availability_rules : current.rules,
-        version: current.version,
-      };
+      // [CAL-AUDIT-2026-09-15 · #10] `horizon_days: 62` used to be hard-coded
+      // here, so every consult save silently reset a deliberately shorter (or
+      // longer, up to the server's 62) horizon. buildListingAvailabilitySchedule
+      // PRESERVES the loaded horizon and only clamps it to 1..62.
+      const schedule: CreatorSchedule = buildListingAvailabilitySchedule(current, { ...d, id: targetListing });
       const saved = await saveCreatorSchedule(token, schedule);
       capture('availability_schedule_saved', { listing_id: targetListing, mode: schedule.mode, version: saved.schedule.version });
       return { ok: true, schedule: saved.schedule };
@@ -847,7 +843,15 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
           />
         )}
         {step === 2 && <Step3Money draft={draft} patch={patch} err={fieldErr} />}
-        {step === 3 && <Step4Time draft={draft} patch={patch} err={fieldErr} />}
+        {step === 3 && (
+        <>
+          <Step4Time draft={draft} patch={patch} err={fieldErr} />
+          {/* [CAL-AUDIT-2026-09-15 · #11] The conflict answer arrives while the
+           *  creator is choosing, not after they press Continue, and it never
+           *  writes anything — see TimeConflictPreview. */}
+          <TimeConflictPreview draft={draft} listingId={draft.id} onUseTime={(value) => patch({ starts_at: value })} />
+        </>
+      )}
         {step === 4 && <Step5HowItWorks draft={draft} patch={patch} />}
         {step === 5 && <Step6HouseRules draft={draft} patch={patch} />}
         {step === 6 && <Step7Photos draft={draft} patch={patch} err={fieldErr} onUpload={onUpload} onRemoveCover={onRemoveCover} uploading={uploading} />}
