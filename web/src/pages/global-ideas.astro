@@ -3,18 +3,24 @@ export const prerender = true;
 import Base from '../layouts/Base.astro';
 import SiteHeader from '../components/SiteHeader.astro';
 import SiteFooter from '../components/SiteFooter.astro';
-import { globalCreatorIdeas } from '../lib/globalCreatorIdeas';
-import '../styles/global-home.css';
+import { globalCreatorIdeas, globalCreatorGuides } from '../lib/globalCreatorIdeas';
+import '../styles/global-editorial.css';
 ---
-<Base title="Creator ideas for YouTube, TikTok & Instagram · avaTOK" description="Eight practical ways creators can turn their audience into paid live streams and private 1:1 video sessions." image="/assets/home/avatok-creator-constellation.png" imageAlt="International creators building paid experiences for their audiences." imageWidth={1156} imageHeight={1360}>
+<Base chrome={false} title="Creator ideas for YouTube, TikTok & Instagram · avaTOK" description="Eight practical ways to turn your audience into paid live streams and private 1:1 video sessions. Find a format, plan your session and make it yours." image="/assets/global/idea-creator-watch-party.png" imageAlt="Retro creator with popcorn: inspiration for a live watch party" imageWidth={1254} imageHeight={1254}>
   <SiteHeader variant="global" />
-  <main class="global-home" id="main-content">
-    <section class="global-intro"><p class="global-kicker">YOUR NEXT CREATOR BUSINESS</p><h1>Turn your content into <span>moments people can book.</span></h1><p class="global-lead">Eight starting points for YouTube, TikTok and Instagram creators.</p></section>
-    <section class="global-ideas-grid" aria-label="Global creator ideas">
-      {globalCreatorIdeas.map((idea) => <article class="global-idea"><div class:list={['global-idea__art', `global-idea__art--${idea.color}`]}><span class="global-idea__platform">{idea.platform}</span><span class="global-idea__scribble">{idea.eyebrow}<br />make it yours ↗</span></div><div class="global-idea__body"><h2>{idea.title}</h2><p>{idea.description}</p><a class="global-idea__link" href={`/blog/global-creator-ideas/${idea.slug}/`}>Read the guide ↗</a></div></article>)}
+  <main class="global-editorial" id="main-content" data-global-ideas>
+    <section class="ge-intro"><a class="ge-back" href="/">← The global home</a><p class="ge-kicker">YOUR NEXT CREATOR BUSINESS</p><h1>Turn your content into <em>moments people can book.</em></h1><p class="ge-lead">Eight starting points for YouTube, TikTok and Instagram creators. Your personality. Your people. A little more time together.</p></section>
+    <section class="ge-ideas-grid" aria-label="Eight global creator ideas">
+      {globalCreatorIdeas.map((idea) => (
+        <a class:list={['ge-idea', `ge-colour--${idea.color}`]} href={`/blog/global-creator-ideas/${idea.slug}/`}>
+          <picture><source type="image/webp" srcset={`/assets/global/idea-${idea.slug}-480.webp 480w, /assets/global/idea-${idea.slug}-960.webp 960w`} sizes="(max-width: 560px) calc(100vw - 36px), (max-width: 1100px) 46vw, 320px" /><img src={`/assets/global/idea-${idea.slug}.png`} alt={globalCreatorGuides[idea.slug].imageAlt} width="1254" height="1254" loading="lazy" decoding="async" /></picture>
+          <div class="ge-idea__copy"><span class="ge-platform">{idea.platform}</span><h2><span>{idea.title}</span></h2><p>{idea.description}</p><span class="ge-idea__link">Read the guide ↗</span></div>
+          <span class="ge-idea__format">{idea.eyebrow}</span>
+        </a>
+      ))}
     </section>
-    <div class="global-proof"><span>Live events · Private 1:1 · Group sessions · Local payouts</span><a href="/marketplace">Explore the marketplace →</a></div>
-    <section class="global-cta"><h2>Your people are waiting.</h2><a class="global-button" href="/sign-up?role=creator&country=global">Create your free listing →</a></section>
+    <aside class="ge-tape" aria-label="Choose your format"><span aria-hidden="true">✳</span><p>Live events · Private 1:1 · Your kind of connection.</p><span aria-hidden="true">↗</span></aside>
+    <section class="ge-start"><div><p class="ge-kicker">START SMALL. MAKE IT YOURS.</p><h2>Your next idea is already in your comments.</h2><p>Choose one question your audience keeps asking. Build one clear session around it. These guides are starting points—not promises of earnings or platform reach.</p></div><div class="ge-start__actions"><a class="ge-button" href="/sign-up?role=creator&country=global">Start creating →</a><a class="ge-text-link" href="/marketplace">Explore the India marketplace ↗</a><a class="ge-text-link" href="/ideas">Looking for ideas for India? →</a></div></section>
   </main>
   <SiteFooter variant="global" />
 </Base>

@@ -23,13 +23,58 @@ assert.match(html, /href="\/sign-up(?:\?|\")/, 'Signup remains reachable');
 assert.match(html, /href="\/marketplace/, 'Marketplace remains reachable');
 assert.match(html, /href="\/marketplace/, 'Marketplace remains reachable from global homepage');
 assert.doesNotMatch(html, /data-motion-toggle|data-rail-train/, 'Old train animation removed');
-assert.match(html, /avatok-creator-constellation\.png/, 'Creator marketplace hero artwork exists');
-assert(existsSync(resolve(root, 'assets/home/avatok-creator-constellation.png')), 'Missing creator marketplace hero artwork');
+assert.match(html, /<img\b[^>]*src="\/assets\/global\/hero-creators\.png"/, 'Approved global creator collage is visible, not just metadata');
+assert.equal((html.match(/<header\b/g) || []).length, 1, 'Exactly one homepage header');
+assert.equal((html.match(/<footer\b/g) || []).length, 1, 'Exactly one homepage footer');
+for (const name of ['hero-creators', 'format-live', 'format-call', 'format-paid', 'payout-world', 'creator-marketplace-og']) {
+ assert(existsSync(resolve(root, 'assets/global', name + '.png')), 'Missing global artwork: ' + name);
+}
+for (const image of html.matchAll(/<img\b[^>]*src="(\/assets\/global\/[^\"]+)"/g)) {
+ assert(existsSync(resolve(root, image[1].slice(1))), 'Visible global artwork resolves: ' + image[1]);
+ for (const width of [480, 960]) {
+  const variant = image[1].replace(/\.png$/, '-' + width + '.webp');
+  assert(existsSync(resolve(root, variant.slice(1))), 'Responsive artwork exists: ' + variant);
+ }
+}
+const india = readFileSync(resolve(root, 'india/index.html'), 'utf8');
+assert.match(india, /avatok-creator-constellation\.png/, 'Original India creator artwork remains');
+assert.doesNotMatch(india, /\/assets\/global\//, 'Global artwork must not replace the India design');
+assert.equal((india.match(/<header\b/g) || []).length, 1, 'India retains one header');
+assert.equal((india.match(/<footer\b/g) || []).length, 1, 'India retains one footer');
+const indiaFooter = india.match(/<footer\b[\s\S]*?<\/footer>/)?.[0] || '';
+const globalFooter = html.match(/<footer\b[\s\S]*?<\/footer>/)?.[0] || '';
+for (const navigation of indiaFooter.matchAll(/<nav\b[\s\S]*?<\/nav>/g)) {
+ for (const link of navigation[0].matchAll(/href="([^"]+)"/g)) {
+  assert(globalFooter.includes('href="' + link[1] + '"'), 'Existing footer destination preserved globally: ' + link[1]);
+ }
+}
 assert.match(html, /class="[^"]*bazaar-footer/, 'Existing footer remains');
 const archive = readFileSync(resolve(root, 'archive/home-2026-09-09/index.html'), 'utf8');
 assert.match(archive, /noindex, nofollow/, 'Archive must not compete in search');
 assert.match(archive, /hero-poster-nonav.png/, 'Previous hero remains archived');
-console.log('Homepage smoke checks passed: six ideas, anchors, assets, signup, marketplace, footer and archive.');
+console.log('Homepage smoke checks passed: eight ideas, real artwork, anchors, signup, marketplace, India and archive.');
+
+const globalIdeas = readFileSync(resolve(root, 'global-ideas/index.html'), 'utf8');
+assert.equal((globalIdeas.match(/<header\b/g) || []).length, 1, 'Global catalog has no duplicate header');
+assert.equal((globalIdeas.match(/<footer\b/g) || []).length, 1, 'Global catalog has no duplicate footer');
+const globalLinks = [...html.matchAll(/href="(\/blog\/global-creator-ideas\/[^\"]+)"/g)].map(m => m[1]);
+assert.equal(new Set(globalLinks).size, 8, 'Eight distinct global guides');
+const globalImageHashes = new Set();
+for (const href of globalLinks) {
+ const slug = href.split('/').filter(Boolean).at(-1);
+ const page = readFileSync(resolve(root, href.slice(1), 'index.html'), 'utf8');
+ assert.equal((page.match(/<h1[ >]/g) || []).length, 1, 'One guide heading: ' + slug);
+ assert.equal((page.match(/<header\b/g) || []).length, 1, 'One guide header: ' + slug);
+ assert.equal((page.match(/<footer\b/g) || []).length, 1, 'One guide footer: ' + slug);
+ assert(page.includes('data-global-guide="' + slug + '"'), 'Distinct global guide identity: ' + slug);
+ assert.match(page, /BlogPosting/, 'Global guide structured data: ' + slug);
+ const asset = '/assets/global/idea-' + slug + '.png';
+ assert(html.includes(asset) && globalIdeas.includes(asset) && page.includes(asset), 'Guide artwork in home, catalog and article: ' + slug);
+ const hash = createHash('sha256').update(readFileSync(resolve(root, asset.slice(1)))).digest('hex');
+ assert(!globalImageHashes.has(hash), 'Each idea needs its own artwork: ' + slug);
+ globalImageHashes.add(hash);
+ assert.match(page, /href="\/global-ideas/, 'Guide links back to catalog');
+}
 
 // Creator inspiration is a separate editorial route, never fake marketplace inventory.
 const ideas = readFileSync(resolve(root, 'ideas/index.html'), 'utf8');
@@ -117,15 +162,15 @@ console.log('Sharing metadata and discovery checks passed for ideas and all 115 
 // [WEB-GANESH-OG-2] One compact preview prevents WhatsApp choosing the tall poster.
 const campaignImages = [...html.matchAll(/<meta property="og:image" content="([^"]+)"/g)].map(m => m[1]);
 assert.deepEqual(campaignImages, [
- 'https://avatok.ai/assets/home/avatok-creator-constellation.png',
+ 'https://avatok.ai/assets/global/creator-marketplace-og.png',
 ], 'Global homepage advertises one creator preview image');
 assert.equal(meta(html, 'og:title'), 'Turn your influence into live &#38; 1:1 income · avaTOK');
 assert.equal(meta(html, 'og:description'), 'AvaTOK helps influencers earn from their audience through paid live streams and private 1:1 video sessions, with flexible pricing and local payouts.');
 assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'twitter:image'), campaignImages[0]);
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));
-assert.equal(meta(html, 'og:image:width'), '1156');
-assert.equal(meta(html, 'og:image:height'), '1360');
+assert.equal(meta(html, 'og:image:width'), '1536');
+assert.equal(meta(html, 'og:image:height'), '1024');
 for (const image of campaignImages) {
  const bytes = readFileSync(resolve(root, new URL(image).pathname.slice(1)));
  assert(bytes.length > 1000, 'Global creator preview image is present');

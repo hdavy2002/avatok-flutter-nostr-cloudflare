@@ -9,3 +9,5 @@ dist/
 !.env.example
 *.log
 .DS_Store
+public/assets/global/*-480.webp
+public/assets/global/*-960.webp

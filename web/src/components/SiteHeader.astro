@@ -27,6 +27,7 @@
 // now rather than deleted, in case another surface still wants a React-side
 // signal, but nothing renders it.
 import TruckBorder from './TruckBorder.astro';
+import GlobalHeader from './GlobalHeader.astro';
 // [WEB-BANNER-OFF-1 2026-09-02] Owner asked for the site-wide product-status
 // strip to come out of the header. BetaBanner.astro is kept on disk (unused) so
 // it can be re-mounted here in one line if the payment-gateway review wants it
@@ -88,6 +89,7 @@ const globalLinks: HeaderLink[] = [
 const headerLinks = variant === 'global' ? globalLinks : links;
 ---
 
+{variant === 'global' ? <GlobalHeader sticky={sticky} /> : <>
 {/* [WEB-THEME-1] The five brand faces. Loaded by the component rather than
     the layout because the HOME
     page does not use Base.astro at all — it emits its own raw document — so a
@@ -186,6 +188,8 @@ const headerLinks = variant === 'global' ? globalLinks : links;
   </Fragment>
   {variant === 'global' && <a class="avh-mobile-auth" href="/india">🌍 India</a>}
 </nav>
+
+</>}
 
 <script>
   // Progressive enhancement: the header is fully usable without this — the

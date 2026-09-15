@@ -1,0 +1,23 @@
+---
+import GlobalLocaleControls from './GlobalLocaleControls.astro';
+interface Props {
+  columns: { title: string; links: { href: string; label: string }[] }[];
+  legalLinks: { href: string; label: string }[];
+  year: number;
+}
+const { columns, legalLinks, year } = Astro.props;
+---
+<footer class="bazaar-footer global-footer">
+  <div class="global-footer__main">
+    <div class="global-footer__brand">
+      <a class="global-wordmark" href="/" aria-label="avaTOK global home"><span>ava</span><span>TOK</span><i aria-hidden="true">✳</i></a>
+      <p>A global home for creator-led income.</p>
+      <span class="global-handwritten">Real people. Real moments. Your thing.</span>
+    </div>
+    {columns.map(column => <nav class="global-footer__column" aria-label={column.title}><h2>{column.title === 'Bazaar' ? 'Explore' : column.title}</h2>{column.links.map(link => <a href={link.href}>{link.label}</a>)}{column.title === 'Bazaar' && <a href="/global-ideas">Creator ideas</a>}</nav>)}
+    <nav class="global-footer__column" aria-label="Your experience"><h2>Your experience</h2><a href="/">Global · English</a><a href="/india">🇮🇳 India experience</a><a href="/pricing-fees">Pricing & fees</a><a href="/payouts">How payouts work</a></nav>
+  </div>
+  <div class="global-footer__world"><GlobalLocaleControls compact /><span class="global-footer__flags"><span aria-hidden="true">🇺🇸 🇧🇷 🇬🇧 🇿🇦</span> <a href="/india" aria-label="Visit the India experience">🇮🇳</a> <span aria-hidden="true">🇳🇬 🇯🇵 🇲🇽</span></span><span class="global-handwritten">Made for creators everywhere. ♡</span></div>
+  <nav class="global-footer__legal" aria-label="Legal and safety">{legalLinks.map(link => <a href={link.href}>{link.label}</a>)}</nav>
+  <div class="global-footer__bottom"><span>© {year} avaTOK</span><span>Good creators. Brighter tomorrows.</span></div>
+</footer>

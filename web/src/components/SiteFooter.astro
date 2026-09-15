@@ -24,6 +24,7 @@
 // legal bar, inside `.bazaar-footer` so the existing nav_click delegation
 // covers it. Terms/Privacy stay duplicated in the COMPANY column too — fine.
 import TruckBorder from './TruckBorder.astro';
+import GlobalFooter from './GlobalFooter.astro';
 
 export interface Props { variant?: 'india' | 'global'; }
 const { variant = 'india' } = Astro.props;
@@ -92,7 +93,7 @@ const globalColumns = [
 const footerColumns = variant === 'global' ? globalColumns : columns;
 ---
 
-<footer class:list={['bazaar-footer', variant === 'global' && 'bazaar-footer--global']}>
+{variant === 'global' ? <GlobalFooter columns={columns} legalLinks={legalLinks} year={year} /> : <footer class:list={['bazaar-footer', variant === 'global' && 'bazaar-footer--global']}>
   <TruckBorder kind="chai" count={40} />
 
   <div class="bf-main">
@@ -144,7 +145,7 @@ const footerColumns = variant === 'global' ? globalColumns : columns;
   <div class="bf-rule"></div>
   <TruckBorder kind="auto" count={40} />
   <TruckBorder kind="tassels" count={44} />
-</footer>
+</footer>}
 
 <script>
   // [WEB-POSTHOG-1] Footer link clicks -> nav_click{item, location:'footer'}.

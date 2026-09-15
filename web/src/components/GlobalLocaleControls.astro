@@ -1,0 +1,42 @@
+---
+interface Props { compact?: boolean; }
+const { compact = false } = Astro.props;
+---
+<div class:list={['global-locales', compact && 'global-locales--compact']}>
+  <details class="global-selector">
+    <summary aria-label="Choose country experience"><span aria-hidden="true">🌐</span> Global <span class="global-chevron" aria-hidden="true">⌄</span></summary>
+    <div class="global-selector__menu">
+      <p>Choose your experience</p>
+      <a href="/" aria-current="page" data-site-experience="global">🌐 Global · English <span aria-hidden="true">✓</span></a>
+      <a href="/india" data-site-experience="india">🇮🇳 India <span aria-hidden="true">→</span></a>
+      <small>More country experiences are on the way.</small>
+    </div>
+  </details>
+  <details class="global-selector global-selector--language">
+    <summary aria-label="Choose language">EN <span class="global-chevron" aria-hidden="true">⌄</span></summary>
+    <div class="global-selector__menu">
+      <p>Language</p>
+      <a href="/" lang="en" aria-current="page">English <span aria-hidden="true">✓</span></a>
+      <small>The global experience is currently available in English. For the existing Indian experience, <a href="/india">visit India →</a></small>
+    </div>
+  </details>
+</div>
+<script>
+  document.querySelectorAll<HTMLDetailsElement>('.global-selector').forEach((selector) => {
+    selector.addEventListener('toggle', () => {
+      if (selector.open) document.querySelectorAll<HTMLDetailsElement>('.global-selector').forEach((other) => {
+        if (other !== selector) other.open = false;
+      });
+    });
+    selector.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        selector.open = false;
+        selector.querySelector<HTMLElement>('summary')?.focus();
+      }
+    });
+  });
+  document.addEventListener('click', (event) => {
+    if (!(event.target instanceof Element) || event.target.closest('.global-selector')) return;
+    document.querySelectorAll<HTMLDetailsElement>('.global-selector[open]').forEach((selector) => { selector.open = false; });
+  });
+</script>
