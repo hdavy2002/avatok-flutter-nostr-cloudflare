@@ -366,6 +366,9 @@ export function planIntervalUpserts(
     if (plan.replaced) replaced.push(plan.replaced);
     removed.push(...plan.removed);
   }
+  if (conflicts.length) {
+    return { next: schedule.exceptions, conflicts, removed: [], replaced: [], changesExisting: false };
+  }
   return { next: exceptions, conflicts, removed, replaced, changesExisting: removed.length > 0 || replaced.length > 0 };
 }
 

@@ -213,12 +213,13 @@ test('a range that would cover a reserved window changes nothing and says which 
   );
   assert.equal(plan.conflicts.length, 1);
   assert.match(plan.conflicts[0], /^2026-10-06: /);
-  assert.equal(plan.next.some((item) => item.id === 'hold'), true);
-  // The date that could not be applied is NOT added either (nothing partial).
-  assert.equal(plan.next.some((item) => item.date === '2026-10-06' && item.id !== 'hold'), false);
-  // 10-05 and 10-07 were still planned, and 10-07's block is still there.
-  assert.equal(plan.next.some((item) => item.date === '2026-10-05' && item.id !== 'keep' && item.id !== 'hold'), true);
-  assert.equal(plan.next.some((item) => item.id === 'keep'), true);
+  // A range is all-or-nothing. One reserved conflict means the planner returns
+  // the original exception list, with no partial 10-05 add and no 10-07 cover.
+  assert.deepEqual(plan.next, base.exceptions);
+  assert.deepEqual(plan.removed, []);
+  assert.deepEqual(plan.replaced, []);
+  assert.equal(plan.changesExisting, false);
+  assert.deepEqual(plan.next.map((item) => item.id).sort(), ['hold', 'keep']);
 });
 
 test('an edit excludes its OWN window from the plan instead of refusing it (#3)', () => {
