@@ -55,7 +55,8 @@ async function effectivePolicy(env: Env, creatorId: string, listingId: string | 
     if (listing?.attrs) { try { const attrs = JSON.parse(listing.attrs); if (attrs?.commercial_booking_notice_hours !== undefined && Number.isFinite(Number(attrs.commercial_booking_notice_hours))) hours = Math.max(0, Number(attrs.commercial_booking_notice_hours)); } catch { hours = 24; } }
     commercialNoticeMin = Number.isFinite(hours) ? hours * 60 : 1440;
   }
-  // Missing/NULL columns fall back to the creator-wide value, then to the
+  // Missing/NULL columns fall back to listing, then creator-wide, then the
+  // legacy booking_policies row when no unified row exists, then to the
   // engine's own default — never to NaN, which used to make Math.max() return
   // NaN and render an unexplainable blank.
   const finiteNotice = (value: unknown, fallback: number): number => {
@@ -63,8 +64,13 @@ async function effectivePolicy(env: Env, creatorId: string, listingId: string | 
     const n = Number(value);
     return Number.isFinite(n) ? Math.max(0, n) : fallback;
   };
-  const inheritedNotice = finiteNotice(listingRow?.min_notice_min ?? global?.min_notice_min, 120);
-  const calendarNotice = finiteNotice(schedule?.min_notice_min, inheritedNotice);
+  let legacyPolicyNotice: unknown = undefined;
+  if (!listingRow && !global) {
+    const legacyPolicy = await db.prepare("SELECT min_notice_min FROM booking_policies WHERE user_id=?1").bind(creatorId).first<{ min_notice_min: number | null }>().catch(() => null);
+    legacyPolicyNotice = legacyPolicy?.min_notice_min;
+  }
+  const inheritedNotice = finiteNotice(listingRow?.min_notice_min ?? global?.min_notice_min ?? legacyPolicyNotice, 120);
+  const calendarNotice = inheritedNotice;
   const comm = finiteNotice(commercialNoticeMin, 0);
   // EXACTLY the engine's rule (loadUnifiedSchedule / validateListingSlot): the
   // commercial booking notice is a FLOOR on the calendar notice, so the

@@ -428,4 +428,56 @@ describe("date exception invariants", () => {
     expect(listingSchedule.effective_min_notice_min).toBe(48 * 60);
     expect(listingSchedule.effective.notice_source).toBe("listing_commercial");
   });
+
+  it("uses the legacy booking policy notice until a unified schedule row exists", async () => {
+    const { db, env } = setup();
+    currentDb = db;
+    db.prepare("INSERT INTO booking_policies (user_id,buffer_min,min_notice_min,max_per_day,vacation_until) VALUES (?,?,?,?,?)")
+      .run("creator", 10, 420, 8, null);
+    db.prepare("UPDATE listings SET attrs=? WHERE id=?").run(JSON.stringify({ commercial_booking_notice_hours: 48 }), "consult");
+
+    const globalResponse = await calendar.getSchedule(new Request("https://api.test/api/calendar/schedule"), env);
+    expect(globalResponse.status).toBe(200);
+    const globalSchedule = (await globalResponse.json() as any).schedule;
+    expect(globalSchedule.min_notice_min).toBe(420);
+    expect(globalSchedule.effective.calendar_min_notice_min).toBe(420);
+    expect(globalSchedule.effective_min_notice_min).toBe(420);
+
+    const listingResponse = await calendar.getSchedule(new Request("https://api.test/api/calendar/schedule?listing_id=consult"), env);
+    expect(listingResponse.status).toBe(200);
+    const listingSchedule = (await listingResponse.json() as any).schedule;
+    expect(listingSchedule.min_notice_min).toBe(420);
+    expect(listingSchedule.effective.calendar_min_notice_min).toBe(420);
+    expect(listingSchedule.effective.effective.min_notice_min).toBe(48 * 60);
+    expect(listingSchedule.effective_min_notice_min).toBe(48 * 60);
+
+    const saved = await save(env, putRequest({ schedule: { ...listingSchedule, buffer_min: 25 } }, "consult"));
+    expect(saved.buffer_min).toBe(25);
+    expect(saved.min_notice_min).toBe(420);
+    expect(saved.effective_min_notice_min).toBe(48 * 60);
+    expect(db.prepare("SELECT min_notice_min FROM availability_schedules WHERE creator_id=? AND listing_id=?").get("creator", "consult").min_notice_min).toBe(420);
+  });
+
+  it("defaults missing legacy notice to 120 and lets explicit unified zero override legacy policy", async () => {
+    const { db, env } = setup();
+    currentDb = db;
+
+    const absentPolicy = await calendar.getSchedule(new Request("https://api.test/api/calendar/schedule"), env);
+    expect(absentPolicy.status).toBe(200);
+    const absentPolicySchedule = (await absentPolicy.json() as any).schedule;
+    expect(absentPolicySchedule.min_notice_min).toBe(120);
+    expect(absentPolicySchedule.effective.calendar_min_notice_min).toBe(120);
+
+    db.prepare("INSERT INTO booking_policies (user_id,buffer_min,min_notice_min,max_per_day,vacation_until) VALUES (?,?,?,?,?)")
+      .run("creator", 10, 420, 8, null);
+    db.prepare("INSERT INTO availability_schedules (id,creator_id,listing_id,timezone,mode,duration_min,slot_interval_min,buffer_min,min_notice_min,max_per_day,horizon_days,version,write_token,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run("shared-zero", "creator", null, "UTC", "shared", 60, 60, 10, 0, 8, 30, 1, "", Date.now());
+
+    const unified = await calendar.getSchedule(new Request("https://api.test/api/calendar/schedule"), env);
+    expect(unified.status).toBe(200);
+    const unifiedSchedule = (await unified.json() as any).schedule;
+    expect(unifiedSchedule.min_notice_min).toBe(0);
+    expect(unifiedSchedule.effective.calendar_min_notice_min).toBe(0);
+    expect(unifiedSchedule.effective_min_notice_min).toBe(0);
+  });
 });
