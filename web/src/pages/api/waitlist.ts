@@ -24,13 +24,13 @@ function welcomeHtml(): string {
       <img src="https://avatok.ai/og.jpg" alt="avaTOK" width="520" style="display:block;width:100%;height:auto;border-bottom:2px solid #25211b;" />
       <div style="padding:30px 32px;">
         <h1 style="margin:0 0 12px;font-size:26px;color:#25211b;">You're on the list 🎉</h1>
-        <p style="margin:0 0 14px;font-size:16px;line-height:1.55;">Thanks for joining the <b>avaTOK</b> waitlist — India's creator platform for paid live streaming and 1:1 video sessions. Publish a listing, open your calendar, get paid.</p>
+        <p style="margin:0 0 14px;font-size:16px;line-height:1.55;">Thanks for joining the <b>avaTOK</b> waitlist — a global creator platform for paid live streaming and 1:1 video sessions. Publish a listing, open your calendar, get paid.</p>
         <p style="margin:0 0 14px;font-size:16px;line-height:1.55;">We're letting people in gradually. We'll email you the moment your spot opens so you can claim your <b>@handle</b> before it's gone.</p>
         <p style="margin:0 0 4px;font-size:16px;line-height:1.55;">Until then — real people only, 44+ apps and counting, and an AI that works for you. 💚</p>
         <p style="margin:24px 0 0;font-size:14px;color:#6e6c5c;">— The avaTOK team</p>
       </div>
     </div>
-    <p style="max-width:520px;margin:16px auto 0;text-align:center;font-size:12px;color:#9a9684;line-height:1.5;">avaTOK · Mumbai, India.<br/>You received this because you joined the waitlist at avatok.ai.</p>
+    <p style="max-width:520px;margin:16px auto 0;text-align:center;font-size:12px;color:#9a9684;line-height:1.5;">avaTOK · Ava Global International, Inc., Delaware.<br/>You received this because you joined the waitlist at avatok.ai.</p>
   </div></body></html>`;
 }
 

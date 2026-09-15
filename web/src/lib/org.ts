@@ -9,14 +9,9 @@
 // comment above Base.astro's `orgLd` ([WEB-SEO-1]/[WEB-SEO-2]) — read it
 // before changing a value, not just the field's name.
 //
-// NAMING RULE (owner decision 2026-09-10, consistent with the "no company"
-// rule in the repo's CLAUDE.md): the Organization is the BRAND, avaTOK.
-// `parent` is AvaGlobal Inc (Delaware), which handles international traffic
-// and does exist. The Indian entity, Ava Global International Pvt Ltd
-// (Mumbai), is in process and must NOT be named anywhere on the site until it
-// is actually registered — naming it now would contradict /terms#status (see
-// `LegalStatus.astro`, the "THERE IS NO COMPANY" section of CLAUDE.md, and
-// issue [LEGAL-UNREG-1]).
+// The legal entity behind the brand is Ava Global International, Inc., a
+// domestic Delaware corporation. The public registered-agent address is used
+// below because it is the address returned by Delaware's entity search.
 //
 // `sameAs` must only list profiles that resolve today. The Play listing is
 // Closed Alpha and returns 404 to the public, so it is deliberately absent —
@@ -27,9 +22,7 @@
 // an empty string, or a placeholder into the graph.
 
 export interface PostalAddress {
-  /** City. Always set — the site never publishes a street address (see
-   *  CLAUDE.md "THERE IS NO COMPANY": no street address, no company name,
-   *  until the Indian entity is actually registered). */
+  /** Public address for the legal entity. */
   locality: string;
   region: string;
   country: string;
@@ -65,13 +58,7 @@ export interface OrgConstants {
   /** The brand name. This is the Organization's `name` — see NAMING RULE above. */
   name: string;
   alternateNames: string[];
-  /**
-   * The registered legal name, e.g. 'Ava Global International Pvt Ltd'.
-   * Stays `null` until the Indian entity is actually incorporated — see the
-   * NAMING RULE above and CLAUDE.md's "THERE IS NO COMPANY" section. Setting
-   * this is a one-line change here, but it must happen in the SAME change as
-   * updating `LegalStatus.astro` and `SiteFooter.astro` per that section.
-   */
+  /** Registered legal name returned by the Delaware entity search. */
   legalName: string | null;
   url: string;
   logo: OrgLogo;
@@ -94,10 +81,7 @@ export interface OrgConstants {
 export const ORG: OrgConstants = {
   name: 'avaTOK',
   alternateNames: ['AvaTOK', 'AvaTok', 'Avatok', 'avatok.ai'],
-  // Set to 'Ava Global International Pvt Ltd' once the Mumbai entity is
-  // registered. See the class comment above `legalName` for the required
-  // companion edits.
-  legalName: null,
+  legalName: 'Ava Global International, Inc.',
   url: 'https://avatok.ai/',
   logo: {
     url: 'https://avatok.ai/app-logo2.png',
@@ -105,24 +89,20 @@ export const ORG: OrgConstants = {
     height: 256,
   },
   description:
-    'avaTOK is an India-focused creator marketplace for paid live streaming and 1:1 video sessions. Creators publish listings, people book or join, and creators get paid — including for skills, conversations and experiences hosted from home.',
+    'avaTOK is a global creator marketplace for paid live streaming and 1:1 video sessions, built by American and Indian founders at Ava Global International, Inc., a Delaware corporation.',
   slogan: 'Apna hunar. Apni kamaai.',
-  // [WEB-SEO-7] Owner decision 2026-09-10: founders are never named publicly.
-  // Do NOT add a schema.org `founder` Person node.
-  foundersDescription: 'Founded by three friends in India',
+  foundersDescription: 'Founded by American and Indian founders',
   foundingDate: '2025',
   email: 'support@avatok.ai',
   address: {
-    locality: 'Mumbai',
-    region: 'Maharashtra',
-    country: 'IN',
-    // No street address until the Indian entity is registered — see
-    // CLAUDE.md "THERE IS NO COMPANY".
-    street: null,
-    postalCode: null,
+    locality: 'Newark',
+    region: 'Delaware',
+    country: 'US',
+    street: '131 Continental Drive, Suite 305',
+    postalCode: '19713',
   },
   parent: {
-    name: 'AvaGlobal Inc',
+    name: 'Ava Global International, Inc.',
     region: 'Delaware',
     country: 'US',
   },
@@ -139,7 +119,7 @@ export const ORG: OrgConstants = {
     // Closed Alpha — 404s publicly today. Set once the Play listing is public.
     playStore: null,
   },
-  languages: ['en', 'hi'],
+  languages: ['en'],
   contactUrl: '/contact',
   searchUrlTemplate: 'https://avatok.ai/marketplace?q={search_term_string}',
 };
@@ -200,8 +180,8 @@ export function orgJsonLd({ canonical, title, description, ogImage }: PageLdInpu
     // which one we are — and which we are not. Mirrors the visible FAQ on
     // /about (components/EntityFaq.astro).
     disambiguatingDescription:
-      'The Indian creator platform for paid live streaming and 1:1 video sessions at avatok.ai. Not related to avatok.tech (industrial power equipment) or to avatar/selfie-video creation apps that share the name.',
-    knowsAbout: ['live streaming', 'creator economy', 'paid 1:1 video consultations', 'work from home India'],
+      'The global creator platform for paid live streaming and 1:1 video sessions at avatok.ai. Not related to avatok.tech (industrial power equipment) or to avatar/selfie-video creation apps that share the name.',
+    knowsAbout: ['live streaming', 'creator economy', 'paid 1:1 video consultations'],
     slogan: ORG.slogan,
     foundingDate: ORG.foundingDate,
     parentOrganization: {
@@ -221,7 +201,7 @@ export function orgJsonLd({ canonical, title, description, ogImage }: PageLdInpu
       ...(ORG.address.street != null ? { streetAddress: ORG.address.street } : {}),
       ...(ORG.address.postalCode != null ? { postalCode: ORG.address.postalCode } : {}),
     },
-    areaServed: { '@type': 'Country', name: 'India' },
+    areaServed: 'Worldwide',
     knowsLanguage: ORG.languages,
     email: ORG.email,
     contactPoint: [
@@ -230,8 +210,8 @@ export function orgJsonLd({ canonical, title, description, ogImage }: PageLdInpu
         contactType: 'customer support',
         email: ORG.email,
         url: new URL(ORG.contactUrl, ORG.url).toString(),
-        areaServed: 'IN',
-        availableLanguage: ['English', 'Hindi'],
+        areaServed: 'Worldwide',
+        availableLanguage: ['English'],
       },
     ],
     sameAs: sameAsList(),
@@ -247,7 +227,7 @@ export function orgJsonLd({ canonical, title, description, ogImage }: PageLdInpu
     name: ORG.name,
     alternateName: 'avatok.ai',
     description,
-    inLanguage: 'en-IN',
+    inLanguage: 'en-US',
     publisher: { '@id': orgId },
     potentialAction: {
       '@type': 'SearchAction',
@@ -267,7 +247,7 @@ export function orgJsonLd({ canonical, title, description, ogImage }: PageLdInpu
     description,
     isPartOf: { '@id': websiteId },
     about: { '@id': orgId },
-    inLanguage: 'en-IN',
+    inLanguage: 'en-US',
     primaryImageOfPage: { '@type': 'ImageObject', url: ogImage },
   };
 

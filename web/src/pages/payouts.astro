@@ -7,7 +7,7 @@ import LegalStatus from '../components/LegalStatus.astro';
 <Content
   kicker="Legal"
   title="Payouts & Withdrawals"
-  description="How to withdraw unused avaTOK tokens — UPI payouts in India, verification, fees, and tax. 1 token = ₹1."
+  description="How to withdraw unused avaTOK tokens — supported payout methods, verification, fees, and tax."
   image="/og/payouts.png"
   lead="How unused tokens are withdrawn, who handles the payment, and what is deducted along the way."
   updated="2026-08-05"
@@ -23,8 +23,8 @@ import LegalStatus from '../components/LegalStatus.astro';
   <div class="note">
     <p>
       <strong>Unused tokens can be withdrawn.</strong> They convert back at the same fixed rate they
-      were bought at — <strong>1 token = ₹1 (one Indian rupee)</strong>, so 100 tokens are ₹100.
-      What reaches your account is that amount less the transfer fee, any tax (including Indian GST
+      were bought at the fixed rate shown at checkout. What reaches your account is that amount less
+      the transfer fee, any applicable tax
       where it is due), and any charge your own bank applies. Every figure is shown before you
       confirm.
     </p>
@@ -33,14 +33,13 @@ import LegalStatus from '../components/LegalStatus.astro';
   <h2 id="status">1. Who pays you</h2>
   <LegalStatus variant="full" />
   <p>
-    Payouts are made by the avaTOK founding team from India, under Indian law. There is no separate
-    overseas entity: everything on avaTOK is operated by the same unregistered Indian business until
-    we complete company registration.
+    Payouts are made by Ava Global International, Inc., a Delaware corporation, subject to the
+    applicable product terms and payment-provider requirements.
   </p>
   <div class="note">
     <p>
       <strong>Payouts are in test and are not open to the public.</strong> Our application for a
-      payment gateway as an unregistered business is under review. Until it is approved, withdrawals
+      payment-provider availability is under review. Until it is approved, withdrawals
       are limited to invited users, are processed manually, and may be delayed or paused. Do not
       treat avaTOK as a source of income during this period.
     </p>
@@ -59,40 +58,39 @@ import LegalStatus from '../components/LegalStatus.astro';
     on the way in.
   </p>
 
-  <h2>3. India — payouts to UPI</h2>
+  <h2>3. Supported payout methods</h2>
   <p>
-    For customers in India, payouts are made in INR to a <strong>verified UPI address linked to your
-    Indian bank account</strong>. The UPI address and the bank account behind it must belong to the
-    account holder. We may decline a payout to a third party's account.
+    Where withdrawals are available, payouts are sent to a <strong>verified payout method held in
+    your name</strong>. The receiving account must belong to the account holder. We may decline a
+    payout to a third party's account.
   </p>
   <p>
-    Because a token is denominated at ₹1, there is no currency conversion on a payout: 500 unused
-    tokens are ₹500, less the transfer fee and any tax shown before you confirm.
+    Any currency conversion, transfer fee, and applicable tax are shown before you confirm.
   </p>
   <p>
-    Please make sure the UPI address you enter is correct. A payout sent to a valid but incorrect
+    Please make sure the payout details you enter are correct. A payout sent to valid but incorrect
     address that you supplied may not be recoverable.
   </p>
 
-  <h2>4. Payouts outside India</h2>
+  <h2>4. Availability</h2>
   <p>
-    While we are testing, payouts are available in India only. We are not able to pay out to
-    accounts outside India during this period. When that changes we will update this page.
+    Payout availability depends on your location, account status, and the payment methods enabled
+    for your account. When availability changes we will update this page.
   </p>
 
   <h2>5. Verification before payout</h2>
   <p>
     A withdrawal may be subject to verification of your identity and of the receiving account before
-    it is released. We may ask you to confirm ownership of the bank account, UPI address, or payout
+    it is released. We may ask you to confirm ownership of the bank account, payout address, or payout
     method, and we may hold or decline a payout until any check we consider necessary is complete.
     Information collected for this purpose is handled under our
     <a href="/privacy">Privacy Policy</a>.
   </p>
 
-  <h2>6. Transfer fee and GST</h2>
+  <h2>6. Transfer fee and taxes</h2>
   <p>
-    Withdrawals are subject to a <strong>transfer fee</strong>. Where GST applies in India, it is
-    charged in addition. The fee and any tax are shown to you at the time of withdrawal, before you
+    Withdrawals are subject to a <strong>transfer fee</strong>. The fee and any tax are shown to you
+    at the time of withdrawal, before you
     confirm — please read that screen, as it is the authoritative figure for your withdrawal. We do
     not publish a fixed rate here because fees can vary by payout method and provider.
   </p>
@@ -103,7 +101,7 @@ import LegalStatus from '../components/LegalStatus.astro';
 
   <h2>7. Tax withholding</h2>
   <p>
-    Where Indian tax law requires withholding on marketplace payouts — for example TDS — we may
+    Where tax law requires withholding on marketplace payouts, we may
     withhold the required amount and remit it to the authorities. Similar withholding may apply in
     other jurisdictions where the law requires it. We may ask you for tax details before releasing a
     payout, and we may decline a payout until they are provided.
@@ -127,7 +125,7 @@ import LegalStatus from '../components/LegalStatus.astro';
 
   <h2>10. Failed or returned payouts</h2>
   <p>
-    If a payout fails or is returned — for example because the UPI address is inactive, the bank
+    If a payout fails or is returned — for example because the payout method is inactive, the bank
     account is closed, or the details do not match — we will normally return the amount to your
     token balance so you can try again with corrected details. A fee already incurred on a failed
     attempt may not be recoverable. Repeated failures may require you to re-verify the receiving
