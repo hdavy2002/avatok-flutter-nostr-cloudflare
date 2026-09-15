@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
 import '../../../core/ava_log.dart';
+import '../../../core/availability_api.dart';
 import '../../../core/availability_time.dart';
 import '../../../core/cached_image.dart';
 import '../../../core/listing_groups.dart';
@@ -16,8 +18,13 @@ import '../../../core/ui/messenger_theme.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../../core/ui/motion/motion.dart';
 import '../../calendar/avacalendar_screen.dart';
+import '../../calendar/calendar_data.dart';
 import '../../identity/listing_liveness_gate.dart';
 import '../../identity/public_action_gate.dart' show isIdentityRequired;
+import 'native_listing_conflict_state.dart';
+import 'native_listing_gcal_readiness.dart';
+import 'native_listing_time_model.dart';
+import 'native_listing_time_widgets.dart';
 
 /// The app-native counterpart of the web listing wizard.
 ///
@@ -77,6 +84,31 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   // object.
   final _joinReq = <String, bool>{'mic': false, 'cam': false, 'listen_only': false, 'recording': false};
   String _scheduleMode = 'fixed_date';
+  // ---------------------------------------------------------------------------
+  // [CAL-TIME-1 2026-09-15] Time step state. AUDIT-2026-09-15 §1: the active
+  // form offered no shared/custom/exclusive choice and saved no listing
+  // schedule, so a typed start time reserved nothing at publication. §11: there
+  // was no conflict preview either.
+  // ---------------------------------------------------------------------------
+  /// The creator's availability choice for THIS listing. `exclusive` is the
+  /// only mode the backend turns into a reservation at publication.
+  AvailabilityMode _availabilityMode = AvailabilityMode.shared;
+  /// Weekly windows for `custom`, as the server's rule shape.
+  List<AvailabilityRule> _availabilityRules = const <AvailabilityRule>[];
+  /// The listing's schedule as last read from (or written to) the server. Its
+  /// `version` is the compare-and-swap token the next save must carry, and its
+  /// `exceptions` are carried through untouched — `exceptions` is a FULL
+  /// COLUMN REPLACE on the server, so dropping them would delete unrelated
+  /// blocked and reserved time (AUDIT §3).
+  AvailabilitySchedule? _scheduleBase;
+  bool _scheduleDirty = false;
+  bool _scheduleBusy = false;
+  String? _scheduleError;
+  /// Live conflict feedback with stale-response protection (AUDIT §11).
+  final NativeListingConflictController _conflicts = NativeListingConflictController();
+  /// Google readiness, read through the existing PlatformApi.gcalStatus.
+  NativeListingGcalReadiness? _gcal;
+  bool _gcalBusy = false;
   /// [LIST-EDIT-1] `listings.status` as loaded — 'draft' until the creator
   /// submits. Only [_firstIncompleteStep] reads it: a listing that is already
   /// out of the creator's hands must not be reopened on a step demanding a
@@ -198,6 +230,9 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
     for (final c in [_title, _blurb, _description, _price, _location, _timezone, _how, _rules, _faq, _preparation, _whatGet, _whoFor, _notFor, _videoUrl, _startsAt, _duration, _capacity, _earlyBirdPct, _promoCode, _promoPct]) {
       c.dispose();
     }
+    // [CAL-CONFLICT-1] Cancels a pending debounce and stops an in-flight
+    // preview from writing state after the screen is gone.
+    _conflicts.dispose();
     super.dispose();
   }
 
@@ -238,6 +273,13 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
         _category = l.category;
         _mediaMode = l.mediaMode;
         _scheduleMode = l.scheduleMode ?? _scheduleMode;
+        // [CAL-TIME-1] The web wizard offers a live event ONE schedule mode —
+        // `fixed_date` (LIVE_EVENT_SCHEDULE_OPTS) — because everything
+        // downstream of a live event assumes a real window: checkout refuses a
+        // ticket without one and the join window 410s. The app never offered
+        // much else either, but an older row saved as `on_request` would send
+        // `starts_at: null` and become permanently unsaveable here.
+        if (_kind == 'live_event') _scheduleMode = 'fixed_date';
         _freeEntry = l.freeEntry;
         // [LIST-EDIT-1] `adults_only` was WRITE-ONLY: `_body()` posts it on
         // every save and nothing ever read it back, so editing an 18+ listing
@@ -302,6 +344,11 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
         // The three copy boxes now hold server copy, which counts as reviewed
         // until the creator changes it — see [_aiLoadedText].
         _seedLoadedCopy();
+        // [CAL-TIME-1] Hydrate the listing's saved availability BEFORE the
+        // opening step is chosen: `_firstIncompleteStep()` validates the Time
+        // step, so it has to validate the mode and windows the server actually
+        // stored rather than the freshly constructed defaults.
+        if (_kind == 'consult') await _hydrateListingSchedule();
         // [LIST-EDIT-1] This was `_step = 7` unconditionally — the read-only
         // summary, whatever state the draft was in. A half-finished draft
         // therefore opened on a page that shows blanks and whose only button is
@@ -314,6 +361,12 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
       }
     }
     if (mounted) setState(() => _loading = false);
+    // [CAL-GCAL-1] Readiness is read once on open so the creator sees the
+    // publish blocker on the Time step instead of after pressing Submit.
+    if (_kind == 'consult') unawaited(_refreshGcalReadiness());
+    // An edit can open straight on the Time step (see [_firstIncompleteStep]);
+    // check the window that is already stored.
+    if (_step == 3) _onTimeInputChanged();
   }
 
   /// The offline category mirror, shaped as the fetched list. Entries behind a
@@ -406,21 +459,355 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
     return '${d.year}-${p(d.month)}-${p(d.day)}T${p(d.hour)}:${p(d.minute)}';
   }
 
-  /// The typed start time read AS the listing's wall clock. `DateTime.tryParse`
+  /// The picked start time read AS the listing's wall clock. `DateTime.tryParse`
   /// alone read it in the phone's zone — on a phone set to UTC, "21:12" became
   /// 02:42 IST, which is how the prod "Cooking with Davy" show got its time.
+  ///
+  /// [CAL-TIME-1] Null now also means "that wall clock does not exist in the
+  /// listing's zone" (a DST spring-forward gap). Silently falling back to a
+  /// device-local instant, as this used to, is how a listing ends up advertising
+  /// a time the creator never picked; the Time step reports it instead, exactly
+  /// as the server does ("This local time does not exist because of a
+  /// daylight-saving clock change").
   int? _startsAtEpoch() {
-    final text = _startsAt.text.trim();
-    final parsed = DateTime.tryParse(text);
+    final parsed = nativeListingParseLocal(_startsAt.text);
     if (parsed == null) return null;
+    return nativeListingEpochForWallClock(wallClock: parsed, timezone: _zone);
+  }
+
+  // ---------------------------------------------------------------------------
+  // [CAL-TIME-1 2026-09-15] Time step: availability mode, real pickers, live
+  // conflict feedback, Google readiness. AUDIT-2026-09-15 §1 and §11.
+  //
+  // The wizard does NOT replace the backend contract: it writes the same
+  // `availability_schedules` row through the existing
+  // AvailabilityApi.saveSchedule, with the same accounting the web wizard uses
+  // (mode + rules + the row's own version), so preview, booking and publish all
+  // read one schedule.
+  // ---------------------------------------------------------------------------
+
+  bool get _isPublished => _status == 'published' || _status == 'live';
+
+  /// An exclusive consult reserves a concrete window at publication, so it needs
+  /// a start; a shared/custom consult is booked from opening hours and does not.
+  bool get _showsStartPicker =>
+      _kind == 'live_event' || _availabilityMode == AvailabilityMode.exclusive;
+
+  /// The zone the listing's weekly windows are stored in. putSchedule refuses a
+  /// listing schedule whose zone differs from the creator's other schedules, so
+  /// an existing row keeps its zone and a brand-new one adopts the listing's.
+  String get _scheduleTimezone => nativeListingScheduleZone(_scheduleBase, _zone);
+
+  /// The concrete window the creator has chosen, or null when there is none
+  /// (nothing picked yet, an unparsable/DST-invalid wall clock, or an
+  /// on-request consult with no fixed time).
+  NativeListingWindow? _currentWindow() {
+    final start = _startsAtEpoch();
+    if (start == null) return null;
+    final duration = int.tryParse(_duration.text.trim()) ?? 0;
+    if (duration <= 0) return null;
+    return NativeListingWindow(startAt: start, endAt: start + duration * 60000, timezone: _zone);
+  }
+
+  /// [CAL-TIME-1] Reads the listing's stored schedule so an edit opens on the
+  /// mode and windows the creator already chose. Network first, then the
+  /// account-scoped cache, and a failure that only DISABLES saving — it must
+  /// never make a listing look like it has no availability.
+  Future<void> _hydrateListingSchedule() async {
     try {
-      return AvailabilityTime.wallTimeToUtc(
-        date: DateTime(parsed.year, parsed.month, parsed.day),
-        minutes: parsed.hour * 60 + parsed.minute,
-        timezone: _zone,
-      ).millisecondsSinceEpoch;
+      AvailabilitySchedule? loaded;
+      try {
+        loaded = await AvailabilityApi.fetchSchedule(listingId: _id);
+      } catch (_) {
+        final cached = await AvailabilityApi.cachedSchedule(listingId: _id);
+        loaded = cached?.value;
+      }
+      final value = loaded;
+      if (value == null || !mounted) return;
+      setState(() {
+        _scheduleBase = value;
+        _availabilityMode = value.mode;
+        _availabilityRules = List<AvailabilityRule>.of(value.rules);
+        // The backend reserves a fixed consult only when the LISTING is
+        // `schedule_mode: fixed_date` AND the schedule is `exclusive`
+        // (listings.ts publishFixedListing branch). Repair only that direction:
+        // an exclusive row must not be left advertising an on-request mode, and
+        // a listing stored any other way is left exactly as the creator set it.
+        if (_kind == 'consult' && value.mode == AvailabilityMode.exclusive) {
+          _scheduleMode = 'fixed_date';
+        }
+        _scheduleDirty = false;
+        _scheduleError = null;
+      });
     } catch (_) {
-      return parsed.millisecondsSinceEpoch;
+      if (!mounted) return;
+      setState(() => _scheduleError =
+          'Could not load this listing\'s availability. Reopen the listing before changing the Time step.');
+    }
+  }
+
+  Future<AvailabilitySchedule> _fetchScheduleForSave() async {
+    final base = _scheduleBase;
+    try {
+      return await AvailabilityApi.fetchSchedule(listingId: _id);
+    } catch (_) {
+      if (base != null && base.listingId == _id) return base;
+      rethrow;
+    }
+  }
+
+  static String _scheduleErrorMessage(AvailabilityApiException error) {
+    // [CAL-TIME-1] A version conflict is preserved, never overwritten: the row
+    // changed elsewhere (usually the web calendar) between our read and our
+    // write. We reload it so the retry is a genuine compare-and-swap.
+    if (error.statusCode == 409) {
+      return 'Your availability changed somewhere else (for example the web calendar). '
+          'We reloaded it — check the hours and save again.';
+    }
+    final message = error.message.trim();
+    return message.isEmpty ? 'Could not save this listing\'s availability.' : message;
+  }
+
+  /// [CAL-TIME-1] Writes the listing's availability through the shared schedule
+  /// API. Returns false on ANY failure so the caller cannot advance while
+  /// claiming the availability was saved.
+  Future<bool> _saveListingSchedule() async {
+    // [CAL-TIME-1] The schedule is LISTING-scoped. Without an id,
+    // AvailabilityApi.saveSchedule would write the CREATOR-WIDE row (null
+    // listing_id) and silently overwrite the hours every other listing reads,
+    // so this must fail closed.
+    final listingId = _id;
+    if (listingId == null || listingId.isEmpty) {
+      const message = 'Save the draft before setting this listing\'s availability.';
+      if (mounted) {
+        setState(() {
+          _scheduleError = message;
+          _error = message;
+        });
+      }
+      return false;
+    }
+    final plan = NativeListingSchedulePlan(
+      mode: _availabilityMode,
+      rules: _availabilityRules,
+      listingTimezone: _zone,
+    );
+    final problem = plan.validate();
+    if (problem != null) {
+      setState(() {
+        _error = problem;
+        _scheduleError = problem;
+      });
+      return false;
+    }
+    setState(() {
+      _scheduleBusy = true;
+      _scheduleError = null;
+    });
+    try {
+      final base = await _fetchScheduleForSave();
+      final saved = await AvailabilityApi.saveSchedule(plan.applyTo(base));
+      if (!mounted) return false;
+      setState(() {
+        _scheduleBase = saved;
+        _availabilityMode = saved.mode;
+        _availabilityRules = List<AvailabilityRule>.of(saved.rules);
+        _scheduleDirty = false;
+        _scheduleError = null;
+        _error = null;
+      });
+      unawaited(Analytics.capture('listing_native_availability_saved', {
+        'listing_id': _id ?? '',
+        'mode': availabilityModeToWire(saved.mode),
+        'version': saved.version,
+        'horizon_days': saved.horizonDays,
+      }));
+      return true;
+    } on AvailabilityApiException catch (error) {
+      final message = _scheduleErrorMessage(error);
+      if (mounted) {
+        setState(() {
+          _scheduleError = message;
+          _error = message;
+        });
+      }
+      if (error.statusCode == 409) await _hydrateListingSchedule();
+      return false;
+    } catch (_) {
+      const message = 'Could not save this listing\'s availability. Check your connection and try again.';
+      if (mounted) {
+        setState(() {
+          _scheduleError = message;
+          _error = message;
+        });
+      }
+      return false;
+    } finally {
+      if (mounted) setState(() => _scheduleBusy = false);
+    }
+  }
+
+  void _setAvailabilityMode(AvailabilityMode mode) {
+    setState(() {
+      _availabilityMode = mode;
+      _scheduleDirty = true;
+      _dirty = true;
+      // The backend reserves a fixed consult only when the listing is
+      // `schedule_mode: fixed_date` AND its schedule says `exclusive`
+      // (worker/src/routes/listings.ts, publishFixedListing branch), so the two
+      // choices must not be able to drift apart. Shared/custom consults stay on
+      // request: customers book a slot from the opening hours.
+      _scheduleMode = mode == AvailabilityMode.exclusive ? 'fixed_date' : 'on_request';
+      if (mode == AvailabilityMode.custom && _availabilityRules.isEmpty) {
+        // The server refuses a custom schedule with no windows, so start the
+        // editor on a visible, editable window instead of an impossible save.
+        _availabilityRules = const <AvailabilityRule>[
+          AvailabilityRule(weekday: 1, startMin: 540, endMin: 1020),
+        ];
+      }
+    });
+    _onTimeInputChanged();
+  }
+
+  // ---------------------------------------------------------------------------
+  // [CAL-CONFLICT-1] Live conflict feedback (AUDIT §11). Every edit asks the
+  // server's preview route, debounced, and every response is token-checked so a
+  // slow answer for an abandoned time cannot repaint a newer verdict. A failed
+  // check is UNKNOWN — never "free".
+  // ---------------------------------------------------------------------------
+
+  void _onTimeInputChanged() {
+    if (!mounted) return;
+    final window = _currentWindow();
+    if (window == null) {
+      _conflicts.clear();
+      setState(() {});
+      return;
+    }
+    final token = _conflicts.nextWindow(window);
+    setState(() {});
+    _conflicts.debounce(() => _runConflictPreview(window, token));
+  }
+
+  Future<void> _runConflictPreview(NativeListingWindow window, int token) async {
+    if (!mounted || !_conflicts.isCurrent(token)) return;
+    try {
+      final preview = await AvailabilityApi.previewConflicts(
+        listingId: _id,
+        startAt: window.startAt,
+        endAt: window.endAt,
+        timezone: window.timezone,
+      );
+      _conflicts.complete(token, preview);
+    } catch (error) {
+      _conflicts.fail(
+        token,
+        error is AvailabilityApiException && error.message.trim().isNotEmpty
+            ? error.message
+            : 'The app could not check your calendar just now.',
+      );
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _checkWindowNow(NativeListingWindow window) async {
+    _conflicts.cancelDebounce();
+    final token = _conflicts.nextWindow(window);
+    setState(() {});
+    await _runConflictPreview(window, token);
+  }
+
+  void _useAlternative(AvailabilityAlternative alternative) {
+    final zone = _currentWindow()?.timezone ?? _zone;
+    final local = nativeListingInZone(alternative.startAt, zone);
+    setState(() {
+      _startsAt.text = nativeListingLocalInput(local);
+      _dirty = true;
+    });
+    _onTimeInputChanged();
+  }
+
+  /// [CAL-TIME-1] Conflict + schedule commit for the Time step. Returns false
+  /// and leaves the creator on the step when anything would make the save or the
+  /// claim untrue.
+  Future<bool> _commitTimeStep() async {
+    final window = _currentWindow();
+    if (window != null) {
+      await _checkWindowNow(window);
+      if (_conflicts.state.status == NativeListingConflictStatus.conflicts) {
+        final message = nativeListingConflictSaveError(_conflicts.state.firstConflict, window.timezone);
+        setState(() {
+          _error = message;
+          _scheduleError = null;
+        });
+        return false;
+      }
+      // An UNKNOWN check (network/503) is deliberately not a blocker for a
+      // DRAFT: the server re-validates at publish and at booking. The step keeps
+      // saying "not verified" either way.
+    }
+    if (_kind != 'consult') return true;
+    return _saveListingSchedule();
+  }
+
+  // ---------------------------------------------------------------------------
+  // [CAL-GCAL-1] Google readiness. Publishing a fixed-time listing is refused
+  // while Google busy times cannot be counted (listing_blockers.ts), so the
+  // wizard surfaces the same verdict instead of inventing a healthy one.
+  // ---------------------------------------------------------------------------
+
+  Future<void> _refreshGcalReadiness() async {
+    if (mounted) setState(() => _gcalBusy = true);
+    try {
+      final status = await nativeListingReadGcalStatus();
+      if (mounted) setState(() => _gcal = NativeListingGcalReadiness.fromStatus(status));
+    } catch (error) {
+      if (mounted) {
+        setState(() => _gcal = NativeListingGcalReadiness.unavailable(
+            error is NativeListingGcalStatusException ? error.message : null));
+      }
+    } finally {
+      if (mounted) setState(() => _gcalBusy = false);
+    }
+  }
+
+  void _openCalendar() {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AvaCalendarScreen()));
+  }
+
+  String _availabilityModeLabel() {
+    switch (_availabilityMode) {
+      case AvailabilityMode.shared:
+        return 'My usual hours';
+      case AvailabilityMode.custom:
+        return 'Custom hours for this listing';
+      case AvailabilityMode.exclusive:
+        return 'Reserved time for this listing';
+    }
+  }
+
+  String _startsLabel() {
+    final parsed = nativeListingParseLocal(_startsAt.text);
+    if (parsed == null) return '';
+    return '${nativeListingHumanDateTime(parsed)} · $_zone';
+  }
+
+  String _weeklyHoursSummary() => _availabilityRules
+      .map((rule) =>
+          '${nativeListingWeekdayName(rule.weekday)} '
+          '${nativeListingClockLabel(rule.startMin)}–${nativeListingClockLabel(rule.endMin)}')
+      .join(' · ');
+
+  String _gcalSummary() {
+    final value = _gcal;
+    if (value == null) return 'Checking…';
+    switch (value.state) {
+      case NativeListingGcalState.ready:
+        return 'Ready';
+      case NativeListingGcalState.unknown:
+        return 'Not confirmed — refresh before publishing';
+      default:
+        return value.headline;
     }
   }
 
@@ -689,12 +1076,42 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
       case 3:
         final duration = int.tryParse(_duration.text.trim()) ?? 0;
         if (duration < 5 || duration > 480) return 'Duration must be between 5 and 480 minutes.';
+        // [CAL-TIME-1] A wall clock that does not exist in the listing's zone (a
+        // DST spring-forward gap) is not a start time. The server refuses it with
+        // its own message; saying so here means the creator learns it on the
+        // step that owns the field instead of from a failed save.
+        if (_showsStartPicker && _startsAt.text.trim().isNotEmpty && _startsAtEpoch() == null) {
+          return 'That time does not exist in $_zone because of a daylight-saving clock change. Pick another time.';
+        }
         if (_kind == 'live_event') {
           // listing_blockers.ts:227 — checked on KIND, not on schedule_mode, so a
           // live event needs a future start whatever mode it is in.
           final start = _startsAtEpoch();
-          if (start == null) return 'Add a start date and time, as 2026-12-31T18:00.';
+          if (start == null) return 'Pick the date and time this event starts.';
           if (start <= DateTime.now().millisecondsSinceEpoch) return 'Choose a future date and time.';
+        }
+        if (_kind == 'consult') {
+          if (_availabilityMode == AvailabilityMode.custom) {
+            // putSchedule() refuses a custom schedule with no windows, and the
+            // web wizard blocks the same way.
+            final problem = NativeListingSchedulePlan(
+              mode: _availabilityMode,
+              rules: _availabilityRules,
+              listingTimezone: _zone,
+            ).validate();
+            if (problem != null) return problem;
+          }
+          if (_availabilityMode == AvailabilityMode.exclusive) {
+            // Publication reserves THIS window, and listing_blockers.ts counts an
+            // exclusive consult as having availability only when starts_at is in
+            // the future and duration_min is 5..480 — so both are required here,
+            // not only at Submit.
+            final start = _startsAtEpoch();
+            if (start == null) return 'Pick the date and time this listing reserves.';
+            if (start <= DateTime.now().millisecondsSinceEpoch) {
+              return 'Choose a future date and time to reserve.';
+            }
+          }
         }
         return null;
       case 4:
@@ -1101,7 +1518,21 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
       await _syncPromotions();
       if (_error != null) return;
     }
-    if (mounted && _step < _steps.length - 1) setState(() => _step++);
+    // [CAL-TIME-1] The Time step owns the listing's availability. A conflict the
+    // server already confirmed, or a failed schedule save, must leave the creator
+    // on this step: neither is allowed to look like a successful save.
+    if (_step == 3 && !await _commitTimeStep()) return;
+    if (mounted && _step < _steps.length - 1) {
+      setState(() => _step++);
+      // Entering the Time step checks the window that is already picked (an
+      // edit opens on it), so the creator is never shown a stale "free".
+      if (_step == 3) _onTimeInputChanged();
+    }
+  }
+
+  void _goBack() {
+    setState(() => _step--);
+    if (_step == 3) _onTimeInputChanged();
   }
 
   Future<void> _upload({bool face = false}) async {
@@ -1132,6 +1563,23 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
     final problem = _validate();
     if (problem != null) { setState(() => _error = problem); return; }
     if (_id == null && !await _save()) return;
+    // [CAL-TIME-1] Publishing follows a successful schedule save. The Worker
+    // reads `availability_schedules.mode` at publication to decide whether an
+    // exclusive fixed consult gets its window reserved (listings.ts), so
+    // submitting a listing whose availability never landed would publish a
+    // promise the calendar does not back. A confirmed conflict stops it too.
+    if (_kind == 'consult') {
+      final window = _currentWindow();
+      if (window != null && _showsStartPicker) {
+        await _checkWindowNow(window);
+        if (_conflicts.state.status == NativeListingConflictStatus.conflicts) {
+          setState(() => _error =
+              nativeListingConflictSaveError(_conflicts.state.firstConflict, window.timezone));
+          return;
+        }
+      }
+      if (_scheduleDirty && !await _saveListingSchedule()) return;
+    }
     // Last chance to write a discount the creator typed but never left the
     // Money step with (back-navigation, an interrupted save).
     await _syncPromotions();
@@ -1174,14 +1622,17 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
   /// the price and discount boxes need it — they feed the running "what the
   /// customer pays / what you keep" sum, which would otherwise sit one edit
   /// behind. Every other field keeps the cheap `_dirty`-only path.
-  Widget _field(String label, TextEditingController controller, {int maxLines = 1, String? hint, bool live = false}) => Padding(
+  Widget _field(String label, TextEditingController controller, {int maxLines = 1, String? hint, bool live = false, ValueChanged<String>? onChanged}) => Padding(
         padding: const EdgeInsets.only(bottom: Msg.s3),
         child: TextField(
           controller: controller,
           maxLines: maxLines,
-          onChanged: (_) {
+          onChanged: (value) {
             _dirty = true;
             if (live && mounted) setState(() {});
+            // [CAL-CONFLICT-1] Lets the Time step re-check the window when the
+            // duration changes without turning every field into a live rebuild.
+            onChanged?.call(value);
           },
           decoration: InputDecoration(labelText: label, hintText: hint, filled: true, fillColor: AD.inputField),
         ),
@@ -1424,10 +1875,18 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
         // Only when it is set: this wizard cannot turn it on, so a line reading
         // "No" on every listing would only ever be noise.
         if (_adultsOnly) _summaryLine('Audience', 'Adults only — 18+'),
+        // [CAL-TIME-1] What the creator will actually get, not the wire value:
+        // shared/custom hours mean customers book a slot, exclusive means this
+        // listing holds the exact time.
         _summaryLine('Schedule',
-            _scheduleMode == 'fixed_date' ? 'Fixed date and time' : 'On request (from my availability)'),
+            consult ? _availabilityModeLabel() : 'Fixed date and time'),
         _summaryLine('Time zone', _zone),
-        if (_scheduleMode == 'fixed_date' || _kind == 'live_event') _summaryLine('Starts', _startsAt.text),
+        if (consult && _availabilityMode == AvailabilityMode.custom) ...[
+          _summaryLine('Weekly windows', _weeklyHoursSummary()),
+          _summaryLine('Weekly windows use', _scheduleTimezone),
+        ],
+        if (_showsStartPicker) _summaryLine('Starts', _startsLabel()),
+        if (consult) _summaryLine('Google Calendar', _gcalSummary()),
         _summaryLine('Duration', '${int.tryParse(_duration.text.trim()) ?? 60} minutes'),
         _summaryLine(
             'Capacity',
@@ -1448,6 +1907,19 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
         _summaryLine('Video', _videoUrl.text),
       ])),
       const SizedBox(height: Msg.s3),
+      // [CAL-TIME-1] A failed or unconfirmed availability write is never allowed
+      // to look like a saved one, including on the step that submits.
+      if (_scheduleError != null) ...[
+        AdCard(child: Text(_scheduleError!, style: ADText.preview(c: AD.danger))),
+        const SizedBox(height: Msg.s3),
+      ],
+      if (consult && _gcal != null && !_gcal!.ready) ...[
+        AdCard(
+            child: Text(
+                'Google Calendar: ${_gcal!.headline}. ${_gcal!.body}',
+                style: ADText.preview(c: AD.textPrimary))),
+        const SizedBox(height: Msg.s3),
+      ],
       Text('Photos', style: ADText.rowName()),
       const SizedBox(height: Msg.s2),
       if (_coverUrls.isEmpty)
@@ -1484,7 +1956,13 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
               // happens at a fixed time. `availability` — the value this screen's
               // schedule dropdown used to offer — is not a schedule_mode the
               // server knows (listings.ts:372) and 400'd every save it was used on.
-              _scheduleMode = _kind == 'consult' ? 'on_request' : 'fixed_date';
+              // [CAL-TIME-1] Re-tapping the kind must not silently downgrade a
+              // consult whose availability is `exclusive`: the publish path
+              // reserves the window only when the listing is fixed_date AND the
+              // schedule is exclusive, so the two have to agree here too.
+              _scheduleMode = _kind == 'live_event'
+                  ? 'fixed_date'
+                  : (_availabilityMode == AvailabilityMode.exclusive ? 'fixed_date' : 'on_request');
               _dirty = true;
             })),
           // [LIST-WIZARD-GATE-1] Free entry is allowlist-gated server-side
@@ -1551,47 +2029,122 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
         ]);
       case 3:
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // Only the two modes this wizard can actually fill in are offered, and
-          // the choice follows the kind.
-          DropdownButtonFormField<String>(
-            value: _scheduleMode == 'fixed_date' ? 'fixed_date' : 'on_request',
-            decoration: const InputDecoration(labelText: 'Schedule'),
-            items: const [
-              DropdownMenuItem(value: 'fixed_date', child: Text('Fixed date and time')),
-              DropdownMenuItem(value: 'on_request', child: Text('On request (from my availability)')),
-            ],
-            onChanged: (v) => setState(() { _scheduleMode = v ?? 'fixed_date'; _dirty = true; }),
-          ),
-          const SizedBox(height: Msg.s3),
           // A free-text zone is checked against Intl and 400s on a typo
           // (listings.ts:386). A list cannot be mistyped.
           DropdownButtonFormField<String>(
             value: _zoneOptions.contains(_zone) ? _zone : _kZones.first,
             decoration: const InputDecoration(labelText: 'Time zone'),
             items: [for (final z in _zoneOptions) DropdownMenuItem(value: z, child: Text(z))],
-            onChanged: (v) => setState(() { _timezone.text = v ?? _kZones.first; _dirty = true; }),
+            onChanged: (v) => setState(() {
+              _timezone.text = v ?? _kZones.first;
+              _dirty = true;
+            }),
           ),
           const SizedBox(height: Msg.s3),
-          // Shown for EVERY live event, not only in fixed-date mode: the server
-          // requires a future `starts_at` on the kind regardless of schedule_mode
-          // (listing_blockers.ts:227). Hiding it by mode would leave an edited
-          // recurring event demanding a start with no field to type it in.
-          if (_scheduleMode == 'fixed_date' || _kind == 'live_event')
-            _field('Start date and time (YYYY-MM-DDTHH:MM)', _startsAt, hint: '2026-12-31T18:00'),
-          _field('Duration (minutes)', _duration, hint: '5 to 480'),
+          // [CAL-TIME-1] A live event is always a fixed-date listing in this
+          // wizard: listing_blockers.ts requires a future `starts_at` on the
+          // KIND, whatever schedule_mode says, so offering "on request" here
+          // only produced an unsaveable draft.
+          if (_kind == 'live_event') ...[
+            Text('When does it happen?', style: ADText.rowName()),
+            const SizedBox(height: Msg.s1),
+            Text('A live event starts at one fixed time. The event itself protects that slot once it is published.',
+                style: ADText.preview(c: AD.textSecondary)),
+            const SizedBox(height: Msg.s3),
+          ],
+          // [CAL-TIME-1] Shared / custom / exclusive, persisted through
+          // AvailabilityApi.saveSchedule. AUDIT §1: this control was missing
+          // from the active form, so a consult's availability could not be set
+          // here at all — and a fixed time typed on this step reserved nothing
+          // unless the schedule said `exclusive`.
+          if (_kind == 'consult') ...[
+            NativeListingAvailabilityModeField(
+              value: _availabilityMode,
+              onChanged: _setAvailabilityMode,
+              enabled: !_saving && !_scheduleBusy,
+            ),
+            const SizedBox(height: Msg.s3),
+          ],
+          if (_kind == 'consult' && _availabilityMode == AvailabilityMode.custom) ...[
+            NativeListingWeeklyHoursField(
+              rules: _availabilityRules,
+              timezone: _scheduleTimezone,
+              enabled: !_saving && !_scheduleBusy,
+              onChanged: (rules) {
+                setState(() {
+                  _availabilityRules = rules;
+                  _scheduleDirty = true;
+                  _dirty = true;
+                });
+                _onTimeInputChanged();
+              },
+            ),
+            const SizedBox(height: Msg.s3),
+          ],
+          if (_showsStartPicker) ...[
+            // Replaces the raw "YYYY-MM-DDTHH:MM" text box with real pickers.
+            // The stored value is still the same wall clock in the listing's
+            // zone, so the Worker's `starts_at` contract does not change.
+            NativeListingDateTimeField(
+              label: _kind == 'consult' ? 'Date and time to reserve' : 'Starts',
+              value: _startsAt.text,
+              timezone: _zone,
+              enabled: !_saving && !_scheduleBusy,
+              help: _kind == 'consult'
+                  ? 'Publishing reserves this exact window for this listing — drafts do not.'
+                  : 'Shown to customers in $_zone.',
+              onChanged: (value) {
+                setState(() {
+                  _startsAt.text = value;
+                  _dirty = true;
+                });
+                _onTimeInputChanged();
+              },
+            ),
+            const SizedBox(height: Msg.s3),
+          ],
+          _field('Duration (minutes)', _duration, hint: '5 to 480', onChanged: (_) => _onTimeInputChanged()),
+          if (_showsStartPicker) ...[
+            const SizedBox(height: Msg.s2),
+            NativeListingConflictFeedback(
+              state: _conflicts.state,
+              timezone: _zone,
+              published: _isPublished,
+              mode: _availabilityMode,
+              liveEvent: _kind == 'live_event',
+              onUseAlternative: _useAlternative,
+              onCheckAgain: _currentWindow() == null
+                  ? null
+                  : () {
+                      final window = _currentWindow();
+                      if (window != null) unawaited(_checkWindowNow(window));
+                    },
+              emptyHint: _kind == 'consult' && !_showsStartPicker
+                  ? 'Customers book from your opening hours — there is no single time to check.'
+                  : 'Pick a date and time to check it against your calendar.',
+            ),
+            const SizedBox(height: Msg.s3),
+          ],
+          NativeListingGcalReadinessCard(
+            readiness: _gcal,
+            loading: _gcalBusy || _gcal == null,
+            onCheckAgain: () => unawaited(_refreshGcalReadiness()),
+            onOpenCalendar: _openCalendar,
+          ),
+          if (_scheduleError != null) ...[
+            const SizedBox(height: Msg.s2),
+            AdCard(child: Text(_scheduleError!, style: ADText.preview(c: AD.danger))),
+          ],
+          const SizedBox(height: Msg.s3),
           // Capacity is a live-event idea. A consult always has one seat and the
           // server refuses any other value at publish (listing_blockers.ts:246).
           if (_kind == 'live_event') _field('Capacity (0 = unlimited)', _capacity, hint: '0'),
           _field('Location / meeting note', _location),
           if (_kind == 'consult') ...[
             const SizedBox(height: Msg.s2),
-            Text('A 1:1 consultation cannot be published until you have availability in AvaCalendar — that is what customers book against.', style: ADText.preview()),
-            const SizedBox(height: Msg.s2),
-            OutlinedButton.icon(
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AvaCalendarScreen())),
-              icon: Icon(PhosphorIcons.calendarBlank(PhosphorIconsStyle.regular)),
-              label: const Text('Open AvaCalendar'),
-            ),
+            Text(
+                'A 1:1 consultation cannot be published until your availability and Google busy times are both ready — that is what customers book against.',
+                style: ADText.preview(c: AD.textSecondary)),
           ],
         ]);
       case 4:
@@ -1684,9 +2237,9 @@ class _NativeListingWizardScreenState extends State<NativeListingWizardScreen> {
                 _stepBody(),
                 const SizedBox(height: Msg.s4),
                 Row(children: [
-                  if (_step > 0) TextButton(onPressed: _saving || _publishing ? null : () => setState(() => _step--), child: const Text('Back')),
+                  if (_step > 0) TextButton(onPressed: _saving || _publishing || _scheduleBusy ? null : _goBack, child: const Text('Back')),
                   const Spacer(),
-                  FilledButton(onPressed: _saving || _publishing ? null : (_step == 7 ? _submit : _next), child: Text(_step == 7 ? (_publishing ? 'Submitting…' : 'Submit for review') : (_saving ? 'Saving…' : 'Save and continue'))),
+                  FilledButton(onPressed: _saving || _publishing || _scheduleBusy ? null : (_step == 7 ? _submit : _next), child: Text(_step == 7 ? (_publishing ? 'Submitting…' : 'Submit for review') : (_saving || _scheduleBusy ? 'Saving…' : 'Save and continue'))),
                 ]),
               ])));
             })),
