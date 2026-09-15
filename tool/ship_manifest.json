@@ -6717,9 +6717,28 @@
     "_verified_at": "app/lib/features/calendar/avacalendar_screen.dart:986 (connected != ready), :639/:651 (isBooking ? sourceRef : null), :1151 (limit prompt), :1267 (numeric acceptance); app/lib/core/availability_api.dart:125 (schedule client)"
   },
   "CALENDAR-LISTING-1": {
-    "description": "[CALENDAR-LISTING-1] The listing-facing half of the same contract, on both clients: the listing availability preview, the booking box and the listing publish gate must agree about Google readiness. GET /api/listings/:id/availability answers 503 calendar_refresh_pending (with additive ready/reason/last_success_at) when the creator's selected sources are not all fresh, so a customer surface must render 'availability temporarily unavailable / refresh needed' instead of an empty week or '0 open'; the publish path reports calendar_not_ready through listing_blockers for the same reason. A listing's schedule is explained with the effective rules it inherits (listing override vs creator-wide, and the commercial booking notice as a FLOOR on the calendar notice), and a listing save must not reset a chosen horizon to 62 days. Listing availability renders in the schedule's timezone.",
-    "no_telemetry": "Neither client emits an event for the public availability preview and the backend emits none on that read path, so there is no property whose value could carry a failure for this surface. Asserting a pre-existing shared event would be theatre: it could not show whether a customer surface rendered 'refresh needed' or 'no times'. Success is visual, with the manual acceptance list.",
+    "description": "[CALENDAR-LISTING-1] The listing-facing half of the same contract, on both clients: the listing availability preview, the booking box and the listing publish gate must agree about Google readiness. GET /api/listings/:id/availability answers 503 calendar_refresh_pending (with additive ready/reason/last_success_at) when the creator's selected sources are not all fresh, so a customer surface must render 'availability temporarily unavailable / refresh needed' instead of an empty week or '0 open'; the publish path reports calendar_not_ready through listing_blockers for the same reason. A listing's schedule is explained with the effective rules it inherits (listing override vs creator-wide, and the commercial booking notice as a FLOOR on the calendar notice), and a listing save must not reset a chosen horizon to 62 days. Listing availability renders in the schedule's timezone. The server now answers the schedule GET/PUT with the CONFIGURED calendar notice in min_notice_min plus the additive effective_min_notice_min (the larger commercial floor), so an editor round-trip can no longer persist the floor over the creator's setting. The native listing wizard emits listing_native_availability_saved with listing_id/mode/version/horizon_days once the availability step commits; that is the one client-side signal asserted below, while the customer-facing preview and the publish refusal stay visual (manual list).",
+    "status": "pending_deployment",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "listing_native_availability_saved",
+        "property": "version",
+        "gte": 1,
+        "min_events": 1,
+        "note": "Emitted by the native listing wizard AFTER PUT /api/calendar/schedule accepted the availability step, so it lands only on a real, versioned save: version 0 means no schedule row had been committed, and a rejected save (invalid rules/exceptions, stale version conflict, overlap) returns before the capture. One device is enough - the creator performs the save - so `two_sided` is false: the customer-facing half (preview, publish refusal) is NOT carried by this event and stays on the manual list."
+      },
+      {
+        "event": "listing_native_availability_saved",
+        "property": "mode",
+        "in": ["shared", "custom", "exclusive"],
+        "min_events": 1,
+        "note": "Exactly the wire vocabulary PUT /api/calendar/schedule accepts (`modes = shared|custom|exclusive`); anything else is a 400 and never reaches the capture, so a value outside this set means the client and the server contract have drifted again."
+      }
+    ],
     "manual_check": "On the deployed build: (1) As a creator whose selected Google source is stale/failed, open the listing's public availability as a customer - it shows a refresh/unavailable state, not an empty grid and not '0 open'. (2) Confirm the same listing cannot be booked for a slot the preview would have offered (preview, checkout and publish all refuse for the same reason). (3) As the creator, the listing's schedule screen shows which values are inherited from the creator-wide calendar, which are overridden by the listing, and states the commercial booking notice as the effective floor when it is the larger. (4) Save a listing with a horizon other than 62 days and reopen - the horizon is preserved. (5) Change the schedule timezone and confirm preview slots are rendered in that timezone for a viewer in another one.",
-    "_verified_at": "worker/src/routes/calendar_availability.ts listingAvailability (503 calendar_refresh_pending + ready/reason/last_success_at) and effectivePolicy (Math.max(commercial notice, calendar notice)); worker/src/lib/listing_blockers.ts:223 (publish gate calendar_not_ready); web/src/islands/dashboard/listing-form/ListingWizard.tsx:544; web/src/lib/availability.ts:152"
+    "_verified_at": "app/lib/features/marketplace/native_listing/native_listing_wizard_screen.dart: Analytics.capture('listing_native_availability_saved', {listing_id, mode, version, horizon_days}) - added by the native listing worker and NOT present in this worker's copy, so this assertion is written from that worker's report and has NOT been run, read from a device or queried in PostHog; worker/src/routes/calendar_availability.ts listingAvailability (503 calendar_refresh_pending + ready/reason/last_success_at) and effectivePolicy/scheduleShape (min_notice_min = configured calendar notice, additive effective_min_notice_min = the larger commercial floor); worker/src/lib/listing_blockers.ts:223 (publish gate calendar_not_ready); web/src/islands/dashboard/listing-form/ListingWizard.tsx:544; web/src/lib/availability.ts:152"
   }
 }

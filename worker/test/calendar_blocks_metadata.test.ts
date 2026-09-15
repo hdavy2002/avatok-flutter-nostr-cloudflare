@@ -87,6 +87,13 @@ function d1(db: any): any {
 }
 
 const HOUR = 3_600_000;
+// [REV-3] REAL production identifiers: two full sha256Hex() digests (64 hex
+// characters), exactly what commercial_checkout.ts derives from the idempotency
+// key. `commercial-booking-<hash>` is 83 characters and `commercial-order:<hash>`
+// is 81, so a 64-character ref cap matches neither of them.
+const OPERATION_HASH = "c4f1a7d29e6b03f8a5d1c70b93e648fd2a17b0c5e93d46f81a2b7c04d5e69130";
+const BOOKING_ID = `commercial-booking-${OPERATION_HASH}`;
+const ORDER_ID = `commercial-order:${OPERATION_HASH}`;
 
 function setup() {
   const db = new DatabaseSync(":memory:");
@@ -196,6 +203,33 @@ function setup() {
   reservation("res-order-foreign", "creator", "booking", "reserved", "commercial-availability:stranger:order-foreign", foreignOrderStart, foreignOrderEnd);
   db.prepare("INSERT INTO orders (id,listing_id,buyer_id,creator_id,amount,status,booking_id) VALUES (?,?,?,?,?,?,?)")
     .run("order-foreign", "listing-1", "stranger", "other-creator", 100, "held", "booking-9");
+
+  // [REV-3] REAL production identifiers, not short test ids. commercial_checkout
+  // builds `commercial-booking-<sha256Hex>` (19 + 64 = 83 characters) and
+  // `commercial-order:<sha256Hex>` (17 + 64 = 81), and the creator's reservation
+  // ref is `commercial-availability:<buyerUid>:<orderId>` while the buyer's
+  // mirrored projection is `commercial:<bookingId>:buyer`. A ref parser with a
+  // 64-character cap matches NEITHER of the full-length ids, which is exactly how
+  // these two rows used to reach the phone with no booking at all.
+  const fullStart = at(288), fullEnd = fullStart + HOUR;
+  block("availability:res-full-id", "expert", "availability", "res-full-id", fullStart, fullEnd, "Consult");
+  reservation("res-full-id", "expert", "booking", "reserved", `commercial-availability:buyer-real:${ORDER_ID}`, fullStart, fullEnd);
+  booking(BOOKING_ID, "expert", "creator", "consult_1to1", "confirmed", fullStart, fullEnd);
+  db.prepare("INSERT INTO orders (id,listing_id,buyer_id,creator_id,amount,status,booking_id) VALUES (?,?,?,?,?,?,?)")
+    .run(ORDER_ID, "listing-1", "creator", "expert", 100, "paid", BOOKING_ID);
+  // The buyer's own projection of the SAME booking — same interval, same
+  // listing, and the ref that used to fail the 64-character cap.
+  block("blk-buyer-full-id", "creator", "avaconsult", `commercial:${BOOKING_ID}:buyer`, fullStart, fullEnd, "Consult");
+
+  // A personal "I'm busy" interval: a creator-wide exception, so the reservation
+  // is kind='block' with the private `schedule:<scheduleId>:<exceptionId>` ref and
+  // an EMPTY listing_id. A confirmed booking deliberately shares its interval:
+  // nothing about this row may be reported as that commercial booking.
+  const busyStart = at(312), busyEnd = busyStart + HOUR;
+  block("availability:res-busy", "creator", "availability", "res-busy", busyStart, busyEnd, "Busy");
+  db.prepare("INSERT INTO availability_reservations (id,creator_id,listing_id,kind,status,starts_at,ends_at,title,source_ref,hold_expires_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+    .run("res-busy", "creator", "", "block", "reserved", busyStart, busyEnd, "Unavailable", "schedule:sched-1:exc-1", null, now, now);
+  booking("booking-same-interval", "creator", "buyer-busy", "consult_1to1", "confirmed", busyStart, busyEnd);
 
   db.prepare("INSERT INTO calendar_events (id,booking_id,slot_id,owner_uid,role,host_uid,attendee_uid,title,start_at,end_at,price_coins,paid,status,source,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
     .run("commercial-calendar-event:booking-1:creator", "booking-1", "listing-1", "creator", "host", "creator", "buyer-1", "Consult", paidStart, paidEnd, 100, 1, "confirmed", "commercial", now);
@@ -318,6 +352,70 @@ describe("diary block metadata", () => {
     // answer is "busy with no booking id", never another party's appointment.
     expect(findBlock(body, "availability:res-order-foreign")).toMatchObject({
       booking_id: null, booking_kind: "booking", booking_status: "reserved", booking_role: "creator",
+    });
+  });
+
+  it("resolves full-length commercial ids for the creator reservation and the buyer's mirrored block", async () => {
+    // The identifiers this covers are LONGER than 64 characters: a real
+    // `commercial-booking-<sha256>` is 83 and `commercial-order:<sha256>` is 81.
+    // A ref parser capped at 64 matched neither, so both rows resolved to
+    // booking_id:null and the phone fell back to a legacy action.
+    expect(BOOKING_ID).toHaveLength(83);
+    expect(ORDER_ID).toHaveLength(81);
+    const { db, env } = setup();
+    currentDb = db;
+
+    // Buyer's view: `commercial:<bookingId>:buyer`, the mirrored projection.
+    H.uid = "creator";
+    const buyerBody = await (await calendar.listBlocks(blocksRequest(), env as any)).json() as BlocksResponse;
+    const buyerRow = findBlock(buyerBody, "blk-buyer-full-id");
+    expect(buyerRow).toMatchObject({
+      booking_id: BOOKING_ID, listing_id: "listing-1",
+      booking_kind: "consult_1to1", booking_status: "confirmed",
+      // Proven from the booking row's buyer_id, never guessed from a listing.
+      booking_role: "customer",
+    });
+
+    // Creator's view: the reservation ref carries the ORDER id, and only
+    // orders.booking_id says which booking that order became.
+    H.uid = "expert";
+    const creatorBody = await (await calendar.listBlocks(blocksRequest(), env as any)).json() as BlocksResponse;
+    const creatorRow = findBlock(creatorBody, "availability:res-full-id");
+    expect(creatorRow).toMatchObject({
+      booking_id: BOOKING_ID, listing_id: "listing-1",
+      booking_kind: "consult_1to1", booking_status: "confirmed",
+      booking_role: "creator",
+    });
+
+    // One booking, one id on both sides: the client renders one card with the
+    // right action instead of two rows with different meanings.
+    expect(buyerRow.booking_id).toBe(creatorRow.booking_id);
+    // The FULL id, not a truncated prefix.
+    expect(BOOKING_ID.startsWith("commercial-booking-")).toBe(true);
+    expect(creatorRow.booking_id.slice("commercial-booking-".length)).toBe(OPERATION_HASH);
+  });
+
+  it("reports a personal busy block as its own kind, with no invented booking id", async () => {
+    const { db, env } = setup();
+    currentDb = db;
+    // The decoy is real: a confirmed booking for this creator sits at exactly
+    // this interval, so only the `kind='block'` rule keeps it off this row.
+    const busy = db.prepare("SELECT starts_at,ends_at FROM calendar_blocks WHERE id=?").get("availability:res-busy");
+    const decoy = db.prepare("SELECT id,kind,status FROM bookings WHERE starts_at=? AND ends_at=?").get(busy.starts_at, busy.ends_at);
+    expect(decoy).toMatchObject({ id: "booking-same-interval", kind: "consult_1to1", status: "confirmed" });
+
+    const body = await (await calendar.listBlocks(blocksRequest(), env as any)).json() as BlocksResponse;
+    // A creator-wide "I'm busy" interval: reservation kind 'block', private
+    // `schedule:<id>:<exceptionId>` ref, empty listing_id. It is not a commercial
+    // commitment, so it must never be reported as one — even though a confirmed
+    // booking for the same creator sits at exactly the same interval.
+    expect(findBlock(body, "availability:res-busy")).toMatchObject({
+      booking_id: null,
+      listing_id: null,
+      booking_kind: "block",
+      booking_status: "reserved",
+      booking_role: "creator",
+      status: "busy",
     });
   });
 

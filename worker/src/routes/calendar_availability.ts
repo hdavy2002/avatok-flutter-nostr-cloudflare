@@ -87,6 +87,11 @@ async function effectivePolicy(env: Env, creatorId: string, listingId: string | 
     // inherits (its own schedule, else the creator-wide one), which is what the
     // creator sees in the field — the floor the commercial notice has to beat.
     notice_source: comm > inheritedNotice ? "listing_commercial" : "calendar",
+    // Additive, top-level alias for the floor the booking path enforces. Older
+    // clients ignore it; a client that reads the effective notice should read
+    // THIS (or `effective.effective.min_notice_min`) and never `min_notice_min`,
+    // which is the configured calendar value rather than the floored one.
+    effective_min_notice_min: effectiveNotice,
     effective: {
       timezone: schedule?.timezone ?? "UTC",
       mode: schedule?.mode ?? "shared",
@@ -102,14 +107,35 @@ async function effectivePolicy(env: Env, creatorId: string, listingId: string | 
 }
 
 function scheduleShape(s: any, creatorId: string, listingId: string | null, rules: Rule[], exceptions: Exception[], effective: any = null): any {
+  // [AUDIT-10 / cross-client notice] `min_notice_min` reports the CONFIGURED
+  // calendar notice — the value this schedule saved, else the creator-wide value
+  // it inherits — i.e. `effective.calendar_min_notice_min`. It deliberately does
+  // NOT report the engine's floored value. Every editor round-trips this field
+  // (Android AvailabilitySchedule.fromJson -> toJson, web listing form), so
+  // reporting the floor here made a deliberately saved 0 come back as 2880 and
+  // then PERSISTED 2880 on the next routine save, silently converting "no
+  // calendar notice" into the listing's 48 h commercial rule and losing the
+  // creator's setting. The booking authority is untouched: engine.ts
+  // loadUnifiedSchedule still floors the notice with the commercial value, and
+  // the floored number is still exposed additively as the top-level
+  // `effective_min_notice_min` and as `effective.effective.min_notice_min`.
+  const configuredNotice = effective && Number.isFinite(Number(effective.calendar_min_notice_min))
+    ? Math.max(0, Math.trunc(Number(effective.calendar_min_notice_min)))
+    : Math.max(0, Number(s?.min_notice_min ?? 120));
+  const effectiveNotice = effective && Number.isFinite(Number(effective.effective_min_notice_min))
+    ? Math.max(0, Math.trunc(Number(effective.effective_min_notice_min)))
+    : null;
   return {
     listing_id: listingId,
     timezone: s?.timezone ?? "UTC", mode: s?.mode === "custom" || s?.mode === "exclusive" ? s.mode : "shared",
     duration_min: Math.max(1, Number(s?.duration_min ?? 60)), slot_interval_min: Math.max(1, Number(s?.slot_interval_min ?? 60)),
-    buffer_min: Math.max(0, Number(s?.buffer_min ?? 10)), min_notice_min: Math.max(0, Number(s?.min_notice_min ?? 120)),
+    buffer_min: Math.max(0, Number(s?.buffer_min ?? 10)), min_notice_min: configuredNotice,
     max_per_day: Math.max(1, Number(s?.max_per_day ?? 8)), horizon_days: Math.min(366, Math.max(1, Number(s?.horizon_days ?? 60))),
     version: Number(s?.version ?? 0), rules: rules.map((r) => ({ weekday: r.weekday, start_min: r.start_min, end_min: r.end_min })),
     ...(effective ? { effective } : {}),
+    // Top-level alias the Android parser accepts (`effective_min_notice_min`);
+    // additive, so an older deployed backend that omits it still parses.
+    ...(effectiveNotice === null ? {} : { effective_min_notice_min: effectiveNotice }),
     exceptions: exceptions.map((x) => ({ id: x.id, date: x.date, start_min: x.start_min, end_min: x.end_min, status: x.status, ...(x.listing_id ? { listing_id: x.listing_id } : {}) })),
   };
 }

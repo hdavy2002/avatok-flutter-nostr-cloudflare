@@ -324,11 +324,15 @@ describe("date exception invariants", () => {
     expect(saved.effective.listing_overrides).toBeNull();
     expect(saved.effective.effective.buffer_scope).toBe("before_and_after");
     expect(saved.effective.effective.min_notice_min).toBe(48 * 60);
+    expect(saved.effective_min_notice_min).toBe(48 * 60);
     expect(saved.effective.notice_source).toBe("listing_commercial");
     expect(saved.effective.global).toMatchObject({ buffer_min: 15, horizon_days: 45 });
     expect(saved.effective.effective.horizon_days).toBe(45);
     expect(saved.effective.effective.buffer_min).toBe(15);
     expect(saved.effective.calendar_min_notice_min).toBe(120);
+    // The configured (inherited) value is what the editor round-trips; the 48 h
+    // commercial floor is a separate, additive number.
+    expect(saved.min_notice_min).toBe(120);
   });
 
   it("reports the effective notice as the larger of calendar and commercial, with the source", async () => {
@@ -341,8 +345,10 @@ describe("date exception invariants", () => {
     const saved = await save(env, putRequest(scheduleBody(0, [], { listing_id: "consult", min_notice_min: 72 * 60 }), "consult"));
     expect(saved.effective.listing_commercial_notice_min).toBe(120);
     expect(saved.effective.effective.min_notice_min).toBe(72 * 60);
+    expect(saved.effective_min_notice_min).toBe(72 * 60);
     expect(saved.effective.notice_source).toBe("calendar");
     expect(saved.effective.calendar_min_notice_min).toBe(72 * 60);
+    expect(saved.min_notice_min).toBe(72 * 60);
   });
 
   it("never lets a calendar notice fall below the commercial floor", async () => {
@@ -355,10 +361,71 @@ describe("date exception invariants", () => {
     const saved = await save(env, putRequest(scheduleBody(0, [], { listing_id: "consult", min_notice_min: 0 }), "consult"));
     expect(db.prepare("SELECT min_notice_min FROM availability_schedules WHERE creator_id=? AND listing_id=?").get("creator", "consult").min_notice_min).toBe(0);
     expect(saved.effective.effective.min_notice_min).toBe(48 * 60);
+    expect(saved.effective_min_notice_min).toBe(48 * 60);
     expect(saved.effective.notice_source).toBe("listing_commercial");
+    // The response's `min_notice_min` is the CONFIGURED calendar notice (0), not
+    // the commercial floor (2880) the engine applies at booking time.
+    expect(saved.min_notice_min).toBe(0);
+    expect(saved.effective.calendar_min_notice_min).toBe(0);
     // A missing value inherits rather than becoming NaN.
     const inherited = await save(env, putRequest(scheduleBody(saved.version, [], { listing_id: "consult", min_notice_min: undefined }), "consult"));
     expect(inherited.effective.effective.min_notice_min).toBe(48 * 60);
+    expect(inherited.effective_min_notice_min).toBe(48 * 60);
+    // An OMITTED notice still takes the PUT default (120, pre-existing contract:
+    // only `horizon_days` inherits on omission). What must never come back is the
+    // engine's floored 2880, which would then be saved back by the editor.
+    expect(inherited.min_notice_min).toBe(120);
+    expect(db.prepare("SELECT min_notice_min FROM availability_schedules WHERE creator_id=? AND listing_id=?").get("creator", "consult").min_notice_min).toBe(120);
     expect(Number.isFinite(inherited.effective.effective.min_notice_min)).toBe(true);
+  });
+
+  it("survives a routine editor round-trip without persisting the commercial floor", async () => {
+    const { db, env } = setup();
+    currentDb = db;
+    db.prepare("UPDATE listings SET attrs=? WHERE id=?").run(JSON.stringify({ commercial_booking_notice_hours: 48 }), "consult");
+    const stored = () => db.prepare("SELECT min_notice_min FROM availability_schedules WHERE creator_id=? AND listing_id=?").get("creator", "consult").min_notice_min;
+
+    const first = await save(env, putRequest(scheduleBody(0, [], { listing_id: "consult", min_notice_min: 0, buffer_min: 25 }), "consult"));
+    expect(first.min_notice_min).toBe(0);
+    expect(first.effective_min_notice_min).toBe(48 * 60);
+    expect(stored()).toBe(0);
+
+    // What the native editor actually sends: the schedule it just loaded,
+    // re-serialized (AvailabilitySchedule.fromJson -> toJson), with one UNRELATED
+    // field changed. Before the reporting fix this carried 2880 back and the
+    // creator's saved 0 became 2880 for good.
+    const second = await save(env, putRequest({ schedule: { ...first, buffer_min: 30 } }, "consult"));
+    expect(second.buffer_min).toBe(30);
+    expect(second.min_notice_min).toBe(0);
+    expect(second.effective_min_notice_min).toBe(48 * 60);
+    expect(stored()).toBe(0);
+    // The commercial floor is never written into the stored column: no schedule
+    // row anywhere holds 2880 after the round-trip.
+    expect(db.prepare("SELECT COUNT(*) AS n FROM availability_schedules WHERE min_notice_min=?").get(48 * 60).n).toBe(0);
+  });
+
+  it("reports the configured notice for a creator-wide schedule and inherits it into a listing", async () => {
+    const { db, env } = setup();
+    currentDb = db;
+    db.prepare("INSERT INTO availability_schedules (id,creator_id,listing_id,timezone,mode,duration_min,slot_interval_min,buffer_min,min_notice_min,max_per_day,horizon_days,version,write_token,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run("shared", "creator", null, "UTC", "shared", 60, 60, 10, 0, 8, 30, 1, "", Date.now());
+    db.prepare("UPDATE listings SET attrs=? WHERE id=?").run(JSON.stringify({ commercial_booking_notice_hours: 48 }), "consult");
+
+    const global = await calendar.getSchedule(new Request("https://api.test/api/calendar/schedule"), env);
+    expect(global.status).toBe(200);
+    const globalSchedule = (await global.json() as any).schedule;
+    expect(globalSchedule.min_notice_min).toBe(0);
+    expect(globalSchedule.effective_min_notice_min).toBe(0);
+    expect(globalSchedule.effective.listing_commercial_notice_min).toBeNull();
+    expect(globalSchedule.effective.notice_source).toBe("calendar");
+
+    const listing = await calendar.getSchedule(new Request("https://api.test/api/calendar/schedule?listing_id=consult"), env);
+    expect(listing.status).toBe(200);
+    const listingSchedule = (await listing.json() as any).schedule;
+    expect(listingSchedule.effective.inherited_from).toBe("global");
+    expect(listingSchedule.effective.calendar_min_notice_min).toBe(0);
+    expect(listingSchedule.min_notice_min).toBe(0);
+    expect(listingSchedule.effective_min_notice_min).toBe(48 * 60);
+    expect(listingSchedule.effective.notice_source).toBe("listing_commercial");
   });
 });

@@ -280,15 +280,32 @@ type ReservationRow = {
 };
 
 const EMPTY_BLOCK_METADATA: BlockMetadata = { booking_id: null, listing_id: null, booking_kind: null, booking_status: null, booking_role: null };
+/**
+ * Longest identifier a source ref may embed. REAL production ids are longer
+ * than 64 characters: commercial_checkout.ts builds `commercial-order:<64 hex>`
+ * and `commercial-booking-<64 hex>` from a full sha256 digest, so an order id is
+ * 17 + 64 = 81 characters and a booking id is 19 + 64 = 83. The old `{1,64}` cap
+ * could never match them — the 65th character is neither `:` nor end-of-string —
+ * so `commercial:<bookingId>:<buyer|creator>` and
+ * `commercial-availability:<buyerUid>:<orderId>` refs silently resolved to
+ * nothing and the phone rendered a busy block with no booking. This bound is
+ * explicit, generous and safe: the captured identifier must still be terminated
+ * by the delimiter (or the end of the ref), and an over-long ref stays
+ * UNRESOLVED. Identifiers are never truncated — a truncated id is a wrong id.
+ */
+const MAX_REF_ID_LEN = 128;
+const REF_BOOKING_ID_RE = new RegExp(`^(?:booking|commercial):([A-Za-z0-9-]{1,${MAX_REF_ID_LEN}})(?::|$)`);
+const REF_ORDER_ID_RE = new RegExp(`^commercial-availability:[^:]{1,64}:([A-Za-z0-9._:-]{1,${MAX_REF_ID_LEN}})$`);
+
 /** Booking id embedded in a block/reservation source ref, when unambiguous. */
 function refBookingId(ref: string | null | undefined): string | null {
-  const match = String(ref ?? "").match(/^(?:booking|commercial):([A-Za-z0-9-]{1,64})(?::|$)/);
+  const match = String(ref ?? "").match(REF_BOOKING_ID_RE);
   return match ? match[1] : null;
 }
 
 /** Gateway order id embedded in a commercial availability reservation ref. */
 function refOrderId(ref: string | null | undefined): string | null {
-  const match = String(ref ?? "").match(/^commercial-availability:[^:]{1,64}:([A-Za-z0-9._:-]{1,128})$/);
+  const match = String(ref ?? "").match(REF_ORDER_ID_RE);
   return match ? match[1] : null;
 }
 
@@ -314,6 +331,15 @@ function bookingForReservation(
   bookings: Map<string, BookingRow>,
   orderBookings: Map<string, string>,
 ): BookingRow | null {
+  // [A4] A creator-wide personal busy interval is stored as an `availability`
+  // reservation with `kind='block'` and the private ref
+  // `schedule:<scheduleId>:<exceptionId>`. It is NOT a commercial commitment, so
+  // it is never resolved to a booking: a confirmed booking that merely shares the
+  // interval (the same creator's own appointment, or another listing's) must not
+  // be offered Join/New time/Cancel from this row. The diary keeps
+  // `booking_kind:'block'` and the proven `booking_role:'creator'`, and
+  // `booking_id` stays null.
+  if (String(reservation.kind ?? "") === "block") return null;
   const explicit = refBookingId(reservation.source_ref);
   if (explicit) return bookings.get(explicit) ?? null;
   const orderId = refOrderId(reservation.source_ref);
@@ -408,7 +434,13 @@ async function resolveBlockMetadata(env: Env, uid: string, rows: BlockRow[]): Pr
     if (row.source_app === "availability") {
       const reservation = row.source_ref ? reservations.get(String(row.source_ref)) : undefined;
       if (reservation && String(reservation.creator_id) === uid) {
-        meta.listing_id = reservation.listing_id ?? null;
+        // A creator-wide interval is stored with an EMPTY listing_id (see the
+        // `e.listing_id ?? listingId ?? ''` insert in calendar_availability.ts).
+        // '' is not a listing: report null so a client cannot render a private
+        // busy block as "belongs to <empty>". A personal `kind='block'` interval
+        // therefore arrives as booking_id:null / listing_id:null /
+        // booking_kind:'block' / booking_role:'creator'.
+        meta.listing_id = reservation.listing_id ? String(reservation.listing_id) : null;
         meta.booking_kind = reservation.kind ?? null;
         meta.booking_status = reservation.status ?? null;
         // The reservation row was only loaded with creator_id = caller, so the
