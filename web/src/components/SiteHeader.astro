@@ -59,6 +59,8 @@ interface Props {
    * island. See lib/authState.ts.
    */
   auth?: 'auto' | 'in' | 'static';
+  /** Global landing experience; the default remains the India header. */
+  variant?: 'india' | 'global';
 }
 
 // The site menu. Every entry points at something that exists — checked.
@@ -76,7 +78,14 @@ const DEFAULT_LINKS: HeaderLink[] = [
 ];
 
 // `auth` is destructured and ignored on purpose — see the deprecation note above.
-const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false } = Astro.props;
+const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false, variant = 'india' } = Astro.props;
+const globalLinks: HeaderLink[] = [
+  { href: '/global-ideas', label: 'Ideas' },
+  { href: '#formats', label: 'For creators' },
+  { href: '#how-it-works', label: 'How it works' },
+  { href: '#payouts', label: 'Payouts' },
+];
+const headerLinks = variant === 'global' ? globalLinks : links;
 ---
 
 {/* [WEB-THEME-1] The five brand faces. Loaded by the component rather than
@@ -112,7 +121,7 @@ const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false } = Astro.p
   })();
 </script>
 
-<header class:list={['avh', sticky && 'avh--sticky', responsiveHome && 'avh--home']}>
+<header class:list={['avh', sticky && 'avh--sticky', responsiveHome && 'avh--home', variant === 'global' && 'avh--global']}>
   <TruckBorder kind="jhalar" count={60} class="avh-band" />
   <div class="avh-bar">
   <a class="avh-logo" href="/" aria-label="avaTOK home">
@@ -120,7 +129,7 @@ const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false } = Astro.p
   </a>
 
   <nav class="avh-nav" aria-label="Main">
-    {links.map((l) => <a href={l.href}>{l.label}</a>)}
+    {headerLinks.map((l) => <a href={l.href}>{l.label}</a>)}
   </nav>
 
   <div class="avh-right">
@@ -136,10 +145,13 @@ const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false } = Astro.p
         No Clerk island is needed for this any more, which also removes the
         double-<ClerkProvider> crash that forced the `static` mode to exist. */}
     <Fragment>
-      <a class="avh-cta avh-auth-out" href="/sign-in">Log in</a>
-      <a class="avh-cta avh-cta--solid avh-auth-out" href="/sign-up">Sign up</a>
+      <a class="avh-cta avh-auth-out" href={variant === 'global' ? '/sign-in?next=/' : '/sign-in'}>Log in</a>
+      <a class="avh-cta avh-cta--solid avh-auth-out" href={variant === 'global' ? '/sign-up?role=creator&country=global' : '/sign-up'}>Sign up</a>
       <a class="avh-cta avh-cta--solid avh-auth-in" href="/dashboard">Dashboard</a>
-      <a class="avh-cta avh-auth-in" href="/sign-out">Sign out</a>
+    <a class="avh-cta avh-auth-in" href="/sign-out">Sign out</a>
+    {variant === 'global' && <span class="avh-locale" aria-label="Current country">🌍 Global</span>}
+    {variant === 'global' && <a class="avh-locale" href="/india" aria-label="Open India experience">🇮🇳 India</a>}
+    {variant === 'global' && <a class="avh-locale" href="#language" aria-label="Choose language">EN</a>}
     </Fragment>
     <img class="avh-orn" src="/ornament-flower.png" alt="" width="85" height="80" aria-hidden="true" />
   </div>
@@ -159,7 +171,7 @@ const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false } = Astro.p
     invisible); the script below only defers setting it back on close until
     the exit transition finishes. */}
 <nav class:list={['avh-mobile', 't-dropdown', responsiveHome && 'avh-mobile--home']} id="avh-mobile" aria-label="Main (mobile)" hidden>
-  {links.map((l) => <a href={l.href}>{l.label}</a>)}
+  {headerLinks.map((l) => <a href={l.href}>{l.label}</a>)}
   {/* [WEB-HEADER-10] Auth moves OUT of the bar and in here below 1100px.
       [WEB-AUTH-STATE-1 2026-08-28] These used to be signed-OUT links on every
       page regardless of session — the comment here said so, blaming the
@@ -167,11 +179,12 @@ const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false } = Astro.p
       phone was shown "Log in / Sign up" with no way to reach their dashboard or
       sign out. CSS-driven state fixes it with no provider at all. */}
   <Fragment>
-    <a class="avh-mobile-auth avh-auth-out" href="/sign-in">Log in</a>
-    <a class="avh-mobile-auth avh-mobile-auth--solid avh-auth-out" href="/sign-up">Sign up</a>
+    <a class="avh-mobile-auth avh-auth-out" href={variant === 'global' ? '/sign-in?next=/' : '/sign-in'}>Log in</a>
+    <a class="avh-mobile-auth avh-mobile-auth--solid avh-auth-out" href={variant === 'global' ? '/sign-up?role=creator&country=global' : '/sign-up'}>Sign up</a>
     <a class="avh-mobile-auth avh-mobile-auth--solid avh-auth-in" href="/dashboard">Dashboard</a>
     <a class="avh-mobile-auth avh-auth-in" href="/sign-out">Sign out</a>
   </Fragment>
+  {variant === 'global' && <a class="avh-mobile-auth" href="/india">🌍 India</a>}
 </nav>
 
 <script>

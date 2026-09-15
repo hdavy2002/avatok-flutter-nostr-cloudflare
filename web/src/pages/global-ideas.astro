@@ -1,0 +1,20 @@
+---
+export const prerender = true;
+import Base from '../layouts/Base.astro';
+import SiteHeader from '../components/SiteHeader.astro';
+import SiteFooter from '../components/SiteFooter.astro';
+import { globalCreatorIdeas } from '../lib/globalCreatorIdeas';
+import '../styles/global-home.css';
+---
+<Base title="Creator ideas for YouTube, TikTok & Instagram · avaTOK" description="Eight practical ways creators can turn their audience into paid live streams and private 1:1 video sessions." image="/assets/home/avatok-creator-constellation.png" imageAlt="International creators building paid experiences for their audiences." imageWidth={1156} imageHeight={1360}>
+  <SiteHeader variant="global" />
+  <main class="global-home" id="main-content">
+    <section class="global-intro"><p class="global-kicker">YOUR NEXT CREATOR BUSINESS</p><h1>Turn your content into <span>moments people can book.</span></h1><p class="global-lead">Eight starting points for YouTube, TikTok and Instagram creators.</p></section>
+    <section class="global-ideas-grid" aria-label="Global creator ideas">
+      {globalCreatorIdeas.map((idea) => <article class="global-idea"><div class:list={['global-idea__art', `global-idea__art--${idea.color}`]}><span class="global-idea__platform">{idea.platform}</span><span class="global-idea__scribble">{idea.eyebrow}<br />make it yours ↗</span></div><div class="global-idea__body"><h2>{idea.title}</h2><p>{idea.description}</p><a class="global-idea__link" href={`/blog/global-creator-ideas/${idea.slug}/`}>Read the guide ↗</a></div></article>)}
+    </section>
+    <div class="global-proof"><span>Live events · Private 1:1 · Group sessions · Local payouts</span><a href="/marketplace">Explore the marketplace →</a></div>
+    <section class="global-cta"><h2>Your people are waiting.</h2><a class="global-button" href="/sign-up?role=creator&country=global">Create your free listing →</a></section>
+  </main>
+  <SiteFooter variant="global" />
+</Base>

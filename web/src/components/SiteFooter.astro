@@ -25,6 +25,9 @@
 // covers it. Terms/Privacy stay duplicated in the COMPANY column too — fine.
 import TruckBorder from './TruckBorder.astro';
 
+export interface Props { variant?: 'india' | 'global'; }
+const { variant = 'india' } = Astro.props;
+
 const year = new Date().getFullYear();
 
 // [WEB-FOOTER-4] Slim compliance link row — see note above. Keep in this
@@ -81,19 +84,25 @@ const columns = [
     ],
   },
 ];
+const globalColumns = [
+  { title: 'Explore', links: [{ href: '/marketplace', label: 'Marketplace' }, { href: '/global-ideas', label: 'Ideas' }, { href: '/#formats', label: 'Live & 1:1' }] },
+  { title: 'Creators', links: [{ href: '/sign-up?role=creator&country=global', label: 'Start selling' }, { href: '/dashboard', label: 'Creator dashboard' }, { href: '/payouts', label: 'Payouts' }, { href: '/community-guidelines', label: 'Safety' }] },
+  { title: 'Company', links: [{ href: '/about', label: 'About' }, { href: '/help', label: 'Help centre' }, { href: '/careers', label: 'Careers' }, { href: '/contact', label: 'Contact' }, { href: '/terms', label: 'Terms of Service' }, { href: '/privacy', label: 'Privacy Policy' }] },
+];
+const footerColumns = variant === 'global' ? globalColumns : columns;
 ---
 
-<footer class="bazaar-footer">
+<footer class:list={['bazaar-footer', variant === 'global' && 'bazaar-footer--global']}>
   <TruckBorder kind="chai" count={40} />
 
   <div class="bf-main">
     <div class="bf-brand">
       <a class="bf-logo" href="/" aria-label="avaTOK home"><span>ava</span><span>TOK</span></a>
-      <p class="bf-tag">India's live creator bazaar. Seat book karo, kursi kheencho, apna time lo.</p>
-      <span class="bf-script">Aapki awaaz, duniya tak.</span>
+      <p class="bf-tag">{variant === 'global' ? 'A global home for creator-led income. Go live, get booked, and get paid locally.' : "India's live creator bazaar. Seat book karo, kursi kheencho, apna time lo."}</p>
+      <span class="bf-script">{variant === 'global' ? 'Made for creators everywhere.' : 'Aapki awaaz, duniya tak.'}</span>
     </div>
 
-    {columns.map((col) => (
+    {footerColumns.map((col) => (
       <nav class="bf-col" aria-label={col.title}>
         <h2 class="bf-col-title">{col.title}</h2>
         {col.links.map((l) => <a href={l.href}>{l.label}</a>)}
@@ -103,8 +112,8 @@ const columns = [
     <div class="bf-art">
       {/* Already on the site for the auth screens, so this costs no new asset. */}
       <img src="/auth/horn-ok-please.png" alt="Horn OK Please" width="250" height="150" loading="lazy" />
-      <span class="bf-art-line">OK TATA · PHIR MILENGE</span>
-      <span class="bf-art-hi">फिर आना!</span>
+      <span class="bf-art-line">{variant === 'global' ? 'CREATORS EVERYWHERE · PHIR MILENGE' : 'OK TATA · PHIR MILENGE'}</span>
+      <span class="bf-art-hi">{variant === 'global' ? 'See you worldwide!' : 'फिर आना!'}</span>
     </div>
   </div>
 
@@ -127,8 +136,8 @@ const columns = [
 
   <div class="bf-legal">
     <div class="bf-legal-inner">
-      <span>BURI NAZAR WALE, TERA MUH KALA · USE DIPPER AT NIGHT</span>
-      <span>© {year} AVATOK · MADE WITH ♥ AND CUTTING CHAI</span>
+      <span>{variant === 'global' ? 'GOOD CREATORS · BRIGHTER TOMORROWS' : 'BURI NAZAR WALE, TERA MUH KALA · USE DIPPER AT NIGHT'}</span>
+      <span>© {year} AVATOK · {variant === 'global' ? 'MADE FOR CREATORS EVERYWHERE' : 'MADE WITH ♥ AND CUTTING CHAI'}</span>
     </div>
   </div>
 

@@ -1,0 +1,15 @@
+---
+export const prerender = true;
+import Base from '../../../layouts/Base.astro';
+import SiteHeader from '../../../components/SiteHeader.astro';
+import SiteFooter from '../../../components/SiteFooter.astro';
+import { globalCreatorIdeas } from '../../../lib/globalCreatorIdeas';
+import '../../../styles/global-home.css';
+export function getStaticPaths(){ return globalCreatorIdeas.map(idea => ({ params: { slug: idea.slug }, props: { idea } })); }
+const { idea } = Astro.props;
+---
+<Base title={`${idea.title} · Creator guide · avaTOK`} description={idea.description} image="/assets/home/avatok-creator-constellation.png" imageAlt={`Creator guide: ${idea.title}`} imageWidth={1156} imageHeight={1360}>
+  <SiteHeader variant="global" />
+  <main class="global-home" id="main-content"><article class="global-intro" style="text-align:left;max-width:60rem"><p class="global-kicker">{idea.platform} · {idea.eyebrow}</p><h1>{idea.title}</h1><p class="global-lead" style="margin-left:0">{idea.description}</p><div class="global-cta" style="margin-top:2rem;text-align:left"><h2>Make the session worth booking.</h2><p>Choose one clear promise, set a time and price you can deliver, then share the invitation with the audience that already knows your work.</p><ol><li>Plan the live or 1:1 format.</li><li>Test your camera, sound and connection.</li><li>Tell fans exactly what they will get.</li><li>Open your calendar and learn from the first session.</li></ol><a class="global-button" href="/sign-up?role=creator&country=global">Start creating →</a></div></article></main>
+  <SiteFooter variant="global" />
+</Base>

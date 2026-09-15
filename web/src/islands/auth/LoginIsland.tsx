@@ -32,7 +32,7 @@
  * account-enumeration oracle.
  */
 import { useRef, useState } from 'react';
-import { useSignIn, useSignUp } from '@clerk/clerk-react';
+import { useSignIn, useSignUp, useUser } from '@clerk/clerk-react';
 import { ClerkIsland } from '../../lib/clerk';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/config';
 import { capture, withTrace } from '../../lib/analytics';
@@ -63,6 +63,7 @@ function nextUrl(): string {
 function Inner() {
   const { isLoaded: signInLoaded, signIn, setActive } = useSignIn();
   const { isLoaded: signUpLoaded, signUp } = useSignUp();
+  const { user } = useUser();
 
   const [stage, setStage] = useState<'email' | 'code'>('email');
   const [mode, setMode] = useState<PwlMode>('signIn');
@@ -148,7 +149,11 @@ function Inner() {
         ms: Date.now() - startRef.current,
       });
       // [WEB-PHONE-OTP-1] via the phone gate — a brand-new account made here must verify a phone.
-      location.href = finishUrl(nextUrl());
+      const savedCountry = String((user?.unsafeMetadata as { country?: unknown } | undefined)?.country ?? '').toUpperCase();
+      if (user && !savedCountry) {
+        try { await user.update({ unsafeMetadata: { ...(user.unsafeMetadata ?? {}), country: 'GLOBAL' } }); } catch { /* routing still succeeds */ }
+      }
+      location.href = finishUrl(savedCountry === 'IN' ? '/india' : nextUrl());
     } catch (err) {
       const { message, reason } = pwlError(err, 'That code didn’t work. Check it and try again.');
       setFormError(message);
@@ -183,7 +188,8 @@ function Inner() {
     if (!isLoaded || submitting) return;
     setFormError(null);
     try {
-      await continueWithGoogle(signIn as unknown as PwlSignIn, finishUrl(nextUrl())); // [WEB-PHONE-OTP-1]
+      const savedCountry = String((user?.unsafeMetadata as { country?: unknown } | undefined)?.country ?? '').toUpperCase();
+      await continueWithGoogle(signIn as unknown as PwlSignIn, finishUrl(savedCountry === 'IN' ? '/india' : nextUrl())); // [WEB-PHONE-OTP-1]
     } catch (err) {
       setFormError(pwlError(err, 'Couldn’t open Google sign-in. Please try again.').message);
     }

@@ -79,7 +79,7 @@ function landingFor(role: Role): string {
   return role === 'creator' ? '/dashboard' : '/marketplace';
 }
 
-function readParams(): { finish: boolean; next: string | null; role: Role | null } {
+function readParams(): { finish: boolean; next: string | null; role: Role | null; country: string | null } {
   try {
     const q = new URLSearchParams(location.search);
     const n = q.get('next');
@@ -88,9 +88,10 @@ function readParams(): { finish: boolean; next: string | null; role: Role | null
       finish: q.get('finish') === '1',
       next: n && n.startsWith('/') && !n.startsWith('//') ? n : null,
       role: r === 'creator' || r === 'friend' ? r : null,
+      country: (q.get('country') || '').toUpperCase() || null,
     };
   } catch {
-    return { finish: false, next: null, role: null };
+    return { finish: false, next: null, role: null, country: null };
   }
 }
 
@@ -239,7 +240,11 @@ function Inner() {
   const emailResendIn = useCountdown(emailResendAt);
   const phoneResendIn = useCountdown(phoneResendAt);
 
-  const destination = () => params.next ?? landingFor(role);
+  const destination = () => {
+    if (params.next) return params.next;
+    const country = String((user?.unsafeMetadata as { country?: unknown } | undefined)?.country ?? params.country ?? '').toUpperCase();
+    return country === 'IN' ? '/india' : landingFor(role);
+  };
 
   function clearErr(...keys: string[]) {
     setErrors((e) => {
@@ -322,7 +327,7 @@ function Inner() {
           emailAddress: email.trim(),
           firstName: firstName.trim(),
           lastName: lastName.trim(),
-          unsafeMetadata: { role, signedUpVia: 'web' },
+          unsafeMetadata: { role, country: params.country ?? 'GLOBAL', signedUpVia: 'web' },
         });
         await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
       });
@@ -470,7 +475,7 @@ function Inner() {
         await user.update({
           firstName: firstName.trim(),
           lastName: lastName.trim(),
-          unsafeMetadata: { ...(user.unsafeMetadata ?? {}), role },
+          unsafeMetadata: { ...(user.unsafeMetadata ?? {}), role, country: params.country ?? (user.unsafeMetadata as { country?: string } | undefined)?.country ?? 'GLOBAL' },
         });
       }
     } catch { /* cosmetic */ }
