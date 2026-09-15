@@ -1335,6 +1335,7 @@ class GcalReadiness {
 
   /// Never label an unverifiable response healthy (finding 5/6).
   bool get pausesBookings =>
+      state == GcalState.notConnected ||
       state == GcalState.needsAttention ||
       state == GcalState.syncing ||
       state == GcalState.unknown;
