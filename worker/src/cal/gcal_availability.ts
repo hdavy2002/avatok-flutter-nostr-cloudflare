@@ -97,12 +97,14 @@ export async function gcalReadiness(
   // A selection that never synced, errored, or went stale is not evidence of
   // health. Each counter is reported so the client can name the failing source.
   const failed = selected.filter((row) => !!row.last_error).length;
-  // A NULL column means "never synced". Number(null) is 0 (a valid epoch), so
-  // null is checked before Number() or a never-synced source looks fresh.
+  // A NULL column means "never synced", and Number(null) is 0 — a *valid* epoch
+  // that would read as a 1970 success. Only an explicit, finite, POSITIVE
+  // timestamp counts as a sync: null, "", NaN and 0 are all "still pending", so
+  // a never-synced source can never make readiness true or fill the headline.
   const successAt = (row: { last_success_at: number | null }): number | null => {
     if (row.last_success_at === null || row.last_success_at === undefined) return null;
     const value = Number(row.last_success_at);
-    return Number.isFinite(value) ? value : null;
+    return Number.isFinite(value) && value > 0 ? value : null;
   };
   const neverSynced = selected.filter((row) => !row.last_error && successAt(row) === null).length;
   const successAts = selected.map(successAt);

@@ -172,6 +172,31 @@ function setup() {
   // Legacy AvaBooking blocks stored the bare booking id as their source_ref.
   block("blk-legacy-booking", "creator", "avabooking", "booking-1", paidStart, paidEnd, "Consult");
 
+  // [REV-3] Two candidate bookings share ONE listing and interval. Each
+  // reservation is linked to its own order, and only the order says which
+  // booking that reservation is: a scan of "bookings at this interval" would
+  // hand the first one to both rows and open the wrong appointment.
+  const orderedStart = at(240), orderedEnd = orderedStart + HOUR;
+  block("availability:res-order-a", "creator", "availability", "res-order-a", orderedStart, orderedEnd, "Consult");
+  reservation("res-order-a", "creator", "booking", "reserved", "commercial-availability:buyer-a:order-a", orderedStart, orderedEnd);
+  booking("booking-ordered-a", "creator", "buyer-a", "consult_1to1", "confirmed", orderedStart, orderedEnd);
+  db.prepare("INSERT INTO orders (id,listing_id,buyer_id,creator_id,amount,status,booking_id) VALUES (?,?,?,?,?,?,?)")
+    .run("order-a", "listing-1", "buyer-a", "creator", 100, "held", "booking-ordered-a");
+
+  block("availability:res-order-b", "creator", "availability", "res-order-b", orderedStart, orderedEnd, "Consult");
+  reservation("res-order-b", "creator", "booking", "reserved", "commercial-availability:creator:order-b", orderedStart, orderedEnd);
+  booking("booking-ordered-b", "someone", "creator", "consult_1to1", "confirmed", orderedStart, orderedEnd);
+  db.prepare("INSERT INTO orders (id,listing_id,buyer_id,creator_id,amount,status,booking_id) VALUES (?,?,?,?,?,?,?)")
+    .run("order-b", "listing-1", "creator", "someone", 100, "held", "booking-ordered-b");
+
+  // An order the caller is NOT a party to must never resolve a booking here,
+  // even though the reservation itself is the caller's own.
+  const foreignOrderStart = at(264), foreignOrderEnd = foreignOrderStart + HOUR;
+  block("availability:res-order-foreign", "creator", "availability", "res-order-foreign", foreignOrderStart, foreignOrderEnd, "Consult");
+  reservation("res-order-foreign", "creator", "booking", "reserved", "commercial-availability:stranger:order-foreign", foreignOrderStart, foreignOrderEnd);
+  db.prepare("INSERT INTO orders (id,listing_id,buyer_id,creator_id,amount,status,booking_id) VALUES (?,?,?,?,?,?,?)")
+    .run("order-foreign", "listing-1", "stranger", "other-creator", 100, "held", "booking-9");
+
   db.prepare("INSERT INTO calendar_events (id,booking_id,slot_id,owner_uid,role,host_uid,attendee_uid,title,start_at,end_at,price_coins,paid,status,source,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
     .run("commercial-calendar-event:booking-1:creator", "booking-1", "listing-1", "creator", "host", "creator", "buyer-1", "Consult", paidStart, paidEnd, 100, 1, "confirmed", "commercial", now);
 
@@ -208,12 +233,15 @@ describe("diary block metadata", () => {
     expect(findBlock(body, "availability:res-1")).toMatchObject({
       booking_id: "booking-1", listing_id: "listing-1",
       booking_kind: "consult_1to1", booking_status: "confirmed",
+      booking_role: "creator",
     });
     // The buyer's avaconsult projection resolves to the same booking, which is
     // what lets a client render one card instead of two.
     expect(findBlock(body, "blk-buyer-consult")).toMatchObject({
       booking_id: "booking-2", listing_id: "listing-1",
       booking_kind: "consult_1to1", booking_status: "confirmed",
+      // Proven from the booking row (buyer_id), not guessed from a listing.
+      booking_role: "customer",
     });
     expect(new Set([
       findBlock(body, "availability:res-1").booking_id,
@@ -226,7 +254,7 @@ describe("diary block metadata", () => {
     currentDb = db;
     const body = await (await calendar.listBlocks(blocksRequest(), env as any)).json() as BlocksResponse;
     expect(findBlock(body, "availability:res-foreign")).toMatchObject({
-      booking_id: null, listing_id: null, booking_kind: null, booking_status: null,
+      booking_id: null, listing_id: null, booking_kind: null, booking_status: null, booking_role: null,
     });
   });
 
@@ -237,6 +265,7 @@ describe("diary block metadata", () => {
     expect(findBlock(body, "blk-legacy-booking")).toMatchObject({
       booking_id: "booking-1", listing_id: "listing-1",
       booking_kind: "consult_1to1", booking_status: "confirmed",
+      booking_role: "creator",
     });
   });
 
@@ -246,9 +275,12 @@ describe("diary block metadata", () => {
     const body = await (await calendar.listBlocks(blocksRequest(), env as any)).json() as BlocksResponse;
     expect(findBlock(body, "availability:res-hold")).toMatchObject({
       booking_id: null, listing_id: "listing-1", booking_kind: "hold", booking_status: "held",
+      // The reservation row was loaded with creator_id = caller, so the caller
+      // is provably the host even though no booking exists yet.
+      booking_role: "creator",
     });
     expect(findBlock(body, "blk-gcal")).toMatchObject({
-      booking_id: null, listing_id: null, booking_kind: null, booking_status: null,
+      booking_id: null, listing_id: null, booking_kind: null, booking_status: null, booking_role: null,
     });
   });
 
@@ -258,6 +290,34 @@ describe("diary block metadata", () => {
     const body = await (await calendar.listBlocks(blocksRequest(), env as any)).json() as BlocksResponse;
     expect(findBlock(body, "availability:res-ambiguous")).toMatchObject({
       booking_id: null, listing_id: "listing-1", booking_kind: "booking", booking_status: "reserved",
+      booking_role: "creator",
+    });
+  });
+
+  it("uses the order's own booking when two bookings share the interval", async () => {
+    const { db, env } = setup();
+    currentDb = db;
+    const body = await (await calendar.listBlocks(blocksRequest(), env as any)).json() as BlocksResponse;
+    // Same listing, same start/end, two different orders → two different
+    // bookings, each with the role the booking row proves.
+    expect(findBlock(body, "availability:res-order-a")).toMatchObject({
+      booking_id: "booking-ordered-a", listing_id: "listing-1", booking_role: "creator",
+    });
+    expect(findBlock(body, "availability:res-order-b")).toMatchObject({
+      booking_id: "booking-ordered-b", listing_id: "listing-1", booking_role: "customer",
+    });
+    expect(findBlock(body, "availability:res-order-a").booking_id)
+      .not.toBe(findBlock(body, "availability:res-order-b").booking_id);
+  });
+
+  it("never resolves a booking through an order the caller is not party to", async () => {
+    const { db, env } = setup();
+    currentDb = db;
+    const body = await (await calendar.listBlocks(blocksRequest(), env as any)).json() as BlocksResponse;
+    // The reservation is the caller's, but the order/booking is not: the honest
+    // answer is "busy with no booking id", never another party's appointment.
+    expect(findBlock(body, "availability:res-order-foreign")).toMatchObject({
+      booking_id: null, booking_kind: "booking", booking_status: "reserved", booking_role: "creator",
     });
   });
 

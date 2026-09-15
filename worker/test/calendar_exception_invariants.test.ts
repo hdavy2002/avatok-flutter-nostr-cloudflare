@@ -272,6 +272,42 @@ describe("date exception invariants", () => {
     expect(explicit.horizon_days).toBe(62);
   });
 
+  it("rejects a malformed or reversed date range as a 400 instead of a RangeError", async () => {
+    const { db, env } = setup();
+    currentDb = db;
+    const badEnd = await calendar.putSchedule(putRequest(scheduleBody(0, [
+      { date: "2026-12-24", end_date: "2026-13-99", start_min: 0, end_min: 1440, status: "unavailable" },
+    ], { listing_id: "consult" }), "consult"), env);
+    expect(badEnd.status).toBe(400);
+
+    const badDate = await calendar.putSchedule(putRequest(scheduleBody(0, [
+      { date: "not-a-date", end_date: "2026-12-26", start_min: 0, end_min: 1440, status: "unavailable" },
+    ], { listing_id: "consult" }), "consult"), env);
+    expect(badDate.status).toBe(400);
+
+    // Reversed: the range must expand into nothing, never into a negative loop.
+    const reversed = await calendar.putSchedule(putRequest(scheduleBody(0, [
+      { date: "2026-12-26", end_date: "2026-12-24", start_min: 0, end_min: 1440, status: "unavailable" },
+    ], { listing_id: "consult" }), "consult"), env);
+    expect(reversed.status).toBe(400);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM availability_exceptions").get().n).toBe(0);
+  });
+
+  it("refuses a range that duplicates an interval in the same submission", async () => {
+    const { db, env } = setup();
+    currentDb = db;
+    // 25 Dec appears twice (once from the range, once explicitly) with the same
+    // interval. Uniqueness is decided on date+interval, so this is a stable 400
+    // rather than two competing rows for one day.
+    const response = await calendar.putSchedule(putRequest(scheduleBody(0, [
+      { date: "2026-12-24", end_date: "2026-12-25", start_min: 0, end_min: 1440, status: "unavailable" },
+      { date: "2026-12-25", start_min: 0, end_min: 1440, status: "reserved", listing_id: "consult" },
+    ], { listing_id: "consult" }), "consult"), env);
+    expect(response.status).toBe(400);
+    expect((await response.json() as any).error).toBe("Duplicate date interval");
+    expect(db.prepare("SELECT COUNT(*) AS n FROM availability_exceptions").get().n).toBe(0);
+  });
+
   it("explains the effective policy and applies the buffer on both sides", async () => {
     const { db, env } = setup();
     currentDb = db;
@@ -293,5 +329,36 @@ describe("date exception invariants", () => {
     expect(saved.effective.effective.horizon_days).toBe(45);
     expect(saved.effective.effective.buffer_min).toBe(15);
     expect(saved.effective.calendar_min_notice_min).toBe(120);
+  });
+
+  it("reports the effective notice as the larger of calendar and commercial, with the source", async () => {
+    const { db, env } = setup();
+    currentDb = db;
+    // A 72-hour calendar notice with a 2-hour commercial notice: the calendar
+    // wins, and the win is named so the creator is not told to look at the
+    // listing's commercial setting.
+    db.prepare("UPDATE listings SET attrs=? WHERE id=?").run(JSON.stringify({ commercial_booking_notice_hours: 2 }), "consult");
+    const saved = await save(env, putRequest(scheduleBody(0, [], { listing_id: "consult", min_notice_min: 72 * 60 }), "consult"));
+    expect(saved.effective.listing_commercial_notice_min).toBe(120);
+    expect(saved.effective.effective.min_notice_min).toBe(72 * 60);
+    expect(saved.effective.notice_source).toBe("calendar");
+    expect(saved.effective.calendar_min_notice_min).toBe(72 * 60);
+  });
+
+  it("never lets a calendar notice fall below the commercial floor", async () => {
+    const { db, env } = setup();
+    currentDb = db;
+    db.prepare("UPDATE listings SET attrs=? WHERE id=?").run(JSON.stringify({ commercial_booking_notice_hours: 48 }), "consult");
+    // An explicit 0 means "no calendar notice", not "ignore the listing". The
+    // booking authority floors it at the commercial notice, so the explained
+    // value has to be the SAME number the booking path enforces.
+    const saved = await save(env, putRequest(scheduleBody(0, [], { listing_id: "consult", min_notice_min: 0 }), "consult"));
+    expect(db.prepare("SELECT min_notice_min FROM availability_schedules WHERE creator_id=? AND listing_id=?").get("creator", "consult").min_notice_min).toBe(0);
+    expect(saved.effective.effective.min_notice_min).toBe(48 * 60);
+    expect(saved.effective.notice_source).toBe("listing_commercial");
+    // A missing value inherits rather than becoming NaN.
+    const inherited = await save(env, putRequest(scheduleBody(saved.version, [], { listing_id: "consult", min_notice_min: undefined }), "consult"));
+    expect(inherited.effective.effective.min_notice_min).toBe(48 * 60);
+    expect(Number.isFinite(inherited.effective.effective.min_notice_min)).toBe(true);
   });
 });

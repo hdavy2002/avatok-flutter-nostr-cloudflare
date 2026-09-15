@@ -12,11 +12,22 @@ import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
 
 const H = vi.hoisted(() => ({ uid: "creator" }));
+const T = vi.hoisted(() => ({ events: [] as Array<{ uid: string; event: string; app: string; props: Record<string, unknown> }> }));
 vi.mock("../src/authz", () => ({
   requireUser: async () => ({ uid: H.uid }),
   isFail: (value: any) => Boolean(value?.error),
 }));
-vi.mock("../src/hooks", () => ({ track: async () => undefined }));
+vi.mock("../src/hooks", () => ({
+  // Records what the route ACTUALLY emitted, so a "completed" that should have
+  // been "failed"/"partial" fails the test instead of passing on trust.
+  track: async (_env: any, uid: string, event: string, app: string, props: Record<string, unknown> = {}) => {
+    T.events.push({ uid, event, app, props });
+  },
+  // Reachable through src/util.ts -> src/lib/ava_reason.ts; declared so the
+  // mocked module namespace is complete for every importer in this graph.
+  trackUser: async () => undefined,
+  brainFact: async () => undefined,
+}));
 
 const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite") as {
   DatabaseSync: new (path: string) => any;
@@ -139,8 +150,23 @@ function setup() {
     GOOGLE_CLIENT_ID: "client",
     GOOGLE_CLIENT_SECRET: "secret",
     GCAL_TOKEN_KEY: "test-token-key",
+    TOKENS: kv(),
   };
-  return { db, env, now };
+  return { db, env, now, kv: env.TOKENS };
+}
+
+/** Minimal in-memory KV with the surface `rateLimit` uses (get/put). The
+ *  manual-sync throttle must survive an isolate change, so the test asserts the
+ *  counters land in KV rather than in a module-level Map. */
+function kv() {
+  const store = new Map<string, string>();
+  return {
+    store,
+    async get(key: string): Promise<string | null> { return store.has(key) ? store.get(key)! : null; },
+    async put(key: string, value: string): Promise<void> { store.set(key, value); },
+    async delete(key: string): Promise<void> { store.delete(key); },
+    async list(): Promise<any> { return { keys: [...store.keys()].map((name) => ({ name })) }; },
+  };
 }
 
 function connectAccount(db: any, uid: string, now = Date.now()): void {
@@ -148,9 +174,9 @@ function connectAccount(db: any, uid: string, now = Date.now()): void {
     .run(uid, `${uid}@example.test`, "encrypted-token", "access-token", now + HOUR, now, now);
 }
 
-function addCalendar(db: any, uid: string, id: string, opts: { selected?: number; lastSuccess?: number | null; lastError?: string | null } = {}): void {
+function addCalendar(db: any, uid: string, id: string, opts: { selected?: number; lastSuccess?: number | null; lastError?: string | null; primary?: number } = {}): void {
   db.prepare("INSERT INTO gcal_calendars (user_id,calendar_id,summary,timezone,access_role,primary_calendar,selected,destination,last_success_at,last_error,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
-    .run(uid, id, id, "UTC", "owner", 0, opts.selected ?? 1, 0, opts.lastSuccess ?? null, opts.lastError ?? null, Date.now());
+    .run(uid, id, id, "UTC", "owner", opts.primary ?? 0, opts.selected ?? 1, 0, opts.lastSuccess ?? null, opts.lastError ?? null, Date.now());
 }
 
 type Call = { input: string; init?: RequestInit };
@@ -176,6 +202,7 @@ let calendar: typeof import("../src/routes/calendar_availability");
 let currentDb: any;
 beforeEach(async () => {
   H.uid = "creator";
+  T.events.length = 0;
   gcal = await import("../src/cal/gcal");
   calendar = await import("../src/routes/calendar_availability");
 });
@@ -249,6 +276,56 @@ describe("Google Calendar status freshness", () => {
     expect(body.last_success_at).toBeNull();
     expect(body.calendars).toEqual([]);
   });
+
+  it("treats a NULL or zero last_success_at as never synced, not as an epoch success", async () => {
+    const { db, env, now } = setup();
+    currentDb = db;
+    H.uid = "creator-zero";
+    connectAccount(db, H.uid, now);
+    // A zero/NULL column is a missing timestamp. Number(null) is 0, and 0 is a
+    // finite POSITIVE-looking epoch that would otherwise mark the source fresh
+    // and fill the headline with 1970.
+    addCalendar(db, H.uid, "never-null", { lastSuccess: null });
+    addCalendar(db, H.uid, "never-zero", { lastSuccess: 0 });
+
+    let body = await (await gcal.gcalStatus(new Request("https://api.test/api/calendar/gcal/status"), env as any)).json() as any;
+    expect(body).toMatchObject({ ready: false, reason: "pending", last_success_at: null, newest_last_success_at: null });
+    expect(body.never_synced_count).toBe(2);
+    expect(body.stale_count).toBe(2);
+    expect(body.calendars.every((row: any) => row.stale)).toBe(true);
+    // The preserved old field must never read back as a 1970 success either.
+    expect(Number(body.last_sync_at ?? 0)).toBeGreaterThan(0);
+
+    // One source syncs: the headline stays null because the OTHER selected
+    // source still has no success at all.
+    db.prepare("UPDATE gcal_calendars SET last_success_at=? WHERE user_id=? AND calendar_id='never-zero'").run(now - 60_000, H.uid);
+    body = await (await gcal.gcalStatus(new Request("https://api.test/api/calendar/gcal/status"), env as any)).json() as any;
+    expect(body.ready).toBe(false);
+    expect(body.reason).toBe("pending");
+    expect(body.last_success_at).toBeNull();
+    expect(body.newest_last_success_at).toBeNull();
+    expect(body.calendars.find((row: any) => row.id === "never-zero").stale).toBe(false);
+    expect(body.calendars.find((row: any) => row.id === "never-null").stale).toBe(true);
+  });
+
+  it("keeps a fresh calendar response fresh when it is the first row of the map", async () => {
+    const { db, env, now } = setup();
+    currentDb = db;
+    H.uid = "creator-list";
+    connectAccount(db, H.uid, now);
+    addCalendar(db, H.uid, "primary", { primary: 1, lastSuccess: now - 60_000 });
+    addCalendar(db, H.uid, "old", { lastSuccess: now - 5 * HOUR });
+    // Regression: `rows.map(calendarResponse)` used to pass (row, index, array),
+    // so index 0 became maxAgeMs=0 and the freshest source rendered stale.
+    fakeFetch([{ status: 200, body: { items: [
+      { id: "primary", summary: "Primary", timeZone: "UTC", primary: true, accessRole: "owner" },
+      { id: "old", summary: "Old", timeZone: "UTC", accessRole: "owner" },
+    ] } }]);
+    const response = await gcal.gcalCalendars(new Request("https://api.test/api/calendar/gcal/calendars"), env as any);
+    expect(response.status).toBe(200);
+    const body = await response.json() as any;
+    expect(body.calendars.map((row: any) => [row.id, row.stale])).toEqual([["primary", false], ["old", true]]);
+  });
 });
 
 describe("manual Google sync", () => {
@@ -281,6 +358,9 @@ describe("manual Google sync", () => {
     // A throttled call still reports real readiness instead of a bare error.
     expect(secondBody.ready).toBe(true);
     expect(calls).toHaveLength(2);
+    // The throttle is the shared DURABLE KV window, not a per-isolate Map.
+    expect([...env.TOKENS.store.keys()].some((key) => key.startsWith("rl:gcal-sync-burst:"))).toBe(true);
+    expect([...env.TOKENS.store.keys()].some((key) => key.startsWith("rl:gcal-sync-window:"))).toBe(true);
   });
 
   it("refuses to sync a disconnected account and never touches permissions", async () => {
@@ -314,10 +394,91 @@ describe("manual Google sync", () => {
     const rows = db.prepare("SELECT calendar_id,last_success_at FROM gcal_calendars WHERE user_id=? ORDER BY calendar_id").all(H.uid);
     expect(rows.filter((row: any) => row.last_success_at !== null)).toHaveLength(1);
   });
+
+  it("walks the selection oldest-first and reports a bounded run honestly", async () => {
+    const { db, env, now } = setup();
+    currentDb = db;
+    H.uid = "creator-sync-bound-honest";
+    connectAccount(db, H.uid, now);
+    // 11 selected calendars, 1 above the per-call bound. Six have never synced
+    // and the freshest one is the one a "first ten, same order" bound would
+    // re-read (and mis-report) forever.
+    const fresh = now - 5 * 60_000;
+    for (let i = 1; i <= 6; i++) addCalendar(db, H.uid, `cal-0${i}`, { lastSuccess: null });
+    for (let i = 7; i <= 10; i++) addCalendar(db, H.uid, `cal-${i}`, { lastSuccess: now - (30 - i) * HOUR });
+    addCalendar(db, H.uid, "cal-11", { lastSuccess: fresh });
+    const calls = fakeFetch(Array.from({ length: 20 }, (_, index) => index % 2 === 0
+      ? { status: 200, body: { id: `channel-${index}`, resourceId: `resource-${index}`, expiration: String(now + 6 * 24 * HOUR) } }
+      : { status: 200, body: { items: [], nextSyncToken: `sync-${index}` } }));
+
+    const response = await gcal.gcalSyncNow(syncRequest(), env as any);
+    expect(response.status).toBe(200);
+    const body = await response.json() as any;
+    expect(body).toMatchObject({
+      bound_hit: true,
+      calendars_selected: 11,
+      calendars_attempted: 10,
+      calendars_failed: 0,
+      sync_outcome: "partial",
+    });
+    expect(calls).toHaveLength(20);
+    const rows = db.prepare("SELECT calendar_id,last_success_at FROM gcal_calendars WHERE user_id=?").all(H.uid) as any[];
+    // Only the freshest calendar was skipped, so a repeat sync covers it.
+    expect(rows.find((row) => row.calendar_id === "cal-11").last_success_at).toBe(fresh);
+    expect(rows.filter((row) => row.calendar_id !== "cal-11" && row.last_success_at === null)).toHaveLength(0);
+    const emitted = T.events.find((row) => row.event === "gcal_manual_sync");
+    expect(emitted?.props).toMatchObject({ outcome: "partial", bound_hit: true, calendars_attempted: 10, calendars_selected: 11, ready: true });
+  });
+
+  it("records a failed outcome and an errored source instead of claiming success", async () => {
+    const { db, env, now } = setup();
+    currentDb = db;
+    H.uid = "creator-sync-failed";
+    connectAccount(db, H.uid, now);
+    addCalendar(db, H.uid, "primary", { lastSuccess: null });
+    const calls = fakeFetch([
+      { status: 200, body: { id: "channel-1", resourceId: "resource-1", expiration: String(now + 6 * 24 * HOUR) } },
+      { status: 500, body: { error: "backend error" } },
+    ]);
+
+    const response = await gcal.gcalSyncNow(syncRequest(), env as any);
+    // The import itself is bounded and per-calendar failures are recorded, so
+    // the HTTP call still settles — but it settles telling the truth.
+    expect(response.status).toBe(200);
+    const body = await response.json() as any;
+    expect(body.calendars_attempted).toBe(1);
+    expect(body.calendars_failed).toBe(1);
+    expect(body.ready).toBe(false);
+    expect(body.reason).toBe("error");
+    expect(body.sync_outcome).toBe("failed");
+    expect(body.last_error).toContain("500");
+    expect(calls).toHaveLength(2);
+    const emitted = T.events.find((row) => row.event === "gcal_manual_sync");
+    expect(emitted?.props).toMatchObject({ outcome: "failed", calendars_failed: 1, ready: false, reason: "error" });
+  });
+
+  it("fails closed when the durable rate limiter is unavailable", async () => {
+    const { db, env, now } = setup();
+    currentDb = db;
+    H.uid = "creator-sync-no-kv";
+    connectAccount(db, H.uid, now);
+    addCalendar(db, H.uid, "primary", { lastSuccess: now - 4 * HOUR });
+    const calls = fakeFetch([]);
+    const noKv = { ...env, TOKENS: undefined } as any;
+
+    const response = await gcal.gcalSyncNow(syncRequest(), noKv);
+    expect(response.status).toBe(503);
+    const body = await response.json() as any;
+    expect(body.code).toBe("gcal_sync_unavailable");
+    // No limiter ⇒ no sync. Falling back to a per-isolate counter is exactly the
+    // unbounded-God-call behaviour the throttle exists to prevent.
+    expect(calls).toHaveLength(0);
+    expect(T.events.some((row) => row.event === "gcal_manual_sync")).toBe(false);
+  });
 });
 
 describe("preview and booking agree about Google readiness", () => {
-  it("offers no bookable preview slot while the booking authority would refuse", async () => {
+  it("answers 503 calendar_refresh_pending while the booking authority would refuse", async () => {
     const { db, env } = setup();
     currentDb = db;
     // No gcal_accounts row at all: the creator has never connected Google.
@@ -334,13 +495,39 @@ describe("preview and booking agree about Google readiness", () => {
       env as any,
       "consult",
     );
-    expect(response.status).toBe(200);
+    // A 200 grid of `available:false` slots is indistinguishable from "no open
+    // times" for every existing client, which rendered "0 open" instead of
+    // "refresh your calendar". The pre-change error code is preserved.
+    expect(response.status).toBe(503);
     const body = await response.json() as any;
+    expect(body.error).toBe("calendar_refresh_pending");
     expect(body.ready).toBe(false);
     expect(body.reason).toBe("disconnected");
-    expect(body.slots.length).toBeGreaterThan(0);
-    expect(body.slots.some((slot: any) => slot.available)).toBe(false);
-    expect(body.days.every((day: any) => day.available_count === 0)).toBe(true);
+    expect(body.last_success_at).toBeNull();
+    // No fake empty availability.
+    expect(body.slots).toBeUndefined();
+    expect(body.days).toBeUndefined();
+  });
+
+  it("keeps the last known success on the 503 so a failed source is nameable", async () => {
+    const { db, env, now } = setup();
+    currentDb = db;
+    H.uid = "creator";
+    connectAccount(db, H.uid, now);
+    const lastSuccess = now - 4 * HOUR;
+    addCalendar(db, H.uid, "primary", { lastSuccess, lastError: "Google event sync failed (500)" });
+    const start = Math.ceil((Date.now() + 48 * HOUR) / HOUR) * HOUR;
+    const date = new Date(start).toISOString().slice(0, 10);
+
+    const response = await calendar.listingAvailability(
+      new Request(`https://api.test/api/listings/consult/availability?from=${date}&to=${date}&timezone=UTC`),
+      env as any,
+      "consult",
+    );
+    expect(response.status).toBe(503);
+    const body = await response.json() as any;
+    expect(body).toMatchObject({ error: "calendar_refresh_pending", ready: false, reason: "error", last_success_at: lastSuccess });
+    expect(body.age_ms).toBeGreaterThan(0);
   });
 
   it("restores bookable slots once every selected source is fresh", async () => {

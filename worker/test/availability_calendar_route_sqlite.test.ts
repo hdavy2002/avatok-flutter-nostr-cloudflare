@@ -164,6 +164,11 @@ describe("calendar availability routes against SQLite", () => {
     ).run("shared", "creator", null, "America/New_York", "shared", 30, 30, 0, 0, 8, 366, 1, "", Date.now());
     db.prepare("INSERT INTO availability_schedule_rules (id,schedule_id,weekday,start_min,end_min) VALUES (?,?,?,?,?)")
       .run("fold-rule", "shared", 0, 60, 150);
+    // The same Google readiness the booking authority enforces: a preview may
+    // only offer slots when every selected source has a recent success.
+    db.prepare("INSERT INTO gcal_accounts (user_id) VALUES (?)").run("creator");
+    db.prepare("INSERT INTO gcal_calendars (user_id,selected,last_success_at,last_error) VALUES (?,?,?,NULL)")
+      .run("creator", 1, Date.now());
 
     const response = await calendar.listingAvailability(
       new Request("https://api.test/api/listings/consult/availability?from=2026-11-01&to=2026-11-01&timezone=America/New_York"),
@@ -175,6 +180,32 @@ describe("calendar availability routes against SQLite", () => {
     expect(body.timezone).toBe("America/New_York");
     expect(body.slots.length).toBeGreaterThan(0);
     expect(body.slots.every((slot: any) => calendarDate(slot.start_at, "America/New_York") === "2026-11-01")).toBe(true);
+  });
+
+  it("refuses the preview with 503 calendar_refresh_pending instead of a 200 grid of zero slots", async () => {
+    const { db, env } = setup();
+    currentDb = db;
+    db.prepare(
+      "INSERT INTO availability_schedules (id,creator_id,listing_id,timezone,mode,duration_min,slot_interval_min,buffer_min,min_notice_min,max_per_day,horizon_days,version,write_token,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    ).run("shared", "creator", null, "UTC", "shared", 60, 60, 0, 0, 8, 62, 1, "", Date.now());
+    for (let weekday = 0; weekday < 7; weekday++) {
+      db.prepare("INSERT INTO availability_schedule_rules (id,schedule_id,weekday,start_min,end_min) VALUES (?,?,?,?,?)")
+        .run(`rule-${weekday}`, "shared", weekday, 0, 1440);
+    }
+
+    // No gcal_accounts row: never connected. Existing clients ignore an
+    // additive `ready` flag, so the error code has to carry the refusal.
+    const response = await calendar.listingAvailability(
+      new Request("https://api.test/api/listings/consult/availability?from=2026-12-01&to=2026-12-01&timezone=UTC"),
+      env as any,
+      "consult",
+    );
+    expect(response.status).toBe(503);
+    const body = await response.json() as any;
+    expect(body.error).toBe("calendar_refresh_pending");
+    expect(body.ready).toBe(false);
+    expect(body.reason).toBe("disconnected");
+    expect(body.slots).toBeUndefined();
   });
 });
 

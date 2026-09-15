@@ -266,6 +266,7 @@ type BlockMetadata = {
   listing_id: string | null;
   booking_kind: string | null;
   booking_status: string | null;
+  booking_role: "creator" | "customer" | null;
 };
 
 type BookingRow = {
@@ -278,9 +279,7 @@ type ReservationRow = {
   status: string | null; starts_at: number; ends_at: number; source_ref: string | null;
 };
 
-const EMPTY_BLOCK_METADATA: BlockMetadata = { booking_id: null, listing_id: null, booking_kind: null, booking_status: null };
-const ACTIVE_BOOKING_STATUSES = "'confirmed','scheduled','pending','completed'";
-
+const EMPTY_BLOCK_METADATA: BlockMetadata = { booking_id: null, listing_id: null, booking_kind: null, booking_status: null, booking_role: null };
 /** Booking id embedded in a block/reservation source ref, when unambiguous. */
 function refBookingId(ref: string | null | undefined): string | null {
   const match = String(ref ?? "").match(/^(?:booking|commercial):([A-Za-z0-9-]{1,64})(?::|$)/);
@@ -293,17 +292,43 @@ function refOrderId(ref: string | null | undefined): string | null {
   return match ? match[1] : null;
 }
 
-function bookingForReservation(reservation: ReservationRow, bookings: Map<string, BookingRow>): BookingRow | null {
+/**
+ * The booking a reservation belongs to, ONLY through an authoritative link.
+ *
+ * Real availability reservation refs are:
+ *   * `booking:<bookingId>` / `booking:<bookingId>:reschedule:<n>` (AvaBooking)
+ *   * `commercial-availability:<buyerUid>:<orderId>` (commercial checkout and
+ *     reschedule, where `<orderId>` is `orders.id` and may itself contain
+ *     colons, e.g. `stripe-order:cs_…`) → `orders.booking_id`
+ *   * commercial projections `commercial:<bookingId>:creator|buyer`
+ *   * `commercial-hold:…`, `schedule:…`, `listing:…:fixed:…` (no booking yet)
+ *
+ * There is deliberately NO "first booking at the same interval" fallback: two
+ * bookings can legitimately share a listing and interval (a reschedule, two
+ * buyers), and picking one would attribute a diary row to the wrong booking and
+ * open the wrong Join/New time/Cancel action. When the link is missing the
+ * block stays "busy" with `booking_id: null`.
+ */
+function bookingForReservation(
+  reservation: ReservationRow,
+  bookings: Map<string, BookingRow>,
+  orderBookings: Map<string, string>,
+): BookingRow | null {
   const explicit = refBookingId(reservation.source_ref);
   if (explicit) return bookings.get(explicit) ?? null;
   const orderId = refOrderId(reservation.source_ref);
   if (!orderId) return null;
-  for (const booking of bookings.values()) {
-    if (String(booking.listing_id ?? "") !== String(reservation.listing_id ?? "")) continue;
-    if (Number(booking.starts_at) !== Number(reservation.starts_at)) continue;
-    if (Number(booking.ends_at) !== Number(reservation.ends_at)) continue;
-    return booking;
-  }
+  const mapped = orderBookings.get(orderId);
+  return mapped ? bookings.get(mapped) ?? null : null;
+}
+
+/** Which side of the booking the caller is on. Never inferred from a listing
+ *  (the caller's listing collection may be incomplete); it is read from the
+ *  booking row itself, which the loader only returns when the caller is a party. */
+function roleForBooking(booking: BookingRow | null | undefined, uid: string): "creator" | "customer" | null {
+  if (!booking) return null;
+  if (String(booking.creator_id ?? "") === uid) return "creator";
+  if (String(booking.buyer_id ?? "") === uid) return "customer";
   return null;
 }
 
@@ -315,8 +340,10 @@ function bookingForReservation(reservation: ReservationRow, bookings: Map<string
  * projection of the same booking. Neither carried a booking id, so the phone
  * fell back to a legacy action and one booking could render twice (as a busy
  * block AND as an appointment event). This resolves each block to the booking
- * it belongs to only when the caller owns that row and the match is unique: an
- * unresolved block stays null rather than pointing at the wrong booking.
+ * it belongs to ONLY through an authoritative link (the booking id in the ref,
+ * or the ref's order id through `orders.booking_id`), scoped to rows and orders
+ * the caller is a party to. An unresolvable block stays null with
+ * `booking_role:null` rather than pointing at the wrong booking.
  */
 async function resolveBlockMetadata(env: Env, uid: string, rows: BlockRow[]): Promise<Map<string, BlockMetadata>> {
   const resolved = new Map<string, BlockMetadata>();
@@ -349,6 +376,10 @@ async function resolveBlockMetadata(env: Env, uid: string, rows: BlockRow[]): Pr
   }
   for (const row of reservations.values()) considerRef(row.source_ref);
   const bookings = new Map<string, BookingRow>();
+  // Authoritative order → booking mapping (orders.id → orders.booking_id). The
+  // commercial ref carries the ORDER id, and only this mapping says which
+  // booking that order became.
+  const orderBookings = new Map<string, string>();
   const loadBookings = async (ids: string[]): Promise<void> => {
     const unique = [...new Set(ids)].filter((id) => id && !bookings.has(id)).slice(0, 500);
     if (!unique.length) return;
@@ -364,26 +395,13 @@ async function resolveBlockMetadata(env: Env, uid: string, rows: BlockRow[]): Pr
   if (orderIds.size) {
     try {
       const rs = await db.prepare(
-        "SELECT booking_id FROM orders WHERE id IN (SELECT value FROM json_each(?1)) AND creator_id=?2 AND booking_id IS NOT NULL LIMIT 500",
-      ).bind(JSON.stringify([...orderIds]), uid).all<{ booking_id: string }>();
-      await loadBookings((rs.results ?? []).map((row) => String(row.booking_id)));
+        // Owner-scoped on BOTH sides of an order: the caller must be its creator
+        // or its buyer, so a foreign order id can never resolve a booking here.
+        "SELECT id,booking_id FROM orders WHERE id IN (SELECT value FROM json_each(?1)) AND (creator_id=?2 OR buyer_id=?2) AND booking_id IS NOT NULL LIMIT 500",
+      ).bind(JSON.stringify([...orderIds]), uid).all<{ id: string; booking_id: string }>();
+      for (const row of (rs.results ?? [])) orderBookings.set(String(row.id), String(row.booking_id));
+      await loadBookings([...orderBookings.values()]);
     } catch { /* deployment without the escrow order table */ }
-  }
-  const unresolved: ReservationRow[] = [];
-  for (const reservation of reservations.values()) {
-    if (reservation.kind !== "booking" && reservation.kind !== "hold") continue;
-    if (!bookingForReservation(reservation, bookings)) unresolved.push(reservation);
-  }
-  // Last resort: one booking at the exact listing and interval is safe; two
-  // candidates leave the block unattributed instead of guessing.
-  for (const reservation of unresolved.slice(0, 50)) {
-    try {
-      const rs = await db.prepare(
-        `SELECT id,creator_id,buyer_id,listing_id,kind,status,starts_at,ends_at FROM bookings WHERE (creator_id=?1 OR buyer_id=?1) AND listing_id=?2 AND starts_at=?3 AND ends_at=?4 AND status IN (${ACTIVE_BOOKING_STATUSES}) LIMIT 2`,
-      ).bind(uid, reservation.listing_id, reservation.starts_at, reservation.ends_at).all<BookingRow>();
-      const matches = rs.results ?? [];
-      if (matches.length === 1) bookings.set(String(matches[0].id), matches[0]);
-    } catch { /* ignore unresolved metadata */ }
   }
   for (const row of rows) {
     const meta: BlockMetadata = { ...EMPTY_BLOCK_METADATA };
@@ -393,12 +411,17 @@ async function resolveBlockMetadata(env: Env, uid: string, rows: BlockRow[]): Pr
         meta.listing_id = reservation.listing_id ?? null;
         meta.booking_kind = reservation.kind ?? null;
         meta.booking_status = reservation.status ?? null;
-        const booking = bookingForReservation(reservation, bookings);
+        // The reservation row was only loaded with creator_id = caller, so the
+        // caller IS the host of this time even when no booking row exists yet
+        // (a checkout hold). Ownership is proven here, not inferred downstream.
+        meta.booking_role = "creator";
+        const booking = bookingForReservation(reservation, bookings, orderBookings);
         if (booking) {
           meta.booking_id = booking.id;
           meta.listing_id = booking.listing_id ?? meta.listing_id;
           meta.booking_kind = booking.kind ?? meta.booking_kind;
           meta.booking_status = booking.status ?? meta.booking_status;
+          meta.booking_role = roleForBooking(booking, uid) ?? meta.booking_role;
         }
       }
     } else if (row.source_app === "avabooking" || row.source_app === "avaconsult") {
@@ -409,6 +432,9 @@ async function resolveBlockMetadata(env: Env, uid: string, rows: BlockRow[]): Pr
         meta.listing_id = booking.listing_id ?? null;
         meta.booking_kind = booking.kind ?? null;
         meta.booking_status = booking.status ?? null;
+        // Role comes from the booking row (proven party), NOT from the
+        // `:creator|:buyer` ref suffix, which a row could disagree with.
+        meta.booking_role = roleForBooking(booking, uid);
       }
     }
     resolved.set(row.id, meta);

@@ -20,8 +20,14 @@ type Exception = { id?: string; date: string; start_min: number; end_min: number
 function isZone(tz: string): boolean { try { new Intl.DateTimeFormat("en-US", { timeZone: tz }).format(); return true; } catch { return false; } }
 function validDate(d: string): boolean { return DATE_RE.test(d) && Number.isFinite(Date.parse(`${d}T00:00:00Z`)) && new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d; }
 function dateRange(from: string, to: string): string[] {
+  // Both ends are validated BEFORE a Date is built: `new Date("garbage")` is an
+  // Invalid Date and `.toISOString()` on it throws a RangeError, which used to
+  // escape a route as a 500 instead of a 400. A reversed range is empty, and
+  // the expansion is capped at MAX_RANGE_DAYS so one control cannot turn into
+  // unbounded work.
+  if (!validDate(from) || !validDate(to) || dateDiff(from, to) < 0) return [];
   const out: string[] = [], d = new Date(`${from}T00:00:00Z`), end = new Date(`${to}T00:00:00Z`);
-  while (d <= end && out.length <= MAX_RANGE_DAYS) { out.push(d.toISOString().slice(0, 10)); d.setUTCDate(d.getUTCDate() + 1); }
+  while (d <= end && out.length < MAX_RANGE_DAYS) { out.push(d.toISOString().slice(0, 10)); d.setUTCDate(d.getUTCDate() + 1); }
   return out;
 }
 function intervalValid(start: number, end: number): boolean { return Number.isInteger(start) && Number.isInteger(end) && start >= 0 && end <= 1440 && end > start; }
@@ -46,12 +52,25 @@ async function effectivePolicy(env: Env, creatorId: string, listingId: string | 
   if (listingId) {
     const listing = await db.prepare("SELECT attrs FROM listings WHERE id=?1").bind(listingId).first<{ attrs: string | null }>().catch(() => null);
     let hours = 24;
-    if (listing?.attrs) { try { const attrs = JSON.parse(listing.attrs); if (attrs?.commercial_booking_notice_hours !== undefined) hours = Math.max(0, Number(attrs.commercial_booking_notice_hours)); } catch { hours = 24; } }
+    if (listing?.attrs) { try { const attrs = JSON.parse(listing.attrs); if (attrs?.commercial_booking_notice_hours !== undefined && Number.isFinite(Number(attrs.commercial_booking_notice_hours))) hours = Math.max(0, Number(attrs.commercial_booking_notice_hours)); } catch { hours = 24; } }
     commercialNoticeMin = Number.isFinite(hours) ? hours * 60 : 1440;
   }
-  const inheritedNotice = Number(listingRow?.min_notice_min ?? global?.min_notice_min ?? 120);
-  const effectiveNotice = Math.max(0, Number(schedule?.min_notice_min ?? inheritedNotice));
-  const comm = commercialNoticeMin ?? 0;
+  // Missing/NULL columns fall back to the creator-wide value, then to the
+  // engine's own default — never to NaN, which used to make Math.max() return
+  // NaN and render an unexplainable blank.
+  const finiteNotice = (value: unknown, fallback: number): number => {
+    if (value === null || value === undefined) return fallback;
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.max(0, n) : fallback;
+  };
+  const inheritedNotice = finiteNotice(listingRow?.min_notice_min ?? global?.min_notice_min, 120);
+  const calendarNotice = finiteNotice(schedule?.min_notice_min, inheritedNotice);
+  const comm = finiteNotice(commercialNoticeMin, 0);
+  // EXACTLY the engine's rule (loadUnifiedSchedule / validateListingSlot): the
+  // commercial booking notice is a FLOOR on the calendar notice, so the
+  // effective value is the larger of the two. This route does not invent its
+  // own policy — it reports the one the booking authority enforces.
+  const effectiveNotice = Math.max(comm, calendarNotice);
   const policyFields = (row: any): any => row ? {
     duration_min: row.duration_min ?? null, slot_interval_min: row.slot_interval_min ?? null,
     buffer_min: row.buffer_min ?? null, min_notice_min: row.min_notice_min ?? null,
@@ -64,8 +83,9 @@ async function effectivePolicy(env: Env, creatorId: string, listingId: string | 
     listing_overrides: policyFields(listingRow),
     calendar_min_notice_min: inheritedNotice,
     listing_commercial_notice_min: commercialNoticeMin,
-    // The commercial notice is a floor, so the effective notice is the larger of
-    // the two — a "2 hour" calendar can still produce no same-day slots.
+    // Which side is binding. `inheritedNotice` is the CALENDAR value this listing
+    // inherits (its own schedule, else the creator-wide one), which is what the
+    // creator sees in the field — the floor the commercial notice has to beat.
     notice_source: comm > inheritedNotice ? "listing_commercial" : "calendar",
     effective: {
       timezone: schedule?.timezone ?? "UTC",
@@ -154,7 +174,12 @@ export async function putSchedule(req: Request, env: Env): Promise<Response> {
     }
     // [AUDIT-2/3] "From this date through this date": a holiday is ONE range in
     // the editor and one row per date on the server, so a multi-day closure
-    // round-trips as ordinary exceptions on every client.
+    // round-trips as ordinary exceptions on every client. Kept server-side on
+    // purpose: the app and web both expand the range they send, and a client
+    // that only knows the range must not depend on the server guessing it. The
+    // end date is validated and ordering-checked BEFORE any expansion, so a
+    // malformed end date is a 400, never a RangeError, and the expansion can
+    // never exceed MAX_EXCEPTIONS.
     const rangeEnd = x.end_date === undefined || x.end_date === null ? null : String(x.end_date);
     const isRange = !!rangeEnd && rangeEnd !== e.date;
     if (isRange && rangeEnd) {
@@ -163,6 +188,7 @@ export async function putSchedule(req: Request, env: Env): Promise<Response> {
       if (dateDiff(e.date, rangeEnd) >= MAX_RANGE_DAYS) return json({ error: `an exception range is limited to ${MAX_RANGE_DAYS} days` }, 400);
     }
     const dates = isRange && rangeEnd ? dateRange(e.date, rangeEnd) : [e.date];
+    if (!dates.length || dates.some((date) => !validDate(date))) return json({ error: "invalid exception date range" }, 400);
     for (const date of dates) parsedExceptions.push({ ...e, id: date === e.date ? e.id : undefined, date });
     if (parsedExceptions.length > MAX_EXCEPTIONS) return json({ error: `at most ${MAX_EXCEPTIONS} exceptions` }, 400);
   }
@@ -301,15 +327,28 @@ export async function listingAvailability(req: Request, env: Env, listingId: str
   const listing = await metaDb(env).prepare("SELECT id,creator_id,status,kind FROM listings WHERE id=?1").bind(listingId).first<{ id: string; creator_id: string; status: string; kind: string }>();
   if (!listing || !["published", "live"].includes(listing.status)) return json({ error: "listing not found" }, 404);
   if (listing.kind && !["consult", "consultation"].includes(listing.kind)) return json({ error: "availability not offered" }, 404);
+  const u = new URL(req.url), from = u.searchParams.get("from") ?? "", to = u.searchParams.get("to") ?? "", timezone = u.searchParams.get("timezone") || "UTC";
+  if (!validDate(from) || !validDate(to) || dateDiff(from, to) < 0 || dateDiff(from, to) >= MAX_RANGE_DAYS || !isZone(timezone)) return json({ error: "from/to/timezone invalid" }, 400);
   // Same readiness predicate the booking authority uses (validateListingSlot):
   // preview, booking and publish must agree. A disconnected account, a failed
   // source or a stale selected calendar must never produce bookable preview
-  // slots, so the grid is returned with every slot marked unavailable instead
-  // of an optimistic (or empty) 200.
+  // slots, so this answers the SAME 503 `calendar_refresh_pending` the
+  // pre-change route answered for an unready source. A 200 grid of
+  // `available:false` slots is indistinguishable from "the creator has no open
+  // times" for existing clients that never read the additive `ready` flag, and
+  // it silently rendered "0 open" instead of "refresh your calendar". The
+  // readiness detail stays additive on the 503 so a client can still name the
+  // failing source. Malformed dates are still a 400 before anything else.
   const readiness = await gcalReadiness(env, listing.creator_id, { requireConnected: true });
-  const calendarReady = readiness.ready;
-  const u = new URL(req.url), from = u.searchParams.get("from") ?? "", to = u.searchParams.get("to") ?? "", timezone = u.searchParams.get("timezone") || "UTC";
-  if (!validDate(from) || !validDate(to) || dateDiff(from, to) < 0 || dateDiff(from, to) >= MAX_RANGE_DAYS || !isZone(timezone)) return json({ error: "from/to/timezone invalid" }, 400);
+  if (!readiness.ready) {
+    return json({
+      error: "calendar_refresh_pending",
+      ready: false,
+      reason: readiness.reason,
+      last_success_at: readiness.oldest_selected_success_at,
+      age_ms: readiness.age_ms,
+    }, 503);
+  }
   const viewerDates = dateRange(from, to), schedule = await loadUnifiedSchedule(env, listing.creator_id, listingId), shared = await loadUnifiedSchedule(env, listing.creator_id, null), now = Date.now();
   const viewerLo = zonedEpoch(from, 0, timezone), viewerHi = zonedEpoch(to, 1440, timezone);
   const rangeLo = viewerLo - 86_400_000, rangeHi = viewerHi + 86_400_000;
@@ -349,9 +388,7 @@ export async function listingAvailability(req: Request, env: Env, listingId: str
       const id = `availability:${listingId}:${startAt}:${endAt}`; if (emitted.has(id)) continue; emitted.add(id);
       const closed=[...shared.exceptions,...schedule.exceptions].some(x=>x.date===date&&x.status==='unavailable'&&x.start_min<actual.minutes+(endAt-startAt)/60000&&x.end_min>actual.minutes);
       const hit = candidate.blocked || closed || dayFull || [...liveBlocks, ...effectiveBlocks, ...conflictingReservations, ...bookings].find((x) => Number(x.starts_at) < endAt + schedule.buffer_min * 60_000 && Number(x.ends_at) > startAt - schedule.buffer_min * 60_000 && !(x.kind === "exclusive" && x.listing_id === listingId));
-      const item = calendarReady
-        ? { id, start_at: startAt, end_at: endAt, available: !hit, ...(hit ? { reason: dayFull ? "max_per_day" : "unavailable" } : {}) }
-        : { id, start_at: startAt, end_at: endAt, available: false, reason: "calendar_not_ready" };
+      const item = { id, start_at: startAt, end_at: endAt, available: !hit, ...(hit ? { reason: dayFull ? "max_per_day" : "unavailable" } : {}) };
       daySlots.push(item); slots.push(item);
     }
 
@@ -361,8 +398,8 @@ export async function listingAvailability(req: Request, env: Env, listingId: str
   return json({
     timezone, version: schedule.version, generated_at: Date.now(), days, slots,
     // Additive readiness contract: same shape as GET /api/calendar/gcal/status.
-    ready: calendarReady,
-    reason: calendarReady ? null : readiness.reason,
+    ready: true,
+    reason: null,
     last_success_at: readiness.oldest_selected_success_at,
     age_ms: readiness.age_ms,
   });

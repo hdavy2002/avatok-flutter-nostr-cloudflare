@@ -8,6 +8,7 @@ import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { metaDb } from "../db/shard";
 import { track } from "../hooks";
+import { rateLimit } from "../money";
 export { gcalAvailabilityReady } from "./gcal_availability";
 import { GCAL_READY_MAX_AGE_MS, gcalReadiness } from "./gcal_availability";
 
@@ -78,11 +79,11 @@ async function upsertCalendarRows(env: Env, uid: string, calendars: GoogleCalend
 }
 async function refreshCalendarRows(env: Env, uid: string, accessToken: string): Promise<GcalCalendarRow[]> { await upsertCalendarRows(env, uid, await listGoogleCalendars(env, accessToken)); const rows = await metaDb(env).prepare("SELECT * FROM gcal_calendars WHERE user_id=?1 ORDER BY primary_calendar DESC,calendar_id").bind(uid).all<GcalCalendarRow>(); return (rows.results ?? []) as GcalCalendarRow[]; }
 function calendarResponse(row: GcalCalendarRow, maxAgeMs = GCAL_READY_MAX_AGE_MS, now = Date.now()) {
-  // A NULL column means "never synced"; Number(null) is 0, so check null first
-  // or a never-synced source would look like a 1970 success.
-  const lastSuccess = row.last_success_at === null || row.last_success_at === undefined
-    ? null
-    : (Number.isFinite(Number(row.last_success_at)) ? Number(row.last_success_at) : null);
+  // A NULL column means "never synced"; Number(null) is 0, which is a valid
+  // epoch, so null/""/NaN/0 are all treated as "no success yet" and the source
+  // renders as stale rather than as a healthy 1970 sync.
+  const raw = row.last_success_at === null || row.last_success_at === undefined ? null : Number(row.last_success_at);
+  const lastSuccess = raw !== null && Number.isFinite(raw) && raw > 0 ? raw : null;
   return {
     id: row.calendar_id, summary: row.summary, timezone: row.timezone, access_role: row.access_role,
     primary: !!row.primary_calendar, selected: !!row.selected, destination: !!row.destination,
@@ -124,7 +125,13 @@ async function gcalStatusPayload(env: Env, uid: string): Promise<Record<string, 
   const account = await metaDb(env).prepare("SELECT connected_at,last_sync_at,last_error FROM gcal_accounts WHERE user_id=?1").bind(uid).first<any>();
   const rows = account ? await metaDb(env).prepare("SELECT * FROM gcal_calendars WHERE user_id=?1 ORDER BY primary_calendar DESC,summary").bind(uid).all<GcalCalendarRow>() : { results: [] as GcalCalendarRow[] };
   const calendars = ((rows.results ?? []) as GcalCalendarRow[]).map((row) => calendarResponse(row));
-  const lastSuccess = calendars.reduce<number | null>((latest, row) => Math.max(latest ?? 0, row.last_success_at ?? 0) || null, null);
+  // Old-field meaning kept: the most recent success anywhere. Only explicit,
+  // finite, positive timestamps count, so a NULL column (never synced) can
+  // never read back as an epoch-0 success.
+  const successAts = calendars
+    .map((row) => row.last_success_at)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
+  const lastSuccess: number | null = successAts.length ? Math.max(...successAts) : null;
   const readiness = await gcalReadiness(env, uid, { requireConnected: true });
   return {
     connected: !!account,
@@ -151,31 +158,30 @@ export async function gcalStatus(req: Request, env: Env): Promise<Response> {
   return json(await gcalStatusPayload(env, ctx.uid));
 }
 
-// Manual "Sync busy times now" throttling. Per-isolate by design: a durable
-// counter would need a migration, and the bound only has to stop a client (or a
-// double-tap) from hammering the Google API. The work itself is also bounded.
-const MANUAL_SYNC_MIN_INTERVAL_MS = 30_000;
-const MANUAL_SYNC_WINDOW_MS = 60 * 60_000;
+// Manual "Sync busy times now" throttling. This reuses the SHARED durable KV
+// sliding window (`rateLimit`, worker/src/money.ts) that the money routes
+// already use instead of a per-isolate Map: a Map only limits one Cloudflare
+// isolate and used to be cleared wholesale at a size threshold, which silently
+// reset every user's counter. No migration and no new authority are introduced.
+const MANUAL_SYNC_MIN_INTERVAL_SEC = 30;
+const MANUAL_SYNC_WINDOW_SEC = 60 * 60;
 const MANUAL_SYNC_MAX_PER_WINDOW = 12;
 const MANUAL_SYNC_MAX_CALENDARS = 10;
-const manualSyncHits = new Map<string, number[]>();
 
-/** Returns 0 when allowed, else the ms the caller must wait. */
-function manualSyncThrottle(uid: string, now = Date.now()): number {
-  const hits = (manualSyncHits.get(uid) ?? []).filter((at) => now - at < MANUAL_SYNC_WINDOW_MS);
-  if (hits.length >= MANUAL_SYNC_MAX_PER_WINDOW) {
-    manualSyncHits.set(uid, hits);
-    return Math.max(0, hits[0] + MANUAL_SYNC_WINDOW_MS - now);
-  }
-  const last = hits.length ? hits[hits.length - 1] : 0;
-  if (last && now - last < MANUAL_SYNC_MIN_INTERVAL_MS) {
-    manualSyncHits.set(uid, hits);
-    return MANUAL_SYNC_MIN_INTERVAL_MS - (now - last);
-  }
-  hits.push(now);
-  manualSyncHits.set(uid, hits);
-  // Bound memory: the oldest 100 users are irrelevant, but never grow unbounded.
-  if (manualSyncHits.size > 5000) manualSyncHits.clear();
+async function retryAfterMs(response: Response): Promise<number> {
+  const body = (await response.clone().json().catch(() => null)) as { retry_after?: unknown } | null;
+  const seconds = Number(body?.retry_after);
+  return Math.max(1_000, Math.ceil((Number.isFinite(seconds) && seconds > 0 ? seconds : 1) * 1_000));
+}
+
+/** 0 when allowed, else the ms to wait. Throws when the durable limiter is
+ *  unavailable so the caller can fail closed instead of falling back to a
+ *  counter that does not hold across isolates. */
+async function manualSyncThrottle(env: Env, uid: string): Promise<number> {
+  const burst = await rateLimit(env, `gcal-sync-burst:${uid}`, 1, MANUAL_SYNC_MIN_INTERVAL_SEC);
+  if (burst) return retryAfterMs(burst);
+  const window = await rateLimit(env, `gcal-sync-window:${uid}`, MANUAL_SYNC_MAX_PER_WINDOW, MANUAL_SYNC_WINDOW_SEC);
+  if (window) return retryAfterMs(window);
   return 0;
 }
 
@@ -192,25 +198,59 @@ export async function gcalSyncNow(req: Request, env: Env): Promise<Response> {
   if (!account) {
     return json({ ...(await gcalStatusPayload(env, ctx.uid)), error: "Google Calendar is not connected", code: "gcal_disconnected" }, 409);
   }
-  const waitMs = manualSyncThrottle(ctx.uid);
+  let waitMs: number;
+  try {
+    waitMs = await manualSyncThrottle(env, ctx.uid);
+  } catch (error) {
+    console.error("[gcal-sync] rate limiter unavailable", String(error));
+    return json({ ...(await gcalStatusPayload(env, ctx.uid)), error: "Google Calendar sync is temporarily unavailable", code: "gcal_sync_unavailable" }, 503);
+  }
   if (waitMs > 0) {
-    return json({ ...(await gcalStatusPayload(env, ctx.uid)), error: "Google Calendar was synced just now", code: "gcal_sync_rate_limited", retry_after_ms: Math.max(1_000, Math.ceil(waitMs)) }, 429);
+    return json({ ...(await gcalStatusPayload(env, ctx.uid)), error: "Google Calendar was synced just now", code: "gcal_sync_rate_limited", retry_after_ms: waitMs }, 429);
   }
   const token = await gcalAccessToken(env, ctx.uid);
   if (!token) {
     await markAccountError(env, ctx.uid, "Google Calendar access is unavailable. Reconnect to refresh permission.");
     return json({ ...(await gcalStatusPayload(env, ctx.uid)), error: "Google Calendar access is unavailable. Reconnect to refresh permission.", code: "gcal_access_unavailable" }, 409);
   }
-  let imported = 0;
+  let report: GcalImportReport = { imported: 0, selected: 0, attempted: 0, failed: 0, truncated: false };
+  let syncError: unknown = null;
   try {
-    imported = await importGcal(env, ctx.uid, { maxCalendars: MANUAL_SYNC_MAX_CALENDARS });
+    report = await importGcalDetailed(env, ctx.uid, { maxCalendars: MANUAL_SYNC_MAX_CALENDARS, oldestFirst: true });
   } catch (error) {
+    syncError = error;
     await markAccountError(env, ctx.uid, error);
   }
-  await track(env, ctx.uid, "gcal_manual_sync", "avacalendar", { imported, outcome: "completed" });
-  return json({ ...(await gcalStatusPayload(env, ctx.uid)), imported });
+  const status = await gcalStatusPayload(env, ctx.uid);
+  const ready = status.ready === true;
+  // Never an unconditional "completed": a run that hit the calendar bound, or
+  // that left a selected source errored/never-synced, says so.
+  const outcome = syncError || report.failed > 0
+    ? (ready ? "partial" : "failed")
+    : report.truncated ? "partial" : (ready ? "completed" : "failed");
+  await track(env, ctx.uid, "gcal_manual_sync", "avacalendar", {
+    outcome,
+    imported: report.imported,
+    calendars_selected: report.selected,
+    calendars_attempted: report.attempted,
+    calendars_failed: report.failed,
+    bound_hit: report.truncated,
+    ready,
+    reason: status.reason ?? null,
+  });
+  const payload = {
+    ...status,
+    imported: report.imported,
+    calendars_selected: report.selected,
+    calendars_attempted: report.attempted,
+    calendars_failed: report.failed,
+    bound_hit: report.truncated,
+    sync_outcome: outcome,
+  };
+  if (syncError) return json({ ...payload, error: "Google Calendar sync failed", reason: String(syncError).slice(0, 200), code: "gcal_sync_failed" }, 502);
+  return json(payload);
 }
-export async function gcalCalendars(req: Request, env: Env): Promise<Response> { const ctx = await requireUser(req, env); if (isFail(ctx)) return json({ error: ctx.error }, ctx.status); const tok = await gcalAccessToken(env, ctx.uid); if (!tok) return json({ error: "Google Calendar access is unavailable. Reconnect to refresh permission." }, 409); try { const rows = await refreshCalendarRows(env, ctx.uid, tok); return json({ calendars: rows.map(calendarResponse), destination_calendar_id: rows.find((row) => row.destination)?.calendar_id ?? null }); } catch (error) { await markAccountError(env, ctx.uid, error); return json({ error: "Google calendar list is unavailable", reason: String(error) }, 502); } }
+export async function gcalCalendars(req: Request, env: Env): Promise<Response> { const ctx = await requireUser(req, env); if (isFail(ctx)) return json({ error: ctx.error }, ctx.status); const tok = await gcalAccessToken(env, ctx.uid); if (!tok) return json({ error: "Google Calendar access is unavailable. Reconnect to refresh permission." }, 409); try { const rows = await refreshCalendarRows(env, ctx.uid, tok); return json({ calendars: rows.map((row) => calendarResponse(row)), destination_calendar_id: rows.find((row) => row.destination)?.calendar_id ?? null }); } catch (error) { await markAccountError(env, ctx.uid, error); return json({ error: "Google calendar list is unavailable", reason: String(error) }, 502); } }
 export async function gcalSaveCalendars(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
@@ -239,7 +279,7 @@ export async function gcalSaveCalendars(req: Request, env: Env): Promise<Respons
     await metaDb(env).batch(statements);
     await importGcal(env, ctx.uid);
     const fresh = await metaDb(env).prepare("SELECT * FROM gcal_calendars WHERE user_id=?1 ORDER BY primary_calendar DESC,summary").bind(ctx.uid).all<GcalCalendarRow>();
-    return json({ calendars: ((fresh.results ?? []) as GcalCalendarRow[]).map(calendarResponse), destination_calendar_id: destination });
+    return json({ calendars: ((fresh.results ?? []) as GcalCalendarRow[]).map((row) => calendarResponse(row)), destination_calendar_id: destination });
   } catch (error) { await markAccountError(env, ctx.uid, error); return json({ error: "Calendar selection could not be saved", reason: String(error) }, 502); }
 }
 export async function gcalDisconnect(req: Request, env: Env): Promise<Response> { const ctx = await requireUser(req, env); if (isFail(ctx)) return json({ error: ctx.error }, ctx.status); const rows = await metaDb(env).prepare("SELECT channel_id,resource_id FROM gcal_calendars WHERE user_id=?1 AND channel_id IS NOT NULL").bind(ctx.uid).all<{ channel_id: string; resource_id: string | null }>(); const tok = await gcalAccessToken(env, ctx.uid); for (const row of (rows.results ?? [])) if (tok) await fetch(`${GCAL}/channels/stop`, { method: "POST", headers: googleHeaders(tok), body: JSON.stringify({ id: row.channel_id, resourceId: row.resource_id }) }).catch(() => {}); await metaDb(env).prepare("DELETE FROM gcal_calendars WHERE user_id=?1").bind(ctx.uid).run(); await metaDb(env).prepare("DELETE FROM gcal_export_events WHERE user_id=?1").bind(ctx.uid).run(); await metaDb(env).prepare("DELETE FROM gcal_accounts WHERE user_id=?1").bind(ctx.uid).run(); await metaDb(env).prepare("UPDATE calendar_blocks SET status='cancelled' WHERE user_id=?1 AND source_app='gcal'").bind(ctx.uid).run(); return json({ ok: true }); }
@@ -326,7 +366,55 @@ export async function gcalExportSweep(env: Env, limit = 50): Promise<number> {
   }
   return processed;
 }
-export async function importGcal(env: Env, uid: string, opts: { maxCalendars?: number } = {}): Promise<number> { const tok = await gcalAccessToken(env, uid); if (!tok) return 0; let rows = await metaDb(env).prepare("SELECT * FROM gcal_calendars WHERE user_id=?1 AND selected=1 ORDER BY primary_calendar DESC,calendar_id").bind(uid).all<GcalCalendarRow>().then((r) => (r.results ?? []) as GcalCalendarRow[]); if (!rows.length) { try { rows = (await refreshCalendarRows(env, uid, tok)).filter((row) => !!row.selected); } catch { rows = await ensurePrimaryFallback(env, uid); } } if (opts.maxCalendars && opts.maxCalendars > 0) rows = rows.slice(0, opts.maxCalendars); let imported = 0; for (const row of rows) { try { imported += await importCalendar(env, uid, row, tok); } catch (error) { await markCalendarState(env, uid, row.calendar_id, error); console.error("[gcal-sync]", uid, row.calendar_id, String(error)); } } if (rows.length) await metaDb(env).prepare("UPDATE gcal_accounts SET last_sync_at=?2 WHERE user_id=?1").bind(uid, Date.now()).run(); return imported; }
+export interface GcalImportReport {
+  /** Events created/updated across the calendars this run read. */
+  imported: number;
+  /** Selected read calendars the account has in total. */
+  selected: number;
+  /** Calendars this run actually read (bounded by `maxCalendars`). */
+  attempted: number;
+  /** Calendars whose read threw and were marked with an error. */
+  failed: number;
+  /** True when the bound left selected calendars unread, so "all imported" is
+   *  NOT true and a caller must say so instead of claiming a full sync. */
+  truncated: boolean;
+}
+
+/**
+ * Bounded import of Google busy times into calendar_blocks.
+ *
+ * `maxCalendars` exists because one HTTP call must not read an unbounded number
+ * of Google calendars. A bounded run is ordered never-synced-first then
+ * oldest-success-first (`oldestFirst`), so repeated manual syncs walk the whole
+ * selection instead of re-reading the same first ten calendars forever, and the
+ * report tells the caller exactly how much of the selection it covered. Event
+ * paging inside one calendar keeps its existing bound (100 pages x 250).
+ */
+export async function importGcalDetailed(env: Env, uid: string, opts: { maxCalendars?: number; oldestFirst?: boolean } = {}): Promise<GcalImportReport> {
+  const tok = await gcalAccessToken(env, uid);
+  if (!tok) return { imported: 0, selected: 0, attempted: 0, failed: 0, truncated: false };
+  const order = opts.oldestFirst
+    ? "ORDER BY (last_success_at IS NULL OR last_success_at<=0) DESC,last_success_at,calendar_id"
+    : "ORDER BY primary_calendar DESC,calendar_id";
+  let rows = await metaDb(env).prepare(`SELECT * FROM gcal_calendars WHERE user_id=?1 AND selected=1 ${order}`).bind(uid).all<GcalCalendarRow>().then((r) => (r.results ?? []) as GcalCalendarRow[]);
+  if (!rows.length) { try { rows = (await refreshCalendarRows(env, uid, tok)).filter((row) => !!row.selected); } catch { rows = await ensurePrimaryFallback(env, uid); } }
+  const selected = rows.length;
+  const bound = opts.maxCalendars && opts.maxCalendars > 0 ? Math.trunc(opts.maxCalendars) : null;
+  const run = bound === null ? rows : rows.slice(0, bound);
+  const truncated = bound !== null && selected > run.length;
+  let imported = 0, failed = 0;
+  for (const row of run) {
+    try { imported += await importCalendar(env, uid, row, tok); }
+    catch (error) { failed++; await markCalendarState(env, uid, row.calendar_id, error); console.error("[gcal-sync]", uid, row.calendar_id, String(error)); }
+  }
+  if (run.length) await metaDb(env).prepare("UPDATE gcal_accounts SET last_sync_at=?2 WHERE user_id=?1").bind(uid, Date.now()).run();
+  return { imported, selected, attempted: run.length, failed, truncated };
+}
+
+/** Backwards-compatible count-only wrapper (webhook, callback, calendar save). */
+export async function importGcal(env: Env, uid: string, opts: { maxCalendars?: number; oldestFirst?: boolean } = {}): Promise<number> {
+  return (await importGcalDetailed(env, uid, opts)).imported;
+}
 /**
  * True only when every selected Google source has a successful recent sync.
  * A disconnected account, or an account with no selected read calendars, is
