@@ -1,4 +1,5 @@
 ---
+import { publicImage as optimizePublicArtwork } from '../lib/config';
 /*
  * SiteHeader — the standard avaTOK header, site-wide.
  *
@@ -28,7 +29,6 @@
 // signal, but nothing renders it.
 import TruckBorder from './TruckBorder.astro';
 import GlobalHeader from './GlobalHeader.astro';
-import IndiaLanguageSelector from './IndiaLanguageSelector.astro';
 // [WEB-BANNER-OFF-1 2026-09-02] Owner asked for the site-wide product-status
 // strip to come out of the header. BetaBanner.astro is kept on disk (unused) so
 // it can be re-mounted here in one line if the payment-gateway review wants it
@@ -65,6 +65,8 @@ interface Props {
   variant?: 'india' | 'global';
   /** Opt-in translation chrome for the India landing experience. */
   indiaLandingLanguage?: boolean;
+  /** Auth pages keep the shared header on phones and hide it at tablet width. */
+  authMobileOnly?: boolean;
 }
 
 // The site menu. Every entry points at something that exists — checked.
@@ -82,7 +84,7 @@ const DEFAULT_LINKS: HeaderLink[] = [
 ];
 
 // `auth` is destructured and ignored on purpose — see the deprecation note above.
-const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false, variant = 'india', indiaLandingLanguage = false } = Astro.props;
+const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false, variant = 'india', indiaLandingLanguage = false, authMobileOnly = false } = Astro.props;
 const globalLinks: HeaderLink[] = [
   { href: '/global-ideas', label: 'Ideas' },
   { href: '#formats', label: 'For creators' },
@@ -128,11 +130,11 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
   })();
 </script>
 
-<header class:list={['avh', sticky && 'avh--sticky', responsiveHome && 'avh--home', variant === 'global' && 'avh--global']}>
+<header class:list={['avh', authMobileOnly && 'avh--auth-mobile', sticky && 'avh--sticky', responsiveHome && 'avh--home', variant === 'global' && 'avh--global']}>
   <TruckBorder kind="jhalar" count={60} class="avh-band" />
   <div class="avh-bar">
   <a class="avh-logo" href="/" aria-label="avaTOK home" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.home' : undefined}>
-    <img src="/avatok-logo.png" alt="avaTOK" width="231" height="90" />
+    <img src={optimizePublicArtwork('/avatok-logo.png', { width: 462, fit: 'scale-down' })} alt="avaTOK" width="231" height="90" />
   </a>
 
   <nav class="avh-nav" aria-label="Main" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.mainNav' : undefined}>
@@ -140,7 +142,6 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
   </nav>
 
   <div class="avh-right">
-    {indiaLandingLanguage && <IndiaLanguageSelector id="india-language-desktop" />}
     {/* [WEB-HEADER-2 2026-08-26] Search pill removed at the owner's request.
         Browsing is reachable via the Categories and Ideas links. */}
     {/* [WEB-AUTH-STATE-1 2026-08-28] BOTH states are rendered, and CSS shows one.
@@ -159,9 +160,8 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
     <a class="avh-cta avh-auth-in" href="/sign-out" data-india-i18n={indiaLandingLanguage ? 'chrome.signout' : undefined}>Sign out</a>
     {variant === 'global' && <span class="avh-locale" aria-label="Current country">🌍 Global</span>}
     {variant === 'global' && <a class="avh-locale" href="/india" aria-label="Open India experience">🇮🇳 India</a>}
-    {variant === 'global' && <a class="avh-locale" href="#language" aria-label="Choose language">EN</a>}
     </Fragment>
-    <img class="avh-orn" src="/ornament-flower.png" alt="" width="85" height="80" aria-hidden="true" />
+    <img class="avh-orn" src={optimizePublicArtwork('/ornament-flower.png', { width: 170, fit: 'scale-down' })} alt="" width="85" height="80" aria-hidden="true" />
   </div>
 
   <button class="avh-burger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="avh-drawer" aria-haspopup="dialog" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.menu' : undefined}>
@@ -174,13 +174,12 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
 </header>
 
 {/* Independent top-layer drawer: the sticky header never moves or resizes. */}
-<dialog class="avh-drawer" id="avh-drawer" aria-label="Navigation menu">
+<dialog class:list={['avh-drawer', authMobileOnly && 'avh--auth-mobile']} id="avh-drawer" aria-label="Navigation menu">
   <div class="avh-drawer-heading">
-    <img src="/avatok-logo.png" alt="avaTOK" width="154" height="60" />
+    <img src={optimizePublicArtwork('/avatok-logo.png', { width: 308, fit: 'scale-down' })} alt="avaTOK" width="154" height="60" />
     <button class="avh-drawer-close" type="button" aria-label="Close menu" autofocus>×</button>
   </div>
 <nav class:list={['avh-mobile', responsiveHome && 'avh-mobile--home']} id="avh-mobile" aria-label="Main (mobile)" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.mainNav' : undefined}>
-  {indiaLandingLanguage && <IndiaLanguageSelector id="india-language-mobile" />}
   {headerLinks.map((l) => <a href={l.href} data-india-i18n={indiaLandingLanguage ? chromeNavKey(l.label) : undefined}>{l.label}</a>)}
   {/* [WEB-HEADER-10] Auth moves OUT of the bar and in here below 1100px.
       [WEB-AUTH-STATE-1 2026-08-28] These used to be signed-OUT links on every
@@ -203,12 +202,10 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
 </>}
 
 <script>
-  if (document.querySelector('[data-india-page]')) {
-    import('../lib/indiaLandingLanguage').then(({ initIndiaLandingLanguage }) => initIndiaLandingLanguage(document));
-  }
   const burger = document.querySelector<HTMLButtonElement>('.avh-burger');
   const drawer = document.querySelector<HTMLDialogElement>('#avh-drawer');
   const panel = document.getElementById('avh-mobile');
+  window.matchMedia('(min-width: 768px)').addEventListener('change', event => { if (event.matches && drawer?.classList.contains('avh--auth-mobile')) finishClose(false); });
   const closeButton = drawer?.querySelector<HTMLButtonElement>('.avh-drawer-close');
   let closeTimer: ReturnType<typeof setTimeout> | undefined;
   let rootOverflow = '';
@@ -322,6 +319,7 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
   }
 
   .avh-band { display: block; }
+  @media (min-width: 768px) { .avh--auth-mobile { display: none !important; } }
   .avh--sticky { position: sticky; top: 0; z-index: 60; }
 
   .avh-logo { display: flex; align-items: center; flex: 0 0 auto; }

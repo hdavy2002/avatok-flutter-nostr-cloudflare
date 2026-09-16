@@ -12,14 +12,6 @@ const { compact = false } = Astro.props;
       <small>More country experiences are on the way.</small>
     </div>
   </details>
-  <details class="global-selector global-selector--language">
-    <summary aria-label="Choose language">EN <span class="global-chevron" aria-hidden="true">⌄</span></summary>
-    <div class="global-selector__menu">
-      <p>Language</p>
-      <a href="/" lang="en" aria-current="page">English <span aria-hidden="true">✓</span></a>
-      <small>The global experience is currently available in English. For the existing Indian experience, <a href="/india">visit India →</a></small>
-    </div>
-  </details>
 </div>
 <script>
   document.querySelectorAll<HTMLDetailsElement>('.global-selector').forEach((selector) => {
