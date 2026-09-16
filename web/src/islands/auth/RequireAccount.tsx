@@ -51,7 +51,7 @@ function Gate({ label, children }: { label: string; children: ReactNode }) {
           {label}{" "}<UiText id="web-auth.159c0d7aa55560e9" source="needs an account. It's quick — your email gets you in, and you can finish setting up your creator profile after." />{" "}</p>
         <div className="flex flex-wrap items-center gap-3">
           {CLERK_PUBLISHABLE_KEY ? (
-            <SignInButton mode="modal" forceRedirectUrl={typeof location !== 'undefined' ? location.pathname : uiT("web-auth.89347bb23a645278","/dashboard")}>
+            <SignInButton mode="modal" forceRedirectUrl={typeof location !== 'undefined' ? location.pathname : "/dashboard"}>
               <Button variant="lime" label={uiT("web-auth.720519730f2dd642","Sign in / sign up")} />
             </SignInButton>
           ) : (

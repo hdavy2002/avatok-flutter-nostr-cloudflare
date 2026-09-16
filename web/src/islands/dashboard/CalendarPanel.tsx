@@ -723,7 +723,7 @@ function DayEditor({ date, schedule, listings, token, selectedListing, requested
                 <option value="reserved"><UiText id="web-dashboard.902d53b9ec99e402" source="Keep this time for a listing" /></option>
               </select>
             </label>
-            <label><UiText id="web-dashboard.6687458beee57a58" source="Applies to" />{" "}<select className={CONTROL} value={status === 'reserved' ? uiT("web-dashboard.0fc4dfc4feb3b154","listing") : scope} disabled={!!editing || status === 'reserved'} onChange={(event) => setScope(event.target.value as 'creator' | 'listing')}>
+            <label><UiText id="web-dashboard.6687458beee57a58" source="Applies to" />{" "}<select className={CONTROL} value={status === 'reserved' ? "listing" : scope} disabled={!!editing || status === 'reserved'} onChange={(event) => setScope(event.target.value as 'creator' | 'listing')}>
                 <option value="creator"><UiText id="web-dashboard.eb8c47b7dc05e91a" source="All listings (creator-wide)" /></option>
                 <option value="listing"><UiText id="web-dashboard.879d8fb64f88733e" source="Only" />{" "}{listingTitle || uiT("web-dashboard.5af17668bf98e7d3","one listing")}</option>
               </select>

@@ -74,14 +74,14 @@ export function UpgradePrompt({ reason, onUpgraded, onDismiss, compact }: Upgrad
 
   if (done) {
     return (
-      <Card fillClassName="bg-mint" shadow={compact ? uiT("web-auth.5af308bec132bd49","sm") : uiT("web-auth.0e6ba33f8bc8f415","lg")}>
+      <Card fillClassName="bg-mint" shadow={compact ? "sm" : "lg"}>
         <p className="font-display font-semibold text-[16px] text-ink"><UiText id="web-auth.60e6ce309aa70428" source="✓ Account secured. You can sign in from any device now." />{" "}</p>
       </Card>
     );
   }
 
   return (
-    <Card fillClassName="bg-lilac" shadow={compact ? uiT("web-auth.5af308bec132bd49","sm") : uiT("web-auth.0e6ba33f8bc8f415","lg")}>
+    <Card fillClassName="bg-lilac" shadow={compact ? "sm" : "lg"}>
       <div className="flex flex-col gap-3">
         <div>
           <span className="font-mono font-bold uppercase text-[13px] tracking-[0.1em] text-ink"><UiText id="web-auth.59be71333c960fd0" source="Optional" />{" "}</span>

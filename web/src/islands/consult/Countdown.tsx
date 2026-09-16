@@ -64,7 +64,7 @@ export function Countdown({ target, onZero, label = 'Ends in', intervalMs = 1000
             : 'border-ink bg-card text-ink shadow-zine-xs',
       ].join(' ')}
       role="timer"
-      aria-live={urgent ? uiT("web-common.cad2a80df44e3abf","polite") : uiT("web-common.b4dc66dde806261b","off")}
+      aria-live={urgent ? "polite" : "off"}
     >
       <span className="uppercase tracking-[0.08em] text-inkSoft">{label}</span>
       <span>{done ? '00:00' : fmt(remaining)}</span>

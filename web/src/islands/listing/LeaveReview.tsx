@@ -158,7 +158,7 @@ export default function LeaveReview({ listingId, hostName }: LeaveReviewProps) {
   // ---- 3. Not allowed to write one. ---------------------------------------
   if (!elig.can_review) {
     return (
-      <div style={card} data-review-state={elig.reason ?? uiT("web-listing.6973dddd3ef9cb6a","blocked")}>
+      <div style={card} data-review-state={elig.reason ?? "blocked"}>
         <p style={eyebrow}><UiText id="web-listing.84cb7871b741c32e" source="Reviews" /></p>
         <p style={note}>
           {elig.reason === 'own_listing'

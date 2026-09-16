@@ -10,6 +10,7 @@ const PLACE = readFileSync("../app/lib/features/avatok/place_1to1_call.dart", "u
 const CONSENT = readFileSync("../app/lib/features/avatok/call_billing/messenger_call_consent_sheets.dart", "utf8");
 const FLUTTER_API = readFileSync("../app/lib/features/avatok/call_billing/messenger_call_billing_api.dart", "utf8");
 const CALL_SCREEN = readFileSync("../app/lib/features/avatok/call_screen.dart", "utf8");
+const UI_SOURCE = JSON.parse(readFileSync("../shared/i18n/source/app.json", "utf8")) as Record<string, string>;
 
 function method(source: string, signature: string, endMarker: string): string {
   const start = source.indexOf(signature);
@@ -112,11 +113,18 @@ describe("Owner rule: paid Messenger calls use GetStream", () => {
   });
 
   it("shows explicit paid-audio continuation consent with two-participant hourly pricing", () => {
-    expect(CONSENT).toContain("Paid audio via GetStream");
-    expect(CONSENT).toMatch(/Continue with paid (?:GetStream )?audio\?/);
-    expect(CONSENT).toContain("You pay for both participants");
-    expect(CONSENT).toContain("tokens/hour");
-    expect(CONSENT).toContain("Continue with paid GetStream audio");
+    // Assert the actual source copy referenced by this consent UI. Finding a
+    // matching phrase elsewhere in the catalog would not prove it is wired.
+    const keys = [...CONSENT.matchAll(/UiMessage\.(\w+)/g)].map(match => match[1]);
+    expect(keys.length).toBeGreaterThan(0);
+    for (const key of keys) expect(typeof UI_SOURCE[key], key).toBe("string");
+    const consentCopy = keys.map(key => UI_SOURCE[key]).join("\n");
+    expect(consentCopy).toContain("Paid audio via GetStream");
+    expect(consentCopy).toMatch(/Continue with paid (?:GetStream )?audio\?/);
+    expect(consentCopy).toContain("You pay for both participants");
+    expect(consentCopy).toContain("tokens/hour");
+    expect(consentCopy).toContain("Continue with paid GetStream audio");
+    expect(CONSENT).toContain("rate.estimatedTwoPersonTokensPerHour");
   });
 
   it("lets Flutter decode paid Stream audio while keeping free Cloudflare audio rate-zero", () => {

@@ -689,9 +689,9 @@ function LiveGsHostInner({ listingId, title = 'Live event' }: LiveGsHostProps) {
   if (phase === 'refused') return <Refused listingId={listingId} detail={error ?? uiT("web-live-gs.c18cc85cde1c3f62","Host access is unavailable.")} retry={() => void authorize()} />;
   if (call && creds && jwt && streamClient && ['backstage', 'starting', 'live', 'ending'].includes(phase)) {
     const stagePhase = phase as 'backstage' | 'starting' | 'live' | 'ending';
-    return <StreamVideo client={streamClient as any}><StreamCall call={call}><HostStage title={title} phase={stagePhase} serverState={serverState?.state ?? uiT("web-live-gs.c28ad2ec11288e23","backstage")} error={error} onStart={() => void start()} onEnd={() => void end()} onRetry={() => void retry()} /></StreamCall></StreamVideo>;
+    return <StreamVideo client={streamClient as any}><StreamCall call={call}><HostStage title={title} phase={stagePhase} serverState={serverState?.state ?? "backstage"} error={error} onStart={() => void start()} onEnd={() => void end()} onRetry={() => void retry()} /></StreamCall></StreamVideo>;
   }
-  return <HostPreview key={error ? uiT("web-live-gs.e4fac9eb7dacb242","preview-error") : uiT("web-live-gs.5975cf1bba432391","preview")} title={title} busy={phase === 'preparing'} error={error} onReady={(stream, prefs) => void prepare(stream, prefs)} />;
+  return <HostPreview key={error ? "preview-error" : "preview"} title={title} busy={phase === 'preparing'} error={error} onReady={(stream, prefs) => void prepare(stream, prefs)} />;
 }
 
 export function LiveGsHost(props: LiveGsHostProps) {

@@ -327,7 +327,7 @@ export function CreatorListings(props: { kind?: string; createHref?: string; emp
     
       <Inner
         kind={props.kind}
-        createHref={props.createHref ?? uiT("web-dashboard.23ce2a627a9f8853","/dashboard/listings/new")}
+        createHref={props.createHref ?? "/dashboard/listings/new"}
         emptyTitle={props.emptyTitle ?? uiT("web-dashboard.38975ad4e8356135","No listings yet")}
         emptyBody={props.emptyBody ?? uiT("web-dashboard.de1e7a64d6287cc1","Publish a live event, a 1:1 consult or a class — fans book and pay right from the web.")}
       />

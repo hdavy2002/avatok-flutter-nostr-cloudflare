@@ -90,7 +90,7 @@ export function TicketCard({ booking, session: supplied, past, onResend }: Ticke
   }
 
   return (
-    <Card shadow="sm" fillClassName={past ? uiT("web-dashboard.0382f8a63c4c5ce5","bg-paper2") : uiT("web-dashboard.16a9cd6c3710b4e0","bg-card")}>
+    <Card shadow="sm" fillClassName={past ? "bg-paper2" : "bg-card"}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
           {session.counterparty_avatar_url && <img src={cfImage(session.counterparty_avatar_url, { width: 72 })} alt="" className="mt-0.5 h-10 w-10 shrink-0 rounded-full border-zine border-ink object-cover" loading="lazy" />}

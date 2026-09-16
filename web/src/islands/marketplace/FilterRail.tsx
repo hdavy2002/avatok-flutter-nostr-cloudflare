@@ -259,7 +259,7 @@ export function FilterRail({ value, onChange, counts, countsKnown, total, onClea
               const on = (value.sort ?? '') === o.id;
               return (
                 <button
-                  key={o.id || uiT("web-marketplace.37a8eec1ce19687d","default")}
+                  key={o.id || "default"}
                   type="button"
                   aria-pressed={on}
                   onClick={() => set({ sort: o.id })}

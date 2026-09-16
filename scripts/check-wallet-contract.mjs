@@ -3,6 +3,14 @@ import { readFileSync } from "node:fs";
 const screen = readFileSync("app/lib/features/wallet/wallet_screen.dart", "utf8");
 const widgets = readFileSync("app/lib/features/wallet/wallet_widgets.dart", "utf8");
 const statement = readFileSync("worker/src/routes/wallet_statement.ts", "utf8");
+const uiSource = JSON.parse(readFileSync("shared/i18n/source/app.json", "utf8"));
+// Resolve only the tooltip's bound source message before checking its exact
+// accessible copy and position inside SafeArea. Missing/changed copy still fails.
+const closeTooltip = 'uiCopy(UiMessage.m_close_transaction_details_e47aff4f23)';
+const screenWithSourceCopy = screen.replaceAll(
+  closeTooltip,
+  JSON.stringify(uiSource.m_close_transaction_details_e47aff4f23 ?? ''),
+);
 
 const failures = [];
 const requireText = (source, needle, message) => {
@@ -14,9 +22,9 @@ const forbid = (source, pattern, message) => {
 
 requireText(screen, "WalletMoneyTilesRow(", "wallet screen must use the guarded Money In/Out row");
 requireText(screen, "wallet_list_painted", "wallet must report loaded-vs-painted telemetry");
-requireText(screen, "Close transaction details", "transaction details must retain an accessible close button");
+requireText(screenWithSourceCopy, "Close transaction details", "transaction details must retain an accessible close button");
 requireText(screen, "'method': 'close_button'", "transaction detail close action must remain wired and observable");
-if (!/isScrollControlled: true,[\s\S]{0,500}?useSafeArea: true,[\s\S]{0,1000}?builder: \(c\) => SafeArea\([\s\S]{0,500}?top: true,[\s\S]{0,2500}?Close transaction details/.test(screen)) {
+if (!/isScrollControlled: true,[\s\S]{0,500}?useSafeArea: true,[\s\S]{0,1000}?builder: \(c\) => SafeArea\([\s\S]{0,500}?top: true,[\s\S]{0,2500}?Close transaction details/.test(screenWithSourceCopy)) {
   failures.push("transaction detail close button must remain below the system status bar");
 }
 requireText(widgets, "return IntrinsicHeight(", "wallet Money In/Out row must establish finite height");

@@ -566,7 +566,7 @@ function Inner() {
           value={email}
           readOnly={emailLocked}
           aria-invalid={errors.email ? true : undefined}
-          aria-describedby={errors.email ? uiT("web-auth.fabb6582786a7c93","su-email-err") : undefined}
+          aria-describedby={errors.email ? "su-email-err" : undefined}
           onChange={(e) => { setEmail(e.target.value); clearErr('email'); }}
           onKeyDown={(e) => {
             if (e.key !== 'Enter') return;
@@ -623,7 +623,7 @@ function Inner() {
           disabled={!phoneUnlocked}
           readOnly={phoneBusy}
           aria-invalid={errors.phone ? true : undefined}
-          aria-describedby={errors.phone ? uiT("web-auth.52da322279034269","su-phone-err") : undefined}
+          aria-describedby={errors.phone ? "su-phone-err" : undefined}
           onChange={(e) => onPhoneChange(e.target.value)}
           onKeyDown={(e) => {
             if (e.key !== 'Enter') return;

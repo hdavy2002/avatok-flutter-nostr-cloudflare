@@ -86,7 +86,7 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
     <label className="flex cursor-pointer items-center gap-3">
       <span
         className={['t-toggle', interacted && 'is-init'].filter(Boolean).join(' ')}
-        data-on={checked ? uiT("web-dashboard.b5bea41b6c623f7c","true") : uiT("web-dashboard.fcbcf165908dd18a","false")}
+        data-on={checked ? "true" : "false"}
         aria-hidden="true"
         style={{
           position: 'relative', display: 'inline-flex', alignItems: 'center', flex: 'none',
@@ -1234,7 +1234,7 @@ export function Step8Preview({ draft, checks, onSubmitForReview, publishing,
               </div>
             )}
             {vid && (
-              <div className={draft.cover_media.length > 0 ? uiT("web-dashboard.dc1d1f5a54cfdc4e","mt-4") : ''}>
+              <div className={draft.cover_media.length > 0 ? "mt-4" : ''}>
                 <span className={labelCls}><UiText id="web-dashboard.d534be829e32196b" source="Video" /></span>
                 {ytId ? (
                   <div className="overflow-hidden rounded-zine border-zine border-ink shadow-zine-xs" style={{ aspectRatio: '16 / 9' }}>
@@ -1257,7 +1257,7 @@ export function Step8Preview({ draft, checks, onSubmitForReview, publishing,
         <div className="flex flex-col gap-2">
           {checks.map((c) => (
             <div key={c.label} className="flex items-center gap-2">
-              <span className={c.info ? uiT("web-dashboard.2b9c204723a0a79d","text-inkMute") : c.ok ? uiT("web-dashboard.81dbf990801c60f5","text-lime") : uiT("web-dashboard.1f9c74894c20febf","text-coral")}>
+              <span className={c.info ? "text-inkMute" : c.ok ? "text-lime" : "text-coral"}>
                 {c.info ? '·' : c.ok ? '✓' : '○'}
               </span>
               <span className={`font-body font-bold text-[14px] ${c.info ? 'text-inkSoft' : 'text-ink'}`}>{c.label}</span>

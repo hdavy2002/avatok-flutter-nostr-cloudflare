@@ -204,7 +204,7 @@ function LiveTicket({ listing, onSelect }: { listing: Listing; onSelect: (s: Boo
         </p>
         <div className="flex items-center justify-between border-t-zine border-inkMute pt-3">
           <span className="font-display font-semibold text-[16px] text-ink"><UiText id="web-checkout.d0075d10512c0cf6" source="Ticket price" /></span>
-          <Pill kind={price > 0 ? uiT("web-checkout.a116c9ed46d62077","plain") : uiT("web-checkout.2689367b205c16ce","ok")}>{inrOrFree(price)}</Pill>
+          <Pill kind={price > 0 ? "plain" : "ok"}>{inrOrFree(price)}</Pill>
         </div>
         <Button
           variant="lime"
@@ -591,7 +591,7 @@ function CreatorSlotList({
                 {fmtDuration(s.start_at, s.end_at)} · {s.title}
               </span>
             </div>
-            <Pill kind={s.price_coins > 0 ? uiT("web-checkout.a116c9ed46d62077","plain") : uiT("web-checkout.2689367b205c16ce","ok")}>{coinLabel(Math.trunc(Number(s.price_coins || 0)))}</Pill>
+            <Pill kind={s.price_coins > 0 ? "plain" : "ok"}>{coinLabel(Math.trunc(Number(s.price_coins || 0)))}</Pill>
           </div>
         </Card>
       ))}

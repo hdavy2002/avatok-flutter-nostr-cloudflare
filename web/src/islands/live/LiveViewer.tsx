@@ -331,7 +331,7 @@ function Inner({ listingId, title, poster, creatorHandle }: LiveViewerProps) {
   }
 
   if (state.phase === 'ended') {
-    return <EndedCard title={title} creatorHref={state.creatorHref ?? uiT("web-live.1c8ad297ff1002f1","/explore")} />;
+    return <EndedCard title={title} creatorHref={state.creatorHref ?? "/explore"} />;
   }
 
   // waiting | live
