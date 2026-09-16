@@ -11,6 +11,7 @@
 //  * conflict feedback is live, debounced and stale-response protected;
 //  * Google readiness is surfaced from the server's own verdict.
 import 'dart:io';
+import '../lib/core/localization/ui_messages.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -84,7 +85,14 @@ void main() {
       expect(screen, contains('existingBase.version != value.version'));
       expect(screen, contains("This listing\\'s availability changed somewhere else"));
       expect(screen, contains('_timeStepEditingEnabled'));
-      expect(screen, contains('Discard edits and reload'));
+      expect(screen, matches(RegExp(
+        r'child: Text\(_scheduleDirty\s*\? uiCopy\(UiMessage\.m_discard_edits_and_reload_b20b6982f9\)',
+      )));
+      expect(uiSourceMessages[UiMessage.m_discard_edits_and_reload_b20b6982f9.name],
+          'Discard edits and reload');
+      expect(screen, matches(RegExp(
+        r'onPressed: _scheduleHydrating\s*\? null\s*:\s*\(\) => unawaited\(_retryHydrateSchedule\(\)\)',
+      )));
       expect(screen, contains('_confirmDiscardAndReloadSchedule'));
       expect(screen, contains("if (_kind == 'consult' && _scheduleBase == null)"));
     });
@@ -147,8 +155,16 @@ void main() {
     });
 
     test('draft and published copy are different', () {
-      expect(conflict, contains("return 'Draft: this time is not reserved yet."));
-      expect(conflict, contains('Published: this time is reserved for this listing.'));
+      expect(conflict, matches(RegExp(
+        r'if \(!published\) \{\s*return uiCopy\(UiMessage\.m_draft_this_time_is_not_3163ead944\);',
+      )));
+      expect(uiSourceMessages[UiMessage.m_draft_this_time_is_not_3163ead944.name],
+          'Draft: this time is not reserved yet. It is reserved when the listing is published.');
+      expect(conflict, matches(RegExp(
+        r'case AvailabilityMode\.exclusive:\s*return uiCopy\(UiMessage\.m_published_this_time_is_reserved_8b10aa631b\);',
+      )));
+      expect(uiSourceMessages[UiMessage.m_published_this_time_is_reserved_8b10aa631b.name],
+          'Published: this time is reserved for this listing.');
     });
   });
 

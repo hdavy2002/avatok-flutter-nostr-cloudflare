@@ -1,4 +1,5 @@
 import 'dart:io';
+import '../../../lib/core/localization/ui_messages.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -84,7 +85,11 @@ void main() {
     final card = File('lib/features/avatok/widgets/ai_media_job_card.dart').readAsStringSync();
     final media = File('lib/features/avatok/chat_thread/media.dart').readAsStringSync();
     expect(card, contains("job.kind == AiMediaJobKind.videoGenerate"));
-    expect(card, contains("Made on AvaTOK AI"));
+    expect(card, matches(RegExp(
+      r'UiText\(\s*UiMessage\.m_made_on_avatok_ai_4f8d067e19\s*,',
+    )));
+    expect(uiSourceMessages[UiMessage.m_made_on_avatok_ai_4f8d067e19.name],
+        'Made on AvaTOK AI');
     expect(card, contains('job.videoTitle'));
     expect(card, contains('job.videoDescription'));
     expect(media, contains('createVideoShareLink'));

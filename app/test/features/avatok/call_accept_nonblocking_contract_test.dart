@@ -1,4 +1,5 @@
 import 'dart:io';
+import '../../../lib/core/localization/ui_messages.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -63,7 +64,13 @@ void main() {
       isNot(contains("'Connecting…'")),
       reason: 'accept must not expose an intermediate connecting screen',
     );
-    expect(source, contains("? 'AvaTOK audio call'"));
+    expect(source, matches(RegExp(
+      r'Text\(_accepting\s*\? uiCopy\(UiMessage\.m_avatok_audio_call_944dd9dbe1\)',
+    )));
+    expect(uiSourceMessages[UiMessage.m_avatok_audio_call_944dd9dbe1.name],
+        'AvaTOK audio call');
+    expect(source, isNot(contains('UiMessage.m_connecting_72021eb70e')),
+        reason: 'localization must not reintroduce an intermediate connecting screen');
   });
 
   test('native accept bridges are time-boxed and synthetic decline is guarded',

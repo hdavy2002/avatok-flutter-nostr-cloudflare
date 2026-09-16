@@ -1,4 +1,5 @@
 import 'dart:io';
+import '../../../lib/core/localization/ui_messages.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -17,7 +18,11 @@ void main() {
     expect(media, contains('AudioPlaybackService.I.seek'));
     expect(media, contains('AudioPlaybackService.I.pause()'));
     expect(media, contains('AudioPlaybackService.I.resume()'));
-    expect(media, contains(r"tooltip: 'Share $title'"));
+    expect(musicPreview, contains(
+      "tooltip: uiCopy(UiMessage.m_share_title_f59ecee761, {'title': (title).toString()})",
+    ));
+    expect(uiSourceMessages[UiMessage.m_share_title_f59ecee761.name],
+        'Share {title}');
     expect(media, contains("return 'Ava original';"));
     expect(media, contains("final songTitle = (job.songTitle ?? '').trim();"));
     expect(media, contains("job.songDescription!.trim()"));
