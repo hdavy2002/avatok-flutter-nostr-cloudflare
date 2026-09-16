@@ -209,15 +209,15 @@ console.log('Sharing metadata and discovery checks passed for ideas and all 115 
 // The promoted homepage has one accurate share preview and canonical URL.
 const campaignImages = [...html.matchAll(/<meta property="og:image" content="([^"]+)"/g)].map(m => m[1]);
 assert.deepEqual(campaignImages, [
- 'https://avatok.ai/assets/home/avatok-creator-constellation.png',
+ 'https://avatok.ai/og/avatok-creator-marketplace.png',
 ], 'Homepage advertises one creator preview image');
-assert.equal(meta(html, 'og:title'), 'Apna hunar. Apni kamaai. · avaTOK');
-assert.equal(meta(html, 'og:description'), 'Turn your fanbase into paid live events, private 1:1 video meetups and group sessions. Your page, your price, your people.');
+assert.equal(meta(html, 'og:title'), 'avaTOK — Apna hunar. Apni kamaai.');
+assert.equal(meta(html, 'og:description'), 'Turn your skills into live events, 1:1 sessions and small-group classes. Create your listing, set your price, and start your show on avaTOK.');
 assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'twitter:image'), campaignImages[0]);
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));
-assert.equal(meta(html, 'og:image:width'), '1156');
-assert.equal(meta(html, 'og:image:height'), '1360');
+assert.equal(meta(html, 'og:image:width'), '1736');
+assert.equal(meta(html, 'og:image:height'), '906');
 for (const image of campaignImages) {
  const bytes = readFileSync(resolve(root, new URL(image).pathname.slice(1)));
  assert(bytes.length > 1000, 'Creator preview image is present');

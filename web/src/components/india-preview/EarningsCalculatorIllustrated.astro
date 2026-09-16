@@ -1,0 +1,142 @@
+---
+import { publicImage } from '../../lib/config';
+import { sourceHinglish as copy } from '../../lib/indiaLandingSource';
+---
+
+<section class="india-section india-calculator calculator-illustrated" aria-labelledby="addon-calculator-title" id="addon-calculator">
+<div class="india-wrap">
+<div class="calculator-heading">
+<div class="calculator-heading-copy">
+<p class="india-kicker">
+<span data-india-i18n="calcEyebrow">{copy.calcEyebrow}</span>
+</p>
+<h2 id="addon-calculator-title">
+<span data-india-i18n="calcTitle">{copy.calcTitle}</span>
+</h2>
+<p class="india-section-lede">
+<span data-india-i18n="calcBody">{copy.calcBody}</span>
+</p>
+</div>
+<div class="calculator-heading-art" aria-hidden="true">
+<img class="calculator-savings" src={publicImage('/assets/landing-steps-preview/savings-original.png', { width: 400, fit: 'scale-down' })} alt="" width="150" height="150" loading="lazy" decoding="async" />
+</div>
+</div>
+<div class="india-calc-grid" data-india-calculator>
+<form class="india-calc-form" aria-label={copy.ariaCalculator} data-india-i18n-attr="aria-label:ariaCalculator">
+<span class="calculator-corner calculator-corner--start" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/calculator-corner.png', { width: 200, fit: 'scale-down' })} alt="" width="100" height="100" loading="lazy" decoding="async" /></span>
+<span class="calculator-corner calculator-corner--end" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/calculator-corner.png', { width: 200, fit: 'scale-down' })} alt="" width="100" height="100" loading="lazy" decoding="async" /></span>
+<label>
+<span>
+<span data-india-i18n="calcLiveLabel">{copy.calcLiveLabel}</span>
+</span>
+<output data-calc-live-price>₹2,000</output>
+<input data-calc="livePrice" type="range" min="0" max="50000" step="100" value="2000" />
+</label>
+<label>
+<span>
+<span data-india-i18n="calcAudienceLabel">{copy.calcAudienceLabel}</span>
+</span>
+<output data-calc-audience>100</output>
+<input data-calc="audience" type="range" min="0" max="10000" step="1" value="100" />
+</label>
+<label>
+<span>
+<span data-india-i18n="calcEventsLabel">{copy.calcEventsLabel}</span>
+</span>
+<output data-calc-events>2</output>
+<input data-calc="events" type="range" min="0" max="31" step="1" value="2" />
+</label>
+<label>
+<span>
+<span data-india-i18n="calcOneLabel">{copy.calcOneLabel}</span>
+</span>
+<output data-calc-one-price>₹1,500</output>
+<input data-calc="onePrice" type="range" min="0" max="50000" step="100" value="1500" />
+</label>
+<label>
+<span>
+<span data-india-i18n="calcBookingsLabel">{copy.calcBookingsLabel}</span>
+</span>
+<output data-calc-bookings>5</output>
+<input data-calc="bookings" type="range" min="0" max="1000" step="1" value="5" />
+</label>
+</form>
+<div class="india-calc-result">
+<span class="calculator-corner calculator-corner--start" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/calculator-corner.png', { width: 200, fit: 'scale-down' })} alt="" width="100" height="100" loading="lazy" decoding="async" /></span>
+<span class="calculator-corner calculator-corner--end" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/calculator-corner.png', { width: 200, fit: 'scale-down' })} alt="" width="100" height="100" loading="lazy" decoding="async" /></span>
+<div>
+<span>
+<span data-india-i18n="calcLiveTotal">{copy.calcLiveTotal}</span>
+</span>
+<strong data-calc-live-total>₹4,00,000</strong>
+</div>
+<div>
+<span>
+<span data-india-i18n="calcOneTotal">{copy.calcOneTotal}</span>
+</span>
+<strong data-calc-one-total>₹7,500</strong>
+</div>
+<div class="india-calc-total">
+<span>
+<span data-india-i18n="calcTotal">{copy.calcTotal}</span>
+</span>
+<strong data-calc-total>₹4,07,500</strong>
+</div>
+<p>
+<span data-india-i18n="calcDisclaimer">{copy.calcDisclaimer}</span>
+</p>
+<p>
+<span>
+<span data-india-i18n="calcPricingNote">{copy.calcPricingNote}</span>
+</span> <a href="/pricing-fees" data-india-i18n="chrome.pricing">Pricing guide</a>
+</p>
+</div>
+</div>
+</div>
+</section>
+
+<style>
+:global(.india-additions) .calculator-illustrated .calculator-heading { display:grid; grid-template-columns:minmax(0,1fr) 260px; align-items:center; gap:32px; }
+:global(.india-additions) .calculator-illustrated .calculator-heading-copy { min-width:0; }
+:global(.india-additions) .calculator-illustrated .india-kicker { font-size:16px; }
+:global(.india-additions) .calculator-illustrated h2 { line-height:1.14; }
+:global(.india-additions) .calculator-illustrated .india-section-lede { font-size:18px; margin-bottom:0; }
+.calculator-heading-art { display:grid; grid-template-columns:220px; grid-template-rows:220px; align-items:center; justify-content:center; gap:6px 12px; pointer-events:none; }
+.calculator-heading-art img { display:block; width:100%; height:100%; object-fit:contain; }
+.calculator-savings { grid-column:1; grid-row:1; }
+:global(.india-additions) .calculator-illustrated .india-calc-grid { grid-template-columns:repeat(2,minmax(0,1fr)); align-items:stretch; gap:36px; margin-top:40px; }
+:global(.india-additions) .calculator-illustrated :is(.india-calc-form,.india-calc-result) { position:relative; min-width:0; padding:70px 32px; border:3px double #35415c; border-radius:22px; outline:5px solid #fff5df; outline-offset:0; box-shadow:7px 8px 0 #c8b28d; transform:none; }
+:global(.india-additions) .calculator-illustrated .india-calc-form { background:#fff9ec; }
+:global(.india-additions) .calculator-illustrated .india-calc-result { background:#ffe2a0; }
+:global(.india-additions) .calculator-illustrated :is(.india-calc-form,.india-calc-result)::before { content:''; position:absolute; inset:8px; border:2px dotted #bd5947; border-radius:14px; pointer-events:none; }
+.calculator-corner { position:absolute; display:block; width:100px; height:100px; z-index:1; pointer-events:none; }
+.calculator-corner img { display:block; width:100%; height:100%; object-fit:contain; }
+.calculator-corner--start { top:-8px; left:-8px; }
+.calculator-corner--end { bottom:-8px; right:-8px; transform:rotate(180deg); }
+:global(.india-additions) .calculator-illustrated .india-calc-form label { font-size:16px; line-height:1.5; column-gap:12px; }
+:global(.india-additions) .calculator-illustrated .india-calc-form output { font-size:18px; }
+:global(.india-additions) .calculator-illustrated .india-calc-result > div { font-size:16px; line-height:1.5; }
+:global(.india-additions) .calculator-illustrated .india-calc-result strong { font-size:28px; max-width:100%; overflow-wrap:anywhere; }
+:global(.india-additions) .calculator-illustrated .india-calc-result .india-calc-total strong { font-size:clamp(30px,3.7vw,48px); line-height:1.2; }
+:global(.india-additions) .calculator-illustrated .india-calc-result p { font-size:16px; line-height:1.65; }
+@media(max-width:900px) {
+ :global(.india-additions) .calculator-illustrated .calculator-heading { grid-template-columns:minmax(0,1fr) 210px; gap:24px; }
+ .calculator-heading-art { grid-template-columns:190px; grid-template-rows:190px; gap:4px 8px; }
+ :global(.india-additions) .calculator-illustrated .india-calc-grid { gap:26px; }
+ :global(.india-additions) .calculator-illustrated :is(.india-calc-form,.india-calc-result) { padding-inline:24px; }
+}
+@media(max-width:699px) {
+ :global(.india-additions) .calculator-illustrated .calculator-heading { grid-template-columns:minmax(0,1fr); gap:24px; }
+ :global(.india-additions) .calculator-illustrated .calculator-heading-art { justify-self:center; }
+ :global(.india-additions) .calculator-illustrated h2 { font-size:clamp(28px,7vw,40px); }
+ :global(.india-additions) .calculator-illustrated .india-section-lede { font-size:16px; }
+ :global(.india-additions) .calculator-illustrated .india-calc-grid { grid-template-columns:minmax(0,1fr); gap:32px; margin-top:30px; }
+ :global(.india-additions) .calculator-illustrated :is(.india-calc-form,.india-calc-result) { padding:55px 24px; border-radius:18px; }
+ .calculator-corner { width:64px; height:64px; }
+ :global(.india-additions) .calculator-illustrated .india-calc-result .india-calc-total strong { font-size:clamp(30px,8vw,44px); }
+}
+@media(max-width:380px) {
+ :global(.india-additions) .calculator-illustrated .india-calc-form label { grid-template-columns:minmax(0,1fr); row-gap:6px; }
+ :global(.india-additions) .calculator-illustrated .india-calc-result strong { font-size:24px; }
+}
+</style>

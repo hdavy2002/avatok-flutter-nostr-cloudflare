@@ -1,0 +1,102 @@
+---
+import { publicImage } from '../../lib/config';
+import { sourceHinglish as copy } from '../../lib/indiaLandingSource';
+const steps = [
+  ['stepOne', 'stepOneBody', 'create', 'A creator preparing a page and a new offer.'],
+  ['stepTwo', 'stepTwoBody', 'price', 'A creator choosing a ticket or session price.'],
+  ['stepThree', 'stepThreeBody', 'share', 'Sharing an invitation with a community of fans.'],
+  ['stepFour', 'stepFourBody', 'host', 'A creator welcoming people to an online session.'],
+] as const;
+---
+<section class="booking-express booking-illustrated rail-wrap" id="consultations" aria-labelledby="formats-title" data-home-section="start">
+  <span id="formats" aria-hidden="true"></span>
+  <h2 class="rail-flowered express-formats-title" id="formats-title"><img src={publicImage('/ornament-flower.png', { width: 68, fit: 'scale-down' })} alt="" width="34" height="34" /> Ek platform. Teen tareeke. <img src={publicImage('/ornament-flower.png', { width: 68, fit: 'scale-down' })} alt="" width="34" height="34" /></h2>
+      <div class="rail-format-grid">
+        <a id="live-streaming" href="/marketplace?group=india_goes_live" data-home-cta="format-live"><span class="express-format-sticker" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/live-original.png', { width: 400, fit: 'scale-down' })} alt="" width="96" height="96" loading="lazy" decoding="async" /></span><span><h3>Live events</h3><p>Sell tickets to your stream.</p></span><span aria-hidden="true">↗</span></a>
+        <a id="live-friends" href="/marketplace?group=book_their_time" data-home-cta="format-private"><span class="express-format-sticker" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/one-original.png', { width: 400, fit: 'scale-down' })} alt="" width="96" height="96" loading="lazy" decoding="async" /></span><span><h3>1:1 sessions</h3><p>Offer your undivided time.</p></span><span aria-hidden="true">↗</span></a>
+        <a id="group-sessions" href="/marketplace?group=book_their_time" data-home-cta="format-group"><span class="express-format-sticker" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/group-original.png', { width: 400, fit: 'scale-down' })} alt="" width="96" height="96" loading="lazy" decoding="async" /></span><span><h3>Group sessions</h3><p>Teach or advise a small group.</p></span><span aria-hidden="true">↗</span></a>
+      </div>
+
+  <div class="express-ticket" id="how-avatok-works">
+    <span id="how-it-works" aria-hidden="true"></span>
+    <div class="express-heading">
+      <div class="express-booking-art" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/booking-original.png', { width: 400, fit: 'scale-down' })} alt="" width="140" height="140" loading="lazy" decoding="async" /></div>
+      <div class="express-title">
+        <p class="express-label">Your first booking express</p>
+        <h3><span data-india-i18n="journeyTitle">{copy.journeyTitle}</span></h3>
+      </div>
+      <div class="express-stamp" aria-hidden="true"><img src={publicImage('/assets/landing-steps-preview/opportunities-original.png', { width: 400, fit: 'scale-down' })} alt="" width="112" height="112" loading="lazy" decoding="async" /></div>
+    </div>
+    <ol class="express-steps">
+      {steps.map(([title, body, image, alt], index) => <li>
+        <div class="express-step-art"><img src={publicImage(`/assets/landing-steps-preview/${image}.png`, { width: 900, fit: 'scale-down' })} alt={alt} width="1254" height="1254" loading="lazy" decoding="async" /><span class="express-number">0{index + 1}</span></div>
+        <div class="express-step-copy">
+        <h4 data-india-i18n={title}>{copy[title]}</h4>
+        <p data-india-i18n={index === 3 ? undefined : body}>{index === 3 ? "Start your show on your app." : copy[body]}</p>
+        </div>
+      </li>)}
+    </ol>
+    <div class="express-bottom">
+      <a class="rail-button rail-button--ink" href="/sign-up" data-home-cta="booking-express-create">Create your free listing <span aria-hidden="true">↗</span></a>
+      <p class="rail-script">Chhoti shuruaat<br />badi kahaniyan banati hai.</p>
+    </div>
+  </div>
+</section>
+
+<style>
+.booking-illustrated { padding-block:44px 32px; }
+.booking-illustrated .express-formats-title { font-size:clamp(24px,2.8vw,42px); line-height:1.3; text-align:center; }
+.booking-illustrated .rail-format-grid { grid-template-columns:repeat(3,minmax(0,1fr)); margin-block:28px 42px; gap:0; }
+.booking-illustrated .rail-format-grid > a { flex-direction:row; text-align:left; min-width:0; gap:18px; padding:12px 22px; }
+.booking-illustrated .rail-format-grid > a > span:nth-child(2) { min-width:0; }
+.booking-illustrated .rail-format-grid h3 { font-family:'Comfortaa','Baloo 2',sans-serif; font-size:24px; font-weight:400; line-height:1.3; text-transform:none; }
+.booking-illustrated .rail-format-grid p { font-size:16px; line-height:1.5; margin-top:8px; }
+.express-format-sticker { display:block; flex:0 0 96px; width:96px; height:108px; }
+.express-format-sticker img { display:block; width:100%; height:100%; object-fit:contain; mix-blend-mode:normal; }
+.booking-illustrated .express-ticket { position:relative; padding:32px; background:#ffce67 url('/assets/global-original/paper.webp') center/700px; background-blend-mode:multiply; border:1px solid #ac7e38; border-radius:24px; box-shadow:4px 5px 0 #cbb78f; }
+.express-heading { display:grid; grid-template-columns:190px minmax(0,1fr) 190px; gap:24px; align-items:center; }
+.express-booking-art img { display:block; width:100%; height:auto; object-fit:contain; }
+.booking-illustrated .express-label { font-family:'Instrument Sans',Arial,sans-serif; font-size:16px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; margin-bottom:12px; }
+.booking-illustrated .express-title h3 { font-family:'Comfortaa','Baloo 2',sans-serif; font-size:clamp(26px,3vw,42px); font-weight:400; text-transform:none; line-height:1.3; }
+.express-stamp { display:flex; flex-direction:column; align-items:center; gap:8px; padding:0; border:0; text-align:center; }
+.express-stamp > img { display:block; width:190px; height:190px; object-fit:contain; mix-blend-mode:normal; }
+.booking-illustrated .express-steps { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:20px; list-style:none; padding:30px 0; margin:28px 0; border-block:1px dashed #b58539; }
+.express-steps > li { min-width:0; position:relative; overflow:hidden; background:#f8d2ca; border:1.5px solid #66493c; border-radius:15px; box-shadow:3px 4px 0 #a97940; }
+.express-steps > li:nth-child(2) { background:#f8e7a9; }
+.express-steps > li:nth-child(3) { background:#c5d9e6; }
+.express-steps > li:nth-child(4) { background:#fff1d9; }
+.express-step-art { position:relative; padding:8px; background:#fff; border-bottom:1.5px solid #66493c; }
+.express-step-art > img { display:block; width:100%; height:auto; aspect-ratio:1; object-fit:cover; border-radius:8px; }
+.express-number { position:absolute; left:12px; top:12px; display:grid; place-items:center; width:44px; height:44px; border:1.5px solid #66493c; border-radius:50%; background:#fff7e8; box-shadow:2px 2px 0 #66493c; font-family:'Kalam',cursive; font-size:25px; line-height:1; color:#bd3526; }
+.express-step-copy { padding:20px 18px 24px; }
+.express-steps h4 { font-family:'Comfortaa','Baloo 2',sans-serif; font-size:28px; line-height:1.25; font-weight:400; margin:0 0 12px; }
+.booking-illustrated .express-steps p { font-size:17px; line-height:1.55; }
+.express-steps small { display:block; font-size:16px; line-height:1.5; margin-top:12px; color:#514331; }
+.express-bottom { display:flex; justify-content:center; align-items:center; gap:40px; }
+.express-bottom .rail-script { max-width:230px; }
+.booking-illustrated .express-bottom .rail-button { max-width:100%; font-size:16px; text-align:center; }
+@media(max-width:1100px) {
+ .booking-illustrated .rail-format-grid > a { flex-direction:column; text-align:center; gap:12px; padding-inline:16px; }
+ .express-heading { grid-template-columns:140px minmax(0,1fr) 140px; gap:18px; }
+ .express-stamp > img { width:140px; height:140px; }
+ .booking-illustrated .express-steps { grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; }
+}
+@media(max-width:699px) {
+ .booking-illustrated { padding-block:30px 24px; }
+ .booking-illustrated .express-formats-title { gap:10px; }
+ .express-formats-title img { width:24px; height:24px; }
+ .booking-illustrated .rail-format-grid { grid-template-columns:1fr; margin-block:22px 30px; }
+ .booking-illustrated .rail-format-grid > a { flex-direction:row; text-align:left; padding:20px 0; gap:16px; border-left:0; }
+ .booking-illustrated .rail-format-grid > a + a { border-top:1px solid #cfbfa8; }
+ .express-format-sticker { flex-basis:80px; width:80px; height:88px; }
+ .booking-illustrated .express-ticket { padding:24px 16px; border-radius:20px; }
+ .express-heading { grid-template-columns:1fr; gap:20px; text-align:center; }
+ .express-booking-art { width:170px; margin-inline:auto; }
+ .express-stamp { flex-direction:row; justify-content:center; gap:14px; width:fit-content; max-width:100%; margin-inline:auto; padding:0; }
+ .express-stamp > img { width:170px; height:170px; flex-shrink:0; }
+ .booking-illustrated .express-steps { grid-template-columns:1fr; gap:24px; margin-block:24px; padding-block:24px; }
+ .express-step-copy { padding:22px; }
+ .express-bottom { flex-direction:column; gap:22px; text-align:center; }
+ .booking-illustrated .express-bottom .rail-button { padding-inline:16px; gap:12px; }
+}
+</style>

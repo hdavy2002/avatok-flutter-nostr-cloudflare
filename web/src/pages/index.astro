@@ -7,20 +7,20 @@ import { creatorIdeas, formats, topics } from '../lib/creatorIdeas';
 import '../styles/railway-home.css';
 import '../styles/india-additions.css';
 import CreatorIdeas from '../components/india-preview/CreatorIdeas.astro';
-import BookingExpress from '../components/india-preview/BookingExpress.astro';
-import EarningsCalculator from '../components/india-preview/EarningsCalculator.astro';
+import BookingExpress from '../components/india-preview/BookingExpressIllustrated.astro';
+import EarningsCalculator from '../components/india-preview/EarningsCalculatorIllustrated.astro';
 import { publicImage } from '../lib/config';
 
 const ideas = creatorIdeas.slice(0, 6);
 
 ---
 <Base
-  title="Apna hunar. Apni kamaai. · avaTOK"
-  description="Turn your fanbase into paid live events, private 1:1 video meetups and group sessions. Your page, your price, your people."
-  image="/assets/home/avatok-creator-constellation.png"
-  imageAlt="Creators hosting live events, group sessions and private one-to-one video meetups."
-  imageWidth={1156}
-  imageHeight={1360}
+  title="avaTOK — Apna hunar. Apni kamaai."
+  description="Turn your skills into live events, 1:1 sessions and small-group classes. Create your listing, set your price, and start your show on avaTOK."
+  image="/og/avatok-creator-marketplace.png"
+  imageAlt="An avaTOK creator hosting a live session, with the words Apna hunar. Apni kamaai."
+  imageWidth={1736}
+  imageHeight={906}
   chrome={false}
   lang="hi-Latn"
 >
@@ -30,7 +30,7 @@ const ideas = creatorIdeas.slice(0, 6);
     <link rel="preload" as="image" href={publicImage('/assets/home/avatok-creator-constellation.png', { width: 1156, fit: 'scale-down' })} />
   </Fragment>
   <a class="rail-skip" href="#ideas-catalogue">Skip to earning ideas</a>
-  <SiteHeader indiaLandingLanguage={true} />
+  <SiteHeader indiaLandingLanguage={false} />
   <main class="rail-home" data-design="creator-marketplace-2026-09" id="main-content">
     <section class="station-hero creator-hero" aria-labelledby="rail-title">
       <div class="creator-hero__frame">
@@ -75,7 +75,7 @@ const ideas = creatorIdeas.slice(0, 6);
 
     <section class="rail-ideas rail-wrap" id="ideas-catalogue" aria-labelledby="ideas-title" data-home-section="ideas">
       <p class="rail-eyebrow rail-flowered"><img src="/ornament-flower.png" alt="" width="28" height="28" /> Kya offer karoge? <img src="/ornament-flower.png" alt="" width="28" height="28" /></p>
-      <h2 id="ideas-title">Socha hai, isse bhi <span>kamaa sakte ho?</span></h2>
+      <h2 id="ideas-title">Isse bhi <span>kamaa sakte ho?</span></h2>
       <p class="rail-section-copy">A few ideas to get your first listing started.</p>
       <div class="rail-idea-grid">
         {ideas.map((idea) => (
@@ -111,3 +111,14 @@ const ideas = creatorIdeas.slice(0, 6);
     import '../lib/indiaCreators';
   </script>
 </Base>
+
+
+<style>
+.india-additions { padding-block:40px; }
+@media(max-width:699px) { .india-additions { padding-block:24px; } }
+#ideas-catalogue .idea-picture { padding:8px; background:#fff; aspect-ratio:auto; }
+#ideas-catalogue .idea-picture img { display:block; width:100%; height:auto; aspect-ratio:3 / 2; object-fit:contain; border-radius:8px; }
+@media(max-width:699px) {
+ #ideas-catalogue .idea-picture { padding:6px; }
+}
+</style>
