@@ -209,18 +209,25 @@ console.log('Sharing metadata and discovery checks passed for ideas and all 115 
 // The promoted homepage has one accurate share preview and canonical URL.
 const campaignImages = [...html.matchAll(/<meta property="og:image" content="([^"]+)"/g)].map(m => m[1]);
 assert.deepEqual(campaignImages, [
- 'https://avatok.ai/og/avatok-creator-marketplace.png',
+ 'https://avatok.ai/og/avatok-creator-marketplace-share.jpg',
 ], 'Homepage advertises one creator preview image');
 assert.equal(meta(html, 'og:title'), 'avaTOK — Apna hunar. Apni kamaai.');
 assert.equal(meta(html, 'og:description'), 'Turn your skills into live events, 1:1 sessions and small-group classes. Create your listing, set your price, and start your show on avaTOK.');
 assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'twitter:image'), campaignImages[0]);
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));
-assert.equal(meta(html, 'og:image:width'), '1736');
-assert.equal(meta(html, 'og:image:height'), '906');
+assert.equal(meta(html, 'og:image:width'), '1200');
+assert.equal(meta(html, 'og:image:height'), '626');
+assert.equal(meta(html, 'og:image:type'), 'image/jpeg');
 for (const image of campaignImages) {
- const bytes = readFileSync(resolve(root, new URL(image).pathname.slice(1)));
- assert(bytes.length > 1000, 'Creator preview image is present');
+ const imagePath = resolve(root, new URL(image).pathname.slice(1));
+ assert(existsSync(imagePath), 'Published creator preview image exists');
+ const bytes = readFileSync(imagePath);
+ assert(bytes.length > 1000 && bytes.length < 300_000, 'Creator preview image is present and below 300 KB for social crawlers');
+ const metadata = await sharp(bytes).metadata();
+ assert.equal(metadata.format, 'jpeg', 'Creator preview bytes match the advertised JPEG MIME type');
+ assert.equal(metadata.width, Number(meta(html, 'og:image:width')), 'Creator preview width matches its metadata');
+ assert.equal(metadata.height, Number(meta(html, 'og:image:height')), 'Creator preview height matches its metadata');
 }
 assert.match(html, /<link\b[^>]*rel="canonical"[^>]*href="https:\/\/avatok\.ai\/"/, 'Homepage canonical is the root URL');
 assert.equal(meta(html, 'og:url'), 'https://avatok.ai/');
