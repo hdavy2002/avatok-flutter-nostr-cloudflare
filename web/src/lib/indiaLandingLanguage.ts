@@ -38,8 +38,6 @@ export function initIndiaLandingLanguage(root: ParentNode = document) {
     try { window.localStorage.setItem(INDIA_LANDING_LANGUAGE_KEY,locale.code); } catch {}
     window.dispatchEvent(new CustomEvent(INDIA_LANGUAGE_CHANGE,{detail:{code:locale.code,dir:locale.dir}}));
   };
-  const menu=document.getElementById('avh-mobile');
-  menu?.addEventListener('keydown',event=>{if(event.key==='Escape'){const button=document.querySelector<HTMLButtonElement>('.avh-burger');if(button?.getAttribute('aria-expanded')==='true'){button.click();button.focus();event.preventDefault();}}});
   controls.forEach(select=>select.addEventListener('change',()=>apply(select.value)));
   let saved:string=defaultLocale;
   try { saved=window.localStorage.getItem(INDIA_LANDING_LANGUAGE_KEY)||defaultLocale; } catch {}

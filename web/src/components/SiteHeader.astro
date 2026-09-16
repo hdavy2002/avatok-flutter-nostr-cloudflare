@@ -164,20 +164,22 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
     <img class="avh-orn" src="/ornament-flower.png" alt="" width="85" height="80" aria-hidden="true" />
   </div>
 
-  <button class="avh-burger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="avh-mobile" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.menu' : undefined}>
+  <button class="avh-burger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="avh-drawer" aria-haspopup="dialog" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.menu' : undefined}>
     <svg width="20" height="15" viewBox="0 0 20 15" aria-hidden="true">
       <path d="M1 1.5h18M1 7.5h18M1 13.5h18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" />
     </svg>
   </button>
   </div>
 
-{/* [UI-MOTION-1 2026-09-10] "menu-dropdown" (transitions.dev, `.t-dropdown` in
-    styles/motion.css) — fade + scale instead of an instant show/hide. The
-    `hidden` attribute is still the source of truth for accessibility (an
-    open-attribute-only approach would leave the panel in the tab order while
-    invisible); the script below only defers setting it back on close until
-    the exit transition finishes. */}
-<nav class:list={['avh-mobile', 't-dropdown', responsiveHome && 'avh-mobile--home']} id="avh-mobile" aria-label="Main (mobile)" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.mainNav' : undefined} hidden>
+</header>
+
+{/* Independent top-layer drawer: the sticky header never moves or resizes. */}
+<dialog class="avh-drawer" id="avh-drawer" aria-label="Navigation menu">
+  <div class="avh-drawer-heading">
+    <img src="/avatok-logo.png" alt="avaTOK" width="154" height="60" />
+    <button class="avh-drawer-close" type="button" aria-label="Close menu" autofocus>×</button>
+  </div>
+<nav class:list={['avh-mobile', responsiveHome && 'avh-mobile--home']} id="avh-mobile" aria-label="Main (mobile)" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.mainNav' : undefined}>
   {indiaLandingLanguage && <IndiaLanguageSelector id="india-language-mobile" />}
   {headerLinks.map((l) => <a href={l.href} data-india-i18n={indiaLandingLanguage ? chromeNavKey(l.label) : undefined}>{l.label}</a>)}
   {/* [WEB-HEADER-10] Auth moves OUT of the bar and in here below 1100px.
@@ -194,67 +196,74 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
   </Fragment>
   {variant === 'global' && <a class="avh-mobile-auth" href="/india">🌍 India</a>}
 </nav>
-</header>
+</dialog>
 
-{indiaLandingLanguage && <script>
-  if (document.querySelector('[data-india-page]')) {
-    import('../lib/indiaLandingLanguage').then(({ initIndiaLandingLanguage }) => initIndiaLandingLanguage(document));
-  }
-</script>}
+
 
 </>}
 
 <script>
-  // Progressive enhancement: the header is fully usable without this — the
-  // mobile list is simply hidden until toggled. With JS, the show/hide is a
-  // "menu-dropdown" fade+scale (`.t-dropdown`, motion.css) instead of an
-  // instant swap; without it, the plain `hidden` toggle below still works.
+  if (document.querySelector('[data-india-page]')) {
+    import('../lib/indiaLandingLanguage').then(({ initIndiaLandingLanguage }) => initIndiaLandingLanguage(document));
+  }
   const burger = document.querySelector<HTMLButtonElement>('.avh-burger');
+  const drawer = document.querySelector<HTMLDialogElement>('#avh-drawer');
   const panel = document.getElementById('avh-mobile');
-  let avhCloseTimer: ReturnType<typeof setTimeout> | undefined;
-  const header = burger?.closest('header');
-  // Keep the overlay within the visible viewport, including tablet rotation.
-  function sizeMobilePanel() {
-    if (panel && header) panel.style.maxHeight = `${Math.max(0, window.innerHeight - header.getBoundingClientRect().bottom)}px`;
-  }
-  if (header) new ResizeObserver(sizeMobilePanel).observe(header);
-  window.addEventListener('resize', sizeMobilePanel);
-  panel?.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') { closeMobilePanel(); burger?.focus(); }
-  });
+  const closeButton = drawer?.querySelector<HTMLButtonElement>('.avh-drawer-close');
+  let closeTimer: ReturnType<typeof setTimeout> | undefined;
+  let rootOverflow = '';
+  let savedScrollY = 0;
+  let savedScrollX = 0;
+  let closing = false;
 
-  function openMobilePanel() {
-    if (!panel) return;
-    clearTimeout(avhCloseTimer);
-    panel.classList.remove('is-closing');
-    sizeMobilePanel();
-    panel.hidden = false;
-    // Two rAFs: lets the browser paint the just-unhidden "closed" frame
-    // (`.t-dropdown`'s base scale/opacity) before `.is-open` lands — one rAF
-    // alone is sometimes coalesced with the `hidden` removal.
-    requestAnimationFrame(() => requestAnimationFrame(() => panel.classList.add('is-open')));
-    burger?.setAttribute('aria-expanded', 'true');
-  }
-
-  function closeMobilePanel() {
-    if (!panel) return;
-    panel.classList.remove('is-open');
-    panel.classList.add('is-closing');
+  function finishClose(restoreFocus = true) {
+    if (!drawer?.open) return;
+    clearTimeout(closeTimer);
+    drawer.classList.remove('is-open');
+    drawer.close();
+    document.documentElement.style.overflow = rootOverflow;
+    window.scrollTo({ left: savedScrollX, top: savedScrollY, behavior: 'instant' });
     burger?.setAttribute('aria-expanded', 'false');
-    const ms = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dropdown-close-dur')) || 150;
-    avhCloseTimer = setTimeout(() => {
-      panel.hidden = true;
-      panel.classList.remove('is-closing');
-    }, ms);
+    closing = false;
+    if (restoreFocus) burger?.focus({ preventScroll: true });
   }
 
-  burger?.addEventListener('click', () => {
-    const open = burger.getAttribute('aria-expanded') === 'true';
-    if (open) closeMobilePanel(); else openMobilePanel();
-  });
+  function closeDrawer(immediate = false, restoreFocus = true) {
+    if (!drawer?.open || closing) return;
+    closing = true;
+    drawer.classList.remove('is-open');
+    burger?.setAttribute('aria-expanded', 'false');
+    if (immediate || window.matchMedia('(prefers-reduced-motion: reduce)').matches) finishClose(restoreFocus);
+    else closeTimer = setTimeout(() => finishClose(restoreFocus), 220);
+  }
 
+  function openDrawer() {
+    if (!drawer || drawer.open) return;
+    savedScrollY = window.scrollY;
+    savedScrollX = window.scrollX;
+    rootOverflow = document.documentElement.style.overflow;
+    drawer.showModal(); // Native focus containment and an inert background.
+    document.documentElement.style.overflow = 'hidden';
+    window.scrollTo({ left: savedScrollX, top: savedScrollY, behavior: 'instant' });
+    burger?.setAttribute('aria-expanded', 'true');
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (drawer.open && !closing) drawer.classList.add('is-open');
+    }));
+  }
+
+  burger?.addEventListener('click', openDrawer);
+  closeButton?.addEventListener('click', () => closeDrawer());
+  drawer?.addEventListener('cancel', (event) => { event.preventDefault(); closeDrawer(); });
+  drawer?.addEventListener('click', (event) => {
+    if (event.target !== drawer) return;
+    const rect = drawer.getBoundingClientRect();
+    if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) closeDrawer();
+  });
   panel?.addEventListener('click', (event) => {
-    if ((event.target as Element).closest('a')) closeMobilePanel();
+    if ((event.target as Element).closest('a')) closeDrawer(true, false);
+  });
+  window.matchMedia('(min-width: 1101px)').addEventListener('change', (event) => {
+    if (event.matches) closeDrawer(true, false);
   });
 
   // [WEB-POSTHOG-1] §2.9 nav_click{item}. Contract:
@@ -371,12 +380,29 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
 
   .avh-burger { display: none; margin-left: auto; border: 2px solid var(--avh-ink); border-radius: 100px; background: none; padding: 8px 11px; cursor: pointer; color: var(--avh-ink); }
 
-  /* [WEB-MOBILE-MENU-2] The menu belongs to the sticky header, not page flow.
-     Absolute positioning avoids moving the page when opened near its footer. */
-  .avh:not(.avh--sticky) { position: relative; }
-  .avh-mobile { display: none; position: absolute; inset: 100% 0 auto; z-index: 1;
-    overflow-y: auto; overscroll-behavior: contain; max-height: calc(100dvh - 120px);
-    box-shadow: 0 8px 12px #16161418; }
+  html { scrollbar-gutter: stable; }
+  .avh-drawer {
+    --avh-cream: #f7ead5; --avh-ink: #161614; --avh-red: #d93825;
+    position: fixed; inset: 0 0 0 auto; margin: 0; width: min(380px, 88vw);
+    height: 100vh; height: 100dvh; max-height: 100dvh; max-width: 100%;
+    padding: 0 0 env(safe-area-inset-bottom); border: 0; border-radius: 24px 0 0 24px;
+    background: var(--avh-cream); color: var(--avh-ink); font-family: 'Nunito', system-ui, sans-serif;
+    overflow-y: auto; overscroll-behavior: contain; box-shadow: -12px 0 36px #16161426;
+    transform: translateX(100%); transition: transform 220ms ease;
+  }
+  .avh-drawer:not([open]) { display: none; }
+  .avh-drawer.is-open { transform: translateX(0); }
+  .avh-drawer::backdrop { background: #16161480; }
+  .avh-drawer-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px;
+    position: sticky; top: 0; z-index: 1; padding: max(18px, env(safe-area-inset-top)) 20px 18px;
+    background: var(--avh-cream); border-bottom: 1px solid #d7c8af; }
+  .avh-drawer-heading img { width: 120px; height: auto; }
+  .avh-drawer-close { display: grid; place-items: center; width: 44px; height: 44px;
+    border: 2px solid var(--avh-ink); border-radius: 50%; font-size: 30px; line-height: 1;
+    background: transparent; color: inherit; cursor: pointer; }
+  .avh-drawer-close:focus-visible { outline: 3px solid var(--avh-red); outline-offset: 3px; }
+  .avh-mobile { display: none; }
+  @media (prefers-reduced-motion: reduce) { .avh-drawer { transition: none; } }
 
   @media (max-width: 1100px) {
     /* .avh-right holds Log in / Sign up; both are in the panel below now. */
@@ -391,7 +417,7 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
       display: grid;
       grid-template-columns: minmax(0, 1fr);
       gap: 8px;
-      padding: 0 16px 14px;
+      padding: 20px 20px 28px;
       background: var(--avh-cream);
     }
     .avh-mobile a {
