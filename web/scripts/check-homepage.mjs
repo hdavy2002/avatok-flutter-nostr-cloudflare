@@ -4,9 +4,11 @@ import { createHash } from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import sharp from 'sharp';
+import { normalizeBuiltImages, validateBuiltImageSources } from './built-image-source.mjs';
 
 const root = resolve('dist');
-const html = readFileSync(resolve(root, 'index.html'), 'utf8');
+validateBuiltImageSources(root);
+const html = normalizeBuiltImages(readFileSync(resolve(root, 'index.html'), 'utf8'), { root });
 assert.match(html, /data-design="creator-marketplace-2026-09"/, 'Expected approved creator marketplace homepage');
 assert.match(html, /Apna hunar\./, 'Approved hero headline remains');
 assert.match(html, /Apni kamaai\./, 'Approved hero accent remains');
@@ -19,11 +21,7 @@ for (const id of ['consultations', 'how-avatok-works', 'ideas-catalogue', 'addon
 }
 assert(html.indexOf('id="consultations"') < html.indexOf('id="ideas-catalogue"'), 'Booking Express precedes the original ideas');
 assert.equal((html.match(/<input\b[^>]*type="range"/g) || []).length, 5, 'Five earnings calculator controls');
-const languageSelectors = [...html.matchAll(/<select\b[^>]*data-india-language-select[^>]*>[\s\S]*?<\/select>/g)];
-assert.equal(languageSelectors.length, 2, 'Desktop and mobile language selectors');
-for (const [index, selector] of languageSelectors.entries()) {
- assert.equal((selector[0].match(/<option\b/g) || []).length, 24, 'All 24 languages in selector ' + index);
-}
+assert.equal((html.match(/data-india-language-select/g) || []).length, 0, 'No rendered language selectors');
 for (const match of html.matchAll(/\bhref="([^"]+)"/g)) {
  const href = match[1].replaceAll('&amp;', '&');
  if (href.startsWith('#') || href.startsWith('/#')) {
@@ -53,9 +51,9 @@ assert.match(redirects, /^\/india\/\s+\/\s+301\s*$/m, 'Trailing-slash India URL 
 const archive = readFileSync(resolve(root, 'archive/home-2026-09-09/index.html'), 'utf8');
 assert.match(archive, /noindex, nofollow/, 'Existing archive must not compete in search');
 assert.match(archive, /hero-poster-nonav.png/, 'Previous hero remains archived');
-console.log('Homepage checks passed: approved hero, retained sections, language selectors, calculator, anchors and India redirects.');
+console.log('Homepage checks passed: approved hero, retained sections, no rendered language selectors, calculator, anchors and India redirects.');
 
-const globalIdeas = readFileSync(resolve(root, 'global-ideas/index.html'), 'utf8');
+const globalIdeas = normalizeBuiltImages(readFileSync(resolve(root, 'global-ideas/index.html'), 'utf8'), { root });
 for (const name of ['hero-creators', 'format-live', 'format-call', 'format-paid', 'payout-world', 'creator-marketplace-og']) {
  assert(existsSync(resolve(root, 'assets/global', name + '.png')), 'Missing global artwork: ' + name);
 }
@@ -73,7 +71,7 @@ assert.equal(new Set(globalLinks).size, 8, 'Eight distinct global guides');
 const globalImageHashes = new Set();
 for (const href of globalLinks) {
  const slug = href.split('/').filter(Boolean).at(-1);
- const page = readFileSync(resolve(root, href.slice(1), 'index.html'), 'utf8');
+ const page = normalizeBuiltImages(readFileSync(resolve(root, href.slice(1), 'index.html'), 'utf8'), { root });
  assert.equal((page.match(/<h1[ >]/g) || []).length, 1, 'One guide heading: ' + slug);
  assert.equal((page.match(/<header\b/g) || []).length, 1, 'One guide header: ' + slug);
  assert.equal((page.match(/<footer\b/g) || []).length, 1, 'One guide footer: ' + slug);
@@ -126,7 +124,7 @@ for (const [name, crop] of Object.entries(originalManifest.crops)) {
 console.log('Exact original artwork checks passed: hero, middle sections and all eight idea cards.');
 
 // Creator inspiration is a separate editorial route, never fake marketplace inventory.
-const ideas = readFileSync(resolve(root, 'ideas/index.html'), 'utf8');
+const ideas = normalizeBuiltImages(readFileSync(resolve(root, 'ideas/index.html'), 'utf8'), { root });
 assert.equal((ideas.match(/data-idea-card/g) || []).length, 115, 'All 115 creator ideas are present');
 assert.equal((ideas.match(/<h1[ >]/g) || []).length, 1, 'Ideas page has one main heading');
 assert.equal((ideas.match(/class="idea-title-line(?: |")/g) || []).length, 2, 'Ideas hero keeps both headline phrases on horizontal lines');
@@ -145,7 +143,7 @@ assert.equal(new Set(guideLinks).size,115,'Every idea has its own article');
 const imagePaths = new Set();
 const imageHashes = new Set();
 for (const href of new Set(guideLinks)) {
- const article = readFileSync(resolve(root,href.slice(1),'index.html'),'utf8');
+ const article = normalizeBuiltImages(readFileSync(resolve(root,href.slice(1),'index.html'),'utf8'), { root });
  assert.equal((article.match(/<h1[ >]/g)||[]).length,1,'One article heading: '+href);
  assert.match(article,/data-creator-guide="idea-\d+"/,'Article identity');
  assert.match(article,/avh--sticky/,'Shared article header');
@@ -187,7 +185,7 @@ function meta(page, key) {
  return tag?.match(/content="([^"]*)"/)?.[1];
 }
 for (const href of new Set(guideLinks)) {
- const page = readFileSync(resolve(root,href.slice(1),'index.html'),'utf8');
+ const page = normalizeBuiltImages(readFileSync(resolve(root,href.slice(1),'index.html'),'utf8'), { root });
  const hero = page.match(/<figure class="guide-hero">[\s\S]*?<img[^>]+src="([^"]+)"/)[1];
  assert.equal(meta(page,'og:image'),'https://avatok.ai'+hero,'Hero and OG image match');
  assert.equal(meta(page,'twitter:image'),meta(page,'og:image'));

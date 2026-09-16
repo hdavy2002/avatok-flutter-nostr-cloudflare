@@ -7,6 +7,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
+import { normalizeBuiltImages, validateBuiltImageSources } from './built-image-source.mjs';
 
 const root = resolve('dist');
 const helpRoot = resolve(root, 'help');
@@ -14,7 +15,8 @@ const helpRoot = resolve(root, 'help');
 // --- Landing page -----------------------------------------------------
 const landingPath = resolve(helpRoot, 'index.html');
 assert(existsSync(landingPath), 'Missing dist/help/index.html');
-const landing = readFileSync(landingPath, 'utf8');
+validateBuiltImageSources(root);
+const landing = normalizeBuiltImages(readFileSync(landingPath, 'utf8'), { root });
 assert.equal((landing.match(/<h1[ >]/g) || []).length, 1, 'Help landing page must have exactly one <h1>');
 assert.equal(
   (landing.match(/"@type":"FAQPage"/g) || []).length,
@@ -43,7 +45,7 @@ for (const doc of searchDocs) {
 }
 
 // --- Homepage anchors, for /#anchor link checks below --------------------
-const homepageHtml = readFileSync(resolve(root, 'index.html'), 'utf8');
+const homepageHtml = normalizeBuiltImages(readFileSync(resolve(root, 'index.html'), 'utf8'), { root });
 const homepageIds = new Set([...homepageHtml.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]));
 
 // [WEB-HELP-1] Landing-page ids, for /help#x link checks below — a link like
@@ -74,7 +76,7 @@ const POLICY_PAGES = ['tokens', 'refunds', 'payouts', 'pricing-fees'];
 const policyHtmlFiles = POLICY_PAGES.map((slug) => resolve(root, slug, 'index.html'));
 for (const file of policyHtmlFiles) {
   assert(existsSync(file), `Missing built policy page: ${file}`);
-  const html = readFileSync(file, 'utf8');
+  const html = normalizeBuiltImages(readFileSync(file, 'utf8'), { root });
   assert(html.includes('class="help-crosslink"'), `Policy page missing the help-centre crosslink: ${file}`);
 }
 
@@ -107,13 +109,13 @@ function checkHelpLinks(file, html) {
 }
 
 for (const file of policyHtmlFiles) {
-  const html = readFileSync(file, 'utf8');
+  const html = normalizeBuiltImages(readFileSync(file, 'utf8'), { root });
   checkHelpLinks(file, html);
 }
 
 let articleCount = 0;
 for (const file of helpHtmlFiles) {
-  const html = readFileSync(file, 'utf8');
+  const html = normalizeBuiltImages(readFileSync(file, 'utf8'), { root });
   const isLanding = file === landingPath;
 
   // No leftover placeholder text outside of HTML comments.
@@ -149,7 +151,7 @@ for (const file of helpHtmlFiles) {
 // still references.
 let artRefCount = 0;
 for (const file of helpHtmlFiles) {
-  const html = readFileSync(file, 'utf8');
+  const html = normalizeBuiltImages(readFileSync(file, 'utf8'), { root });
   for (const match of html.matchAll(/src="(\/help\/art\/[^"]+)"/g)) {
     const src = match[1].replaceAll('&amp;', '&');
     const target = resolve(root, '.' + src);

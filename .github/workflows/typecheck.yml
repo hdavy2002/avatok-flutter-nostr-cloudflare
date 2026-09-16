@@ -142,3 +142,8 @@ jobs:
           PUBLIC_API_BASE: https://api.avatok.ai
           PUBLIC_RELEASE_SHA: ${{ github.sha }}
         run: npm run build
+      - name: Check public homepage and help before deployment
+        working-directory: web
+        run: |
+          node scripts/check-homepage.mjs
+          node scripts/check-help.mjs
