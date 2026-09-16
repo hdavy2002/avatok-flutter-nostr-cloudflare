@@ -1,5 +1,5 @@
 // Generated from shared/i18n/source/app.json; preserve typed IDs when updating.
-const uiSourceHash = "07e57df8b199862af71958247e4d0cfb71092997e1002b8ea0ba10b881394ddd";
+const uiSourceHash = "c2f72f4587d822b701c0fc33f1368a7d88a0db1c28261e8004f5a704f459e614";
 enum UiMessage {
   m_0_bytes_exported_media_excluded_82f7c571a7,
   m_0_free_entry_340eb3f79d,
@@ -213,6 +213,7 @@ enum UiMessage {
   m_anyone_can_view_this_event_1ea2e372c0,
   m_anything_to_add_optional_21c31ca431,
   m_anywhere_911b14a9b9,
+  m_app_language_b8352b44a5,
   m_app_order_fa7be25a9d,
   m_app_updates_5808deaecd,
   m_appearance_3907fa7f80,
@@ -2727,6 +2728,7 @@ enum UiMessage {
   m_social_f1b7505afa,
   m_sold_a6fffccf2d,
   m_some_calendar_data_could_not_7a7696aba4,
+  m_some_interface_text_is_shown_2fc750d6df,
   m_some_voicemails_couldn_t_be_5137e4e5e8,
   m_something_went_wrong_ab827e3fe1,
   m_something_went_wrong_preparing_code_b2947805b3,
@@ -3104,6 +3106,7 @@ enum UiMessage {
   m_translated_audio_ed4539ed2c,
   m_translating_e72799b809,
   m_translation_is_unavailable_for_this_77890481c1,
+  m_translation_not_published_yet_c145f1c572,
   m_translation_quality_is_unstable_1fe6cbdaaf,
   m_translation_stopped_515e74cc90,
   m_translation_unavailable_81cb3cf414,
@@ -3840,6 +3843,7 @@ const uiSourceMessages = <String, String>{
   "m_anyone_can_view_this_event_1ea2e372c0": "Anyone can view this event page. Only customers with an account-bound ticket can enter the stream.",
   "m_anything_to_add_optional_21c31ca431": "Anything to add? (optional)",
   "m_anywhere_911b14a9b9": "Anywhere",
+  "m_app_language_b8352b44a5": "App language",
   "m_app_order_fa7be25a9d": "App order",
   "m_app_updates_5808deaecd": "App updates",
   "m_appearance_3907fa7f80": "Appearance",
@@ -6354,6 +6358,7 @@ const uiSourceMessages = <String, String>{
   "m_social_f1b7505afa": "Social",
   "m_sold_a6fffccf2d": "sold",
   "m_some_calendar_data_could_not_7a7696aba4": "Some calendar data could not be refreshed ({value1}). Time you cannot see here is NOT confirmed free — pull to refresh before relying on this day.",
+  "m_some_interface_text_is_shown_2fc750d6df": "Some interface text is shown in English.",
   "m_some_voicemails_couldn_t_be_5137e4e5e8": "Some voicemails couldn’t be deleted — try again.",
   "m_something_went_wrong_ab827e3fe1": "Something went wrong",
   "m_something_went_wrong_preparing_code_b2947805b3": "Something went wrong preparing {code}.",
@@ -6731,6 +6736,7 @@ const uiSourceMessages = <String, String>{
   "m_translated_audio_ed4539ed2c": "Translated audio",
   "m_translating_e72799b809": "Translating…",
   "m_translation_is_unavailable_for_this_77890481c1": "Translation is unavailable for this call. Original call audio has been restored and your call is still connected.",
+  "m_translation_not_published_yet_c145f1c572": "Translation not published yet",
   "m_translation_quality_is_unstable_1fe6cbdaaf": "Translation quality is unstable",
   "m_translation_stopped_515e74cc90": "Translation stopped",
   "m_translation_unavailable_81cb3cf414": "Translation unavailable",

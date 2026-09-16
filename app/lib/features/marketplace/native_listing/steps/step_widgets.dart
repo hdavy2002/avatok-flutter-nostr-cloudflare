@@ -1,3 +1,4 @@
+import '../../../../core/localization/ui_text.dart';
 import '../../../../core/localization/known_ui_copy.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';

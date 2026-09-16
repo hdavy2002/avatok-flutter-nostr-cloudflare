@@ -384,7 +384,8 @@ class AvaTalkApp extends StatelessWidget {
       listenable: UiLocaleController.instance,
       builder: (context, _) => UiLocaleScope(child: MaterialApp(
       locale: UiLocaleController.instance.frameworkLocale,
-      supportedLocales: GlobalMaterialLocalizations.supportedLocales,
+      // The controller already selects a supported framework locale or English.
+      supportedLocales: [UiLocaleController.instance.frameworkLocale],
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,

@@ -1,3 +1,4 @@
+import '../../../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/ui/avatok_dark.dart';

@@ -93,7 +93,7 @@ const Map<String, String> kJoinRequirementLabels = {
   'mic': 'MIC NEEDED',
   'cam': 'CAMERA NEEDED',
   'listen_only': 'LISTENING ONLY',
-  'recording': uiCopy(UiMessage.m_this_session_is_recorded_8fa5887b9d),
+  'recording': 'THIS SESSION IS RECORDED',
 };
 
 /// [LISTING-EXPIRY-1] The one line a closed listing shows instead of a CTA.
@@ -944,7 +944,7 @@ class _NativeListingDetailV2State extends State<NativeListingDetailV2> {
     final join = rawJoin is Map
         ? [
             for (final e in kJoinRequirementLabels.entries)
-              if (rawJoin[e.key] == true) e.value
+              if (rawJoin[e.key] == true) authoredUiCopy(e.value)
           ]
         : const <String>[];
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
