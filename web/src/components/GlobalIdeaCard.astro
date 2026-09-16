@@ -1,5 +1,6 @@
 ---
 import { globalCreatorIdeas } from '../lib/globalCreatorIdeas';
+import { publicImage } from '../lib/config';
 interface Props {
   idea: { slug: string; platform: string; title: string; description: string; color: string; eyebrow: string };
   headingLevel?: 'h2' | 'h3';
@@ -10,7 +11,7 @@ const index = globalCreatorIdeas.findIndex(item => item.slug === idea.slug);
 const width = [396, 376, 368, 396][index % 4];
 ---
 <a class="original-idea-card" href={`/blog/global-creator-ideas/${idea.slug}/`} aria-label={`${idea.title} — read the ${idea.platform} creator guide`}>
-  <img src={`/assets/global-original/ideas-${idea.slug}.png`} alt="" width={width} height={index < 4 ? 308 : 320} loading="lazy" decoding="async" />
+  <img src={publicImage(`/assets/global-original/ideas-${idea.slug}.png`, { width: width * 2, fit: 'scale-down' })} alt="" width={width} height={index < 4 ? 308 : 320} loading="lazy" decoding="async" />
   <div class="original-idea-card__text"><Heading>{idea.title}</Heading><span>{idea.platform}. {idea.description} Read the guide.</span></div>
 </a>
 <style>

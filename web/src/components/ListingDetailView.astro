@@ -28,7 +28,7 @@
 //   everything else (live_event/event/…)   -> LIVE_EVENT (the comp, §3.1)
 import '../styles/listing-details.css';
 import { Avatar } from '../components';
-import { cfImage } from '../lib/config';
+import { cfImage, publicImage } from '../lib/config';
 import { durationLabel, languageLabel } from '../lib/card';
 import { inrOrFree } from '../lib/money';
 import { getListingReviews, getListingSlots, getExplore } from '../lib/apiClient';
@@ -469,7 +469,7 @@ const listingViewProps = {
 
       {!isFreeEntry && (
         <div class="ld-masala-quote-row">
-          <img src="/ld/desi-swag.png" alt="" class="ld-masala-sticker" loading="lazy" />
+          <img src={publicImage('/ld/desi-swag.png', { width: 900, fit: 'scale-down' })} alt="" class="ld-masala-sticker" loading="lazy" />
           <div class="ld-masala-quote">"Booked seat, booked mood." — a regular</div>
         </div>
       )}
@@ -565,7 +565,7 @@ const listingViewProps = {
         <section class="ld-house-rules" data-section="house_rules">
           <div class="ld-section-head">
             <h2 class="ld-section-title">{houseRules.title}</h2>
-            <img src="/ld/jatt-sticker.png" alt="" class="ld-caution-sticker" loading="lazy" />
+            <img src={publicImage('/ld/jatt-sticker.png', { width: 900, fit: 'scale-down' })} alt="" class="ld-caution-sticker" loading="lazy" />
             <span class="ld-section-note">SET BY THE HOST · SHOWN BEFORE EVERY BOOKING</span>
           </div>
           <div class="ld-strip-frame"><TruckBorder kind="eyes" count={40} /></div>

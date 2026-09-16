@@ -1,4 +1,5 @@
 ---
+import { publicImage as optimizePublicArtwork } from '../lib/config';
 // [LISTING-DETAILS-COMP-1] Faithful port of
 // design/details-page/astro-export/src/pages/listing-details.astro (the
 // approved comp) — markup, classnames and every <style> rule are UNCHANGED.
@@ -545,9 +546,9 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
   <div class="hero">
     <div class="hero__player">
       <div class="nazar">
-        <img src="/assets/lol-sticker.png" alt="LOL sticker" class="nazar__img" />
+        <img src={optimizePublicArtwork('/assets/lol-sticker.png', { width: 1280, fit: 'scale-down' })} alt="LOL sticker" class="nazar__img" />
         <span class="nazar__text">BURI NAZAR WALE, TERA MUH KALA · USE DIPPER AT NIGHT</span>
-        <img src="/assets/luv-it-sticker.png" alt="I luv it sticker" class="nazar__img" />
+        <img src={optimizePublicArtwork('/assets/luv-it-sticker.png', { width: 1280, fit: 'scale-down' })} alt="I luv it sticker" class="nazar__img" />
       </div>
 
       <div class="player-card">
@@ -774,12 +775,12 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
       {masala && (
         <>
           <div class="masala-quote">
-            <img src="/assets/desi-swag.png" alt="Desi swag" />
+            <img src={optimizePublicArtwork('/assets/desi-swag.png', { width: 1280, fit: 'scale-down' })} alt="Desi swag" />
             <div class="masala-quote__text">"Jo jeeta wahi asli scene." — a regular</div>
           </div>
           <div class="masala-stickers">
-            <img src="/assets/vadapav-uncle.png" alt="Baccha hai tu mera, ye le vada pav kha" class="masala-stickers__a" />
-            <img src="/assets/dekho-pyar-se.png" alt="Dekho magar pyar se" class="masala-stickers__b" />
+            <img src={optimizePublicArtwork('/assets/vadapav-uncle.png', { width: 1280, fit: 'scale-down' })} alt="Baccha hai tu mera, ye le vada pav kha" class="masala-stickers__a" />
+            <img src={optimizePublicArtwork('/assets/dekho-pyar-se.png', { width: 1280, fit: 'scale-down' })} alt="Dekho magar pyar se" class="masala-stickers__b" />
           </div>
         </>
       )}
@@ -990,7 +991,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
         <section>
           <div class="section-head">
             <h2 class="section-title">{hostPoss} house <span class="section-title__accent">rules.</span></h2>
-            <img src="/assets/jatt-sticker.png" alt="Caution: on board — proceed with respect" class="rules-sticker" />
+            <img src={optimizePublicArtwork('/assets/jatt-sticker.png', { width: 1280, fit: 'scale-down' })} alt="Caution: on board — proceed with respect" class="rules-sticker" />
             <span class="section-head__note">SET BY THE HOST · SHOWN BEFORE EVERY BOOKING</span>
           </div>
           <div class="divider"><TruckBorder kind="eyes" /></div>
@@ -1049,7 +1050,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
                 ))}
               </div>
             </div>
-            {masala && <img src="/assets/baccha-uncle.png" alt="Baccha hai tu mera, tension kyu leta hai" class="reviews-summary__sticker" />}
+            {masala && <img src={optimizePublicArtwork('/assets/baccha-uncle.png', { width: 1280, fit: 'scale-down' })} alt="Baccha hai tu mera, tension kyu leta hai" class="reviews-summary__sticker" />}
           </div>
           <div class="reviews-list-wrap">
             {/* [REVIEW-MOD-1 2026-09-06] The empty middle the owner pointed at.
@@ -1098,7 +1099,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
       {masala && (
         <div class="browse__quote">
           <div class="handwritten">Ek show se kya hoga?<br />Scroll karte raho…</div>
-          <img src="/assets/chill-uncle.png" alt="Chill uncle with coconut" />
+          <img src={optimizePublicArtwork('/assets/chill-uncle.png', { width: 1280, fit: 'scale-down' })} alt="Chill uncle with coconut" />
         </div>
       )}
       <span id="browse-meta" class="section-head__note"></span>

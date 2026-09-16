@@ -1,4 +1,5 @@
 ---
+import { publicImage } from '../lib/config';
 // [MARKET-BAZAAR-1 2026-08-31] The marketplace hero, ported from
 // design/marketplace/avaTOK Marketplace.dc.html.
 //
@@ -108,7 +109,7 @@ const displayType = 'font-display font-normal uppercase';
       {/* Decorative only — the welcome it renders is already in the h1 above,
           so alt="" keeps a screen reader from reading the hero twice. */}
       <img
-        src="/suswagatam.png"
+        src={publicImage('/suswagatam.png', { width: 998, fit: 'scale-down' })}
         alt=""
         width="998"
         height="668"

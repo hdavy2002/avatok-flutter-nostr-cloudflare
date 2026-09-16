@@ -1,3 +1,4 @@
+import publicImageManifest from './publicImageManifest.json';
 // Runtime config for the web client. PUBLIC_* vars are inlined into the browser
 // bundle by Astro/Vite. The API base is the SAME Worker the Flutter app calls
 // (MASTER-PROMPT §3/§4) — never a new backend.
@@ -47,37 +48,50 @@ export function clerkFapiHost(): string | undefined {
   }
 }
 
-/**
- * Cloudflare image-transform helper — the avatar/poster URL pattern used across
- * the kit. Produces `/cdn-cgi/image/format=auto,quality=60,width=N,fit=cover/<path>`.
- * Pass an already-absolute origin path or a full URL.
- *
- * [POSTER-FIRST-1 2026-09-05] The default was a hardcoded `format=avif`.
- * `format=auto` lets Cloudflare negotiate per request from the browser's Accept
- * header — AVIF where it is supported, WebP where it is not, JPEG as the floor.
- * That is never larger than pinning AVIF (the same browsers still get AVIF) and
- * it drops the AVIF decode cost on the cheap Android hardware most of this
- * marketplace runs on, where decoding can cost more than the bytes saved.
- * Callers may still pass an explicit `format` when they need one.
- */
-export function cfImage(
-  path: string,
-  opts: { width?: number; quality?: number; fit?: string; format?: string } = {},
-): string {
+/** Bounded variants keep the image cache from fragmenting per CSS pixel. */
+export const IMAGE_WIDTHS = [48, 96, 160, 256, 420, 640, 900, 1280, 1600, 2048] as const;
+export interface ImageOptions { width?: number; quality?: number; fit?: string; format?: string }
+const imageHost = (host: string) => host === 'avatok.ai' || host.endsWith('.avatok.ai');
+const privateImagePath = (path: string) => /(?:^|\/)(?:private|private-read|api|verification)(?:\/|$)/i.test(path);
+const rasterPath = (path: string) => /\.(?:png|jpe?g|webp|avif)$/i.test(path);
+function imageParams(opts: ImageOptions): string {
+  const wanted = Number.isFinite(opts.width) ? Math.max(1, opts.width!) : 256;
+  const width = IMAGE_WIDTHS.find(value => value >= wanted) ?? IMAGE_WIDTHS[IMAGE_WIDTHS.length - 1];
+  const quality = Number.isFinite(opts.quality) ? Math.max(1, Math.min(100, Math.round(opts.quality!))) : 60;
+  const fit = ['cover', 'contain', 'scale-down', 'crop', 'pad'].includes(opts.fit ?? '') ? opts.fit : 'cover';
+  const format = ['auto', 'avif', 'webp', 'jpeg'].includes(opts.format ?? '') ? opts.format : 'auto';
+  return `format=${format},quality=${quality},width=${width},fit=${fit}`;
+}
+
+/** Public API media only. Signed/private/external URLs retain their original URL. */
+export function cfImage(path: string, opts: ImageOptions = {}): string {
   if (!path) return path;
-  const { width = 256, quality = 60, fit = 'cover', format = 'auto' } = opts;
-  const params = `format=${format},quality=${quality},width=${width},fit=${fit}`;
-  // Absolute URL → splice the transform segment after the origin.
   try {
-    const u = new URL(path);
-    // [LIST-PAGE-2] The /cdn-cgi/image transform only exists on OUR zones. An
-    // off-zone image (a creator pasted a picsum/Instagram URL) spliced through
-    // it 404s and shows a broken-image icon; pass those through untouched.
-    if (!/\.avatok\.ai$/i.test(u.hostname)) return path;
-    return `${u.origin}/cdn-cgi/image/${params}${u.pathname}${u.search}`;
-  } catch {
-    // Relative path → resolve against the API origin.
-    const clean = path.startsWith('/') ? path : `/${path}`;
-    return `${API_BASE}/cdn-cgi/image/${params}${clean}`;
-  }
+    const u = new URL(path, API_BASE);
+    if (!['https:', 'http:'].includes(u.protocol) || !imageHost(u.hostname) || u.username || u.password) return path;
+    if (u.search || u.hash || privateImagePath(u.pathname) || u.pathname.startsWith('/cdn-cgi/image/')) return path;
+    if (/\.(?:svg|gif)$/i.test(u.pathname)) return path;
+    return `${u.origin}/cdn-cgi/image/${imageParams(opts)}${u.pathname}`;
+  } catch { return path; }
+}
+
+/** Website assets stay on the website origin, never API_BASE. */
+export function publicImage(path: string, opts: ImageOptions = {}): string {
+  // Astro dev has no Cloudflare transformation endpoint.
+  if (!path || import.meta.env.DEV || import.meta.env.PUBLIC_DISABLE_IMAGE_TRANSFORMS === '1') return path;
+  try {
+    const absolute = /^[a-z][a-z0-9+.-]*:|^\/\//i.test(path);
+    const u = new URL(path, 'https://avatok.ai');
+    if (!['https:', 'http:'].includes(u.protocol) || !imageHost(u.hostname) || u.username || u.password) return path;
+    if (u.search || u.hash || privateImagePath(u.pathname) || !rasterPath(u.pathname)) return path;
+    if (u.pathname.startsWith('/cdn-cgi/image/')) return path;
+    const origin = absolute ? u.origin : '';
+    const source = (!absolute || u.hostname === 'avatok.ai') ? (publicImageManifest as Record<string, string>)[u.pathname] ?? u.pathname : u.pathname;
+    return `${origin}/cdn-cgi/image/${imageParams(opts)}${source}`;
+  } catch { return path; }
+}
+
+export function publicImageSrcSet(path: string, widths: readonly number[], opts: Omit<ImageOptions, 'width'> = {}): string {
+  const variants = [...new Set(widths.map(width => IMAGE_WIDTHS.find(value => value >= width) ?? 2048))];
+  return variants.map(width => `${publicImage(path, { ...opts, width })} ${width}w`).join(', ');
 }

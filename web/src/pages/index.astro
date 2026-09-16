@@ -9,6 +9,7 @@ import '../styles/india-additions.css';
 import CreatorIdeas from '../components/india-preview/CreatorIdeas.astro';
 import BookingExpress from '../components/india-preview/BookingExpress.astro';
 import EarningsCalculator from '../components/india-preview/EarningsCalculator.astro';
+import { publicImage } from '../lib/config';
 
 const ideas = creatorIdeas.slice(0, 6);
 
@@ -26,7 +27,7 @@ const ideas = creatorIdeas.slice(0, 6);
   <Fragment slot="head">
     <meta property="og:image:type" content="image/png" />
     <meta name="theme-color" content="#f7ead5" />
-    <link rel="preload" as="image" href="/assets/home/avatok-creator-constellation.png" />
+    <link rel="preload" as="image" href={publicImage('/assets/home/avatok-creator-constellation.png', { width: 1156, fit: 'scale-down' })} />
   </Fragment>
   <a class="rail-skip" href="#ideas-catalogue">Skip to earning ideas</a>
   <SiteHeader indiaLandingLanguage={true} />
@@ -63,7 +64,7 @@ const ideas = creatorIdeas.slice(0, 6);
             to close a plain .station-copy). */}
         <div class="station-art creator-hero__art">
             <span class="creator-hero__live" aria-hidden="true">● Live around the world</span>
-          <img src="/assets/home/avatok-creator-constellation.png" width="1156" height="1360" alt="Creators hosting a live stream, teaching a class, and offering a one-to-one conversation online." fetchpriority="high" decoding="async" />
+          <img src={publicImage('/assets/home/avatok-creator-constellation.png', { width: 1156, fit: 'scale-down' })} width="1156" height="1360" alt="Creators hosting a live stream, teaching a class, and offering a one-to-one conversation online." fetchpriority="high" decoding="async" />
           <p class="creator-hero__share"><strong>80%</strong><span>you keep</span></p>
         </div>
       </div>
@@ -80,7 +81,7 @@ const ideas = creatorIdeas.slice(0, 6);
         {ideas.map((idea) => (
           <article class="idea-card rail-article-card">
             <a class="idea-card-link" href={idea.href} aria-labelledby={`${idea.id}-title`} data-home-idea={idea.id}>
-              <div class="idea-picture"><img src={idea.cardImage} srcset={`${idea.cardImage} 768w, ${idea.image} 1536w`} sizes="(max-width:699px) 90vw, (max-width:1100px) 44vw, 29vw" alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
+              <div class="idea-picture"><img src={publicImage(idea.cardImage, { width: 768, fit: 'scale-down' })} srcset={`${publicImage(idea.cardImage, { width: 768, fit: 'scale-down' })} 768w, ${publicImage(idea.image, { width: 1536, fit: 'scale-down' })} 1536w`} sizes="(max-width:699px) 90vw, (max-width:1100px) 44vw, 29vw" alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
               <div class="idea-card-copy"><div class="idea-chips"><span class:list={['idea-format', idea.format]}>{formats[idea.format]}</span><span>{topics[idea.topic].label}</span>{idea.setting === 'home' && <span>From home</span>}</div><h3 id={`${idea.id}-title`}>{idea.title}</h3><p>{idea.description}</p><span class="idea-read-guide">Read the guide <span aria-hidden="true">↗</span></span></div>
             </a>
           </article>
@@ -110,4 +111,3 @@ const ideas = creatorIdeas.slice(0, 6);
     import '../lib/indiaCreators';
   </script>
 </Base>
-

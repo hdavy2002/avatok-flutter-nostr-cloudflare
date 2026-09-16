@@ -1,4 +1,5 @@
 ---
+import { publicImage as optimizePublicArtwork } from '../lib/config';
 // [WEB-FOOTER-2 2026-08-26 / WEB-FOOTER-3 2026-09-02] Site footer, matching
 // the design comp (`design/live-streaming/SiteFooter.dc.html`) exactly:
 // blue "chai" truck-art strip on top, dark panel with three columns — BAZAAR /
@@ -120,7 +121,7 @@ const chromeKey = (value: string) => ({
 
     <div class="bf-art">
       {/* Already on the site for the auth screens, so this costs no new asset. */}
-      <img src="/auth/horn-ok-please.png" alt="Horn OK Please" width="250" height="150" loading="lazy" />
+      <img src={optimizePublicArtwork('/auth/horn-ok-please.png', { width: 500, fit: 'scale-down' })} alt="Horn OK Please" width="250" height="150" loading="lazy" />
       <span class="bf-art-line" data-india-i18n={indiaLandingLanguage ? "chrome.goodbye" : undefined}>{variant === 'global' ? 'CREATORS EVERYWHERE · PHIR MILENGE' : 'OK TATA · PHIR MILENGE'}</span>
       <span class="bf-art-hi" data-india-i18n={indiaLandingLanguage ? "chrome.comeAgain" : undefined}>{variant === 'global' ? 'See you worldwide!' : 'फिर आना!'}</span>
     </div>

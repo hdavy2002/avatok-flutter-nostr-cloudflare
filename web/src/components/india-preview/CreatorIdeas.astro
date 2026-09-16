@@ -1,4 +1,5 @@
 ---
+import { publicImage } from '../../lib/config';
 import { sourceHinglish as copy } from '../../lib/indiaLandingSource';
 
 const ideas = [
@@ -18,7 +19,7 @@ const ideas = [
 <span data-india-i18n="ideasTitle">{copy.ideasTitle}</span>
 </h2>
 <div class="india-idea-grid">{ideas.map((idea) => <article class:list={['india-idea-card', `india-idea-card--${idea.tone}`]}>
-<img src={idea.image} alt="" loading="lazy" />
+<img src={publicImage(idea.image, { width: 900, fit: 'scale-down' })} alt="" loading="lazy" />
 <div>
 <h3 data-india-i18n={idea.titleKey}>{idea.title}</h3>
 <p data-india-i18n={idea.bodyKey}>{idea.body}</p>

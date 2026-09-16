@@ -1,4 +1,5 @@
 ---
+import { publicImage as optimizePublicArtwork } from '../lib/config';
 // [WEB-HELP-2 2026-09-11] Redesigned help-ARTICLE layout, replacing the
 // WEB-HELP-1 version. Per design/help-centre/Article.dc.html (1440) and
 // PhoneArticle.dc.html (390) — the approved mockup, values lifted verbatim
@@ -219,7 +220,7 @@ const breadcrumbLdJson = JSON.stringify(breadcrumbLd).replace(/</g, '\\u003c');
             ))}
             <img
               class="help-related-kettle"
-              src="/help/art/kettle.png"
+              src={optimizePublicArtwork('/help/art/kettle.png', { width: 440, fit: 'scale-down' })}
               width="220"
               height="246"
               alt=""

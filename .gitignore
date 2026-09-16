@@ -252,3 +252,7 @@ Specs/proposals/PROPOSAL-CHAT-PERSONALIZATION-SUITE.md
 # Local audio/TTS drops.
 tools/*.mp3
 tools/**/*.mp3
+
+# Generated at web prebuild from tracked originals.
+web/public/_images/
+web/image-delivery-report.json

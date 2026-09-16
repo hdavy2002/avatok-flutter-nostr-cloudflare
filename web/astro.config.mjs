@@ -3,6 +3,7 @@ import { defineConfig } from 'astro/config';
 import cloudflare from '@astrojs/cloudflare';
 import react from '@astrojs/react';
 import tailwind from '@astrojs/tailwind';
+import publicImageCss from './scripts/public-image-css.mjs';
 
 // [WEB-DEVSERVER-1 2026-08-26] Is this `astro dev`, as opposed to build/preview?
 // The `react-dom/server` → `.edge` alias below is REQUIRED for the Cloudflare
@@ -34,6 +35,7 @@ export default defineConfig({
     }),
   ],
   vite: {
+    plugins: [publicImageCss()],
     ssr: {
       // Clerk's React SDK MUST be bundled into the SSR worker. Marking it
       // `external` makes the Cloudflare worker `import '@clerk/clerk-react'` at

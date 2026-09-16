@@ -1,4 +1,5 @@
 ---
+import { publicImage as optimizePublicArtwork } from '../lib/config';
 export const prerender = true;
 import Content from '../layouts/Content.astro';
 import LegalStatus from '../components/LegalStatus.astro';
@@ -22,7 +23,7 @@ import EntityFaq from '../components/EntityFaq.astro';
   <LegalStatus variant="full" />
 
   <figure class="editorial-photo">
-    <img src="/genz-friends.jpg" alt="Four friends laughing together over a phone" />
+    <img src={optimizePublicArtwork('/genz-friends.jpg', { width: 1280, fit: 'scale-down' })} alt="Four friends laughing together over a phone" />
     <figcaption>Built so a conversation can be worth something to both people in it.</figcaption>
   </figure>
 

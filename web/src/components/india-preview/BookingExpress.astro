@@ -1,4 +1,5 @@
 ---
+import { publicImage } from '../../lib/config';
 import { sourceHinglish as copy } from '../../lib/indiaLandingSource';
 const steps = [
   ['stepOne', 'stepOneBody'], ['stepTwo', 'stepTwoBody'],
@@ -7,7 +8,7 @@ const steps = [
 ---
 <section class="booking-express rail-wrap" id="consultations" aria-labelledby="formats-title" data-home-section="start">
   <span id="formats" aria-hidden="true"></span>
-  <h2 class="rail-flowered express-formats-title" id="formats-title"><img src="/ornament-flower.png" alt="" width="34" height="34" /> Ek platform. Teen tareeke. <img src="/ornament-flower.png" alt="" width="34" height="34" /></h2>
+  <h2 class="rail-flowered express-formats-title" id="formats-title"><img src={publicImage('/ornament-flower.png', { width: 68, fit: 'scale-down' })} alt="" width="34" height="34" /> Ek platform. Teen tareeke. <img src={publicImage('/ornament-flower.png', { width: 68, fit: 'scale-down' })} alt="" width="34" height="34" /></h2>
       <div class="rail-format-grid">
         <a id="live-streaming" href="/marketplace?group=india_goes_live" data-home-cta="format-live"><span class="rail-format-icon rail-badge--pink" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="12" height="12" rx="2" /><path d="m15 10 6-3v10l-6-3" /></svg></span><span><h3>Live events</h3><p>Sell tickets to your stream.</p></span><span aria-hidden="true">↗</span></a>
         <a id="live-friends" href="/marketplace?group=book_their_time" data-home-cta="format-private"><span class="rail-format-icon rail-badge--yellow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="4" /><path d="M4 22v-3a8 8 0 0 1 16 0v3" /></svg></span><span><h3>1:1 sessions</h3><p>Offer your undivided time.</p></span><span aria-hidden="true">↗</span></a>

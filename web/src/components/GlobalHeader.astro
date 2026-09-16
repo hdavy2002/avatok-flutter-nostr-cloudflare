@@ -1,4 +1,5 @@
 ---
+import { publicImage } from '../lib/config';
 import GlobalLocaleControls from './GlobalLocaleControls.astro';
 import '../styles/global-home.css';
 interface Props { sticky?: boolean; }
@@ -22,9 +23,9 @@ const links = [
   } catch (_) { document.documentElement.setAttribute('data-avatok-auth', 'out'); }
 </script>
 <header class:list={['avh', 'global-header', sticky && 'global-header--sticky']}>
-  <div class="global-header__doodle original-header-doodle" aria-hidden="true"><img src="/assets/global-original/ideas-header-doodle.png" alt="" width="1536" height="30" /></div>
+  <div class="global-header__doodle original-header-doodle" aria-hidden="true"><img src={publicImage('/assets/global-original/ideas-header-doodle.png', { width: 1536, fit: 'scale-down' })} alt="" width="1536" height="30" /></div>
   <div class="global-header__bar">
-    <a class="global-wordmark" href="/" aria-label="avaTOK global home"><img src="/assets/global-original/ideas-header-logo.png" alt="avaTOK" width="168" height="57" /></a>
+    <a class="global-wordmark" href="/" aria-label="avaTOK global home"><img src={publicImage('/assets/global-original/ideas-header-logo.png', { width: 336, fit: 'scale-down' })} alt="avaTOK" width="168" height="57" /></a>
     <nav class="global-header__nav" aria-label="Main">{links.map(link => <a href={link.href}>{link.label}</a>)}</nav>
     <div class="global-header__actions">
       <GlobalLocaleControls />
