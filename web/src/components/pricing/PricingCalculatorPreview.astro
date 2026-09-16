@@ -1,0 +1,120 @@
+---
+import { previewExtras, sampleBaseRate } from '../../lib/pricingPreview';
+const formats = [
+  { value: 'video', label: 'Video calls', note: 'Face to face', icon: 'M15 8l6-3v14l-6-3M5 5h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z' },
+  { value: 'streaming', label: 'Live streaming', note: 'Share the moment', icon: 'M8 7a7 7 0 0 0 0 10m8-10a7 7 0 0 1 0 10M5 4a11 11 0 0 0 0 16M19 4a11 11 0 0 1 0 16M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z' },
+  { value: 'audio', label: 'Audio rooms', note: 'Let’s talk', icon: 'M9 5a3 3 0 0 1 6 0v7a3 3 0 0 1-6 0V5ZM5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8' },
+];
+const qualities = [
+  { value: 'audio-only', label: 'Audio only' }, { value: 'sd', label: 'SD' },
+  { value: 'hd', label: 'HD' }, { value: 'fhd', label: 'FHD' }, { value: '4k', label: '4K' },
+];
+const fields = [
+  { key: 'participants', label: 'Participants per call', unit: 'people', min: 2, max: 25, step: 1, value: 2, start: '2 people', end: '25 people' },
+  { key: 'duration', label: 'Average session duration', unit: 'min', min: 5, max: 240, step: 5, value: 60, start: '5 minutes', end: '4 hours' },
+  { key: 'sessions', label: 'Monthly sessions', unit: '/ month', min: 1, max: 100, step: 1, value: 1, start: '1 session', end: '100 sessions' },
+];
+const addons = previewExtras;
+---
+
+<div class="pp-calculator" data-pricing-preview>
+  <section class="pp-controls" aria-labelledby="pp-inputs-title">
+    <div class="pp-panel-heading"><div><p class="pp-kicker">The possibilities start here</p><h2 id="pp-inputs-title">Plan your usage</h2></div><span class="pp-flower" aria-hidden="true">✳</span></div>
+    <section class="pp-step" aria-labelledby="pp-format-title">
+      <h3 id="pp-format-title"><span class="pp-step-number" aria-hidden="true">01</span>Choose your format</h3>
+      <fieldset>
+        <legend class="pp-sr-only">Use case</legend>
+        <div class="pp-formats">
+          {formats.map((format) => (
+            <label class="pp-format">
+              <input type="radio" name="pp-use-case" value={format.value} data-label={format.label} checked={format.value === 'video'} />
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={format.icon} /></svg>
+              <span class="pp-choice-title">{format.label}</span><span class="pp-choice-note">{format.note}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset class="pp-quality-field">
+        <legend>Video quality</legend>
+        <div class="pp-qualities">
+          {qualities.map((quality) => (
+            <label class="pp-quality"><input type="radio" name="pp-quality" value={quality.value} data-label={quality.label} checked={quality.value === 'audio-only'} /><span>{quality.label}</span></label>
+          ))}
+        </div>
+      </fieldset>
+    </section>
+    <section class="pp-step" aria-labelledby="pp-usage-title">
+      <h3 id="pp-usage-title"><span class="pp-step-number" aria-hidden="true">02</span>Shape your sessions</h3>
+      <div class="pp-fields">
+        {fields.map((field) => (
+          <div class="pp-usage-field" data-usage-field={field.key}>
+            <div class="pp-field-heading">
+              <label for={`pp-${field.key}-number`}>{field.label}</label>
+              <div class="pp-number-wrap">
+                <input id={`pp-${field.key}-number`} type="number" min={field.min} max={field.max} step={field.step} value={field.value} inputmode="numeric" aria-describedby={`pp-${field.key}-bounds`} />
+                <span aria-hidden="true">{field.unit}</span>
+              </div>
+            </div>
+            <label class="pp-sr-only" for={`pp-${field.key}-range`}>{field.label} slider</label>
+            <input id={`pp-${field.key}-range`} type="range" min={field.min} max={field.max} step={field.step} value={field.value} aria-describedby={`pp-${field.key}-bounds`} />
+            <div class="pp-range-bounds" id={`pp-${field.key}-bounds`}><span>{field.start}</span><span>{field.end}</span></div>
+          </div>
+        ))}
+      </div>
+    </section>
+    <section class="pp-step pp-step-last" aria-labelledby="pp-extras-title">
+      <div class="pp-section-heading"><h3 id="pp-extras-title"><span class="pp-step-number" aria-hidden="true">03</span>Add a little extra</h3><span>Optional</span></div>
+      <fieldset><legend class="pp-sr-only">Add-ons</legend>
+        <div class="pp-addons">
+          {addons.map((addon) => (
+            <label class="pp-addon"><input type="checkbox" name="pp-addon" value={addon.value} /><span>{addon.label}<small class="pp-addon-rate">+{addon.rate.toFixed(2)} tokens / person / min</small></span></label>
+          ))}
+        </div>
+      </fieldset>
+      <p class="pp-small-note">Sample rates for this design preview. Every extra adds to the price per person, per minute.</p>
+    </section>
+  </section>
+
+  <aside class="pp-summary" aria-labelledby="pp-summary-title">
+    <div class="pp-receipt">
+      <div class="pp-receipt-top"><p class="pp-kicker">Your usage, at a glance</p><span aria-hidden="true">↗</span></div>
+      <h2 id="pp-summary-title">The big picture</h2>
+      <div class="pp-period" role="group" aria-label="Usage projection period">
+        <button type="button" data-period="monthly" aria-pressed="true">Monthly</button>
+        <button type="button" data-period="yearly" aria-pressed="false">Yearly</button>
+      </div>
+      <div class="pp-live-summary" aria-live="polite" aria-atomic="true">
+        <section class="pp-rate-breakdown" aria-labelledby="pp-rate-title">
+          <h3 id="pp-rate-title">Rate per person / minute</h3>
+          <p class="pp-unit-rate"><strong data-result="unit-rate">{sampleBaseRate.toFixed(2)}</strong> <span>tokens</span></p>
+          <dl class="pp-rate-lines" data-rate-lines>
+            <div><dt>Base rate</dt><dd>{sampleBaseRate.toFixed(2)}</dd></div>
+          </dl>
+          <p class="pp-rate-note">Sample rates · not final pricing</p>
+          <p class="pp-estimate-money"><strong data-result="cost">{(sampleBaseRate * 120).toFixed(2)}</strong> <span>tokens <span data-result="cost-period">per month</span></span></p>
+          <p class="pp-rate-note">Illustrative total for everyone in your plan</p>
+        </section>
+        <div class="pp-total"><span class="pp-total-value" data-result="minutes">120</span><span>participant minutes <span data-result="period">per month</span></span></div>
+        <p class="pp-formula" data-result="formula">2 people × 60 min × 1 session</p>
+        <dl class="pp-breakdown">
+          <div><dt>Format</dt><dd data-result="format">Video calls</dd></div>
+          <div><dt>Quality</dt><dd data-result="quality">Audio only</dd></div>
+          <div><dt>Sessions <span data-result="session-period">per month</span></dt><dd data-result="sessions">1</dd></div>
+          <div><dt>Selected add-ons</dt><dd data-result="addons">0</dd></div>
+        </dl>
+        <p class="pp-projection-note" data-result="projection">Based on your planned monthly usage.</p>
+      </div>
+      <div class="pp-rates"><span class="pp-status-dot" aria-hidden="true"></span><div><h3>Try a few extras</h3><p>The sample rate updates with each selection. Final rates and feature availability will be confirmed before launch.</p></div></div>
+      <details class="pp-explanation"><summary>How is usage calculated?</summary><p>One person in a session for one minute is one participant minute. We multiply people, minutes and sessions to show your total usage.</p><p>A yearly projection uses the same monthly plan for all 12 months. It is not an annual billing offer. The rate is the base rate plus the selected extras. Multiply it by participant minutes for the sample total. Format and quality keep the same sample base rate in this mockup; real pricing will be wired later.</p></details>
+      <a class="pp-support" href="mailto:support@avatok.ai?subject=Pricing%20calculator">Ask about pricing <span aria-hidden="true">↗</span></a>
+    </div>
+    <p class="pp-summary-caption">Room to explore. No commitment.</p>
+  </aside>
+</div>
+<noscript><p class="pp-noscript">Enable JavaScript to update this calculator. The summary currently shows the default plan: 2 people, 60 minutes, 1 session per month.</p></noscript>
+
+<script>
+  import { initPricingPreviews } from '../../lib/pricingPreview';
+  initPricingPreviews();
+  document.addEventListener('astro:page-load', initPricingPreviews);
+</script>
