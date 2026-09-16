@@ -26,8 +26,8 @@
 import TruckBorder from './TruckBorder.astro';
 import GlobalFooter from './GlobalFooter.astro';
 
-export interface Props { variant?: 'india' | 'global'; }
-const { variant = 'india' } = Astro.props;
+export interface Props { variant?: 'india' | 'global'; indiaLandingLanguage?: boolean; }
+const { variant = 'india', indiaLandingLanguage = false } = Astro.props;
 
 const year = new Date().getFullYear();
 
@@ -91,6 +91,14 @@ const globalColumns = [
   { title: 'Company', links: [{ href: '/about', label: 'About' }, { href: '/help', label: 'Help centre' }, { href: '/careers', label: 'Careers' }, { href: '/contact', label: 'Contact' }, { href: '/terms', label: 'Terms of Service' }, { href: '/privacy', label: 'Privacy Policy' }] },
 ];
 const footerColumns = variant === 'global' ? globalColumns : columns;
+const chromeKey = (value: string) => ({
+  Bazaar:'chrome.bazaar', Creators:'chrome.creators', Company:'chrome.company', Explore:'chrome.explore',
+  'Live streaming':'chrome.liveStreaming', 'Find your people':'chrome.findPeople', 'Explore marketplace':'chrome.exploreMarketplace',
+  'Start selling':'chrome.startSelling', 'Creator dashboard':'chrome.creatorDashboard', Payouts:'chrome.payouts', Safety:'chrome.safety',
+  About:'chrome.about', 'Help centre':'chrome.help', Careers:'chrome.careers', Contact:'chrome.contact', 'Terms of Service':'chrome.terms', 'Privacy Policy':'chrome.privacy',
+  Terms:'chrome.terms', Privacy:'chrome.privacy', Cookies:'chrome.cookies', Refunds:'chrome.refunds',
+  'Marketplace Terms':'chrome.marketplaceTerms', 'Consultation Terms':'chrome.consultationTerms', 'Acceptable Use':'chrome.acceptableUse', 'Recording & Consent':'chrome.recordingConsent', 'Biometric Data':'chrome.biometricData', DMCA:'chrome.dmca', 'Community Guidelines':'chrome.communityGuidelines', 'Child Safety':'chrome.childSafety', 'Grievance Redressal':'chrome.grievance', 'Contact & Report':'chrome.contactReport', 'Pricing & Fees':'chrome.pricingFees', 'Tokens & Wallet':'chrome.tokensWallet',
+}[value]);
 ---
 
 {variant === 'global' ? <GlobalFooter columns={columns} legalLinks={legalLinks} year={year} /> : <footer class:list={['bazaar-footer', variant === 'global' && 'bazaar-footer--global']}>
@@ -98,23 +106,23 @@ const footerColumns = variant === 'global' ? globalColumns : columns;
 
   <div class="bf-main">
     <div class="bf-brand">
-      <a class="bf-logo" href="/" aria-label="avaTOK home"><span>ava</span><span>TOK</span></a>
-      <p class="bf-tag">{variant === 'global' ? 'A global home for creator-led income. Go live, get booked, and get paid locally.' : "India's live creator bazaar. Seat book karo, kursi kheencho, apna time lo."}</p>
-      <span class="bf-script">{variant === 'global' ? 'Made for creators everywhere.' : 'Aapki awaaz, duniya tak.'}</span>
+      <a class="bf-logo" href="/" aria-label="avaTOK home" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.home' : undefined}><span>ava</span><span>TOK</span></a>
+      <p class="bf-tag" data-india-i18n={indiaLandingLanguage ? "chrome.tagline" : undefined}>{variant === 'global' ? 'A global home for creator-led income. Go live, get booked, and get paid locally.' : "India's live creator bazaar. Seat book karo, kursi kheencho, apna time lo."}</p>
+      <span class="bf-script" data-india-i18n={indiaLandingLanguage ? "chrome.voice" : undefined}>{variant === 'global' ? 'Made for creators everywhere.' : 'Aapki awaaz, duniya tak.'}</span>
     </div>
 
     {footerColumns.map((col) => (
-      <nav class="bf-col" aria-label={col.title}>
-        <h2 class="bf-col-title">{col.title}</h2>
-        {col.links.map((l) => <a href={l.href}>{l.label}</a>)}
+      <nav class="bf-col" aria-label={col.title} data-india-i18n-attr={indiaLandingLanguage ? `aria-label:${chromeKey(col.title)}` : undefined}>
+        <h2 class="bf-col-title" data-india-i18n={indiaLandingLanguage ? chromeKey(col.title) : undefined}>{col.title}</h2>
+        {col.links.map((l) => <a href={l.href} data-india-i18n={indiaLandingLanguage ? chromeKey(l.label) : undefined}>{l.label}</a>)}
       </nav>
     ))}
 
     <div class="bf-art">
       {/* Already on the site for the auth screens, so this costs no new asset. */}
       <img src="/auth/horn-ok-please.png" alt="Horn OK Please" width="250" height="150" loading="lazy" />
-      <span class="bf-art-line">{variant === 'global' ? 'CREATORS EVERYWHERE · PHIR MILENGE' : 'OK TATA · PHIR MILENGE'}</span>
-      <span class="bf-art-hi">{variant === 'global' ? 'See you worldwide!' : 'फिर आना!'}</span>
+      <span class="bf-art-line" data-india-i18n={indiaLandingLanguage ? "chrome.goodbye" : undefined}>{variant === 'global' ? 'CREATORS EVERYWHERE · PHIR MILENGE' : 'OK TATA · PHIR MILENGE'}</span>
+      <span class="bf-art-hi" data-india-i18n={indiaLandingLanguage ? "chrome.comeAgain" : undefined}>{variant === 'global' ? 'See you worldwide!' : 'फिर आना!'}</span>
     </div>
   </div>
 
@@ -126,10 +134,10 @@ const footerColumns = variant === 'global' ? globalColumns : columns;
       Cashfree/gateway application asks for a visible operating address, restore
       it here (the .bf-entity styles below are kept for that). */}
 
-  <nav class="bf-legal-links" aria-label="Legal and safety">
+  <nav class="bf-legal-links" aria-label="Legal and safety" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.legal' : undefined}>
     {legalLinks.map((l, i) => (
       <>
-        <a href={l.href}>{l.label}</a>
+        <a href={l.href} data-india-i18n={indiaLandingLanguage ? chromeKey(l.label) : undefined}>{l.label}</a>
         {i < legalLinks.length - 1 && <span class="bf-legal-links-sep" aria-hidden="true"> · </span>}
       </>
     ))}
@@ -137,8 +145,8 @@ const footerColumns = variant === 'global' ? globalColumns : columns;
 
   <div class="bf-legal">
     <div class="bf-legal-inner">
-      <span>{variant === 'global' ? 'GOOD CREATORS · BRIGHTER TOMORROWS' : 'BURI NAZAR WALE, TERA MUH KALA · USE DIPPER AT NIGHT'}</span>
-      <span>© {year} AVATOK · {variant === 'global' ? 'MADE FOR CREATORS EVERYWHERE' : 'MADE WITH ♥ AND CUTTING CHAI'}</span>
+      <span data-india-i18n={indiaLandingLanguage ? 'chrome.roadMotto' : undefined}>{variant === 'global' ? 'GOOD CREATORS · BRIGHTER TOMORROWS' : 'BURI NAZAR WALE, TERA MUH KALA · USE DIPPER AT NIGHT'}</span>
+      <span>© {year} AVATOK · <span data-india-i18n={indiaLandingLanguage ? 'chrome.madeWith' : undefined}>{variant === 'global' ? 'MADE FOR CREATORS EVERYWHERE' : 'MADE WITH ♥ AND CUTTING CHAI'}</span></span>
     </div>
   </div>
 

@@ -1,0 +1,233 @@
+/* India creator additions: isolated paper posters, tickets and handwritten notes. */
+.india-additions { --addon-paper:#f7ead5; --addon-ink:#101e31; --addon-red:#d93825; --addon-yellow:#ffcf54; --addon-blue:#b6d4e3; --addon-green:#c6d8ba; --addon-pink:#efb8ae; color:var(--addon-ink); background:var(--addon-paper); font-family:'Instrument Sans',Arial,sans-serif; overflow:clip; }
+.india-additions *, .india-additions *::before, .india-additions *::after { box-sizing:border-box; }
+.india-additions .india-page { background:transparent; color:inherit; }
+.india-additions .india-wrap { width:min(1180px,90%); margin-inline:auto; }
+.india-additions section { position:relative; isolation:isolate; margin-block:64px; scroll-margin-top:120px; }
+.india-additions h2, .india-additions h3 { font-family:'Comfortaa','Baloo 2',sans-serif; font-weight:400; text-transform:none; letter-spacing:-.025em; text-wrap:balance; }
+.india-additions h2 { font-size:clamp(32px,4.4vw,62px); line-height:1.06; margin:16px 0 22px; }
+.india-additions h3 { font-size:clamp(26px,2.7vw,38px); line-height:1.1; margin:14px 0; }
+.india-additions p { font-size:18px; line-height:1.6; margin:0 0 20px; }
+.india-additions a { color:inherit; }
+.india-additions img { display:block; max-width:100%; }
+.india-additions [id] { scroll-margin-top:120px; }
+.india-additions :is(a,input,summary):focus-visible { outline:3px solid #17609b; outline-offset:6px; }
+.india-additions .india-kicker { display:inline-block; max-width:100%; padding:7px 15px; margin:0; background:var(--addon-ink); color:#fff8e9; font-family:'Kalam','Instrument Sans',sans-serif; font-size:14px; line-height:1.35; font-weight:700; letter-spacing:.065em; transform:rotate(-1deg); border-radius:999px; }
+.india-additions .india-section-lede { max-width:690px; }
+.india-additions .india-button { display:inline-flex; align-items:center; justify-content:center; gap:22px; min-height:50px; padding:13px 23px; border:2px solid var(--addon-ink); border-radius:999px; box-shadow:4px 4px 0 var(--addon-ink); background:var(--addon-red); color:#fff; font-weight:700; font-size:17px; text-decoration:none; }
+.india-additions .india-button:hover { transform:translate(-1px,-2px); box-shadow:5px 6px 0 var(--addon-ink); }
+.india-additions .india-actions { display:flex; align-items:center; gap:22px; flex-wrap:wrap; margin-top:26px; }
+.india-additions .india-text-link { font-weight:700; text-decoration:underline; text-underline-offset:6px; }
+.india-additions .india-hero { display:grid; grid-template-columns:minmax(0,1fr) 180px; align-items:center; gap:40px; padding:40px 5%; background:#fff5df; border:2px solid var(--addon-red); outline:1px solid var(--addon-red); outline-offset:-9px; }
+.india-additions .india-hero h2 { color:var(--addon-red); max-width:850px; font-size:clamp(34px,4vw,56px); }
+.india-additions .india-hero__copy { min-width:0; }
+.india-additions .india-hero .india-lede { max-width:700px; }
+.india-additions .india-hero__ticket { display:flex; align-items:center; gap:12px; margin-top:26px; font-family:'Kalam',cursive; font-size:18px; }
+.india-additions .india-hero__ticket strong { font-weight:400; }
+.india-additions .india-hero__visual { position:relative; transform:rotate(9deg); }
+.india-additions .india-hero__visual img { width:180px; height:180px; object-fit:contain; mix-blend-mode:multiply; }
+.india-additions .india-poster-orbit { position:absolute; right:-8px; top:-35px; font-size:50px; color:var(--addon-red); }
+
+.india-additions .india-formats { padding:52px 0; background:var(--addon-yellow); border-block:2px dashed #bc8732; }
+.india-additions .india-formats::before, .india-additions .india-ideas::before, .india-additions .india-calculator::before { content:''; pointer-events:none; position:absolute; z-index:-1; inset:0; background:url('/assets/global-original/paper.webp') center/700px; opacity:.12; mix-blend-mode:multiply; }
+.india-additions .india-format-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:34px; margin-top:32px; }
+.india-additions .india-format-card { position:relative; padding:36px 30px 28px; background:#f9efdb; border:1.5px solid var(--addon-ink); box-shadow:7px 7px 0 #aa792e; }
+.india-additions .india-format-card:first-child { transform:rotate(-1deg); }
+.india-additions .india-format-card:last-child { transform:rotate(1deg); background:var(--addon-blue); }
+.india-additions .india-format-card::before { content:''; position:absolute; top:-12px; left:38%; width:95px; height:26px; background:#fff7d5ba; border-inline:1px dotted #c6b282; transform:rotate(-6deg); }
+.india-additions .india-format-card__number { float:right; margin:0 0 14px 10px; font-family:'Comfortaa','Baloo 2',sans-serif; font-size:52px; line-height:1; color:var(--addon-red); }
+.india-additions .india-format-card .india-kicker { max-width:calc(100% - 68px); font-size:12px; }
+.india-additions .india-format-card h3 { clear:both; }
+.india-additions .india-format-card a { display:inline-flex; gap:20px; padding:10px 0; font-weight:800; text-underline-offset:5px; }
+.india-additions .india-format-meta { display:block; margin-top:16px; padding-top:14px; border-top:1px dashed #6b685c; font-family:'Kalam',cursive; font-size:18px; }
+.india-additions .india-showcase { display:grid; grid-template-columns:1.05fr 1fr; align-items:center; gap:54px; padding:26px 0; }
+.india-additions .india-showcase__art { position:relative; padding:15px 15px 40px; background:#fff8ea; transform:rotate(-3deg); box-shadow:6px 7px 0 #cebfa6; border:1px solid #ac9a7e; }
+.india-additions .india-showcase__art img { width:100%; aspect-ratio:1/1; object-fit:cover; }
+.india-additions .india-starburst { display:grid; place-items:center; position:absolute; right:-22px; bottom:8px; width:90px; height:90px; background:var(--addon-red); color:var(--addon-yellow); font-size:65px; clip-path:polygon(50% 0,61% 17%,80% 5%,81% 28%,100% 33%,85% 50%,100% 70%,77% 74%,75% 96%,55% 84%,38% 100%,32% 78%,9% 85%,17% 61%,0 50%,20% 37%,12% 14%,36% 20%); }
+.india-additions .india-showcase h2 { color:var(--addon-red); }
+.india-additions .india-live-strip { display:flex; align-items:center; gap:12px; margin:24px 0; padding:14px 0; border-block:1px dashed var(--addon-ink); font-size:15px; font-weight:700; }
+.india-additions .india-live-strip > span:nth-child(2) { flex:1; }
+.india-additions .india-live-strip a { display:grid; place-items:center; min-width:44px; min-height:44px; font-size:25px; }
+.india-additions .india-live-dot { width:10px; height:10px; border-radius:50%; background:var(--addon-red); flex-shrink:0; }
+.india-additions .india-meetup { display:grid; grid-template-columns:1fr .8fr; align-items:center; gap:60px; padding:45px; background:var(--addon-green); border:1px solid #688367; border-radius:var(--zine-rLg,24px); }
+.india-additions .india-meetup .india-note { font-family:'Kalam',cursive; font-size:21px; transform:rotate(-2deg); }
+.india-additions .india-calendar { background:#fff8e8; padding:22px; box-shadow:7px 8px 0 #7e9978; transform:rotate(3deg); border:1px solid #6c7362; }
+.india-additions .india-calendar__top { display:flex; justify-content:space-between; gap:12px; padding-bottom:16px; border-bottom:3px double #b44734; color:#973725; font-family:'Kalam',cursive; font-size:19px; }
+.india-additions .india-calendar__month { padding:20px 0 14px; font-size:12px; font-weight:800; letter-spacing:.1em; }
+.india-additions .india-calendar__days { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:7px; }
+.india-additions .india-calendar__days b { display:grid; place-items:center; min-height:34px; font-family:'Kalam',cursive; font-size:18px; font-weight:400; }
+.india-additions .india-calendar__days .is-booked { outline:2px solid var(--addon-red); border-radius:48% 41% 50% 35%; color:var(--addon-red); transform:rotate(-8deg); }
+
+.india-additions .india-ideas { padding:55px 0 64px; background:var(--addon-blue); border-block:2px dashed #7098a7; }
+.india-additions .india-ideas h2 { color:#123e52; }
+.india-additions .india-idea-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:22px; margin-top:34px; }
+.india-additions .india-idea-card { background:#fff3d9; padding:10px 10px 20px; box-shadow:4px 5px 0 #7098a7; transform:rotate(-2deg); }
+.india-additions .india-idea-card:nth-child(even) { transform:rotate(2deg); }
+.india-additions .india-idea-card--pink { background:#efb8ae; }
+.india-additions .india-idea-card--mango { background:#ffcf54; }
+.india-additions .india-idea-card--purple { background:#c6d8ba; }
+.india-additions .india-idea-card > img { width:100%; aspect-ratio:4/5; object-fit:cover; filter:saturate(.8); }
+.india-additions .india-idea-card > div { padding:0 7px; }
+.india-additions .india-idea-card h3 { font-size:28px; }
+.india-additions .india-idea-card p { font-size:16px; line-height:1.5; margin:0; }
+.india-additions .india-journey { padding:12px 0 26px; text-align:center; }
+.india-additions .india-journey h2 { max-width:790px; margin-inline:auto; }
+.india-additions .india-steps { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:25px; list-style:none; margin:35px 0 0; padding:0; text-align:left; }
+.india-additions .india-steps li { position:relative; padding:25px 18px 14px; border-top:3px solid var(--addon-red); background:#fff4df; }
+.india-additions .india-steps li > span { font-family:'Kalam',cursive; font-size:40px; color:var(--addon-red); }
+.india-additions .india-steps li:not(:last-child)::after { content:'⤳'; position:absolute; right:-21px; top:18px; z-index:1; font-family:'Kalam',cursive; font-size:44px; transform:rotate(-10deg); }
+.india-additions .india-steps h3 { font-size:31px; }
+.india-additions .india-steps p { font-size:17px; }
+.india-additions .india-booking { display:grid; grid-template-columns:1fr .85fr; align-items:center; gap:75px; padding:46px; background:var(--addon-pink); border-block:2px dashed #b47e70; }
+.india-additions .india-pass { position:relative; background:#ffcf54; transform:rotate(4deg); border:2px solid var(--addon-ink); box-shadow:7px 7px 0 #b47e70; }
+.india-additions .india-pass__head { display:flex; justify-content:space-between; gap:10px; padding:17px 20px; border-bottom:2px dashed var(--addon-ink); font-size:13px; font-weight:800; letter-spacing:.06em; }
+.india-additions .india-pass__body { padding:24px; }
+.india-additions .india-pass__body p { font-size:13px; font-weight:800; letter-spacing:.12em; }
+.india-additions .india-pass__body strong { display:block; font-family:'Comfortaa','Baloo 2',sans-serif; font-size:clamp(26px,3vw,38px); line-height:1.2; max-width:260px; }
+.india-additions .india-pass__body small { display:block; margin-top:25px; font-size:17px; line-height:1.6; }
+.india-additions .india-pass__stamp { float:right; font-size:58px; line-height:1; color:var(--addon-red); }
+.india-additions .india-pass__tear { height:36px; border-top:2px dashed var(--addon-ink); background:repeating-linear-gradient(90deg,transparent 0 4px,#101e31 4px 6px,transparent 6px 11px,#101e31 11px 12px); background-size:70% 16px; background-repeat:no-repeat; background-position:center; }
+
+.india-additions .india-calculator { padding:56px 0; background:#e9dcc5; border-block:1px solid #c4ae88; }
+.india-additions .india-calc-grid { display:grid; grid-template-columns:1.05fr 1fr; gap:38px; margin-top:30px; align-items:start; }
+.india-additions .india-calc-form { background:#fff9ec; border:1px solid #c6b493; padding:30px; box-shadow:5px 5px 0 #c9b895; }
+.india-additions .india-calc-form label { display:grid; grid-template-columns:minmax(0,1fr) auto; column-gap:12px; row-gap:10px; padding-bottom:23px; font-size:16px; font-weight:700; }
+.india-additions .india-calc-form label:last-child { padding-bottom:0; }
+.india-additions .india-calc-form output { color:#9d3023; font-size:18px; font-variant-numeric:tabular-nums; }
+.india-additions .india-calc-form input { grid-column:1/-1; width:100%; margin:0; min-height:30px; accent-color:var(--addon-red); cursor:pointer; }
+.india-additions .india-calc-result { min-width:0; padding:32px; background:var(--addon-yellow); border:2px solid var(--addon-ink); box-shadow:6px 6px 0 #b09a6f; transform:rotate(1deg); }
+.india-additions .india-calc-result > div { display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:10px; padding:16px 0; border-bottom:1px dashed #8c7335; }
+.india-additions .india-calc-result strong { font-family:'Comfortaa','Baloo 2',sans-serif; font-size:28px; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.india-additions .india-calc-result .india-calc-total { display:block; border-bottom:3px double var(--addon-ink); padding:24px 0; }
+.india-additions .india-calc-total > span { display:block; font-family:'Kalam',cursive; font-size:20px; }
+.india-additions .india-calc-total strong { display:block; margin-top:10px; font-size:clamp(32px,4.3vw,58px); line-height:1.12; letter-spacing:-.035em; }
+.india-additions .india-calc-result p { font-size:14px; line-height:1.6; margin:20px 0 0; }
+.india-additions .india-calc-result a { text-decoration:underline; text-underline-offset:3px; font-weight:700; }
+.india-additions .india-faq { display:grid; grid-template-columns:.75fr 1.15fr; gap:60px; padding:10px 0; }
+.india-additions .india-faq h2 { color:var(--addon-red); }
+.india-additions .india-faq__list { min-width:0; border-top:2px solid var(--addon-ink); }
+.india-additions .india-faq details { border-bottom:1px solid #b9a789; padding:0; }
+.india-additions .india-faq summary { position:relative; padding:23px 35px 23px 0; min-height:60px; cursor:pointer; font-family:'Comfortaa','Baloo 2',sans-serif; font-size:23px; font-weight:700; line-height:1.25; list-style:none; }
+.india-additions .india-faq summary::-webkit-details-marker { display:none; }
+.india-additions .india-faq summary::after { content:'+'; position:absolute; right:5px; top:22px; font-size:27px; color:var(--addon-red); }
+.india-additions .india-faq details[open] summary::after { content:'−'; }
+.india-additions .india-faq details p { padding-right:20px; font-size:17px; }
+.india-additions .india-close { padding:48px 12% 52px; text-align:center; background:#fff4dc; border:2px solid var(--addon-red); outline:1px solid var(--addon-red); outline-offset:-9px; }
+.india-additions .india-close h2 { color:var(--addon-red); }
+.india-additions .india-close__burst { width:90px; height:90px; margin:0 auto 20px; object-fit:contain; mix-blend-mode:multiply; }
+.india-additions .india-close .india-button { margin-top:8px; }
+.india-additions .india-showcase__copy, .india-additions .india-booking__copy, .india-additions .india-meetup > div { min-width:0; }
+
+/* Uneven edges and quiet floral stamps tie the posters to the railway artwork. */
+.india-additions .india-journey::before { content:''; display:block; width:76px; height:76px; margin:0 auto 20px; background:url('/ornament-flower.png') center/contain no-repeat; mix-blend-mode:multiply; }
+.india-additions .india-meetup::after { content:''; position:absolute; width:62px; height:62px; left:-25px; bottom:-20px; background:url('/ornament-flower.png') center/contain no-repeat; mix-blend-mode:multiply; transform:rotate(-20deg); pointer-events:none; }
+.india-additions .india-booking__copy::after { content:'✦ ━━━ ✦ ━━━ ✦'; display:block; color:#963b2b; letter-spacing:.18em; font-size:18px; margin-top:30px; }
+@media (max-width:1000px) {
+ .india-additions section { margin-block:48px; }
+ .india-additions .india-idea-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:28px; }
+ .india-additions .india-idea-card > img { aspect-ratio:4/3; }
+ .india-additions .india-showcase, .india-additions .india-meetup, .india-additions .india-booking { gap:34px; }
+ .india-additions .india-meetup, .india-additions .india-booking { padding:32px; }
+ .india-additions .india-calc-grid { gap:24px; }
+ .india-additions .india-calc-form, .india-additions .india-calc-result { padding:22px; }
+ .india-additions .india-steps { grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; }
+ .india-additions .india-steps li:nth-child(2)::after { display:none; }
+ .india-additions .india-faq { gap:30px; grid-template-columns:.9fr 1.1fr; }
+}
+@media (max-width:699px) {
+ .india-additions .india-wrap { width:calc(100% - 36px); }
+ .india-additions section { margin-block:38px; }
+ .india-additions h2 { font-size:clamp(32px,8.7vw,45px); margin-top:16px; margin-bottom:18px; }
+ .india-additions p { font-size:17px; }
+ .india-additions .india-kicker { font-size:12px; padding:7px 11px; }
+ .india-additions .india-hero { display:block; padding:30px 23px; }
+ .india-additions .india-hero h2 { font-size:36px; }
+ .india-additions .india-hero__visual { display:none; }
+ .india-additions .india-hero__ticket { font-size:17px; align-items:flex-start; }
+ .india-additions .india-hero__ticket > span:last-child { display:none; }
+ .india-additions .india-actions { gap:18px; }
+ .india-additions .india-button { font-size:16px; padding:12px 18px; gap:14px; max-width:100%; }
+ .india-additions .india-formats, .india-additions .india-ideas, .india-additions .india-calculator { padding-block:40px; }
+ .india-additions .india-format-grid, .india-additions .india-showcase, .india-additions .india-meetup, .india-additions .india-booking, .india-additions .india-calc-grid, .india-additions .india-faq { grid-template-columns:minmax(0,1fr); }
+ .india-additions .india-format-grid { gap:28px; }
+ .india-additions .india-format-card { padding:28px 23px; }
+ .india-additions .india-format-card h3 { font-size:32px; }
+ .india-additions .india-showcase { gap:36px; padding:0 5px; }
+ .india-additions .india-showcase__art { width:calc(100% - 14px); margin-inline:auto; padding-bottom:26px; }
+ .india-additions .india-showcase__art img { aspect-ratio:6/5; }
+ .india-additions .india-starburst { width:75px; height:75px; font-size:52px; right:-14px; }
+ .india-additions .india-meetup, .india-additions .india-booking { padding:30px 23px; gap:30px; }
+ .india-additions .india-calendar { padding:18px; margin:0 3px 9px; transform:rotate(2deg); }
+ .india-additions .india-calendar__days { gap:4px; }
+ .india-additions .india-calendar__days b { min-height:30px; }
+ .india-additions .india-idea-grid { gap:24px; grid-template-columns:minmax(0,1fr); padding-inline:7px; }
+ .india-additions .india-idea-card { padding:12px 12px 22px; }
+ .india-additions .india-idea-card h3 { font-size:32px; }
+ .india-additions .india-idea-card p { font-size:17px; }
+ .india-additions .india-steps { gap:18px; }
+ .india-additions .india-steps li { padding:20px 13px 10px; }
+ .india-additions .india-steps li:not(:last-child)::after { right:-17px; font-size:33px; }
+ .india-additions .india-steps h3 { font-size:28px; }
+ .india-additions .india-steps p { font-size:16px; }
+ .india-additions .india-pass { margin:0 3px 12px; transform:rotate(2deg); }
+ .india-additions .india-pass__head { padding:16px 14px; font-size:11px; }
+ .india-additions .india-pass__body { padding:20px; }
+ .india-additions .india-calc-result { transform:none; }
+ .india-additions .india-calc-result .india-calc-total strong { font-size:clamp(30px,9vw,44px); }
+ .india-additions .india-faq { gap:8px; }
+ .india-additions .india-close { padding:34px 25px 40px; }
+}
+@media (max-width:360px) {
+ .india-additions .india-wrap { width:calc(100% - 28px); }
+ .india-additions .india-hero, .india-additions .india-meetup, .india-additions .india-booking, .india-additions .india-close { padding-inline:18px; }
+ .india-additions .india-hero h2, .india-additions h2 { font-size:31px; }
+ .india-additions .india-calc-form, .india-additions .india-calc-result { padding:18px; }
+ .india-additions .india-calc-form label { font-size:14px; }
+ .india-additions .india-calc-form output { font-size:16px; }
+ .india-additions .india-steps { grid-template-columns:1fr; }
+ .india-additions .india-steps li::after { display:none; }
+}
+@media (prefers-reduced-motion:reduce) {
+ .india-additions .india-button:hover { transform:none; }
+}
+
+/* Owner refinement: match /india typography and /help rounded sticker panels. */
+.india-additions { --addon-paper:#f7ead5; --addon-blue:#f4d8a0; --addon-green:#8fd0c0; --addon-pink:#efdcc2; }
+.india-additions :is(.india-hero,.india-format-card,.india-showcase__art,.india-meetup,.india-calendar,.india-idea-card,.india-booking,.india-pass,.india-calc-form,.india-calc-result,.india-close) { border-radius:var(--zine-rLg,24px); }
+.india-additions :is(.india-formats,.india-ideas,.india-calculator) { width:min(1280px,92%); margin-inline:auto; border:1px solid #c4ae88; border-radius:var(--zine-rXl,28px); clip-path:none; }
+.india-additions :is(.india-format-card,.india-idea-card,.india-calendar,.india-pass,.india-calc-result) { transform:none; }
+.india-additions .india-format-card::before { display:none; }
+.india-additions .india-hero, .india-additions .india-close { outline:none; box-shadow:4px 5px 0 #d6c6aa; }
+.india-additions .india-kicker { transform:none; font-family:'Instrument Sans',Arial,sans-serif; font-weight:700; }
+.india-additions .india-button { font-family:'Comfortaa','Baloo 2',sans-serif; font-weight:400; }
+.india-additions .india-showcase__art { transform:none; padding:12px; }
+.india-additions .india-showcase__art img, .india-additions .india-idea-card > img { border-radius:var(--zine-rSm,16px); }
+.india-additions .india-steps li { border:1px solid #cfbfa8; border-top:3px solid var(--addon-red); border-radius:var(--zine-r,20px); }
+.india-additions .india-faq__list { border:0; }
+.india-additions .india-faq details { border:1px solid #c6b493; border-radius:var(--zine-r,20px); padding-inline:22px; margin-bottom:12px; background:#fff5df; }
+.india-additions .india-faq summary { font-size:20px; font-weight:400; }
+.india-additions .india-calendar__top { font-family:'Instrument Sans',Arial,sans-serif; font-size:16px; }
+.india-additions .india-format-card { padding-top:28px; }
+.india-additions .india-help-sticker { display:block; width:150px; height:180px; object-fit:contain; margin:0 0 20px; }
+.india-additions .india-hero__visual { transform:none; }
+.india-additions .india-hero__visual .india-help-sticker { width:200px; height:260px; margin:0; mix-blend-mode:normal; }
+.india-additions .india-format-card .india-help-sticker { height:170px; width:140px; margin-inline:auto; }
+.india-additions .india-meetup .india-help-sticker { height:140px; width:130px; margin-bottom:12px; }
+.india-additions .india-help-faq-art { width:100%; height:auto; aspect-ratio:2/1; object-fit:cover; border-radius:var(--zine-r,20px); margin-top:28px; }
+.india-additions .india-help-border { position:absolute; inset:0 0 auto; height:28px; overflow:hidden; border-radius:24px 24px 0 0; pointer-events:none; }
+.india-additions .india-help-border > * { width:100%; }
+.india-additions .india-close .india-help-sticker { margin:0 auto 22px; width:130px; height:160px; }
+.india-additions .india-hero { grid-template-columns:minmax(0,1fr) 200px; }
+.india-additions .india-pass { overflow:hidden; }
+.india-additions .india-faq summary::after { inset-inline-end:0; }
+html:not([data-india-locale="hi-Latn"]):not([data-india-locale="en"]) .india-additions :is(h2,h3,p,a,summary,label,span) { font-family:var(--india-script-font),'Instrument Sans',sans-serif; letter-spacing:normal; }
+@media (max-width:699px) {
+ .india-additions .india-hero { display:block; }
+ .india-additions .india-hero__visual { display:block; margin-top:24px; }
+ .india-additions .india-hero__visual .india-help-sticker { width:130px; height:175px; margin-inline:auto; }
+ .india-additions .india-poster-orbit { display:none; }
+ .india-additions :is(.india-formats,.india-ideas,.india-calculator) { width:calc(100% - 28px); }
+ .india-additions .india-format-card { padding-inline:20px; }
+ .india-additions .india-faq summary { font-size:18px; }
+ .india-additions .india-meetup { padding-top:42px; }
+}

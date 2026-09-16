@@ -1,0 +1,11 @@
+import { pageTranslationsScripts } from './indiaLandingTranslationsScripts';
+import { bn } from './indiaLandingBengali';
+import { pageTranslationsNorthEast } from './indiaLandingTranslationsNorthEast';
+import { pageTranslationsRtl } from './indiaLandingTranslationsRtl';
+import { pageTranslationsRegional } from './indiaLandingTranslationsRegional';
+import { pageTranslationsOdiaSanskrit } from './indiaLandingTranslationsOdiaSanskrit';
+import { sourceEnglish, sourceHinglish } from './indiaLandingSource';
+import { hi } from './indiaLandingHindi';
+import { pageTranslationsSouth } from './indiaLandingTranslationsSouth';
+import { pageTranslationsWest } from './indiaLandingTranslationsWest';
+export const indiaPageDictionaries: Record<string, Record<string,string>> = { en:sourceEnglish, 'hi-Latn':sourceHinglish, hi, bn, ...pageTranslationsScripts, ...pageTranslationsNorthEast, ...pageTranslationsRtl, ...pageTranslationsRegional, ...pageTranslationsOdiaSanskrit, ...pageTranslationsSouth, ...pageTranslationsWest };

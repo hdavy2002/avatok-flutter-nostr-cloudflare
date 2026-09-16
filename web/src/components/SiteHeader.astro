@@ -28,6 +28,7 @@
 // signal, but nothing renders it.
 import TruckBorder from './TruckBorder.astro';
 import GlobalHeader from './GlobalHeader.astro';
+import IndiaLanguageSelector from './IndiaLanguageSelector.astro';
 // [WEB-BANNER-OFF-1 2026-09-02] Owner asked for the site-wide product-status
 // strip to come out of the header. BetaBanner.astro is kept on disk (unused) so
 // it can be re-mounted here in one line if the payment-gateway review wants it
@@ -62,6 +63,8 @@ interface Props {
   auth?: 'auto' | 'in' | 'static';
   /** Global landing experience; the default remains the India header. */
   variant?: 'india' | 'global';
+  /** Opt-in translation chrome for the India landing experience. */
+  indiaLandingLanguage?: boolean;
 }
 
 // The site menu. Every entry points at something that exists — checked.
@@ -79,7 +82,7 @@ const DEFAULT_LINKS: HeaderLink[] = [
 ];
 
 // `auth` is destructured and ignored on purpose — see the deprecation note above.
-const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false, variant = 'india' } = Astro.props;
+const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false, variant = 'india', indiaLandingLanguage = false } = Astro.props;
 const globalLinks: HeaderLink[] = [
   { href: '/global-ideas', label: 'Ideas' },
   { href: '#formats', label: 'For creators' },
@@ -87,6 +90,7 @@ const globalLinks: HeaderLink[] = [
   { href: '#payouts', label: 'Payouts' },
 ];
 const headerLinks = variant === 'global' ? globalLinks : links;
+const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wiki: 'chrome.wiki', Pricing: 'chrome.pricing', Ideas: 'chrome.ideas', 'For creators': 'chrome.forCreators', 'How it works': 'chrome.howItWorks', Payouts: 'chrome.payouts' } as Record<string, string>)[label];
 ---
 
 {variant === 'global' ? <GlobalHeader sticky={sticky} /> : <>
@@ -98,6 +102,7 @@ const headerLinks = variant === 'global' ? globalLinks : links;
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,700;0,900;1,700;1,900&family=Instrument+Sans:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&family=Baloo+2:wght@600;700;800&family=Kalam:wght@400;700&display=swap" />
+{indiaLandingLanguage && <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;600;700&display=swap" />}
 
 {/* [WEB-HEADER-5 2026-08-26] Owner: the bazaar band belongs above the site
     header. Inside <header> on purpose — a sticky header that left the band
@@ -126,15 +131,16 @@ const headerLinks = variant === 'global' ? globalLinks : links;
 <header class:list={['avh', sticky && 'avh--sticky', responsiveHome && 'avh--home', variant === 'global' && 'avh--global']}>
   <TruckBorder kind="jhalar" count={60} class="avh-band" />
   <div class="avh-bar">
-  <a class="avh-logo" href="/" aria-label="avaTOK home">
+  <a class="avh-logo" href="/" aria-label="avaTOK home" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.home' : undefined}>
     <img src="/avatok-logo.png" alt="avaTOK" width="231" height="90" />
   </a>
 
-  <nav class="avh-nav" aria-label="Main">
-    {headerLinks.map((l) => <a href={l.href}>{l.label}</a>)}
+  <nav class="avh-nav" aria-label="Main" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.mainNav' : undefined}>
+    {headerLinks.map((l) => <a href={l.href} data-india-i18n={indiaLandingLanguage ? chromeNavKey(l.label) : undefined}>{l.label}</a>)}
   </nav>
 
   <div class="avh-right">
+    {indiaLandingLanguage && <IndiaLanguageSelector id="india-language-desktop" />}
     {/* [WEB-HEADER-2 2026-08-26] Search pill removed at the owner's request.
         Browsing is reachable via the Categories and Ideas links. */}
     {/* [WEB-AUTH-STATE-1 2026-08-28] BOTH states are rendered, and CSS shows one.
@@ -147,10 +153,10 @@ const headerLinks = variant === 'global' ? globalLinks : links;
         No Clerk island is needed for this any more, which also removes the
         double-<ClerkProvider> crash that forced the `static` mode to exist. */}
     <Fragment>
-      <a class="avh-cta avh-auth-out" href={variant === 'global' ? '/sign-in?next=/' : '/sign-in'}>Log in</a>
-      <a class="avh-cta avh-cta--solid avh-auth-out" href={variant === 'global' ? '/sign-up?role=creator&country=global' : '/sign-up'}>Sign up</a>
-      <a class="avh-cta avh-cta--solid avh-auth-in" href="/dashboard">Dashboard</a>
-    <a class="avh-cta avh-auth-in" href="/sign-out">Sign out</a>
+      <a class="avh-cta avh-auth-out" href={variant === 'global' ? '/sign-in?next=/' : '/sign-in'} data-india-i18n={indiaLandingLanguage ? 'chrome.login' : undefined}>Log in</a>
+      <a class="avh-cta avh-cta--solid avh-auth-out" href={variant === 'global' ? '/sign-up?role=creator&country=global' : '/sign-up'} data-india-i18n={indiaLandingLanguage ? 'chrome.signup' : undefined}>Sign up</a>
+      <a class="avh-cta avh-cta--solid avh-auth-in" href="/dashboard" data-india-i18n={indiaLandingLanguage ? 'chrome.dashboard' : undefined}>Dashboard</a>
+    <a class="avh-cta avh-auth-in" href="/sign-out" data-india-i18n={indiaLandingLanguage ? 'chrome.signout' : undefined}>Sign out</a>
     {variant === 'global' && <span class="avh-locale" aria-label="Current country">🌍 Global</span>}
     {variant === 'global' && <a class="avh-locale" href="/india" aria-label="Open India experience">🇮🇳 India</a>}
     {variant === 'global' && <a class="avh-locale" href="#language" aria-label="Choose language">EN</a>}
@@ -158,7 +164,7 @@ const headerLinks = variant === 'global' ? globalLinks : links;
     <img class="avh-orn" src="/ornament-flower.png" alt="" width="85" height="80" aria-hidden="true" />
   </div>
 
-  <button class="avh-burger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="avh-mobile">
+  <button class="avh-burger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="avh-mobile" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.menu' : undefined}>
     <svg width="20" height="15" viewBox="0 0 20 15" aria-hidden="true">
       <path d="M1 1.5h18M1 7.5h18M1 13.5h18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" />
     </svg>
@@ -172,8 +178,9 @@ const headerLinks = variant === 'global' ? globalLinks : links;
     open-attribute-only approach would leave the panel in the tab order while
     invisible); the script below only defers setting it back on close until
     the exit transition finishes. */}
-<nav class:list={['avh-mobile', 't-dropdown', responsiveHome && 'avh-mobile--home']} id="avh-mobile" aria-label="Main (mobile)" hidden>
-  {headerLinks.map((l) => <a href={l.href}>{l.label}</a>)}
+<nav class:list={['avh-mobile', 't-dropdown', responsiveHome && 'avh-mobile--home']} id="avh-mobile" aria-label="Main (mobile)" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.mainNav' : undefined} hidden>
+  {indiaLandingLanguage && <IndiaLanguageSelector id="india-language-mobile" />}
+  {headerLinks.map((l) => <a href={l.href} data-india-i18n={indiaLandingLanguage ? chromeNavKey(l.label) : undefined}>{l.label}</a>)}
   {/* [WEB-HEADER-10] Auth moves OUT of the bar and in here below 1100px.
       [WEB-AUTH-STATE-1 2026-08-28] These used to be signed-OUT links on every
       page regardless of session — the comment here said so, blaming the
@@ -181,13 +188,19 @@ const headerLinks = variant === 'global' ? globalLinks : links;
       phone was shown "Log in / Sign up" with no way to reach their dashboard or
       sign out. CSS-driven state fixes it with no provider at all. */}
   <Fragment>
-    <a class="avh-mobile-auth avh-auth-out" href={variant === 'global' ? '/sign-in?next=/' : '/sign-in'}>Log in</a>
-    <a class="avh-mobile-auth avh-mobile-auth--solid avh-auth-out" href={variant === 'global' ? '/sign-up?role=creator&country=global' : '/sign-up'}>Sign up</a>
-    <a class="avh-mobile-auth avh-mobile-auth--solid avh-auth-in" href="/dashboard">Dashboard</a>
-    <a class="avh-mobile-auth avh-auth-in" href="/sign-out">Sign out</a>
+    <a class="avh-mobile-auth avh-auth-out" href={variant === 'global' ? '/sign-in?next=/' : '/sign-in'} data-india-i18n={indiaLandingLanguage ? 'chrome.login' : undefined}>Log in</a>
+    <a class="avh-mobile-auth avh-mobile-auth--solid avh-auth-out" href={variant === 'global' ? '/sign-up?role=creator&country=global' : '/sign-up'} data-india-i18n={indiaLandingLanguage ? 'chrome.signup' : undefined}>Sign up</a>
+    <a class="avh-mobile-auth avh-mobile-auth--solid avh-auth-in" href="/dashboard" data-india-i18n={indiaLandingLanguage ? 'chrome.dashboard' : undefined}>Dashboard</a>
+    <a class="avh-mobile-auth avh-auth-in" href="/sign-out" data-india-i18n={indiaLandingLanguage ? 'chrome.signout' : undefined}>Sign out</a>
   </Fragment>
   {variant === 'global' && <a class="avh-mobile-auth" href="/india">🌍 India</a>}
 </nav>
+
+{indiaLandingLanguage && <script>
+  if (document.querySelector('[data-india-page]')) {
+    import('../lib/indiaLandingLanguage').then(({ initIndiaLandingLanguage }) => initIndiaLandingLanguage(document));
+  }
+</script>}
 
 </>}
 

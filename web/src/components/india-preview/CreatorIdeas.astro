@@ -1,0 +1,28 @@
+---
+import { sourceHinglish as copy } from '../../lib/indiaLandingSource';
+
+const ideas = [
+  { titleKey: "ideaOneTitle", bodyKey: "ideaOneBody", title: copy.ideaOneTitle, body: copy.ideaOneBody, image: '/assets/ideas/guides/folk-dance-from-home.jpg', tone: 'pink' },
+  { titleKey: "ideaTwoTitle", bodyKey: "ideaTwoBody", title: copy.ideaTwoTitle, body: copy.ideaTwoBody, image: '/assets/ideas/guides/chai-stall-chronicles-card.jpg', tone: 'mango' },
+  { titleKey: "ideaThreeTitle", bodyKey: "ideaThreeBody", title: copy.ideaThreeTitle, body: copy.ideaThreeBody, image: '/assets/ideas/guides/study-with-me-club-card.jpg', tone: 'purple' },
+  { titleKey: "ideaFourTitle", bodyKey: "ideaFourBody", title: copy.ideaFourTitle, body: copy.ideaFourBody, image: '/assets/ideas/guides/saree-draping-circle.jpg', tone: 'blue' },
+];
+---
+
+<section class="india-section india-ideas" aria-labelledby="addon-ideas-title" id="addon-ideas">
+<div class="india-wrap">
+<p class="india-kicker">
+<span data-india-i18n="ideasEyebrow">{copy.ideasEyebrow}</span>
+</p>
+<h2 id="addon-ideas-title">
+<span data-india-i18n="ideasTitle">{copy.ideasTitle}</span>
+</h2>
+<div class="india-idea-grid">{ideas.map((idea) => <article class:list={['india-idea-card', `india-idea-card--${idea.tone}`]}>
+<img src={idea.image} alt="" loading="lazy" />
+<div>
+<h3 data-india-i18n={idea.titleKey}>{idea.title}</h3>
+<p data-india-i18n={idea.bodyKey}>{idea.body}</p>
+</div>
+</article>)}</div>
+</div>
+</section>

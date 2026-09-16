@@ -1,0 +1,84 @@
+---
+import { sourceHinglish as copy } from '../../lib/indiaLandingSource';
+---
+
+<section class="india-section india-calculator" aria-labelledby="addon-calculator-title" id="addon-calculator">
+<div class="india-wrap">
+<p class="india-kicker">
+<span data-india-i18n="calcEyebrow">{copy.calcEyebrow}</span>
+</p>
+<h2 id="addon-calculator-title">
+<span data-india-i18n="calcTitle">{copy.calcTitle}</span>
+</h2>
+<p class="india-section-lede">
+<span data-india-i18n="calcBody">{copy.calcBody}</span>
+</p>
+<div class="india-calc-grid" data-india-calculator>
+<form class="india-calc-form" aria-label={copy.ariaCalculator} data-india-i18n-attr="aria-label:ariaCalculator">
+<label>
+<span>
+<span data-india-i18n="calcLiveLabel">{copy.calcLiveLabel}</span>
+</span>
+<output data-calc-live-price>₹2,000</output>
+<input data-calc="livePrice" type="range" min="0" max="50000" step="100" value="2000" />
+</label>
+<label>
+<span>
+<span data-india-i18n="calcAudienceLabel">{copy.calcAudienceLabel}</span>
+</span>
+<output data-calc-audience>100</output>
+<input data-calc="audience" type="range" min="0" max="10000" step="1" value="100" />
+</label>
+<label>
+<span>
+<span data-india-i18n="calcEventsLabel">{copy.calcEventsLabel}</span>
+</span>
+<output data-calc-events>2</output>
+<input data-calc="events" type="range" min="0" max="31" step="1" value="2" />
+</label>
+<label>
+<span>
+<span data-india-i18n="calcOneLabel">{copy.calcOneLabel}</span>
+</span>
+<output data-calc-one-price>₹1,500</output>
+<input data-calc="onePrice" type="range" min="0" max="50000" step="100" value="1500" />
+</label>
+<label>
+<span>
+<span data-india-i18n="calcBookingsLabel">{copy.calcBookingsLabel}</span>
+</span>
+<output data-calc-bookings>5</output>
+<input data-calc="bookings" type="range" min="0" max="1000" step="1" value="5" />
+</label>
+</form>
+<div class="india-calc-result">
+<div>
+<span>
+<span data-india-i18n="calcLiveTotal">{copy.calcLiveTotal}</span>
+</span>
+<strong data-calc-live-total>₹4,00,000</strong>
+</div>
+<div>
+<span>
+<span data-india-i18n="calcOneTotal">{copy.calcOneTotal}</span>
+</span>
+<strong data-calc-one-total>₹7,500</strong>
+</div>
+<div class="india-calc-total">
+<span>
+<span data-india-i18n="calcTotal">{copy.calcTotal}</span>
+</span>
+<strong data-calc-total>₹4,07,500</strong>
+</div>
+<p>
+<span data-india-i18n="calcDisclaimer">{copy.calcDisclaimer}</span>
+</p>
+<p>
+<span>
+<span data-india-i18n="calcPricingNote">{copy.calcPricingNote}</span>
+</span> <a href="/pricing-fees" data-india-i18n="chrome.pricing">Pricing guide</a>
+</p>
+</div>
+</div>
+</div>
+</section>

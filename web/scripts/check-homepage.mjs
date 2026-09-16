@@ -7,64 +7,62 @@ import sharp from 'sharp';
 
 const root = resolve('dist');
 const html = readFileSync(resolve(root, 'index.html'), 'utf8');
-assert.match(html, /data-design="creator-marketplace-2026-09"/, 'Expected creator marketplace homepage');
-assert.doesNotMatch(html, /In India\? Open your India experience/, 'Removed standalone India callout stays removed');
-assert.match(html, /href="\/india"/, 'India remains available through global navigation');
+assert.match(html, /data-design="creator-marketplace-2026-09"/, 'Expected approved creator marketplace homepage');
+assert.match(html, /Apna hunar\./, 'Approved hero headline remains');
+assert.match(html, /Apni kamaai\./, 'Approved hero accent remains');
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One readable main heading');
-assert.equal((html.match(/class="category-cutout"/g) || []).length, 8, 'Eight illustrated creator categories');
+assert.equal((html.match(/data-home-idea="/g) || []).length, 6, 'Six original creator idea cards');
+assert.equal((html.match(/<article\b[^>]*class="[^"]*\bindia-idea-card\b/g) || []).length, 4, 'Four additional creator ideas');
 const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
+for (const id of ['consultations', 'how-avatok-works', 'ideas-catalogue', 'addon-ideas', 'addon-calculator']) {
+ assert(ids.has(id), 'Approved homepage section exists: ' + id);
+}
+assert(html.indexOf('id="consultations"') < html.indexOf('id="ideas-catalogue"'), 'Booking Express precedes the original ideas');
+assert.equal((html.match(/<input\b[^>]*type="range"/g) || []).length, 5, 'Five earnings calculator controls');
+const languageSelectors = [...html.matchAll(/<select\b[^>]*data-india-language-select[^>]*>[\s\S]*?<\/select>/g)];
+assert.equal(languageSelectors.length, 2, 'Desktop and mobile language selectors');
+for (const [index, selector] of languageSelectors.entries()) {
+ assert.equal((selector[0].match(/<option\b/g) || []).length, 24, 'All 24 languages in selector ' + index);
+}
 for (const match of html.matchAll(/\bhref="([^"]+)"/g)) {
-  const href = match[1].replaceAll('&amp;', '&');
-  if (href.startsWith('#') || href.startsWith('/#')) {
-    assert(ids.has(href.split('#')[1]), 'Missing homepage anchor: ' + href);
-  }
+ const href = match[1].replaceAll('&amp;', '&');
+ if (href.startsWith('#') || href.startsWith('/#')) {
+  assert(ids.has(href.split('#')[1]), 'Missing homepage anchor: ' + href);
+ }
 }
 for (const name of ['approved-hero.jpg', 'approved-ideas.jpg', 'creator-train.jpg']) {
-  assert(existsSync(resolve(root, 'assets/railway', name)), 'Missing art: ' + name);
+ assert(existsSync(resolve(root, 'assets/railway', name)), 'Missing art: ' + name);
 }
 assert.match(html, /href="\/sign-up(?:\?|\")/, 'Signup remains reachable');
 assert.match(html, /href="\/marketplace/, 'Marketplace remains reachable');
-assert.match(html, /href="\/marketplace/, 'Marketplace remains reachable from global homepage');
-assert.doesNotMatch(html, /data-motion-toggle|data-rail-train/, 'Old train animation removed');
-assert.match(html, /<img\b[^>]*src="\/assets\/global-retro\/creator-club-clean\.png"/, 'Approved global hero is visible');
-assert.match(html, /aria-controls="mobile-menu"/, 'Mobile menu is accessible');
-assert.match(html, /href="\/sign-up\?role=creator(?:&amp;|&#38;|&)country=global"/, 'Creator CTA carries global country');
-assert.doesNotMatch(html, /start-dialog|This design preview|noindex/, 'Production page has no preview placeholder or search exclusion');
-for (const name of ['creator-club-clean', 'live-stage-70s', 'private-session-80s', 'group-session-90s', 'local-payday']) {
- assert(html.includes('/assets/global-retro/' + name + '.png'), 'Approved illustration is visible: ' + name);
- assert(existsSync(resolve(root, 'assets/global-retro', name + '.png')), 'Approved illustration resolves: ' + name);
-}
+assert.match(html, /<img\b[^>]*src="\/assets\/home\/avatok-creator-constellation\.png"/, 'Approved creator hero remains');
+assert(existsSync(resolve(root, 'assets/home/avatok-creator-constellation.png')), 'Creator hero asset resolves');
+assert.match(html, /aria-controls="avh-mobile"/, 'Mobile menu is accessible');
+assert.doesNotMatch(html, /data-motion-toggle|data-rail-train|start-dialog|This design preview|noindex/, 'Production page has no retired animation, placeholder or search exclusion');
+assert.doesNotMatch(html, /href="\/india(?:[/?#"]|$)|data-site-experience="global"|data-artwork="global-retro-decades"/, 'Single homepage has no retired country switch or global landing');
 assert.equal((html.match(/<header\b/g) || []).length, 1, 'Exactly one homepage header');
 assert.equal((html.match(/<footer\b/g) || []).length, 1, 'Exactly one homepage footer');
+assert.match(html, /class="[^"]*bazaar-footer/, 'Shared footer remains');
+assert(!existsSync(resolve(root, 'india/index.html')), 'Retired India URL has no duplicate static landing');
+const redirects = readFileSync(resolve(root, '_redirects'), 'utf8');
+assert.match(redirects, /^\/india\s+\/\s+301\s*$/m, 'India URL permanently redirects home');
+assert.match(redirects, /^\/india\/\s+\/\s+301\s*$/m, 'Trailing-slash India URL permanently redirects home');
+const archive = readFileSync(resolve(root, 'archive/home-2026-09-09/index.html'), 'utf8');
+assert.match(archive, /noindex, nofollow/, 'Existing archive must not compete in search');
+assert.match(archive, /hero-poster-nonav.png/, 'Previous hero remains archived');
+console.log('Homepage checks passed: approved hero, retained sections, language selectors, calculator, anchors and India redirects.');
+
+const globalIdeas = readFileSync(resolve(root, 'global-ideas/index.html'), 'utf8');
 for (const name of ['hero-creators', 'format-live', 'format-call', 'format-paid', 'payout-world', 'creator-marketplace-og']) {
  assert(existsSync(resolve(root, 'assets/global', name + '.png')), 'Missing global artwork: ' + name);
 }
-for (const image of html.matchAll(/<img\b[^>]*src="(\/assets\/global\/[^\"]+)"/g)) {
+for (const image of globalIdeas.matchAll(/<img\b[^>]*src="(\/assets\/global\/[^\"]+)"/g)) {
  assert(existsSync(resolve(root, image[1].slice(1))), 'Visible global artwork resolves: ' + image[1]);
  for (const width of [480, 960]) {
   const variant = image[1].replace(/\.png$/, '-' + width + '.webp');
   assert(existsSync(resolve(root, variant.slice(1))), 'Responsive artwork exists: ' + variant);
  }
 }
-const india = readFileSync(resolve(root, 'india/index.html'), 'utf8');
-assert.match(india, /avatok-creator-constellation\.png/, 'Original India creator artwork remains');
-assert.doesNotMatch(india, /\/assets\/global(?:-original)?\//, 'Global artwork must not replace the India design');
-assert.equal((india.match(/<header\b/g) || []).length, 1, 'India retains one header');
-assert.equal((india.match(/<footer\b/g) || []).length, 1, 'India retains one footer');
-const indiaFooter = india.match(/<footer\b[\s\S]*?<\/footer>/)?.[0] || '';
-const globalFooter = html.match(/<footer\b[\s\S]*?<\/footer>/)?.[0] || '';
-for (const navigation of indiaFooter.matchAll(/<nav\b[\s\S]*?<\/nav>/g)) {
- for (const link of navigation[0].matchAll(/href="([^"]+)"/g)) {
-  assert(globalFooter.includes('href="' + link[1] + '"'), 'Existing footer destination preserved globally: ' + link[1]);
- }
-}
-assert.match(html, /class="[^"]*bazaar-footer/, 'Existing footer remains');
-const archive = readFileSync(resolve(root, 'archive/home-2026-09-09/index.html'), 'utf8');
-assert.match(archive, /noindex, nofollow/, 'Archive must not compete in search');
-assert.match(archive, /hero-poster-nonav.png/, 'Previous hero remains archived');
-console.log('Homepage smoke checks passed: eight ideas, real artwork, anchors, signup, marketplace, India and archive.');
-
-const globalIdeas = readFileSync(resolve(root, 'global-ideas/index.html'), 'utf8');
 assert.equal((globalIdeas.match(/<header\b/g) || []).length, 1, 'Global catalog has no duplicate header');
 assert.equal((globalIdeas.match(/<footer\b/g) || []).length, 1, 'Global catalog has no duplicate footer');
 const globalLinks = [...globalIdeas.matchAll(/href="(\/blog\/global-creator-ideas\/[^\"]+)"/g)].map(m => m[1]);
@@ -96,7 +94,7 @@ for (const [index, href] of globalLinks.entries()) {
  const actual = await sharp(resolve(root, 'assets/global-original/ideas-' + slug + '.png')).removeAlpha().raw().toBuffer();
  assert(expected.equals(actual), 'Idea preserves every original pixel: ' + slug);
 }
-for (const page of [html, globalIdeas]) {
+for (const page of [globalIdeas]) {
  for (const image of page.matchAll(/<img\b[^>]*src="(\/assets\/global-original\/[^\"]+)"/g)) {
   assert(existsSync(resolve(root, image[1].slice(1))), 'Original image resolves: ' + image[1]);
  }
@@ -129,7 +127,7 @@ const ideas = readFileSync(resolve(root, 'ideas/index.html'), 'utf8');
 assert.equal((ideas.match(/data-idea-card/g) || []).length, 115, 'All 115 creator ideas are present');
 assert.equal((ideas.match(/<h1[ >]/g) || []).length, 1, 'Ideas page has one main heading');
 assert.equal((ideas.match(/class="idea-title-line(?: |")/g) || []).length, 2, 'Ideas hero keeps both headline phrases on horizontal lines');
-assert.match(html, /href="\/global-ideas/, 'Global homepage links to the global ideas page');
+assert.match(html, /href="\/ideas"/, 'Homepage links to the creator ideas page');
 assert.match(ideas, /class="bazaar-footer"/, 'Ideas uses shared footer');
 assert.match(ideas, /avh--sticky/, 'Ideas uses shared header');
 assert.match(ideas, /id="idea-search"/, 'Search has an accessible input');
@@ -207,20 +205,23 @@ assert.equal(meta(ideas,'twitter:image'),meta(ideas,'og:image'));
 assert(meta(ideas,'og:title') && meta(ideas,'og:description'));
 console.log('Sharing metadata and discovery checks passed for ideas and all 115 articles.');
 
-// [WEB-GANESH-OG-2] One compact preview prevents WhatsApp choosing the tall poster.
+// The promoted homepage has one accurate share preview and canonical URL.
 const campaignImages = [...html.matchAll(/<meta property="og:image" content="([^"]+)"/g)].map(m => m[1]);
 assert.deepEqual(campaignImages, [
- 'https://avatok.ai/assets/global-original/hero-source.png',
-], 'Global homepage advertises one creator preview image');
-assert.equal(meta(html, 'og:title'), 'Turn your influence into live &#38; 1:1 income · avaTOK');
-assert.equal(meta(html, 'og:description'), 'AvaTOK helps influencers earn from their audience through paid live streams and private 1:1 video sessions, with flexible pricing and local payouts.');
+ 'https://avatok.ai/assets/home/avatok-creator-constellation.png',
+], 'Homepage advertises one creator preview image');
+assert.equal(meta(html, 'og:title'), 'Apna hunar. Apni kamaai. · avaTOK');
+assert.equal(meta(html, 'og:description'), 'Turn your fanbase into paid live events, private 1:1 video meetups and group sessions. Your page, your price, your people.');
 assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'twitter:image'), campaignImages[0]);
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));
-assert.equal(meta(html, 'og:image:width'), '1536');
-assert.equal(meta(html, 'og:image:height'), '1024');
+assert.equal(meta(html, 'og:image:width'), '1156');
+assert.equal(meta(html, 'og:image:height'), '1360');
 for (const image of campaignImages) {
  const bytes = readFileSync(resolve(root, new URL(image).pathname.slice(1)));
- assert(bytes.length > 1000, 'Global creator preview image is present');
+ assert(bytes.length > 1000, 'Creator preview image is present');
 }
-console.log('Global homepage title, description and selected creator image passed.');
+assert.match(html, /<link\b[^>]*rel="canonical"[^>]*href="https:\/\/avatok\.ai\/"/, 'Homepage canonical is the root URL');
+assert.equal(meta(html, 'og:url'), 'https://avatok.ai/');
+assert.doesNotMatch(sitemap, /<loc>https:\/\/avatok\.ai\/india(?:-next)?\/?<\/loc>/, 'Retired and preview routes stay out of the sitemap');
+console.log('Homepage title, description, canonical and selected creator image passed.');

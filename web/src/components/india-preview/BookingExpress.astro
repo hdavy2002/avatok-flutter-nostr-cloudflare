@@ -1,0 +1,91 @@
+---
+import { sourceHinglish as copy } from '../../lib/indiaLandingSource';
+const steps = [
+  ['stepOne', 'stepOneBody'], ['stepTwo', 'stepTwoBody'],
+  ['stepThree', 'stepThreeBody'], ['stepFour', 'stepFourBody'],
+] as const;
+---
+<section class="booking-express rail-wrap" id="consultations" aria-labelledby="formats-title" data-home-section="start">
+  <span id="formats" aria-hidden="true"></span>
+  <h2 class="rail-flowered express-formats-title" id="formats-title"><img src="/ornament-flower.png" alt="" width="34" height="34" /> Ek platform. Teen tareeke. <img src="/ornament-flower.png" alt="" width="34" height="34" /></h2>
+      <div class="rail-format-grid">
+        <a id="live-streaming" href="/marketplace?group=india_goes_live" data-home-cta="format-live"><span class="rail-format-icon rail-badge--pink" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="12" height="12" rx="2" /><path d="m15 10 6-3v10l-6-3" /></svg></span><span><h3>Live events</h3><p>Sell tickets to your stream.</p></span><span aria-hidden="true">↗</span></a>
+        <a id="live-friends" href="/marketplace?group=book_their_time" data-home-cta="format-private"><span class="rail-format-icon rail-badge--yellow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="4" /><path d="M4 22v-3a8 8 0 0 1 16 0v3" /></svg></span><span><h3>1:1 sessions</h3><p>Offer your undivided time.</p></span><span aria-hidden="true">↗</span></a>
+        <a id="group-sessions" href="/marketplace?group=book_their_time" data-home-cta="format-group"><span class="rail-format-icon rail-badge--blue" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="3" /><path d="M2 21v-3a7 7 0 0 1 14 0v3M16 4a3 3 0 0 1 0 6m2 4a5 5 0 0 1 4 5v2" /></svg></span><span><h3>Group sessions</h3><p>Teach or advise a small group.</p></span><span aria-hidden="true">↗</span></a>
+      </div>
+
+  <div class="express-ticket" id="how-avatok-works">
+    <span id="how-it-works" aria-hidden="true"></span>
+    <div class="express-heading">
+      <div class="express-train" aria-hidden="true">
+        <svg viewBox="80 1352 120 58" xmlns="http://www.w3.org/2000/svg">
+          <defs><filter id="express-ticket-ink" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0 0 0 0 0.10  0 0 0 0 0.10  0 0 0 0 0.06  -0.6378 -2.1456 -0.2166 0 2" /></filter></defs>
+          <image href="/assets/railway/approved-ideas.jpg" width="865" height="1819" filter="url(#express-ticket-ink)" />
+        </svg>
+      </div>
+      <div class="express-title">
+        <p class="express-label">Your first booking express</p>
+        <h3><span data-india-i18n="journeyTitle">{copy.journeyTitle}</span></h3>
+      </div>
+      <div class="express-stamp" aria-hidden="true">Same people<br />New opportunities<span>♥</span></div>
+    </div>
+    <ol class="express-steps">
+      {steps.map(([title, body], index) => <li>
+        <span class="express-number">0{index + 1}</span>
+        <h4 data-india-i18n={title}>{copy[title]}</h4>
+        <p data-india-i18n={body}>{copy[body]}</p>
+        {index === 2 && <small>Open your calendar. Share your link.</small>}
+      </li>)}
+    </ol>
+    <div class="express-bottom">
+      <a class="rail-button rail-button--ink" href="/sign-up" data-home-cta="booking-express-create">Create your free listing <span aria-hidden="true">↗</span></a>
+      <p class="rail-script">Chhoti shuruaat<br />badi kahaniyan banati hai.</p>
+    </div>
+  </div>
+</section>
+
+<style>
+.booking-express { padding-block:44px 32px; }
+.booking-express .express-formats-title { font-size:clamp(1.6rem,2.8vw,2.6rem); line-height:1.3; text-align:center; }
+.booking-express .rail-format-grid { margin-block:26px 34px; }
+.express-ticket { position:relative; padding:30px; background:#ffce67 url('/assets/global-original/paper.webp') center/700px; background-blend-mode:multiply; border:1px solid #c4943f; border-radius:24px; box-shadow:4px 5px 0 #cbb78f; }
+.express-heading { display:grid; grid-template-columns:160px minmax(0,1fr) 140px; gap:24px; align-items:center; }
+.express-train svg { display:block; width:100%; }
+.express-label { font-family:'Instrument Sans',Arial,sans-serif; font-size:14px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; margin-bottom:12px!important; }
+.booking-express .express-title h3 { font-family:'Comfortaa','Baloo 2',sans-serif; font-size:clamp(26px,3vw,42px); font-weight:400; text-transform:none; line-height:1.25; }
+.express-stamp { border:1px solid #ae8034; outline:2px dotted #ae8034; outline-offset:5px; border-radius:16px; padding:18px 10px; text-align:center; font-size:12px; text-transform:uppercase; line-height:1.6; }
+.express-stamp span { display:block; color:#d93825; font-size:23px; margin-top:4px; }
+.express-steps { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:22px; list-style:none; padding:28px 0; margin:26px 0; border-block:1px dashed #b58539; }
+.express-steps li { position:relative; padding:20px; background:#fff5df; border:1px solid #c7a466; border-top:3px solid #d93825; border-radius:20px; }
+.express-steps li:not(:last-child)::after { content:'→'; position:absolute; right:-20px; top:32px; font-size:25px; z-index:1; }
+.express-number { font-family:'Kalam',cursive; font-size:32px; color:#d93825; }
+.express-steps h4 { font-family:'Comfortaa','Baloo 2',sans-serif; font-size:24px; font-weight:400; margin:10px 0; }
+.express-steps p { font-size:16px; line-height:1.55; }
+.express-steps small { display:block; font-size:12px; line-height:1.5; margin-top:10px; color:#625038; }
+.express-bottom { display:flex; justify-content:center; align-items:center; gap:40px; }
+.express-bottom .rail-script { max-width:230px; }
+@media(max-width:1000px) {
+ .express-heading { grid-template-columns:110px minmax(0,1fr); }
+ .express-stamp { display:none; }
+ .express-steps { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ .express-steps li:nth-child(2)::after { display:none; }
+}
+@media(max-width:699px) {
+ .booking-express { padding-block:30px 20px; }
+ .booking-express .express-formats-title { font-size:1.5rem; gap:10px; }
+ .express-formats-title img { width:24px; height:24px; }
+ .booking-express .rail-format-grid { grid-template-columns:1fr; gap:0; }
+ .booking-express .rail-format-grid > a { flex-direction:row; text-align:left; padding:18px 4px; gap:14px; border-left:0; }
+ .booking-express .rail-format-grid > a + a { border-top:1px solid #cfbfa8; }
+ .express-ticket { padding:24px 18px; }
+ .express-heading { grid-template-columns:1fr; gap:16px; text-align:center; }
+ .express-train { width:120px; margin-inline:auto; }
+ .express-steps { gap:16px; padding-block:22px; }
+ .express-steps li { padding:16px; }
+ .express-steps li::after { display:none; }
+ .express-steps h4 { font-size:21px; }
+ .express-bottom { flex-direction:column; gap:22px; text-align:center; }
+ .express-bottom .rail-button { font-size:14px; padding-inline:16px; gap:12px; }
+}
+@media(max-width:420px) { .express-steps { grid-template-columns:1fr; } }
+</style>
