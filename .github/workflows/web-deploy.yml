@@ -10,22 +10,30 @@ name: Deploy web (Cloudflare Pages)
 on:
   # Builds and deployments require an explicit owner-requested dispatch.
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the verified build to production (main only)
+        type: boolean
+        default: true
+        required: true
 
 concurrency:
   group: web-deploy-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    environment: production
     steps:
-      - name: Guard explicit production dispatch from main
+      - name: Guard explicit dispatch and production branch
+        env:
+          PUBLISH: ${{ inputs.publish }}
         run: |
-          [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_REF" == refs/heads/main ]] || {
+          [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]] || exit 1
+          if [[ "$PUBLISH" == true && "$GITHUB_REF" != refs/heads/main ]]; then
             echo "Production web deployment requires a manual dispatch from main." >&2
             exit 1
-          }
+          fi
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -79,6 +87,42 @@ jobs:
       - name: Check help centre
         working-directory: web
         run: node scripts/check-help.mjs
+
+      - name: Check performance and public image contracts
+        working-directory: web
+        run: |
+          node scripts/check-image-urls.mjs
+          node scripts/check-performance.mjs
+
+      - name: Save verified production artifact
+        if: inputs.publish
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist-${{ github.sha }}
+          path: web/dist
+          include-hidden-files: true
+          retention-days: 1
+          compression-level: 0
+
+  deploy:
+    if: inputs.publish
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout deployment configuration
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Download verified production artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist-${{ github.sha }}
+          path: web/dist
 
       - name: Deploy to Cloudflare Pages (avatok-app)
         uses: cloudflare/wrangler-action@v3
