@@ -16,34 +16,6 @@ html { font-size: clamp(16px, calc(16px + (100vw - 1600px) * 0.0075), 22px); }
    font load along with the swap so the site stops fetching a face it no
    longer renders (same reasoning as the Anton retirement below). */
 @font-face {
-  font-family: 'Nunito';
-  src: url('/fonts/Nunito-SemiBold.woff2') format('woff2');
-  font-weight: 600;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Nunito';
-  src: url('/fonts/Nunito-Bold.woff2') format('woff2');
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Nunito';
-  src: url('/fonts/Nunito-ExtraBold.woff2') format('woff2');
-  font-weight: 800;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Nunito';
-  src: url('/fonts/Nunito-Black.woff2') format('woff2');
-  font-weight: 900;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
   font-family: 'Space Mono';
   src: url('/fonts/SpaceMono-Regular.woff2') format('woff2');
   font-weight: 400;

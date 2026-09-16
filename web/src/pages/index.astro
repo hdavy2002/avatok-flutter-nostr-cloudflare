@@ -9,9 +9,13 @@ import '../styles/india-additions.css';
 import CreatorIdeas from '../components/india-preview/CreatorIdeas.astro';
 import BookingExpress from '../components/india-preview/BookingExpressIllustrated.astro';
 import EarningsCalculator from '../components/india-preview/EarningsCalculatorIllustrated.astro';
-import { publicImage } from '../lib/config';
+import { publicImage, publicImageSrcSet } from '../lib/config';
 
 const ideas = creatorIdeas.slice(0, 6);
+const heroPath = '/assets/home/avatok-creator-constellation.png';
+// The 1280 cache bucket is capped by scale-down at the source's real 1156px.
+const heroSrcSet = `${publicImageSrcSet(heroPath, [420, 640, 900], { fit: 'scale-down' })}, ${publicImage(heroPath, { width: 1280, fit: 'scale-down' })} 1156w`;
+const heroSizes = '(max-width:699px) 90vw, 46vw';
 
 ---
 <Base
@@ -27,25 +31,14 @@ const ideas = creatorIdeas.slice(0, 6);
   <Fragment slot="head">
     <meta property="og:image:type" content="image/jpeg" />
     <meta name="theme-color" content="#f7ead5" />
-    <link rel="preload" as="image" href={publicImage('/assets/home/avatok-creator-constellation.png', { width: 1156, fit: 'scale-down' })} />
+    <link rel="preload" as="image" href={publicImage(heroPath, { width: 900, fit: 'scale-down' })} imagesrcset={heroSrcSet} imagesizes={heroSizes} />
   </Fragment>
   <a class="rail-skip" href="#ideas-catalogue">Skip to earning ideas</a>
   <SiteHeader indiaLandingLanguage={false} />
   <main class="rail-home" data-design="creator-marketplace-2026-09" id="main-content">
     <section class="station-hero creator-hero" aria-labelledby="rail-title">
       <div class="creator-hero__frame">
-        {/* [UI-MOTION-1 2026-09-10] "texts-reveal" (transitions.dev, `.t-*` in
-            styles/motion.css) — headline and supporting line rise in with a
-            staggered blur on first paint. `.t-stagger` goes on `.station-copy`
-            itself, not a new wrapper div, so `h1`/`p` stay its DIRECT children —
-            railway-home.css has `.station-copy > p:not(.station-aside)` rules
-            at every breakpoint that a wrapper div would have broken.
-            CRITICAL: both lines are real, readable text at rest — the
-            <noscript> below forces them visible if JS never runs, and
-            railwayHome.ts's safety-net timeout forces `.is-shown` even if the
-            reveal script itself fails, so nothing is ever permanently parked
-            at opacity:0. */}
-        <noscript><style>.t-stagger .t-stagger-line{opacity:1!important;transform:none!important;filter:none!important}</style></noscript>
+        {/* Hero copy is visible from the first CSS paint. */}
         <div class="station-copy creator-hero__copy t-stagger" id="hero-reveal">
           <p class="station-kicker creator-hero__kicker"><span aria-hidden="true"></span> A global creator marketplace</p>
           <h1 id="rail-title" class="t-stagger-line"><span class="creator-hero__line">Apna hunar.</span><span class="creator-hero__line creator-hero__line--accent">Apni kamaai.</span></h1>
@@ -60,11 +53,9 @@ const ideas = creatorIdeas.slice(0, 6);
             <a href="/marketplace?group=book_their_time" data-home-cta="hero-group">Group sessions</a>
           </div>
         </div>
-        {/* closes the merged .station-copy.t-stagger div opened above (it used
-            to close a plain .station-copy). */}
         <div class="station-art creator-hero__art">
             <span class="creator-hero__live" aria-hidden="true">● Live around the world</span>
-          <img src={publicImage('/assets/home/avatok-creator-constellation.png', { width: 1156, fit: 'scale-down' })} width="1156" height="1360" alt="Creators hosting a live stream, teaching a class, and offering a one-to-one conversation online." fetchpriority="high" decoding="async" />
+          <img src={publicImage(heroPath, { width: 900, fit: 'scale-down' })} srcset={heroSrcSet} sizes={heroSizes} width="1156" height="1360" alt="Creators hosting a live stream, teaching a class, and offering a one-to-one conversation online." fetchpriority="high" decoding="async" />
           <p class="creator-hero__share"><strong>80%</strong><span>you keep</span></p>
         </div>
       </div>
@@ -74,14 +65,14 @@ const ideas = creatorIdeas.slice(0, 6);
     <BookingExpress />
 
     <section class="rail-ideas rail-wrap" id="ideas-catalogue" aria-labelledby="ideas-title" data-home-section="ideas">
-      <p class="rail-eyebrow rail-flowered"><img src="/ornament-flower.png" alt="" width="28" height="28" /> Kya offer karoge? <img src="/ornament-flower.png" alt="" width="28" height="28" /></p>
+      <p class="rail-eyebrow rail-flowered"><img src={publicImage('/ornament-flower.png', { width: 96 })} alt="" width="28" height="28" /> Kya offer karoge? <img src={publicImage('/ornament-flower.png', { width: 96 })} alt="" width="28" height="28" /></p>
       <h2 id="ideas-title">Isse bhi <span>kamaa sakte ho?</span></h2>
       <p class="rail-section-copy">A few ideas to get your first listing started.</p>
       <div class="rail-idea-grid">
         {ideas.map((idea) => (
           <article class="idea-card rail-article-card">
             <a class="idea-card-link" href={idea.href} aria-labelledby={`${idea.id}-title`} data-home-idea={idea.id}>
-              <div class="idea-picture"><img src={publicImage(idea.cardImage, { width: 768, fit: 'scale-down' })} srcset={`${publicImage(idea.cardImage, { width: 768, fit: 'scale-down' })} 768w, ${publicImage(idea.image, { width: 1536, fit: 'scale-down' })} 1536w`} sizes="(max-width:699px) 90vw, (max-width:1100px) 44vw, 29vw" alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
+              <div class="idea-picture"><img src={publicImage(idea.image, { width: 640, fit: 'scale-down' })} srcset={publicImageSrcSet(idea.image, [420, 640, 900, 1280], { fit: 'scale-down' })} sizes="(max-width:699px) 90vw, (max-width:1100px) 44vw, 29vw" alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div>
               <div class="idea-card-copy"><div class="idea-chips"><span class:list={['idea-format', idea.format]}>{formats[idea.format]}</span><span>{topics[idea.topic].label}</span>{idea.setting === 'home' && <span>From home</span>}</div><h3 id={`${idea.id}-title`}>{idea.title}</h3><p>{idea.description}</p><span class="idea-read-guide">Read the guide <span aria-hidden="true">↗</span></span></div>
             </a>
           </article>

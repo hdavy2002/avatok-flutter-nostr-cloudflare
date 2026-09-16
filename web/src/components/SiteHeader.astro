@@ -96,16 +96,6 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
 ---
 
 {variant === 'global' ? <GlobalHeader sticky={sticky} /> : <>
-{/* [WEB-THEME-1] The five brand faces. Loaded by the component rather than
-    the layout because the HOME
-    page does not use Base.astro at all — it emits its own raw document — so a
-    layout-level font link would miss the one page the header matters most on.
-    A stylesheet <link> in the body is honoured by every browser. */}
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,700;0,900;1,700;1,900&family=Instrument+Sans:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&family=Baloo+2:wght@600;700;800&family=Kalam:wght@400;700&display=swap" />
-{indiaLandingLanguage && <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;600;700&display=swap" />}
-
 {/* [WEB-HEADER-5 2026-08-26] Owner: the bazaar band belongs above the site
     header. Inside <header> on purpose — a sticky header that left the band
     outside would scroll the band away and pin the bar on its own. */}

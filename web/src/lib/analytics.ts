@@ -1,319 +1,97 @@
-// [WEB-POSTHOG-1] The web PostHog core. THIS IS THE ONLY FILE THAT TOUCHES
-// posthog-js. Every island/page/component that wants telemetry imports from
-// here — never `import posthog from 'posthog-js'` anywhere else.
-//
-// Contract: Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md §1, §2.1, §2.2, §2.11.
-// Mirrors app/lib/core/analytics.dart's naming and `_persistEmail` pattern so
-// one dashboard can serve both surfaces.
-//
-// SSR-safe: every export is a no-op when `typeof window === 'undefined'`
-// (Astro prerenders on the server, where there is no browser and nothing to
-// instrument).
-
-import posthog from 'posthog-js';
+// Lightweight, SSR-safe telemetry facade. Rendering/auth never await the SDK.
+// Commands (including identity changes) drain in order so queued events retain
+// the account identity that was active when they occurred.
 import type { Properties } from 'posthog-js';
-
-const DEFAULT_KEY = 'phc_hmYMsHQEYjQU4bYXNdqA4VZVsfHEIkBQdQL0Kv7FIc5';
-const DEFAULT_HOST = 'https://eu.i.posthog.com';
-
+type Core = typeof import('./analyticsCore');
+type Command = (core: Core) => void;
+let core: Core | undefined;
+let loading: Promise<void> | undefined;
+let scheduled = false;
+let currentUid: string | null = null;
+let trace: string | undefined;
+const pending: { run: Command; event: boolean }[] = [];
 const isBrowser = typeof window !== 'undefined';
 
-let initialized = false;
-let currentUid: string | null = null;
-
-// ── §1.5 scrubbing — never sent: passwords, tokens, secrets, otp, real phone
-// numbers / long numeric ids. Mirrors analytics.dart's `_scrub` / worker's
-// `scrubServer`. ──────────────────────────────────────────────────────────
-// ⚠️ posthog-js puts the PROJECT key on every event as `properties.token` and
-// drops the event if a before_send hook removes it ("This property is required
-// for ingestion"). The first deploy of this file matched /token/ and silently
-// dropped 100% of web events for an hour (2026-09-02). So: never touch the
-// bare key `token`; scrub the things that actually leak — auth/access/refresh
-// tokens, passwords, secrets, OTPs.
-const SENSITIVE_KEY_RE = /(^|_)(access|auth|refresh|id|session|api|bearer|jwt)_?token|password|passwd|secret|authorization|(^|_)otp($|_)/i;
-const POSTHOG_OWN_KEYS = new Set(['token']);
-// 7+ consecutive digits inside a string value (phone numbers, OTPs, long ids
-// that slipped into a free-text prop) get redacted rather than dropped, so
-// the surrounding message stays readable.
-const LONG_DIGIT_RUN_RE = /\d{7,}/g;
-
-// [AGENT-LIVE-1 M9/M10] A join-link token is single-use identity material —
-// `/j/<token>` must never reach PostHog even once, in ANY property, including
-// the `$…` ones (`$current_url`, `$pathname`, `$referrer`) that the digit-run
-// scrub below deliberately leaves alone (see the comment on that skip). This
-// runs on every string value before that key-based branching, so it can't be
-// bypassed by a property name starting with `$`.
-const JOIN_LINK_PATH_RE = /\/j\/[^/?#"'\s]+/g;
-function redactJoinLinkToken(v: unknown): unknown {
-  return typeof v === 'string' ? v.replace(JOIN_LINK_PATH_RE, '/j/[token]') : v;
-}
-
-function scrubValue(v: unknown): unknown {
-  if (typeof v === 'string') return v.replace(LONG_DIGIT_RUN_RE, '[redacted]');
-  return v;
-}
-
-function scrubProps(props: Properties | undefined | null): Properties | undefined | null {
-  if (!props || typeof props !== 'object') return props;
-  const out: Properties = {};
-  for (const [k, v] of Object.entries(props)) {
-    if (!POSTHOG_OWN_KEYS.has(k) && SENSITIVE_KEY_RE.test(k)) continue; // drop entirely
-    const noToken = redactJoinLinkToken(v);
-    // PostHog's own `$…` props, the git SHA and ids are not phone numbers —
-    // redacting digit runs there broke `release` filtering on day one.
-    out[k] = k.startsWith('$') || k === 'release' || k === 'token' || k.endsWith('_id') || k === 'distinct_id'
-      ? noToken
-      : scrubValue(noToken);
-  }
-  return out;
-}
-
-// [AGENT-LIVE-1 M10] `/j/<token>` and `/talk/<bookingId>` are private,
-// single-purpose surfaces — a session replay of either would show a real
-// person's booking flow to anyone who could pull the recording. Checked at
-// init time (Astro is an MPA: every one of these pages is a fresh document
-// load, so a fresh `initAnalytics()` call always sees the real path).
-function isPrivacySensitivePath(pathname: string): boolean {
-  return pathname.startsWith('/j/') || pathname.startsWith('/talk/');
-}
-
-// ── §2.1 `app` derivation from the URL path — matches the Worker's app_name. ─
-function deriveApp(pathname: string): string {
-  if (pathname.startsWith('/dashboard')) return 'avaexplore';
-  if (pathname.startsWith('/admin')) return 'admin';
-  if (
-    pathname.startsWith('/l/') ||
-    pathname.startsWith('/e/') ||
-    pathname.startsWith('/live') ||
-    pathname.startsWith('/marketplace')
-  ) {
-    return 'avaexplore';
-  }
-  return 'site';
-}
-
-function deviceClass(width: number): 'phone' | 'tablet' | 'desktop' {
-  if (width < 768) return 'phone';
-  if (width < 1024) return 'tablet';
-  return 'desktop';
-}
-
-function registerResponsiveSuperProps(): void {
-  if (!isBrowser) return;
-  posthog.register({
-    app: deriveApp(window.location.pathname),
-    device_class: deviceClass(window.innerWidth),
-    viewport: `${window.innerWidth}x${window.innerHeight}`,
-  });
-}
-
-// ── §1.3 persisted email, mirrors analytics.dart `_persistEmail` — so errors
-// after a lapsed session still carry the last-known email. ──────────────────
-function emailKey(uid: string): string {
-  return `ph_email_${uid}`;
-}
-
-function persistEmail(uid: string | null | undefined, email: string | null | undefined): void {
-  if (!isBrowser || !uid || !email) return;
-  try {
-    window.localStorage.setItem(emailKey(uid), email);
-  } catch {
-    /* private mode / storage full — best-effort only */
-  }
-}
-
-function loadEmail(uid: string): string | null {
-  if (!isBrowser) return null;
-  try {
-    return window.localStorage.getItem(emailKey(uid));
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Idempotent — safe to call from every layout/page that loads. First caller
- * wins; later calls just re-register the responsive super props (cheap,
- * covers a client-side route change that Base.astro's script re-runs).
- */
-export function initAnalytics(): void {
-  if (!isBrowser) return;
-  if (initialized) {
-    registerResponsiveSuperProps();
-    return;
-  }
-  initialized = true;
-
-  const key = (import.meta.env.PUBLIC_POSTHOG_KEY as string | undefined) || DEFAULT_KEY;
-  const host = (import.meta.env.PUBLIC_POSTHOG_HOST as string | undefined) || DEFAULT_HOST;
-  const release = (import.meta.env.PUBLIC_RELEASE_SHA as string | undefined) || 'dev';
-  // [AGENT-LIVE-1 M10] No replay on a join link or a talk room.
-  const sensitivePage = isPrivacySensitivePath(window.location.pathname);
-
-  posthog.init(key, {
-    api_host: host,
-    capture_pageview: 'history_change',
-    capture_pageleave: true,
-    autocapture: true,
-    rageclick: true,
-    capture_dead_clicks: true,
-    capture_exceptions: true,
-    disable_session_recording: sensitivePage,
-    session_recording: {
-      maskAllInputs: true,
-      maskTextSelector: '*',
-      blockClass: 'ph-no-capture',
-    },
-    // Replay is enabled here; the 20% sampling from the catalog (§1.2) is set
-    // in the PostHog project settings (Session replay > sampling), same as
-    // the app's server-controlled rollout — no client-side dice roll needed.
-    persistence: 'localStorage+cookie',
-    cross_subdomain_cookie: false,
-    loaded: (ph) => {
-      registerResponsiveSuperProps();
-      // Belt-and-braces on top of `disable_session_recording` above — a
-      // config option can change shape across posthog-js versions, an
-      // explicit stop call cannot silently stop working.
-      if (sensitivePage) {
-        try {
-          ph.stopSessionRecording();
-        } catch {
-          /* best-effort */
-        }
-      }
-    },
-    before_send: (event) => {
-      if (!event) return event;
-      if (event.properties) {
-        event.properties = scrubProps(event.properties) ?? {};
-      }
-      return event;
-    },
-  });
-
-  posthog.register({
-    platform: 'web',
-    service_name: 'avatok-web',
-    release,
-  });
-  registerResponsiveSuperProps();
-
-  // §1.3 — re-register the last-known email for the current distinct_id, if
-  // any, so an error fired before identify() (or after a lapsed session)
-  // still carries it. distinct_id is anonymous pre-login, but harmless to try.
-  try {
-    const uid = posthog.get_distinct_id?.();
-    if (uid) {
-      const saved = loadEmail(uid);
-      if (saved) posthog.register({ email: saved });
+function load(): void {
+  if (!isBrowser || core || loading) return;
+  loading = import('./analyticsCore').then((loaded) => {
+    loaded.initAnalytics();
+    core = loaded;
+    for (const command of pending.splice(0)) {
+      try { command.run(loaded); } catch { /* telemetry is best-effort */ }
     }
-  } catch {
-    /* best-effort */
-  }
+  }).catch(() => {
+    // A blocked SDK must not break UI. Retry on the next event; bound memory.
+  }).finally(() => { loading = undefined; });
+}
 
-  if (isBrowser) {
-    window.addEventListener('popstate', registerResponsiveSuperProps);
-    window.addEventListener('resize', registerResponsiveSuperProps);
+function enqueue(command: Command, event = false): void {
+  if (!isBrowser) return;
+  if (core) {
+    try { command(core); } catch { /* telemetry must never break UI */ }
+  } else {
+    // Only events may be evicted. Never lose identify/reset/trace transitions:
+    // replaying an event under the wrong account is worse than losing a sample.
+    if (event && pending.filter((item) => item.event).length >= 500) {
+      const oldestEvent = pending.findIndex((item) => item.event);
+      pending.splice(oldestEvent, 1);
+    }
+    pending.push({ run: command, event });
+    initAnalytics();
   }
 }
 
-/** §1.3 person identity. Call at sign-in with whatever is known. */
-export function identify(
-  uid: string,
-  props?: { email?: string | null; phone?: string | null; handle?: string | null; [k: string]: unknown },
-): void {
+export function initAnalytics(): void {
+  if (!isBrowser || scheduled || core) return;
+  scheduled = true;
+  // Give critical rendering/hydration a turn. A timeout covers hidden tabs.
+  let started = false;
+  const start = () => {
+    if (started) return;
+    started = true;
+    clearTimeout(timer);
+    scheduled = false;
+    load();
+  };
+  const timer = window.setTimeout(start, 1500);
+  requestAnimationFrame(() => requestAnimationFrame(start));
+}
+
+export function identify(uid: string, props?: { email?: string | null; phone?: string | null; handle?: string | null; [k: string]: unknown }): void {
   if (!isBrowser) return;
   currentUid = uid;
-  const personProps: Properties = { ...props };
-  if (props?.email) {
-    persistEmail(uid, props.email);
-    posthog.register({ email: props.email });
-  }
-  try {
-    posthog.identify(uid, scrubProps(personProps) ?? undefined);
-  } catch {
-    /* best-effort */
-  }
+  const snapshot = props ? { ...props } : undefined;
+  enqueue((sdk) => sdk.identify(uid, snapshot));
 }
-
-/** §1.3 — call at sign-out. Clears the PostHog distinct_id/session. */
 export function reset(): void {
   if (!isBrowser) return;
   currentUid = null;
-  try {
-    posthog.reset();
-  } catch {
-    /* best-effort */
-  }
+  enqueue((sdk) => sdk.reset());
 }
-
-/** Generic capture — every named event in the catalog goes through this. */
 export function capture(event: string, props?: Properties): void {
-  if (!isBrowser) return;
-  try {
-    posthog.capture(event, scrubProps(props) ?? undefined);
-  } catch {
-    /* telemetry must never break the page */
-  }
+  const snapshot = { ...props, ...(trace ? { trace_id: trace } : {}) };
+  enqueue((sdk) => sdk.capture(event, snapshot), true);
 }
-
-/** §1.2 error tracking — manual capture for a caught exception. */
 export function captureException(err: unknown, props?: Properties): void {
-  if (!isBrowser) return;
-  try {
-    posthog.captureException(err, scrubProps(props) ?? undefined);
-  } catch {
-    /* best-effort */
-  }
+  const snapshot = { ...props, ...(trace ? { trace_id: trace } : {}) };
+  enqueue((sdk) => sdk.captureException(err, snapshot), true);
 }
-
-/**
- * §2.11 `ui_interaction` — the ONE event for fetch-then-render / interaction
- * latency. Never invent a bespoke `*_ms` event; use this with a `name`.
- */
 export function uiInteraction(name: string, ms: number, props?: Properties): void {
   capture('ui_interaction', { name, ms, ...props });
 }
-
-/** §2.11 `api_error` — the shared apiClient `request()` hook emits this. */
-export function apiError(props: {
-  endpoint: string;
-  method: string;
-  status: number;
-  reason: string;
-  ms: number;
-  [k: string]: unknown;
-}): void {
+export function apiError(props: { endpoint: string; method: string; status: number; reason: string; ms: number; [k: string]: unknown }): void {
   capture('api_error', props);
 }
-
-/**
- * Correlates a client action across client/server/logs (§1 `trace_id`).
- * Generates a trace id, registers it as a super property for the duration of
- * `fn`, and unregisters it afterwards (even on throw). Nested calls restore
- * the outer trace id rather than clobbering it, so a trace inside a trace
- * doesn't leak into unrelated later events.
- */
 export async function withTrace<T>(fn: (traceId: string) => Promise<T> | T): Promise<T> {
   if (!isBrowser) return fn('');
-  const traceId =
-    globalThis.crypto?.randomUUID?.() ?? `tr_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  let previous: string | undefined;
-  try {
-    previous = posthog.persistence?.props?.['trace_id'] as string | undefined;
-  } catch {
-    previous = undefined;
-  }
-  posthog.register({ trace_id: traceId });
-  try {
-    return await fn(traceId);
-  } finally {
-    if (previous) posthog.register({ trace_id: previous });
-    else posthog.unregister('trace_id');
+  const id = globalThis.crypto?.randomUUID?.() ?? `tr_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const previous = trace;
+  trace = id;
+  enqueue((sdk) => sdk.setTrace(id));
+  try { return await fn(id); }
+  finally {
+    trace = previous;
+    enqueue((sdk) => sdk.setTrace(previous));
   }
 }
-
-/** Exposed for callers that need the active uid (e.g. per-uid localStorage keys). */
-export function currentDistinctUid(): string | null {
-  return currentUid;
-}
+export function currentDistinctUid(): string | null { return currentUid; }

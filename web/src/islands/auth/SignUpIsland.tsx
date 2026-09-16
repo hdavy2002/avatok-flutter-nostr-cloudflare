@@ -48,7 +48,7 @@ import { capture, withTrace } from '../../lib/analytics';
 import {
   Field, Button, CheckRow, Divider, GoogleButton, RolePicker,
   validateEmail, validateRequired, clerkError,
-  useClerkStalled, STALLED_MESSAGE,
+  useClerkStalled, useFormReady, STALLED_MESSAGE,
   type FieldErrors, type Role,
 } from './AuthKit';
 import {
@@ -203,7 +203,7 @@ function Inner() {
   const { isLoaded, signUp, setActive } = useSignUp();
   // Google lives on the sign-in resource even when the person has no account —
   // Clerk creates one from the OAuth identity on the way through.
-  const { signIn } = useSignIn();
+  const { isLoaded: signInLoaded, signIn } = useSignIn();
   const { isLoaded: authLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
   const params = useMemo(readParams, []);
@@ -233,6 +233,7 @@ function Inner() {
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const stalled = useClerkStalled(isLoaded);
+  useFormReady(isLoaded && signInLoaded && authLoaded && boot === 'form', 'sign_up');
   const startRef = useRef<number>(Date.now());
   const phoneInputRef = useRef<HTMLInputElement | null>(null);
   const decided = useRef(false);
@@ -299,7 +300,7 @@ function Inner() {
 
   /** Hand off to Google. Comes back through the phone gate on this page. */
   async function google() {
-    if (!isLoaded || submitting) return;
+    if (!isLoaded || !signInLoaded || submitting) return;
     setFormError(null);
     try {
       await continueWithGoogle(signIn as unknown as PwlSignIn, finishUrl(landingFor(role), role));
@@ -662,7 +663,7 @@ function Inner() {
       {!resume && (
         <>
           <Divider label="Ya phir" />
-          <GoogleButton onClick={() => void google()} disabled={stalled || submitting || emailLocked} />
+          <GoogleButton onClick={() => void google()} disabled={!isLoaded || !signInLoaded || stalled || submitting || emailLocked} />
           <div className="auth-foot">
             <p className="auth-footline">
               Already with us?<a href="/sign-in">Log in</a>

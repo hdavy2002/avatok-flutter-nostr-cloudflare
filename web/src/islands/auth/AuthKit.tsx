@@ -15,8 +15,20 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useAuth } from '@clerk/clerk-react';
+import { markReady } from '../../lib/performance';
 
 export type FieldErrors = Record<string, string | undefined>;
+
+/** Runs after the usable form commits, independently from page paint. */
+export function useFormReady(ready: boolean, surface: string): void {
+  const measured = useRef(false);
+  useEffect(() => {
+    if (!ready || measured.current) return;
+    measured.current = true;
+    markReady('auth_form_ready', { surface });
+  }, [ready, surface]);
+}
+
 
 /**
  * True once we've waited long enough that Clerk should have loaded but hasn't.

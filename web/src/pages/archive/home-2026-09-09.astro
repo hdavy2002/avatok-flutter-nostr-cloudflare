@@ -16,6 +16,7 @@ import catalogueRaw from '../../landing/archive/2026-09-09-before-railway/avatok
 // engines or answer engines (ChatGPT/Perplexity/AI Overviews) to quote. It
 // mirrors the FAQPage + HowTo JSON-LD in the landing document's <head>.
 import seoBandRaw from '../../landing/archive/2026-09-09-before-railway/avatok-seo-explainer.html?raw';
+import Fonts from '../../components/Fonts.astro';
 import SiteHeader from '../../components/SiteHeader.astro';
 import SiteFooter from '../../components/SiteFooter.astro';
 
@@ -49,7 +50,9 @@ const closeHtml = '\n</main>\n</body>\n</html>';
 
 ---
 
-<Fragment set:html={headHtml} />
+<Fragment set:html={headHtml.replace('</head>', '').replace('<body>', '')} />
+<Fonts />
+<Fragment set:html={'</head><body>'} />
 {/* [WEB-POSTHOG-1] This page emits its own document and never touches
     Base.astro, so it loads the PostHog core separately. */}
 <script>

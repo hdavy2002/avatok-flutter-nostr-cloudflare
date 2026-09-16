@@ -35,6 +35,7 @@
 import { useState } from 'react';
 import { useSignIn, useSignUp } from '@clerk/clerk-react';
 import { capture } from '../../lib/analytics';
+import { useFormReady } from './AuthKit';
 import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
 import {
@@ -62,6 +63,7 @@ export function EmailCodeSignIn({ onAuthed, onCancel, reason }: EmailCodeSignInP
   const [error, setError] = useState<string | null>(null);
 
   const ready = signUpLoaded && signInLoaded;
+  useFormReady(ready, 'checkout');
   const emailValid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
 
   const resources = () => ({

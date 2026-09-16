@@ -315,13 +315,12 @@
   --stagger-blur: 3px;
   --stagger-ease: var(--e-settle);
 }
+/* Essential hero content is readable without JavaScript or analytics. */
 .t-stagger-line {
   display: block;
-  opacity: 0;
-  transform: translateY(var(--stagger-distance));
-  filter: blur(var(--stagger-blur));
-  transition: opacity var(--stagger-dur) var(--stagger-ease), transform var(--stagger-dur) var(--stagger-ease), filter var(--stagger-dur) var(--stagger-ease);
-  will-change: transform, opacity, filter;
+  opacity: 1;
+  transform: none;
+  filter: none;
 }
 .t-stagger-line--2 { transition-delay: var(--stagger-stagger); }
 .t-stagger.is-shown .t-stagger-line { opacity: 1; transform: translateY(0); filter: blur(0); }

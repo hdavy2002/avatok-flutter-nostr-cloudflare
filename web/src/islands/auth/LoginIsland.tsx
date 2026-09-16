@@ -38,7 +38,7 @@ import { CLERK_PUBLISHABLE_KEY } from '../../lib/config';
 import { capture, withTrace } from '../../lib/analytics';
 import {
   Field, Button, Divider, GoogleButton, CodeStep,
-  validateEmail, useClerkStalled, useRedirectIfSignedIn, STALLED_MESSAGE,
+  validateEmail, useFormReady, useClerkStalled, useRedirectIfSignedIn, STALLED_MESSAGE,
   type FieldErrors,
 } from './AuthKit';
 import {
@@ -79,6 +79,7 @@ function Inner() {
   // Already signed in? Go where they were headed. Nothing on this form can
   // succeed for them — see useRedirectIfSignedIn.
   const leaving = useRedirectIfSignedIn(nextUrl);
+  useFormReady(isLoaded && !leaving, 'sign_in');
   // §2.2 auth_signin_start/_result — startRef anchors the `ms` on the result.
   const startRef = useRef<number>(0);
 
@@ -261,7 +262,7 @@ function Inner() {
 
       <Divider label="Ya phir" />
 
-      <GoogleButton onClick={() => void google()} disabled={stalled || submitting} />
+      <GoogleButton onClick={() => void google()} disabled={!isLoaded || stalled || submitting} />
 
       <div className="auth-foot">
         <p className="auth-aside">Chai ho jaye?<br />Woh bhi ho jayega.</p>
