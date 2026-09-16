@@ -21,7 +21,7 @@ const steps = [
       <div class="express-train" aria-hidden="true">
         <svg viewBox="80 1352 120 58" xmlns="http://www.w3.org/2000/svg">
           <defs><filter id="express-ticket-ink" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0 0 0 0 0.10  0 0 0 0 0.10  0 0 0 0 0.06  -0.6378 -2.1456 -0.2166 0 2" /></filter></defs>
-          <image href="/assets/railway/approved-ideas.jpg" width="865" height="1819" filter="url(#express-ticket-ink)" />
+          <image href={publicImage('/assets/railway/approved-ideas.jpg', { width: 900, fit: 'scale-down' })} width="865" height="1819" filter="url(#express-ticket-ink)" />
         </svg>
       </div>
       <div class="express-title">

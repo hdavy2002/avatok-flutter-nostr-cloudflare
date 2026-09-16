@@ -23,6 +23,7 @@
 // and get their own --help-* custom property here, one per colour, each
 // commented with the mockup's hex.
 import type { HelpTreeSection, HelpSectionId } from '../../lib/help';
+import { publicImage, publicImageSrcSet } from '../../lib/config';
 import { helpUrl } from '../../lib/help';
 import TruckBorder from '../TruckBorder.astro';
 
@@ -121,7 +122,10 @@ const SPLIT_FROM = 3;
             <div class="help-tile-photo-frame">
               <img
                 class="help-tile-photo"
-                src={art.img}
+                src={publicImage(art.img, { width: 640, fit: 'scale-down' })}
+                srcset={publicImageSrcSet(art.img, [160, 256, 420, 640, 900], { fit: 'scale-down' })}
+                sizes="(max-width: 599px) 108px, 220px"
+                decoding="async"
                 alt={art.imgAlt}
                 width={art.imgW}
                 height={art.imgH}
@@ -130,7 +134,7 @@ const SPLIT_FROM = 3;
               {art.badge && (
                 <img
                   class="help-tile-badge"
-                  src={art.badge.src}
+                  src={publicImage(art.badge.src, { width: art.badge.w * 3, fit: 'scale-down' })}
                   alt={art.badge.alt}
                   width={art.badge.w}
                   height={art.badge.h}

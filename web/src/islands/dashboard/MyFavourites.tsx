@@ -37,7 +37,7 @@ function thumbFor(c: ListingCard): string | null {
   const poster: any = (c as any).attrs?.poster ?? null;
   const usable = poster && (poster.status === 'draft' || poster.status === 'approved');
   const url = (usable ? poster.url : null) ?? c.cover_media?.[0]?.url ?? null;
-  return url ? cfImage(url, { width: 240, fit: 'cover', quality: 70 }) : null;
+  return url ? cfImage(url, { width: 240, fit: 'cover', quality: 60 }) : null;
 }
 
 function whenLabel(c: ListingCard): string | null {

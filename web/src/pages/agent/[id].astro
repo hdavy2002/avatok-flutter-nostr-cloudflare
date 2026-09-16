@@ -43,7 +43,7 @@ const title = agent ? `Talk to ${name} · ${SITE}` : `AI voice agent · ${SITE}`
 const description = agent
   ? `${role ? role + ' — ' : ''}${free ? 'Free to call' : (priceText ?? 'AI voice agent')}. Tap to talk live in your browser on ${SITE}, no app needed.`
   : `Talk live to an AI voice agent in your browser on ${SITE} — no app needed.`;
-const image = agent?.avatarUrl ? cfImage(agent.avatarUrl, { width: 1200, fit: 'cover', quality: 70 }) : undefined;
+const image = agent?.avatarUrl ? cfImage(agent.avatarUrl, { width: 1200, fit: 'cover', quality: 70, format: 'jpeg' }) : undefined;
 
 const seed: AgentSeed | null = agent
   ? {

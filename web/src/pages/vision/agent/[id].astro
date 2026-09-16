@@ -61,7 +61,7 @@ const title = agent ? `${name} · AvaVision · ${SITE}` : `AI vision agent · ${
 const description = agent
   ? `${role ? role + ' — ' : ''}${free ? 'Free to use' : (priceText ?? 'AI vision coach')}. Camera + voice coaching with a live on-screen score, in your browser on ${SITE}.`
   : `Talk to an AI vision coaching agent — camera + voice, live score — in your browser on ${SITE}.`;
-const image = agent?.avatarUrl ? cfImage(agent.avatarUrl, { width: 1200, fit: 'cover', quality: 70 }) : undefined;
+const image = agent?.avatarUrl ? cfImage(agent.avatarUrl, { width: 1200, fit: 'cover', quality: 70, format: 'jpeg' }) : undefined;
 
 const overlayLabel = agent?.overlayEnabled
   ? {

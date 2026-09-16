@@ -1,3 +1,4 @@
+import { cfImage } from '../../lib/config';
 // The auto-generated poster: preview + the state machine the owner asked
 // for ("an auto-generated poster should be ready for me to preview and
 // approve"). Polls the detail endpoint every ~4s while status=generating,
@@ -194,7 +195,7 @@ export default function PosterPanel({
           <div className="flex flex-col items-start gap-3">
             <div className="relative w-full max-w-xs overflow-hidden rounded-zineField border-zine border-ink">
               {poster.url ? (
-                <img src={poster.url} alt={`Auto-generated poster for ${listingTitle ?? 'this listing'}`} className="aspect-[3/4] w-full object-cover" />
+                <img src={cfImage(poster.url, { width: 900 })} alt={`Auto-generated poster for ${listingTitle ?? 'this listing'}`} className="aspect-[3/4] w-full object-cover" />
               ) : (
                 <div className="flex aspect-[3/4] w-full items-center justify-center bg-paper2 font-body text-[13px] font-bold text-inkMute">No preview image</div>
               )}
@@ -228,7 +229,7 @@ export default function PosterPanel({
                       {v?.url ? (
                         <a href={v.url} target="_blank" rel="noreferrer"
                           className="block overflow-hidden rounded-zineField border-zine border-ink">
-                          <img src={v.url} alt={`${label} poster for ${listingTitle ?? 'this listing'}`}
+                          <img src={cfImage(v.url, { width: 900 })} alt={`${label} poster for ${listingTitle ?? 'this listing'}`}
                             className={`w-full object-cover ${ratio === 'tablet' ? 'aspect-[4/3]' : 'aspect-video'}`} />
                         </a>
                       ) : (

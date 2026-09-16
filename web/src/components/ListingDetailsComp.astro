@@ -151,7 +151,7 @@ function viewModel(l: Listing, revs: ReviewList | null, others: Card[], browseCa
         dur: durationLabel(c.duration_min ?? null) ?? '',
         ini: name.split(' ').map((w) => w[0]).filter(Boolean).join('').slice(0, 2).toUpperCase() || 'AC',
         verified,
-        photo: c.cover_media?.[0]?.url ?? (c as { poster?: string }).poster ?? null,
+        photo: cfImage(c.cover_media?.[0]?.url ?? (c as { poster?: string }).poster ?? '', { width: 640 }),
       };
     });
 

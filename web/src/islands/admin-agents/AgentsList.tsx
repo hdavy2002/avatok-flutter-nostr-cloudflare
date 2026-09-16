@@ -1,3 +1,4 @@
+import { cfImage } from '../../lib/config';
 // [AGENT-LIVE-1] Admin agent list: cards with title, voice, price/min, status,
 // seats, KB count, Edit/Publish/Test call. BUILD SPEC §6. 403 from the list
 // call renders "Admin only" per D2.
@@ -88,7 +89,7 @@ export default function AgentsList() {
           {rows.map((row) => (
             <div key={row.id} className="flex flex-col gap-3 rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm">
               <div className="flex items-start gap-3">
-                {row.coverUrl && <img src={row.coverUrl} alt="" className="h-14 w-14 rounded-zineField border-zine border-ink object-cover" />}
+                {row.coverUrl && <img src={cfImage(row.coverUrl, { width: 160 })} alt="" className="h-14 w-14 rounded-zineField border-zine border-ink object-cover" />}
                 <div className="min-w-0 flex-1">
                   <h3 className="truncate font-display text-[18px] font-semibold text-ink">{row.title}</h3>
                   <span className={`mt-1 inline-block rounded-full px-2 py-0.5 font-mono text-[11px] font-bold uppercase tracking-[0.06em] ${row.status === 'published' ? 'bg-lime text-ink' : 'bg-paper text-inkSoft'}`}>

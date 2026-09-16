@@ -14,8 +14,10 @@ function assertFile(file, label) {
 }
 
 function validateUrl(url, root, reverse, cwd) {
-  const decoded = decodeURIComponent(url);
-  const match = decoded.match(/^\/cdn-cgi\/image\/[^/]+(\/_images\/[^?#"'<>\s]+)/);
+  // A literal percent in a public filename is legal; decode only valid escapes.
+  let decoded = url;
+  try { decoded = decodeURIComponent(url); } catch { /* keep literal source */ }
+  const match = decoded.match(/^\/cdn-cgi\/image\/[^/]+(\/_images\/[^?#"'<>\s)]+)/);
   // API media can also use Cloudflare transforms; only our content-addressed
   // public originals are owned by this check.
   if (!match) return url;
@@ -40,7 +42,7 @@ function validateUrl(url, root, reverse, cwd) {
 
 export function normalizeBuiltImages(html, { root = resolve('dist'), cwd = '.' } = {}) {
   const reverse = manifestFor(cwd);
-  return html.replace(/\/cdn-cgi\/image\/[^"'<>\s]+/g, (url) => validateUrl(url, root, reverse, cwd));
+  return html.replace(/\/cdn-cgi\/image\/[^"'<>\s)]+/g, (url) => validateUrl(url, root, reverse, cwd));
 }
 
 function walk(dir) {
@@ -48,7 +50,7 @@ function walk(dir) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const file = join(dir, entry.name);
     if (entry.isDirectory()) files.push(...walk(file));
-    else if (entry.isFile() && entry.name.endsWith('.html')) files.push(file);
+    else if (entry.isFile() && /\.(?:html|css)$/.test(entry.name)) files.push(file);
   }
   return files;
 }

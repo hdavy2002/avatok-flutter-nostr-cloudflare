@@ -44,7 +44,7 @@ const title = agent ? `Train with ${name} · ${SITE}` : `AI vision coach · ${SI
 const description = agent
   ? `${role ? role + ' — ' : ''}${free ? 'Free to start' : (priceText ?? 'AI vision coach')}. Turn on your camera and get live, on-screen coaching in your browser on ${SITE}, no app needed.`
   : `Get live AI vision coaching with your camera in your browser on ${SITE} — no app needed.`;
-const image = agent?.avatarUrl ? cfImage(agent.avatarUrl, { width: 1200, fit: 'cover', quality: 70 }) : undefined;
+const image = agent?.avatarUrl ? cfImage(agent.avatarUrl, { width: 1200, fit: 'cover', quality: 70, format: 'jpeg' }) : undefined;
 
 const seed: VisionAgentSeed | null = agent
   ? {

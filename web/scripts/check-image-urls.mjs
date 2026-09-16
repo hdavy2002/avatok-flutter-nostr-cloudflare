@@ -23,3 +23,24 @@ assert.equal(cfImage('https://avatok.ai' + once), 'https://avatok.ai' + once);
 assert.equal(publicImage('/mask.svg'), '/mask.svg');
 assert.equal(publicImageSrcSet('/a.jpg', [639, 640]).split(', ').length, 1);
 console.log('Image URL origin, privacy, idempotence and bounded variant checks passed');
+
+// Browser policy, legacy transform normalization, explicit social exception.
+for (const fn of [publicImage, cfImage]) {
+  assert.match(fn('https://avatok.ai/poster.jpg', { quality: 95, format: 'webp', width: 99999 }), /format=avif,quality=60,width=2048/);
+  assert.match(fn('https://avatok.ai/poster.jpg', { format: 'jpeg', quality: 75 }), /format=jpeg,quality=75/);
+  assert.match(fn('https://avatok.ai/cdn-cgi/image/format=auto,quality=80,width=640,fit=contain/poster.jpg'), /format=avif,quality=60,width=640,fit=contain/);
+  for (const path of [
+    'https://blossom.avatok.ai/u/user/dm/photo.png',
+    'https://blossom.avatok.ai/u/user/ava-readable/photo.png',
+    'https://blossom.avatok.ai/u/user/%70rivate/photo.png',
+    'https://unknown.avatok.ai/photo.png',
+    'https://avatok.ai/cdn-cgi/image/width=900/https://external.test/a.png',
+    'https://api.avatok.ai/public/photo.png?X-Amz-Signature=keep',
+    'https://api.avatok.ai/public/photo.svg',
+    'https://api.avatok.ai/public/photo.gif', 'blob:https://avatok.ai/local',
+  ]) assert.equal(fn(path), path, `Must preserve private/external source: ${path}`);
+}
+assert.match(cfImage('https://blossom.avatok.ai/u/user/public/abc'), /format=avif,quality=60/);
+assert.match(cfImage('https://blossom-staging.avatok.ai/u/user/public/posters/listing/a.png'), /format=avif,quality=60/);
+assert.equal(cfImage('https://api.avatok.ai/account/photo.jpg'), 'https://api.avatok.ai/account/photo.jpg');
+assert.equal(publicImageSrcSet('/a.jpg', [0, NaN, -1, 160, 160]), publicImage('/a.jpg', { width: 160 }) + ' 160w');

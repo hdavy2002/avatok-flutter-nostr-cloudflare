@@ -30,7 +30,7 @@ function clampDesc(text: string | null | undefined, fallback: string): string {
 
 function socialImage(path?: string | null): string | undefined {
   if (!path) return undefined;
-  return cfImage(path, { width: OG_IMG_WIDTH, fit: 'cover', quality: 70 });
+  return cfImage(path, { width: OG_IMG_WIDTH, fit: 'cover', quality: 70, format: 'jpeg' });
 }
 
 /**

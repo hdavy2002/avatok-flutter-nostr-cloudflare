@@ -1,5 +1,5 @@
 ---
-import { publicImage as optimizePublicArtwork } from '../lib/config';
+import { publicImageSrcSet, publicImage as optimizePublicArtwork } from '../lib/config';
 // [WEB-HELP-2 2026-09-11] Redesigned help-ARTICLE layout, replacing the
 // WEB-HELP-1 version. Per design/help-centre/Article.dc.html (1440) and
 // PhoneArticle.dc.html (390) — the approved mockup, values lifted verbatim
@@ -119,7 +119,10 @@ const breadcrumbLdJson = JSON.stringify(breadcrumbLd).replace(/</g, '\\u003c');
             {stampSrc && (
               <img
                 class="help-stamp help-stamp-mobile"
-                src={stampSrc}
+                src={optimizePublicArtwork(stampSrc, { width: 420, fit: 'scale-down' })}
+                srcset={publicImageSrcSet(stampSrc, [96, 160, 256, 420, 640], { fit: 'scale-down' })}
+                sizes="(max-width: 767px) 84px, 150px"
+                decoding="async"
                 width="84"
                 height="126"
                 alt=""
@@ -134,7 +137,10 @@ const breadcrumbLdJson = JSON.stringify(breadcrumbLd).replace(/</g, '\\u003c');
           {stampSrc && (
             <img
               class="help-stamp help-stamp-desktop"
-              src={stampSrc}
+              src={optimizePublicArtwork(stampSrc, { width: 420, fit: 'scale-down' })}
+                srcset={publicImageSrcSet(stampSrc, [96, 160, 256, 420, 640], { fit: 'scale-down' })}
+                sizes="(max-width: 767px) 84px, 150px"
+                decoding="async"
               width="150"
               height="225"
               alt=""

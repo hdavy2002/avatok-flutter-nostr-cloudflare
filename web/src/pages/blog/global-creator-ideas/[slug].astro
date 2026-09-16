@@ -1,4 +1,5 @@
 ---
+import { publicImage, publicImageSrcSet } from '../../../lib/config';
 export const prerender = true;
 import Base from '../../../layouts/Base.astro';
 import SiteHeader from '../../../components/SiteHeader.astro';
@@ -33,7 +34,7 @@ const articleLd = {
       <div class="ge-article-top"><a class="ge-back" href="/global-ideas">← All global creator ideas</a><span class="ge-series">THE CREATOR PLAYBOOK / 0{ideaIndex + 1}</span></div>
       <div class="ge-article-hero">
         <div class="ge-article-heading"><p class="ge-kicker">{idea.platform} · {idea.eyebrow}</p><h1>{idea.title}<span aria-hidden="true">.</span></h1><p class="ge-lead">{guide.promise}</p><p class="ge-byline">A practical guide from avaTOK · Suggested session plan</p><a class="ge-button" href="#session-plan">Build your session ↓</a></div>
-        <figure class="ge-article-art"><img src={image} alt={imageAlt} width={imageWidth} height={imageHeight} fetchpriority="high" loading="eager" decoding="async" /></figure>
+        <figure class="ge-article-art"><img src={publicImage(image, { width: 900, fit: 'scale-down' })} srcset={publicImageSrcSet(image, [420, 640, 900, 1280], { fit: 'scale-down' })} sizes="(max-width: 699px) 90vw, 40vw" alt={imageAlt} width={imageWidth} height={imageHeight} fetchpriority="high" loading="eager" decoding="async" /></figure>
       </div>
       <div class="ge-article-layout">
         <aside class="ge-at-a-glance" aria-labelledby="session-snapshot"><p class="ge-kicker">THE SHORT VERSION</p><h2 id="session-snapshot">One good session.</h2><dl><dt>Suggested format</dt><dd>{guide.duration}</dd><dt>Made for</dt><dd>{guide.audience}</dd><dt>What you are selling</dt><dd>Your time, perspective and a clearly described experience.</dd></dl><nav aria-label="In this guide"><a href="#before-you-open-bookings">Get ready →</a><a href="#session-plan">The session plan →</a><a href="#invitation">Your invitation →</a><a href="#boundaries">Set boundaries →</a><a href="#payouts-and-pricing">Pricing & payouts →</a></nav></aside>

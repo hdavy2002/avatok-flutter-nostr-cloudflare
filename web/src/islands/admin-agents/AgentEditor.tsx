@@ -1,3 +1,4 @@
+import { cfImage } from '../../lib/config';
 // [AGENT-LIVE-1] The full agent editor — every M11 field, persona-kind
 // templates, voice picker, slot-length checkboxes, cover upload, knowledge
 // panel and test call. Used by both `admin/agents/new.astro` (agentId=null)
@@ -259,7 +260,7 @@ export default function AgentEditor({ agentId }: { agentId: string | null }) {
         <div className="mt-4">
           <span className={labelCls}>Cover photo</span>
           <div className="flex items-center gap-3">
-            {cover && <img src={cover} alt="" className="h-16 w-16 rounded-zineField border-zine border-ink object-cover" />}
+            {cover && <img src={cfImage(cover, { width: 160 })} alt="" className="h-16 w-16 rounded-zineField border-zine border-ink object-cover" />}
             <label className="rounded-full border-zine border-ink bg-paper px-3 py-2 font-mono text-[12px] font-bold uppercase tracking-[0.06em] text-ink shadow-zine-xs cursor-pointer">
               {uploading ? 'Uploading…' : cover ? 'Replace' : 'Upload'}
               <input type="file" accept="image/*" className="hidden" disabled={uploading} onChange={(e) => { void onCoverUpload(e.target.files); e.target.value = ''; }} />

@@ -1,3 +1,4 @@
+import { cfImage } from '../../lib/config';
 // "What the creator submitted" — the heart of MKT-ADMIN-UI-1. Renders every
 // creator-facing field grouped and labelled, a real image gallery for
 // cover_media, and a safety-net "Other submitted fields" section for any
@@ -60,7 +61,7 @@ export default function SubmissionPanel({ listing, creator, category }: { listin
         <Group title="Identity">
           <div className="flex items-center gap-3 py-1.5">
             {creator?.avatar_url ? (
-              <img src={creator.avatar_url} alt={creator?.display_name ?? creator?.handle ?? 'Creator avatar'} className="h-12 w-12 rounded-full border-zine border-ink object-cover" />
+              <img src={cfImage(creator.avatar_url, { width: 160 })} alt={creator?.display_name ?? creator?.handle ?? 'Creator avatar'} className="h-12 w-12 rounded-full border-zine border-ink object-cover" />
             ) : (
               <div className="flex h-12 w-12 items-center justify-center rounded-full border-zine border-ink bg-paper2 font-display text-[16px] text-inkMute">?</div>
             )}
@@ -156,7 +157,7 @@ export default function SubmissionPanel({ listing, creator, category }: { listin
                 {cover.map((m, i) => (
                   m?.url ? (
                     <a key={i} href={m.url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-zineField border-zine border-ink">
-                      <img src={m.url} alt={`${listing.title ?? 'Listing'} cover photo ${i + 1}`} className="aspect-square w-full object-cover" />
+                      <img src={cfImage(m.url, { width: 640 })} alt={`${listing.title ?? 'Listing'} cover photo ${i + 1}`} className="aspect-square w-full object-cover" />
                     </a>
                   ) : null
                 ))}

@@ -964,7 +964,7 @@ export function Step7Photos({ draft, patch, err, onUpload, onRemoveCover, upload
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {draft.cover_media.map((c) => (
             <div key={c.url} className="relative aspect-square overflow-hidden rounded-zine border-zine border-ink shadow-zine-xs">
-              <img src={c.url} alt="" className="h-full w-full object-cover" />
+              <img src={cfImage(c.url, { width: 640 })} alt="" className="h-full w-full object-cover" />
               <button type="button" onClick={() => onRemoveCover(c.url)}
                 className="absolute right-1 top-1 rounded-full border-zine border-ink bg-card px-2 py-0.5 font-body font-bold text-[12px] text-ink">✕</button>
             </div>

@@ -15,7 +15,7 @@ export default function publicImageCss() {
       const next = code.replace(/url\((['"]?)(\/[^)'"\s]+)\1\)/g, (original, quote, path) => {
         const hashed = manifest[path];
         if (!hashed) return original;
-        return `url('${'/cdn-cgi/image/format=auto,quality=60,width=1280,fit=scale-down'}${hashed}')`;
+        return `url('${'/cdn-cgi/image/format=avif,quality=60,width=1280,fit=scale-down'}${hashed}')`;
       });
       return next === code ? null : { code: next, map: null };
     },

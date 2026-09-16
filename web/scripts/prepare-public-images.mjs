@@ -20,7 +20,7 @@ async function walk(dir) {
     await copyFile(source, join(publicDir, target));
     const originalPath = '/' + relative(publicDir, source).split('\\').join('/');
     manifest[originalPath] = target;
-    inventory.push({ originalPath, immutablePath: target, originalBytes: bytes.length, sha256: hash, delivery: 'cloudflare-format-auto', measuredSavings: null });
+    inventory.push({ originalPath, immutablePath: target, originalBytes: bytes.length, sha256: hash, delivery: 'cloudflare-format-avif-quality-60', measuredSavings: null });
   }
 }
 await walk(publicDir);
