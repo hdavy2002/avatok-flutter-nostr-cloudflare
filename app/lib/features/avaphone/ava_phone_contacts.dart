@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -63,8 +65,8 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
     Analytics.capture('avaphone_contact_block', {'blocked': !wasBlocked});
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(wasBlocked ? 'Unblocked ${c.name.isNotEmpty ? c.name : c.number}'
-                                   : 'Blocked ${c.name.isNotEmpty ? c.name : c.number}')));
+          content: Text(wasBlocked ? uiCopy(UiMessage.m_unblocked_value1_64891e7a26, {'value1': (c.name.isNotEmpty ? c.name : c.number).toString()})
+                                   : uiCopy(UiMessage.m_blocked_value1_d3f8753c99, {'value1': (c.name.isNotEmpty ? c.name : c.number).toString()}))));
     }
   }
 
@@ -105,7 +107,7 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
     setState(() => _all = list);
     Analytics.capture('avaphone_contact_added', const {});
     ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Saved ${c.name.isNotEmpty ? c.name : c.number}')));
+        SnackBar(content: UiText(UiMessage.m_saved_value1_efbf53f3ba, params: {'value1': (c.name.isNotEmpty ? c.name : c.number).toString()})));
   }
 
   void _actions(Contact c) {
@@ -126,7 +128,7 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
         const Divider(color: PhoneTheme.border, height: 1),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold), color: PhoneTheme.lilac),
-          title: Text('View contact', style: PhoneTheme.value(size: 15)),
+          title: UiText(UiMessage.m_view_contact_f79b2c12a8, style: PhoneTheme.value(size: 15)),
           onTap: () { Navigator.pop(ctx); _viewContact(c); }),
         // [AVATALK-CHAT-ONLY-2] Messenger 1:1 calling is being killed — hide this
         // affordance while RemoteConfig.messengerCallingEnabled is off, matching
@@ -134,34 +136,34 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
         if (RemoteConfig.messengerCallingEnabled)
           ListTile(
             leading: Icon(PhosphorIcons.phone(PhosphorIconsStyle.regular), color: PhoneTheme.callGreen),
-            title: Text('Dial', style: PhoneTheme.value(size: 15)),
+            title: UiText(UiMessage.m_dial_9f2c3557d7, style: PhoneTheme.value(size: 15)),
             onTap: () { Navigator.pop(ctx); _call(c); }),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.chatText(PhosphorIconsStyle.bold), color: PhoneTheme.teal),
-          title: Text('Message', style: PhoneTheme.value(size: 15)),
+          title: UiText(UiMessage.m_message_2f77668a9d, style: PhoneTheme.value(size: 15)),
           onTap: () { Navigator.pop(ctx); _message(c); }),
         // [FIX-CONTACT-1] Copy / Share vCard / Forward as a card — shared actions.
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.copy(PhosphorIconsStyle.bold), color: PhoneTheme.lilac),
-          title: Text('Copy contact', style: PhoneTheme.value(size: 15)),
+          title: UiText(UiMessage.m_copy_contact_401debc8da, style: PhoneTheme.value(size: 15)),
           onTap: () { Navigator.pop(ctx); ContactActions.copy(context, c); }),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), color: PhoneTheme.accent),
-          title: Text('Share contact', style: PhoneTheme.value(size: 15)),
-          subtitle: Text('vCard — WhatsApp, email & more', style: PhoneTheme.sub(size: 11)),
+          title: UiText(UiMessage.m_share_contact_d294640153, style: PhoneTheme.value(size: 15)),
+          subtitle: UiText(UiMessage.m_vcard_whatsapp_email_more_d5383d6a7c, style: PhoneTheme.sub(size: 11)),
           onTap: () { Navigator.pop(ctx); ContactActions.share(context, c); }),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), color: PhoneTheme.teal),
-          title: Text('Forward contact', style: PhoneTheme.value(size: 15)),
-          subtitle: Text('Send as a card to a chat or group', style: PhoneTheme.sub(size: 11)),
+          title: UiText(UiMessage.m_forward_contact_7e096fab58, style: PhoneTheme.value(size: 15)),
+          subtitle: UiText(UiMessage.m_send_as_a_card_to_6adecca5cf, style: PhoneTheme.sub(size: 11)),
           onTap: () { Navigator.pop(ctx); ContactActions.forward(context, c); }),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), color: PhoneTheme.danger),
-          title: Text(_isBlocked(c) ? 'Unblock contact' : 'Block contact', style: PhoneTheme.value(size: 15)),
+          title: Text(_isBlocked(c) ? uiCopy(UiMessage.m_unblock_contact_cf9ceef676) : uiCopy(UiMessage.m_block_contact_20154744c0), style: PhoneTheme.value(size: 15)),
           onTap: () { Navigator.pop(ctx); _toggleBlock(c); }),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold), color: PhoneTheme.danger),
-          title: Text('Delete contact', style: PhoneTheme.value(size: 15, color: PhoneTheme.danger)),
+          title: UiText(UiMessage.m_delete_contact_f5fed436f9, style: PhoneTheme.value(size: 15, color: PhoneTheme.danger)),
           onTap: () async { Navigator.pop(ctx); final l = await _store.remove(c.uid); if (mounted) setState(() => _all = l); }),
         const SizedBox(height: 8),
       ])),
@@ -193,6 +195,7 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final list = _avatok;
     return Scaffold(
       backgroundColor: PhoneTheme.bg,
@@ -205,7 +208,7 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
           side: const BorderSide(color: PhoneTheme.border, width: 2)),
         onPressed: _add,
         icon: PhosphorIcon(PhosphorIcons.userPlus(PhosphorIconsStyle.bold), size: 18),
-        label: Text('Add', style: PhoneTheme.tag(size: 11, color: Colors.white)),
+        label: UiText(UiMessage.m_add_9fd728c66c, style: PhoneTheme.tag(size: 11, color: Colors.white)),
       ),
       body: SafeArea(
         bottom: false,
@@ -213,11 +216,11 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
           Padding(
             padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s2),
             child: Row(children: [
-              Text('Contacts', style: PhoneTheme.title(size: 24)),
+              UiText(UiMessage.m_contacts_b450645deb, style: PhoneTheme.title(size: 24)),
               const Spacer(),
               IconButton(
                 onPressed: _invite,
-                tooltip: 'Invite friends',
+                tooltip: uiCopy(UiMessage.m_invite_friends_2614b42d84),
                 icon: PhosphorIcon(PhosphorIcons.paperPlaneTilt(PhosphorIconsStyle.bold),
                     size: 20, color: PhoneTheme.accent)),
               const SizedBox(width: 2),
@@ -238,8 +241,8 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
             child: Row(children: [
               PhosphorIcon(PhosphorIcons.info(PhosphorIconsStyle.fill), size: 15, color: PhoneTheme.teal),
               const SizedBox(width: 8),
-              Expanded(child: Text(
-                'All contacts here are on the AvaTOK network — not from your phone’s contact list.',
+              Expanded(child: UiText(
+                UiMessage.m_all_contacts_here_are_on_b12345ad03,
                 style: PhoneTheme.sub(size: 11))),
             ]),
           ),
@@ -261,7 +264,7 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
                     cursorColor: PhoneTheme.accent,
                     decoration: InputDecoration(
                       isCollapsed: true, border: InputBorder.none,
-                      hintText: 'Search AvaTOK contacts',
+                      hintText: uiCopy(UiMessage.m_search_avatok_contacts_a13a651925),
                       hintStyle: PhoneTheme.sub(size: 13, color: PhoneTheme.textMute)),
                     onChanged: (v) => setState(() => _q = v),
                   ),
@@ -321,9 +324,9 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             PhosphorIcon(PhosphorIcons.addressBook(PhosphorIconsStyle.bold), size: 46, color: PhoneTheme.textMute),
             const SizedBox(height: Msg.s3),
-            Text(_q.isEmpty ? 'No AvaTOK contacts yet' : 'No matches', style: PhoneTheme.title(size: 17)),
+            Text(_q.isEmpty ? uiCopy(UiMessage.m_no_avatok_contacts_yet_c48570f6c0) : uiCopy(UiMessage.m_no_matches_2df01a03ff), style: PhoneTheme.title(size: 17)),
             const SizedBox(height: Msg.s1),
-            Text('Add someone by their AvaTOK number or scan their QR code.',
+            UiText(UiMessage.m_add_someone_by_their_avatok_58257d7a64,
                 textAlign: TextAlign.center, style: PhoneTheme.sub(size: 13)),
           ]),
         ),
@@ -374,6 +377,7 @@ class _AddAvatokSheetState extends State<_AddAvatokSheet> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final bottom = MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).padding.bottom;
     return Padding(
       padding: EdgeInsets.only(bottom: bottom),
@@ -387,9 +391,9 @@ class _AddAvatokSheetState extends State<_AddAvatokSheet> {
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Center(child: Container(width: 44, height: 5, margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(color: PhoneTheme.border, borderRadius: Msg.brPill))),
-          Text('Add AvaTOK contact', style: PhoneTheme.title(size: 20)),
+          UiText(UiMessage.m_add_avatok_contact_ed12cc2259, style: PhoneTheme.title(size: 20)),
           const SizedBox(height: 4),
-          Text('Save someone by their AvaTOK number.', style: PhoneTheme.sub(size: 12)),
+          UiText(UiMessage.m_save_someone_by_their_avatok_c8a43efe45, style: PhoneTheme.sub(size: 12)),
           const SizedBox(height: Msg.s3),
           TextField(
             controller: _ctrl,
@@ -398,7 +402,7 @@ class _AddAvatokSheetState extends State<_AddAvatokSheet> {
             style: PhoneTheme.value(size: 16),
             cursorColor: PhoneTheme.accent,
             decoration: InputDecoration(
-              hintText: 'AvaTOK number, e.g. +233 24 555 0148',
+              hintText: uiCopy(UiMessage.m_avatok_number_e_g_233_647aa7ddc0),
               hintStyle: PhoneTheme.sub(size: 13, color: PhoneTheme.textMute),
               filled: true, fillColor: PhoneTheme.surface2,
               prefixIcon: PhosphorIcon(PhosphorIcons.hash(PhosphorIconsStyle.bold), size: 18, color: PhoneTheme.teal),
@@ -429,7 +433,7 @@ class _AddAvatokSheetState extends State<_AddAvatokSheet> {
               icon: _resolving
                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
                   : PhosphorIcon(PhosphorIcons.userPlus(PhosphorIconsStyle.bold), size: 18),
-              label: Text(_resolving ? 'Finding…' : 'Find & save', style: PhoneTheme.value(size: 15, color: Colors.white)),
+              label: Text(_resolving ? uiCopy(UiMessage.m_finding_4115f461d9) : uiCopy(UiMessage.m_find_save_f781f92450), style: PhoneTheme.value(size: 15, color: Colors.white)),
             ),
           ),
           const SizedBox(height: Msg.s2),
@@ -444,7 +448,7 @@ class _AddAvatokSheetState extends State<_AddAvatokSheet> {
               ),
               onPressed: widget.onScanQr,
               icon: PhosphorIcon(PhosphorIcons.qrCode(PhosphorIconsStyle.bold), size: 18, color: PhoneTheme.text),
-              label: Text('Scan / paste QR code', style: PhoneTheme.value(size: 14)),
+              label: UiText(UiMessage.m_scan_paste_qr_code_69766527cd, style: PhoneTheme.value(size: 14)),
             ),
           ),
         ]),

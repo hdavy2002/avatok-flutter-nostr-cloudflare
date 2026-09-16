@@ -23,7 +23,7 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
               child: Image.network(url,
                   errorBuilder: (_, __, ___) => const Padding(
                       padding: EdgeInsets.all(24),
-                      child: Text('Image unavailable',
+                      child: UiText(UiMessage.m_image_unavailable_7817cd0656,
                           style: TextStyle(color: Colors.white)))),
             ),
           ),
@@ -104,7 +104,7 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
       HapticFeedback.selectionClick();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Image copied'), duration: Duration(seconds: 1)));
+            content: UiText(UiMessage.m_image_copied_d2f93ee383), duration: Duration(seconds: 1)));
       }
       Analytics.capture('chat_image_copied', {
         'mime': isPng ? 'image/png' : 'image/jpeg',
@@ -163,7 +163,7 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
           extra: {'stage': 'download_image', 'share': share});
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Couldn't download the image")));
+            const SnackBar(content: UiText(UiMessage.m_couldn_t_download_the_image_bba5020c43)));
       }
     }
   }
@@ -422,10 +422,10 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
       final needed = outcome.tokensNeeded;
       final balance = outcome.tokensBalance;
       final detail = (needed != null && balance != null) ? ' (need $needed · you have $balance)' : '';
-      _toast("You're out of tokens$detail — top up to continue.");
+      _toast(uiCopy(UiMessage.m_you_re_out_of_tokens_5b1dbd9be4, {'detail': (detail).toString()}));
       return;
     }
-    _toast("Couldn't start that — try again in a moment.");
+    _toast(uiCopy(UiMessage.m_couldn_t_start_that_try_ec1136fb73));
   }
 
   /// [AVA-MEDIA-JOB-2] EVERY open/download/share/save/play action re-fetches
@@ -442,7 +442,7 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
     final fresh = await AiMediaJobRepository.I.fetch(job.jobId);
     final url = fresh?.artifactUrl;
     if (url == null || url.isEmpty) {
-      if (mounted) _toast("Couldn't load — try again in a moment.");
+      if (mounted) _toast(uiCopy(UiMessage.m_couldn_t_load_try_again_e0d9e636c2));
       return null;
     }
     return url;
@@ -511,7 +511,7 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
       } else {
         final ok = await openFileWithOs(bytes, name, mime);
         if (!ok && mounted) {
-          _toast('No app on this device can open $name — tap share to send it elsewhere.');
+          _toast(uiCopy(UiMessage.m_no_app_on_this_device_6835a82228, {'name': (name).toString()}));
         }
       }
       Analytics.capture('ai_media_job_artifact_open', {'kind': job.kind.wire, 'job_id': job.jobId, 'ok': true});
@@ -523,7 +523,7 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
           {'kind': job.kind.wire, 'job_id': job.jobId, 'ok': false, 'error': e.runtimeType.toString()});
       await Analytics.captureException(e, st, screen: 'chat_thread', handled: true,
           extra: {'stage': 'open_job_artifact', 'kind': job.kind.wire, 'job_id': job.jobId});
-      if (mounted) _toast("Couldn't open this ${job.kind.displayNoun}.");
+      if (mounted) _toast(uiCopy(UiMessage.m_couldn_t_open_this_value1_c74ff7773a, {'value1': (job.kind.displayNoun).toString()}));
     }
   }
 
@@ -555,7 +555,7 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
           {'kind': job.kind.wire, 'job_id': job.jobId, 'ok': false, 'error': e.runtimeType.toString()});
       await Analytics.captureException(e, st, screen: 'chat_thread', handled: true,
           extra: {'stage': 'download_job_artifact', 'kind': job.kind.wire, 'job_id': job.jobId});
-      if (mounted) _toast("Couldn't download this ${job.kind.displayNoun}.");
+      if (mounted) _toast(uiCopy(UiMessage.m_couldn_t_download_this_value1_3e518965c5, {'value1': (job.kind.displayNoun).toString()}));
     }
   }
 
@@ -623,7 +623,7 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
           'kind': fresh.kind.wire, 'job_id': fresh.jobId, 'ok': false,
           'error': 'no_link_no_artifact',
         });
-        if (mounted) _toast("Can't share this song while you're offline.");
+        if (mounted) _toast(uiCopy(UiMessage.m_can_t_share_this_song_19b7f90b4e));
         return;
       }
       if (shareUrl != null) {
@@ -675,7 +675,7 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
       });
       await Analytics.captureException(e, st, screen: 'chat_thread', handled: true,
           extra: {'stage': 'share_music_job', 'job_id': job.jobId});
-      if (mounted) _toast("Couldn't share this song.");
+      if (mounted) _toast(uiCopy(UiMessage.m_couldn_t_share_this_song_9a3e9ecd6e));
     }
   }
 
@@ -726,7 +726,7 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
           {'kind': job.kind.wire, 'job_id': job.jobId, 'ok': false, 'error': e.runtimeType.toString()});
       await Analytics.captureException(e, st, screen: 'chat_thread', handled: true,
           extra: {'stage': 'copy_job_artifact', 'kind': job.kind.wire, 'job_id': job.jobId});
-      if (mounted) _toast("Couldn't copy this ${job.kind.displayNoun}.");
+      if (mounted) _toast(uiCopy(UiMessage.m_couldn_t_copy_this_value1_8a356a5788, {'value1': (job.kind.displayNoun).toString()}));
     }
   }
 
@@ -752,7 +752,7 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
   Future<void> _playJobArtifact(AiMediaJob job) async {
     final artifactId = job.artifactMediaId;
     if (artifactId == null || artifactId.isEmpty) {
-      if (mounted) _toast('Could not load this audio.');
+      if (mounted) _toast(uiCopy(UiMessage.m_could_not_load_this_audio_d56462cf07));
       return;
     }
     try {
@@ -769,7 +769,7 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
         bytes: bytes,
         subtitle: job.label.isNotEmpty
             ? job.label
-            : (job.kind == AiMediaJobKind.musicGenerate ? 'Ava song' : 'Translated audio'),
+            : (job.kind == AiMediaJobKind.musicGenerate ? uiCopy(UiMessage.m_ava_song_acb2892f37) : uiCopy(UiMessage.m_translated_audio_ed4539ed2c)),
         originRoute: _convKey,
       );
     } catch (e, st) {
@@ -777,7 +777,7 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
         'stage': 'play_job_artifact',
         'kind': job.kind.wire,
       });
-      if (mounted) _toast('Could not play this audio.');
+      if (mounted) _toast(uiCopy(UiMessage.m_could_not_play_this_audio_bf841634af));
     }
   }
 
@@ -843,7 +843,7 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
     final uid = (e['uid'] ?? '').toString();
     if (!uid.startsWith('user_')) return;
     await ContactsStore().add(Contact(uid: uid, name: (e['name'] ?? 'Contact').toString(), handle: (e['handle'] ?? '').toString()));
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${e['name']} added')));
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: UiText(UiMessage.m_value1_added_421e1ff8e1, params: {'value1': (e['name']).toString()})));
   }
 
   /// [MEDIA-INSTANT-1] Create the optimistic bubble SYNCHRONOUSLY and return it
@@ -937,7 +937,7 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
           PhosphorIcon(PhosphorIcons.imageBroken(PhosphorIconsStyle.bold),
               size: 26, color: AD.textTertiary),
           const SizedBox(height: 6),
-          Text(onRetry != null ? 'Tap to retry' : "Couldn't load",
+          Text(onRetry != null ? uiCopy(UiMessage.m_tap_to_retry_f70a68f282) : uiCopy(UiMessage.m_couldn_t_load_2c1cff23cb),
               style: ADText.bubbleMeta(c: AD.textTertiary)),
         ]),
       ),
@@ -1528,7 +1528,7 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
                     border: InputBorder.none,
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                    hintText: 'Add a caption…',
+                    hintText: uiCopy(UiMessage.m_add_a_caption_92a9f3fa63),
                     hintStyle: ADText.preview(c: AD.textTertiary),
                   ),
                 ),
@@ -1612,7 +1612,7 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
   // `@ava` instruction stays attached to the clip it refers to.
   Future<void> _sendVideoWithCaption(Uint8List bytes, String name, {String? sourcePath, int? pickStartMs}) async {
     final seed = _ctrl.text.trim();
-    final caption = await _fileCaptionSheet(name, initial: seed, label: 'Video');
+    final caption = await _fileCaptionSheet(name, initial: seed, label: uiCopy(UiMessage.m_video_d534be829e));
     if (caption == null) return;
     _consumeComposer(seed);
     final c = caption.trim();
@@ -1703,7 +1703,7 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
                     border: InputBorder.none,
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                    hintText: _avaMode ? 'Tell Ava about this file…' : 'Add a note…',
+                    hintText: _avaMode ? uiCopy(UiMessage.m_tell_ava_about_this_file_5f5d85d411) : uiCopy(UiMessage.m_add_a_note_6a0a3affad),
                     hintStyle: ADText.preview(c: AD.textTertiary),
                   ),
                 ),
@@ -1831,6 +1831,7 @@ class _AiVideoJobPreviewState extends State<_AiVideoJobPreview> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final c = _controller;
     final posterUrl = widget.job.thumbnailUrl;
     return AspectRatio(
@@ -1860,7 +1861,7 @@ class _AiVideoJobPreviewState extends State<_AiVideoJobPreview> {
             const Positioned.fill(child: ColoredBox(color: Colors.black)),
           if (c == null || !c.value.isInitialized)
             IconButton.filled(
-              tooltip: 'Play video',
+              tooltip: uiCopy(UiMessage.m_play_video_43e3c3b137),
               onPressed: _starting ? null : () => unawaited(_toggle()),
               icon: _starting
                   ? const SizedBox.square(
@@ -1898,7 +1899,7 @@ class _AiVideoJobPreviewState extends State<_AiVideoJobPreview> {
                   child: Row(children: [
                     IconButton(
                       visualDensity: VisualDensity.compact,
-                      tooltip: value.isPlaying ? 'Pause video' : 'Play video',
+                      tooltip: value.isPlaying ? uiCopy(UiMessage.m_pause_video_58cd8bdc02) : uiCopy(UiMessage.m_play_video_43e3c3b137),
                       onPressed: () => unawaited(_toggle()),
                       icon: Icon(
                         value.isPlaying
@@ -1973,6 +1974,7 @@ class _AiMusicJobPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final trackId = job.artifactMediaId ?? '';
     final title = _titleFor(job);
     final description = (job.songDescription ?? '').trim().isNotEmpty
@@ -2084,7 +2086,7 @@ class _AiMusicJobPreview extends StatelessWidget {
                       ),
                     ),
                     IconButton(
-                      tooltip: 'Share $title',
+                      tooltip: uiCopy(UiMessage.m_share_title_f59ecee761, {'title': (title).toString()}),
                       onPressed: () => unawaited(onShare()),
                       icon: Icon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.regular)),
                       color: Colors.black,
@@ -2126,7 +2128,7 @@ class _AiMusicJobPreview extends StatelessWidget {
                     return Row(
                       children: [
                         IconButton.filled(
-                          tooltip: playing ? 'Pause $title' : 'Play $title',
+                          tooltip: playing ? uiCopy(UiMessage.m_pause_title_276c419a57, {'title': (title).toString()}) : uiCopy(UiMessage.m_play_title_64010fec3c, {'title': (title).toString()}),
                           onPressed: trackId.isEmpty
                               ? null
                               : () => unawaited(
@@ -2243,7 +2245,7 @@ class _AiMusicCoverImageState extends State<_AiMusicCoverImage> {
   }
 
   @override
-  Widget build(BuildContext context) => CachedImage(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return CachedImage(
         _url,
         width: widget.width,
         height: widget.width,
@@ -2251,5 +2253,5 @@ class _AiMusicCoverImageState extends State<_AiMusicCoverImage> {
         cacheKey: widget.cacheKey,
         transformUrl: false,
         onResult: (ok) => unawaited(_onResult(ok)),
-      );
+      ); }
 }

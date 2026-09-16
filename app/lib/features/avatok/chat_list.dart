@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -548,7 +551,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                 size: 20, color: AD.iconSearch),
             const SizedBox(width: 16),
             Flexible(
-                child: Text('Message requests',
+                child: UiText(UiMessage.m_message_requests_0b48a08978,
                     maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: ADText.rowName())),
             const SizedBox(width: 8),
@@ -578,7 +581,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                 avatarUrl: p.contact!.avatarUrl,
                 last: p.contact!.subtitle.isNotEmpty
                     ? p.contact!.subtitle
-                    : 'Wants to send you a message',
+                    : uiCopy(UiMessage.m_wants_to_send_you_a_dd265cf814),
                 time: '',
               ),
               pinned: false,
@@ -617,9 +620,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                       child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                        Text('Unknown sender', style: ADText.rowName()),
+                        UiText(UiMessage.m_unknown_sender_615f9907b8, style: ADText.rowName()),
                         const SizedBox(height: 2),
-                        Text('Wants to send you a message',
+                        UiText(UiMessage.m_wants_to_send_you_a_dd265cf814,
                             maxLines: 1, overflow: TextOverflow.ellipsis,
                             style: ADText.preview(c: AD.textSecondary)),
                       ])),
@@ -658,7 +661,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
             leading: PhosphorIcon(
                 PhosphorIcons.pushPin(has('pinned') ? PhosphorIconsStyle.fill : PhosphorIconsStyle.bold),
                 color: AD.iconSearch),
-            title: Text(has('pinned') ? 'Unpin' : 'Pin to top', style: ADText.rowName()),
+            title: Text(has('pinned') ? uiCopy(UiMessage.m_unpin_ee3c716130) : uiCopy(UiMessage.m_pin_to_top_e961fa7ba8), style: ADText.rowName()),
             onTap: () { Navigator.pop(ctx); _toggleFlag('pinned', k); }),
         ListTile(
             leading: PhosphorIcon(
@@ -666,43 +669,43 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                     ? PhosphorIcons.bellSlash(PhosphorIconsStyle.bold)
                     : PhosphorIcons.bell(PhosphorIconsStyle.bold),
                 color: AD.textPrimary),
-            title: Text(has('muted') ? 'Unmute' : 'Mute', style: ADText.rowName()),
+            title: Text(has('muted') ? uiCopy(UiMessage.m_unmute_ce4ee4efc5) : uiCopy(UiMessage.m_mute_8dd6857baf), style: ADText.rowName()),
             onTap: () { Navigator.pop(ctx); _toggleFlag('muted', k); }),
         ListTile(
             leading: PhosphorIcon(PhosphorIcons.archive(PhosphorIconsStyle.bold), color: AD.textPrimary),
-            title: Text(has('archived') ? 'Unarchive' : 'Archive', style: ADText.rowName()),
+            title: Text(has('archived') ? uiCopy(UiMessage.m_unarchive_f565318d12) : uiCopy(UiMessage.m_archive_66f4804ee2), style: ADText.rowName()),
             onTap: () { Navigator.pop(ctx); _toggleFlag('archived', k); }),
         // [FIX-CONTACT-1] Copy / Share vCard / Forward — only for 1:1 contact rows.
         if (c.gid == null) ...[
           ListTile(
               leading: PhosphorIcon(PhosphorIcons.copy(PhosphorIconsStyle.bold), color: AD.textPrimary),
-              title: Text('Copy contact', style: ADText.rowName()),
+              title: UiText(UiMessage.m_copy_contact_401debc8da, style: ADText.rowName()),
               onTap: () { Navigator.pop(ctx); ContactActions.copy(context, _contactOf(c)); }),
           ListTile(
               leading: PhosphorIcon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), color: AD.textPrimary),
-              title: Text('Share contact', style: ADText.rowName()),
+              title: UiText(UiMessage.m_share_contact_d294640153, style: ADText.rowName()),
               onTap: () { Navigator.pop(ctx); ContactActions.share(context, _contactOf(c)); }),
           ListTile(
               leading: PhosphorIcon(PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), color: AD.textPrimary),
-              title: Text('Forward contact', style: ADText.rowName()),
+              title: UiText(UiMessage.m_forward_contact_7e096fab58, style: ADText.rowName()),
               onTap: () { Navigator.pop(ctx); ContactActions.forward(context, _contactOf(c)); }),
         ],
         if (c.gid == null)
           ListTile(
               leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), color: AD.danger),
-              title: Text(has('blocked') ? 'Unblock' : 'Block', style: ADText.rowName(c: AD.danger)),
+              title: Text(has('blocked') ? uiCopy(UiMessage.m_unblock_712da63171) : uiCopy(UiMessage.m_block_211d0bb8cf), style: ADText.rowName(c: AD.danger)),
               onTap: () { Navigator.pop(ctx); _toggleFlag('blocked', k); }),
         if (c.gid == null)
           ListTile(
               leading: PhosphorIcon(PhosphorIcons.userMinus(PhosphorIconsStyle.bold), color: AD.danger),
               // [ISSUE-CONTACT-SEMANTICS-1] Hides the thread; contact stays in
               // AvaTOK contacts (find them in search any time).
-              title: Text('Remove from chats', style: ADText.rowName(c: AD.danger)),
+              title: UiText(UiMessage.m_remove_from_chats_3052358e02, style: ADText.rowName(c: AD.danger)),
               onTap: () { Navigator.pop(ctx); _removeContact(c); }),
         if (c.gid == null)
           ListTile(
               leading: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold), color: AD.danger),
-              title: Text('Delete contact', style: ADText.rowName(c: AD.danger)),
+              title: UiText(UiMessage.m_delete_contact_f5fed436f9, style: ADText.rowName(c: AD.danger)),
               onTap: () { Navigator.pop(ctx); _deleteContact(c); }),
       ],
     );
@@ -770,17 +773,15 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         shape: RoundedRectangleBorder(
             side: const BorderSide(color: AD.borderControl, width: 1),
             borderRadius: BorderRadius.circular(AD.rDialog)),
-        title: Text('Delete ${c.name}?', style: ADText.threadName()),
-        content: Text(
-            'This deletes them from your AvaTOK contacts for good — the chat '
-            'disappears and won\'t come back after a restore. Your phone\'s own '
-            'address book is not touched.',
+        title: UiText(UiMessage.m_delete_value1_073bfafa85, params: {'value1': (c.name).toString()}, style: ADText.threadName()),
+        content: UiText(
+            UiMessage.m_this_deletes_them_from_your_bd10b6ddd0,
             style: ADText.preview(c: AD.textSecondary)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const UiText(UiMessage.m_cancel_19766ed6cc)),
           TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: Text('Delete', style: ADText.rowName(c: AD.danger))),
+              child: UiText(UiMessage.m_delete_e2d0a54968, style: ADText.rowName(c: AD.danger))),
         ],
       ),
     );
@@ -2091,13 +2092,13 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     if (c == null || !mounted) return;
     // Don't let someone add their own account (e.g. their other email).
     if (c.uid.isEmpty || c.uid == _id?.uid) {
-      showAdToast(context, message: "That's your own account — you can't add yourself");
+      showAdToast(context, message: uiCopy(UiMessage.m_that_s_your_own_account_91ae453afe));
       return;
     }
     final list = await _contactsStore.add(c);
     if (mounted) {
       setState(() => _contacts = list);
-      showAdToast(context, message: 'Added ${c.name.isNotEmpty ? c.name : c.subtitle}');
+      showAdToast(context, message: uiCopy(UiMessage.m_added_value1_b4155f8b44, {'value1': (c.name.isNotEmpty ? c.name : c.subtitle).toString()}));
     }
   }
 
@@ -2123,22 +2124,22 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         // only on accent / error / online.
         ListTile(
           leading: ZineIconBadge(icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: AD.cardHover),
-          title: Text('Chat with Ava', style: ADText.rowName()),
-          subtitle: Text('Brainstorm, practise a language, or just talk', style: ADText.preview()),
+          title: UiText(UiMessage.m_chat_with_ava_4ffca9d030, style: ADText.rowName()),
+          subtitle: UiText(UiMessage.m_brainstorm_practise_a_language_or_36e270226c, style: ADText.preview()),
           onTap: () { Navigator.pop(ctx); _openAvaChat(); }),
         ListTile(
           leading: ZineIconBadge(icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold), color: AD.cardHover),
-          title: Text('New chat', style: ADText.rowName()),
-          subtitle: Text('Find someone by email or AvaTOK number', style: ADText.preview()),
+          title: UiText(UiMessage.m_new_chat_db18382a24, style: ADText.rowName()),
+          subtitle: UiText(UiMessage.m_find_someone_by_email_or_2871a9efb2, style: ADText.preview()),
           onTap: () { Navigator.pop(ctx); _openAddContact(); }),
         ListTile(
           leading: ZineIconBadge(icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold), color: AD.cardHover),
-          title: Text('New group', style: ADText.rowName()),
+          title: UiText(UiMessage.m_new_group_df796c655f, style: ADText.rowName()),
           onTap: () { Navigator.pop(ctx); _openNewGroup(); }),
         ListTile(
           leading: ZineIconBadge(icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), color: AD.cardHover),
-          title: Text('Invite friends to AvaTok', style: ADText.rowName()),
-          subtitle: Text('Find people from your phone contacts', style: ADText.preview()),
+          title: UiText(UiMessage.m_invite_friends_to_avatok_1823fff3ff, style: ADText.rowName()),
+          subtitle: UiText(UiMessage.m_find_people_from_your_phone_6b66305f17, style: ADText.preview()),
           onTap: () { Navigator.pop(ctx); _openSearch(); }),
       ],
     );
@@ -2157,12 +2158,12 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('New filter'),
+        title: const UiText(UiMessage.m_new_filter_2f512fb4c0),
         content: TextField(controller: nameCtrl, autofocus: true,
-            decoration: const InputDecoration(hintText: 'Keyword (matches chat names)')),
+            decoration:  InputDecoration(hintText: uiCopy(UiMessage.m_keyword_matches_chat_names_9be52b38fe))),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Create')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const UiText(UiMessage.m_cancel_19766ed6cc)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const UiText(UiMessage.m_create_4759498ac2)),
         ],
       ),
     );
@@ -2175,6 +2176,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final blocked = _flags['blocked']!, archived = _flags['archived']!, pinned = _flags['pinned']!;
     String draftOr(String k, String fallback) =>
         (_drafts[k] ?? '').isNotEmpty ? '✏️ ${_drafts[k]}' : fallback;
@@ -2367,7 +2369,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         // count and the tap handler both live in this State), and the tab strip
         // welded to the band (`bottom:`).
         AvaTokHeader(
-          title: 'AvaTOK',
+          title: uiCopy(UiMessage.m_avatok_b692b5d2b4),
           onMenu: () => _scaffoldKey.currentState?.openDrawer(),
           // Status avatar — opens the status viewer; shows my latest photo
           // status as a thumbnail (glows when I have a live status).
@@ -2435,7 +2437,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                   padding: const EdgeInsets.fromLTRB(Msg.s4, 0, Msg.s4, Msg.s2),
                   child: AdSearchDock(
                     controller: _searchCtl,
-                    hint: 'Search chats',
+                    hint: uiCopy(UiMessage.m_search_chats_02a39c4adc),
                     onChanged: (v) => setState(() => _query = v),
                   ),
                 ),
@@ -2480,11 +2482,11 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                               size: 20, color: AD.textTertiary),
                           const SizedBox(width: 16),
                           Flexible(
-                              child: Text('Archived',
+                              child: UiText(UiMessage.m_archived_bdb86505f8,
                                   maxLines: 1, overflow: TextOverflow.ellipsis,
                                   style: ADText.rowName())),
                           const Spacer(),
-                          Text(_showArchived ? 'HIDE' : '$archivedCount',
+                          Text(_showArchived ? uiCopy(UiMessage.m_hide_0c944fca9b) : '$archivedCount',
                               style: ADText.sectionLabel(c: AD.unreadAccent)),
                         ]),
                       ),
@@ -2515,10 +2517,10 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                           const SizedBox(height: 14),
                           Text(
                               searching
-                                  ? 'No chats match "${_query.trim()}"'
+                                  ? uiCopy(UiMessage.m_no_chats_match_value1_da589b396b, {'value1': (_query.trim()).toString()})
                                   : _filter == 'all'
-                                      ? 'No chats yet — tap + to start one'
-                                      : 'Nothing here',
+                                      ? uiCopy(UiMessage.m_no_chats_yet_tap_to_fe8a34f95a)
+                                      : uiCopy(UiMessage.m_nothing_here_f4c7f41c12),
                               textAlign: TextAlign.center,
                               style: ADText.preview(c: AD.textTertiary)),
                         ]),
@@ -2659,7 +2661,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   /// a trailing ✕ to delete.
   Widget _filterMenuButton() {
     return PopupMenuButton<String>(
-      tooltip: 'Filter chats',
+      tooltip: uiCopy(UiMessage.m_filter_chats_a7edc4b684),
       color: AD.popover,
       shape: RoundedRectangleBorder(
         side: const BorderSide(color: AD.borderControl, width: 1),
@@ -2690,7 +2692,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
               const SizedBox(width: 24),
               PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold), size: 14, color: AD.danger),
               const SizedBox(width: 8),
-              Text('Delete "${f.name}"', style: ADText.preview(c: AD.danger)),
+              UiText(UiMessage.m_delete_value1_b4a0e6dc4e, params: {'value1': (f.name).toString()}, style: ADText.preview(c: AD.danger)),
             ]),
           ),
         const PopupMenuDivider(),
@@ -2698,7 +2700,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           value: '__add',
           child: Row(children: [
             SizedBox(width: 24, child: PhosphorIcon(PhosphorIcons.plus(PhosphorIconsStyle.bold), size: 15, color: AD.textPrimary)),
-            Text('New filter', style: ADText.rowName(c: AD.textPrimary)),
+            UiText(UiMessage.m_new_filter_2f512fb4c0, style: ADText.rowName(c: AD.textPrimary)),
           ]),
         ),
       ],
@@ -2820,6 +2822,7 @@ class _AvaTokTabStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       // [RAJ-SEAMS-1] The bottom hairline is gone: the seam overlaid
       // immediately below this strip in the Scaffold body IS the seam now, and
@@ -2923,6 +2926,7 @@ class _ChatRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return InkWell(
       onTap: onTap ?? () => Navigator.push(context,
           MaterialPageRoute(builder: (_) => ChatThreadScreen(chat: chat))),

@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -171,19 +174,19 @@ class _StatusScreenState extends State<StatusScreen> {
         const SizedBox(height: 12),
         _sheetTile(ctx,
             icon: PhosphorIcons.camera(PhosphorIconsStyle.bold), tint: AD.iconSearch,
-            title: 'Take photo',
+            title: uiCopy(UiMessage.m_take_photo_7100ac9979),
             onTap: () { Navigator.pop(ctx); _addImage(ImageSource.camera); }),
         _sheetTile(ctx,
             icon: PhosphorIcons.image(PhosphorIconsStyle.bold), tint: AD.iconVideo,
-            title: 'Photo from gallery',
+            title: uiCopy(UiMessage.m_photo_from_gallery_d3377d1584),
             onTap: () { Navigator.pop(ctx); _addImage(ImageSource.gallery); }),
         _sheetTile(ctx,
             icon: PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), tint: AD.iconShield,
-            title: 'Record video', subtitle: 'Up to 10 seconds',
+            title: uiCopy(UiMessage.m_record_video_5cb2b16872), subtitle: uiCopy(UiMessage.m_up_to_10_seconds_bc46c190d2),
             onTap: () { Navigator.pop(ctx); _addVideo(ImageSource.camera); }),
         _sheetTile(ctx,
             icon: PhosphorIcons.filmStrip(PhosphorIconsStyle.bold), tint: AD.iconBell,
-            title: 'Video from gallery', subtitle: 'Trimmed to 10 seconds',
+            title: uiCopy(UiMessage.m_video_from_gallery_16d1ff9e6f), subtitle: uiCopy(UiMessage.m_trimmed_to_10_seconds_46a13be0ff),
             onTap: () { Navigator.pop(ctx); _addVideo(ImageSource.gallery); }),
         const SizedBox(height: 8),
       ])),
@@ -277,10 +280,10 @@ class _StatusScreenState extends State<StatusScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('Updates', style: ADText.appTitle(),
+                      UiText(UiMessage.m_updates_22e2bada8f, style: ADText.appTitle(),
                           maxLines: 1, overflow: TextOverflow.ellipsis),
                       const SizedBox(height: 2),
-                      Text('24H STATUS FROM YOUR PEOPLE', style: ADText.sectionLabel()),
+                      UiText(UiMessage.m_24h_status_from_your_people_58e15f954a, style: ADText.sectionLabel()),
                     ],
                   ),
                 ),
@@ -298,6 +301,7 @@ class _StatusScreenState extends State<StatusScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: _header(),
@@ -336,16 +340,16 @@ class _StatusScreenState extends State<StatusScreen> {
               ]),
               const SizedBox(width: Msg.s3),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                Text('My status', style: ADText.threadName().copyWith(fontSize: 17)),
+                UiText(UiMessage.m_my_status_60ee6f6cc1, style: ADText.threadName().copyWith(fontSize: 17)),
                 const SizedBox(height: Msg.s1),
-                Text('Tap to add to your status (24h)', style: ADText.preview(c: AD.textTertiary)),
+                UiText(UiMessage.m_tap_to_add_to_your_bd82a022f4, style: ADText.preview(c: AD.textTertiary)),
               ])),
             ]),
           ),
           const SizedBox(height: Msg.s4),
           Padding(
             padding: const EdgeInsets.only(left: Msg.s1, bottom: Msg.s3),
-            child: Text('Recent', style: ADText.sectionLabel()),
+            child: UiText(UiMessage.m_recent_690dbe9dc0, style: ADText.sectionLabel()),
           ),
           if (_posts.isEmpty)
             Padding(
@@ -359,7 +363,7 @@ class _StatusScreenState extends State<StatusScreen> {
                   SvgPicture.asset(Illustrations.statusEmpty,
                       height: 140, fit: BoxFit.contain, excludeFromSemantics: true),
                   const SizedBox(height: Msg.s3),
-                  Text('No updates yet — share your first one.',
+                  UiText(UiMessage.m_no_updates_yet_share_your_118c72a0a3,
                       textAlign: TextAlign.center,
                       style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14)),
                 ]),
@@ -385,7 +389,7 @@ class _StatusScreenState extends State<StatusScreen> {
                   Text(p.authorName, maxLines: 1, overflow: TextOverflow.ellipsis,
                       style: ADText.rowName().copyWith(fontSize: 14)),
                   const SizedBox(height: Msg.s1),
-                  Text(p.kind == 'image' ? '📷 Photo' : p.kind == 'video' ? '🎬 Video' : (p.text ?? ''),
+                  Text(p.kind == 'image' ? uiCopy(UiMessage.m_photo_1b13ff9864) : p.kind == 'video' ? uiCopy(UiMessage.m_video_0e4c296c84) : (p.text ?? ''),
                       maxLines: 1, overflow: TextOverflow.ellipsis,
                       style: ADText.preview(c: AD.textTertiary)),
                 ])),

@@ -1,3 +1,6 @@
+
+import '../../../core/localization/ui_text.dart';
+
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -170,7 +173,7 @@ void registerReceptionistSection() {
       id: 'ava_receptionist',
       // [PA-UI-1] the mega-page became a small HUB ("Ava PA"): two lane screens
       // (phone / AvaTOK) plus the SHARED voice + persona controls.
-      title: 'Ava PA',
+      title: uiCopy(UiMessage.m_ava_pa_7a22a741f1),
       order: 24,
       builder: (context) => const _ReceptionistCard(),
     ),
@@ -531,13 +534,13 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
       });
       AvaLog.I.log('receptionist', 'settings saved (enabled=$enabled, note=${note.isNotEmpty}, expiry=${expiresAt != null}, lang=${answerLang.isEmpty ? "auto" : answerLang})');
       // [PA-UI-1] sheets save on close, so the confirmation is a plain "Saved".
-      _toast('Saved');
+      _toast(uiCopy(UiMessage.m_saved_b5c120b316));
     } else if (res.blocked) {
-      _toast('Ava Receptionist is a premium feature — upgrade to enable it.');
+      _toast(uiCopy(UiMessage.m_ava_receptionist_is_a_premium_d21e838070));
     } else {
       Analytics.capture('ava_recept_save_failed', {'enabled': enabled});
       AvaLog.I.log('receptionist', 'settings save FAILED (enabled=$enabled)');
-      _toast('Couldn’t save — check your connection and try again.');
+      _toast(uiCopy(UiMessage.m_couldn_t_save_check_your_da12340aa9));
     }
     return res.ok;
   }
@@ -584,6 +587,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return AdCard(
       padding: const EdgeInsets.all(Msg.s4),
       child: _loading
@@ -601,11 +605,10 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Ava PA', style: ADText.rowName()),
+                    UiText(UiMessage.m_ava_pa_7a22a741f1, style: ADText.rowName()),
                     const SizedBox(height: 2),
-                    Text(
-                      'Ava answers the calls you don’t take and sends you the '
-                      'message.',
+                    UiText(
+                      UiMessage.m_ava_answers_the_calls_you_42036915e8,
                       style: ADText.preview(),
                     ),
                   ]),
@@ -620,7 +623,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                         height: 14,
                         child: CircularProgressIndicator(strokeWidth: 2)),
                     const SizedBox(width: 8),
-                    Text('Saving…', style: ADText.preview()),
+                    UiText(UiMessage.m_saving_23e39291d6, style: ADText.preview()),
                   ]),
                 ],
                 const SizedBox(height: 16),
@@ -645,8 +648,8 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                 _branchCard(
                   icon: PhosphorIcons.phone(PhosphorIconsStyle.fill),
                   accent: AD.online,
-                  title: 'Phone calls',
-                  subtitle: 'Ava as PA on your SIM number',
+                  title: uiCopy(UiMessage.m_phone_calls_0a69128459),
+                  subtitle: uiCopy(UiMessage.m_ava_as_pa_on_your_7e006e8ec8),
                   on: _pstnOn,
                   onTap: () {
                     Analytics.uiInteraction('pa_lane_open', 0,
@@ -661,8 +664,8 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                 _branchCard(
                   icon: PhosphorIcons.chatCircle(PhosphorIconsStyle.fill),
                   accent: AD.iconVideo,
-                  title: 'AvaTOK calls',
-                  subtitle: 'Ava as receptionist in-app',
+                  title: uiCopy(UiMessage.m_avatok_calls_a718c99500),
+                  subtitle: uiCopy(UiMessage.m_ava_as_receptionist_in_app_073fee3000),
                   on: _avatokOn,
                   onTap: () {
                     Analytics.uiInteraction('pa_lane_open', 0,
@@ -675,7 +678,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                 ),
                 // ── [PA-UI-1] Shared voice / persona controls ──────────────
                 const SizedBox(height: 20),
-                Text('HOW AVA SPEAKS', style: ADText.sectionLabel()),
+                UiText(UiMessage.m_how_ava_speaks_25a60d97f0, style: ADText.sectionLabel()),
                 const SizedBox(height: Msg.s2),
                 AdCard(
                   padding: EdgeInsets.zero,
@@ -707,15 +710,15 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                         size: 18, color: AD.textSecondary),
                     const SizedBox(width: Msg.s2),
                     Expanded(
-                        child: Text('Call activity', style: ADText.rowName())),
+                        child: UiText(UiMessage.m_call_activity_7bd138d202, style: ADText.rowName())),
                     Icon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
                         size: 16, color: AD.textTertiary),
                   ]),
                 ),
                 const SizedBox(height: 16),
                 Center(
-                  child: Text(
-                    '3 tokens per minute · calls end within 5 minutes',
+                  child: UiText(
+                    UiMessage.m_3_tokens_per_minute_calls_b8de40778e,
                     style: ADText.preview(),
                     textAlign: TextAlign.center,
                   ),
@@ -752,7 +755,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
           ]),
         ),
         const SizedBox(width: Msg.s2),
-        AdSticker(on ? 'On' : 'Off',
+        AdSticker(on ? uiCopy(UiMessage.m_on_1300117561) : uiCopy(UiMessage.m_off_ca7981b46e),
             kind: on ? AdStickerKind.ok : AdStickerKind.hint),
         const SizedBox(width: 4),
         Icon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
@@ -871,7 +874,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                     padding: const EdgeInsets.fromLTRB(
                         Msg.s4, 0, Msg.s4, Msg.s4),
                     child: AdButton(
-                      label: 'Done',
+                      label: uiCopy(UiMessage.m_done_11a6767d56),
                       fullWidth: true,
                       fontSize: 15,
                       onPressed: () => Navigator.of(ctx2).pop(),
@@ -898,17 +901,16 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
           const SizedBox(height: Msg.s2),
           AdField(
             controller: _greeting,
-            label: 'Your greeting',
-            hint: 'e.g. Jai Shree Ram',
+            label: uiCopy(UiMessage.m_your_greeting_83e7105a53),
+            hint: uiCopy(UiMessage.m_e_g_jai_shree_ram_f5f72784dc),
             maxLength: kReceptionistGreetingMax,
             textCapitalization: TextCapitalization.sentences,
             onChanged: (_) => setSheet(() {}),
           ),
         ],
         const SizedBox(height: Msg.s1),
-        Text(
-          'Ava opens with this, then the caller’s name — e.g. '
-          '“${_greetingPreview()} Anita, you can’t take the call right now…”.',
+        UiText(
+          UiMessage.m_ava_opens_with_this_then_3e6a950670, params: {'value1': (_greetingPreview()).toString()},
           style: ADText.preview(),
         ),
         const SizedBox(height: 12),
@@ -929,7 +931,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
   Future<void> _openLanguageSheet() {
     return _openSheet('pa_language_saved', 'Language and voice', (ctx, setSheet) {
       return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Answering language', style: ADText.sectionLabel()),
+        UiText(UiMessage.m_answering_language_28d9d6698a, style: ADText.sectionLabel()),
         const SizedBox(height: Msg.s2),
         ZinePressable(
           onTap: () async {
@@ -952,9 +954,8 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
           ]),
         ),
         const SizedBox(height: Msg.s1),
-        Text(
-          'Ava opens in this language, then follows the caller if they speak '
-          'another.',
+        UiText(
+          UiMessage.m_ava_opens_in_this_language_840561c1e7,
           style: ADText.preview(),
         ),
         const SizedBox(height: Msg.s4),
@@ -971,9 +972,9 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
       return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         AdField(
           controller: _note,
-          label: 'Let Ava know if you’re busy, away, etc.',
+          label: uiCopy(UiMessage.m_let_ava_know_if_you_bc2e766bbf),
           hint:
-              'e.g. I’m in meetings until 5pm — please take a message and I’ll call back.',
+              uiCopy(UiMessage.m_e_g_i_m_in_a9be38950d),
           maxLength: kReceptionistNoteMax,
           minLines: 3,
           maxLines: null,
@@ -993,13 +994,12 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
           ),
         ),
         const SizedBox(height: 4),
-        Text(
-          'Ava uses this to tell callers why you can’t pick up and to take a '
-          'message in your words. Your name and gender come from your Profile.',
+        UiText(
+          UiMessage.m_ava_uses_this_to_tell_29cb9e2c21,
           style: ADText.preview(),
         ),
         const SizedBox(height: 16),
-        Text('Clear this note after', style: ADText.sectionLabel()),
+        UiText(UiMessage.m_clear_this_note_after_c3fd925df2, style: ADText.sectionLabel()),
         const SizedBox(height: Msg.s2),
         Wrap(spacing: 8, runSpacing: 8, children: [
           for (final o in _kExpiryOptions)
@@ -1014,7 +1014,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
         ]),
         if (_expiresAtMs != null) ...[
           const SizedBox(height: 8),
-          Text('Note clears at ${_formatExpiry(_expiresAtMs!)}',
+          UiText(UiMessage.m_note_clears_at_value1_93cbe77c5f, params: {'value1': (_formatExpiry(_expiresAtMs!)).toString()},
               style: ADText.preview()),
         ],
       ]);
@@ -1159,9 +1159,9 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
   // PUT), mirroring the standalone section this replaces.
   Widget _voiceSection() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text("AVA'S VOICE", style: ADText.sectionLabel()),
+      UiText(UiMessage.m_ava_s_voice_8b982df63e, style: ADText.sectionLabel()),
       const SizedBox(height: 4),
-      Text('The voice Ava speaks with on a hands-free call.',
+      UiText(UiMessage.m_the_voice_ava_speaks_with_c6c3d3e5b8,
           style: ADText.preview()),
       const SizedBox(height: Msg.s2),
       ValueListenableBuilder<String>(
@@ -1172,26 +1172,25 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
             if (sel != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: Text(
-                  'Selected: ${sel.name} · ${sel.style} '
-                  '(${sel.female ? "female" : "male"})',
+                child: UiText(
+                  UiMessage.m_selected_value1_value2_value3_1aba2a5067, params: {'value1': (sel.name).toString(), 'value2': (sel.style).toString(), 'value3': (sel.female ? "female" : "male").toString()},
                   style: ADText.preview(c: AD.iconSearch),
                 ),
               ),
-            Text('Female', style: ADText.sectionLabel()),
+            UiText(UiMessage.m_female_e8cca808ae, style: ADText.sectionLabel()),
             const SizedBox(height: 8),
             _voiceWrap(GoogleVoiceCatalog.female, current),
             const SizedBox(height: 16),
-            Text('Male', style: ADText.sectionLabel()),
+            UiText(UiMessage.m_male_03f8c1273e, style: ADText.sectionLabel()),
             const SizedBox(height: 8),
             _voiceWrap(GoogleVoiceCatalog.male, current),
           ]);
         },
       ),
       const SizedBox(height: 16),
-      Text('Call language', style: ADText.sectionLabel()),
+      UiText(UiMessage.m_call_language_fa69e744fe, style: ADText.sectionLabel()),
       const SizedBox(height: 4),
-      Text('The language Ava speaks on a call. Auto follows whatever you speak.',
+      UiText(UiMessage.m_the_language_ava_speaks_on_9ecf28bf37,
           style: ADText.preview()),
       const SizedBox(height: Msg.s2),
       ValueListenableBuilder<String>(
@@ -1291,6 +1290,7 @@ class _LangPickerSheetState extends State<_LangPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final q = _search.text.trim().toLowerCase();
     final matches = q.isEmpty
         ? kReceptionistLangs
@@ -1323,7 +1323,7 @@ class _LangPickerSheetState extends State<_LangPickerSheet> {
               padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s3),
               child: AdField(
                 controller: _search,
-                hint: 'Search languages',
+                hint: uiCopy(UiMessage.m_search_languages_98cdcf4f24),
                 leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
                 autofocus: false,
                 onChanged: (_) => setState(() {}),
@@ -1336,8 +1336,8 @@ class _LangPickerSheetState extends State<_LangPickerSheet> {
                   // Detected / auto row first (only when not filtered out).
                   if (q.isEmpty || 'detected auto'.contains(q))
                     _langTile(
-                      title: '${detected.native} (detected)',
-                      subtitle: 'Auto — matches the caller’s region',
+                      title: uiCopy(UiMessage.m_value1_detected_2bbbd02cd6, {'value1': (detected.native).toString()}),
+                      subtitle: uiCopy(UiMessage.m_auto_matches_the_caller_s_6981cc618a),
                       active: widget.selected.isEmpty,
                       onTap: () => Navigator.of(context).pop(''),
                     ),
@@ -1384,6 +1384,7 @@ class _TokenGateBanner extends StatelessWidget {
   const _TokenGateBanner({required this.tokens, required this.onTopUp});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       padding: const EdgeInsets.all(Msg.s4),
       decoration: BoxDecoration(
@@ -1397,20 +1398,18 @@ class _TokenGateBanner extends StatelessWidget {
               size: 18, color: AD.missedCall),
           const SizedBox(width: 8),
           Expanded(
-            child: Text('Not enough tokens for Ava Receptionist',
+            child: UiText(UiMessage.m_not_enough_tokens_for_ava_235909b5e8,
                 style: ADText.rowName()),
           ),
         ]),
         const SizedBox(height: Msg.s1),
-        Text(
-          'You have $tokens token${tokens == 1 ? '' : 's'}. Ava talks to callers '
-          'on your tokens (3/min), so she can’t answer until you top up. Turning '
-          'a toggle on below is disabled until then.',
+        UiText(
+          UiMessage.m_you_have_tokens_token_value2_aa692cf875, params: {'tokens': (tokens).toString(), 'value2': (tokens == 1 ? '' : 's').toString()},
           style: ADText.preview(),
         ),
         const SizedBox(height: 12),
         AdButton(
-          label: 'Top up your wallet',
+          label: uiCopy(UiMessage.m_top_up_your_wallet_fa9164cfde),
           variant: AdButtonVariant.teal,
           fullWidth: true,
           fontSize: 14,
@@ -1428,6 +1427,7 @@ class _AdToggle extends StatelessWidget {
   const _AdToggle({required this.value, this.onChanged});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final reduce = MediaQuery.of(context).disableAnimations;
     return GestureDetector(
       onTap: onChanged == null ? null : () => onChanged!(!value),

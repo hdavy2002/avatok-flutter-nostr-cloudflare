@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../lib/i18n/react";
+import { UiText } from "../lib/i18n/react";
 import { useCallback, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { cfImage } from '../lib/config';
@@ -222,6 +224,8 @@ export function ListingTile({
   listing, href, width = 520, className = '', position = 0, section = 'unknown', voiceHighlightUrl = null,
   enableSkeleton = false,
 }: ListingTileProps) {
+  const {t:uiT}=useUiTranslation("web-common");
+
   const c = toCardView(listing);
   const target = href ?? listingHref(listing);
   const p = paletteFor(c.id);
@@ -489,7 +493,7 @@ export function ListingTile({
             )}
             <button
               type="button"
-              aria-label={favorited ? 'Remove from favourites' : 'Add to favourites'}
+              aria-label={favorited ? uiT("web-common.a5bdecedf4ee6419","Remove from favourites") : uiT("web-common.9e619bff6d556032","Add to favourites")}
               aria-pressed={favorited}
               onClick={onFavoriteClick}
               style={{
@@ -503,7 +507,7 @@ export function ListingTile({
             </button>
             <button
               type="button"
-              aria-label="Share listing"
+              aria-label={uiT("web-common.3808205722bc301b","Share listing")}
               onClick={onShareClick}
               style={{
                 width: 30, height: 30, flex: 'none', borderRadius: '50%', border: `1.5px solid ${INK}`,
@@ -555,7 +559,7 @@ export function ListingTile({
       {posterFirst ? (
         <div style={{ padding: '13px 15px 15px', display: 'flex', alignItems: 'center', gap: 10 }}>
           <span className="sr-only">
-            {c.title}. {blurb} {price ? `Price ${price}.` : ''} {duration ? `${duration}.` : ''}
+            {c.title}. {blurb} {price ? uiT("web-common.cc151cde4cdee7af","Price {value0}.",{value0:String(price)}) : ''} {duration ? `${duration}.` : ''}
           </span>
           {/* [CARD-CREATOR-LINK-1 2026-09-05] The avatar and the name go to the
               creator's page.
@@ -584,7 +588,7 @@ export function ListingTile({
               {creatorAvatarNode}
               <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: textCol, minWidth: 0, borderBottom: `1px solid ${chipCol}` }} className="truncate">
                 {creatorName}
-                {lane === 'agent' ? ' · AI' : c.creator?.verified ? ' ✓' : ''}
+                {lane === 'agent' ? uiT("web-common.155aa176a637c5b6"," · AI") : c.creator?.verified ? ' ✓' : ''}
               </span>
             </a>
           ) : (
@@ -592,7 +596,7 @@ export function ListingTile({
               {creatorAvatarNode}
               <span aria-hidden="true" style={{ fontSize: '0.8125rem', fontWeight: 600, color: textCol, minWidth: 0 }} className="truncate">
                 {creatorName}
-                {lane === 'agent' ? ' · AI' : c.creator?.verified ? ' ✓' : ''}
+                {lane === 'agent' ? uiT("web-common.155aa176a637c5b6"," · AI") : c.creator?.verified ? ' ✓' : ''}
               </span>
             </>
           )}
@@ -606,7 +610,7 @@ export function ListingTile({
               padding: '10px 16px', borderRadius: 20, border: `2px solid ${INK}`, // [UI-COMFORTAA-1] button tier
               background: CREAM, color: INK, cursor: 'pointer',
             }}
-          >MORE INFO</button>
+          ><UiText id="web-common.8e81beec7c190770" source="MORE INFO" /></button>
         </div>
       ) : (
       <div style={{ padding: '15px 17px 17px', display: 'flex', flexDirection: 'column', gap: 11, flex: 1 }}>
@@ -616,8 +620,8 @@ export function ListingTile({
           fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800, fontSize: '0.6875rem',
           letterSpacing: '.1em', color: p.stub, textTransform: 'uppercase',
         }}>
-          <span className="truncate">{c.category ?? c.kind ?? 'LISTING'}</span>
-          <span className="truncate">{language ?? 'AVATOK'}</span>
+          <span className="truncate">{c.category ?? c.kind ?? uiT("web-common.3ec404f37aa2fad6","LISTING")}</span>
+          <span className="truncate">{language ?? uiT("web-common.35fd151dd99b83c6","AVATOK")}</span>
         </div>
 
         {/* [CARD-UNIFORM-1] Title and body are FIXED-HEIGHT blocks — two lines
@@ -652,7 +656,7 @@ export function ListingTile({
 
         <div
           role="group"
-          aria-label="Listing highlights"
+          aria-label={uiT("web-common.89fe62428fe42db5","Listing highlights")}
           style={{ display: 'flex', alignItems: 'center', gap: 6, minHeight: 30 }}
         >
           {chips.map((chip, i) => (
@@ -689,7 +693,7 @@ export function ListingTile({
             flex: 1, textAlign: 'center', fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800,
             fontSize: '0.75rem', letterSpacing: '.08em', padding: '13px 8px', borderRadius: 20, // [UI-COMFORTAA-1] button tier
             border: `2px solid ${INK}`, background: CREAM, color: INK,
-          }}>MORE INFO</span>
+          }}><UiText id="web-common.8e81beec7c190770" source="MORE INFO" /></span>
         </div>
 
         <div style={{
@@ -706,11 +710,11 @@ export function ListingTile({
               : initials}
           </span>
           <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: textCol }} className="truncate">
-            {c.creator?.name ?? (c.creator?.handle ? `@${c.creator.handle}` : 'avaTOK')}
+            {c.creator?.name ?? (c.creator?.handle ? `@${c.creator.handle}` : uiT("web-common.ee1d5e5358dcacd0","avaTOK"))}
             {/* [LIST-TRUST-1 §2.3] The AI badge replaces the ✓ on an agent card —
                 the tick belongs to the human behind it, shown on the detail page,
                 never here. Every other lane's tick is EARNED, never unconditional. */}
-            {lane === 'agent' ? ' · AI' : c.creator?.verified ? ' ✓' : ''}
+            {lane === 'agent' ? uiT("web-common.155aa176a637c5b6"," · AI") : c.creator?.verified ? ' ✓' : ''}
           </span>
           {duration && (
             <span style={{
@@ -747,9 +751,9 @@ export function ListingTile({
         open
         dismissable={false}
         maxWidth={560}
-        title={<div className="flex items-center justify-between gap-3"><span>{bookingListing?.title ?? 'Opening booking…'}</span><button type="button" aria-label="Close booking" onClick={() => { setBookingListing(null); setBookingLoading(false); }} className="text-2xl leading-none text-ink">×</button></div>}
+        title={<div className="flex items-center justify-between gap-3"><span>{bookingListing?.title ?? uiT("web-common.5c5556a38f0e36bb","Opening booking…")}</span><button type="button" aria-label={uiT("web-common.3461933c07622497","Close booking")} onClick={() => { setBookingListing(null); setBookingLoading(false); }} className="text-2xl leading-none text-ink">×</button></div>}
       >
-        {bookingListing ? <BookingFlow listing={bookingListing} /> : <div className="py-8 text-center font-mono font-bold text-inkSoft">Loading booking…</div>}
+        {bookingListing ? <BookingFlow listing={bookingListing} /> : <div className="py-8 text-center font-mono font-bold text-inkSoft"><UiText id="web-common.d8ed777c77710fff" source="Loading booking…" /></div>}
       </Modal>
     )}
     </>

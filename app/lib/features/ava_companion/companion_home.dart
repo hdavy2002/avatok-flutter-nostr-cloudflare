@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -134,7 +137,7 @@ class _CompanionHomeState extends State<CompanionHome> {
     if (!mounted) return;
     if (items.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No conversations yet to discuss.')));
+          const SnackBar(content: UiText(UiMessage.m_no_conversations_yet_to_discuss_2ea2db86ad)));
       return;
     }
     final picked = await showModalBottomSheet<({String convKey, String name, bool group})>(
@@ -146,9 +149,9 @@ class _CompanionHomeState extends State<CompanionHome> {
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const SizedBox(height: 12),
-          Text('Discuss a chat with Ava', style: ADText.threadName(c: AD.textPrimary)),
+          UiText(UiMessage.m_discuss_a_chat_with_ava_7fe3af7ab0, style: ADText.threadName(c: AD.textPrimary)),
           const SizedBox(height: 4),
-          Text('Your messages stay on this device.', style: ADText.preview()),
+          UiText(UiMessage.m_your_messages_stay_on_this_487f734605, style: ADText.preview()),
           const SizedBox(height: 8),
           Flexible(
             child: ListView(shrinkWrap: true, children: [
@@ -178,8 +181,7 @@ class _CompanionHomeState extends State<CompanionHome> {
     if (!mounted) return;
     if (!allowed) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Turn on AvaBrain for your messages in Settings to discuss '
-            'a chat. Your messages stay on this device.'),
+        content: UiText(UiMessage.m_turn_on_avabrain_for_your_83495ebb46),
       ));
       return;
     }
@@ -190,7 +192,7 @@ class _CompanionHomeState extends State<CompanionHome> {
     if (!mounted) return;
     if (turns.length > ThreadContext.kRawTailTurns * 4) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        duration: Duration(seconds: 2), content: Text('Reading your chat for Ava…')));
+        duration: Duration(seconds: 2), content: UiText(UiMessage.m_reading_your_chat_for_ava_8212743010)));
     }
     final transcript = await ThreadContext.buildSmart(
       peerLabel: name,
@@ -207,7 +209,7 @@ class _CompanionHomeState extends State<CompanionHome> {
     if (!mounted) return;
     if (transcript.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Not enough messages there for Ava to weigh in.')));
+        content: UiText(UiMessage.m_not_enough_messages_there_for_6cbd4b4511)));
       return;
     }
     Analytics.capture('discuss_with_ava_opened', {
@@ -262,8 +264,8 @@ class _CompanionHomeState extends State<CompanionHome> {
               ZineIconBadge(icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 38),
               const SizedBox(width: Msg.s2),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('New chat with Ava', style: ADText.threadName(c: AD.textPrimary)),
-                Text('Pick how you want to talk', style: ADText.preview()),
+                UiText(UiMessage.m_new_chat_with_ava_82163c8305, style: ADText.threadName(c: AD.textPrimary)),
+                UiText(UiMessage.m_pick_how_you_want_to_af2dd0c443, style: ADText.preview()),
               ])),
             ]),
             const SizedBox(height: Msg.s3),
@@ -284,9 +286,8 @@ class _CompanionHomeState extends State<CompanionHome> {
               const SizedBox(height: Msg.s2),
             ],
             const SizedBox(height: 4),
-            Text(
-              'Talking to Ava is free. Replies are AI-generated and moderated. '
-              'Turn on Ava’s voice in Settings → Ava voice (premium).',
+            UiText(
+              UiMessage.m_talking_to_ava_is_free_af638db64f,
               style: ADText.preview(),
             ),
           ]),
@@ -314,18 +315,16 @@ class _CompanionHomeState extends State<CompanionHome> {
               SvgPicture.asset(Illustrations.companionAdultsOnly,
                   height: 56, fit: BoxFit.contain, excludeFromSemantics: true),
               const SizedBox(width: 12),
-              Expanded(child: Text('Adults only', style: ADText.threadName(c: AD.textPrimary))),
+              Expanded(child: UiText(UiMessage.m_adults_only_2171a8cb74, style: ADText.threadName(c: AD.textPrimary))),
             ]),
             const SizedBox(height: 12),
-            Text(
-              'Roleplay is limited to verified adults. Verify your identity in '
-              'AvaIdentity (a quick liveness check) to unlock it. Everything stays '
-              'safe and moderated either way.',
+            UiText(
+              UiMessage.m_roleplay_is_limited_to_verified_9110d3d1af,
               style: ADText.preview(),
             ),
             const SizedBox(height: Msg.s4),
             AdButton(
-              label: 'Verify in AvaIdentity',
+              label: uiCopy(UiMessage.m_verify_in_avaidentity_7405cd3ca3),
               variant: AdButtonVariant.teal,
               fullWidth: true,
               fontSize: 15,
@@ -333,13 +332,13 @@ class _CompanionHomeState extends State<CompanionHome> {
               onPressed: () {
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Open AvaIdentity from the menu to verify (Level 2).')));
+                    content: UiText(UiMessage.m_open_avaidentity_from_the_menu_031ec487ad)));
               },
             ),
             const SizedBox(height: 8),
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: Text('Not now', style: ADText.preview(c: AD.textSecondary)),
+              child: UiText(UiMessage.m_not_now_a0e63d7c71, style: ADText.preview(c: AD.textSecondary)),
             ),
           ]),
         ),
@@ -363,7 +362,7 @@ class _CompanionHomeState extends State<CompanionHome> {
             padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s2, Msg.s5, Msg.s2),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text(s.title.isEmpty ? 'Chat' : s.title,
+              child: Text(s.title.isEmpty ? uiCopy(UiMessage.m_chat_460b3a7da0) : s.title,
                   style: ADText.threadName(c: AD.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
           ),
@@ -414,7 +413,7 @@ class _CompanionHomeState extends State<CompanionHome> {
         shape: RoundedRectangleBorder(
             side: const BorderSide(color: AD.borderControl, width: 1),
             borderRadius: BorderRadius.circular(AD.rDialog)),
-        title: Text('Rename chat', style: ADText.threadName(c: AD.textPrimary)),
+        title: UiText(UiMessage.m_rename_chat_26076241b3, style: ADText.threadName(c: AD.textPrimary)),
         content: TextField(
           controller: ctrl,
           autofocus: true,
@@ -422,14 +421,14 @@ class _CompanionHomeState extends State<CompanionHome> {
           style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700,
               fontSize: 15, color: AD.textPrimary),
           decoration: InputDecoration(
-            hintText: 'Chat name',
+            hintText: uiCopy(UiMessage.m_chat_name_09c3e4caec),
             hintStyle: ADText.preview(c: AD.textTertiary),
           ),
           onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: ADText.preview(c: AD.textSecondary))),
-          TextButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: Text('Save', style: ADText.preview(c: AD.iconSearch))),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.preview(c: AD.textSecondary))),
+          TextButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: UiText(UiMessage.m_save_1509f561f2, style: ADText.preview(c: AD.iconSearch))),
         ],
       ),
     );
@@ -447,12 +446,12 @@ class _CompanionHomeState extends State<CompanionHome> {
         shape: RoundedRectangleBorder(
             side: const BorderSide(color: AD.borderControl, width: 1),
             borderRadius: BorderRadius.circular(AD.rDialog)),
-        title: Text('Delete chat?', style: ADText.threadName(c: AD.textPrimary)),
-        content: Text('This removes the conversation from this device and the cloud backup. This can’t be undone.',
+        title: UiText(UiMessage.m_delete_chat_80aaa1b502, style: ADText.threadName(c: AD.textPrimary)),
+        content: UiText(UiMessage.m_this_removes_the_conversation_from_5f657c4d7c,
             style: ADText.preview()),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: ADText.preview(c: AD.textSecondary))),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Delete', style: ADText.preview(c: AD.danger))),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.preview(c: AD.textSecondary))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: UiText(UiMessage.m_delete_e2d0a54968, style: ADText.preview(c: AD.danger))),
         ],
       ),
     );
@@ -478,6 +477,7 @@ class _CompanionHomeState extends State<CompanionHome> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       floatingActionButton: _showArchived || _sessions.isEmpty
@@ -489,7 +489,7 @@ class _CompanionHomeState extends State<CompanionHome> {
               // Extended FAB — the one button shape that stays a pill.
               shape: RoundedRectangleBorder(borderRadius: Msg.brPill),
               icon: PhosphorIcon(PhosphorIcons.plus(PhosphorIconsStyle.bold), color: Colors.white),
-              label: Text('New chat', style: ADText.rowName(c: Colors.white)),
+              label: UiText(UiMessage.m_new_chat_db18382a24, style: ADText.rowName(c: Colors.white)),
             ),
       body: SafeArea(
         child: Column(children: [
@@ -535,26 +535,26 @@ class _CompanionHomeState extends State<CompanionHome> {
         const SizedBox(width: Msg.s2),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Chat with Ava', style: ADText.threadName(c: onBand)),
-            Text(_showArchived ? 'Archived chats' : 'Your conversations', style: ADText.preview(c: onBand)),
+            UiText(UiMessage.m_chat_with_ava_4ffca9d030, style: ADText.threadName(c: onBand)),
+            Text(_showArchived ? uiCopy(UiMessage.m_archived_chats_ca0acade02) : uiCopy(UiMessage.m_your_conversations_903532e033), style: ADText.preview(c: onBand)),
           ]),
         ),
         if (!_showArchived) ...[
           IconButton(
-            tooltip: 'AvaBrain Memory',
+            tooltip: uiCopy(UiMessage.m_avabrain_memory_81860d02c1),
             icon: PhosphorIcon(PhosphorIcons.brain(PhosphorIconsStyle.bold),
                 color: onBand, size: 22),
             onPressed: _openMemory,
           ),
           IconButton(
-            tooltip: 'Discuss a chat',
+            tooltip: uiCopy(UiMessage.m_discuss_a_chat_7dc1d06e8a),
             icon: PhosphorIcon(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
                 color: onBand, size: 22),
             onPressed: _discussAChat,
           ),
         ],
         IconButton(
-          tooltip: _showArchived ? 'Back to chats' : 'Archived',
+          tooltip: _showArchived ? uiCopy(UiMessage.m_back_to_chats_62922190a0) : uiCopy(UiMessage.m_archived_bdb86505f8),
           icon: PhosphorIcon(
               _showArchived ? PhosphorIcons.chatsCircle(PhosphorIconsStyle.bold) : PhosphorIcons.archive(PhosphorIconsStyle.bold),
               color: onBand, size: 22),
@@ -582,19 +582,19 @@ class _CompanionHomeState extends State<CompanionHome> {
               icon: PhosphorIcons.chatTeardropDots(PhosphorIconsStyle.fill),
               color: AD.iconVideo, size: 54),
           const SizedBox(height: Msg.s3),
-          Text(_showArchived ? 'No archived chats' : 'No chats yet',
+          Text(_showArchived ? uiCopy(UiMessage.m_no_archived_chats_272c9ab46d) : uiCopy(UiMessage.m_no_chats_yet_269208e485),
               style: ADText.threadName(c: AD.textPrimary), textAlign: TextAlign.center),
           const SizedBox(height: Msg.s1),
           Text(
             _showArchived
-                ? 'Chats you archive will show up here.'
-                : 'Start a conversation with Ava — vent, brainstorm, practise a language, or more. Your chats save automatically.',
+                ? uiCopy(UiMessage.m_chats_you_archive_will_show_41914eab33)
+                : uiCopy(UiMessage.m_start_a_conversation_with_ava_9f0a2f9b2f),
             style: ADText.preview(), textAlign: TextAlign.center,
           ),
           if (!_showArchived) ...[
             const SizedBox(height: Msg.s4),
             AdButton(
-              label: 'Start a chat',
+              label: uiCopy(UiMessage.m_start_a_chat_d80b18887a),
               variant: AdButtonVariant.primary,
               fontSize: 15,
               icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
@@ -658,6 +658,7 @@ class _SessionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final p = AvaPersonas.byId(session.persona);
     final title = session.title.trim().isEmpty ? 'New chat' : session.title.trim();
     return GestureDetector(
@@ -689,7 +690,7 @@ class _SessionCard extends StatelessWidget {
             ]),
             const SizedBox(height: Msg.s1),
             Text(
-              session.preview.isEmpty ? '${p.name} · tap to continue' : session.preview,
+              session.preview.isEmpty ? uiCopy(UiMessage.m_value1_tap_to_continue_3ae238509b, {'value1': (p.name).toString()}) : session.preview,
               style: ADText.preview(), maxLines: 1, overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: Msg.s1),
@@ -698,7 +699,7 @@ class _SessionCard extends StatelessWidget {
         ),
         IconButton(
           visualDensity: VisualDensity.compact,
-          tooltip: session.starred ? 'Unstar' : 'Star',
+          tooltip: session.starred ? uiCopy(UiMessage.m_unstar_318e826a75) : uiCopy(UiMessage.m_star_e357d39687),
           icon: PhosphorIcon(
               session.starred ? PhosphorIcons.star(PhosphorIconsStyle.fill) : PhosphorIcons.star(PhosphorIconsStyle.bold),
               size: 18, color: session.starred ? AD.iconSearch : AD.textTertiary),
@@ -706,7 +707,7 @@ class _SessionCard extends StatelessWidget {
         ),
         IconButton(
           visualDensity: VisualDensity.compact,
-          tooltip: 'More',
+          tooltip: uiCopy(UiMessage.m_more_d47d7cb0e4),
           icon: PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), size: 20, color: AD.textSecondary),
           onPressed: onMenu,
         ),
@@ -751,6 +752,7 @@ class _PersonaTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return AdCard(
       radius: AD.rListCard,
       padding: const EdgeInsets.all(Msg.s4),
@@ -795,7 +797,7 @@ class _AdultChip extends StatelessWidget {
   final bool locked;
   const _AdultChip({required this.locked});
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Container(
         padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 2),
         decoration: BoxDecoration(
           color: locked ? AD.card : AD.online,
@@ -803,5 +805,5 @@ class _AdultChip extends StatelessWidget {
           border: Border.all(color: AD.borderControl, width: 1),
         ),
         child: Text('18+', style: ADText.statCaption(c: locked ? AD.textSecondary : Colors.white)),
-      );
+      ); }
 }

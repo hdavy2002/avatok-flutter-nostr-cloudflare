@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -222,7 +225,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
         if (mounted) {
           setState(() => _sending = false);
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text("Couldn't send the voice note — try again")));
+              content: UiText(UiMessage.m_couldn_t_send_the_voice_e0e2fabdce)));
         }
       }
       return;
@@ -230,7 +233,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
     if (!await _recorder.hasPermission()) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Microphone permission needed for voice notes')));
+            content: UiText(UiMessage.m_microphone_permission_needed_for_voice_02c19d0815)));
       }
       return;
     }
@@ -284,6 +287,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final s = widget.session;
     if (_sent) {
       return ConstrainedBox(
@@ -293,7 +297,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
           radius: AD.rDialog,
           boxShadow: const [],
           padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s5),
-          child: Text('Sent — $_first will see it',
+          child: UiText(UiMessage.m_sent_first_will_see_it_2fb92a6fb0, params: {'first': (_first).toString()},
               textAlign: TextAlign.center, style: ADText.appTitle()),
         ),
       );
@@ -334,7 +338,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
                     ? ADText.appTitle(c: AD.missedCall)
                     : ADText.appTitle()),
             const SizedBox(height: 8),
-            Text("Here's what you can do:",
+            UiText(UiMessage.m_here_s_what_you_can_60ec766176,
                 textAlign: TextAlign.center, style: ADText.preview()),
             const SizedBox(height: Msg.s4),
 
@@ -342,7 +346,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
             // menu because it's the most common follow-up to a declined/busy call.
             if (widget.onCallAgain != null) ...[
               AdButton(
-                label: 'Call again',
+                label: uiCopy(UiMessage.m_call_again_1635919253),
                 variant: AdButtonVariant.primary,
                 icon: PhosphorIcons.phoneCall(PhosphorIconsStyle.bold),
                 trailingIcon: false,
@@ -356,7 +360,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
             // [AVACALL-MENU-1] Message — open the DM thread with the callee.
             if (widget.onMessage != null) ...[
               AdButton(
-                label: 'Message',
+                label: uiCopy(UiMessage.m_message_2f77668a9d),
                 variant: AdButtonVariant.teal,
                 icon: PhosphorIcons.chatCircleText(PhosphorIconsStyle.bold),
                 trailingIcon: false,
@@ -377,8 +381,8 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
             if (!s.video && _avaAvailable) ...[
               AdButton(
                 label: _avaCapped
-                    ? 'Talk to Ava — daily limit reached'
-                    : 'Talk to Ava',
+                    ? uiCopy(UiMessage.m_talk_to_ava_daily_limit_41dd645a9c)
+                    : uiCopy(UiMessage.m_talk_to_ava_fc49c02520),
                 variant: AdButtonVariant.primary,
                 icon: PhosphorIcons.sparkle(PhosphorIconsStyle.bold),
                 trailingIcon: false,
@@ -404,8 +408,8 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
             // mic is hearing them.
             AdButton(
               label: _recording
-                  ? 'Recording ${_fmtRec(_recSecs)} — tap to send'
-                  : 'Leave a voice note',
+                  ? uiCopy(UiMessage.m_recording_value1_tap_to_send_308fdcad68, {'value1': (_fmtRec(_recSecs)).toString()})
+                  : uiCopy(UiMessage.m_leave_a_voice_note_6b7565c5b6),
               variant: AdButtonVariant.teal,
               icon: PhosphorIcons.microphone(PhosphorIconsStyle.bold),
               trailingIcon: false,
@@ -449,7 +453,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
 
             // 4) Text note — a box slides open underneath.
             AdButton(
-              label: 'Leave a text note',
+              label: uiCopy(UiMessage.m_leave_a_text_note_b7bee5baf1),
               variant: AdButtonVariant.ghost,
               icon: PhosphorIcons.notePencil(PhosphorIconsStyle.bold),
               trailingIcon: false,
@@ -471,7 +475,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
                 style: ADText.bubbleBody(),
                 cursorColor: AD.iconSearch,
                 decoration: InputDecoration(
-                  hintText: 'Write a quick note for $_first…',
+                  hintText: uiCopy(UiMessage.m_write_a_quick_note_for_1c2eec195d, {'first': (_first).toString()}),
                   hintStyle: ADText.preview(c: AD.textTertiary),
                   filled: true,
                   fillColor: AD.card,
@@ -494,7 +498,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
               ),
               const SizedBox(height: 8),
               AdButton(
-                label: 'Send note',
+                label: uiCopy(UiMessage.m_send_note_36ba293e3a),
                 variant: AdButtonVariant.primary,
                 fullWidth: true,
                 fontSize: 15,
@@ -508,7 +512,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
             // no-answer card so the caller can save the callee without leaving.
             if (widget.onSaveContact != null) ...[
               AdButton(
-                label: 'Save contact',
+                label: uiCopy(UiMessage.m_save_contact_d24f121f4a),
                 variant: AdButtonVariant.ghost,
                 icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold),
                 trailingIcon: false,
@@ -528,7 +532,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
             // callMenuListingsEnabled (false until the marketplace goes public).
 
             AdButton(
-              label: 'Close',
+              label: uiCopy(UiMessage.m_close_7d9eb7acb1),
               variant: AdButtonVariant.ghost,
               fullWidth: true,
               fontSize: 16,

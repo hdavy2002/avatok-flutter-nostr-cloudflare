@@ -1,4 +1,5 @@
 ---
+import { authoredKey } from '../lib/i18n/authoredKey';
 import '../styles/tokens.css';
 import '../styles/global.css';
 // [UI-MOTION-1 2026-09-10] Imported HERE, not via @import in global.css — see
@@ -19,6 +20,8 @@ import { orgJsonLd } from '../lib/org';
 
 export interface Props {
   title?: string;
+  titleMessageKey?: string;
+  descriptionMessageKey?: string;
   description?: string;
   /** Absolute or path OpenGraph image. */
   image?: string;
@@ -62,6 +65,8 @@ export interface Props {
 
 const {
   title = 'AvaTok',
+  titleMessageKey,
+  descriptionMessageKey,
   // [WEB-SEO-1 2026-08-27] The old default described the receptionist/private
   // number product. What avaTOK actually sells today is: earn from home by
   // listening, chatting, being a home friend or live streaming. Every page that
@@ -80,7 +85,7 @@ const {
   keywords = 'avaTOK, Ava Global International, Delaware company, American and Indian founders, creator marketplace, paid live streaming, 1:1 video sessions',
   lang = 'en',
   dir = 'ltr',
-  indiaLandingLanguage = false,
+  indiaLandingLanguage = true,
 } = Astro.props;
 
 const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://avatok.ai').toString();
@@ -120,8 +125,8 @@ const orgLd = orgJsonLd({ canonical, title, description, ogImage });
         page links under the main result) are built from titles; "Contact us"
         or "Tokens & Wallet" with no brand read as generic and get dropped. A
         page that already names avaTOK keeps its title untouched. */}
-    <title>{pageTitle}</title>
-    <meta name="description" content={description} />
+    <title data-i18n-meta={titleMessageKey ?? authoredKey(pageTitle)}>{pageTitle}</title>
+    <meta data-i18n-meta={descriptionMessageKey ?? authoredKey(description)} name="description" content={description} />
     <meta name="keywords" content={keywords} />
 
     <!-- Per-page social meta — pages can add more via the `head` slot. -->
@@ -163,7 +168,9 @@ const orgLd = orgJsonLd({ canonical, title, description, ogImage });
         touches this layout, so it loads the same script separately. */}
     <script>
       import { initAnalytics } from '../lib/analytics';
+      import { initImageTelemetry } from '../lib/imageTelemetry';
       initAnalytics();
+      initImageTelemetry();
     </script>
     {/* [LIST-DETAIL-EMBED-1 2026-09-09] Hide the site's header and footer inside
         the app's WebView — CLIENT-SIDE, on purpose.
@@ -217,8 +224,12 @@ const orgLd = orgJsonLd({ canonical, title, description, ogImage });
     </style>
     <slot name="head" />
   </head>
-  <body class="min-h-screen bg-paper text-ink font-body">
+  <body data-i18n-namespace="web-common" class="min-h-screen bg-paper text-ink font-body">
     {chrome && <SiteHeader auth={headerAuth} indiaLandingLanguage={indiaLandingLanguage} />}
+    <script>
+      import { initUiLocale } from '../lib/i18n/dom';
+      initUiLocale();
+    </script>
     <slot />
     {chrome && <SiteFooter indiaLandingLanguage={indiaLandingLanguage} />}
   </body>

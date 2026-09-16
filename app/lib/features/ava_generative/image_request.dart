@@ -15,6 +15,8 @@
 /// Open it from a chat's Ava menu / a "+" attachment action:
 ///   ImageRequestSheet.show(context, convKey: state._convKey, chatLabel: name);
 library;
+import '../../core/localization/ui_text.dart';
+
 
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -101,8 +103,8 @@ class _ImageRequestSheetState extends State<ImageRequestSheet> {
       Navigator.of(context).maybePop();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_isEdit
-            ? 'Ava is editing the image — it will appear in the chat.'
-            : 'Ava is generating your image — it will appear in the chat.')),
+            ? uiCopy(UiMessage.m_ava_is_editing_the_image_e118728bfd)
+            : uiCopy(UiMessage.m_ava_is_generating_your_image_5ba5de88e3))),
       );
       return;
     }
@@ -117,6 +119,7 @@ class _ImageRequestSheetState extends State<ImageRequestSheet> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final title = _isEdit ? 'Edit with Ava' : 'Make an image with Ava';
     return SafeArea(
       child: Padding(
@@ -137,7 +140,7 @@ class _ImageRequestSheetState extends State<ImageRequestSheet> {
             ]),
             const SizedBox(height: Msg.s1),
             if (widget.chatLabel != null)
-              Text('Posts into ${widget.chatLabel}',
+              UiText(UiMessage.m_posts_into_value1_606e814981, params: {'value1': (widget.chatLabel).toString()},
                   style: ADText.preview(c: AD.textSecondary)
                       .copyWith(fontSize: 12)),
             const SizedBox(height: Msg.s4),
@@ -162,8 +165,8 @@ class _ImageRequestSheetState extends State<ImageRequestSheet> {
                   border: InputBorder.none,
                   counterText: '',
                   hintText: _isEdit
-                      ? 'e.g. make it blue, add a sunset…'
-                      : 'e.g. a minimalist logo for a coffee brand…',
+                      ? uiCopy(UiMessage.m_e_g_make_it_blue_acf7dd43d5)
+                      : uiCopy(UiMessage.m_e_g_a_minimalist_logo_a800ef5824),
                   hintStyle: ADText.bubbleBody(c: AD.textFaint),
                 ),
               ),
@@ -179,8 +182,8 @@ class _ImageRequestSheetState extends State<ImageRequestSheet> {
             // upgrade message we surface via [_error].
             ZineButton(
               label: _sending
-                  ? 'Starting…'
-                  : (_isEdit ? 'Edit image' : 'Generate image'),
+                  ? uiCopy(UiMessage.m_starting_bbe5fc3b9e)
+                  : (_isEdit ? uiCopy(UiMessage.m_edit_image_d9d12b04b3) : uiCopy(UiMessage.m_generate_image_1c9c87eec0)),
               variant: ZineButtonVariant.blue,
               fullWidth: true,
               fontSize: 16,
@@ -190,10 +193,8 @@ class _ImageRequestSheetState extends State<ImageRequestSheet> {
               onPressed: _sending ? null : _kickoff,
             ),
             const SizedBox(height: Msg.s2),
-            Text(
-              'Your plan includes a set number of AI images per day (Free: 3). '
-              'When you run out, Ava will let you know. The image arrives in the '
-              'chat when it is ready — you can keep chatting.',
+            UiText(
+              UiMessage.m_your_plan_includes_a_set_7e54607624,
               style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12),
             ),
           ],

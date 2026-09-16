@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 // LiveViewer — the /watch/<id> island orchestrator (PHASE-C).
 //
 // Flow (gating model = MASTER-PROMPT §4b):
@@ -78,6 +80,8 @@ function reducer(s: State, a: Action): State {
 }
 
 function Inner({ listingId, title, poster, creatorHandle }: LiveViewerProps) {
+  const {t:uiT}=useUiTranslation("web-live");
+
   const [state, dispatch] = useReducer(reducer, {
     phase: 'idle', join: null, token: null,
     creatorHref: creatorHandle ? `/c/${encodeURIComponent(creatorHandle)}` : null,
@@ -327,7 +331,7 @@ function Inner({ listingId, title, poster, creatorHandle }: LiveViewerProps) {
   }
 
   if (state.phase === 'ended') {
-    return <EndedCard title={title} creatorHref={state.creatorHref ?? '/explore'} />;
+    return <EndedCard title={title} creatorHref={state.creatorHref ?? uiT("web-live.1c8ad297ff1002f1","/explore")} />;
   }
 
   // waiting | live
@@ -370,9 +374,7 @@ function Inner({ listingId, title, poster, creatorHandle }: LiveViewerProps) {
               type="button"
               onClick={unmute}
               className="absolute bottom-3 right-3 rounded-full border-zine border-ink bg-lime px-3.5 py-2 font-display font-semibold text-[14px] text-ink shadow-zine-sm transition-transform duration-zine active:translate-y-[2px] active:shadow-zine-pressed"
-            >
-              🔇 Tap to unmute
-            </button>
+            ><UiText id="web-live.df256ca87d15a65b" source="🔇 Tap to unmute" />{" "}</button>
           )}
 
           {/* donation banner */}
@@ -389,11 +391,10 @@ function Inner({ listingId, title, poster, creatorHandle }: LiveViewerProps) {
         {/* action bar */}
         <div className="flex items-center gap-3 border-t-zine border-ink bg-paper px-3 py-2.5">
           <div className="min-w-0 flex-1">
-            <p className="truncate font-display font-semibold text-[16px] text-ink">{title ?? state.join?.title ?? 'Live'}</p>
+            <p className="truncate font-display font-semibold text-[16px] text-ink">{title ?? state.join?.title ?? uiT("web-live.b64ac05f17e64d03","Live")}</p>
             {room.donationsCount > 0 && (
               <p className="font-mono text-[13px] uppercase tracking-[0.04em] text-mintInk font-bold">
-                {room.donationsTotal} Tokens · {room.donationsCount} gifts
-              </p>
+                {room.donationsTotal}{" "}<UiText id="web-live.f92c2fffc23e715e" source="Tokens ·" />{" "}{room.donationsCount}{" "}<UiText id="web-live.21fab105bef9f183" source="gifts" />{" "}</p>
             )}
           </div>
           <DonateButton listingId={listingId} auth={state.token} requireAuth={requireGuestAuth} />
@@ -408,9 +409,7 @@ function Inner({ listingId, title, poster, creatorHandle }: LiveViewerProps) {
 
       {/* Chat (sidebar on desktop, stacked on mobile) */}
       <aside className="flex h-[60vh] min-h-0 flex-col bg-card md:h-auto md:rounded-zine md:border-zine md:border-ink md:overflow-hidden md:shadow-zine-sm">
-        <div className="border-b-zine border-ink px-3 py-2 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-inkSoft">
-          Live chat
-        </div>
+        <div className="border-b-zine border-ink px-3 py-2 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-inkSoft"><UiText id="web-live.1c7cc7287ca8090e" source="Live chat" />{" "}</div>
         <div className="min-h-0 flex-1">
           <LiveChat
             messages={room.messages}
@@ -434,32 +433,30 @@ function PosterGate({
   title?: string; poster?: string | null; phase: Phase; errorMsg: string | null;
   bookHref: string; onJoin: () => void; onRetry: () => void;
 }) {
+  const {t:uiT}=useUiTranslation("web-live");
+
   const joining = phase === 'joining';
   return (
     <div className="mx-auto max-w-3xl px-4 py-6">
       <div className="overflow-hidden rounded-zine border-zine border-ink bg-paper2 shadow-zine">
         <div className="relative aspect-video w-full bg-ink">
           {poster ? (
-            <img src={cfImage(poster, { width: 1280, fit: 'cover' })} alt={title ?? 'Live'} className="h-full w-full object-cover opacity-90" />
+            <img src={cfImage(poster, { width: 1280, fit: 'cover' })} alt={title ?? uiT("web-live.b64ac05f17e64d03","Live")} className="h-full w-full object-cover opacity-90" />
           ) : (
-            <div className="flex h-full w-full items-center justify-center font-mono uppercase tracking-[0.08em] text-inkMute font-bold">Live</div>
+            <div className="flex h-full w-full items-center justify-center font-mono uppercase tracking-[0.08em] text-inkMute font-bold"><UiText id="web-live.b64ac05f17e64d03" source="Live" /></div>
           )}
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-ink/55 px-6 text-center">
-            <h1 className="font-display font-semibold text-[26px] leading-tight text-white drop-shadow">{title ?? 'Live stream'}</h1>
+            <h1 className="font-display font-semibold text-[26px] leading-tight text-white drop-shadow">{title ?? uiT("web-live.ac1ff7008dcb9abb","Live stream")}</h1>
 
             {phase === 'noticket' ? (
               <div className="flex flex-col items-center gap-2">
-                <p className="font-body font-bold text-[15px] text-white/90">You need a ticket to watch this stream.</p>
-                <a href={bookHref} className="rounded-full border-zine border-ink bg-lime px-7 py-3.5 font-display font-semibold text-[18px] text-ink no-underline shadow-zine-sm transition-transform duration-zine active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed">
-                  Book to watch
-                </a>
+                <p className="font-body font-bold text-[15px] text-white/90"><UiText id="web-live.3734101d75c7490a" source="You need a ticket to watch this stream." /></p>
+                <a href={bookHref} className="rounded-full border-zine border-ink bg-lime px-7 py-3.5 font-display font-semibold text-[18px] text-ink no-underline shadow-zine-sm transition-transform duration-zine active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"><UiText id="web-live.e81a3ed02671af38" source="Book to watch" />{" "}</a>
               </div>
             ) : phase === 'error' ? (
               <div className="flex flex-col items-center gap-2">
                 <p className="font-body font-bold text-[15px] text-white/90">{errorMsg}</p>
-                <button type="button" onClick={onRetry} className="rounded-full border-zine border-ink bg-card px-6 py-3 font-display font-semibold text-[16px] text-ink shadow-zine-sm">
-                  Try again
-                </button>
+                <button type="button" onClick={onRetry} className="rounded-full border-zine border-ink bg-card px-6 py-3 font-display font-semibold text-[16px] text-ink shadow-zine-sm"><UiText id="web-live.d8b8392e2c542950" source="Try again" />{" "}</button>
               </div>
             ) : (
               <button
@@ -468,7 +465,7 @@ function PosterGate({
                 disabled={joining}
                 className="inline-flex items-center gap-2.5 rounded-full border-zine border-ink bg-lime px-8 py-4 font-display font-semibold text-[20px] text-ink shadow-zine-sm transition-transform duration-zine active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed disabled:opacity-80"
               >
-                {joining ? <><Spinner size={18} /> Joining…</> : <>▶ Join the stream</>}
+                {joining ? <><Spinner size={18} />{" "}<UiText id="web-live.6bbb89ee5d48b326" source="Joining…" /></> : <><UiText id="web-live.4477824203f397da" source="▶ Join the stream" /></>}
               </button>
             )}
           </div>
@@ -479,21 +476,23 @@ function PosterGate({
 }
 
 function EndedCard({ title, creatorHref }: { title?: string; creatorHref: string }) {
+  const {t:uiT}=useUiTranslation("web-live");
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-16 text-center">
       <div className="rounded-zine border-zine border-ink bg-card p-10 shadow-zine">
-        <p className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-coral">Stream ended</p>
-        <h1 className="mt-3 font-display font-semibold text-[26px] leading-tight text-ink">{title ?? 'This live has ended'}</h1>
-        <p className="mt-2 font-body font-bold text-[15px] text-inkSoft">Thanks for watching. Catch the creator's next one.</p>
-        <a href={creatorHref} className="mt-6 inline-flex rounded-full border-zine border-ink bg-lime px-7 py-3.5 font-display font-semibold text-[18px] text-ink no-underline shadow-zine-sm transition-transform duration-zine active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed">
-          View the creator
-        </a>
+        <p className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-coral"><UiText id="web-live.a5813ef6159a1e64" source="Stream ended" /></p>
+        <h1 className="mt-3 font-display font-semibold text-[26px] leading-tight text-ink">{title ?? uiT("web-live.b9d7f19e090adc6a","This live has ended")}</h1>
+        <p className="mt-2 font-body font-bold text-[15px] text-inkSoft"><UiText id="web-live.5a02510529443fff" source="Thanks for watching. Catch the creator's next one." /></p>
+        <a href={creatorHref} className="mt-6 inline-flex rounded-full border-zine border-ink bg-lime px-7 py-3.5 font-display font-semibold text-[18px] text-ink no-underline shadow-zine-sm transition-transform duration-zine active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"><UiText id="web-live.e73afff1478776ab" source="View the creator" />{" "}</a>
       </div>
     </div>
   );
 }
 
 function Countdown({ startsAt }: { startsAt: number | null }) {
+  const {t:uiT}=useUiTranslation("web-live");
+
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -503,7 +502,7 @@ function Countdown({ startsAt }: { startsAt: number | null }) {
     return (
       <>
         <Spinner size={22} color="#fff" />
-        <p className="font-display font-semibold text-[18px] text-white">Waiting for the creator to go live…</p>
+        <p className="font-display font-semibold text-[18px] text-white"><UiText id="web-live.0442e4e717f18337" source="Waiting for the creator to go live…" /></p>
       </>
     );
   }
@@ -516,14 +515,16 @@ function Countdown({ startsAt }: { startsAt: number | null }) {
   const parts = d > 0 ? [`${d}d`, `${h}h`, `${m}m`] : h > 0 ? [`${h}h`, `${m}m`, `${sec}s`] : [`${m}m`, `${sec}s`];
   return (
     <>
-      <p className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-white/80">Starts in</p>
-      <p className="font-mono font-bold text-[34px] tabular-nums text-white">{ms <= 0 ? 'any moment…' : parts.join(' ')}</p>
-      <p className="font-body font-bold text-[14px] text-white/80">Hang tight — you'll be pulled in automatically.</p>
+      <p className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-white/80"><UiText id="web-live.5fefbb92603fab9c" source="Starts in" /></p>
+      <p className="font-mono font-bold text-[34px] tabular-nums text-white">{ms <= 0 ? uiT("web-live.23f5688992e8c92f","any moment…") : parts.join(' ')}</p>
+      <p className="font-body font-bold text-[14px] text-white/80"><UiText id="web-live.773d8972777143db" source="Hang tight — you'll be pulled in automatically." /></p>
     </>
   );
 }
 
 function DonationBanner({ name, amount, onDone }: { name: string; amount: number; onDone: () => void }) {
+  const {t:uiT}=useUiTranslation("web-live");
+
   useEffect(() => {
     const t = setTimeout(onDone, 4200);
     return () => clearTimeout(t);
@@ -533,8 +534,7 @@ function DonationBanner({ name, amount, onDone }: { name: string; amount: number
       className="absolute left-1/2 top-4 -translate-x-1/2 rounded-full border-zine border-ink bg-mint px-4 py-2 font-display font-semibold text-[15px] text-mintInk shadow-zine"
       style={{ animation: 'zine-drop 0.4s ease-out' }}
     >
-      ✨ {name} donated {amount} Tokens
-      <style>{'@keyframes zine-drop{0%{transform:translate(-50%,-16px);opacity:0}100%{transform:translate(-50%,0);opacity:1}}'}</style>
+      ✨ {name}{" "}<UiText id="web-live.eb1e48c3469cfb28" source="donated" />{" "}{amount}{" "}<UiText id="web-live.a039dfb9628b53dd" source="Tokens" />{" "}<style>{uiT("web-live.8a55c75862710baf","@keyframes zine-drop{0%{transform:translate(-50%,-16px);opacity:0}100%{transform:translate(-50%,0);opacity:1}}")}</style>
     </div>
   );
 }

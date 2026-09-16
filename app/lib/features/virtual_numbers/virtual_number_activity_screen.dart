@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/ui/messenger_theme.dart';
@@ -61,14 +64,14 @@ class _VirtualNumberActivityScreenState
   }
 
   @override
-  Widget build(BuildContext context) => VirtualNumbersUi.shell(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return VirtualNumbersUi.shell(
         title: widget.line.label,
         onBack: () => Navigator.of(context).pop(),
         actions: [
           IconButton(
               onPressed: _load,
               icon: Icon(PhosphorIcons.arrowClockwise(PhosphorIconsStyle.regular)),
-              tooltip: 'Refresh activity')
+              tooltip: uiCopy(UiMessage.m_refresh_activity_4a7fda6546))
         ],
         child: Column(children: [
           Container(
@@ -114,7 +117,7 @@ class _VirtualNumberActivityScreenState
           ),
           Expanded(child: _body()),
         ]),
-      );
+      ); }
 
   List<VirtualActivityType> get _filters => const [
         VirtualActivityType.all,
@@ -143,13 +146,13 @@ class _VirtualNumberActivityScreenState
           child: Padding(
               padding: const EdgeInsets.all(20),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                const Text('Activity could not be loaded'),
+                const UiText(UiMessage.m_activity_could_not_be_loaded_730662764d),
                 const SizedBox(height: 12),
-                OutlinedButton(onPressed: _load, child: const Text('Try again'))
+                OutlinedButton(onPressed: _load, child: const UiText(UiMessage.m_try_again_d8b8392e2c))
               ])));
     if (_items.isEmpty)
       return Center(
-          child: Text('No ${_filterLabel(_filter).toLowerCase()} yet',
+          child: UiText(UiMessage.m_no_value1_yet_e1b86ec0a7, params: {'value1': (_filterLabel(_filter).toLowerCase()).toString()},
               style: AvaDialTheme.sub()));
     return RefreshIndicator(
         onRefresh: _load,
@@ -208,8 +211,8 @@ class _VirtualNumberActivityScreenState
                   if (item.durationSeconds > 0)
                     Padding(
                         padding: const EdgeInsets.only(top: 5),
-                        child: Text(
-                            '${item.durationSeconds ~/ 60}m ${item.durationSeconds % 60}s · ${item.direction}',
+                        child: UiText(
+                            UiMessage.m_value1_m_value2_s_value3_95f27eb070, params: {'value1': (item.durationSeconds ~/ 60).toString(), 'value2': (item.durationSeconds % 60).toString(), 'value3': (item.direction).toString()},
                             style: AvaDialTheme.tag(
                                 size: 10, color: AvaDialTheme.textMute))),
                   if (item.hasRecording)
@@ -218,7 +221,7 @@ class _VirtualNumberActivityScreenState
                         child: OutlinedButton.icon(
                             onPressed: () => _showRecording(item),
                             icon: Icon(PhosphorIcons.play(PhosphorIconsStyle.regular), size: 16),
-                            label: const Text('Play recording'),
+                            label: const UiText(UiMessage.m_play_recording_67e0ddff71),
                             style: OutlinedButton.styleFrom(
                                 visualDensity: VisualDensity.compact)))
                 ])),
@@ -241,14 +244,14 @@ class _VirtualNumberActivityScreenState
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Recording', style: AvaDialTheme.title()),
+                    UiText(UiMessage.m_recording_80e8dd1a5a, style: AvaDialTheme.title()),
                     const SizedBox(height: 8),
-                    Text(
-                        'Playback is authorized for this line and will use the existing private recording cache.',
+                    UiText(
+                        UiMessage.m_playback_is_authorized_for_this_9e0c0e0b3f,
                         style: AvaDialTheme.sub()),
                     const SizedBox(height: 18),
                     VirtualNumbersUi.primaryButton(
-                        label: 'Play',
+                        label: uiCopy(UiMessage.m_play_436e61016e),
                         onPressed: () {},
                         icon: PhosphorIcons.play(PhosphorIconsStyle.regular)),
                     const SizedBox(height: 8)

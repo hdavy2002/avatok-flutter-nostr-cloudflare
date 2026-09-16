@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 // [REVIEW-MOD-1 2026-09-06] "Leave a review" — the whole flow, in place.
 //
 // Owner's brief: "the middle of this reviews [section] is looking very empty.
@@ -50,6 +52,8 @@ async function token(): Promise<string | null> {
 }
 
 export default function LeaveReview({ listingId, hostName }: LeaveReviewProps) {
+  const {t:uiT}=useUiTranslation("web-listing");
+
   const [elig, setElig] = useState<ReviewEligibility | null>(null);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -131,11 +135,8 @@ export default function LeaveReview({ listingId, hostName }: LeaveReviewProps) {
   if (pending) {
     return (
       <div style={card} data-review-state="pending">
-        <p style={eyebrow}>Thanks — received</p>
-        <p style={note}>
-          Your {mine?.rating ?? rating}★ review is with our team for a quick check. It appears here once
-          it is approved. Nobody else can see it yet.
-        </p>
+        <p style={eyebrow}><UiText id="web-listing.f19a25cc7120255e" source="Thanks — received" /></p>
+        <p style={note}><UiText id="web-listing.a204943256ea6967" source="Your" />{" "}{mine?.rating ?? rating}<UiText id="web-listing.d8921e724e50c16a" source="★ review is with our team for a quick check. It appears here once it is approved. Nobody else can see it yet." />{" "}</p>
         {mine?.body && <p style={{ ...note, fontStyle: 'italic', opacity: 0.85 }}>“{mine.body}”</p>}
       </div>
     );
@@ -145,11 +146,10 @@ export default function LeaveReview({ listingId, hostName }: LeaveReviewProps) {
   if (mine?.status === 'rejected') {
     return (
       <div style={card} data-review-state="rejected">
-        <p style={eyebrow}>Not published</p>
-        <p style={note}>
-          Your review was not published{mine.moderation_reason ? `: ${mine.moderation_reason}` : '.'}
+        <p style={eyebrow}><UiText id="web-listing.c652001687f15923" source="Not published" /></p>
+        <p style={note}><UiText id="web-listing.ff9fbd98b9a229d1" source="Your review was not published" />{mine.moderation_reason ? `: ${mine.moderation_reason}` : '.'}
         </p>
-        <button type="button" style={btn} onClick={() => setOpen(true)}>Write it again</button>
+        <button type="button" style={btn} onClick={() => setOpen(true)}><UiText id="web-listing.83ebd109e9f0adcf" source="Write it again" /></button>
         {open && renderForm()}
       </div>
     );
@@ -158,17 +158,17 @@ export default function LeaveReview({ listingId, hostName }: LeaveReviewProps) {
   // ---- 3. Not allowed to write one. ---------------------------------------
   if (!elig.can_review) {
     return (
-      <div style={card} data-review-state={elig.reason ?? 'blocked'}>
-        <p style={eyebrow}>Reviews</p>
+      <div style={card} data-review-state={elig.reason ?? uiT("web-listing.6973dddd3ef9cb6a","blocked")}>
+        <p style={eyebrow}><UiText id="web-listing.84cb7871b741c32e" source="Reviews" /></p>
         <p style={note}>
           {elig.reason === 'own_listing'
             // The host, looking at their own show. Rendering NOTHING here reads
             // as a broken page — especially to whoever is testing, who is
             // usually signed in as the host. Say it plainly instead.
-            ? 'This is your show — reviews here come from the people who booked it.'
+            ? uiT("web-listing.bac4c2a754248380","This is your show — reviews here come from the people who booked it.")
             : elig.reason === 'signed_out'
-            ? 'Reviews come from people who booked this show. Sign in with the account you booked with to leave one.'
-            : 'Only people who booked and paid for this show can review it.'}
+            ? uiT("web-listing.c3ec9f805b6445db","Reviews come from people who booked this show. Sign in with the account you booked with to leave one.")
+            : uiT("web-listing.032aca235d74bbda","Only people who booked and paid for this show can review it.")}
         </p>
       </div>
     );
@@ -179,16 +179,16 @@ export default function LeaveReview({ listingId, hostName }: LeaveReviewProps) {
     <div style={card} data-review-state="eligible">
       {!open ? (
         <>
-          <p style={eyebrow}>You went to this one</p>
+          <p style={eyebrow}><UiText id="web-listing.f78dab79387b4d96" source="You went to this one" /></p>
           <p style={note}>
-            {mine ? 'You can update your review.' : `How was it? Tell people what ${first || 'the host'} was actually like.`}
+            {mine ? uiT("web-listing.b8861d344e1f44b0","You can update your review.") : uiT("web-listing.fdf118bd659f9ca4","How was it? Tell people what {value0} was actually like.",{value0:String(first || 'the host')})}
           </p>
           <button
             type="button"
             style={btn}
             onClick={() => { setOpen(true); capture('listing_review_open', { listing_id: listingId }); }}
           >
-            {mine ? 'Edit your review' : 'Leave a review'}
+            {mine ? uiT("web-listing.83237cdf113b9619","Edit your review") : uiT("web-listing.344ad05a69e7ef5a","Leave a review")}
           </button>
         </>
       ) : (
@@ -215,8 +215,8 @@ export default function LeaveReview({ listingId, hostName }: LeaveReviewProps) {
   function renderForm() {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <p style={eyebrow}>Your rating</p>
-        <div style={{ display: 'flex', gap: 4 }} role="radiogroup" aria-label="Star rating">
+        <p style={eyebrow}><UiText id="web-listing.68548b47e72ee1a5" source="Your rating" /></p>
+        <div style={{ display: 'flex', gap: 4 }} role="radiogroup" aria-label={uiT("web-listing.19998cd311d0597a","Star rating")}>
           {[1, 2, 3, 4, 5].map((n) => (
             <button
               key={n}
@@ -238,14 +238,14 @@ export default function LeaveReview({ listingId, hostName }: LeaveReviewProps) {
           ))}
         </div>
 
-        <label style={eyebrow} htmlFor="leave-review-body">In your words (optional)</label>
+        <label style={eyebrow} htmlFor="leave-review-body"><UiText id="web-listing.6c81be057e8ef10c" source="In your words (optional)" /></label>
         <textarea
           id="leave-review-body"
           value={body}
           maxLength={MAX_BODY}
           onChange={(e) => setBody(e.target.value.slice(0, MAX_BODY))}
           rows={4}
-          placeholder="What actually happened? What would you tell a friend?"
+          placeholder={uiT("web-listing.d2045c58bf4045b1","What actually happened? What would you tell a friend?")}
           style={{
             fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 700, fontSize: '0.95rem',
             padding: 12, borderRadius: 12, border: '2px solid #161614', background: '#fff',
@@ -257,22 +257,18 @@ export default function LeaveReview({ listingId, hostName }: LeaveReviewProps) {
           <p role="alert" style={{ ...note, color: '#a5231b', fontWeight: 800 }}>{error}</p>
         )}
 
-        <p style={{ ...note, fontSize: '0.78rem', opacity: 0.8 }}>
-          Reviews are checked by our team before they go up.
-        </p>
+        <p style={{ ...note, fontSize: '0.78rem', opacity: 0.8 }}><UiText id="web-listing.dae3946434a25ebb" source="Reviews are checked by our team before they go up." />{" "}</p>
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <button type="button" style={{ ...btn, opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={submit}>
-            {busy ? 'Sending…' : 'Send for review'}
+            {busy ? uiT("web-listing.b8ed5279e897be5d","Sending…") : uiT("web-listing.f7cb7531a9bfc8bc","Send for review")}
           </button>
           <button
             type="button"
             disabled={busy}
             onClick={() => { setOpen(false); setError(null); }}
             style={{ ...btn, background: '#fdf1d3' }}
-          >
-            Cancel
-          </button>
+          ><UiText id="web-listing.19766ed6ccb2f4a3" source="Cancel" />{" "}</button>
         </div>
       </div>
     );

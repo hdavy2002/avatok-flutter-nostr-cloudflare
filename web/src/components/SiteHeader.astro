@@ -1,4 +1,5 @@
 ---
+import { publicImage } from '../lib/config';
 /*
  * SiteHeader — the standard avaTOK header, site-wide.
  *
@@ -65,6 +66,7 @@ interface Props {
   variant?: 'india' | 'global';
   /** Opt-in translation chrome for the India landing experience. */
   indiaLandingLanguage?: boolean;
+  authMobileOnly?: boolean;
 }
 
 // The site menu. Every entry points at something that exists — checked.
@@ -82,7 +84,7 @@ const DEFAULT_LINKS: HeaderLink[] = [
 ];
 
 // `auth` is destructured and ignored on purpose — see the deprecation note above.
-const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false, variant = 'india', indiaLandingLanguage = false } = Astro.props;
+const { links = DEFAULT_LINKS, sticky = true, responsiveHome = false, variant = 'india', indiaLandingLanguage = true, authMobileOnly = false } = Astro.props;
 const globalLinks: HeaderLink[] = [
   { href: '/global-ideas', label: 'Ideas' },
   { href: '#formats', label: 'For creators' },
@@ -128,11 +130,11 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
   })();
 </script>
 
-<header class:list={['avh', sticky && 'avh--sticky', responsiveHome && 'avh--home', variant === 'global' && 'avh--global']}>
+<header class:list={['avh', authMobileOnly && 'avh--auth-mobile', sticky && 'avh--sticky', responsiveHome && 'avh--home', variant === 'global' && 'avh--global']}>
   <TruckBorder kind="jhalar" count={60} class="avh-band" />
   <div class="avh-bar">
   <a class="avh-logo" href="/" aria-label="avaTOK home" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.home' : undefined}>
-    <img src="/avatok-logo.png" alt="avaTOK" width="231" height="90" />
+    <img src={publicImage('/avatok-logo.png', { width: 462, fit: 'scale-down' })} alt="avaTOK" width="231" height="90" />
   </a>
 
   <nav class="avh-nav" aria-label="Main" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.mainNav' : undefined}>
@@ -157,11 +159,11 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
       <a class="avh-cta avh-cta--solid avh-auth-out" href={variant === 'global' ? '/sign-up?role=creator&country=global' : '/sign-up'} data-india-i18n={indiaLandingLanguage ? 'chrome.signup' : undefined}>Sign up</a>
       <a class="avh-cta avh-cta--solid avh-auth-in" href="/dashboard" data-india-i18n={indiaLandingLanguage ? 'chrome.dashboard' : undefined}>Dashboard</a>
     <a class="avh-cta avh-auth-in" href="/sign-out" data-india-i18n={indiaLandingLanguage ? 'chrome.signout' : undefined}>Sign out</a>
-    {variant === 'global' && <span class="avh-locale" aria-label="Current country">🌍 Global</span>}
-    {variant === 'global' && <a class="avh-locale" href="/india" aria-label="Open India experience">🇮🇳 India</a>}
-    {variant === 'global' && <a class="avh-locale" href="#language" aria-label="Choose language">EN</a>}
+    {variant === 'global' && <span data-india-i18n-attr="aria-label:web-common.c8b7fff1b82d47c8" data-i18n="web-common.a723fec7087f1226" class="avh-locale" aria-label="Current country">🌍 Global</span>}
+    {variant === 'global' && <a data-india-i18n-attr="aria-label:web-common.268947545b973f7d" data-i18n="web-common.e632a1efa068f672" class="avh-locale" href="/india" aria-label="Open India experience">🇮🇳 India</a>}
+    {variant === 'global' && <a data-india-i18n-attr="aria-label:web-common.bba5b40bdd28c66e" data-i18n="web-common.69374b09b1681162" class="avh-locale" href="#language" aria-label="Choose language">EN</a>}
     </Fragment>
-    <img class="avh-orn" src="/ornament-flower.png" alt="" width="85" height="80" aria-hidden="true" />
+    <img class="avh-orn" src={publicImage('/ornament-flower.png', { width: 170, fit: 'scale-down' })} alt="" width="85" height="80" aria-hidden="true" />
   </div>
 
   <button class="avh-burger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="avh-drawer" aria-haspopup="dialog" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.menu' : undefined}>
@@ -174,10 +176,10 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
 </header>
 
 {/* Independent top-layer drawer: the sticky header never moves or resizes. */}
-<dialog class="avh-drawer" id="avh-drawer" aria-label="Navigation menu">
+<dialog data-india-i18n-attr="aria-label:web-common.3f9abc8733ba366a" class:list={['avh-drawer', authMobileOnly && 'avh--auth-mobile']} id="avh-drawer" aria-label="Navigation menu">
   <div class="avh-drawer-heading">
-    <img src="/avatok-logo.png" alt="avaTOK" width="154" height="60" />
-    <button class="avh-drawer-close" type="button" aria-label="Close menu" autofocus>×</button>
+    <img src={publicImage('/avatok-logo.png', { width: 308, fit: 'scale-down' })} alt="avaTOK" width="154" height="60" />
+    <button data-india-i18n-attr="aria-label:web-common.6ccd5c7856042d36" class="avh-drawer-close" type="button" aria-label="Close menu" autofocus>×</button>
   </div>
 <nav class:list={['avh-mobile', responsiveHome && 'avh-mobile--home']} id="avh-mobile" aria-label="Main (mobile)" data-india-i18n-attr={indiaLandingLanguage ? 'aria-label:chrome.mainNav' : undefined}>
   {indiaLandingLanguage && <IndiaLanguageSelector id="india-language-mobile" />}
@@ -194,7 +196,7 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
     <a class="avh-mobile-auth avh-mobile-auth--solid avh-auth-in" href="/dashboard" data-india-i18n={indiaLandingLanguage ? 'chrome.dashboard' : undefined}>Dashboard</a>
     <a class="avh-mobile-auth avh-auth-in" href="/sign-out" data-india-i18n={indiaLandingLanguage ? 'chrome.signout' : undefined}>Sign out</a>
   </Fragment>
-  {variant === 'global' && <a class="avh-mobile-auth" href="/india">🌍 India</a>}
+  {variant === 'global' && <a data-i18n="web-common.a9744a11b7d55a26" class="avh-mobile-auth" href="/india">🌍 India</a>}
 </nav>
 </dialog>
 
@@ -203,12 +205,13 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
 </>}
 
 <script>
-  if (document.querySelector('[data-india-page]')) {
+  if (document.querySelector('[data-india-language-select]')) {
     import('../lib/indiaLandingLanguage').then(({ initIndiaLandingLanguage }) => initIndiaLandingLanguage(document));
   }
   const burger = document.querySelector<HTMLButtonElement>('.avh-burger');
   const drawer = document.querySelector<HTMLDialogElement>('#avh-drawer');
   const panel = document.getElementById('avh-mobile');
+  window.matchMedia('(min-width: 768px)').addEventListener('change', event => { if (event.matches && drawer?.classList.contains('avh--auth-mobile')) finishClose(false); });
   const closeButton = drawer?.querySelector<HTMLButtonElement>('.avh-drawer-close');
   let closeTimer: ReturnType<typeof setTimeout> | undefined;
   let rootOverflow = '';
@@ -322,6 +325,7 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
   }
 
   .avh-band { display: block; }
+  @media (min-width: 768px) { .avh--auth-mobile { display: none !important; } }
   .avh--sticky { position: sticky; top: 0; z-index: 60; }
 
   .avh-logo { display: flex; align-items: center; flex: 0 0 auto; }

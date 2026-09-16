@@ -1,0 +1,664 @@
+{
+  "schemaVersion": 1,
+  "routeCount": 94,
+  "routes": [
+    {
+      "route": "forgot-password.astro",
+      "classification": "redirect",
+      "taggedKeys": 0,
+      "status": "excluded",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "dmca.astro",
+      "classification": "public",
+      "taggedKeys": 19,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "acceptable-use.astro",
+      "classification": "public",
+      "taggedKeys": 106,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "add.astro",
+      "classification": "public",
+      "taggedKeys": 5,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "dashboard.astro",
+      "classification": "public",
+      "taggedKeys": 0,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "terms.astro",
+      "classification": "public",
+      "taggedKeys": 47,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "recording.astro",
+      "classification": "public",
+      "taggedKeys": 77,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "about.astro",
+      "classification": "public",
+      "taggedKeys": 53,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "global-next.astro",
+      "classification": "public",
+      "taggedKeys": 0,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "privacy.astro",
+      "classification": "public",
+      "taggedKeys": 64,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "index.astro",
+      "classification": "public",
+      "taggedKeys": 28,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "sign-up.astro",
+      "classification": "public",
+      "taggedKeys": 5,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "sign-in.astro",
+      "classification": "public",
+      "taggedKeys": 7,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "india.astro",
+      "classification": "redirect",
+      "taggedKeys": 0,
+      "status": "excluded",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "india-next.astro",
+      "classification": "preview-unshipped",
+      "taggedKeys": 24,
+      "status": "excluded",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "sso-callback.astro",
+      "classification": "public",
+      "taggedKeys": 1,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "tokens.astro",
+      "classification": "public",
+      "taggedKeys": 59,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "careers.astro",
+      "classification": "public",
+      "taggedKeys": 22,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "marketplace-terms.astro",
+      "classification": "public",
+      "taggedKeys": 95,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "community-guidelines.astro",
+      "classification": "public",
+      "taggedKeys": 25,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "ideas.astro",
+      "classification": "public",
+      "taggedKeys": 54,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "contact.astro",
+      "classification": "public",
+      "taggedKeys": 25,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "explore.astro",
+      "classification": "redirect",
+      "taggedKeys": 0,
+      "status": "excluded",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "sign-out.astro",
+      "classification": "public",
+      "taggedKeys": 1,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "consultation-terms.astro",
+      "classification": "public",
+      "taggedKeys": 88,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "marketplace.astro",
+      "classification": "public",
+      "taggedKeys": 0,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "global-ideas.astro",
+      "classification": "public",
+      "taggedKeys": 7,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "biometric-retention.astro",
+      "classification": "public",
+      "taggedKeys": 78,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "pricing.astro",
+      "classification": "redirect",
+      "taggedKeys": 0,
+      "status": "excluded",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "grievance.astro",
+      "classification": "public",
+      "taggedKeys": 103,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "pricing-fees.astro",
+      "classification": "public",
+      "taggedKeys": 48,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "payouts.astro",
+      "classification": "public",
+      "taggedKeys": 53,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "child-safety.astro",
+      "classification": "public",
+      "taggedKeys": 41,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "refunds.astro",
+      "classification": "public",
+      "taggedKeys": 84,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "cookies.astro",
+      "classification": "public",
+      "taggedKeys": 26,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "embed/listing.astro",
+      "classification": "embed-review",
+      "taggedKeys": 0,
+      "status": "excluded",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "archive/home-2026-09-09.astro",
+      "classification": "preview-unshipped",
+      "taggedKeys": 0,
+      "status": "excluded",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "admin/reviews.astro",
+      "classification": "admin-excluded",
+      "taggedKeys": 0,
+      "status": "excluded",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "admin/index.astro",
+      "classification": "admin-excluded",
+      "taggedKeys": 0,
+      "status": "excluded",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "admin/listings.astro",
+      "classification": "admin-excluded",
+      "taggedKeys": 0,
+      "status": "excluded",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "pay/return.astro",
+      "classification": "public",
+      "taggedKeys": 2,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "agent/[id].astro",
+      "classification": "public",
+      "taggedKeys": 1,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "vision/index.astro",
+      "classification": "public",
+      "taggedKeys": 6,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "vision/studio.astro",
+      "classification": "public",
+      "taggedKeys": 3,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "blog/ai-in-every-chat.astro",
+      "classification": "public",
+      "taggedKeys": 27,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "blog/ai-voice-agents.astro",
+      "classification": "redirect",
+      "taggedKeys": 0,
+      "status": "excluded",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "blog/index.astro",
+      "classification": "public",
+      "taggedKeys": 5,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "blog/real-people-safety.astro",
+      "classification": "redirect",
+      "taggedKeys": 0,
+      "status": "excluded",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "blog/your-private-number.astro",
+      "classification": "public",
+      "taggedKeys": 20,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "blog/never-miss-a-call.astro",
+      "classification": "public",
+      "taggedKeys": 21,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "blog/earn-from-day-one.astro",
+      "classification": "redirect",
+      "taggedKeys": 0,
+      "status": "excluded",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "dashboard/vision.astro",
+      "classification": "customer",
+      "taggedKeys": 0,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "dashboard/billing.astro",
+      "classification": "customer",
+      "taggedKeys": 0,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "dashboard/bookings.astro",
+      "classification": "customer",
+      "taggedKeys": 0,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "dashboard/identity.astro",
+      "classification": "customer",
+      "taggedKeys": 0,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "dashboard/library.astro",
+      "classification": "customer",
+      "taggedKeys": 5,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "dashboard/storage.astro",
+      "classification": "customer",
+      "taggedKeys": 0,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "dashboard/consult.astro",
+      "classification": "customer",
+      "taggedKeys": 0,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "dashboard/affiliate.astro",
+      "classification": "customer",
+      "taggedKeys": 0,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "dashboard/calendar.astro",
+      "classification": "customer",
+      "taggedKeys": 1,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "dashboard/voice.astro",
+      "classification": "customer",
+      "taggedKeys": 0,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "dashboard/wallet.astro",
+      "classification": "customer",
+      "taggedKeys": 2,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "dashboard/marketplace.astro",
+      "classification": "customer",
+      "taggedKeys": 0,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "dashboard/inbox.astro",
+      "classification": "customer",
+      "taggedKeys": 0,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "dashboard/live.astro",
+      "classification": "customer",
+      "taggedKeys": 0,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "dashboard/settings.astro",
+      "classification": "customer",
+      "taggedKeys": 2,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "dashboard/saved.astro",
+      "classification": "customer",
+      "taggedKeys": 3,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "dashboard/payout.astro",
+      "classification": "customer",
+      "taggedKeys": 0,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "live/[id].astro",
+      "classification": "public",
+      "taggedKeys": 2,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "book/[id].astro",
+      "classification": "public",
+      "taggedKeys": 2,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "watch/[id].astro",
+      "classification": "public",
+      "taggedKeys": 2,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "consult/[booking].astro",
+      "classification": "public",
+      "taggedKeys": 0,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "j/[token].astro",
+      "classification": "public",
+      "taggedKeys": 0,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "c/[handle].astro",
+      "classification": "public",
+      "taggedKeys": 2,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "e/[event].astro",
+      "classification": "embed-review",
+      "taggedKeys": 2,
+      "status": "excluded",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "[username]/index.astro",
+      "classification": "public",
+      "taggedKeys": 0,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "[username]/[slug].astro",
+      "classification": "public",
+      "taggedKeys": 2,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "help/index.astro",
+      "classification": "public",
+      "taggedKeys": 2,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "help/[...slug].astro",
+      "classification": "public",
+      "taggedKeys": 0,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "l/[id].astro",
+      "classification": "public",
+      "taggedKeys": 4,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "talk/[booking].astro",
+      "classification": "public",
+      "taggedKeys": 0,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "session/[booking].astro",
+      "classification": "public",
+      "taggedKeys": 0,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "live/[id]/host.astro",
+      "classification": "public",
+      "taggedKeys": 2,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "dashboard/listings/publish.astro",
+      "classification": "customer",
+      "taggedKeys": 2,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "dashboard/listings/index.astro",
+      "classification": "customer",
+      "taggedKeys": 0,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "dashboard/listings/new.astro",
+      "classification": "customer",
+      "taggedKeys": 0,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "dashboard/l/[id].astro",
+      "classification": "customer",
+      "taggedKeys": 0,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "blog/creator-ideas/[slug].astro",
+      "classification": "public",
+      "taggedKeys": 50,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "blog/global-creator-ideas/[slug].astro",
+      "classification": "public",
+      "taggedKeys": 53,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "vision/agent/[id].astro",
+      "classification": "public",
+      "taggedKeys": 6,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "vision/session/[id].astro",
+      "classification": "public",
+      "taggedKeys": 1,
+      "status": "source-adapter-partial",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "admin/agents/[id].astro",
+      "classification": "admin-excluded",
+      "taggedKeys": 0,
+      "status": "excluded",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "admin/agents/index.astro",
+      "classification": "admin-excluded",
+      "taggedKeys": 0,
+      "status": "excluded",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    },
+    {
+      "route": "admin/agents/new.astro",
+      "classification": "admin-excluded",
+      "taggedKeys": 0,
+      "status": "excluded",
+      "remaining": "Runtime dynamic copy/metadata/content integration and native-speaker parity require review; counts are not completion proof"
+    }
+  ]
+}

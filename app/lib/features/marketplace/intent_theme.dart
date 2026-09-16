@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -100,35 +102,35 @@ class IntentTheme {
   static final Map<ListingIntent, IntentTheme> _all = {
     ListingIntent.sell: IntentTheme(
       intent: ListingIntent.sell,
-      label: 'For sale',
+      label: uiCopy(UiMessage.m_for_sale_aedf56fc02),
       chipBg: AD.familyByName('butter').solid,
       chipFg: AD.familyByName('butter').chipInk,
       icon: PhosphorIcons.tag(PhosphorIconsStyle.fill),
     ),
     ListingIntent.rent: IntentTheme(
       intent: ListingIntent.rent,
-      label: 'To rent',
+      label: uiCopy(UiMessage.m_to_rent_d1f2bdf930),
       chipBg: AD.familyByName('aqua').solid,
       chipFg: AD.familyByName('aqua').chipInk,
       icon: PhosphorIcons.key(PhosphorIconsStyle.fill),
     ),
     ListingIntent.book: IntentTheme(
       intent: ListingIntent.book,
-      label: 'Book',
+      label: uiCopy(UiMessage.m_book_909cb81127),
       chipBg: AD.familyByName('lilac').solid,
       chipFg: AD.familyByName('lilac').chipInk,
       icon: PhosphorIcons.calendarCheck(PhosphorIconsStyle.fill),
     ),
     ListingIntent.lead: IntentTheme(
       intent: ListingIntent.lead,
-      label: 'Enquire',
+      label: uiCopy(UiMessage.m_enquire_3e55d5d9c7),
       chipBg: AD.familyByName('sky').solid,
       chipFg: AD.familyByName('sky').chipInk,
       icon: PhosphorIcons.chatCircle(PhosphorIconsStyle.fill),
     ),
     ListingIntent.profile: IntentTheme(
       intent: ListingIntent.profile,
-      label: 'Profile',
+      label: uiCopy(UiMessage.m_profile_d696a35bdd),
       chipBg: AD.familyByName('rose').solid,
       chipFg: AD.familyByName('rose').chipInk,
       icon: PhosphorIcons.userCircle(PhosphorIconsStyle.fill),
@@ -347,6 +349,7 @@ class MarketplaceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final it = IntentTheme.of(intent ?? parseIntent(card.marketType ?? card.kind));
     final reviewN = card.reviewCount > 0 ? card.reviewCount : card.ratingCount;
     final label = priceLabel(card.price, card.currency, priceSemantics);
@@ -473,6 +476,7 @@ class _IntentChip extends StatelessWidget {
   const _IntentChip({required this.theme});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
       decoration: BoxDecoration(
@@ -496,6 +500,7 @@ class _NewBadge extends StatelessWidget {
   const _NewBadge({required this.theme});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 2),
       decoration: BoxDecoration(
@@ -503,7 +508,7 @@ class _NewBadge extends StatelessWidget {
         borderRadius: Msg.brPill,
         border: Border.all(color: AD.borderCard, width: 2),
       ),
-      child: Text('New', style: ADText.statCaption(c: theme.chipFg)),
+      child: UiText(UiMessage.m_new_18fdd549b2, style: ADText.statCaption(c: theme.chipFg)),
     );
   }
 }
@@ -515,6 +520,7 @@ class _FavHeart extends StatelessWidget {
   const _FavHeart({required this.favorited, required this.onTap});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,

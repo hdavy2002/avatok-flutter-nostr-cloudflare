@@ -533,3 +533,8 @@
 @media (prefers-reduced-motion: reduce) {
   .auth-reveal, .auth-verified { transition: none; animation: none; }
 }
+
+/* Auth header occupies normal flow only below the tablet breakpoint. */
+.auth-wordmark { line-height: 1.25; padding-block: 3px; overflow: visible; }
+.auth-language { display: flex; justify-content: flex-end; padding: 12px 20px; }
+@media (max-width: 767px) { .auth { padding-top: 24px; } .auth-language { display: none; } }

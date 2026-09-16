@@ -1,3 +1,4 @@
+import { UiText } from "../lib/i18n/react";
 // [WEB-POSTHOG-1] Per-island React error boundary. A hydration/render crash in
 // one island must not blank the whole page (Astro islands are independent
 // hydration roots, so an uncaught error here would otherwise take down just
@@ -43,14 +44,12 @@ export class IslandBoundary extends Component<IslandBoundaryProps, IslandBoundar
     if (this.state.hasError) {
       return (
         <div className="rounded-zine-field border-zine border-ink bg-card px-4 py-5 font-body text-ink shadow-zine-xs">
-          <p className="font-bold text-[15px]">Kuch gadbad ho gayi — reload karke dekho.</p>
+          <p className="font-bold text-[15px]"><UiText id="web-common.364bcac52041cd26" source="Kuch gadbad ho gayi — reload karke dekho." /></p>
           <button
             type="button"
             onClick={() => window.location.reload()}
             className="mt-3 rounded-zine-badge border-zine border-ink bg-ink px-4 py-2 font-mono font-bold uppercase text-[13px] tracking-[0.06em] text-paper shadow-zine-xs active:translate-x-[1px] active:translate-y-[1px]"
-          >
-            Reload
-          </button>
+          ><UiText id="web-common.bdc090ec61e3fcfc" source="Reload" />{" "}</button>
         </div>
       );
     }

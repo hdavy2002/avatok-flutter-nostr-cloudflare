@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -121,6 +124,7 @@ class _BrainExportSheetState extends State<_BrainExportSheet> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, 18 + MediaQuery.of(context).viewInsets.bottom),
@@ -129,8 +133,8 @@ class _BrainExportSheetState extends State<_BrainExportSheet> {
             ZineIconBadge(icon: PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 40),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Remember this in the cloud?', style: ADText.threadName(c: AD.textPrimary)),
-              Text('${widget.items.length} message${widget.items.length == 1 ? '' : 's'} · $_charCount characters',
+              UiText(UiMessage.m_remember_this_in_the_cloud_6bf86ae419, style: ADText.threadName(c: AD.textPrimary)),
+              UiText(UiMessage.m_value1_message_value2_charcount_characters_9e849ef666, params: {'value1': (widget.items.length).toString(), 'value2': (widget.items.length == 1 ? '' : 's').toString(), 'charCount': (_charCount).toString()},
                   style: ADText.preview()),
             ])),
           ]),
@@ -142,13 +146,8 @@ class _BrainExportSheetState extends State<_BrainExportSheet> {
               PhosphorIcon(PhosphorIcons.warningCircle(PhosphorIconsStyle.bold), size: 18, color: AD.iconBell),
               const SizedBox(width: Msg.s2),
               Expanded(
-                child: Text(
-                  'Your messages are normally end-to-end encrypted and stay on this '
-                  'device only. Exporting sends the exact text above to Ava’s '
-                  'cloud so it can be remembered and recalled later — this is NOT '
-                  'end-to-end encrypted once exported. Nothing else in this '
-                  'conversation is sent, and you can forget any exported memory '
-                  'later from AvaBrain Memory.',
+                child: UiText(
+                  UiMessage.m_your_messages_are_normally_end_909b84a80c,
                   style: ADText.preview(c: AD.textSecondary),
                 ),
               ),
@@ -160,7 +159,7 @@ class _BrainExportSheetState extends State<_BrainExportSheet> {
             if (_showSettingsButton) ...[
               const SizedBox(height: 8),
               AdButton(
-                label: 'Open AvaBrain Settings',
+                label: uiCopy(UiMessage.m_open_avabrain_settings_717ef21a8c),
                 variant: AdButtonVariant.ghost,
                 fullWidth: true,
                 onPressed: _openBrainSettings,
@@ -171,7 +170,7 @@ class _BrainExportSheetState extends State<_BrainExportSheet> {
           Row(children: [
             Expanded(
               child: AdButton(
-                label: 'Cancel',
+                label: uiCopy(UiMessage.m_cancel_19766ed6cc),
                 variant: AdButtonVariant.ghost,
                 fullWidth: true,
                 onPressed: _sending ? null : () => Navigator.pop(context, false),
@@ -180,7 +179,7 @@ class _BrainExportSheetState extends State<_BrainExportSheet> {
             const SizedBox(width: Msg.s2),
             Expanded(
               child: AdButton(
-                label: 'Export',
+                label: uiCopy(UiMessage.m_export_3664895579),
                 variant: AdButtonVariant.primary,
                 fullWidth: true,
                 loading: _sending,

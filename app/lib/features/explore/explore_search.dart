@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -95,6 +97,7 @@ class _ExploreSearchScreenState extends State<ExploreSearchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       body: SafeArea(
@@ -113,7 +116,7 @@ class _ExploreSearchScreenState extends State<ExploreSearchScreen> {
                 child: AdField(
                   controller: _q,
                   autofocus: true,
-                  hint: 'Search the marketplace…',
+                  hint: uiCopy(UiMessage.m_search_the_marketplace_bdc6ca1b73),
                   leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
                   onChanged: _onChanged,
                   onSubmitted: (_) => _run(),
@@ -165,7 +168,7 @@ class _ExploreSearchScreenState extends State<ExploreSearchScreen> {
             text: 'Search the marketplace — events, sessions, creators.'));
       }
       return ListView(padding: const EdgeInsets.all(Msg.s5), children: [
-        Text('Recent searches', style: ADText.sectionLabel()),
+        UiText(UiMessage.m_recent_searches_228c84b5a5, style: ADText.sectionLabel()),
         const SizedBox(height: Msg.s2),
         for (final r in _recent)
           GestureDetector(
@@ -248,7 +251,7 @@ class _FilterSheetState extends State<_FilterSheet> {
       );
 
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Container(
         decoration: BoxDecoration(
           color: AD.overlaySheet,
           borderRadius: Msg.brSheetTop,
@@ -256,9 +259,9 @@ class _FilterSheetState extends State<_FilterSheet> {
         ),
         padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, 20 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('Filters', style: ADText.appTitle()),
+          UiText(UiMessage.m_filters_546ebb8eb9, style: ADText.appTitle()),
           const SizedBox(height: 12),
-          Text('PRICE: \u20b9${_price.start.round()} – \u20b9${_price.end.round()}${_price.end >= 5000 ? '+' : ''}',
+          UiText(UiMessage.m_price_value1_value2_value3_6cbb92ff32, params: {'value1': (_price.start.round()).toString(), 'value2': (_price.end.round()).toString(), 'value3': (_price.end >= 5000 ? '+' : '').toString()},
               style: ADText.sectionLabel()),
           RangeSlider(
             values: _price, min: 0, max: 5000, divisions: 50,
@@ -266,12 +269,12 @@ class _FilterSheetState extends State<_FilterSheet> {
             inactiveColor: AD.borderControl,
             onChanged: (v) => setState(() => _price = v),
           ),
-          Text('Minimum rating', style: ADText.sectionLabel()),
+          UiText(UiMessage.m_minimum_rating_6cad6def35, style: ADText.sectionLabel()),
           const SizedBox(height: Msg.s2),
           Wrap(spacing: Msg.s2, runSpacing: 8, children: [
             for (final r in const [null, 3.0, 4.0, 4.5])
               AdChip(
-                label: r == null ? 'Any' : '★ $r+',
+                label: r == null ? uiCopy(UiMessage.m_any_2b505597da) : '★ $r+',
                 active: _minRating == r,
                 onTap: () => setState(() => _minRating = r),
               ),
@@ -293,8 +296,8 @@ class _FilterSheetState extends State<_FilterSheet> {
           const SizedBox(height: 16),
           AdField(
             controller: _country,
-            label: 'Country code (e.g. IN, US)',
-            hint: 'Anywhere',
+            label: uiCopy(UiMessage.m_country_code_e_g_in_92cf4c41ef),
+            hint: uiCopy(UiMessage.m_anywhere_911b14a9b9),
             maxLength: 2,
             textCapitalization: TextCapitalization.characters,
             leadIcon: PhosphorIcons.globeHemisphereEast(PhosphorIconsStyle.bold),
@@ -302,14 +305,14 @@ class _FilterSheetState extends State<_FilterSheet> {
           const SizedBox(height: Msg.s4),
           Row(children: [
             Expanded(child: AdButton(
-              label: 'Clear all',
+              label: uiCopy(UiMessage.m_clear_all_29a390f923),
               variant: AdButtonVariant.ghost,
               fontSize: 16,
               onPressed: () { widget.onApply(null, null, null, '', null, null); Navigator.pop(context); },
             )),
             const SizedBox(width: Msg.s2),
             Expanded(flex: 2, child: AdButton(
-              label: 'Apply filters',
+              label: uiCopy(UiMessage.m_apply_filters_d80ab19b7e),
               fontSize: 17,
               onPressed: () {
                 widget.onApply(
@@ -322,5 +325,5 @@ class _FilterSheetState extends State<_FilterSheet> {
             )),
           ]),
         ]),
-      );
+      ); }
 }

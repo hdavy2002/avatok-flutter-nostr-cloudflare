@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 // AvaLive landing — Phase 7: REAL marketplace data (the Phase-6 live-now feed),
 // not the old demo rooms. Watching opens the paid viewer (the worker refuses
 // non-payers — tapping an unbooked event routes to its booking page instead).
@@ -87,7 +89,7 @@ class _AvaLiveDiscoveryState extends State<AvaLiveDiscovery> {
     if (!mounted) return;
     if (mine.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('No startable live event — create & publish one in My Listings first.')));
+          content: UiText(UiMessage.m_no_startable_live_event_create_28b68f3e5a)));
       return;
     }
     final l = mine.length == 1
@@ -98,7 +100,7 @@ class _AvaLiveDiscoveryState extends State<AvaLiveDiscovery> {
             builder: (sheetCtx) => SafeArea(
               child: ListView(shrinkWrap: true, children: [
                 Padding(padding: const EdgeInsets.all(Msg.s4),
-                    child: Text('Which event?', style: ADText.threadName())),
+                    child: UiText(UiMessage.m_which_event_4910bf690b, style: ADText.threadName())),
                 for (final m in mine)
                   ListTile(
                     title: Text(m.title, style: ADText.rowName()),
@@ -119,9 +121,10 @@ class _AvaLiveDiscoveryState extends State<AvaLiveDiscovery> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       appBar: ZineAppBar(
-        title: 'AvaLive',
+        title: uiCopy(UiMessage.m_avalive_4cbcfc1f7c),
         markWord: 'Live',
         tag: 'Live now · creator events',
         showBack: Navigator.of(context).canPop(),
@@ -133,7 +136,7 @@ class _AvaLiveDiscoveryState extends State<AvaLiveDiscovery> {
         ],
       ),
       floatingActionButton: ZineButton(
-        label: 'Go Live',
+        label: uiCopy(UiMessage.m_go_live_9e28dbaeb7),
         variant: ZineButtonVariant.coral,
         icon: PhosphorIcons.broadcast(PhosphorIconsStyle.bold),
         trailingIcon: false,
@@ -155,13 +158,13 @@ class _AvaLiveDiscoveryState extends State<AvaLiveDiscovery> {
                     ])
                   : ListView(padding: const EdgeInsets.all(Msg.s4), children: [
                       if (_live.isNotEmpty) ...[
-                        Text('Live now', style: ADText.appTitle()),
+                        UiText(UiMessage.m_live_now_96436bc476, style: ADText.appTitle()),
                         const SizedBox(height: Msg.s3),
                         for (final l in _live) _card(l, live: true),
                         const SizedBox(height: Msg.s3),
                       ],
                       if (_upcoming.isNotEmpty) ...[
-                        Text('Upcoming events', style: ADText.appTitle()),
+                        UiText(UiMessage.m_upcoming_events_df9110b56f, style: ADText.appTitle()),
                         const SizedBox(height: Msg.s3),
                         for (final l in _upcoming) _card(l, live: false),
                       ],
@@ -208,7 +211,7 @@ class _AvaLiveDiscoveryState extends State<AvaLiveDiscovery> {
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       Container(width: 6, height: 6, decoration: const BoxDecoration(color: AD.destructiveInk, shape: BoxShape.circle)),
                       const SizedBox(width: Msg.s1),
-                      Text('Live', style: ADText.sectionLabel(c: AD.destructiveInk)),
+                      UiText(UiMessage.m_live_b64ac05f17, style: ADText.sectionLabel(c: AD.destructiveInk)),
                     ]),
                   )),
                 // Price chip — card fill + hairline border (no dark scrims).

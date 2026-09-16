@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -25,6 +28,7 @@ class _DarkHeader extends StatelessWidget implements PreferredSizeWidget {
   Size get preferredSize => const Size.fromHeight(60);
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       decoration: const BoxDecoration(
         color: AD.headerFooter,
@@ -216,14 +220,13 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(AD.rDialog),
               side: const BorderSide(color: AD.borderControl, width: 1)),
-          title: Text('Disconnect ${app.name}?', style: ADText.threadName()),
-          content: Text('Ava will no longer be able to act on your ${app.name}. '
-              'You can reconnect anytime.', style: ADText.preview()),
+          title: UiText(UiMessage.m_disconnect_value1_02db7d7f6f, params: {'value1': (app.name).toString()}, style: ADText.threadName()),
+          content: UiText(UiMessage.m_ava_will_no_longer_be_00fb557d1b, params: {'value1': (app.name).toString()}, style: ADText.preview()),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false),
-                child: Text('Cancel', style: ADText.rowName(c: AD.textSecondary))),
+                child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.rowName(c: AD.textSecondary))),
             TextButton(onPressed: () => Navigator.pop(ctx, true),
-                child: Text('Disconnect', style: ADText.rowName(c: AD.danger))),
+                child: UiText(UiMessage.m_disconnect_acfc5be785, style: ADText.rowName(c: AD.danger))),
           ],
         ),
       );
@@ -262,8 +265,8 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text(opened
-                ? 'Authorize ${app.name} — you’ll come right back here.'
-                : 'Couldn’t open the ${app.name} sign-in. Please try again.')));
+                ? uiCopy(UiMessage.m_authorize_value1_you_ll_come_6ebe5df855, {'value1': (app.name).toString()})
+                : uiCopy(UiMessage.m_couldn_t_open_the_value1_db30dcc238, {'value1': (app.name).toString()}))));
       }
       if (opened) {
         // ignore: unawaited_futures
@@ -271,7 +274,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
       }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('${app.name} is already connected')));
+          content: UiText(UiMessage.m_value1_is_already_connected_cd16c0b6ab, params: {'value1': (app.name).toString()})));
     }
   }
 
@@ -392,13 +395,13 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AD.rDialog),
             side: const BorderSide(color: AD.borderControl, width: 1)),
-        title: Text('Confirm', style: ADText.threadName()),
+        title: UiText(UiMessage.m_confirm_eebdd24a77, style: ADText.threadName()),
         content: Text(summary, style: ADText.preview()),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Cancel', style: ADText.rowName(c: AD.textSecondary))),
+              child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.rowName(c: AD.textSecondary))),
           TextButton(onPressed: () => Navigator.pop(ctx, true),
-              child: Text('Confirm', style: ADText.rowName(c: AD.iconSearch))),
+              child: UiText(UiMessage.m_confirm_eebdd24a77, style: ADText.rowName(c: AD.iconSearch))),
         ],
       ),
     );
@@ -410,9 +413,10 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
-      appBar: const _DarkHeader(title: 'AvaApps'),
+      appBar:  _DarkHeader(title: uiCopy(UiMessage.m_avaapps_a60204e99f)),
       body: RefreshIndicator(
         color: AD.iconSearch,
         onRefresh: _load,
@@ -425,8 +429,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
               padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, 0),
               sliver: SliverList(delegate: SliverChildListDelegate([
           Row(children: [
-            Expanded(child: Text('Connect your apps and let Ava act across them — read '
-                'email, find a file, create a doc, check your calendar.',
+            Expanded(child: UiText(UiMessage.m_connect_your_apps_and_let_aa8f2c5042,
                 style: ADText.preview())),
             const SizedBox(width: 8),
             _premiumBadge(),
@@ -435,7 +438,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
           Row(mainAxisSize: MainAxisSize.min, children: [
             PhosphorIcon(PhosphorIcons.lightning(PhosphorIconsStyle.fill), size: 12, color: AD.textTertiary),
             const SizedBox(width: 4),
-            Text('Powered by Composio', style: ADText.statCaption(c: AD.textTertiary)),
+            UiText(UiMessage.m_powered_by_composio_79f94dc048, style: ADText.statCaption(c: AD.textTertiary)),
           ]),
           const SizedBox(height: Msg.s3),
           // Search filter on top — white dark-v2 search dock.
@@ -456,9 +459,9 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
                   style: const TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700,
                       fontSize: 15, color: AD.textOnInput),
                   onChanged: (v) => setState(() => _filter = v.trim()),
-                  decoration: const InputDecoration(
+                  decoration:  InputDecoration(
                     border: InputBorder.none, isDense: true,
-                    hintText: 'Search apps…',
+                    hintText: uiCopy(UiMessage.m_search_apps_f8fe15b7d9),
                     hintStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
                         fontSize: 14, color: AD.placeholderOnWhite),
                   ),
@@ -471,7 +474,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
             const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator(color: AD.iconSearch))),
           if (!_loading && _visible.isEmpty)
             Padding(padding: const EdgeInsets.all(Msg.s5),
-                child: Center(child: Text('No apps found.', style: ADText.preview(c: AD.textTertiary)))),
+                child: Center(child: UiText(UiMessage.m_no_apps_found_4a081d5429, style: ADText.preview(c: AD.textTertiary)))),
               ])),
             ),
             // The icon grid — a LAZY SliverGrid so only the on-screen tiles build.
@@ -500,7 +503,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s5),
               sliver: SliverList(delegate: SliverChildListDelegate([
-          Text('Ask Ava', style: ADText.sectionLabel()),
+          UiText(UiMessage.m_ask_ava_2e5fd780a2, style: ADText.sectionLabel()),
           const SizedBox(height: Msg.s2),
           AdCard(
             radius: AD.rListCard, padding: const EdgeInsets.all(12),
@@ -510,8 +513,8 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
                 cursorColor: AD.iconSearch,
                 style: const TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
                     fontSize: 15, color: AD.textPrimary),
-                decoration: const InputDecoration(
-                  hintText: 'e.g. "Find me my latest email" · "Create a doc with my notes"',
+                decoration:  InputDecoration(
+                  hintText: uiCopy(UiMessage.m_e_g_find_me_my_839f66afc3),
                   hintStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
                       fontSize: 14, color: AD.textTertiary),
                   border: InputBorder.none, isDense: true,
@@ -519,7 +522,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
               ),
               const SizedBox(height: 8),
               AdButton(
-                label: 'Run', onPressed: _running ? null : _run,
+                label: uiCopy(UiMessage.m_run_00d60e31a4), onPressed: _running ? null : _run,
                 fullWidth: true, fontSize: 15, loading: _running,
                 variant: AdButtonVariant.teal,
                 icon: PhosphorIcons.sparkle(PhosphorIconsStyle.bold), trailingIcon: false,
@@ -546,7 +549,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
                     Row(mainAxisSize: MainAxisSize.min, children: [
                       const SizedBox(width: 11, height: 11, child: CircularProgressIndicator(strokeWidth: 1.6, color: AD.textTertiary)),
                       const SizedBox(width: Msg.s1),
-                      Text('as of $_answerAsOf · refreshing…', style: ADText.preview(c: AD.textTertiary)),
+                      UiText(UiMessage.m_as_of_answerasof_refreshing_7cb3a85ccd, params: {'answerAsOf': (_answerAsOf).toString()}, style: ADText.preview(c: AD.textTertiary)),
                     ]),
                     const SizedBox(height: Msg.s1),
                   ],
@@ -556,7 +559,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
             ),
           ],
           const SizedBox(height: 16),
-          Center(child: Text('Tip: from any chat, type "@ava …" to use your apps inline',
+          Center(child: UiText(UiMessage.m_tip_from_any_chat_type_753b18e0e5,
               style: ADText.statCaption(c: AD.textTertiary))),
               ])),
             ),
@@ -614,7 +617,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: AD.borderControl, width: 1),
                 ),
-                child: Text('Soon',
+                child: UiText(UiMessage.m_soon_cf0ee3547a,
                     style: ADText.statCaption(c: AD.textSecondary)),
               ),
             ),
@@ -632,8 +635,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
   void _showComingSoon(AvaCatalogApp app) {
     Analytics.capture('avaapps_coming_soon', {'slug': app.slug});
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('${app.name} is coming soon. Gmail and Outlook are '
-            'available now.')));
+        content: UiText(UiMessage.m_value1_is_coming_soon_gmail_cf653439cf, params: {'value1': (app.name).toString()})));
   }
 
   /// The real, colorful brand logo, served local-first from [AppIconCache] so it
@@ -702,7 +704,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(PhosphorIcons.sealCheck(PhosphorIconsStyle.fill), size: 14, color: Colors.white),
         const SizedBox(width: Msg.s1),
-        Text('Beta-free', style: ADText.sectionLabel(c: Colors.white)),
+        UiText(UiMessage.m_beta_free_595bdcba56, style: ADText.sectionLabel(c: Colors.white)),
       ]),
     );
   }

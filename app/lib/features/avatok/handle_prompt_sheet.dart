@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -95,6 +98,7 @@ class _HandlePromptSheetState extends State<_HandlePromptSheet> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final mq = MediaQuery.of(context);
     final bottom = mq.viewInsets.bottom + mq.padding.bottom + 16;
     // RESPUI: wrap in a scroll view so a small screen + open keyboard (which
@@ -127,13 +131,12 @@ class _HandlePromptSheetState extends State<_HandlePromptSheet> {
             const SizedBox(height: Msg.s3),
             Text.rich(
               TextSpan(children: [
-                TextSpan(text: 'Pick your ', style: ADText.appTitle()),
-                TextSpan(text: 'handle', style: ADText.appTitle(c: AD.primaryBadge)),
+                TextSpan(text: uiCopy(UiMessage.m_pick_your_422d86c758), style: ADText.appTitle()),
+                TextSpan(text: uiCopy(UiMessage.m_handle_c2a116aa91), style: ADText.appTitle(c: AD.primaryBadge)),
               ]),
             ),
             const SizedBox(height: 8),
-            Text('A @handle is how friends find and tag you on AvaTok. You can change it '
-                'later in your profile.',
+            UiText(UiMessage.m_a_handle_is_how_friends_6d604bf445,
                 style: ADText.preview()),
             const SizedBox(height: Msg.s4),
             // White dark-v2 handle field with a leading @ and a status trailing.
@@ -162,7 +165,7 @@ class _HandlePromptSheetState extends State<_HandlePromptSheet> {
                     decoration: InputDecoration(
                       isDense: true,
                       border: InputBorder.none,
-                      hintText: 'yourname',
+                      hintText: uiCopy(UiMessage.m_yourname_22f6e39681),
                       hintStyle: ADText.rowName(c: AD.placeholderOnWhite),
                       contentPadding: const EdgeInsets.symmetric(vertical: Msg.s4),
                     ),
@@ -189,14 +192,14 @@ class _HandlePromptSheetState extends State<_HandlePromptSheet> {
                   child: _saving
                       ? const SizedBox(width: 20, height: 20,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : Text('Set handle', style: ADText.threadName(c: Colors.white)),
+                      : UiText(UiMessage.m_set_handle_56fec2cbac, style: ADText.threadName(c: Colors.white)),
                 ),
               ),
             ),
             const SizedBox(height: Msg.s2),
             Center(child: GestureDetector(
               onTap: _saving ? null : _skip,
-              child: Text('Maybe later', style: ADText.preview(c: AD.textSecondary)),
+              child: UiText(UiMessage.m_maybe_later_2ac741e620, style: ADText.preview(c: AD.textSecondary)),
             )),
           ],
         ),

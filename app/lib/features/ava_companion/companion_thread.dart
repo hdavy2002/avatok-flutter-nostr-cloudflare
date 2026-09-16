@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:async';
 import 'dart:io';
 
@@ -174,7 +177,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
         duration: const Duration(seconds: 8),
         content: const Text(BrainPrivacyNotices.disclosureText),
         action: SnackBarAction(
-          label: 'Turn off',
+          label: uiCopy(UiMessage.m_turn_off_06f0e210b2),
           onPressed: () {
             Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const BrainSettingsScreen()));
@@ -245,7 +248,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
   /// Build a short, friendly session name from the first user message.
   static String _autoName(String text) {
     var t = text.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (t.isEmpty) return 'New chat';
+    if (t.isEmpty) return uiCopy(UiMessage.m_new_chat_db18382a24);
     if (t.length <= 42) return t;
     // Cut on a word boundary near 42 chars so the name doesn't end mid-word.
     final cut = t.substring(0, 42);
@@ -550,8 +553,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
     if (!AvaVoice.available) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Ava’s voice is coming soon — synthesis isn’t wired '
-                'on this build yet.')));
+            content: UiText(UiMessage.m_ava_s_voice_is_coming_1a1fdfc7ae)));
       }
       return;
     }
@@ -565,13 +567,14 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
       AvaLog.I.log('ava', 'companion voice failed: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Couldn't play Ava’s voice")));
+            const SnackBar(content: UiText(UiMessage.m_couldn_t_play_ava_s_f9fc92749b)));
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       body: SafeArea(
@@ -618,7 +621,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
         // can be pushed off a narrow screen.
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Ava',
+            UiText(UiMessage.m_ava_149f7514de,
                 style: ADText.threadName(c: onBand),
                 maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false),
             Text('${widget.persona.glyph} ${widget.persona.name}',
@@ -627,7 +630,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
           ]),
         ),
         IconButton(
-          tooltip: 'Call AvaBrain',
+          tooltip: uiCopy(UiMessage.m_call_avabrain_efb660036a),
           icon: PhosphorIcon(PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), color: onBand),
           onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const AiVoiceAgentScreen())),
@@ -647,7 +650,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
               borderRadius: AD.bubbleInRadius,
               border: Border.all(color: AD.borderControl, width: 1),
             ),
-            child: Text('Ava is thinking…',
+            child: UiText(UiMessage.m_ava_is_thinking_55ecde9f01,
                 style: ADText.bubbleBody(c: AD.bubbleInInk)
                     .copyWith(fontStyle: FontStyle.italic)),
           ),
@@ -669,7 +672,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
               child: Image.network(AvatarCache.sizedUrl(url, 1600),
                   errorBuilder: (_, __, ___) => const Padding(
                       padding: EdgeInsets.all(24),
-                      child: Text('Image unavailable',
+                      child: UiText(UiMessage.m_image_unavailable_7817cd0656,
                           style: TextStyle(color: Colors.white)))),
             ),
           ),
@@ -698,7 +701,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
           if (isAva)
             Padding(
               padding: const EdgeInsets.only(left: Msg.s1, bottom: Msg.s1),
-              child: Text('AVA', style: ADText.statCaption(c: AD.textSecondary)),
+              child: UiText(UiMessage.m_ava_7b7ca8a439, style: ADText.statCaption(c: AD.textSecondary)),
             ),
           if (m.text.trim().isNotEmpty)
             Container(
@@ -735,7 +738,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                       width: 20, height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2, color: AD.mediaPlaceholderLabel)),
                   const SizedBox(height: 12),
-                  Text('Generating image…',
+                  UiText(UiMessage.m_generating_image_92fa4b0e93,
                       style: ADText.preview(c: AD.mediaPlaceholderLabel)
                           .copyWith(fontStyle: FontStyle.italic)),
                 ]),
@@ -764,7 +767,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                       size: 14,
                       color: AD.iconSearch),
                   const SizedBox(width: Msg.s1),
-                  Text(_playingId == m.id ? 'Stop' : 'Listen',
+                  Text(_playingId == m.id ? uiCopy(UiMessage.m_stop_cae7d57bc0) : uiCopy(UiMessage.m_listen_225d29f620),
                       style: ADText.preview(c: AD.iconSearch)),
                 ]),
               ),
@@ -782,7 +785,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                       PhosphorIcon(PhosphorIcons.paperPlaneTilt(PhosphorIconsStyle.bold),
                           size: 14, color: AD.iconSearch),
                       const SizedBox(width: Msg.s1),
-                      Text('Use in chat', style: ADText.preview(c: AD.iconSearch)),
+                      UiText(UiMessage.m_use_in_chat_b442696526, style: ADText.preview(c: AD.iconSearch)),
                     ]),
                   ),
                   const SizedBox(width: 16),
@@ -793,7 +796,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                     PhosphorIcon(PhosphorIcons.copy(PhosphorIconsStyle.bold),
                         size: 14, color: AD.iconSearch),
                     const SizedBox(width: Msg.s1),
-                    Text('Copy', style: ADText.preview(c: AD.iconSearch)),
+                    UiText(UiMessage.m_copy_e21f935f11, style: ADText.preview(c: AD.iconSearch)),
                   ]),
                 ),
               ]),
@@ -813,7 +816,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                   PhosphorIcon(PhosphorIcons.coins(PhosphorIconsStyle.fill),
                       size: 14, color: Colors.white),
                   const SizedBox(width: Msg.s1),
-                  Text('Top up to unlock',
+                  UiText(UiMessage.m_top_up_to_unlock_64ceb5d084,
                       style: TextStyle(fontFamily: ADText.family,
                           fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white)),
                 ]),
@@ -842,7 +845,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
     Analytics.capture('discuss_with_ava_draft_copied', {'len': text.length});
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Copied — paste it into your chat.')));
+        const SnackBar(content: UiText(UiMessage.m_copied_paste_it_into_your_a69ab4cf32)));
   }
 
   // On-device dictation into the message box (private; the Whisper model
@@ -862,7 +865,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
     if (!mounted) return;
     if (s == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Couldn’t start voice-to-text.')));
+          const SnackBar(content: UiText(UiMessage.m_couldn_t_start_voice_to_218709712d)));
       return;
     }
     setState(() { _stt = s; _sttActive = true; });
@@ -903,7 +906,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
             constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
             icon: PhosphorIcon(PhosphorIcons.paperclip(PhosphorIconsStyle.bold), color: AD.textSecondary, size: 24),
             onPressed: _busy ? null : _attachFile,
-            tooltip: 'Attach a file (saved to AvaLibrary + indexed for Ava)',
+            tooltip: uiCopy(UiMessage.m_attach_a_file_saved_to_5e62225779),
           ),
           const SizedBox(width: 4),
           // Mic → voice call (online) or dictation (on-device). Tap again to stop
@@ -917,7 +920,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                     : PhosphorIcons.microphone(PhosphorIconsStyle.fill),
                 color: _sttActive ? AD.danger : AD.iconSearch, size: 24),
             onPressed: _sttActive ? _stopVoiceToText : _startVoiceToText,
-            tooltip: _sttActive ? 'Stop voice-to-text' : 'Voice call or dictate',
+            tooltip: _sttActive ? uiCopy(UiMessage.m_stop_voice_to_text_6d8b0d2450) : uiCopy(UiMessage.m_voice_call_or_dictate_358370af17),
           ),
         ]),
         const SizedBox(height: Msg.s1),
@@ -943,7 +946,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                   border: InputBorder.none,
                   isDense: true,
                   contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                  hintText: 'Message Ava…',
+                  hintText: uiCopy(UiMessage.m_message_ava_5ff5350b8f),
                   hintStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
                       fontSize: 14, color: AD.placeholderOnWhite),
                 ),

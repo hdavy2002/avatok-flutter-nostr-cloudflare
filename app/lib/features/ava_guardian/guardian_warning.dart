@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -119,6 +122,7 @@ class GuardianWarningCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final accent = info.accent;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -152,7 +156,7 @@ class GuardianWarningCard extends StatelessWidget {
                   style: ADText.preview(c: AD.textSecondary)
                       .copyWith(fontSize: 12)),
               const SizedBox(height: Msg.s1),
-              Text('Tap for safety options',
+              UiText(UiMessage.m_tap_for_safety_options_6ffb31fd87,
                   style: ADText.tabLabel(c: accent).copyWith(fontSize: 11)),
             ]),
           ),
@@ -175,7 +179,7 @@ class GuardianWarningCard extends StatelessWidget {
           borderRadius: Msg.brPill,
           border: Border.all(color: AD.borderHairline, width: 1),
         ),
-        child: Text('Only you',
+        child: UiText(UiMessage.m_only_you_c080649df6,
             style: ADText.statCaption(c: AD.textSecondary).copyWith(fontSize: 10)),
       );
 }
@@ -216,6 +220,7 @@ class GuardianWarningSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final accent = info.accent;
     return SafeArea(
       child: Padding(
@@ -228,7 +233,7 @@ class GuardianWarningSheet extends StatelessWidget {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(info.title,
                     style: ADText.threadName().copyWith(fontSize: 18)),
-                Text('From Ava — only you can see this',
+                UiText(UiMessage.m_from_ava_only_you_can_f1f5033979,
                     style: ADText.preview(c: AD.textSecondary)
                         .copyWith(fontSize: 12)),
               ]),
@@ -251,7 +256,7 @@ class GuardianWarningSheet extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(bottom: Msg.s2),
               child: ZineButton(
-                label: 'Block this person',
+                label: uiCopy(UiMessage.m_block_this_person_ad4a8820cd),
                 variant: ZineButtonVariant.coral,
                 fullWidth: true,
                 icon: PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
@@ -266,7 +271,7 @@ class GuardianWarningSheet extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(bottom: Msg.s2),
               child: ZineButton(
-                label: 'Report to AvaTOK',
+                label: uiCopy(UiMessage.m_report_to_avatok_72618e5255),
                 variant: ZineButtonVariant.blue,
                 fullWidth: true,
                 icon: PhosphorIcons.flag(PhosphorIconsStyle.bold),
@@ -282,7 +287,7 @@ class GuardianWarningSheet extends StatelessWidget {
               Navigator.pop(context);
               onDismiss?.call();
             },
-            child: Text('Dismiss',
+            child: UiText(UiMessage.m_dismiss_48845bff33,
                 style: ADText.rowName(c: AD.textSecondary)
                     .copyWith(fontSize: 14)),
           ),

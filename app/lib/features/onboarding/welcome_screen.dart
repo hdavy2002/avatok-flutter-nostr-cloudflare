@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -15,6 +17,7 @@ class WelcomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       body: Container(
         color: AD.bg,
@@ -54,9 +57,9 @@ class WelcomeScreen extends StatelessWidget {
                         letterSpacing: 0.44,
                         color: AD.textPrimary),
                     children: [
-                      const TextSpan(text: 'Ava'),
+                       TextSpan(text: uiCopy(UiMessage.m_ava_149f7514de)),
                       TextSpan(
-                          text: 'TOK',
+                          text: uiCopy(UiMessage.m_tok_ca36cd3eaf),
                           style: const TextStyle(color: AD.iconSearch)),
                     ],
                   ),
@@ -65,8 +68,8 @@ class WelcomeScreen extends StatelessWidget {
               const SizedBox(height: Msg.s3),
               Text.rich(
                 TextSpan(children: [
-                  const TextSpan(text: 'Meet '),
-                  TextSpan(text: 'Ava', style: const TextStyle(color: AD.primaryBadge)),
+                   TextSpan(text: uiCopy(UiMessage.m_meet_6669ac2baf)),
+                  TextSpan(text: uiCopy(UiMessage.m_ava_149f7514de), style: const TextStyle(color: AD.primaryBadge)),
                   const TextSpan(text: '.'),
                 ]),
                 textAlign: TextAlign.center,
@@ -74,17 +77,15 @@ class WelcomeScreen extends StatelessWidget {
               ),
               const SizedBox(height: Msg.s2),
               Center(
-                child: Text('Way more than an assistant.',
+                child: UiText(UiMessage.m_way_more_than_an_assistant_4edc623f85,
                     style: ADText.threadName().copyWith(fontSize: 17), textAlign: TextAlign.center),
               ),
               const SizedBox(height: Msg.s3),
               Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 320),
-                  child: Text(
-                    "Ava replies to your group chats while you're away, talks to "
-                    "strangers while you sleep, keeps your records, calls for help in "
-                    "an emergency — and just talks when you're bored. The Siri of messaging.",
+                  child: UiText(
+                    UiMessage.m_ava_replies_to_your_group_e877ddc6b7,
                     style: ADText.preview(c: AD.textSecondary),
                     textAlign: TextAlign.center,
                   ),
@@ -99,7 +100,7 @@ class WelcomeScreen extends StatelessWidget {
               ),
               const SizedBox(height: 24),
               AdButton(
-                label: "Let's go",
+                label: uiCopy(UiMessage.m_let_s_go_b59bed0f27),
                 icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
                 fullWidth: true,
                 fontSize: 21,
@@ -107,7 +108,7 @@ class WelcomeScreen extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               Center(
-                child: Text('by continuing you agree to our terms & privacy',
+                child: UiText(UiMessage.m_by_continuing_you_agree_to_6ebbdd4173,
                     style: ADText.sectionLabel(c: AD.textTertiary), textAlign: TextAlign.center),
               ),
                 ]),

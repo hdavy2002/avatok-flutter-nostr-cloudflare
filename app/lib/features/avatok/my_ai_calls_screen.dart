@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -104,21 +106,20 @@ class _MyAiCallsScreenState extends State<MyAiCallsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: AppBar(
         backgroundColor: AD.headerFooter,
         elevation: 0,
-        title: Text('My AI calls', style: ADText.appTitle()),
+        title: UiText(UiMessage.m_my_ai_calls_f279faed37, style: ADText.appTitle()),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
           : !_available
-              ? _emptyState('My AI calls isn’t available on your account yet.')
+              ? _emptyState(uiCopy(UiMessage.m_my_ai_calls_isn_t_2e727c6d2f))
               : _calls.isEmpty
-                  ? _emptyState('Calls you make to Ava AI agents (other people’s '
-                      'business numbers) will show up here — with the full '
-                      'transcript, so you never lose what you paid for.')
+                  ? _emptyState(uiCopy(UiMessage.m_calls_you_make_to_ava_16a5c2da6a))
                   : RefreshIndicator(
                       onRefresh: _load,
                       child: ListView.separated(
@@ -171,8 +172,8 @@ class _MyAiCallsScreenState extends State<MyAiCallsScreen> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(
               c.serviceName.isEmpty
-                  ? (c.ownerName.isEmpty ? 'Ava AI agent' : c.ownerName)
-                  : '${c.serviceName} by ${c.ownerName.isEmpty ? 'owner' : c.ownerName}',
+                  ? (c.ownerName.isEmpty ? uiCopy(UiMessage.m_ava_ai_agent_cb034b5a89) : c.ownerName)
+                  : uiCopy(UiMessage.m_value1_by_value2_7488512832, {'value1': (c.serviceName).toString(), 'value2': (c.ownerName.isEmpty ? 'owner' : c.ownerName).toString()}),
               style: ADText.rowName(),
             ),
             const SizedBox(height: 2),
@@ -241,13 +242,14 @@ class _MyAiCallDetailScreenState extends State<_MyAiCallDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final c = widget.call;
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: AppBar(
         backgroundColor: AD.headerFooter,
         elevation: 0,
-        title: Text(c.serviceName.isEmpty ? 'AI call' : c.serviceName, style: ADText.threadName()),
+        title: Text(c.serviceName.isEmpty ? uiCopy(UiMessage.m_ai_call_d09135ff5a) : c.serviceName, style: ADText.threadName()),
         actions: [
           if (_t != null)
             IconButton(
@@ -259,7 +261,7 @@ class _MyAiCallDetailScreenState extends State<_MyAiCallDetailScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
           : _t == null
-              ? Center(child: Text('Couldn’t load this transcript.', style: ADText.preview()))
+              ? Center(child: UiText(UiMessage.m_couldn_t_load_this_transcript_cb9bdde040, style: ADText.preview()))
               : ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
@@ -276,7 +278,7 @@ class _MyAiCallDetailScreenState extends State<_MyAiCallDetailScreen> {
                       Padding(
                         padding: const EdgeInsets.only(bottom: Msg.s3),
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(t.speaker == 'caller' ? 'You' : 'Ava', style: ADText.statCaption()),
+                          Text(t.speaker == 'caller' ? uiCopy(UiMessage.m_you_08b0419357) : uiCopy(UiMessage.m_ava_149f7514de), style: ADText.statCaption()),
                           const SizedBox(height: 2),
                           Text(t.text, style: ADText.bubbleBody()),
                         ]),

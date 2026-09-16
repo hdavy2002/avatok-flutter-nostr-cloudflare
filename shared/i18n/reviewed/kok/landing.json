@@ -1,0 +1,342 @@
+{
+  "reviewed": false,
+  "provenance": "Imported indiaLandingTranslationsRegional.ts native-speaker review required before publication.",
+  "messages": {
+    "skip": {
+      "source": "Skip to main content",
+      "text": "मुखेल मजकुराक वचात"
+    },
+    "eyebrow": {
+      "source": "India creator ticket window",
+      "text": "भारतीय निर्मात्यांची तिकीट खिडकी"
+    },
+    "heroTitle": {
+      "source": "Have a fanbase? Start your show.",
+      "text": "चाहते आसात? आपलो शो रंगयात."
+    },
+    "heroBody": {
+      "source": "Your skill, your story, your time — invite fans and take bookings on your terms.",
+      "text": "तुमची कला, तुमची काणी, तुमचो वेळ—चाहत्यांक आपोवणें दियात आनी तुमच्या अटींनी बुकिंग घेयात."
+    },
+    "heroPrimary": {
+      "source": "Start creating free",
+      "text": "फुकट सुरवात करात"
+    },
+    "heroSecondary": {
+      "source": "See earning formats",
+      "text": "कमायेचे पर्याय पळयात"
+    },
+    "heroTicket": {
+      "source": "Your page. Your price. Your people.",
+      "text": "तुमचें पान. तुमचो दर. तुमचे चाहते."
+    },
+    "liveEyebrow": {
+      "source": "FORMAT 01 · LIVE",
+      "text": "प्रकार 01 · थेट प्रसारण"
+    },
+    "liveTitle": {
+      "source": "Turn your livestream into an event.",
+      "text": "तुमच्या लाइव्हाक खास कार्यक्रम करात."
+    },
+    "liveBody": {
+      "source": "A live class, watch party, rehearsal, puja — add a ticket, open the room, meet your fans.",
+      "text": "थेट वर्ग, गजाली, तालीम वा पूजा—तिकीट दवरात आनी चाहत्यांक मेळात."
+    },
+    "liveCta": {
+      "source": "Plan a live event",
+      "text": "थेट कार्यक्रम आखात"
+    },
+    "liveMeta": {
+      "source": "Ticketed · Hosted online",
+      "text": "तिकिटासयत · ऑनलाइन"
+    },
+    "oneEyebrow": {
+      "source": "FORMAT 02 · 1:1",
+      "text": "प्रकार 02 · 1:1"
+    },
+    "oneTitle": {
+      "source": "Your time, one fan at a time.",
+      "text": "एक चाहतो. तुमचो खास वेळ."
+    },
+    "oneBody": {
+      "source": "Open slots for an online video meetup. Advice, practice, stories or one focused conversation.",
+      "text": "ऑनलाइन व्हिडियो भेटीखातीर वेळ दियात. सल्लो, सराव, काणयो वा निवांत गजाली."
+    },
+    "oneCta": {
+      "source": "Offer a 1:1 session",
+      "text": "1:1 सत्र दिवपाक लागात"
+    },
+    "oneMeta": {
+      "source": "Private · Video meetup",
+      "text": "खासगी · व्हिडियो भेट"
+    },
+    "showcaseEyebrow": {
+      "source": "THE BIG SCREEN",
+      "text": "व्हडल्या पडद्यार"
+    },
+    "showcaseTitle": {
+      "source": "What happens on screen can become a connection.",
+      "text": "पडद्यावयली वळख आतां खास नातें जावंक शकता."
+    },
+    "showcaseBody": {
+      "source": "Music, makeup, gaming, recipes, dance, devotion — people are already watching. Give them a room.",
+      "text": "संगीत, मेकअप, गेमिंग, जेवण, नाच—चाहते पळयतात. आतां तांकां एकठांय हाडात."
+    },
+    "showcaseLabel": {
+      "source": "Live room / Saturday 8:00 PM",
+      "text": "थेट कार्यक्रम / शनवारा रातीं 8 वरांचेर"
+    },
+    "showcaseButton": {
+      "source": "Explore the marketplace",
+      "text": "बाजारपेठ पळयात"
+    },
+    "meetupEyebrow": {
+      "source": "YOUR CALENDAR, YOUR RULES",
+      "text": "तुमचो वेळ, तुमचे नेम"
+    },
+    "meetupTitle": {
+      "source": "Your 1:1 corner.",
+      "text": "तुमचो 1:1 कट्टो."
+    },
+    "meetupBody": {
+      "source": "Set your availability, explain the format, and keep expectations clear before every booking. Online only, always.",
+      "text": "तुमची उपलब्धता थारायात, सत्राचें स्वरूप सांगात आनी बुकिंगाआदी अपेक्षा स्पष्ट करात. भेट ऑनलाइन जातली."
+    },
+    "meetupNote": {
+      "source": "Online video meetups, with clear boundaries.",
+      "text": "स्पष्ट मर्यादांनी ऑनलाइन व्हिडियो भेटी."
+    },
+    "ideasEyebrow": {
+      "source": "FROM CONTENT TO OFFER",
+      "text": "कंटेंटांतल्यान कमायेची संधी"
+    },
+    "ideasTitle": {
+      "source": "What will you host?",
+      "text": "तुमी कितें सादर करतले?"
+    },
+    "ideaOneTitle": {
+      "source": "Dance adda",
+      "text": "नाचाचो कट्टो"
+    },
+    "ideaOneBody": {
+      "source": "Choreography, feedback, practice room.",
+      "text": "नाचाची रचना, अभिप्राय आनी एकठांय सराव."
+    },
+    "ideaTwoTitle": {
+      "source": "Home flavours",
+      "text": "घरचो स्वाद"
+    },
+    "ideaTwoBody": {
+      "source": "Recipe live, regional thali, kitchen hacks.",
+      "text": "थेट पाककृती, प्रादेशिक थाळी आनी रांदपाच्यो युक्त्यो."
+    },
+    "ideaThreeTitle": {
+      "source": "Study buddy",
+      "text": "अभ्यासाचो सोबती"
+    },
+    "ideaThreeBody": {
+      "source": "Revision sprint, language practice, exam pep talk.",
+      "text": "उजळणी, भाशेचो सराव आनी परीक्षेखातीर उमेद."
+    },
+    "ideaFourTitle": {
+      "source": "Style desk",
+      "text": "स्टायल कट्टो"
+    },
+    "ideaFourBody": {
+      "source": "Look breakdowns, draping, thrift finds.",
+      "text": "पेहरावाची माहिती, साडी नेसप आनी स्वस्त फॅशन."
+    },
+    "journeyEyebrow": {
+      "source": "HOW IT WORKS",
+      "text": "हें कशें चलता"
+    },
+    "journeyTitle": {
+      "source": "From poster to booking — four easy moves.",
+      "text": "पोस्टरांतल्यान बुकिंगामेरेन—चार सोपीं पावलां."
+    },
+    "stepOne": {
+      "source": "Create",
+      "text": "तयार करात"
+    },
+    "stepOneBody": {
+      "source": "Write your creator page and offer.",
+      "text": "तुमचें निर्मात्याचें पान आनी सत्राची माहिती बरयात."
+    },
+    "stepTwo": {
+      "source": "Price",
+      "text": "दर थारायात"
+    },
+    "stepTwoBody": {
+      "source": "Choose your ticket or session price.",
+      "text": "तिकिटाचो वा सत्राचो दर निवडात."
+    },
+    "stepThree": {
+      "source": "Share",
+      "text": "वांटात"
+    },
+    "stepThreeBody": {
+      "source": "Send the link to your community.",
+      "text": "तुमच्या चाहत्यांक लिंक धाडात."
+    },
+    "stepFour": {
+      "source": "Host",
+      "text": "सत्र घेयात"
+    },
+    "stepFourBody": {
+      "source": "Open the room, give your time, run your show.",
+      "text": "ऑनलाइन येयात, वेळ दियात आनी तुमचो शो रंगयात."
+    },
+    "bookingEyebrow": {
+      "source": "FOR YOUR FANS",
+      "text": "तुमच्या चाहत्यांखातीर"
+    },
+    "bookingTitle": {
+      "source": "What does booking look like for a fan?",
+      "text": "चाहत्याक बुकिंग कशें दिसतलें?"
+    },
+    "bookingBody": {
+      "source": "One clear page. One date. One seat. After payment, they get the route to the room.",
+      "text": "एक स्पष्ट पान. एक तारीख. एक आसन. पैसे दिल्या उपरांत सत्रांत येवपाची माहिती मेळटा."
+    },
+    "bookingCta": {
+      "source": "Browse real listings",
+      "text": "खऱ्यो लिस्टिंग पळयात"
+    },
+    "bookingTicket": {
+      "source": "BOOKING PASS",
+      "text": "बुकिंग पास"
+    },
+    "bookingLive": {
+      "source": "LIVE EVENT",
+      "text": "थेट कार्यक्रम"
+    },
+    "bookingSeat": {
+      "source": "1 seat reserved",
+      "text": "1 आसन राखीव"
+    },
+    "bookingOnline": {
+      "source": "Online · India",
+      "text": "ऑनलाइन · भारत"
+    },
+    "calcEyebrow": {
+      "source": "THE MATH, CLEARLY",
+      "text": "हिशोब स्पष्ट"
+    },
+    "calcTitle": {
+      "source": "See your gross estimate.",
+      "text": "एकूण कमायेचो अदमास पळयात."
+    },
+    "calcBody": {
+      "source": "Change the inputs to see what ticketed events or 1:1 bookings could gross.",
+      "text": "आंकडे बदलून थेट कार्यक्रम आनी 1:1 बुकिंगांतल्यान कितली कमाय जावंक शकता तें पळयात."
+    },
+    "calcLiveLabel": {
+      "source": "Live ticket price",
+      "text": "लाइव्ह तिकिटाचो दर"
+    },
+    "calcAudienceLabel": {
+      "source": "Audience per event",
+      "text": "दरेक कार्यक्रमांतले प्रेक्षक"
+    },
+    "calcEventsLabel": {
+      "source": "Events per month",
+      "text": "म्हयन्यांतले कार्यक्रम"
+    },
+    "calcOneLabel": {
+      "source": "1:1 price",
+      "text": "1:1 सत्राचो दर"
+    },
+    "calcBookingsLabel": {
+      "source": "Bookings per month",
+      "text": "म्हयन्यांतलीं बुकिंग"
+    },
+    "calcLiveTotal": {
+      "source": "Live event gross",
+      "text": "थेट कार्यक्रमाची एकूण कमाय"
+    },
+    "calcOneTotal": {
+      "source": "1:1 gross",
+      "text": "1:1 ची एकूण कमाय"
+    },
+    "calcTotal": {
+      "source": "Combined gross estimate",
+      "text": "एकठांय कमायेचो अदमास"
+    },
+    "calcDisclaimer": {
+      "source": "Illustrative gross before platform fees, taxes, refunds and other costs. Not a promise of earnings.",
+      "text": "हो शुल्क, कर, परतावे आनी हेर खर्च वजा करचे पयलींचो नमुनो अदमास. कमायेची हमी ना."
+    },
+    "calcPricingNote": {
+      "source": "Planning example in INR; actual listing pricing and checkout quotes follow the current pricing guide.",
+      "text": "नियोजनाखातीर रुपयांत उदाहरण; खरी किंमत आनी पेमेंटाची रक्कम सद्याच्या दर मार्गदर्शकाप्रमाणें आसतली."
+    },
+    "boundariesEyebrow": {
+      "source": "GOOD TO KNOW",
+      "text": "जाणून घेयात"
+    },
+    "boundariesTitle": {
+      "source": "Clear boundaries make better rooms.",
+      "text": "स्पष्ट मर्यादा, बरो अनुभव."
+    },
+    "faqOneQ": {
+      "source": "Do I need a big following?",
+      "text": "खूब चाहते आसप गरजेचें काय?"
+    },
+    "faqOneA": {
+      "source": "No. Start with one useful offer and share it with people who already care about your work.",
+      "text": "ना. एक उपेगी सत्र घेवन सुरवात करात आनी तुमच्या कामांत रस आशिल्ल्यांक सांगात."
+    },
+    "faqTwoQ": {
+      "source": "Is this an in-person booking?",
+      "text": "ही प्रत्यक्ष भेट आसा काय?"
+    },
+    "faqTwoA": {
+      "source": "No. Live events and 1:1 sessions happen online. Keep your listing and expectations specific.",
+      "text": "ना. थेट कार्यक्रम आनी 1:1 सत्रां ऑनलाइन जातात. सत्राची माहिती स्पष्ट दवरात."
+    },
+    "faqThreeQ": {
+      "source": "When do I get paid?",
+      "text": "म्हाका पैसे केन्ना मेळटले?"
+    },
+    "faqThreeA": {
+      "source": "Payout timing and eligible methods are shown in your creator dashboard and the applicable terms.",
+      "text": "पेमेंटाचो वेळ आनी उपलब्ध पद्धती निर्मात्याच्या डॅशबोर्डाचेर आनी लागू अटींनी दिल्यात."
+    },
+    "faqFourQ": {
+      "source": "Can I set my own boundaries?",
+      "text": "हांव म्हज्यो मर्यादा थारावंक शकता काय?"
+    },
+    "faqFourA": {
+      "source": "Yes. Choose your format, availability, price and what the session includes before publishing.",
+      "text": "हय. प्रसिद्ध करचे पयलीं स्वरूप, उपलब्धता, दर आनी सत्रांत कितें आसतलें तें थारायात."
+    },
+    "closeEyebrow": {
+      "source": "YOUR TURN",
+      "text": "आतां तुमची पाळी"
+    },
+    "closeTitle": {
+      "source": "Put a ticket on your voice.",
+      "text": "तुमच्या आवाजाक तिकीट दियात."
+    },
+    "closeBody": {
+      "source": "Write one offer today. Open your first room tomorrow.",
+      "text": "आयज एक सत्र तयार करात. फाल्यां तुमचो पयलो शो सुरू करात."
+    },
+    "closeCta": {
+      "source": "Create your free listing",
+      "text": "तुमची लिस्टिंग फुकट तयार करात"
+    },
+    "ariaDecorative": {
+      "source": "Decorative",
+      "text": "सजावट"
+    },
+    "ariaCalculator": {
+      "source": "Gross earnings estimate calculator",
+      "text": "एकूण कमायेचो अदमास गणक"
+    },
+    "ariaFaq": {
+      "source": "Frequently asked questions",
+      "text": "परत परत विचारिल्ले प्रस्न"
+    }
+  }
+}

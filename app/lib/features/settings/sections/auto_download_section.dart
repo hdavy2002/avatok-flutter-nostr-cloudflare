@@ -6,6 +6,8 @@
 /// Registered via [SettingsSectionRegistry] from [AvaBootstrap.init] — no flag
 /// (this is a setting, not a gated feature).
 library;
+import '../../../core/localization/ui_text.dart';
+
 
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -22,7 +24,7 @@ void registerAutoDownloadSection() {
   SettingsSectionRegistry.register(
     SettingsSection(
       id: 'auto_download',
-      title: 'Media',
+      title: uiCopy(UiMessage.m_media_d357175cfe),
       order: 24,
       builder: (context) => const _AutoDownloadTile(),
     ),
@@ -67,6 +69,7 @@ class _AutoDownloadTileState extends State<_AutoDownloadTile> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return AdCard(
       onTap: _open,
       padding: const EdgeInsets.all(Msg.s4),
@@ -78,12 +81,12 @@ class _AutoDownloadTileState extends State<_AutoDownloadTile> {
         const SizedBox(width: 12),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Auto-download', style: ADText.rowName()),
+            UiText(UiMessage.m_auto_download_7034e9d971, style: ADText.rowName()),
             const SizedBox(height: 2),
             Text(
               _mode == null
-                  ? 'Choose when media downloads'
-                  : 'Media downloads: ${_summary(_mode)}',
+                  ? uiCopy(UiMessage.m_choose_when_media_downloads_d67946c912)
+                  : uiCopy(UiMessage.m_media_downloads_value1_f26a303d2d, {'value1': (_summary(_mode)).toString()}),
               style: ADText.preview(),
             ),
           ]),

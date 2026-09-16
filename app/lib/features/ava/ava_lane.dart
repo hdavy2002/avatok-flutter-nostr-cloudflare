@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -50,6 +52,7 @@ class AvaLaneBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final edge = _isGuardian ? safety : accent;
     return Align(
       alignment: Alignment.centerLeft,
@@ -77,7 +80,7 @@ class AvaLaneBubble extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(bottom: Msg.s1),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Text('Ava',
+                UiText(UiMessage.m_ava_149f7514de,
                     style: ADText.tabLabel(c: edge).copyWith(fontSize: 11)),
                 const SizedBox(width: Msg.s1),
                 PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
@@ -87,7 +90,7 @@ class AvaLaneBubble extends StatelessWidget {
                   PhosphorIcon(PhosphorIcons.warning(PhosphorIconsStyle.fill),
                       size: 12, color: safety),
                   const SizedBox(width: Msg.s1),
-                  Text('Safety',
+                  UiText(UiMessage.m_safety_726d11bd5b,
                       style: ADText.tabLabel(c: safety).copyWith(fontSize: 11)),
                 ],
                 const SizedBox(width: Msg.s1),
@@ -162,7 +165,7 @@ void showAvaLaneInfo(BuildContext context) {
                   size: 18, color: AvaLaneBubble.accent),
             ),
             const SizedBox(width: Msg.s3),
-            Text('Ava', style: ADText.threadName().copyWith(fontSize: 18)),
+            UiText(UiMessage.m_ava_149f7514de, style: ADText.threadName().copyWith(fontSize: 18)),
             const SizedBox(width: Msg.s1),
             PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
                 size: 15, color: AvaLaneBubble.accent),
@@ -170,14 +173,13 @@ void showAvaLaneInfo(BuildContext context) {
           const SizedBox(height: Msg.s4),
           // Sheet copy sits on AD.overlaySheet (near-black) — white ink here,
           // unlike the bubble body above which sits on the pale orchid fill.
-          Text(
-            "I'm Ava, your AI assistant. Only you can see this conversation.",
+          UiText(
+            UiMessage.m_i_m_ava_your_ai_1f4b622678,
             style: ADText.bubbleBody(c: AD.textPrimary),
           ),
           const SizedBox(height: Msg.s2),
-          Text(
-            'Ava replies here in your private lane — they are never sent to the '
-            'other person in this chat.',
+          UiText(
+            UiMessage.m_ava_replies_here_in_your_aa4c3710bd,
             style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13),
           ),
         ]),

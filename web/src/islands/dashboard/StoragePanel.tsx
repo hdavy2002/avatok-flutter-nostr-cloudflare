@@ -1,3 +1,4 @@
+import { UiText } from "../../lib/i18n/react";
 /* StoragePanel — storage usage + analytics. GET /api/storage/summary. Shape is
  * read defensively (used/quota bytes + optional per-type breakdown).
  */
@@ -40,20 +41,20 @@ function Inner() {
       <div className="rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm">
         <div className="flex items-end justify-between">
           <div>
-            <span className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-inkSoft">Used</span>
+            <span className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-inkSoft"><UiText id="web-dashboard.ae7d8dfac9ff5e0f" source="Used" /></span>
             <div className="font-display font-semibold text-[30px] leading-none text-ink">{fmtBytes(used)}</div>
           </div>
-          <span className="font-body font-bold text-[13px] text-inkSoft">of {fmtBytes(quota)} · {pct}%</span>
+          <span className="font-body font-bold text-[13px] text-inkSoft"><UiText id="web-dashboard.28391d3bc64ec15c" source="of" />{" "}{fmtBytes(quota)} · {pct}%</span>
         </div>
         <div className="mt-3 h-4 w-full overflow-hidden rounded-full border-zine border-ink bg-paper">
           <div className="h-full rounded-full bg-lime" style={{ width: `${pct}%` }} />
         </div>
-        {used / quota > 0.9 && <p className="mt-2 font-body font-bold text-[12px] text-coral">You're nearly full — free up space or add storage from your wallet.</p>}
+        {used / quota > 0.9 && <p className="mt-2 font-body font-bold text-[12px] text-coral"><UiText id="web-dashboard.665af7683e939f0d" source="You're nearly full — free up space or add storage from your wallet." /></p>}
       </div>
 
       {breakdown.length > 0 && (
         <div>
-          <h2 className="mb-3 font-display font-semibold text-[18px] text-ink">By type</h2>
+          <h2 className="mb-3 font-display font-semibold text-[18px] text-ink"><UiText id="web-dashboard.df03ee78b5cafd91" source="By type" /></h2>
           <div className="flex flex-col gap-2">
             {breakdown.sort((a, b) => b.bytes - a.bytes).map((b, i) => {
               const w = quota > 0 ? Math.min(100, Math.round((b.bytes / quota) * 100)) : 0;

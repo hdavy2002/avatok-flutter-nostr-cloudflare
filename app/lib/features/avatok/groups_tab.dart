@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart'; // [RAJ-SEAMS-1]
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -98,7 +101,7 @@ class _GroupsTabState extends State<GroupsTab> {
   Future<void> _respondInvite(GroupInvite inv, bool accept) async {
     final ok = await GroupInvitesApi.respond(conv: inv.conv, accept: accept);
     if (!ok) {
-      if (mounted) showAdToast(context, message: "Couldn't respond — try again.");
+      if (mounted) showAdToast(context, message: uiCopy(UiMessage.m_couldn_t_respond_try_again_e059454513));
       return;
     }
     if (mounted) showAdToast(context, message: accept ? 'Joined ${inv.groupName}' : 'Invite declined');
@@ -140,6 +143,7 @@ class _GroupsTabState extends State<GroupsTab> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // [ISSUE-GROUPS-SEARCH-1] Derived views; both sections narrow under a query.
     final visibleGroups = _groups.where((g) => _nameMatches(g.name)).toList();
     final visibleInvites = _invites.where((i) => _nameMatches(i.groupName)).toList();
@@ -149,7 +153,7 @@ class _GroupsTabState extends State<GroupsTab> {
       backgroundColor: AD.bg,
       floatingActionButton: _fab(
         icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
-        label: 'New group',
+        label: uiCopy(UiMessage.m_new_group_df796c655f),
         onTap: _newGroup,
       ),
       // [RAJ-SINGLEWAVE-1 2026-08-21] THE SECOND HEADER AND THE SECOND WAVE ARE
@@ -183,7 +187,7 @@ class _GroupsTabState extends State<GroupsTab> {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
             child: AdSearchDock(
               controller: _searchCtl,
-              hint: 'Search groups',
+              hint: uiCopy(UiMessage.m_search_groups_6b6482a28b),
               onChanged: (v) => setState(() => _query = v),
             ),
           ),
@@ -201,12 +205,12 @@ class _GroupsTabState extends State<GroupsTab> {
                         // Section headers are tied to their FILTERED section, so a
                         // header never survives alone when its rows are filtered out.
                         if (visibleInvites.isNotEmpty) ...[
-                          Text('PENDING INVITES', style: ADText.sectionLabel()),
+                          UiText(UiMessage.m_pending_invites_c218c5aa2f, style: ADText.sectionLabel()),
                           const SizedBox(height: Msg.s2),
                           for (final inv in visibleInvites)
                             Padding(padding: const EdgeInsets.only(bottom: 12), child: _inviteCard(inv)),
                           const SizedBox(height: 4),
-                          if (visibleGroups.isNotEmpty) Text('YOUR GROUPS', style: ADText.sectionLabel()),
+                          if (visibleGroups.isNotEmpty) UiText(UiMessage.m_your_groups_d631ad3618, style: ADText.sectionLabel()),
                           if (visibleGroups.isNotEmpty) const SizedBox(height: Msg.s2),
                         ],
                         // NOTE: _groupCard's index seeds its badge colour
@@ -315,11 +319,11 @@ class _GroupsTabState extends State<GroupsTab> {
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             Text(g.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.threadName()),
             const SizedBox(height: Msg.s1),
-            Text(g.description.isNotEmpty ? g.description : 'Tap to open · calls inside',
+            Text(g.description.isNotEmpty ? g.description : uiCopy(UiMessage.m_tap_to_open_calls_inside_0958d23c36),
                 maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.preview()),
           ])),
           const SizedBox(width: Msg.s2),
-          Text('${g.members.length} MEMBERS', style: ADText.statCaption()),
+          UiText(UiMessage.m_value1_members_977f064668, params: {'value1': (g.members.length).toString()}, style: ADText.statCaption()),
         ]),
       );
 
@@ -338,18 +342,18 @@ class _GroupsTabState extends State<GroupsTab> {
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
               Text(inv.groupName, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.threadName()),
               const SizedBox(height: Msg.s1),
-              Text("You've been invited to join${inv.memberCount > 0 ? ' · ${inv.memberCount} members' : ''}",
+              UiText(UiMessage.m_you_ve_been_invited_to_dad356cfed, params: {'value1': (inv.memberCount > 0 ? ' · ${inv.memberCount} members' : '').toString()},
                   maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.preview()),
             ])),
           ]),
           const SizedBox(height: 12),
           Row(children: [
             Expanded(child: _pillButton(
-              label: 'Accept', fill: AD.newGroup, labelColor: Colors.white,
+              label: uiCopy(UiMessage.m_accept_89713b9c9c), fill: AD.newGroup, labelColor: Colors.white,
               onTap: () => _respondInvite(inv, true))),
             const SizedBox(width: Msg.s2),
             Expanded(child: _pillButton(
-              label: 'Decline', fill: AD.card, labelColor: AD.textPrimary,
+              label: uiCopy(UiMessage.m_decline_a2d285b352), fill: AD.card, labelColor: AD.textPrimary,
               borderColor: AD.borderControl, onTap: () => _respondInvite(inv, false))),
           ]),
         ]),
@@ -399,7 +403,7 @@ class _GroupsTabState extends State<GroupsTab> {
                   size: 32, color: AD.textTertiary)),
             ),
             const SizedBox(height: Msg.s3),
-            Text('No groups match "$_query"',
+            UiText(UiMessage.m_no_groups_match_query_dadab4c647, params: {'query': (_query).toString()},
                 textAlign: TextAlign.center,
                 style: ADText.preview(c: AD.textSecondary)),
           ]),
@@ -420,16 +424,15 @@ class _GroupsTabState extends State<GroupsTab> {
               excludeFromSemantics: true,
             ),
             const SizedBox(height: Msg.s3),
-            Text(
-              'No groups yet — start a group chat with a few people. '
-              'Up to 5 can be on a free call; paid plans unlock larger calls.',
+            UiText(
+              UiMessage.m_no_groups_yet_start_a_e83ee26fd1,
               textAlign: TextAlign.center,
               style: ADText.preview(c: AD.textSecondary),
             ),
             const SizedBox(height: Msg.s4),
             _fab(
               icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
-              label: 'New group',
+              label: uiCopy(UiMessage.m_new_group_df796c655f),
               onTap: _newGroup,
             ),
           ]),

@@ -1,3 +1,6 @@
+
+import '../localization/ui_text.dart';
+
 import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -37,6 +40,7 @@ class EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 36, vertical: Msg.s5),
@@ -85,6 +89,7 @@ class ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 36, vertical: Msg.s5),
@@ -107,7 +112,7 @@ class ErrorState extends StatelessWidget {
           if (onRetry != null) ...[
             const SizedBox(height: Msg.s4),
             ZineButton(
-              label: 'Try again',
+              label: uiCopy(UiMessage.m_try_again_d8b8392e2c),
               onPressed: onRetry,
               variant: ZineButtonVariant.ghost,
               fontSize: 17,
@@ -153,6 +158,7 @@ class _OfflineBannerState extends State<OfflineBanner> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (!_offline) return const SizedBox.shrink();
     return Container(
       width: double.infinity,
@@ -166,7 +172,7 @@ class _OfflineBannerState extends State<OfflineBanner> {
             color: AD.textSecondary, size: 14),
         const SizedBox(width: Msg.s2),
         Flexible(
-          child: Text("You're offline — showing saved data",
+          child: UiText(UiMessage.m_you_re_offline_showing_saved_2177e96513,
               style: ADText.sectionLabel(c: AD.textSecondary)),
         ),
       ]),

@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../lib/i18n/react";
+import { UiText } from "../lib/i18n/react";
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { capture } from '../lib/analytics';
 import { rmsLevel, SpeakerTone, type SpeakerState } from './audioDeviceChecks';
@@ -11,6 +13,8 @@ function getAudioContextCtor(): AudioContextCtor | undefined {
 }
 
 export function AudioMeter({ stream, disabled = false }: { stream: MediaStream | null; disabled?: boolean }) {
+  const {t:uiT}=useUiTranslation("web-common");
+
   const [level, setLevel] = useState(0);
   const [status, setStatus] = useState<'idle' | 'checking' | 'active' | 'unavailable'>('idle');
   const cleanupRef = useRef<(() => void) | null>(null);
@@ -72,17 +76,19 @@ export function AudioMeter({ stream, disabled = false }: { stream: MediaStream |
     : status === 'active' && level > 0.04 ? 'Microphone input detected.' : 'No microphone input detected yet.';
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-2" aria-label={message}>
-      <span className="shrink-0 font-mono text-[11px] font-bold uppercase tracking-[0.08em] text-inkMute">Mic level</span>
-      <span className="flex h-3 min-w-[100px] flex-1 gap-0.5" role="meter" aria-valuemin={0} aria-valuemax={1} aria-valuenow={level} aria-valuetext={message} aria-label="Microphone input level">
+      <span className="shrink-0 font-mono text-[11px] font-bold uppercase tracking-[0.08em] text-inkMute"><UiText id="web-common.085f1ddc797c4ff0" source="Mic level" /></span>
+      <span className="flex h-3 min-w-[100px] flex-1 gap-0.5" role="meter" aria-valuemin={0} aria-valuemax={1} aria-valuenow={level} aria-valuetext={message} aria-label={uiT("web-common.073d5ce57e193b92","Microphone input level")}>
         {Array.from({ length: 12 }, (_, index) => <span key={index} className={`h-3 min-w-[3px] flex-1 rounded-sm ${index / 12 < level ? 'bg-lime' : 'bg-ink/15'}`} />)}
       </span>
-      {status === 'unavailable' && <button type="button" onClick={start} className="rounded-zine-field border-zine border-ink bg-card px-2 py-1 font-display text-[12px] font-semibold text-ink">Retry mic check</button>}
+      {status === 'unavailable' && <button type="button" onClick={start} className="rounded-zine-field border-zine border-ink bg-card px-2 py-1 font-display text-[12px] font-semibold text-ink"><UiText id="web-common.cdf93f2a901ac3e5" source="Retry mic check" /></button>}
       <span className="sr-only">{message}</span>
     </div>
   );
 }
 
 export function SpeakerTest() {
+  const {t:uiT}=useUiTranslation("web-common");
+
   const tone = useRef<SpeakerTone | null>(null);
   const [state, setState] = useState<SpeakerState>({ playing: false, tested: false, error: null });
   useEffect(() => {
@@ -98,10 +104,10 @@ export function SpeakerTest() {
     <div className="flex flex-col items-start gap-1">
       <button type="button" onClick={() => state.playing ? tone.current?.stop() : tone.current?.start()}
         className="rounded-zine-field border-zine border-ink bg-card px-3 py-2 font-display text-[13px] font-semibold text-ink">
-        {state.playing ? 'Stop test' : 'Test speaker'}
+        {state.playing ? uiT("web-common.baf8fb004fc8fe77","Stop test") : uiT("web-common.97f8bc6471b566f8","Test speaker")}
       </button>
       {state.error && <span role="status" className="font-body text-[12px] font-bold text-coral">{state.error}</span>}
-      {(state.playing || state.tested) && <span className="font-body text-[12px] text-inkMute">Did you hear the sound? Check your volume and connected headphones.</span>}
+      {(state.playing || state.tested) && <span className="font-body text-[12px] text-inkMute"><UiText id="web-common.4790b7ffc8cd07e1" source="Did you hear the sound? Check your volume and connected headphones." /></span>}
     </div>
   );
 }

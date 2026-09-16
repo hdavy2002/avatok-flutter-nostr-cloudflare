@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* [FAV-LIST-1 2026-09-06] "Saved" — the shows this person hearted.
  *
  * Owner: "lets build a proper fav. so we can pull this in users dashboard and
@@ -50,6 +52,8 @@ function whenLabel(c: ListingCard): string | null {
 }
 
 export default function MyFavourites() {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   const [token, setToken] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [items, setItems] = useState<ListingCard[] | null>(null);
@@ -102,9 +106,7 @@ export default function MyFavourites() {
   if (!token) {
     return (
       <div className="rounded-zine border-zine border-ink bg-card p-6 shadow-zine-sm">
-        <p className="font-body text-[15px] font-bold text-inkSoft">
-          Sign in to see the shows you saved.
-        </p>
+        <p className="font-body text-[15px] font-bold text-inkSoft"><UiText id="web-dashboard.2d8a79c4806475b2" source="Sign in to see the shows you saved." />{" "}</p>
         <div className="mt-4"><SignInButton mode="modal" /></div>
       </div>
     );
@@ -123,16 +125,12 @@ export default function MyFavourites() {
   if (!items?.length) {
     return (
       <div className="rounded-zine border-zine border-ink bg-card p-6 shadow-zine-sm">
-        <p className="font-display text-[20px] font-semibold text-ink">Nothing saved yet</p>
-        <p className="mt-2 font-body text-[15px] font-bold text-inkSoft">
-          Tap the heart on any show and it lands here, so you can find it again.
-        </p>
+        <p className="font-display text-[20px] font-semibold text-ink"><UiText id="web-dashboard.96e97dcf07caf68c" source="Nothing saved yet" /></p>
+        <p className="mt-2 font-body text-[15px] font-bold text-inkSoft"><UiText id="web-dashboard.964c7495eb9fd5c0" source="Tap the heart on any show and it lands here, so you can find it again." />{" "}</p>
         <a
           href="/marketplace"
           className="mt-4 inline-block rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono text-[13px] font-bold uppercase tracking-[0.06em] text-ink no-underline shadow-zine-xs"
-        >
-          Browse shows
-        </a>
+        ><UiText id="web-dashboard.619a6f69ae692cd0" source="Browse shows" />{" "}</a>
       </div>
     );
   }
@@ -181,7 +179,7 @@ export default function MyFavourites() {
                 {c.creator?.name && <span>{c.creator.name}</span>}
                 {when && <span>{when}</span>}
                 <span>{inrOrFree(c.effective_price ?? c.price)}</span>
-                {c.status === 'live' && <span className="text-coralInk">Live now</span>}
+                {c.status === 'live' && <span className="text-coralInk"><UiText id="web-dashboard.96436bc476ca1f65" source="Live now" /></span>}
               </div>
             </div>
 
@@ -190,7 +188,7 @@ export default function MyFavourites() {
               onClick={() => void unsave(c.id)}
               disabled={removing === c.id}
               aria-label={`Remove ${c.title} from saved`}
-              title="Remove from saved"
+              title={uiT("web-dashboard.4115ec23ac38a4a9","Remove from saved")}
               className="h-9 shrink-0 self-start rounded-full border-zine border-ink bg-paper2 px-3 font-body text-[15px] text-ink shadow-zine-xs disabled:opacity-50"
             >
               ♥

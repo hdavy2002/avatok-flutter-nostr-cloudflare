@@ -1,3 +1,7 @@
+import '../../../../core/cached_image.dart';
+
+import '../../../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -55,7 +59,7 @@ class _ListingStep7PhotosPolicyState extends State<ListingStep7PhotosPolicy> {
   }
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return LayoutBuilder(
       builder: (context, constraints) => Center(
           child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 760),
@@ -63,9 +67,9 @@ class _ListingStep7PhotosPolicyState extends State<ListingStep7PhotosPolicy> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     ListingSection(
-                        title: 'Your face (required)',
+                        title: uiCopy(UiMessage.m_your_face_required_a8f444623c),
                         hint:
-                            'Used only as a private reference for the poster. It is never shown on the public listing.',
+                            uiCopy(UiMessage.m_used_only_as_a_private_2640b7186a),
                         child: Row(children: [
                           _thumb(
                               textValue(draftValue(widget.draft, 'face_photo')),
@@ -79,15 +83,15 @@ class _ListingStep7PhotosPolicyState extends State<ListingStep7PhotosPolicy> {
                                     label: draftValue(
                                                 widget.draft, 'face_photo') ==
                                             null
-                                        ? 'Upload your photo'
-                                        : 'Replace photo',
+                                        ? uiCopy(UiMessage.m_upload_your_photo_8c58ac4a34)
+                                        : uiCopy(UiMessage.m_replace_photo_94ae980dc8),
                                     onPressed: widget.onUpload == null
                                         ? null
                                         : () => _pick(face: true),
                                     loading: _uploading),
                                 const SizedBox(height: 4),
-                                const Text(
-                                    'One clear, forward-facing JPG or PNG, up to 8 MB.')
+                                const UiText(
+                                    UiMessage.m_one_clear_forward_facing_jpg_305ad8bb5d)
                               ]))
                         ])),
                     if (widget.error != null) ...[
@@ -96,9 +100,9 @@ class _ListingStep7PhotosPolicyState extends State<ListingStep7PhotosPolicy> {
                     ],
                     const SizedBox(height: 24),
                     ListingSection(
-                        title: 'Photos (optional · up to 5)',
+                        title: uiCopy(UiMessage.m_photos_optional_up_to_5_801bd47163),
                         hint:
-                            'These appear below your poster in the public gallery.',
+                            uiCopy(UiMessage.m_these_appear_below_your_poster_a1b38b6f79),
                         child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -120,11 +124,11 @@ class _ListingStep7PhotosPolicyState extends State<ListingStep7PhotosPolicy> {
                                           : () => _pick(face: false),
                                       icon: Icon(
                                           PhosphorIcons.imageSquare(PhosphorIconsStyle.regular)),
-                                      label: const Text('Add photo'))
+                                      label: const UiText(UiMessage.m_add_photo_c0660be883))
                               ]),
                               const SizedBox(height: 16),
                               ListingField(
-                                  label: 'Video URL (optional)',
+                                  label: uiCopy(UiMessage.m_video_url_optional_38aa236ced),
                                   value: textValue(
                                       draftValue(widget.draft, 'video_url')),
                                   hint: 'https://…',
@@ -134,19 +138,19 @@ class _ListingStep7PhotosPolicyState extends State<ListingStep7PhotosPolicy> {
                             ])),
                     const SizedBox(height: 24),
                     ListingSection(
-                        title: 'Policy and access',
+                        title: uiCopy(UiMessage.m_policy_and_access_83391d83cf),
                         child: Column(children: [
                           ListingField(
-                              label: 'Location',
+                              label: uiCopy(UiMessage.m_location_15b61974b2),
                               value: textValue(
                                   draftValue(widget.draft, 'location')),
-                              hint: 'City or online',
+                              hint: uiCopy(UiMessage.m_city_or_online_5bda2c3937),
                               onChanged: (v) =>
                                   widget.onPatch({'location': v})),
                           const SizedBox(height: 8),
                           SwitchListTile(
                               contentPadding: EdgeInsets.zero,
-                              title: const Text('Adults only'),
+                              title: const UiText(UiMessage.m_adults_only_2171a8cb74),
                               value: draftValue(
                                       widget.draft, 'adults_only', false) ==
                                   true,
@@ -155,7 +159,7 @@ class _ListingStep7PhotosPolicyState extends State<ListingStep7PhotosPolicy> {
                           if (textValue(draftValue(widget.draft, 'kind')) ==
                               'live_event')
                             ListingField(
-                                label: 'Refund window (hours)',
+                                label: uiCopy(UiMessage.m_refund_window_hours_f0f3deae45),
                                 value: textValue(draftValue(widget.draft,
                                     'commercial_refund_window_hours', 24)),
                                 keyboardType: TextInputType.number,
@@ -166,7 +170,7 @@ class _ListingStep7PhotosPolicyState extends State<ListingStep7PhotosPolicy> {
                           if (textValue(draftValue(widget.draft, 'kind')) ==
                               'consult') ...[
                             ListingField(
-                                label: 'Cancellation window (hours)',
+                                label: uiCopy(UiMessage.m_cancellation_window_hours_b7e5fd894a),
                                 value: textValue(draftValue(
                                     widget.draft,
                                     'commercial_cancellation_window_hours',
@@ -178,7 +182,7 @@ class _ListingStep7PhotosPolicyState extends State<ListingStep7PhotosPolicy> {
                                     })),
                             SwitchListTile(
                                 contentPadding: EdgeInsets.zero,
-                                title: const Text('Allow rescheduling'),
+                                title: const UiText(UiMessage.m_allow_rescheduling_375a56532a),
                                 value: draftValue(
                                         widget.draft,
                                         'commercial_reschedule_allowed',
@@ -187,7 +191,7 @@ class _ListingStep7PhotosPolicyState extends State<ListingStep7PhotosPolicy> {
                                 onChanged: (v) => widget.onPatch(
                                     {'commercial_reschedule_allowed': v})),
                             ListingField(
-                                label: 'Booking notice (hours)',
+                                label: uiCopy(UiMessage.m_booking_notice_hours_d2d544a3f8),
                                 value: textValue(draftValue(widget.draft,
                                     'commercial_booking_notice_hours', 6)),
                                 keyboardType: TextInputType.number,
@@ -197,7 +201,7 @@ class _ListingStep7PhotosPolicyState extends State<ListingStep7PhotosPolicy> {
                                     })),
                           ],
                         ])),
-                  ]))));
+                  ])))); }
   Widget _thumb(String url, String empty) => Container(
       width: 96,
       height: 96,
@@ -209,9 +213,10 @@ class _ListingStep7PhotosPolicyState extends State<ListingStep7PhotosPolicy> {
           ? Center(child: Text(empty, textAlign: TextAlign.center))
           : ClipRRect(
               borderRadius: BorderRadius.circular(AD.rImage),
-              child: Image.network(url,
+              child: CachedThumb(url: url, px: 256,
+                  
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) =>
+                  fallback:
                       Icon(PhosphorIcons.imageSquare(PhosphorIconsStyle.regular)))));
   Widget _cover(String url, VoidCallback remove) => Stack(children: [
         _thumb(url, 'No image'),

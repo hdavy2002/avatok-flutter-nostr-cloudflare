@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -45,11 +47,12 @@ class _CreatorInsightsScreenState extends State<CreatorInsightsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final s = _s;
     return Scaffold(
       backgroundColor: AD.bg,
-      appBar: const ZineAppBar(
-        title: 'Creator insights',
+      appBar:  ZineAppBar(
+        title: uiCopy(UiMessage.m_creator_insights_147df30b46),
         markWord: 'insights',
         tag: 'last 30 days',
       ),
@@ -123,7 +126,7 @@ class _CreatorInsightsScreenState extends State<CreatorInsightsScreen> {
           for (final a in byAge)
             _ledgerRow(a['age_group'].toString(), '${_i(a['views'])}'),
           const SizedBox(height: Msg.s2),
-          Text('Only viewers who shared a birth year are counted.',
+          UiText(UiMessage.m_only_viewers_who_shared_a_f67af332b8,
               style: ADText.sectionLabel(c: AD.textTertiary)),
         ],
 
@@ -162,8 +165,8 @@ class _CreatorInsightsScreenState extends State<CreatorInsightsScreen> {
           ),
           const SizedBox(width: Msg.s2),
           Expanded(
-            child: Text(
-              'Numbers update in near-real-time. Guests (not signed in) are counted in views but not in unique viewers.',
+            child: UiText(
+              UiMessage.m_numbers_update_in_near_real_4b3c0b7563,
               style: ADText.preview(),
             ),
           ),

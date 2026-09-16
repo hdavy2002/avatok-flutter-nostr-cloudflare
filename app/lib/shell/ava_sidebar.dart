@@ -1,3 +1,5 @@
+
+import '../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -127,6 +129,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // Phase 1: rebuild when focus mode flips (Settings toggle) so the menu shows
     // AvaTOK + account essentials only (ON) or the full app list (OFF) live.
     return ValueListenableBuilder<bool>(
@@ -230,9 +233,9 @@ class _AvaSidebarState extends State<AvaSidebar> {
                         style: TextStyle(
                             fontFamily: ADText.family, fontWeight: FontWeight.w700,
                             fontSize: 19, letterSpacing: -0.38, color: onBand),
-                        children: const [
-                          TextSpan(text: 'Ava'),
-                          TextSpan(text: 'TOK', style: TextStyle(color: AD.haldi)),
+                        children:  [
+                          TextSpan(text: uiCopy(UiMessage.m_ava_149f7514de)),
+                          TextSpan(text: uiCopy(UiMessage.m_tok_ca36cd3eaf), style: TextStyle(color: AD.haldi)),
                         ],
                       ),
                     ),
@@ -382,9 +385,9 @@ class _AvaSidebarState extends State<AvaSidebar> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('Subscribe', style: ADText.rowName(c: Colors.white)),
+                        UiText(UiMessage.m_subscribe_cc0e38da9c, style: ADText.rowName(c: Colors.white)),
                         const SizedBox(height: 1),
-                        Text('Plans & upgrades',
+                        UiText(UiMessage.m_plans_upgrades_83f7d940c8,
                             style: ADText.statCaption(c: Colors.white70)),
                       ]),
                     ),
@@ -436,7 +439,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
                         icon: PhosphorIcons.signOut(PhosphorIconsStyle.bold),
                         color: AD.danger, size: 30),
                     const SizedBox(width: 12),
-                    Text('Log out', style: ADText.rowName(c: AD.danger)),
+                    UiText(UiMessage.m_log_out_4961614551, style: ADText.rowName(c: AD.danger)),
                   ]),
                 ),
               ),
@@ -462,7 +465,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
     // billingEnabled flips back on.
     final billingOn = RemoteConfig.billingEnabled;
     return AdSticker(
-      billingOn ? 'Free plan · Upgrade' : 'Free plan',
+      billingOn ? uiCopy(UiMessage.m_free_plan_upgrade_ffcfe24d15) : uiCopy(UiMessage.m_free_plan_899e2f1f2a),
       kind: AdStickerKind.hint,
       icon: PhosphorIcons.crown(PhosphorIconsStyle.fill),
       onTap: billingOn ? () => widget.onSelect('subscribe') : null,
@@ -486,9 +489,9 @@ class _AvaSidebarState extends State<AvaSidebar> {
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(name, style: ADText.rowName(c: active ? Colors.white : AD.textPrimary)),
+              Text(authoredUiCopy(name), style: ADText.rowName(c: active ? Colors.white : AD.textPrimary)),
               const SizedBox(height: 1),
-              Text(sub, style: ADText.statCaption(c: active ? Colors.white70 : AD.textSecondary)),
+              Text(authoredUiCopy(sub), style: ADText.statCaption(c: active ? Colors.white70 : AD.textSecondary)),
             ]),
           ),
           // Premium marker — hidden once the user is on a paid plan / topped up,
@@ -524,11 +527,11 @@ class _AvaSidebarState extends State<AvaSidebar> {
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Marketplace',
+                    UiText(UiMessage.m_marketplace_c608981d8d,
                         style: ADText.rowName(
                             c: headerActive ? Colors.white : AD.textPrimary)),
                     const SizedBox(height: 1),
-                    Text('Buy, sell & social',
+                    UiText(UiMessage.m_buy_sell_social_e53e367226,
                         style: ADText.statCaption(
                             c: headerActive
                                 ? Colors.white70
@@ -554,7 +557,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
             padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s2, Msg.s1),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text('CREATOR TOOLS', style: ADText.sectionLabel()),
+              child: UiText(UiMessage.m_creator_tools_3dda6ae92e, style: ADText.sectionLabel()),
             ),
           ),
           _subRow('createlisting', 'Create listing',
@@ -587,7 +590,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
           child: Row(children: [
             ZineIconBadge(icon: icon, color: AD.iconSearch, size: 30),
             const SizedBox(width: Msg.s3),
-            Expanded(child: Text(label, style: ADText.rowName())),
+            Expanded(child: Text(authoredUiCopy(label), style: ADText.rowName())),
             PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 12, color: AD.textSecondary),
           ]),
         ),
@@ -683,9 +686,9 @@ class _AvaSidebarState extends State<AvaSidebar> {
           const SizedBox(width: Msg.s3),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, style: ADText.rowName()),
+              Text(authoredUiCopy(title), style: ADText.rowName()),
               if (subtitle != null)
-                Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis,
+                Text(authoredUiCopy(subtitle), maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: ADText.preview(c: AD.textSecondary)),
             ]),
           ),
@@ -738,7 +741,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
           behavior: HitTestBehavior.opaque,
           onTap: () => setState(() => _accountOpen = !_accountOpen),
           child: Row(children: [
-            Text('Account & settings',
+            UiText(UiMessage.m_account_settings_4aaf6a9dc8,
                 style: TextStyle(
                     fontFamily: ADText.family, fontWeight: FontWeight.w600,
                     fontSize: 14, letterSpacing: 0.4, color: AD.textPrimary)),
@@ -812,7 +815,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
             // surface.
             ZineIconBadge(icon: icon, color: Colors.white, size: 30),
             const SizedBox(width: Msg.s3),
-            Expanded(child: Text(name, style: ADText.rowName())),
+            Expanded(child: Text(authoredUiCopy(name), style: ADText.rowName())),
           ]),
         ),
       );
@@ -877,6 +880,7 @@ class _AvaSidebarForShellState extends State<AvaSidebarForShell> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final scope = ShellScope.of(context);
     return AvaSidebar(
       enabledApps: _enabledApps,

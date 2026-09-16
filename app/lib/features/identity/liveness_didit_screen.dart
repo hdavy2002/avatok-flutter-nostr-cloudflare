@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 // [LIVE-DIDIT-1] Liveness powered by didit.me (owner decision 2026-07-09).
 // REPLACES the home-grown V2/V3 capture pipelines as the live path. Didit's
 // hosted flow does all the camera/liveness work in the browser (Chrome Custom
@@ -229,6 +231,7 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: LiveTheme.stage,
       body: SafeArea(
@@ -241,7 +244,7 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
                 children: [
                   // [UI-CASE-1] Sentence case; w800 + 2.2 tracking was a shout.
                   const Expanded(
-                    child: Text('Liveness check',
+                    child: UiText(UiMessage.m_liveness_check_8f05b00447,
                         style: TextStyle(color: LiveTheme.subPaper, fontSize: 13,
                             fontWeight: FontWeight.w600, letterSpacing: 0.2)),
                   ),
@@ -274,10 +277,10 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
           icon: PhosphorIcons.sealCheck(PhosphorIconsStyle.bold),
           color: LiveTheme.lime,
           useSuccessCheck: true,
-          lead: "You're ", mark: 'verified!',
+          lead: "You're ", mark: uiCopy(UiMessage.m_verified_37e1f40629),
           sub: 'All set — you can carry on in the app.',
           button: LiveTheme.limeButton(
-            label: widget.listingContext ? 'Create a listing' : 'Done',
+            label: widget.listingContext ? uiCopy(UiMessage.m_create_a_listing_9a697d39c1) : uiCopy(UiMessage.m_done_11a6767d56),
             icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
             onPressed: () => Navigator.of(context).pop(true),
           ),
@@ -288,7 +291,7 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
           icon: PhosphorIcons.arrowCounterClockwise(PhosphorIconsStyle.bold),
           color: LiveTheme.coral,
           lead: none ? 'Out of ' : "That didn't ",
-          mark: none ? 'tries' : 'work',
+          mark: none ? uiCopy(UiMessage.m_tries_ba34f52f79) : uiCopy(UiMessage.m_work_00e13ed7af),
           sub: _error ??
               (none
                   ? "You've used all 5 tries for this month. Please try again next month."
@@ -296,11 +299,11 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
                       '${_attemptsRemaining != null ? ' You have $_attemptsRemaining tries left this month.' : ''}'),
           button: none
               ? LiveTheme.limeButton(
-                  label: 'Close',
+                  label: uiCopy(UiMessage.m_close_7d9eb7acb1),
                   icon: PhosphorIcons.x(PhosphorIconsStyle.bold),
                   onPressed: () => Navigator.of(context).pop(false))
               : LiveTheme.limeButton(
-                  label: 'Try again',
+                  label: uiCopy(UiMessage.m_try_again_d8b8392e2c),
                   icon: PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
                   onPressed: _start),
         );
@@ -308,10 +311,10 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
         return _resultView(
           icon: PhosphorIcons.cloudSlash(PhosphorIconsStyle.bold),
           color: LiveTheme.lilac,
-          lead: 'Hit a ', mark: 'snag',
+          lead: 'Hit a ', mark: uiCopy(UiMessage.m_snag_bef610d68b),
           sub: _error ?? 'Please try again in a moment.',
           button: LiveTheme.limeButton(
-              label: 'Try again',
+              label: uiCopy(UiMessage.m_try_again_d8b8392e2c),
               icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold),
               onPressed: _start),
         );
@@ -341,10 +344,8 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
         const SizedBox(height: Msg.s5),
         LiveTheme.stageHeadline('Prove you are ', markWord: 'real'),
         const SizedBox(height: Msg.s3),
-        Text(
-          'A quick face check — look at the camera for a few seconds and '
-          "you're done. Nothing to line up, nothing to read. "
-          'Your check is deleted if it fails.',
+        UiText(
+          UiMessage.m_a_quick_face_check_look_590b2fb3ae,
           style: LiveTheme.subStyle,
         ),
         if (_error != null) ...[
@@ -353,7 +354,7 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
         ],
         const Spacer(),
         LiveTheme.limeButton(
-          label: busy ? 'Starting…' : 'Start',
+          label: busy ? uiCopy(UiMessage.m_starting_bbe5fc3b9e) : uiCopy(UiMessage.m_start_e4bb9f1ece),
           icon: PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
           onPressed: busy ? null : _start,
         ),
@@ -385,7 +386,7 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
         const SizedBox(height: Msg.s4),
         LiveTheme.stageHeadline('Quick face ', markWord: 'check'),
         const SizedBox(height: Msg.s2),
-        Text('Look at the camera and follow along — takes a few seconds.',
+        UiText(UiMessage.m_look_at_the_camera_and_25426fcb6a,
             style: LiveTheme.subStyle),
       ],
     );
@@ -405,14 +406,14 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
         const SizedBox(height: Msg.s5),
         LiveTheme.stageHeadline('Checking', markWord: '…'),
         const SizedBox(height: Msg.s3),
-        Text(
-          'One moment — verifying your clip.',
+        UiText(
+          UiMessage.m_one_moment_verifying_your_clip_05955414b8,
           style: LiveTheme.subStyle,
         ),
         const Spacer(),
         TextButton(
           onPressed: () { _poll?.cancel(); _web = null; setState(() => _phase = _Phase.intro); },
-          child: const Text('Start over', style: TextStyle(color: LiveTheme.subPaper)),
+          child: const UiText(UiMessage.m_start_over_5eed7e9fc8, style: TextStyle(color: LiveTheme.subPaper)),
         ),
       ],
     );

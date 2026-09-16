@@ -1,3 +1,5 @@
+
+import '../../../core/localization/ui_text.dart';
 // [RECEPT-STATS-1] Receptionist / Voicemail — Analytics (plan §C3,
 // Specs/PLAN-2026-07-19-onboarding-bonus-analytics.md).
 //
@@ -112,9 +114,10 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
-      appBar: _darkHeader(title: 'Call Analytics', tag: 'receptionist · voicemail'),
+      appBar: _darkHeader(title: uiCopy(UiMessage.m_call_analytics_0adacd7aa4), tag: 'receptionist · voicemail'),
       body: RefreshIndicator(
         onRefresh: () {
           Analytics.capture('recept_analytics_pull_refresh', {'days': _days});
@@ -231,7 +234,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
               color: AD.iconSearch,
               size: 26),
           const SizedBox(width: 8),
-          Text('How Ava answered', style: ADText.sectionLabel()),
+          UiText(UiMessage.m_how_ava_answered_3288886e8f, style: ADText.sectionLabel()),
         ]),
         const SizedBox(height: Msg.s2),
         _splitRow('AI Voice Agent', agent, agent / total, AD.online),
@@ -280,7 +283,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
               color: AD.danger,
               size: 26),
           const SizedBox(width: 8),
-          Text('Busiest hours · your time', style: ADText.sectionLabel()),
+          UiText(UiMessage.m_busiest_hours_your_time_d2dc3dd88d, style: ADText.sectionLabel()),
         ]),
         const SizedBox(height: 12),
         SizedBox(
@@ -335,7 +338,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
               color: AD.iconSearch,
               size: 26),
           const SizedBox(width: 8),
-          Text('Calls per day', style: ADText.sectionLabel()),
+          UiText(UiMessage.m_calls_per_day_14dabb93e2, style: ADText.sectionLabel()),
         ]),
         const SizedBox(height: 12),
         SizedBox(
@@ -389,7 +392,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
               color: AD.online,
               size: 26),
           const SizedBox(width: 8),
-          Text('Top callers', style: ADText.sectionLabel()),
+          UiText(UiMessage.m_top_callers_d062e20967, style: ADText.sectionLabel()),
         ]),
         const SizedBox(height: Msg.s1),
         for (final c in callers)
@@ -446,7 +449,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
               color: AD.iconSearch,
               size: 26),
           const SizedBox(width: 8),
-          Text('Where calls came from', style: ADText.sectionLabel()),
+          UiText(UiMessage.m_where_calls_came_from_9dc7bea7c7, style: ADText.sectionLabel()),
         ]),
         const SizedBox(height: Msg.s1),
         for (final c in countries.take(12))

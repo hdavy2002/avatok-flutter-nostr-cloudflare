@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /*
  * SessionChat — the customer's side chat for a paid 1:1, with file upload.
  * [APP-ONLY-TX-1 2026-09-12]
@@ -83,6 +85,8 @@ export function AttachmentBubble({ attachment }: { attachment: ChatAttachment })
 }
 
 export function SessionChat({ lines, onSend, jwt, disabled, context, fill }: SessionChatProps) {
+  const {t:uiT}=useUiTranslation("web-consult-gs");
+
   const endRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [draft, setDraft] = useState('');
@@ -150,10 +154,10 @@ export function SessionChat({ lines, onSend, jwt, disabled, context, fill }: Ses
         fill ? 'h-full' : '',
       ].join(' ')}
     >
-      <div className="font-mono text-[12px] font-bold uppercase tracking-[0.08em] text-inkMute">Chat</div>
+      <div className="font-mono text-[12px] font-bold uppercase tracking-[0.08em] text-inkMute"><UiText id="web-consult-gs.460b3a7da007b7af" source="Chat" /></div>
       <div className={['flex min-h-[3.5rem] flex-col gap-1 overflow-y-auto', fill ? 'flex-1' : 'max-h-56'].join(' ')}>
         {lines.length === 0 ? (
-          <p className="font-body text-[13px] text-inkMute">No messages yet. You can send a file too.</p>
+          <p className="font-body text-[13px] text-inkMute"><UiText id="web-consult-gs.b8666cc523e504e2" source="No messages yet. You can send a file too." /></p>
         ) : (
           lines.map((l) => (
             <div key={l.id} className="font-body text-[13px] text-inkSoft">
@@ -167,7 +171,7 @@ export function SessionChat({ lines, onSend, jwt, disabled, context, fill }: Ses
                   {!l.text && (
                     <p>
                       <span className={`font-bold ${l.mine ? 'text-blueInk' : 'text-ink'}`}>{l.from}:</span>{' '}
-                      <span className="text-inkMute">sent a file</span>
+                      <span className="text-inkMute"><UiText id="web-consult-gs.1e84119699665b7e" source="sent a file" /></span>
                     </p>
                   )}
                   <AttachmentBubble attachment={l.attachment} />
@@ -195,8 +199,8 @@ export function SessionChat({ lines, onSend, jwt, disabled, context, fill }: Ses
         />
         <button
           type="button"
-          aria-label="Attach a file"
-          title="Attach a file (max 25 MB)"
+          aria-label={uiT("web-consult-gs.21298c62c8e5e476","Attach a file")}
+          title={uiT("web-consult-gs.5c5b8cd129d01226","Attach a file (max 25 MB)")}
           disabled={disabled || busy}
           onClick={() => fileRef.current?.click()}
           className="shrink-0 rounded-full border-zine border-ink bg-paper px-3 py-2 font-mono text-[14px] font-bold text-ink shadow-zine-xs disabled:opacity-50"
@@ -209,8 +213,8 @@ export function SessionChat({ lines, onSend, jwt, disabled, context, fill }: Ses
           onKeyDown={(e) => e.key === 'Enter' && send()}
           maxLength={500}
           disabled={disabled}
-          placeholder={disabled ? 'Chat unavailable' : 'Message…'}
-          aria-label="Chat message"
+          placeholder={disabled ? uiT("web-consult-gs.a45aae80dcc1570c","Chat unavailable") : uiT("web-consult-gs.fc71507e47999a33","Message…")}
+          aria-label={uiT("web-consult-gs.f6820511a8178983","Chat message")}
           className="min-w-0 flex-1 rounded-zineField border-zine border-ink bg-paper px-3 py-2 font-body text-[14px] font-bold text-ink focus:outline-none focus:shadow-zine-focus disabled:bg-paper2 disabled:text-inkMute"
         />
         <button
@@ -218,9 +222,7 @@ export function SessionChat({ lines, onSend, jwt, disabled, context, fill }: Ses
           onClick={send}
           disabled={disabled || !draft.trim()}
           className="shrink-0 rounded-full border-zine border-ink bg-blue px-4 py-2 font-display text-[15px] font-semibold text-ink shadow-zine-sm disabled:border-inkMute disabled:bg-paper2 disabled:text-inkMute disabled:shadow-none"
-        >
-          Send
-        </button>
+        ><UiText id="web-consult-gs.f6f4688ff23d50c6" source="Send" />{" "}</button>
       </div>
     </div>
   );

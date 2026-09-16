@@ -6740,5 +6740,76 @@
     ],
     "manual_check": "On the deployed build: (1) As a creator whose selected Google source is stale/failed, open the listing's public availability as a customer - it shows a refresh/unavailable state, not an empty grid and not '0 open'. (2) Confirm the same listing cannot be booked for a slot the preview would have offered (preview, checkout and publish all refuse for the same reason). (3) As the creator, the listing's schedule screen shows which values are inherited from the creator-wide calendar, which are overridden by the listing, and states the commercial booking notice as the effective floor when it is the larger. (4) Save a listing with a horizon other than 62 days and reopen - the horizon is preserved. (5) Change the schedule timezone and confirm preview slots are rendered in that timezone for a viewer in another one.",
     "_verified_at": "app/lib/features/marketplace/native_listing/native_listing_wizard_screen.dart: Analytics.capture('listing_native_availability_saved', {listing_id, mode, version, horizon_days}) - added by the native listing worker and NOT present in this worker's copy, so this assertion is written from that worker's report and has NOT been run, read from a device or queried in PostHog; worker/src/routes/calendar_availability.ts listingAvailability (503 calendar_refresh_pending + ready/reason/last_success_at) and effectivePolicy/scheduleShape (min_notice_min = configured calendar notice, additive effective_min_notice_min = the larger commercial floor); worker/src/lib/listing_blockers.ts:223 (publish gate calendar_not_ready); web/src/islands/dashboard/listing-form/ListingWizard.tsx:544; web/src/lib/availability.ts:152"
+  },
+  "UI-LOCALIZATION-1": {
+    "description": "Source-compatible public UI catalogs and account-scoped app language selection. A controlled Hindi selection must load a compatible downloaded or cached app catalog instead of source fallback. This assertion covers catalog application, not linguistic review, all-language coverage, every screen, or web rendering. The same release includes the sampled account-scoped native image cache path.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "ui_locale_changed",
+        "where": {
+          "locale": "hi"
+        },
+        "property": "fallback",
+        "equals": false,
+        "min_events": 1
+      },
+      {
+        "event": "ui_locale_changed",
+        "where": {
+          "locale": "hi"
+        },
+        "property": "catalog_layer",
+        "in": [
+          "disk",
+          "network"
+        ],
+        "min_events": 1
+      },
+      {
+        "event": "ui_locale_changed",
+        "where": {
+          "locale": "hi"
+        },
+        "property": "release",
+        "not_in": [
+          "bundled",
+          ""
+        ],
+        "min_events": 1
+      },
+      {
+        "event": "native_image_loaded",
+        "where": {
+          "transform": true
+        },
+        "property": "account_scoped",
+        "equals": true,
+        "min_events": 1
+      },
+      {
+        "event": "native_image_loaded",
+        "where": {
+          "transform": true
+        },
+        "property": "cache_policy",
+        "equals": "v3-webp-q60-cover",
+        "min_events": 1
+      },
+      {
+        "event": "native_image_loaded",
+        "where": {
+          "transform": true
+        },
+        "property": "bytes",
+        "gt": 0,
+        "min_events": 1
+      }
+    ],
+    "_verified_at": "app/lib/core/localization/ui_locale_controller.dart setLocale emits ui_locale_changed after current account/request checks; ui_catalog_repository.dart validates sourceHashes.app and emits layer disk/network only after envelope compatibility checks. app/lib/core/avatar_cache.dart _load emits native_image_loaded after HTTP 200, image signature check, disk write and account-scope recheck; _policy is v3-webp-q60-cover.",
+    "_validation_scope": "Run after publishing a compatible Hindi app namespace and installing the matching app build. Missing Hindi catalog, source fallback, or absent app events fail; a web/Worker-only deployment cannot satisfy this app assertion. Restore-time offline fallbacks are counted, so interpret the controlled test window explicitly. No events have been observed as part of preparation.",
+    "_image_validation_scope": "Requires the updated app. Events sample hash prefixes below 8 out of 256 and only fresh downloads; cache hits emit nothing. Absent events remain unverified, not success. Inspect resulting images and repeat-load behavior separately; this event cannot prove actual display or a 70 percent reduction."
   }
 }

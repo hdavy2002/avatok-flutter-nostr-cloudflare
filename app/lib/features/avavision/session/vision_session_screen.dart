@@ -1,3 +1,6 @@
+
+import '../../../core/localization/ui_text.dart';
+
 // vision_session_screen.dart — the AvaVision live session ("AvaVoice with eyes").
 //
 // Split-screen experience (proposal §3.4 / master requirement): the main view is
@@ -219,14 +222,14 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
             side: const BorderSide(color: AD.borderControl, width: 1)),
         titleTextStyle: ADText.threadName().copyWith(fontSize: 20, height: 1.1, letterSpacing: -0.2),
         contentTextStyle: ADText.preview().copyWith(fontSize: 14, height: 1.42),
-        title: const Text('Session ended'),
+        title: const UiText(UiMessage.m_session_ended_4a50e4c0c4),
         content: Text(a.isFreeForCallers
-            ? 'You trained with ${a.name} for ${_fmt(_elapsedSec)}. This session was free — the creator covered it.'
-            : 'You trained with ${a.name} for ${_fmt(_elapsedSec)}.\n\nBilled: $billed min × ${fmtTokens(perMinuteTokens(a.ratePerHourTokens))} = ${fmtTokens(billed * perMinuteTokens(a.ratePerHourTokens))}. Any unused escrow is refunded to your AvaWallet.'),
+            ? uiCopy(UiMessage.m_you_trained_with_value1_for_a94070c9c2, {'value1': (a.name).toString(), 'value2': (_fmt(_elapsedSec)).toString()})
+            : uiCopy(UiMessage.m_you_trained_with_value1_for_fcdcc9370a, {'value1': (a.name).toString(), 'value2': (_fmt(_elapsedSec)).toString(), 'billed': (billed).toString(), 'value4': (fmtTokens(perMinuteTokens(a.ratePerHourTokens))).toString(), 'value5': (fmtTokens(billed * perMinuteTokens(a.ratePerHourTokens))).toString()})),
         actions: [
           TextButton(
             onPressed: () { Navigator.pop(d); Navigator.pop(context); },
-            child: const Text('Done'),
+            child: const UiText(UiMessage.m_done_11a6767d56),
           ),
         ],
       ),
@@ -255,7 +258,7 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
     if (status != 200) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(r['detail']?.toString() ??
-              (status == 402 ? 'Not enough Tokens for a deep analysis.' : 'Analysis failed — try again.'))));
+              (status == 402 ? uiCopy(UiMessage.m_not_enough_tokens_for_a_567d0ffd91) : uiCopy(UiMessage.m_analysis_failed_try_again_8d2664c12d)))));
       return;
     }
     setState(() => _snapUsed += 1);
@@ -270,14 +273,14 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
       builder: (_) => _Sheet(child: Column(mainAxisSize: MainAxisSize.min, children: [
         ZineIconBadge(icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.bold), color: AD.tabCalls),
         const SizedBox(height: Msg.s3),
-        Text('Deep analyses used up', style: ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2)),
+        UiText(UiMessage.m_deep_analyses_used_up_1f8bc88972, style: ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2)),
         const SizedBox(height: 8),
-        Text(
-          'You\'ve used all ${_snapCap == 1 ? 'your' : 'the $_snapCap'} free "Analyze my form" check${_snapCap == 1 ? '' : 's'} for this session — no charge. Your coach keeps guiding you live with the on-screen score.',
+        UiText(
+          UiMessage.m_you_ve_used_all_value1_c54e9e3369, params: {'value1': (_snapCap == 1 ? 'your' : 'the $_snapCap').toString(), 'value2': (_snapCap == 1 ? '' : 's').toString()},
           textAlign: TextAlign.center, style: ADText.preview().copyWith(fontSize: 14, height: 1.42),
         ),
         const SizedBox(height: Msg.s4),
-        ZineButton(label: 'Keep training', fullWidth: true,
+        ZineButton(label: uiCopy(UiMessage.m_keep_training_3cc4ee0e09), fullWidth: true,
             onPressed: () => Navigator.pop(context)),
       ])),
     );
@@ -294,7 +297,7 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
         return _Sheet(child: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Row(children: [
-              Text('Form analysis', style: ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2)),
+              UiText(UiMessage.m_form_analysis_3849da149c, style: ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2)),
               const Spacer(),
               if (res.score != null)
                 _Badge('${a.scoreLabel ?? 'Score'} ${res.score!.round()}'),
@@ -314,7 +317,7 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
             const SizedBox(height: 16),
             // Saving is OFF by default and per-account scoped (rulebook #1/#3).
             Row(children: [
-              Expanded(child: Text('Save to my device', style: ADText.tabLabel().copyWith(fontSize: 13, letterSpacing: 0.52))),
+              Expanded(child: UiText(UiMessage.m_save_to_my_device_6214085e78, style: ADText.tabLabel().copyWith(fontSize: 13, letterSpacing: 0.52))),
               ZineToggle(
                 value: saved,
                 onChanged: bytes == null ? null : (v) async {
@@ -324,7 +327,7 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
               ),
             ]),
             const SizedBox(height: 16),
-            ZineButton(label: 'Back to session', fullWidth: true,
+            ZineButton(label: uiCopy(UiMessage.m_back_to_session_dea785dbd4), fullWidth: true,
                 onPressed: () => Navigator.pop(context)),
           ]),
         ));
@@ -358,6 +361,7 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
   // ── UI ─────────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final remaining = (_limitMinutes * 60 - _elapsedSec).clamp(0, kMaxSessionMinutes * 60);
     final live = _state == 'live' || _state == 'wrapup';
     return Scaffold(
@@ -430,7 +434,7 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             PhosphorIcon(PhosphorIcons.eye(PhosphorIconsStyle.fill), size: 13, color: AD.danger),
             const SizedBox(width: Msg.s1),
-            Text('${a.name} can see you',
+            UiText(UiMessage.m_value1_can_see_you_5eaf5b1148, params: {'value1': (a.name).toString()},
                 style: ADText.tabLabel(c: AD.textPrimary).copyWith(fontSize: 11, letterSpacing: 0.44)),
           ]),
         ),
@@ -451,14 +455,14 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
             boxShadow: Msg.none,
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(a.scoreLabel ?? 'Score', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 10, letterSpacing: 0.8)),
+            Text(a.scoreLabel ?? uiCopy(UiMessage.m_score_38e5a46cbc), style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 10, letterSpacing: 0.8)),
             const SizedBox(height: 2),
             Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
               Text(score?.toString() ?? '—', style: ADText.appTitle().copyWith(fontSize: 30, height: 1.08, letterSpacing: 0.6)),
               if (a.scoringMode == 'hybrid' && showAgent == false)
                 Padding(
                   padding: const EdgeInsets.only(left: Msg.s2, bottom: Msg.s1),
-                  child: Text('live', style: ADText.sectionLabel(c: AD.textTertiary).copyWith(fontSize: 9, letterSpacing: 0.72)),
+                  child: UiText(UiMessage.m_live_247610f4de, style: ADText.sectionLabel(c: AD.textTertiary).copyWith(fontSize: 9, letterSpacing: 0.72)),
                 ),
             ]),
           ]),
@@ -551,11 +555,11 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             ZineIconBadge(icon: PhosphorIcons.warning(PhosphorIconsStyle.bold), color: AD.danger),
             const SizedBox(height: 16),
-            Text(_error ?? 'Something went wrong',
+            Text(_error ?? uiCopy(UiMessage.m_something_went_wrong_ab827e3fe1),
                 textAlign: TextAlign.center, style: ADText.preview(c: AD.textPrimary).copyWith(fontSize: 15, height: 1.42)),
             const SizedBox(height: Msg.s5),
             ZineButton(
-              label: 'Back',
+              label: uiCopy(UiMessage.m_back_76900f1bfd),
               onPressed: () => Navigator.of(context).maybePop(),
               variant: ZineButtonVariant.ghost,
             ),
@@ -616,7 +620,7 @@ class _Badge extends StatelessWidget {
   final String text;
   const _Badge(this.text);
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Container(
         padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
         decoration: BoxDecoration(
           color: AD.primaryBadge,
@@ -625,14 +629,14 @@ class _Badge extends StatelessWidget {
           boxShadow: Msg.none,
         ),
         child: Text(_sentence(text), style: ADText.tabLabel().copyWith(fontSize: 12, letterSpacing: 0.48)),
-      );
+      ); }
 }
 
 class _Sheet extends StatelessWidget {
   final Widget child;
   const _Sheet({required this.child});
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Container(
         padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, 20 + MediaQuery.of(context).padding.bottom),
         decoration: const BoxDecoration(
           color: AD.card,
@@ -644,7 +648,7 @@ class _Sheet extends StatelessWidget {
           ),
         ),
         child: child,
-      );
+      ); }
 }
 
 class _AnalyzeButton extends StatelessWidget {
@@ -661,6 +665,7 @@ class _AnalyzeButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final label = capReached
         ? 'Deep analyses used up'
         : inFlight
@@ -681,22 +686,22 @@ class _ConsentSheet extends StatelessWidget {
   final String agentName;
   const _ConsentSheet({required this.agentName});
   @override
-  Widget build(BuildContext context) => _Sheet(child: Column(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return _Sheet(child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Center(child: ZineIconBadge(
               icon: PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), color: AD.tabCalls)),
           const SizedBox(height: Msg.s3),
-          Text('Turn on your camera?', textAlign: TextAlign.center, style: ADText.threadName().copyWith(fontSize: 20, height: 1.1, letterSpacing: -0.2)),
+          UiText(UiMessage.m_turn_on_your_camera_ec0ff29b39, textAlign: TextAlign.center, style: ADText.threadName().copyWith(fontSize: 20, height: 1.1, letterSpacing: -0.2)),
           const SizedBox(height: Msg.s2),
-          Text(
-            '$agentName is a vision coach. While you train, it sees a low-resolution view (about one frame a second) and hears you, so it can guide your technique. An on-device overlay tracks your movement — that part never leaves your phone. It only coaches technique, never judges your appearance, and you can stop anytime.',
+          UiText(
+            UiMessage.m_agentname_is_a_vision_coach_836ed70a06, params: {'agentName': (agentName).toString()},
             textAlign: TextAlign.center, style: ADText.preview().copyWith(fontSize: 14, height: 1.42),
           ),
           const SizedBox(height: Msg.s4),
           ZineButton(
-            label: 'I understand — start',
+            label: uiCopy(UiMessage.m_i_understand_start_98b858219a),
             fullWidth: true,
             icon: PhosphorIcons.check(PhosphorIconsStyle.bold),
             onPressed: () => Navigator.pop(context, true),
@@ -704,5 +709,5 @@ class _ConsentSheet extends StatelessWidget {
           const SizedBox(height: Msg.s2),
           Center(child: ZineLink('Not now', onTap: () => Navigator.pop(context, false))),
         ],
-      ));
+      )); }
 }

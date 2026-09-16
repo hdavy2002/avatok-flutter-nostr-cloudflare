@@ -1,3 +1,5 @@
+
+import '../../../core/localization/ui_text.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -25,7 +27,7 @@ void registerVoiceSection() {
   SettingsSectionRegistry.register(
     SettingsSection(
       id: 'ava_voice',
-      title: 'Ava voice',
+      title: uiCopy(UiMessage.m_ava_voice_045fa5c089),
       order: 25,
       builder: (context) => const _VoiceCard(),
     ),
@@ -80,6 +82,7 @@ class _VoiceCardState extends State<_VoiceCard> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return AdCard(
       padding: const EdgeInsets.all(Msg.s4),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -91,9 +94,9 @@ class _VoiceCardState extends State<_VoiceCard> {
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text("Ava's voice", style: ADText.rowName()),
+              UiText(UiMessage.m_ava_s_voice_6652f70e9c, style: ADText.rowName()),
               const SizedBox(height: 2),
-              Text('Choose the voice Ava speaks with on a hands-free call.',
+              UiText(UiMessage.m_choose_the_voice_ava_speaks_c4b0312a08,
                   style: ADText.preview()),
             ]),
           ),
@@ -109,17 +112,16 @@ class _VoiceCardState extends State<_VoiceCard> {
                 if (sel != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
-                    child: Text(
-                      'Selected: ${sel.name} · ${sel.style} '
-                      '(${sel.female ? "female" : "male"})',
+                    child: UiText(
+                      UiMessage.m_selected_value1_value2_value3_1aba2a5067, params: {'value1': (sel.name).toString(), 'value2': (sel.style).toString(), 'value3': (sel.female ? "female" : "male").toString()},
                       style: ADText.preview(c: AD.iconSearch),
                     ),
                   ),
-                Text('FEMALE', style: ADText.sectionLabel()),
+                UiText(UiMessage.m_female_cf112cb65c, style: ADText.sectionLabel()),
                 const SizedBox(height: 8),
                 _voiceWrap(GoogleVoiceCatalog.female, current),
                 const SizedBox(height: 16),
-                Text('MALE', style: ADText.sectionLabel()),
+                UiText(UiMessage.m_male_9050711d71, style: ADText.sectionLabel()),
                 const SizedBox(height: 8),
                 _voiceWrap(GoogleVoiceCatalog.male, current),
               ],
@@ -129,9 +131,9 @@ class _VoiceCardState extends State<_VoiceCard> {
         const SizedBox(height: Msg.s4),
         const Divider(height: 1, color: AD.borderHairline),
         const SizedBox(height: 16),
-        Text('LANGUAGE', style: ADText.sectionLabel()),
+        UiText(UiMessage.m_language_1287750a09, style: ADText.sectionLabel()),
         const SizedBox(height: 4),
-        Text('The language Ava speaks on a call. Auto follows whatever you speak.',
+        UiText(UiMessage.m_the_language_ava_speaks_on_9ecf28bf37,
             style: ADText.preview()),
         const SizedBox(height: Msg.s2),
         ValueListenableBuilder<String>(

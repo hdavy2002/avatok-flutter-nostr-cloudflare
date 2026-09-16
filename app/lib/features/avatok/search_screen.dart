@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -215,6 +217,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final ql = _q.toLowerCase();
     final qDigits = _q.replaceAll(RegExp(r'[^0-9]'), '');
 
@@ -269,7 +272,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   child: _searchDock(
                     controller: _ctrl,
                     autofocus: true,
-                    hint: 'Search name, email or phone',
+                    hint: uiCopy(UiMessage.m_search_name_email_or_phone_e14b7ad522),
                     onChanged: _onChanged,
                     trailing: _q.isEmpty
                         ? null
@@ -286,8 +289,8 @@ class _SearchScreenState extends State<SearchScreen> {
               // Flag-gated — invisible while businessCallUx is off.
               if (RemoteConfig.businessCallUx) ...[
                 const SizedBox(height: 8),
-                Text(
-                  'Find people by email or AvaTOK number. To call a business, dial their AvaTOK number.',
+                UiText(
+                  UiMessage.m_find_people_by_email_or_89bef695f0,
                   style: ADText.preview(c: AD.textSecondary),
                 ),
               ],
@@ -320,7 +323,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     ListTile(
                       leading: _ring(Avatar(seed: 'group-${g.id}', name: g.name, size: 46)),
                       title: Text(g.name, style: ADText.rowName()),
-                      subtitle: Text('${g.members.length} members', style: ADText.preview(c: AD.textSecondary)),
+                      subtitle: UiText(UiMessage.m_value1_members_32b7fac4dc, params: {'value1': (g.members.length).toString()}, style: ADText.preview(c: AD.textSecondary)),
                       onTap: () => _openGroup(g),
                     ),
                 ],
@@ -514,7 +517,7 @@ class _SearchScreenState extends State<SearchScreen> {
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               PhosphorIcon(PhosphorIcons.userPlus(PhosphorIconsStyle.bold), size: 14, color: AD.textPrimary),
               const SizedBox(width: Msg.s1),
-              Text('INVITE', style: ADText.statCaption(c: AD.textPrimary)),
+              UiText(UiMessage.m_invite_96bfc81cd6, style: ADText.statCaption(c: AD.textPrimary)),
             ]),
           ),
         ),
@@ -532,7 +535,7 @@ class _SearchScreenState extends State<SearchScreen> {
             borderRadius: BorderRadius.circular(AD.rBadge),
             border: Border.all(color: AD.borderControl, width: 1),
           ),
-          child: Text('Archived', style: ADText.statCaption(c: AD.textSecondary)),
+          child: UiText(UiMessage.m_archived_bdb86505f8, style: ADText.statCaption(c: AD.textSecondary)),
         ),
     ];
     if (icons.isEmpty) return null;

@@ -1,4 +1,5 @@
 ---
+import { authoredKey } from '../../lib/i18n/authoredKey';
 // [WEB-HELP-2 2026-09-11] Redesigned help-centre LANDING page — full-bleed,
 // built directly on Base.astro (SiteHeader + SiteFooter, the same
 // composition marketplace.astro uses) instead of the boxed layouts/Content.astro
@@ -75,12 +76,12 @@ const POLICY_LINKS = [
     <HelpTiles tree={tree} />
     <HelpFaqStrip items={faqItems} />
 
-    <nav class="help-policies" aria-label="Policies">
-      <span class="help-policies-label">Policies</span>
+    <nav data-india-i18n-attr="aria-label:web-help.d3ad1f1f8c9c4f5a" class="help-policies" aria-label="Policies">
+      <span data-i18n="web-help.d3ad1f1f8c9c4f5a" class="help-policies-label">Policies</span>
       {POLICY_LINKS.map((p, i) => (
         <>
           {i > 0 && <span class="help-policies-dot" aria-hidden="true"> · </span>}
-          <a href={p.href}>{p.label}</a>
+          <a href={p.href}><ui-copy style="display:contents" data-i18n={authoredKey(p.label)}>{p.label}</ui-copy></a>
         </>
       ))}
     </nav>

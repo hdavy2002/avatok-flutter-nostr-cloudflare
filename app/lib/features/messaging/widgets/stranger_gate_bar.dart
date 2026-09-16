@@ -1,3 +1,5 @@
+
+import '../../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -108,6 +110,7 @@ class _StrangerGateBarState extends State<StrangerGateBar> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final scam = _score != null && _score!.available && _score!.score >= 0.8;
     return Container(
       decoration: const BoxDecoration(
@@ -125,8 +128,8 @@ class _StrangerGateBarState extends State<StrangerGateBar> {
               size: 16, color: AD.textSecondary),
           const SizedBox(width: Msg.s2),
           Expanded(
-            child: Text(
-              'This person is not in your contacts. Accept to reply, or block/report if it looks like spam.',
+            child: UiText(
+              UiMessage.m_this_person_is_not_in_f3fffe857c,
               style: ADText.preview(c: AD.textSecondary),
             ),
           ),
@@ -168,7 +171,7 @@ class _StrangerGateBarState extends State<StrangerGateBar> {
         TextButton(
           onPressed: _busy ? null : _block,
           style: TextButton.styleFrom(foregroundColor: Colors.white),
-          child: const Text('Block'),
+          child: const UiText(UiMessage.m_block_211d0bb8cf),
         ),
       );
     }
@@ -232,7 +235,7 @@ class _StrangerGateBarState extends State<StrangerGateBar> {
             ),
             child: _busy
                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : Text('Accept',
+                : UiText(UiMessage.m_accept_89713b9c9c,
                     style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
                         fontSize: 15, color: Colors.white)),
           ),

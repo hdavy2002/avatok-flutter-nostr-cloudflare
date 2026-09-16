@@ -1,3 +1,5 @@
+
+import '../../../core/localization/ui_text.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -221,6 +223,7 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final visible = _threads
         .where((t) => _filter == _Filter.spam ? _threadIsSpam(t) : !_threadIsSpam(t))
         .where(_matchesQuery)
@@ -236,7 +239,7 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
                   ? (_query.trim().isEmpty
                       ? ShellEmptyStateFallback(filter: _filter)
                       : Center(
-                          child: Text('No matches',
+                          child: UiText(UiMessage.m_no_matches_2df01a03ff,
                               style: ADText.preview(c: AD.textSecondary)),
                         ))
                   : RefreshIndicator(
@@ -317,8 +320,8 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
               },
               textInputAction: TextInputAction.search,
               style: const TextStyle(color: AvaDialTheme.searchText, fontSize: 14),
-              decoration: const InputDecoration(
-                hintText: 'Search messages, names or numbers',
+              decoration:  InputDecoration(
+                hintText: uiCopy(UiMessage.m_search_messages_names_or_numbers_d88db5384c),
                 hintStyle: TextStyle(color: AvaDialTheme.searchHint, fontSize: 14),
                 border: InputBorder.none,
                 isDense: true,
@@ -437,11 +440,11 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
               if (!spam)
                 PopupMenuItem(
                     value: 'spam',
-                    child: Text('Move to Spam', style: TextStyle(color: AD.textPrimary))),
+                    child: UiText(UiMessage.m_move_to_spam_511a8999cb, style: TextStyle(color: AD.textPrimary))),
               if (spam)
                 PopupMenuItem(
                     value: 'inbox',
-                    child: Text('Not spam', style: TextStyle(color: AD.textPrimary))),
+                    child: UiText(UiMessage.m_not_spam_df9b161730, style: TextStyle(color: AD.textPrimary))),
             ],
           ),
         ]),
@@ -457,6 +460,7 @@ class ShellEmptyStateFallback extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final spam = filter == _Filter.spam;
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -470,14 +474,14 @@ class ShellEmptyStateFallback extends StatelessWidget {
           size: 56,
         ),
         const SizedBox(height: 16),
-        Text(spam ? 'No spam' : 'No messages',
+        Text(spam ? uiCopy(UiMessage.m_no_spam_3a82f112ef) : uiCopy(UiMessage.m_no_messages_a06faf2668),
             textAlign: TextAlign.center,
             style: AvaDialTheme.title(size: 18, color: AD.textPrimary)),
         const SizedBox(height: 8),
         Text(
           spam
-              ? 'Filtered spam texts will collect here.'
-              : 'Your carrier text conversations show up here.',
+              ? uiCopy(UiMessage.m_filtered_spam_texts_will_collect_833dc920f9)
+              : uiCopy(UiMessage.m_your_carrier_text_conversations_show_2e58ed235c),
           textAlign: TextAlign.center,
           style: AvaDialTheme.sub(size: 14, color: AD.textSecondary),
         ),

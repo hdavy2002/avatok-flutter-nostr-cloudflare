@@ -1,0 +1,2301 @@
+{
+  "schemaVersion": 1,
+  "sourceHash": "81bd6f7e2ea6f80b59b55c039153d1d8a054af86592721ff58c729e66b30b97c",
+  "runtimeVerified": false,
+  "files": [
+    {
+      "file": "app/lib/core/avatar.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/avatar_viewer.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/cached_image.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 0,
+      "networkImages": [
+        {
+          "line": 149,
+          "source": "Widget _net() => Image.network(",
+          "status": "requires-public-private-classification"
+        },
+        {
+          "line": 377,
+          "source": "Widget _network() => Image.network(",
+          "status": "requires-public-private-classification"
+        }
+      ]
+    },
+    {
+      "file": "app/lib/core/calls/call_audio_pill.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/calls/call_overlay.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/calls/call_pip_thumbnail.dart",
+      "catalogCallSites": 1,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/deep_links.dart",
+      "catalogCallSites": 2,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 3,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/font_scale.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/logo.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/mini_audio_player_bar.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/paid_feature.dart",
+      "catalogCallSites": 2,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 3,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/theme.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/ui/avatok_dark.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 6,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/ui/boot_screen.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/ui/mic_input_sheet.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/ui/moderated_text_field.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/ui/motion/ad_accordion.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/ui/motion/ad_dot_loader.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/ui/motion/ad_pop_number.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/ui/motion/ad_press.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/ui/motion/ad_shimmer_text.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/ui/motion/ad_skeleton.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/ui/motion/ad_slide_tabs.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/ui/motion/ad_success_check.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/ui/motion/ad_switch_text.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/ui/motion/ad_toast.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/ui/rajasthani_motifs.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/ui/states.dart",
+      "catalogCallSites": 2,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 3,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/core/ui/zine_widgets.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 19,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/affiliate/affiliate_home.dart",
+      "catalogCallSites": 17,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 10,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/affiliate/earnings_screen.dart",
+      "catalogCallSites": 7,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 3,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/affiliate/link_created_sheet.dart",
+      "catalogCallSites": 3,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/affiliate/link_detail_screen.dart",
+      "catalogCallSites": 9,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 12,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/affiliate/product_picker.dart",
+      "catalogCallSites": 2,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/affiliate/subscribers_screen.dart",
+      "catalogCallSites": 3,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 4,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/affiliate/widgets.dart",
+      "catalogCallSites": 2,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 11,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/askava/askava_screen.dart",
+      "catalogCallSites": 16,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 12,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/auth/restore_screen.dart",
+      "catalogCallSites": 4,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/auth/sign_in_screen.dart",
+      "catalogCallSites": 17,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 3,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/ava/ava_doc_actions.dart",
+      "catalogCallSites": 4,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/ava/ava_lane.dart",
+      "catalogCallSites": 5,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 3,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/ava_ai/ava_ai_setup.dart",
+      "catalogCallSites": 9,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/ava_companion/brain_export_sheet.dart",
+      "catalogCallSites": 5,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/ava_companion/brain_memory_screen.dart",
+      "catalogCallSites": 15,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 6,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/ava_companion/companion_home.dart",
+      "catalogCallSites": 28,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 14,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/ava_companion/companion_thread.dart",
+      "catalogCallSites": 16,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 4,
+      "networkImages": [
+        {
+          "line": 672,
+          "source": "child: Image.network(AvatarCache.sizedUrl(url, 1600),",
+          "status": "transform-wrapper-present"
+        }
+      ]
+    },
+    {
+      "file": "app/lib/features/ava_companion/remember_choice_sheet.dart",
+      "catalogCallSites": 7,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/ava_companion/source_chips.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/ava_delegate/delegate_settings.dart",
+      "catalogCallSites": 6,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 4,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/ava_generative/image_request.dart",
+      "catalogCallSites": 1,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 4,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/ava_guardian/guardian_settings.dart",
+      "catalogCallSites": 6,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/ava_guardian/guardian_warning.dart",
+      "catalogCallSites": 6,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 4,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avaapps/avaapps_screen.dart",
+      "catalogCallSites": 16,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 11,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avabrain/agent_inbox_screen.dart",
+      "catalogCallSites": 5,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 4,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avabrain/brain_settings_screen.dart",
+      "catalogCallSites": 14,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 9,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avachat/voice_call/ai_voice_agent_screen.dart",
+      "catalogCallSites": 7,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avachat/voice_call/voice_call_screen.dart",
+      "catalogCallSites": 9,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avadial/avadial_setup_sheet.dart",
+      "catalogCallSites": 7,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 4,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avadial/avadial_theme.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avadial/contact_detail_screen.dart",
+      "catalogCallSites": 10,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 9,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avadial/contact_edit_screen.dart",
+      "catalogCallSites": 4,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 3,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avadial/contact_row_menu.dart",
+      "catalogCallSites": 19,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 6,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avadial/contacts_backup_screen.dart",
+      "catalogCallSites": 22,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 10,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avadial/dialpad_search_tab.dart",
+      "catalogCallSites": 8,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 8,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avadial/in_call_screen.dart",
+      "catalogCallSites": 5,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avadial/inbox/call_recording_card.dart",
+      "catalogCallSites": 16,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 10,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avadial/inbox/call_recording_detail_screen.dart",
+      "catalogCallSites": 8,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 8,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avadial/inbox/inbox_list_screen.dart",
+      "catalogCallSites": 19,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avadial/inbox/inbox_send_to_chat.dart",
+      "catalogCallSites": 5,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avadial/inbox/inbox_thread_screen.dart",
+      "catalogCallSites": 36,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 15,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avadial/outgoing_call_screen.dart",
+      "catalogCallSites": 2,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 4,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avadial/pstn_call_screen.dart",
+      "catalogCallSites": 6,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 4,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avadial/pstn_forwarding_intro.dart",
+      "catalogCallSites": 3,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avadial/pstn_forwarding_setup.dart",
+      "catalogCallSites": 9,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avadial/pstn_forwarding_wizard.dart",
+      "catalogCallSites": 8,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 4,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avadial/sms/sms_compose_screen.dart",
+      "catalogCallSites": 7,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avadial/sms/sms_thread_screen.dart",
+      "catalogCallSites": 1,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 4,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avadial/sms/sms_threads_screen.dart",
+      "catalogCallSites": 4,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 6,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avalive/avalive_discovery.dart",
+      "catalogCallSites": 7,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 6,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avalive/live_host_screen.dart",
+      "catalogCallSites": 21,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 6,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avalive/live_room_widgets.dart",
+      "catalogCallSites": 3,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avalive/live_viewer_screen.dart",
+      "catalogCallSites": 7,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 6,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avaphone/ava_phone_contacts.dart",
+      "catalogCallSites": 19,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 9,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avaphone/ava_phone_screen.dart",
+      "catalogCallSites": 19,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 16,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avaphone/ava_sms_inbox.dart",
+      "catalogCallSites": 9,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 7,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avaphone/phone_theme.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/add_by_link_sheet.dart",
+      "catalogCallSites": 7,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 7,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/add_contact_sheet.dart",
+      "catalogCallSites": 7,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 4,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/add_to_call_sheet.dart",
+      "catalogCallSites": 3,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 6,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/ava_email.dart",
+      "catalogCallSites": 4,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 20,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/business_thread_widgets.dart",
+      "catalogCallSites": 4,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 10,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/busy_card.dart",
+      "catalogCallSites": 2,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 3,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/call_billing/messenger_call_billing_hud.dart",
+      "catalogCallSites": 1,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 3,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/call_billing/messenger_call_consent_sheets.dart",
+      "catalogCallSites": 6,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 10,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/call_billing/messenger_call_receipt_details_screen.dart",
+      "catalogCallSites": 3,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/call_hero_composition.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/call_outcome_menu.dart",
+      "catalogCallSites": 9,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 3,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/call_screen.dart",
+      "catalogCallSites": 37,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 24,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/calls_screen.dart",
+      "catalogCallSites": 8,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/chat_list.dart",
+      "catalogCallSites": 27,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 18,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/chat_media_cards.dart",
+      "catalogCallSites": 8,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 11,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/chat_thread/ai_assist.dart",
+      "catalogCallSites": 1,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 3,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/chat_thread/banners.dart",
+      "catalogCallSites": 3,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 4,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/chat_thread/bubbles.dart",
+      "catalogCallSites": 2,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 18,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/chat_thread/calls.dart",
+      "catalogCallSites": 8,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/chat_thread/cards.dart",
+      "catalogCallSites": 6,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 16,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/chat_thread/composer.dart",
+      "catalogCallSites": 13,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 18,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/chat_thread/formatting.dart",
+      "catalogCallSites": 12,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 3,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/chat_thread/guardian.dart",
+      "catalogCallSites": 21,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 15,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/chat_thread/media.dart",
+      "catalogCallSites": 6,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 9,
+      "networkImages": [
+        {
+          "line": 23,
+          "source": "child: Image.network(url,",
+          "status": "requires-public-private-classification"
+        }
+      ]
+    },
+    {
+      "file": "app/lib/features/avatok/chat_thread/menus.dart",
+      "catalogCallSites": 9,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/chat_thread/message_actions.dart",
+      "catalogCallSites": 11,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 23,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/chat_thread/message_row.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/chat_thread/search.dart",
+      "catalogCallSites": 10,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 4,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/chat_thread/send.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/chat_thread/special_content.dart",
+      "catalogCallSites": 23,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 17,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/chat_thread/widgets_small.dart",
+      "catalogCallSites": 1,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/chat_thread.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/contact_profile_screen.dart",
+      "catalogCallSites": 8,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 8,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/file_viewer_screen.dart",
+      "catalogCallSites": 3,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 3,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/forward_sheet.dart",
+      "catalogCallSites": 3,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 6,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/group_info_screen.dart",
+      "catalogCallSites": 26,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 10,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/groups_tab.dart",
+      "catalogCallSites": 8,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 8,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/handle_prompt_sheet.dart",
+      "catalogCallSites": 4,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/incoming_business_call_screen.dart",
+      "catalogCallSites": 9,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 7,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/invite_screen.dart",
+      "catalogCallSites": 3,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 6,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/live_location.dart",
+      "catalogCallSites": 3,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 3,
+      "networkImages": [
+        {
+          "line": 151,
+          "source": "child: Image.network(",
+          "status": "requires-public-private-classification"
+        }
+      ]
+    },
+    {
+      "file": "app/lib/features/avatok/media_library_screen.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/my_ai_calls_screen.dart",
+      "catalogCallSites": 2,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 8,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/new_group_screen.dart",
+      "catalogCallSites": 8,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 4,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/no_answer_card.dart",
+      "catalogCallSites": 4,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/number_settings_screen.dart",
+      "catalogCallSites": 35,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 22,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/paid_busy_card.dart",
+      "catalogCallSites": 2,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 3,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/paid_call_prompt.dart",
+      "catalogCallSites": 6,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 6,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/privacy_screen.dart",
+      "catalogCallSites": 5,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 13,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/search_screen.dart",
+      "catalogCallSites": 3,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 13,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/unknown_caller.dart",
+      "catalogCallSites": 4,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/video_player_screen.dart",
+      "catalogCallSites": 1,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/voice_note_waveform.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avatok/widgets/ai_media_job_card.dart",
+      "catalogCallSites": 15,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 9,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avavision/agent_detail.dart",
+      "catalogCallSites": 4,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 6,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avavision/avavision_home.dart",
+      "catalogCallSites": 7,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avavision/booking_sheet.dart",
+      "catalogCallSites": 6,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 6,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avavision/session/vision_preview_pane.dart",
+      "catalogCallSites": 1,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avavision/session/vision_session_screen.dart",
+      "catalogCallSites": 11,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 12,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avavision/studio/agent_dashboard.dart",
+      "catalogCallSites": 8,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 8,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avavision/studio/agent_form_flow.dart",
+      "catalogCallSites": 27,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 12,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avavision/studio/my_agents_screen.dart",
+      "catalogCallSites": 13,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avavision/studio/template_picker.dart",
+      "catalogCallSites": 1,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 4,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avavision/studio/voice_picker.dart",
+      "catalogCallSites": 1,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avavision/widgets.dart",
+      "catalogCallSites": 1,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avavoice/agent_detail.dart",
+      "catalogCallSites": 4,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 7,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avavoice/avavoice_home.dart",
+      "catalogCallSites": 7,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avavoice/booking_sheet.dart",
+      "catalogCallSites": 6,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 6,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avavoice/call_screen.dart",
+      "catalogCallSites": 4,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avavoice/studio/agent_dashboard.dart",
+      "catalogCallSites": 7,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 8,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avavoice/studio/agent_form_flow.dart",
+      "catalogCallSites": 19,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 9,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avavoice/studio/my_agents_screen.dart",
+      "catalogCallSites": 13,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avavoice/studio/voice_picker.dart",
+      "catalogCallSites": 1,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/avavoice/widgets.dart",
+      "catalogCallSites": 3,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/booking/avabooking_screen.dart",
+      "catalogCallSites": 1,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 4,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/booking/commercial_customer_screens.dart",
+      "catalogCallSites": 22,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 19,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/booking/creator_schedule_screen.dart",
+      "catalogCallSites": 1,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 7,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/calendar/avacalendar_screen.dart",
+      "catalogCallSites": 24,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 34,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/calendar/booking_card.dart",
+      "catalogCallSites": 14,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 11,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/calendar/calendar_day_editor.dart",
+      "catalogCallSites": 28,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 19,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/calendar/calendar_settings_screen.dart",
+      "catalogCallSites": 38,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 25,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/calendar/calendar_ui.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/campaigns/campaign_analytics_screen.dart",
+      "catalogCallSites": 13,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 17,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/campaigns/campaign_detail_screen.dart",
+      "catalogCallSites": 16,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 18,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/campaigns/campaign_inbox_cards.dart",
+      "catalogCallSites": 4,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 13,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/campaigns/campaign_voice_picker.dart",
+      "catalogCallSites": 6,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/campaigns/campaign_wizard_screen.dart",
+      "catalogCallSites": 48,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 13,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/campaigns/campaigns_home_screen.dart",
+      "catalogCallSites": 4,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 7,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/commercial_getstream/commercial_consult_screens.dart",
+      "catalogCallSites": 24,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 19,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/commercial_getstream/commercial_device_check.dart",
+      "catalogCallSites": 7,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/commercial_getstream/commercial_getstream_screens.dart",
+      "catalogCallSites": 1,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 11,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/commercial_getstream/commercial_live_screens.dart",
+      "catalogCallSites": 35,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 26,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/commercial_getstream/commercial_speaker_test.dart",
+      "catalogCallSites": 1,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/commercial_getstream/commercial_waiting_room_screen.dart",
+      "catalogCallSites": 4,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/commercial_getstream/session_chat_panel.dart",
+      "catalogCallSites": 5,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 4,
+      "networkImages": [
+        {
+          "line": 243,
+          "source": "child: Image.network(url,",
+          "status": "requires-public-private-classification"
+        },
+        {
+          "line": 293,
+          "source": "child: Image.network(attachment.url, fit: BoxFit.cover,",
+          "status": "requires-public-private-classification"
+        }
+      ]
+    },
+    {
+      "file": "app/lib/features/communities/communities_tab.dart",
+      "catalogCallSites": 11,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 4,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/communities/community_detail_screen.dart",
+      "catalogCallSites": 14,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 7,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/conference/cloudflare_conference_screen.dart",
+      "catalogCallSites": 2,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/conference/mesh_call_screen.dart",
+      "catalogCallSites": 1,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 3,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/consult/consult_room_screen.dart",
+      "catalogCallSites": 8,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/consult/prejoin_screen.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/diagnostics/log_page.dart",
+      "catalogCallSites": 6,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/explore/commercial_checkout_sheets.dart",
+      "catalogCallSites": 8,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 12,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/explore/creator_channel.dart",
+      "catalogCallSites": 12,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 6,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/explore/explore_home.dart",
+      "catalogCallSites": 8,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/explore/explore_search.dart",
+      "catalogCallSites": 6,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 3,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/explore/listing_detail.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 3,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/explore/native_listing_booking_flow.dart",
+      "catalogCallSites": 13,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 16,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/explore/native_listing_detail_v2.dart",
+      "catalogCallSites": 18,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 35,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/explore/widgets.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 10,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/genui/a2ui_renderer.dart",
+      "catalogCallSites": 1,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 25,
+      "networkImages": [
+        {
+          "line": 266,
+          "source": "child: Image.network(",
+          "status": "requires-public-private-classification"
+        }
+      ]
+    },
+    {
+      "file": "app/lib/features/identity/biometric_consent_screen.dart",
+      "catalogCallSites": 9,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 4,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/identity/identity_gate.dart",
+      "catalogCallSites": 5,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/identity/identity_screen.dart",
+      "catalogCallSites": 11,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 7,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/identity/liveness_didit_screen.dart",
+      "catalogCallSites": 8,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/identity/liveness_v2/live_theme.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 4,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/inbox/inbox_screen.dart",
+      "catalogCallSites": 1,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 4,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/library/avalibrary_screen.dart",
+      "catalogCallSites": 31,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 21,
+      "networkImages": [
+        {
+          "line": 1580,
+          "source": "child: Image.network(",
+          "status": "requires-public-private-classification"
+        }
+      ]
+    },
+    {
+      "file": "app/lib/features/library/avastorage_screen.dart",
+      "catalogCallSites": 22,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 16,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/library/library_media_viewer.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/library/library_picker.dart",
+      "catalogCallSites": 2,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 3,
+      "networkImages": [
+        {
+          "line": 146,
+          "source": "Image.network(AvatarCache.sizedUrl(thumb, 400), fit: BoxFit.cover,",
+          "status": "transform-wrapper-present"
+        }
+      ]
+    },
+    {
+      "file": "app/lib/features/library/voicemail_tile.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 3,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/listings/commercial_service_policy_screen.dart",
+      "catalogCallSites": 20,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/listings/create_listing_flow.dart",
+      "catalogCallSites": 44,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 10,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/listings/creator_insights_screen.dart",
+      "catalogCallSites": 3,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 9,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/listings/creator_receipt_summary_screen.dart",
+      "catalogCallSites": 2,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 8,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/listings/my_listings_screen.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/listings/share_live_event_sheet.dart",
+      "catalogCallSites": 6,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/marketplace/archived_screen.dart",
+      "catalogCallSites": 12,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 3,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/marketplace/call_agent_sheet.dart",
+      "catalogCallSites": 3,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/marketplace/commercial_service_cards.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 8,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/marketplace/compose_chat.dart",
+      "catalogCallSites": 8,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 13,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/marketplace/create_service_choice_sheet.dart",
+      "catalogCallSites": 7,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 3,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/marketplace/edit_listing_screen.dart",
+      "catalogCallSites": 3,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/marketplace/intent_theme.dart",
+      "catalogCallSites": 6,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 6,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/marketplace/listing_quick_info.dart",
+      "catalogCallSites": 9,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 7,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/marketplace/listing_web_form.dart",
+      "catalogCallSites": 7,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/marketplace/marketplace_browse.dart",
+      "catalogCallSites": 6,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 3,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/marketplace/marketplace_hub.dart",
+      "catalogCallSites": 10,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/marketplace/my_listings_screen.dart",
+      "catalogCallSites": 8,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 3,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/marketplace/native_listing/native_listing_time_widgets.dart",
+      "catalogCallSites": 10,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 17,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/marketplace/native_listing/native_listing_wizard_screen.dart",
+      "catalogCallSites": 38,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 24,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/marketplace/native_listing/steps/shared_widgets.dart",
+      "catalogCallSites": 2,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 9,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/marketplace/native_listing/steps/step_1_type.dart",
+      "catalogCallSites": 2,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/marketplace/native_listing/steps/step_2_pitch.dart",
+      "catalogCallSites": 2,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/marketplace/native_listing/steps/step_3_money.dart",
+      "catalogCallSites": 5,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/marketplace/native_listing/steps/step_4_time.dart",
+      "catalogCallSites": 23,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 7,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/marketplace/native_listing/steps/step_5_details.dart",
+      "catalogCallSites": 19,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/marketplace/native_listing/steps/step_7_media_policy.dart",
+      "catalogCallSites": 12,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/marketplace/native_listing/steps/step_8_preview.dart",
+      "catalogCallSites": 8,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 9,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/marketplace/native_listing/steps/step_widgets.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/marketplace/sell_listing_flow.dart",
+      "catalogCallSites": 20,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 10,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/messaging/widgets/catchup_card.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/messaging/widgets/link_preview_card.dart",
+      "catalogCallSites": 1,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 6,
+      "networkImages": [
+        {
+          "line": 244,
+          "source": ": NetworkImage(AvatarCache.sizedUrl(_src, _kPreviewImagePx));",
+          "status": "transform-wrapper-present"
+        }
+      ]
+    },
+    {
+      "file": "app/lib/features/messaging/widgets/link_viewer_sheet.dart",
+      "catalogCallSites": 6,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/messaging/widgets/media_download_placeholder.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/messaging/widgets/rich_input_bar.dart",
+      "catalogCallSites": 6,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/messaging/widgets/rich_picker_panel.dart",
+      "catalogCallSites": 2,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 7,
+      "networkImages": [
+        {
+          "line": 519,
+          "source": "child: Image.network(",
+          "status": "requires-public-private-classification"
+        },
+        {
+          "line": 636,
+          "source": "child: Image.network(items[i].preview,",
+          "status": "requires-public-private-classification"
+        }
+      ]
+    },
+    {
+      "file": "app/lib/features/messaging/widgets/smart_reply_chips.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/messaging/widgets/sticker_media.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/messaging/widgets/stranger_gate_bar.dart",
+      "catalogCallSites": 3,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/messaging/widgets/translated_text.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/notifications/notifications_screen.dart",
+      "catalogCallSites": 7,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/onboarding/handle_claim_screen.dart",
+      "catalogCallSites": 8,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/onboarding/onboarding_flow.dart",
+      "catalogCallSites": 14,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 12,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/onboarding/welcome_screen.dart",
+      "catalogCallSites": 4,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/payout/payout_screen.dart",
+      "catalogCallSites": 30,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 12,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/profile/avatar_crop_screen.dart",
+      "catalogCallSites": 1,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/profile/personal_phone_field.dart",
+      "catalogCallSites": 5,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/profile/profile_screen.dart",
+      "catalogCallSites": 34,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 10,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/profile/profile_setup_screen.dart",
+      "catalogCallSites": 20,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 6,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/settings/about_screen.dart",
+      "catalogCallSites": 3,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/settings/auto_download_settings_page.dart",
+      "catalogCallSites": 9,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/settings/display_fonts_screen.dart",
+      "catalogCallSites": 8,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/settings/marketplace_agent_settings_page.dart",
+      "catalogCallSites": 6,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 10,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/settings/sections/auto_download_section.dart",
+      "catalogCallSites": 2,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/settings/sections/backup_sync_section.dart",
+      "catalogCallSites": 8,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 3,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/settings/sections/business_agent_section.dart",
+      "catalogCallSites": 34,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 12,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/settings/sections/campaigns_section.dart",
+      "catalogCallSites": 5,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/settings/sections/delegate_section.dart",
+      "catalogCallSites": 6,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/settings/sections/focus_section.dart",
+      "catalogCallSites": 2,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/settings/sections/guardian_section.dart",
+      "catalogCallSites": 11,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/settings/sections/ondevice_section.dart",
+      "catalogCallSites": 4,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/settings/sections/pa_inapp_screen.dart",
+      "catalogCallSites": 12,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/settings/sections/pa_phone_screen.dart",
+      "catalogCallSites": 13,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 6,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/settings/sections/receptionist_analytics_page.dart",
+      "catalogCallSites": 6,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 15,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/settings/sections/receptionist_onboarding.dart",
+      "catalogCallSites": 19,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 8,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/settings/sections/receptionist_rules_screen.dart",
+      "catalogCallSites": 12,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 4,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/settings/sections/receptionist_section.dart",
+      "catalogCallSites": 27,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 17,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/settings/sections/ringtone_section.dart",
+      "catalogCallSites": 4,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/settings/sections/tools_section.dart",
+      "catalogCallSites": 3,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/settings/sections/voice_section.dart",
+      "catalogCallSites": 7,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/settings/settings_screen.dart",
+      "catalogCallSites": 21,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 6,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/status/status_ring.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/status/status_screen.dart",
+      "catalogCallSites": 12,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 6,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/status/status_viewer_screen.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 3,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/subscribe/subscribe_screen.dart",
+      "catalogCallSites": 4,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/team/team_home.dart",
+      "catalogCallSites": 24,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 17,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/team/team_inbox.dart",
+      "catalogCallSites": 2,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 4,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/team/team_ivr_screen.dart",
+      "catalogCallSites": 2,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/translation/call_translate_overlay.dart",
+      "catalogCallSites": 17,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 11,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/translation/call_translation_controller.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/translation/translate_overlay.dart",
+      "catalogCallSites": 10,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/verse/verse_screen.dart",
+      "catalogCallSites": 22,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 22,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/virtual_numbers/virtual_number_activity_screen.dart",
+      "catalogCallSites": 7,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 8,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/virtual_numbers/virtual_number_add_screen.dart",
+      "catalogCallSites": 10,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 4,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/virtual_numbers/virtual_number_settings_screen.dart",
+      "catalogCallSites": 22,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 8,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/virtual_numbers/virtual_numbers_screen.dart",
+      "catalogCallSites": 12,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 6,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/virtual_numbers/virtual_numbers_widgets.dart",
+      "catalogCallSites": 1,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 7,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/wallet/admin_money_screen.dart",
+      "catalogCallSites": 16,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 9,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/wallet/wallet_balance_chip.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/wallet/wallet_screen.dart",
+      "catalogCallSites": 42,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 24,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/features/wallet/wallet_widgets.dart",
+      "catalogCallSites": 2,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 19,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/main.dart",
+      "catalogCallSites": 6,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/shell/ava_shell.dart",
+      "catalogCallSites": 7,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/shell/ava_sidebar.dart",
+      "catalogCallSites": 13,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 13,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/shell/coming_soon.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/shell/shell_v2.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/shell/v2/app_order_screen.dart",
+      "catalogCallSites": 4,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/shell/v2/app_switcher_bar.dart",
+      "catalogCallSites": 4,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 3,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/shell/v2/avadial_root.dart",
+      "catalogCallSites": 57,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 26,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/shell/v2/card_manager_screen.dart",
+      "catalogCallSites": 2,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 2,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/shell/v2/home_appearance_screen.dart",
+      "catalogCallSites": 7,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/shell/v2/home_cards.dart",
+      "catalogCallSites": 19,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 17,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/shell/v2/services_root.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/shell/v2/shell_chrome.dart",
+      "catalogCallSites": 12,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 6,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/shell/v2/shell_destinations.dart",
+      "catalogCallSites": 2,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/shell/v2/talk_root.dart",
+      "catalogCallSites": 0,
+      "status": "unmigrated-or-no-authored-copy",
+      "dynamicTextCalls": 0,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/streamlane/stream_ava_screen.dart",
+      "catalogCallSites": 1,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 3,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/streamlane/stream_call_screen.dart",
+      "catalogCallSites": 4,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 5,
+      "networkImages": []
+    },
+    {
+      "file": "app/lib/streamlane/stream_incoming_screen.dart",
+      "catalogCallSites": 1,
+      "status": "partial-source-migration",
+      "dynamicTextCalls": 1,
+      "networkImages": []
+    }
+  ]
+}

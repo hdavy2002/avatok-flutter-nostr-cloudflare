@@ -1,0 +1,15 @@
+---
+import { publicImage, publicImageSrcSet } from '../lib/config';
+interface Props {
+  src: string; alt: string; width: number; height: number; sizes?: string;
+  widths?: number[]; eager?: boolean; fit?: 'cover' | 'contain' | 'scale-down';
+  class?: string;
+}
+const { src, alt, width, height, sizes = '100vw', widths = [256, 420, 640, 900, 1280, 1600],
+  eager = false, fit = 'contain', class: className } = Astro.props;
+---
+<img src={publicImage(src, { width, fit })}
+  srcset={publicImageSrcSet(src, widths, { fit })} sizes={sizes}
+  alt={alt} width={width} height={height} class={className}
+  loading={eager ? 'eager' : 'lazy'} fetchpriority={eager ? 'high' : 'auto'}
+  decoding="async" />

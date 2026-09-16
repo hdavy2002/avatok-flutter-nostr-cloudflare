@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -141,19 +144,19 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
         shape: RoundedRectangleBorder(
             side: const BorderSide(color: AD.borderControl, width: 1),
             borderRadius: BorderRadius.circular(AD.rDialog)),
-        title: Text('Use this number?', style: ADText.threadName().copyWith(fontSize: 18)),
+        title: UiText(UiMessage.m_use_this_number_41dfd7a5a4, style: ADText.threadName().copyWith(fontSize: 18)),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(n.display, style: ADText.appTitle(c: _numGreen).copyWith(fontSize: 20, letterSpacing: 0)),
           const SizedBox(height: 12),
           Row(children: [
             PhosphorIcon(PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), size: 16, color: AD.online),
             const SizedBox(width: Msg.s1),
-            Expanded(child: Text('Your real number stays private and is never shown.', style: ADText.preview(c: AD.textSecondary))),
+            Expanded(child: UiText(UiMessage.m_your_real_number_stays_private_477b0be48b, style: ADText.preview(c: AD.textSecondary))),
           ]),
         ]),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: Text('Back', style: ADText.rowName(c: AD.textSecondary))),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: Text('Use this number', style: ADText.rowName(c: _numGreen))),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: UiText(UiMessage.m_back_76900f1bfd, style: ADText.rowName(c: AD.textSecondary))),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: UiText(UiMessage.m_use_this_number_2c9091d4e7, style: ADText.rowName(c: _numGreen))),
         ],
       ),
     );
@@ -188,7 +191,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
       });
       if (!mounted) return;
       setState(() { _me = me; _picking = false; });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Your number is now ${res.display}')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: UiText(UiMessage.m_your_number_is_now_value1_e1243dddd6, params: {'value1': (res.display).toString()})));
       if (widget.gate) {
         Analytics.capture('number_gate_completed', {'country': _country!.iso2, 'plan': paid ? 'paid' : 'free'});
         // Hand the just-assigned number straight to the profile step (deterministic,
@@ -222,7 +225,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
     if (!mounted) return;
     setState(() => _busy = false);
     if (!reserved) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Just taken — pick another')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: UiText(UiMessage.m_just_taken_pick_another_dde898912a)));
       _loadAvailable();
       return;
     }
@@ -243,23 +246,23 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
         shape: RoundedRectangleBorder(
             side: const BorderSide(color: AD.borderControl, width: 1),
             borderRadius: BorderRadius.circular(AD.rDialog)),
-        title: Text('Buy this number?', style: ADText.threadName().copyWith(fontSize: 18)),
+        title: UiText(UiMessage.m_buy_this_number_50506df79a, style: ADText.threadName().copyWith(fontSize: 18)),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(n.display, style: ADText.appTitle(c: _numGreen).copyWith(fontSize: 20, letterSpacing: 0)),
           const SizedBox(height: 12),
           Text('₹$_vanityPriceTokens', style: ADText.appTitle(c: AD.primaryBadge).copyWith(fontSize: 22, letterSpacing: 0)),
           const SizedBox(height: 4),
-          Text('$_vanityPriceTokens tokens, charged from your AvaWallet balance.', style: ADText.preview(c: AD.textSecondary)),
+          UiText(UiMessage.m_vanitypricetokens_tokens_charged_from_your_62543df1a3, params: {'vanityPriceTokens': (_vanityPriceTokens).toString()}, style: ADText.preview(c: AD.textSecondary)),
           const SizedBox(height: 12),
           Row(children: [
             PhosphorIcon(PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), size: 16, color: AD.online),
             const SizedBox(width: Msg.s1),
-            Expanded(child: Text('Your real number stays private and is never shown.', style: ADText.preview(c: AD.textSecondary))),
+            Expanded(child: UiText(UiMessage.m_your_real_number_stays_private_477b0be48b, style: ADText.preview(c: AD.textSecondary))),
           ]),
         ]),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: Text('Cancel', style: ADText.rowName(c: AD.textSecondary))),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: Text('Buy for ₹$_vanityPriceTokens', style: ADText.rowName(c: _numGreen))),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.rowName(c: AD.textSecondary))),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: UiText(UiMessage.m_buy_for_vanitypricetokens_c3043d6b7d, params: {'vanityPriceTokens': (_vanityPriceTokens).toString()}, style: ADText.rowName(c: _numGreen))),
         ],
       ),
     );
@@ -286,7 +289,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
       });
       if (!mounted) return;
       setState(() { _me = me; _picking = false; _purchaseFlow = false; });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Your number is now ${res.display}')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: UiText(UiMessage.m_your_number_is_now_value1_e1243dddd6, params: {'value1': (res.display).toString()})));
       if (widget.gate) {
         Analytics.capture('number_gate_completed', {'country': _country!.iso2, 'plan': 'free_vanity_purchase'});
         widget.onAssignedNumber?.call(res.display ?? n.display);
@@ -325,15 +328,13 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
         shape: RoundedRectangleBorder(
             side: const BorderSide(color: AD.borderControl, width: 1),
             borderRadius: BorderRadius.circular(AD.rDialog)),
-        title: Text('Not enough tokens', style: ADText.threadName().copyWith(fontSize: 18)),
-        content: Text(
-          'This number costs $_vanityPriceTokens tokens (₹$_vanityPriceTokens)'
-          '${balance != null ? ' — your balance is $balance tokens.' : '.'} '
-          'Top up on avatok.ai from a browser, then come back and try again.',
+        title: UiText(UiMessage.m_not_enough_tokens_6a23dc35b6, style: ADText.threadName().copyWith(fontSize: 18)),
+        content: UiText(
+          UiMessage.m_this_number_costs_vanitypricetokens_tokens_206718d895, params: {'vanityPriceTokens': (_vanityPriceTokens).toString(), 'vanityPriceTokens_2': (_vanityPriceTokens).toString(), 'value3': (balance != null ? ' — your balance is $balance tokens.' : '.').toString()},
           style: ADText.preview(c: AD.textSecondary),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text('OK', style: ADText.rowName(c: _numGreen))),
+          TextButton(onPressed: () => Navigator.pop(context), child: UiText(UiMessage.m_ok_565339bc4d, style: ADText.rowName(c: _numGreen))),
         ],
       ),
     );
@@ -347,11 +348,11 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
         shape: RoundedRectangleBorder(
             side: const BorderSide(color: AD.borderControl, width: 1),
             borderRadius: BorderRadius.circular(AD.rDialog)),
-        title: Text('Release your number?', style: ADText.threadName().copyWith(fontSize: 18)),
-        content: Text('Your real number will represent you again until you choose a new one.', style: ADText.preview(c: AD.textSecondary)),
+        title: UiText(UiMessage.m_release_your_number_72f7eb5862, style: ADText.threadName().copyWith(fontSize: 18)),
+        content: UiText(UiMessage.m_your_real_number_will_represent_202738103b, style: ADText.preview(c: AD.textSecondary)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: Text('Cancel', style: ADText.rowName(c: AD.textSecondary))),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: Text('Release', style: ADText.rowName(c: AD.danger))),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.rowName(c: AD.textSecondary))),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: UiText(UiMessage.m_release_e020e3c67b, style: ADText.rowName(c: AD.danger))),
         ],
       ),
     );
@@ -366,13 +367,14 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return PopScope(
       canPop: !widget.gate, // mandatory gate can't be backed out of
       child: Scaffold(
         resizeToAvoidBottomInset: true,
         backgroundColor: AD.bg,
         appBar: _header(
-            title: widget.gate ? 'Choose your number' : 'Your number',
+            title: widget.gate ? uiCopy(UiMessage.m_choose_your_number_a4c8f3a635) : uiCopy(UiMessage.m_your_number_215b3e8cab),
             showBack: !widget.gate),
         body: _me == null
             ? const Center(child: CircularProgressIndicator(color: AD.iconSearch))
@@ -384,7 +386,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
                         padding: const EdgeInsets.only(bottom: 8),
                         child: TextButton(
                           onPressed: widget.onSignOut,
-                          child: Text('Sign out instead',
+                          child: UiText(UiMessage.m_sign_out_instead_b30a5505cf,
                               style: ADText.preview(c: AD.textSecondary)),
                         ),
                       ),
@@ -542,11 +544,9 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
     if (widget.gate) {
       widgets.add(_accentCard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('PICK YOUR AVATOK NUMBER', style: ADText.sectionLabel(c: AD.primaryBadge)),
+          UiText(UiMessage.m_pick_your_avatok_number_4db738d96e, style: ADText.sectionLabel(c: AD.primaryBadge)),
           const SizedBox(height: 8),
-          Text('Choose a number to finish setting up. It represents you on AvaTOK — '
-              'people call and message you on it — and keeps your real phone private. '
-              'Pick any available number below.', style: _bodyStyle),
+          UiText(UiMessage.m_choose_a_number_to_finish_5eab69feea, style: _bodyStyle),
         ]),
       ));
       widgets.add(const SizedBox(height: Msg.s3));
@@ -555,14 +555,14 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
       widgets.add(
         _card(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('YOUR AVATOK NUMBER', style: ADText.sectionLabel()),
+            UiText(UiMessage.m_your_avatok_number_df6e3c6370, style: ADText.sectionLabel()),
             const SizedBox(height: Msg.s2),
             Text(me.display ?? '', style: ADText.appTitle(c: _numGreen).copyWith(fontSize: 24, letterSpacing: 0)),
             const SizedBox(height: 8),
             Row(children: [
               PhosphorIcon(PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), size: 15, color: AD.online),
               const SizedBox(width: Msg.s1),
-              Expanded(child: Text('Your real number is hidden — people see this instead.', style: ADText.preview(c: AD.textSecondary))),
+              Expanded(child: UiText(UiMessage.m_your_real_number_is_hidden_51bb256cb2, style: ADText.preview(c: AD.textSecondary))),
             ]),
           ]),
         ),
@@ -571,11 +571,11 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
         // Paid: regenerate / release freely.
         widgets.addAll([
           const SizedBox(height: Msg.s3),
-          _button(label: 'Change number', ghost: true, fullWidth: true, fontSize: 16,
+          _button(label: uiCopy(UiMessage.m_change_number_cf5741b5c8), ghost: true, fullWidth: true, fontSize: 16,
               icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold), trailingIcon: false,
               onPressed: _busy ? null : () { setState(() { _picking = true; _purchaseFlow = false; }); _loadAvailable(); }),
           const SizedBox(height: Msg.s2),
-          _button(label: 'Release number', ghost: true, fullWidth: true, fontSize: 16,
+          _button(label: uiCopy(UiMessage.m_release_number_ac5bcfe524), ghost: true, fullWidth: true, fontSize: 16,
               icon: PhosphorIcons.trash(PhosphorIconsStyle.bold), trailingIcon: false,
               onPressed: _busy ? null : _release),
         ]);
@@ -588,10 +588,10 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
               Row(children: [
                 _iconBadge(PhosphorIcons.lockSimple(PhosphorIconsStyle.bold), color: AD.primaryBadge, size: 28),
                 const SizedBox(width: Msg.s2),
-                Expanded(child: Text('Your number is locked', style: ADText.threadName().copyWith(fontSize: 17))),
+                Expanded(child: UiText(UiMessage.m_your_number_is_locked_9cc01e70f7, style: ADText.threadName().copyWith(fontSize: 17))),
               ]),
               const SizedBox(height: 8),
-              Text('You get one AvaTOK number free. Upgrade to a paid plan to generate a new number any time.', style: _bodyStyle),
+              UiText(UiMessage.m_you_get_one_avatok_number_f0391537ac, style: _bodyStyle),
             ]),
           ),
           const SizedBox(height: 12),
@@ -599,7 +599,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
           // instead of upgrading — only shown once the owner has priced it
           // (avatokVanityNumberTokens > 0). Dark by default.
           if (_vanityPriceTokens > 0) ...[
-            _button(label: 'Buy a specific number', ghost: true, fullWidth: true, fontSize: 16,
+            _button(label: uiCopy(UiMessage.m_buy_a_specific_number_b51ec16219), ghost: true, fullWidth: true, fontSize: 16,
                 icon: PhosphorIcons.coins(PhosphorIconsStyle.bold), trailingIcon: false,
                 onPressed: _busy ? null : () {
                   setState(() { _picking = true; _purchaseFlow = true; });
@@ -607,7 +607,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
                 }),
             const SizedBox(height: Msg.s2),
           ],
-          _button(label: 'See plans', fullWidth: true,
+          _button(label: uiCopy(UiMessage.m_see_plans_d989893356), fullWidth: true,
               icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
               onPressed: () { Navigator.of(context).maybePop(); }),
         ]);
@@ -624,17 +624,17 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
             Row(children: [
               _iconBadge(PhosphorIcons.hash(PhosphorIconsStyle.bold), color: AD.primaryBadge, size: 30),
               const SizedBox(width: Msg.s2),
-              Expanded(child: Text('Generate a new number', style: ADText.threadName().copyWith(fontSize: 18))),
+              Expanded(child: UiText(UiMessage.m_generate_a_new_number_c35c947153, style: ADText.threadName().copyWith(fontSize: 18))),
             ]),
             const SizedBox(height: Msg.s2),
-            Text('Your free number generation is used up. Upgrade to a paid plan to generate a new number that represents you and hides your real phone.', style: _bodyStyle),
+            UiText(UiMessage.m_your_free_number_generation_is_ba8d87edd3, style: _bodyStyle),
           ]),
         ),
         const SizedBox(height: 16),
         // [PIVOT-PAID-NUMBER-1] Same paid-vanity entry point as above, for the
         // "no number yet" case. Dark unless priced.
         if (_vanityPriceTokens > 0) ...[
-          _button(label: 'Buy a specific number', ghost: true, fullWidth: true, fontSize: 16,
+          _button(label: uiCopy(UiMessage.m_buy_a_specific_number_b51ec16219), ghost: true, fullWidth: true, fontSize: 16,
               icon: PhosphorIcons.coins(PhosphorIconsStyle.bold), trailingIcon: false,
               onPressed: _busy ? null : () {
                 setState(() { _picking = true; _purchaseFlow = true; });
@@ -643,7 +643,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
           const SizedBox(height: Msg.s2),
         ],
         _button(
-          label: 'See plans',
+          label: uiCopy(UiMessage.m_see_plans_d989893356),
           fullWidth: true,
           icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
           onPressed: () { Navigator.of(context).maybePop(); },
@@ -659,7 +659,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
         child: Row(children: [
           Text(_country?.flag ?? '🌍', style: const TextStyle(fontSize: 22)),
           const SizedBox(width: Msg.s2),
-          Expanded(child: Text(_country?.name ?? 'Choose country', style: ADText.rowName(), overflow: TextOverflow.ellipsis)),
+          Expanded(child: Text(_country?.name ?? uiCopy(UiMessage.m_choose_country_36f05741e3), style: ADText.rowName(), overflow: TextOverflow.ellipsis)),
           PhosphorIcon(PhosphorIcons.caretDown(PhosphorIconsStyle.bold), size: 16, color: AD.textTertiary),
         ]),
       ),
@@ -670,26 +670,26 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
       Row(children: [
         Expanded(
           child: _button(
-            label: 'Search', fill: AD.iconSearch, fullWidth: true, fontSize: 15,
+            label: uiCopy(UiMessage.m_search_49c266baaa), fill: AD.iconSearch, fullWidth: true, fontSize: 15,
             icon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), trailingIcon: false,
             onPressed: _busy || _loadingAvail ? null : _loadAvailable),
         ),
         const SizedBox(width: Msg.s2),
         Expanded(
           child: _button(
-            label: 'Shuffle', ghost: true, fullWidth: true, fontSize: 15,
+            label: uiCopy(UiMessage.m_shuffle_317cb3a7ef), ghost: true, fullWidth: true, fontSize: 15,
             icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold), trailingIcon: false,
             onPressed: _busy || _loadingAvail ? null : () { _patternCtrl.clear(); _loadAvailable(); }),
         ),
       ]),
       const SizedBox(height: 12),
-      Text('AVAILABLE NUMBERS', style: ADText.sectionLabel()),
+      UiText(UiMessage.m_available_numbers_ac1640f839, style: ADText.sectionLabel()),
       const SizedBox(height: Msg.s1),
     ]);
     if (_loadingAvail) {
       widgets.add(const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator(color: AD.iconSearch))));
     } else if (_avail.isEmpty) {
-      widgets.add(Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Text('No matches — try different digits or tap Shuffle.', style: ADText.preview(c: AD.textSecondary))));
+      widgets.add(Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: UiText(UiMessage.m_no_matches_try_different_digits_3e53fcc54c, style: ADText.preview(c: AD.textSecondary))));
     } else {
       for (final n in _avail) {
         widgets.add(Padding(
@@ -705,7 +705,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
               Flexible(
                 // [PIVOT-PAID-NUMBER-1] In purchase mode, show the token price
                 // (₹) instead of "available" — this row costs tokens to claim.
-                child: Text(_purchaseFlow ? '₹$_vanityPriceTokens' : 'available',
+                child: Text(_purchaseFlow ? '₹$_vanityPriceTokens' : uiCopy(UiMessage.m_available_ddd9818aba),
                     style: ADText.statCaption(c: _numGreen),
                     overflow: TextOverflow.ellipsis, maxLines: 1),
               ),
@@ -719,7 +719,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
     if (me.hasNumber) {
       widgets.addAll([
         const SizedBox(height: 8),
-        _button(label: 'Keep current number', ghost: true, fullWidth: true, fontSize: 15,
+        _button(label: uiCopy(UiMessage.m_keep_current_number_022457d12b), ghost: true, fullWidth: true, fontSize: 15,
             onPressed: _busy ? null : () => setState(() { _picking = false; _purchaseFlow = false; })),
       ]);
     }
@@ -751,7 +751,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
               style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700, fontSize: 15, color: AD.textOnInput),
               decoration: InputDecoration(
                 isDense: true,
-                hintText: 'Want certain digits? e.g. 777',
+                hintText: uiCopy(UiMessage.m_want_certain_digits_e_g_bfcde0666d),
                 hintStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700, fontSize: 15, color: AD.placeholderOnWhite),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),

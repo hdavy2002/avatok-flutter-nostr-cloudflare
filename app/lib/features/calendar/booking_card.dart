@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 // Phase 5 — the blip→card popup (spec: title, app icon, date/time, counterpart,
 // price, status, action buttons) + the reschedule proposal flow (A4) with the
 // greyed-conflicts slot picker (occupied slots flagged, never hidden).
@@ -164,7 +167,7 @@ Future<void> showBookingCard(
               Padding(
                 padding: const EdgeInsets.only(bottom: Msg.s3),
                 child: ZineButton(
-                  label: DateTime.now().millisecondsSinceEpoch >= startsAt ? 'Join session' : 'Join (starts soon)',
+                  label: DateTime.now().millisecondsSinceEpoch >= startsAt ? uiCopy(UiMessage.m_join_session_760a7b2e2e) : uiCopy(UiMessage.m_join_starts_soon_e982e99bf7),
                   fullWidth: true,
                   icon: PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
                   trailingIcon: false,
@@ -181,7 +184,7 @@ Future<void> showBookingCard(
               Row(children: [
                 Expanded(
                   child: ZineButton(
-                    label: 'New time',
+                    label: uiCopy(UiMessage.m_new_time_70231ba056),
                     variant: ZineButtonVariant.ghost,
                     fontSize: 16,
                     icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.regular),
@@ -196,7 +199,7 @@ Future<void> showBookingCard(
                 const SizedBox(width: Msg.s3),
                 Expanded(
                   child: ZineButton(
-                    label: 'Cancel',
+                    label: uiCopy(UiMessage.m_cancel_19766ed6cc),
                     variant: ZineButtonVariant.coral,
                     fontSize: 16,
                     icon: PhosphorIcons.xCircle(PhosphorIconsStyle.regular),
@@ -210,19 +213,19 @@ Future<void> showBookingCard(
                             borderRadius: Msg.brLg,
                             side: const BorderSide(color: AD.borderControl, width: 1),
                           ),
-                          title: Text('Cancel this booking?', style: _cardTitle),
-                          content: Text(
-                            'Refund follows the rules: ≥24h before — 100%; later — 50%. Creators always refund 100%.',
+                          title: UiText(UiMessage.m_cancel_this_booking_d0986a6013, style: _cardTitle),
+                          content: UiText(
+                            UiMessage.m_refund_follows_the_rules_24h_3b7ed36d90,
                             style: ADText.preview().copyWith(fontSize: 14, height: 1.42),
                           ),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.pop(d, false),
-                              child: Text('Keep it',
+                              child: UiText(UiMessage.m_keep_it_fdce5da2ce,
                                   style: ADText.rowName(c: Msg.accent).copyWith(fontSize: 13)),
                             ),
                             ZineButton(
-                              label: 'Cancel booking',
+                              label: uiCopy(UiMessage.m_cancel_booking_cb33063ef5),
                               variant: ZineButtonVariant.coral,
                               fontSize: 15,
                               onPressed: () => Navigator.pop(d, true),
@@ -235,7 +238,7 @@ Future<void> showBookingCard(
                       if (sheetCtx.mounted) {
                         Navigator.pop(sheetCtx);
                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                          content: Text(r['ok'] == true ? (r['refund'] as String? ?? 'Booking cancelled') : 'Failed: ${r['error'] ?? 'unknown'}'),
+                          content: Text(r['ok'] == true ? (r['refund'] as String? ?? uiCopy(UiMessage.m_booking_cancelled_b56846bb5e)) : uiCopy(UiMessage.m_failed_value1_af1e8f2668, {'value1': (r['error'] ?? 'unknown').toString()})),
                         ));
                       }
                       onChanged?.call();
@@ -247,7 +250,7 @@ Future<void> showBookingCard(
               // Modern booking: open the screen that actually owns it. No
               // legacy cancel/reschedule is offered from the diary.
               ZineButton(
-                label: route.actionLabel ?? 'Manage booking',
+                label: route.actionLabel ?? uiCopy(UiMessage.m_manage_booking_4e4fd7fbd1),
                 fullWidth: true,
                 fontSize: 16,
                 icon: PhosphorIcons.caretRight(PhosphorIconsStyle.regular),
@@ -259,13 +262,13 @@ Future<void> showBookingCard(
               const SizedBox(height: Msg.s2),
               Text(
                 route.management == BookingManagement.review
-                    ? 'AvaTOK could not confirm whether this account is the creator or the customer, so you choose which screen to open. Each screen only shows what this account is allowed to see.'
-                    : 'Opens the booking’s own screen. Reserved time is never cancelled or moved from the diary.',
+                    ? uiCopy(UiMessage.m_avatok_could_not_confirm_whether_a3384b7c88)
+                    : uiCopy(UiMessage.m_opens_the_booking_s_own_51086dc7e9),
                 style: ADText.statCaption(c: AD.textSecondary),
               ),
             ] else if (bookingId != null) ...[
-              Text(
-                'This commitment has no management action from the diary. Open it from its listing or from My tickets & appointments.',
+              UiText(
+                UiMessage.m_this_commitment_has_no_management_39c9fac9ee,
                 style: ADText.statCaption(c: AD.textSecondary),
               ),
             ],
@@ -329,16 +332,15 @@ Future<void> _chooseBookingManagement(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Where should this open?', style: _cardTitle),
+            UiText(UiMessage.m_where_should_this_open_ee7dfa2871, style: _cardTitle),
             const SizedBox(height: Msg.s2),
-            Text(
-              'This booking did not say whether you are the creator or the customer. '
-              'AvaTOK will only show what this account is allowed to see.',
+            UiText(
+              UiMessage.m_this_booking_did_not_say_173fb538c4,
               style: ADText.preview().copyWith(fontSize: 14, height: 1.42),
             ),
             const SizedBox(height: Msg.s4),
             ZineButton(
-              label: 'I’m the customer — my tickets & appointments',
+              label: uiCopy(UiMessage.m_i_m_the_customer_my_1c15fa6480),
               fullWidth: true,
               fontSize: 15,
               trailingIcon: false,
@@ -347,8 +349,8 @@ Future<void> _chooseBookingManagement(
             const SizedBox(height: Msg.s2),
             ZineButton(
               label: route.isEvent
-                  ? 'I’m the creator — live events'
-                  : 'I’m the creator — appointments',
+                  ? uiCopy(UiMessage.m_i_m_the_creator_live_ec9a47bb66)
+                  : uiCopy(UiMessage.m_i_m_the_creator_appointments_8a45fce552),
               variant: ZineButtonVariant.ghost,
               fullWidth: true,
               fontSize: 15,
@@ -425,6 +427,7 @@ class _PendingProposalBannerState extends State<_PendingProposalBanner> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (!_loaded || _pending == null) return const SizedBox.shrink();
     final p = _pending!;
     final ns = (p['new_start'] as num).toInt();
@@ -442,7 +445,7 @@ class _PendingProposalBannerState extends State<_PendingProposalBanner> {
           Row(children: [
             Expanded(
               child: ZineButton(
-                label: 'Accept',
+                label: uiCopy(UiMessage.m_accept_89713b9c9c),
                 variant: ZineButtonVariant.blue,
                 fontSize: 15,
                 onPressed: () => _respond(true),
@@ -451,7 +454,7 @@ class _PendingProposalBannerState extends State<_PendingProposalBanner> {
             const SizedBox(width: Msg.s3),
             Expanded(
               child: ZineButton(
-                label: 'Decline',
+                label: uiCopy(UiMessage.m_decline_a2d285b352),
                 variant: ZineButtonVariant.ghost,
                 fontSize: 15,
                 onPressed: () => _respond(false),
@@ -468,7 +471,7 @@ class _PendingProposalBannerState extends State<_PendingProposalBanner> {
     if (!mounted) return;
     setState(() => _pending = null);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(r['ok'] == true ? (accept ? 'Rescheduled' : 'Declined — original time stands') : 'Failed: ${r['error'] ?? r['conflictWith'] ?? 'unknown'}'),
+      content: Text(r['ok'] == true ? (accept ? uiCopy(UiMessage.m_rescheduled_1930debae7) : uiCopy(UiMessage.m_declined_original_time_stands_07854b2a6f)) : uiCopy(UiMessage.m_failed_value1_af1e8f2668, {'value1': (r['error'] ?? r['conflictWith'] ?? 'unknown').toString()})),
     ));
     widget.onChanged?.call();
   }
@@ -532,22 +535,23 @@ class _SlotPickerSheetState extends State<_SlotPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(Msg.s5),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Pick a new time', style: _cardTitle),
+          UiText(UiMessage.m_pick_a_new_time_8edc73be1a, style: _cardTitle),
           const SizedBox(height: Msg.s1),
           Text(widget.dateStr, style: ADText.sectionLabel()),
           const SizedBox(height: Msg.s4),
-          if (_error != null) ZineErrorMsg('Could not load slots: $_error'),
+          if (_error != null) ZineErrorMsg(uiCopy(UiMessage.m_could_not_load_slots_error_54434a268d, {'error': (_error).toString()})),
           if (_slots == null && _error == null)
             const Center(child: Padding(padding: EdgeInsets.all(Msg.s5),
                 child: CircularProgressIndicator(color: Msg.accent))),
           if (_slots != null && _slots!.isEmpty)
             Padding(
               padding: const EdgeInsets.all(Msg.s2),
-              child: Text('The creator has no offered hours on this day.',
+              child: UiText(UiMessage.m_the_creator_has_no_offered_91e7edd7d6,
                   style: ADText.preview().copyWith(fontSize: 14, height: 1.42)),
             ),
           if (_slots != null && _slots!.isNotEmpty)

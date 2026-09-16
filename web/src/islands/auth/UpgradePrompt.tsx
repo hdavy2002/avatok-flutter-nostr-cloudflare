@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* Phase B — UpgradePrompt.
  *
  * A *quiet, never-blocking* nudge to turn the silent guest account into a full
@@ -35,6 +37,8 @@ export interface UpgradePromptProps {
 }
 
 export function UpgradePrompt({ reason, onUpgraded, onDismiss, compact }: UpgradePromptProps) {
+  const {t:uiT}=useUiTranslation("web-auth");
+
   const { isSignedIn, getToken } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -70,27 +74,21 @@ export function UpgradePrompt({ reason, onUpgraded, onDismiss, compact }: Upgrad
 
   if (done) {
     return (
-      <Card fillClassName="bg-mint" shadow={compact ? 'sm' : 'lg'}>
-        <p className="font-display font-semibold text-[16px] text-ink">
-          ✓ Account secured. You can sign in from any device now.
-        </p>
+      <Card fillClassName="bg-mint" shadow={compact ? uiT("web-auth.5af308bec132bd49","sm") : uiT("web-auth.0e6ba33f8bc8f415","lg")}>
+        <p className="font-display font-semibold text-[16px] text-ink"><UiText id="web-auth.60e6ce309aa70428" source="✓ Account secured. You can sign in from any device now." />{" "}</p>
       </Card>
     );
   }
 
   return (
-    <Card fillClassName="bg-lilac" shadow={compact ? 'sm' : 'lg'}>
+    <Card fillClassName="bg-lilac" shadow={compact ? uiT("web-auth.5af308bec132bd49","sm") : uiT("web-auth.0e6ba33f8bc8f415","lg")}>
       <div className="flex flex-col gap-3">
         <div>
-          <span className="font-mono font-bold uppercase text-[13px] tracking-[0.1em] text-ink">
-            Optional
-          </span>
-          <h3 className="mt-1 font-display font-semibold text-[19px] leading-tight text-ink">
-            Save a password?
-          </h3>
+          <span className="font-mono font-bold uppercase text-[13px] tracking-[0.1em] text-ink"><UiText id="web-auth.59be71333c960fd0" source="Optional" />{" "}</span>
+          <h3 className="mt-1 font-display font-semibold text-[19px] leading-tight text-ink"><UiText id="web-auth.d63786ffc3614c1b" source="Save a password?" />{" "}</h3>
           <p className="mt-1 font-body font-bold text-[14px] text-ink/80">
             {reason ??
-              'Keep your bookings and wallet if you switch devices. Takes a few seconds — totally optional.'}
+              uiT("web-auth.8bb123190556f2e0","Keep your bookings and wallet if you switch devices. Takes a few seconds — totally optional.")}
           </p>
         </div>
 
@@ -102,10 +100,10 @@ export function UpgradePrompt({ reason, onUpgraded, onDismiss, compact }: Upgrad
 
         <div className="flex flex-wrap items-center gap-3">
           {isSignedIn ? (
-            <Button variant="lime" loading={busy} label="Link my account" onClick={finishUpgrade} />
+            <Button variant="lime" loading={busy} label={uiT("web-auth.b7f2179ab5dea263","Link my account")} onClick={finishUpgrade} />
           ) : (
             <SignInButton mode="modal">
-              <Button variant="lime" label="Set a password" />
+              <Button variant="lime" label={uiT("web-auth.1b10004d07d810b0","Set a password")} />
             </SignInButton>
           )}
           {onDismiss && (
@@ -113,9 +111,7 @@ export function UpgradePrompt({ reason, onUpgraded, onDismiss, compact }: Upgrad
               type="button"
               className="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-blueInk underline decoration-blue decoration-2 underline-offset-2"
               onClick={onDismiss}
-            >
-              Maybe later
-            </button>
+            ><UiText id="web-auth.2ac741e6203af759" source="Maybe later" />{" "}</button>
           )}
         </div>
       </div>

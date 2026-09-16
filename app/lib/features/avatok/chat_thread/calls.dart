@@ -65,8 +65,8 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
         // escape hatch (force-close) if the guard is wrong.
         if (reason == 'already_in_call' && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text(
-                  'Already on a call — force-close the app if this is wrong')));
+              content: UiText(
+                  UiMessage.m_already_on_a_call_force_4a74aed07e)));
         }
         return;
       }
@@ -206,7 +206,7 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
         if (billingAuthorization != null && res.statusCode != 200) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Calling is temporarily unavailable. Please try again later.'),
+              content: UiText(UiMessage.m_calling_is_temporarily_unavailable_please_63a4b2b01a),
             ));
           }
           unreachable = true;
@@ -293,8 +293,8 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
           });
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: Text(
-                    '${widget.chat.name} is unreachable right now — ask them to open AvaTOK')));
+                content: UiText(
+                    UiMessage.m_value1_is_unreachable_right_now_51fe3a7ed8, params: {'value1': (widget.chat.name).toString()})));
           }
         } else {
           // Any other non-200 (auth, 5xx, rate-limit) — capture so a failed call
@@ -323,9 +323,9 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content:
-                const Text("Can't reach the network — check your connection"),
+                const UiText(UiMessage.m_can_t_reach_the_network_3f3c20315f),
             action: SnackBarAction(
-              label: 'Retry',
+              label: uiCopy(UiMessage.m_retry_942087cc2d),
               onPressed: () {
                 Analytics.capture('call_retry_pressed',
                     {'call_id': room, 'kind': video ? 'video' : 'audio'});
@@ -632,7 +632,7 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
     if (gid == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content:
-              Text('This group needs to sync once before it can hold calls')));
+              UiText(UiMessage.m_this_group_needs_to_sync_fe19f7e915)));
       return;
     }
     // Both refusals route through the same notice, which now names the actual
@@ -668,8 +668,8 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
       final escalating = CallEscalationGuard.overlapping;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(escalating
-              ? 'Your call is being moved to a group call — one moment'
-              : 'You are already in a call — leave it first')));
+              ? uiCopy(UiMessage.m_your_call_is_being_moved_6298fb310a)
+              : uiCopy(UiMessage.m_you_are_already_in_a_7b00bcaa92))));
       return;
     }
     // [GCALL-W4-BUSY] …and a 1:1 call counts too. This guarded conference vs
@@ -677,7 +677,7 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
     // group call and end up nominally in both with one microphone.
     if (callIsGenuinelyActive()) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('You are on another call — finish it first')));
+          content: UiText(UiMessage.m_you_are_on_another_call_94fcea0aae)));
       Analytics.capture('groupcall_blocked_busy', {'reason': 'in_1to1_call'});
       return;
     }
@@ -696,7 +696,7 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
       // They asked to JOIN. There is nothing to join — say so, and refresh the
       // banner rather than starting a call nobody asked for.
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('That call has already ended')));
+          const SnackBar(content: UiText(UiMessage.m_that_call_has_already_ended_b2cf724ca5)));
       unawaited(_refreshConfStatus());
       return;
     }
@@ -768,7 +768,7 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
         content: Text(body),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('OK'))
+              onPressed: () => Navigator.pop(ctx), child: const UiText(UiMessage.m_ok_565339bc4d))
         ],
       ),
     );
@@ -810,8 +810,8 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
             Expanded(
                 child: Text(
               _confOngoingHere
-                  ? 'Ongoing call · $_confCount — tap to return'
-                  : 'Ongoing call · $_confCount — tap to join',
+                  ? uiCopy(UiMessage.m_ongoing_call_confcount_tap_to_2d9bdd5b8f, {'confCount': (_confCount).toString()})
+                  : uiCopy(UiMessage.m_ongoing_call_confcount_tap_to_37d5a2ad68, {'confCount': (_confCount).toString()}),
               style: ADText.rowName(),
             )),
             PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),

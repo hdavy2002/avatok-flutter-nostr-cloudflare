@@ -15,7 +15,7 @@ extension _ChatThreadBanners on _ChatThreadScreenState {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
       builder: (ctx) => SafeArea(child: Padding(padding: const EdgeInsets.all(16),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Chat wallpaper', style: ADText.threadName()),
+          UiText(UiMessage.m_chat_wallpaper_628f0c33f9, style: ADText.threadName()),
           const SizedBox(height: 12),
           Wrap(spacing: 12, runSpacing: 12, children: [
             for (final id in kWallpaperOrder)
@@ -47,7 +47,7 @@ extension _ChatThreadBanners on _ChatThreadScreenState {
     if (saved != null && mounted) {
       setState(() => _callerSaved = true);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Saved ${saved.name}'),
+        content: UiText(UiMessage.m_saved_value1_efbf53f3ba, params: {'value1': (saved.name).toString()}),
         duration: const Duration(seconds: 2),
       ));
     }
@@ -65,7 +65,7 @@ extension _ChatThreadBanners on _ChatThreadScreenState {
         child: Row(children: [
           PhosphorIcon(PhosphorIcons.userPlus(PhosphorIconsStyle.bold), size: 16, color: AD.iconVideo),
           const SizedBox(width: 8),
-          Expanded(child: Text('Unknown number · ${formatTelDisplay(_telPhone)}',
+          Expanded(child: UiText(UiMessage.m_unknown_number_value1_004e9c510c, params: {'value1': (formatTelDisplay(_telPhone)).toString()},
               maxLines: 1, overflow: TextOverflow.ellipsis,
               style: ADText.preview(c: AD.textPrimary))),
           GestureDetector(
@@ -77,7 +77,7 @@ extension _ChatThreadBanners on _ChatThreadScreenState {
                 borderRadius: BorderRadius.circular(Msg.rSm),
                 border: Border.all(color: AD.borderControl, width: 2),
               ),
-              child: Text('Save', style: ADText.statCaption()),
+              child: UiText(UiMessage.m_save_1509f561f2, style: ADText.statCaption()),
             ),
           ),
           const SizedBox(width: 6),
@@ -101,14 +101,14 @@ extension _ChatThreadBanners on _ChatThreadScreenState {
           const SizedBox(width: 8),
           Flexible(child: Text(
               _callerSaved
-                  ? 'Voicemail record · this caller isn’t on AvaTOK'
-                  : 'Voicemail record from an unknown number',
+                  ? uiCopy(UiMessage.m_voicemail_record_this_caller_isn_c99518ae4e)
+                  : uiCopy(UiMessage.m_voicemail_record_from_an_unknown_b8469f4506),
               style: ADText.preview(c: AD.textSecondary))),
           if (!_callerSaved) ...[
             const SizedBox(width: 10),
             GestureDetector(
               onTap: () => _saveUnknownContact(source: 'thread_footer'),
-              child: Text('Save contact', style: ADText.statCaption(c: AD.iconSearch)),
+              child: UiText(UiMessage.m_save_contact_d24f121f4a, style: ADText.statCaption(c: AD.iconSearch)),
             ),
           ],
         ]),
@@ -124,7 +124,7 @@ extension _ChatThreadBanners on _ChatThreadScreenState {
         child: Row(children: [
           PhosphorIcon(PhosphorIcons.pushPin(PhosphorIconsStyle.fill), size: 15, color: AD.iconSearch),
           const SizedBox(width: 8),
-          Expanded(child: Text('Pinned: ${_pinned!['text'] ?? ''}',
+          Expanded(child: UiText(UiMessage.m_pinned_value1_bdb87c70fc, params: {'value1': (_pinned!['text'] ?? '').toString()},
               maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.preview(c: AD.textPrimary))),
           GestureDetector(onTap: _unpin,
               child: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold), size: 15, color: AD.textSecondary)),

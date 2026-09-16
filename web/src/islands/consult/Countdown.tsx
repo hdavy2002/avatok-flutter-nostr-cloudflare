@@ -1,3 +1,4 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
 /*
  * Countdown — a zine pill ticking down to the authoritative `endsAt` (ms epoch,
  * from the room WS welcome). Turns coral in the final two minutes and fires
@@ -27,6 +28,8 @@ function fmt(ms: number): string {
 }
 
 export function Countdown({ target, onZero, label = 'Ends in', intervalMs = 1000 }: CountdownProps) {
+  const {t:uiT}=useUiTranslation("web-common");
+
   const [remaining, setRemaining] = useState(() => target - Date.now());
   const fired = useRef(false);
 
@@ -61,7 +64,7 @@ export function Countdown({ target, onZero, label = 'Ends in', intervalMs = 1000
             : 'border-ink bg-card text-ink shadow-zine-xs',
       ].join(' ')}
       role="timer"
-      aria-live={urgent ? 'polite' : 'off'}
+      aria-live={urgent ? uiT("web-common.cad2a80df44e3abf","polite") : uiT("web-common.b4dc66dde806261b","off")}
     >
       <span className="uppercase tracking-[0.08em] text-inkSoft">{label}</span>
       <span>{done ? '00:00' : fmt(remaining)}</span>

@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* Phase B — PayStep (the "pay" step).
  *
  * Money is sensitive: we show EXACT amounts, never auto-retry a charge, and
@@ -55,6 +57,8 @@ interface LegacyPayStepProps {
 }
 
 function LegacyPayStep({ selection, token, onBooked, onBack }: LegacyPayStepProps) {
+  const {t:uiT}=useUiTranslation("web-checkout");
+
   const [balance, setBalance] = useState<number | null>(null);
   const [loadingBal, setLoadingBal] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -245,19 +249,17 @@ function LegacyPayStep({ selection, token, onBooked, onBack }: LegacyPayStepProp
       <Card>
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <span className="font-mono font-bold uppercase text-[14px] tracking-[0.08em] text-inkSoft">
-              You’re booking
-            </span>
+            <span className="font-mono font-bold uppercase text-[14px] tracking-[0.08em] text-inkSoft"><UiText id="web-checkout.6b6af615f345b4d0" source="You’re booking" />{" "}</span>
             <Pill kind="plain">{selection.title}</Pill>
           </div>
           <div className="flex items-center justify-between border-t-zine border-inkMute pt-3">
-            <span className="font-display font-semibold text-[16px] text-ink">Price</span>
+            <span className="font-display font-semibold text-[16px] text-ink"><UiText id="web-checkout.93c91c851e7acc17" source="Price" /></span>
             <span className="font-mono font-bold text-[15px] text-ink">{priceLine}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="font-display font-semibold text-[16px] text-ink">Wallet</span>
+            <span className="font-display font-semibold text-[16px] text-ink"><UiText id="web-checkout.d1c9a01d57e90086" source="Wallet" /></span>
             <span className="font-mono font-bold text-[15px] text-mintInk">
-              {loadingBal ? <Spinner size={16} /> : balance != null ? `${balance.toLocaleString()} Tokens` : '—'}
+              {loadingBal ? <Spinner size={16} /> : balance != null ? uiT("web-checkout.f9002c0259242e61","{value0} Tokens",{value0:String(balance.toLocaleString())}) : '—'}
             </span>
           </div>
         </div>
@@ -283,7 +285,7 @@ function LegacyPayStep({ selection, token, onBooked, onBack }: LegacyPayStepProp
           fullWidth
           loading={busy}
           disabled={loadingBal}
-          label={required && required > 0 ? `Pay & confirm — ${usd(required)}` : 'Confirm booking'}
+          label={required && required > 0 ? `Pay & confirm — ${usd(required)}` : uiT("web-checkout.fa1e17d8f8632479","Confirm booking")}
           onClick={() => void confirmBooking()}
         />
       )}
@@ -293,9 +295,7 @@ function LegacyPayStep({ selection, token, onBooked, onBack }: LegacyPayStepProp
         className="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-blueInk underline decoration-blue decoration-2 underline-offset-2 disabled:text-inkMute"
         disabled={busy}
         onClick={onBack}
-      >
-        ← Back
-      </button>
+      ><UiText id="web-checkout.aceb696a04c19971" source="← Back" />{" "}</button>
     </div>
   );
 }

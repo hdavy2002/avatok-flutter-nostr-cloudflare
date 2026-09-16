@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -349,13 +352,14 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       appBar: ZineAppBar(
         title: widget.initialKind == null
-            ? 'New listing'
+            ? uiCopy(UiMessage.m_new_listing_706a22635b)
             : _kind == 'live_event'
-                ? 'Create live event'
-                : 'Create consultation',
+                ? uiCopy(UiMessage.m_create_live_event_dff65f7ea7)
+                : uiCopy(UiMessage.m_create_consultation_ce5156ef13),
         markWord: widget.initialKind == null ? 'listing' : 'Create',
         tag: 'creator · ${_step + 1} / 6',
       ),
@@ -432,7 +436,7 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
                           Expanded(
                             child: i == 5
                                 ? ZineButton(
-                                    label: 'Publish',
+                                    label: uiCopy(UiMessage.m_publish_859390eb49),
                                     icon: PhosphorIcons.rocketLaunch(
                                         PhosphorIconsStyle.bold),
                                     fullWidth: true,
@@ -441,7 +445,7 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
                                     onPressed: _publishing ? null : _publish,
                                   )
                                 : ZineButton(
-                                    label: 'Continue',
+                                    label: uiCopy(UiMessage.m_continue_31fbef1625),
                                     icon: PhosphorIcons.arrowRight(
                                         PhosphorIconsStyle.bold),
                                     fullWidth: true,
@@ -603,9 +607,9 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         ZineField(
           controller: _title,
-          label: 'title',
+          label: uiCopy(UiMessage.m_title_aaf2320646),
           labelIcon: PhosphorIcons.textT(PhosphorIconsStyle.bold),
-          hint: 'e.g. Vedic chart reading',
+          hint: uiCopy(UiMessage.m_e_g_vedic_chart_reading_ad9ed05e87),
           maxLength: 140,
           textCapitalization: TextCapitalization.sentences,
           onChanged: (_) => setState(() {}),
@@ -613,20 +617,20 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
         const SizedBox(height: Msg.s4),
         ZineField(
           controller: _desc,
-          label: 'description',
+          label: uiCopy(UiMessage.m_description_c9046f7a37),
           labelIcon: PhosphorIcons.article(PhosphorIconsStyle.bold),
-          hint: 'What attendees will get…',
+          hint: uiCopy(UiMessage.m_what_attendees_will_get_858b1a7816),
           maxLines: 4,
           textCapitalization: TextCapitalization.sentences,
         ),
         const SizedBox(height: Msg.s4),
         ZineDropdown<String>(
-          label: 'category',
+          label: uiCopy(UiMessage.m_category_edb2cd3b74),
           value: _category,
           items: [
             if (_cats.isEmpty)
               const DropdownMenuItem(
-                  value: 'teachers', child: Text('Teachers')),
+                  value: 'teachers', child: UiText(UiMessage.m_teachers_33c512c6ee)),
             for (final c in _cats)
               DropdownMenuItem(
                   value: c.id, child: Text('${c.emoji} ${c.label}')),
@@ -640,7 +644,7 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         ZineField(
           controller: _price,
-          label: 'price (₹)',
+          label: uiCopy(UiMessage.m_price_8e7f4ffcfc),
           labelIcon: PhosphorIcons.coins(PhosphorIconsStyle.bold),
           leadText: '₹',
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -665,21 +669,21 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
                 ),
                 const SizedBox(width: Msg.s2),
                 Expanded(
-                  child: Text(
-                    'Private 1:1 consultation · one paying customer',
+                  child: UiText(
+                    UiMessage.m_private_1_1_consultation_one_861631a453,
                     style: ADText.preview(c: AD.textPrimary),
                   ),
                 ),
               ]),
             )
           else ...[
-            Text('Group size', style: ADText.sectionLabel()),
+            UiText(UiMessage.m_group_size_f501715b64, style: ADText.sectionLabel()),
             const SizedBox(height: Msg.s2),
             Row(children: [
               for (final c in const [1, 10, 20]) ...[
                 Expanded(
                   child: ZineChip(
-                    label: c == 1 ? '1:1' : 'Up to $c',
+                    label: c == 1 ? '1:1' : uiCopy(UiMessage.m_up_to_c_8bfe308c96, {'c': (c).toString()}),
                     active: _capacity == c,
                     onTap: () => setState(() => _capacity = c),
                   ),
@@ -704,7 +708,7 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
               Expanded(
                 child: Text(
                   _start == null
-                      ? 'Pick date & time'
+                      ? uiCopy(UiMessage.m_pick_date_time_8dc91a44f2)
                       : fmtWhen(_start!.millisecondsSinceEpoch),
                   style: ADText.rowName(),
                 ),
@@ -714,20 +718,20 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
             ]),
           ),
           const SizedBox(height: Msg.s2),
-          Text(
-              'If the time conflicts with your calendar, publish will flag it (greyed slot).',
+          UiText(
+              UiMessage.m_if_the_time_conflicts_with_bbc5415cf4,
               style: ADText.preview()),
           const SizedBox(height: Msg.s4),
         ],
         Row(children: [
-          Expanded(child: Text('Duration', style: ADText.sectionLabel())),
+          Expanded(child: UiText(UiMessage.m_duration_4fc52a3c4c, style: ADText.sectionLabel())),
           SizedBox(
             width: 132,
             child: ZineDropdown<int>(
               value: _duration,
               items: [
                 for (final m in const [15, 30, 45, 60, 90, 120, 180])
-                  DropdownMenuItem(value: m, child: Text('$m min'))
+                  DropdownMenuItem(value: m, child: UiText(UiMessage.m_m_min_b8b9f90dff, params: {'m': (m).toString()}))
               ],
               onChanged: (v) => setState(() => _duration = v ?? 60),
             ),
@@ -736,44 +740,44 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
         if (widget.initialKind != null) ...[
           const SizedBox(height: Msg.s4),
           Text(
-            _kind == 'live_event' ? 'Ticket refund policy' : 'Booking policy',
+            _kind == 'live_event' ? uiCopy(UiMessage.m_ticket_refund_policy_7d1cfbb573) : uiCopy(UiMessage.m_booking_policy_58e3fced1c),
             style: ADText.sectionLabel(),
           ),
           const SizedBox(height: Msg.s2),
           if (_kind == 'live_event')
             ZineDropdown<int>(
-              label: 'customer cancellation deadline',
+              label: uiCopy(UiMessage.m_customer_cancellation_deadline_359276e1fa),
               value: _refundWindowHours,
               items: const [
-                DropdownMenuItem(value: 48, child: Text('48 hours before')),
-                DropdownMenuItem(value: 24, child: Text('24 hours before')),
-                DropdownMenuItem(value: 12, child: Text('12 hours before')),
-                DropdownMenuItem(value: 0, child: Text('Non-refundable')),
+                DropdownMenuItem(value: 48, child: UiText(UiMessage.m_48_hours_before_406d1049a0)),
+                DropdownMenuItem(value: 24, child: UiText(UiMessage.m_24_hours_before_7dc76e45dd)),
+                DropdownMenuItem(value: 12, child: UiText(UiMessage.m_12_hours_before_86e15248a2)),
+                DropdownMenuItem(value: 0, child: UiText(UiMessage.m_non_refundable_9916b61a64)),
               ],
               onChanged: (v) => setState(() => _refundWindowHours = v ?? 24),
             )
           else ...[
             ZineDropdown<int>(
-              label: 'customer cancellation deadline',
+              label: uiCopy(UiMessage.m_customer_cancellation_deadline_359276e1fa),
               value: _cancellationWindowHours,
               items: const [
-                DropdownMenuItem(value: 48, child: Text('48 hours before')),
-                DropdownMenuItem(value: 24, child: Text('24 hours before')),
-                DropdownMenuItem(value: 12, child: Text('12 hours before')),
-                DropdownMenuItem(value: 0, child: Text('Non-refundable')),
+                DropdownMenuItem(value: 48, child: UiText(UiMessage.m_48_hours_before_406d1049a0)),
+                DropdownMenuItem(value: 24, child: UiText(UiMessage.m_24_hours_before_7dc76e45dd)),
+                DropdownMenuItem(value: 12, child: UiText(UiMessage.m_12_hours_before_86e15248a2)),
+                DropdownMenuItem(value: 0, child: UiText(UiMessage.m_non_refundable_9916b61a64)),
               ],
               onChanged: (v) =>
                   setState(() => _cancellationWindowHours = v ?? 24),
             ),
             const SizedBox(height: Msg.s3),
             ZineDropdown<int>(
-              label: 'minimum booking notice',
+              label: uiCopy(UiMessage.m_minimum_booking_notice_4ade523a4d),
               value: _bookingNoticeHours,
               items: const [
-                DropdownMenuItem(value: 1, child: Text('1 hour')),
-                DropdownMenuItem(value: 2, child: Text('2 hours')),
-                DropdownMenuItem(value: 6, child: Text('6 hours')),
-                DropdownMenuItem(value: 24, child: Text('24 hours')),
+                DropdownMenuItem(value: 1, child: UiText(UiMessage.m_1_hour_f8b8883f0c)),
+                DropdownMenuItem(value: 2, child: UiText(UiMessage.m_2_hours_9808e0ec3c)),
+                DropdownMenuItem(value: 6, child: UiText(UiMessage.m_6_hours_4105ae3b8a)),
+                DropdownMenuItem(value: 24, child: UiText(UiMessage.m_24_hours_f0514e8df8)),
               ],
               onChanged: (v) => setState(() => _bookingNoticeHours = v ?? 2),
             ),
@@ -783,9 +787,9 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Allow rescheduling', style: ADText.rowName()),
-                    Text(
-                      'Customer can move the booking before the cancellation deadline.',
+                    UiText(UiMessage.m_allow_rescheduling_375a56532a, style: ADText.rowName()),
+                    UiText(
+                      UiMessage.m_customer_can_move_the_booking_5c70a104f8,
                       style: ADText.preview(),
                     ),
                   ],
@@ -800,15 +804,15 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
             const SizedBox(height: Msg.s3),
             ZineField(
               controller: _preparationInstructions,
-              label: 'preparation instructions (optional)',
-              hint: 'What should the customer prepare before the call?',
+              label: uiCopy(UiMessage.m_preparation_instructions_optional_8587c70140),
+              hint: uiCopy(UiMessage.m_what_should_the_customer_prepare_db42b5b82c),
               maxLines: 4,
               maxLength: 600,
               textCapitalization: TextCapitalization.sentences,
             ),
             const SizedBox(height: Msg.s2),
-            Text(
-              'If the customer does not attend, the booked session is charged. Creator and provider failures go to support review.',
+            UiText(
+              UiMessage.m_if_the_customer_does_not_3638c31b36,
               style: ADText.preview(c: AD.textSecondary),
             ),
           ],
@@ -816,10 +820,10 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
         const SizedBox(height: Msg.s4),
         const Divider(),
         const SizedBox(height: Msg.s2),
-        Text('Pricing extras', style: ADText.sectionLabel()),
+        UiText(UiMessage.m_pricing_extras_4f28a19ed4, style: ADText.sectionLabel()),
         const SizedBox(height: Msg.s3),
         Row(children: [
-          Expanded(child: Text('Early-bird discount', style: ADText.rowName())),
+          Expanded(child: UiText(UiMessage.m_early_bird_discount_31f28d32ed, style: ADText.rowName())),
           ZineToggle(
               value: _earlyBird,
               onChanged: (v) => setState(() => _earlyBird = v)),
@@ -831,7 +835,7 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
                 width: 92,
                 child: ZineField(
                     controller: _ebPct,
-                    label: '% off',
+                    label: uiCopy(UiMessage.m_off_5e0aa53f41),
                     keyboardType: TextInputType.number)),
             const SizedBox(width: Msg.s3),
             Expanded(
@@ -854,7 +858,7 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
                   Flexible(
                     child: Text(
                         _ebEnds == null
-                            ? 'Until…'
+                            ? uiCopy(UiMessage.m_until_3a163441ec)
                             : fmtWhen(_ebEnds!.millisecondsSinceEpoch),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -868,22 +872,22 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
         const SizedBox(height: Msg.s4),
         ZineField(
           controller: _promoCode,
-          label: 'promo code (optional)',
+          label: uiCopy(UiMessage.m_promo_code_optional_22be26ce4d),
           textCapitalization: TextCapitalization.characters,
-          hint: 'AVATOK10',
+          hint: uiCopy(UiMessage.m_avatok10_aef3d70f5d),
         ),
         const SizedBox(height: Msg.s3),
         Row(children: [
           Expanded(
               child: ZineField(
                   controller: _promoPct,
-                  label: '% off',
+                  label: uiCopy(UiMessage.m_off_5e0aa53f41),
                   keyboardType: TextInputType.number)),
           const SizedBox(width: Msg.s3),
           Expanded(
               child: ZineField(
                   controller: _promoMax,
-                  label: 'max uses',
+                  label: uiCopy(UiMessage.m_max_uses_e1085805b2),
                   keyboardType: TextInputType.number)),
         ]),
       ]);
@@ -963,8 +967,8 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
             ),
         ]),
         const SizedBox(height: Msg.s3),
-        Text(
-            '1–5 photos (at least one required). Served via Cloudflare (AVIF) and cached on devices.',
+        UiText(
+            UiMessage.m_1_5_photos_at_least_ab05245e97,
             style: ADText.preview()),
       ]);
 
@@ -973,22 +977,22 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         ZineField(
           controller: _country,
-          label: 'country code (e.g. IN, US)',
+          label: uiCopy(UiMessage.m_country_code_e_g_in_247fee78b6),
           labelIcon: PhosphorIcons.flag(PhosphorIconsStyle.bold),
           maxLength: 2,
           textCapitalization: TextCapitalization.characters,
-          hint: 'IN',
+          hint: uiCopy(UiMessage.m_in_fed1d872f6),
         ),
         const SizedBox(height: Msg.s4),
         ZineField(
           controller: _language,
-          label: 'language (badge, optional)',
+          label: uiCopy(UiMessage.m_language_badge_optional_5f706837d9),
           labelIcon: PhosphorIcons.translate(PhosphorIconsStyle.bold),
-          hint: 'e.g. Hindi',
+          hint: uiCopy(UiMessage.m_e_g_hindi_0cce431ae7),
         ),
         const SizedBox(height: Msg.s4),
         Row(children: [
-          Expanded(child: Text('18+ only', style: ADText.rowName())),
+          Expanded(child: UiText(UiMessage.m_18_only_44ec1e9146, style: ADText.rowName())),
           ZineToggle(
               value: _adultsOnly,
               onChanged: (v) => setState(() => _adultsOnly = v)),
@@ -1015,13 +1019,12 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
                           size: 17, color: AD.textPrimary),
                       const SizedBox(width: Msg.s2),
                       Expanded(
-                          child: Text('Voice translation available',
+                          child: UiText(UiMessage.m_voice_translation_available_598730c557,
                               style: ADText.threadName())),
                     ]),
                     const SizedBox(height: Msg.s2),
-                    Text(
-                      'Attendees can hear you live in their own language. They pay \u20b9300/hour '
-                      'in Tokens on top of your price — your earnings are not affected.',
+                    UiText(
+                      UiMessage.m_attendees_can_hear_you_live_c6fd922785,
                       style: ADText.preview(c: AD.textPrimary),
                     ),
                   ]),
@@ -1035,9 +1038,9 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
         if (_translationEnabled) ...[
           const SizedBox(height: Msg.s4),
           ZineDropdown<String>(
-            label: 'language of transmission (the language you speak)',
+            label: uiCopy(UiMessage.m_language_of_transmission_the_language_41b556549e),
             value: _spokenLang,
-            hint: 'Pick a language',
+            hint: uiCopy(UiMessage.m_pick_a_language_c13d31e4b6),
             items: [
               for (final l in kTranslationLangs)
                 DropdownMenuItem(value: l.code, child: Text(l.label)),
@@ -1050,7 +1053,7 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
   // ---- step 6: preview & publish (A6 — REAL details widget with draft data) ----
   Widget _stepPreview() =>
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Preview — what buyers see', style: ADText.sectionLabel()),
+        UiText(UiMessage.m_preview_what_buyers_see_897590425a, style: ADText.sectionLabel()),
         const SizedBox(height: Msg.s3),
         Container(
           height: 440,

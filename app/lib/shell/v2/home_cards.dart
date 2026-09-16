@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -201,6 +203,7 @@ class _HomeCardsState extends State<HomeCards> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final cards = <Widget>[];
     for (final id in _order) {
       if (_visible[id] == false) continue;
@@ -238,9 +241,9 @@ class _HomeCardsState extends State<HomeCards> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             ZineIconBadge(icon: PhosphorIcons.squaresFour(PhosphorIconsStyle.bold), color: AD.primaryBadge, size: 52),
             const SizedBox(height: Msg.s3),
-            Text('No cards on Home', textAlign: TextAlign.center, style: ADText.threadName().copyWith(fontSize: 17)),
+            UiText(UiMessage.m_no_cards_on_home_e14ec84cdc, textAlign: TextAlign.center, style: ADText.threadName().copyWith(fontSize: 17)),
             const SizedBox(height: Msg.s1),
-            Text('Turn cards on from the menu → Cards.',
+            UiText(UiMessage.m_turn_cards_on_from_the_cb8d68f894,
                 textAlign: TextAlign.center, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),
           ]),
         ),
@@ -266,7 +269,7 @@ class _HomeCardsState extends State<HomeCards> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _cardHead(
             icon: PhosphorIcons.wallet(PhosphorIconsStyle.bold),
-            title: 'Wallet', accent: AD.online, tag: 'Tokens'),
+            title: uiCopy(UiMessage.m_wallet_d1c9a01d57), accent: AD.online, tag: 'Tokens'),
         const SizedBox(height: Msg.s3),
         if (_walletLoading)
           _skeletonLine(120)
@@ -275,7 +278,7 @@ class _HomeCardsState extends State<HomeCards> {
               style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700,
                   fontSize: 34, color: AD.textPrimary)),
         const SizedBox(height: 4),
-        Text('Tap to open your wallet',
+        UiText(UiMessage.m_tap_to_open_your_wallet_e4d7d833dd,
             style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),
       ]),
     );
@@ -292,12 +295,12 @@ class _HomeCardsState extends State<HomeCards> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _cardHead(
             icon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
-            title: 'Call logs', accent: AD.iconSearch),
+            title: uiCopy(UiMessage.m_call_logs_04443f52d8), accent: AD.iconSearch),
         const SizedBox(height: 12),
         if (_callsLoading)
           _skeletonLine(180)
         else if (_calls.isEmpty)
-          Text('No recent calls yet.',
+          UiText(UiMessage.m_no_recent_calls_yet_ad5fb7907b,
               style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13))
         else
           ...[for (final c in _calls) _callRow(c)],
@@ -328,7 +331,7 @@ class _HomeCardsState extends State<HomeCards> {
         PhosphorIcon(icon, size: 16, color: color),
         const SizedBox(width: Msg.s2),
         Expanded(
-          child: Text(c.name.isEmpty ? 'Unknown' : c.name,
+          child: Text(c.name.isEmpty ? uiCopy(UiMessage.m_unknown_b764cdc0ea) : c.name,
               maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName()),
         ),
         Text(c.timeLabel, style: ADText.statCaption(c: AD.textTertiary).copyWith(fontSize: 11)),
@@ -343,7 +346,7 @@ class _HomeCardsState extends State<HomeCards> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _cardHead(
             icon: PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
-            title: 'Messages', accent: AD.iconVideo),
+            title: uiCopy(UiMessage.m_messages_04d7b48339), accent: AD.iconVideo),
         const SizedBox(height: 12),
         Row(children: [
           _msgChip('Talk', 0),
@@ -356,7 +359,7 @@ class _HomeCardsState extends State<HomeCards> {
           // SMS tab is an explicit unavailable state until the SMS role ships.
           Padding(
             padding: const EdgeInsets.symmetric(vertical: Msg.s2),
-            child: Text('SMS available once Ava is your SMS app.',
+            child: UiText(UiMessage.m_sms_available_once_ava_is_202c79c70d,
                 style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),
           )
         else if (_messagesLoading)
@@ -364,7 +367,7 @@ class _HomeCardsState extends State<HomeCards> {
         else if (_unread.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: Msg.s2),
-            child: Text('You are all caught up.',
+            child: UiText(UiMessage.m_you_are_all_caught_up_07a0a7a028,
                 style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),
           )
         else
@@ -403,7 +406,7 @@ class _HomeCardsState extends State<HomeCards> {
         child: Row(children: [
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(m.name.isEmpty ? 'Unknown' : m.name,
+              Text(m.name.isEmpty ? uiCopy(UiMessage.m_unknown_b764cdc0ea) : m.name,
                   maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName()),
               if (m.preview.isNotEmpty)
                 Text(m.preview,
@@ -435,7 +438,7 @@ class _HomeCardsState extends State<HomeCards> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _cardHead(
             icon: PhosphorIcons.chartBar(PhosphorIconsStyle.bold),
-            title: 'Analytics', accent: AD.iconSearch, tag: 'Today'),
+            title: uiCopy(UiMessage.m_analytics_94c116ee11), accent: AD.iconSearch, tag: 'Today'),
         const SizedBox(height: Msg.s3),
         if (_analyticsLoading)
           _skeletonLine(160)
@@ -471,12 +474,12 @@ class _HomeCardsState extends State<HomeCards> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _cardHead(
             icon: PhosphorIcons.trendUp(PhosphorIconsStyle.bold),
-            title: 'Earnings', accent: AD.online, tag: 'Tokens'),
+            title: uiCopy(UiMessage.m_earnings_81920761dd), accent: AD.online, tag: 'Tokens'),
         const SizedBox(height: 12),
         if (_aggLoading)
           _skeletonLine(200)
         else if (e == null)
-          Text(_aggFailed ? 'Earnings are unavailable right now.' : 'No earnings yet.',
+          Text(_aggFailed ? uiCopy(UiMessage.m_earnings_are_unavailable_right_now_34aa27b6c8) : uiCopy(UiMessage.m_no_earnings_yet_3fa34cb64d),
               style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13))
         else ...[
           Row(children: [
@@ -493,7 +496,7 @@ class _HomeCardsState extends State<HomeCards> {
             ),
           ),
           const SizedBox(height: 4),
-          Text('Last 7 days', style: ADText.statCaption(c: AD.textTertiary).copyWith(fontSize: 10)),
+          UiText(UiMessage.m_last_7_days_0603deca4f, style: ADText.statCaption(c: AD.textTertiary).copyWith(fontSize: 10)),
         ],
       ]),
     );
@@ -507,7 +510,7 @@ class _HomeCardsState extends State<HomeCards> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           _cardHead(
               icon: PhosphorIcons.mapPin(PhosphorIconsStyle.bold),
-              title: 'Visitors', accent: AD.danger),
+              title: uiCopy(UiMessage.m_visitors_68f7d7fbb5), accent: AD.danger),
           const SizedBox(height: 12),
           _skeletonLine(180),
         ]),
@@ -524,21 +527,21 @@ class _HomeCardsState extends State<HomeCards> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _cardHead(
             icon: PhosphorIcons.mapPin(PhosphorIconsStyle.bold),
-            title: 'Visitors', accent: AD.danger, tag: '7 days'),
+            title: uiCopy(UiMessage.m_visitors_68f7d7fbb5), accent: AD.danger, tag: '7 days'),
         const SizedBox(height: 12),
         Text('${v.total7d}',
             style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700,
                 fontSize: 30, color: AD.textPrimary)),
-        Text('listing views', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
+        UiText(UiMessage.m_listing_views_c26b1884e1, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
         if (v.byCountry.isNotEmpty) ...[
           const SizedBox(height: 12),
-          Text('Top countries', style: ADText.sectionLabel(c: AD.textTertiary)),
+          UiText(UiMessage.m_top_countries_6a4cb0dbf7, style: ADText.sectionLabel(c: AD.textTertiary)),
           const SizedBox(height: 4),
           ...[for (final g in v.byCountry.take(5)) _geoRow(g.label, g.views)],
         ],
         if (v.byCity.isNotEmpty) ...[
           const SizedBox(height: Msg.s2),
-          Text('TOP CITIES', style: ADText.sectionLabel(c: AD.textTertiary)),
+          UiText(UiMessage.m_top_cities_4eb9571046, style: ADText.sectionLabel(c: AD.textTertiary)),
           const SizedBox(height: 4),
           ...[for (final g in v.byCity.take(5)) _geoRow(g.label, g.views)],
         ],
@@ -550,7 +553,7 @@ class _HomeCardsState extends State<HomeCards> {
         padding: const EdgeInsets.symmetric(vertical: Msg.s1),
         child: Row(children: [
           Expanded(
-            child: Text(label.isEmpty ? 'Unknown' : label,
+            child: Text(label.isEmpty ? uiCopy(UiMessage.m_unknown_b764cdc0ea) : label,
                 maxLines: 1, overflow: TextOverflow.ellipsis,
                 style: ADText.rowName().copyWith(fontSize: 13, fontWeight: FontWeight.w600)),
           ),
@@ -566,7 +569,7 @@ class _HomeCardsState extends State<HomeCards> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           _cardHead(
               icon: PhosphorIcons.storefront(PhosphorIconsStyle.bold),
-              title: 'Listings', accent: AD.primaryBadge),
+              title: uiCopy(UiMessage.m_listings_5009238dba), accent: AD.primaryBadge),
           const SizedBox(height: 12),
           _skeletonLine(180),
         ]),
@@ -583,7 +586,7 @@ class _HomeCardsState extends State<HomeCards> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _cardHead(
             icon: PhosphorIcons.storefront(PhosphorIconsStyle.bold),
-            title: 'Listings', accent: AD.primaryBadge, tag: 'Top'),
+            title: uiCopy(UiMessage.m_listings_5009238dba), accent: AD.primaryBadge, tag: 'Top'),
         const SizedBox(height: Msg.s2),
         ...[for (final l in list.take(3)) _listingRow(l)],
       ]),
@@ -595,9 +598,9 @@ class _HomeCardsState extends State<HomeCards> {
         child: Row(children: [
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(l.title.isEmpty ? 'Untitled listing' : l.title,
+              Text(l.title.isEmpty ? uiCopy(UiMessage.m_untitled_listing_5aef67ef27) : l.title,
                   maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName()),
-              Text('${l.views7d} views · ${l.joinedCount} joined',
+              UiText(UiMessage.m_value1_views_value2_joined_3aa4d89f87, params: {'value1': (l.views7d).toString(), 'value2': (l.joinedCount).toString()},
                   style: ADText.statCaption(c: AD.textTertiary).copyWith(fontSize: 10)),
             ]),
           ),

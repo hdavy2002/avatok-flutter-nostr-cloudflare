@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/ui/avatok_dark.dart';
@@ -45,6 +47,7 @@ class PaidBusyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final displayName = name.trim().isEmpty ? 'This line' : name.trim();
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 380),
@@ -57,24 +60,24 @@ class PaidBusyCard extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('$displayName is busy',
+            UiText(UiMessage.m_displayname_is_busy_3b50198d8a, params: {'displayName': (displayName).toString()},
                 textAlign: TextAlign.center, style: ADText.appTitle()),
             const SizedBox(height: Msg.s2),
             Text(
-              message.trim().isEmpty ? 'This line is busy. Please try again later.' : message,
+              message.trim().isEmpty ? uiCopy(UiMessage.m_this_line_is_busy_please_e575e43683) : message,
               textAlign: TextAlign.center,
               style: ADText.preview(c: AD.textSecondary),
             ),
             const SizedBox(height: Msg.s5),
             _adPillButton(
-              label: 'Try again',
+              label: uiCopy(UiMessage.m_try_again_d8b8392e2c),
               fill: AD.primaryBadge,
               fontSize: 16,
               onPressed: onTryAgain,
             ),
             const SizedBox(height: Msg.s2),
             _adPillButton(
-              label: 'Close',
+              label: uiCopy(UiMessage.m_close_7d9eb7acb1),
               fill: AD.card,
               border: AD.borderControl,
               textColor: AD.textPrimary,

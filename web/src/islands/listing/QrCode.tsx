@@ -1,3 +1,4 @@
+import { UiText } from "../../lib/i18n/react";
 // [LIST-PAGE-2 gap 3] "SCAN TO OPEN THIS SHOW ON YOUR PHONE" — comp:
 // design/live-streaming/avaTOK Listing Details.dc.html:170-172. The comp used a
 // third-party image proxy (api.qrserver.com) to render the code, which is a
@@ -52,9 +53,7 @@ export default function QrCodeBox({ url, size = 88 }: QrCodeProps) {
             width: size, height: size, display: 'grid', placeItems: 'center', borderRadius: 8,
             border: '1.5px solid #161614', background: '#fff', fontSize: '0.625rem', fontWeight: 800, textAlign: 'center', padding: 4,
           }}
-        >
-          QR unavailable
-        </div>
+        ><UiText id="web-listing.b312670d6ec6d953" source="QR unavailable" />{" "}</div>
       )}
       <span style={{
         fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 800, fontSize: '0.625rem',

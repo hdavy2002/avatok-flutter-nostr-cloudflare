@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -39,13 +42,14 @@ class _ArchivedScreenState extends State<ArchivedScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: AppBar(
         backgroundColor: AD.headerFooter,
         foregroundColor: AD.textPrimary,
         elevation: 0,
-        title: Text('Archived', style: ADText.appTitle()),
+        title: UiText(UiMessage.m_archived_bdb86505f8, style: ADText.appTitle()),
       ),
       body: RefreshIndicator(
         onRefresh: () async => _reload(),
@@ -63,7 +67,7 @@ class _ArchivedScreenState extends State<ArchivedScreen> {
             if (drafts.isEmpty && archived.isEmpty) {
               return ListView(children: [
                 const SizedBox(height: 120),
-                Center(child: Text('Nothing archived yet.', style: ADText.preview())),
+                Center(child: UiText(UiMessage.m_nothing_archived_yet_446f44e5b1, style: ADText.preview())),
               ]);
             }
             return ListView(padding: const EdgeInsets.all(Msg.s3), children: [
@@ -87,10 +91,10 @@ class _SectionHeader extends StatelessWidget {
   final String text;
   const _SectionHeader(this.text);
   @override
-  Widget build(BuildContext context) => Padding(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Padding(
         padding: const EdgeInsets.fromLTRB(Msg.s1, Msg.s3, Msg.s1, Msg.s2),
         child: Text(text, style: ADText.sectionLabel()),
-      );
+      ); }
 }
 
 class _Row extends StatelessWidget {
@@ -116,7 +120,7 @@ class _Row extends StatelessWidget {
     if (res['ok'] == true) {
       onChanged();
     } else {
-      showAdToast(context, message: 'Could not restore.');
+      showAdToast(context, message: uiCopy(UiMessage.m_could_not_restore_ee978500eb));
     }
   }
 
@@ -125,13 +129,13 @@ class _Row extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AD.popover,
-        title: Text('Delete forever?', style: ADText.threadName()),
-        content: Text('This permanently removes the listing and its photos everywhere. This cannot be undone.',
+        title: UiText(UiMessage.m_delete_forever_2f3298c7b4, style: ADText.threadName()),
+        content: UiText(UiMessage.m_this_permanently_removes_the_listing_852e091c2a,
             style: ADText.preview()),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Cancel', style: TextStyle(color: AD.textSecondary, fontFamily: ADText.family, fontWeight: FontWeight.w600))),
-          AdButton(label: 'Delete', variant: AdButtonVariant.danger, onPressed: () => Navigator.pop(ctx, true)),
+              child: UiText(UiMessage.m_cancel_19766ed6cc, style: TextStyle(color: AD.textSecondary, fontFamily: ADText.family, fontWeight: FontWeight.w600))),
+          AdButton(label: uiCopy(UiMessage.m_delete_e2d0a54968), variant: AdButtonVariant.danger, onPressed: () => Navigator.pop(ctx, true)),
         ],
       ),
     );
@@ -142,7 +146,7 @@ class _Row extends StatelessWidget {
     if (done) {
       onChanged();
     } else {
-      showAdToast(context, message: 'Could not delete.');
+      showAdToast(context, message: uiCopy(UiMessage.m_could_not_delete_20a52cfad4));
     }
   }
 
@@ -151,7 +155,7 @@ class _Row extends StatelessWidget {
     final res = await ListingsApi.publish(card.id);
     if (!context.mounted) return;
     if (res['ok'] == true) {
-      showAdToast(context, message: 'Re-published with a fresh expiry.');
+      showAdToast(context, message: uiCopy(UiMessage.m_re_published_with_a_fresh_caf05c7e77));
       onChanged();
     } else {
       showAdToast(context, message: res['error']?.toString() ?? res['reason']?.toString() ?? 'Could not publish.');
@@ -179,7 +183,7 @@ class _Row extends StatelessWidget {
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom + 16, left: 16, right: 16, top: 16),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Edit draft', style: ADText.threadName()),
+          UiText(UiMessage.m_edit_draft_4452cbdbee, style: ADText.threadName()),
           const SizedBox(height: Msg.s3),
           TextField(controller: title, decoration: deco('Title')),
           const SizedBox(height: Msg.s3),
@@ -187,7 +191,7 @@ class _Row extends StatelessWidget {
           const SizedBox(height: Msg.s3),
           TextField(controller: price, keyboardType: TextInputType.number, decoration: deco('Price')),
           const SizedBox(height: Msg.s3),
-          AdButton(label: 'Save', fullWidth: true, onPressed: () => Navigator.of(ctx).pop(true)),
+          AdButton(label: uiCopy(UiMessage.m_save_1509f561f2), fullWidth: true, onPressed: () => Navigator.of(ctx).pop(true)),
         ]),
       ),
     );
@@ -204,6 +208,7 @@ class _Row extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return AdCard(
       padding: EdgeInsets.zero,
       child: ListTile(
@@ -214,13 +219,13 @@ class _Row extends StatelessWidget {
         subtitle: Text('${card.displayPrice} · $_label', style: ADText.preview()),
         trailing: draft
             ? Wrap(spacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
-                IconButton(tooltip: 'Edit', icon: PhosphorIcon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.regular), color: AD.textSecondary), onPressed: () => _edit(context)),
-                AdButton(label: 'Publish', fontSize: 13, onPressed: () => _republish(context)),
+                IconButton(tooltip: uiCopy(UiMessage.m_edit_464c4ffd01), icon: PhosphorIcon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.regular), color: AD.textSecondary), onPressed: () => _edit(context)),
+                AdButton(label: uiCopy(UiMessage.m_publish_859390eb49), fontSize: 13, onPressed: () => _republish(context)),
               ])
             : Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
                 TextButton(onPressed: () => _restore(context),
-                    child: Text('Restore', style: TextStyle(color: AD.iconSearch, fontFamily: ADText.family, fontWeight: FontWeight.w600))),
-                IconButton(tooltip: 'Delete forever', icon: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.regular), color: AD.danger), onPressed: () => _deleteForever(context)),
+                    child: UiText(UiMessage.m_restore_a76e13b983, style: TextStyle(color: AD.iconSearch, fontFamily: ADText.family, fontWeight: FontWeight.w600))),
+                IconButton(tooltip: uiCopy(UiMessage.m_delete_forever_42b4896de1), icon: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.regular), color: AD.danger), onPressed: () => _deleteForever(context)),
               ]),
       ),
     );

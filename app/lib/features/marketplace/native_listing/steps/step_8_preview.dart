@@ -1,3 +1,6 @@
+import '../../../../core/cached_image.dart';
+
+import '../../../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../../../core/ui/avatok_dark.dart';
@@ -48,7 +51,7 @@ class ListingStep8Preview extends StatelessWidget {
       this.onPatch,
       this.onApplyCopy});
   @override
-  Widget build(BuildContext context) =>
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return
       LayoutBuilder(builder: (context, constraints) {
         final wide = constraints.maxWidth > 680;
         final body =
@@ -63,7 +66,7 @@ class ListingStep8Preview extends StatelessWidget {
                   children: [
                 Row(children: [
                   Expanded(
-                      child: Text('Publishing checklist',
+                      child: UiText(UiMessage.m_publishing_checklist_d54f765e7a,
                           style: Theme.of(context).textTheme.titleMedium)),
                   IconButton(
                       onPressed: reviewing ? null : onRunReview,
@@ -104,7 +107,7 @@ class ListingStep8Preview extends StatelessWidget {
                             SizedBox(width: 300, child: _poster(context))
                           ])
                     : body));
-      });
+      }); }
 
   Widget _statusCard(BuildContext context) {
     final status = textValue(draftValue(draft, 'status', 'draft'));
@@ -126,13 +129,13 @@ class ListingStep8Preview extends StatelessWidget {
         Expanded(
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Review my details using AI',
+          UiText(UiMessage.m_review_my_details_using_ai_7be9771bc8,
               style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
-          const Text('Suggestions only — you choose what to apply.')
+          const UiText(UiMessage.m_suggestions_only_you_choose_what_f2d9855583)
         ])),
         ZineButton(
-            label: copyReviewing ? 'Checking…' : 'Review copy',
+            label: copyReviewing ? uiCopy(UiMessage.m_checking_ec963ffc91) : uiCopy(UiMessage.m_review_copy_d99a25ae6d),
             onPressed: copyReviewing ? null : onRunCopyReview,
             loading: copyReviewing,
             variant: ZineButtonVariant.blue)
@@ -141,8 +144,8 @@ class ListingStep8Preview extends StatelessWidget {
         const Divider(height: 24),
         Text(
             textValue(result['source']) == 'ai'
-                ? 'Reviewed by Ava'
-                : 'Length check only — Ava was unavailable',
+                ? uiCopy(UiMessage.m_reviewed_by_ava_f15132e0ca)
+                : uiCopy(UiMessage.m_length_check_only_ava_was_b0cd2a25d2),
             style: Theme.of(context).textTheme.labelSmall),
         for (final field in ['title', 'blurb', 'description'])
           _reviewField(field, result[field]),
@@ -160,7 +163,7 @@ class ListingStep8Preview extends StatelessWidget {
           Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
           if (f['note'] != null) Text(textValue(f['note'])),
           if (suggestion.isEmpty || suggestion == original)
-            const Text('Nothing to change — this already fits.')
+            const UiText(UiMessage.m_nothing_to_change_this_already_b7a1d6430f)
           else ...[
             Text(suggestion),
             Align(
@@ -169,7 +172,7 @@ class ListingStep8Preview extends StatelessWidget {
                     onPressed: onApplyCopy == null
                         ? null
                         : () => onApplyCopy!(name, suggestion),
-                    child: const Text('Use this')))
+                    child: const UiText(UiMessage.m_use_this_b291996520)))
           ]
         ]));
   }
@@ -180,16 +183,16 @@ class ListingStep8Preview extends StatelessWidget {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       if (status == 'draft' || status == 'rejected')
         fullWidthButton(
-            label: status == 'rejected' ? 'Submit changes for review' : 'Submit for human review',
+            label: status == 'rejected' ? uiCopy(UiMessage.m_submit_changes_for_review_c1395d7425) : uiCopy(UiMessage.m_submit_for_human_review_cd84eda463),
             loading: submitting,
             onPressed: submitting ? null : onSubmit),
       if (status == 'draft' || status == 'rejected')
         const Padding(
             padding: EdgeInsets.only(top: 8),
-            child: Text('Usually checked within an hour, but it can take up to 48 hours. We’ll email you when it is approved or needs more changes.')),
+            child: UiText(UiMessage.m_usually_checked_within_an_hour_eaf9a78494)),
       if (live) ...[
         const SizedBox(height: 12),
-        Text('Runs every week?',
+        UiText(UiMessage.m_runs_every_week_d5d26bcc36,
             style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
         Wrap(spacing: 8, children: [
@@ -198,7 +201,7 @@ class ListingStep8Preview extends StatelessWidget {
                 onPressed: repeating || onRepeat == null
                     ? null
                     : () => onRepeat!(weeks),
-                child: Text('$weeks week${weeks == 1 ? '' : 's'}'))
+                child: UiText(UiMessage.m_weeks_week_value2_fa521b3a20, params: {'weeks': (weeks).toString(), 'value2': (weeks == 1 ? '' : 's').toString()}))
         ]),
       ],
     ]);
@@ -213,21 +216,22 @@ class ListingStep8Preview extends StatelessWidget {
     final title = textValue(
         poster['copy'] is Map ? draftMap(poster['copy'])['title'] : null);
     return Column(children: [
-      Text('Your poster', style: Theme.of(context).textTheme.labelSmall),
+      UiText(UiMessage.m_your_poster_ab33d2a64b, style: Theme.of(context).textTheme.labelSmall),
       const SizedBox(height: 8),
       AspectRatio(
           aspectRatio: 2 / 3,
           child: ClipRRect(
               borderRadius: BorderRadius.circular(AD.rHero),
               child: url.isNotEmpty
-                  ? Image.network(url,
+                  ? CachedThumb(url: url, px: 768,
+                  
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) =>
-                          _posterPlaceholder('Poster unavailable'))
+                      fallback:
+                          _posterPlaceholder(uiCopy(UiMessage.m_poster_unavailable_ba18edaa2b)))
                   : _posterPlaceholder(
                       textValue(poster['status']) == 'generating'
-                          ? 'Painting your poster…'
-                          : 'Your poster is painted after you submit.'))),
+                          ? uiCopy(UiMessage.m_painting_your_poster_0e16f51ab5)
+                          : uiCopy(UiMessage.m_your_poster_is_painted_after_890f67b9f1)))),
       if (title.isNotEmpty)
         Padding(
             padding: const EdgeInsets.only(top: 8),

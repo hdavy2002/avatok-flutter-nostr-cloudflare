@@ -6,6 +6,8 @@
 /// (SQLite FTS5), so recall stays on your phone. No model download, instant.
 /// Registered via [SettingsSectionRegistry] from [AvaBootstrap.init].
 library;
+import '../../../core/localization/ui_text.dart';
+
 
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -20,7 +22,7 @@ void registerOnDeviceSection() {
   SettingsSectionRegistry.register(
     SettingsSection(
       id: 'ava_local',
-      title: 'Ava AI',
+      title: uiCopy(UiMessage.m_ava_ai_cb953cfc66),
       order: 5,
       builder: (context) => const _LocalAvaCard(),
     ),
@@ -56,6 +58,7 @@ class _LocalAvaCardState extends State<_LocalAvaCard> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return AdCard(
       padding: const EdgeInsets.all(Msg.s4),
       child: ValueListenableBuilder<bool>(
@@ -77,7 +80,7 @@ class _LocalAvaCardState extends State<_LocalAvaCard> {
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Keep my memory on this phone',
+                        UiText(UiMessage.m_keep_my_memory_on_this_9f88d6d346,
                             style: ADText.rowName()),
                         const SizedBox(height: Msg.s1),
                         Row(children: [
@@ -97,23 +100,21 @@ class _LocalAvaCardState extends State<_LocalAvaCard> {
                 ),
               ]),
               const SizedBox(height: Msg.s2),
-              Text(
-                'When on, your messages and notes are indexed privately on this '
-                'phone so Ava can recall them offline. Ava still thinks in the '
-                'cloud for answers — only your data stays local.',
+              UiText(
+                UiMessage.m_when_on_your_messages_and_4bd8ab274a,
                 style: ADText.preview(),
               ),
               const SizedBox(height: 12),
               if (!on)
                 AdButton(
-                  label: _busy ? 'Turning on…' : 'Keep memory on this phone',
+                  label: _busy ? uiCopy(UiMessage.m_turning_on_63fd4df43f) : uiCopy(UiMessage.m_keep_memory_on_this_phone_711cfc5942),
                   onPressed: _busy ? null : _activate,
                   variant: AdButtonVariant.primary,
                   fontSize: 14,
                 )
               else
                 AdButton(
-                  label: 'Turn off (use cloud only)',
+                  label: uiCopy(UiMessage.m_turn_off_use_cloud_only_2ab3838060),
                   onPressed: _disconnect,
                   variant: AdButtonVariant.ghost,
                   fontSize: 14,

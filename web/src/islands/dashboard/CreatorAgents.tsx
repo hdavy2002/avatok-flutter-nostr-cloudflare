@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* CreatorAgents — manage your AI agents (AvaVision / AvaVoice) from the web.
  *
  * Cards for the creator's own agents with a filter bar (search + status) and
@@ -40,6 +42,8 @@ function coins(n?: number | null) {
 }
 
 function Inner({ service }: { service: 'vision' | 'voice' }) {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   const api = useMemo(() => adapter(service), [service]);
   const [token, setToken] = useState<string | null>(null);
   const [checked, setChecked] = useState(false);
@@ -78,32 +82,32 @@ function Inner({ service }: { service: 'vision' | 'voice' }) {
     setBusy(null);
   }
 
-  if (!checked || rows === null) return <div className="flex items-center gap-3 p-8"><Spinner size={22} /> <span className="font-body font-bold text-inkSoft">Loading your agents…</span></div>;
+  if (!checked || rows === null) return <div className="flex items-center gap-3 p-8"><Spinner size={22} /> <span className="font-body font-bold text-inkSoft"><UiText id="web-dashboard.918090e8318c0901" source="Loading your agents…" /></span></div>;
 
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center gap-2.5 rounded-zine border-zine border-ink bg-card p-2.5 shadow-zine-sm">
         <div className="flex min-w-[200px] flex-1 items-center gap-2 rounded-full border-zine border-ink bg-paper px-3 py-2">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="text-inkMute"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" strokeLinecap="round" /></svg>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search your agents…" className="min-w-0 flex-1 bg-transparent font-body font-bold text-[14px] text-ink outline-none placeholder:text-placeholder" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={uiT("web-dashboard.5f8ed8835e15ea79","Search your agents…")} className="min-w-0 flex-1 bg-transparent font-body font-bold text-[14px] text-ink outline-none placeholder:text-placeholder" />
         </div>
         <select value={status} onChange={(e) => setStatus(e.target.value)} className="rounded-full border-zine border-ink bg-paper px-3 py-2 font-mono font-bold text-[14px] uppercase tracking-[0.04em] text-ink outline-none">
-          <option value="all">All</option><option value="draft">Draft</option><option value="published">Published</option>
+          <option value="all"><UiText id="web-dashboard.a52ace420f2175d0" source="All" /></option><option value="draft"><UiText id="web-dashboard.ebf12ef47cf575b3" source="Draft" /></option><option value="published"><UiText id="web-dashboard.2ef42ec21d9300dd" source="Published" /></option>
         </select>
         {api.createHref
-          ? <a href={api.createHref} className="rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">+ Create</a>
-          : <span className="rounded-full border-zine border-ink bg-paper2 px-4 py-2 font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-inkMute">Create in the app</span>}
+          ? <a href={api.createHref} className="rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine"><UiText id="web-dashboard.4fcce04d80ee7a1a" source="+ Create" /></a>
+          : <span className="rounded-full border-zine border-ink bg-paper2 px-4 py-2 font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-inkMute"><UiText id="web-dashboard.254ecdf37b8b982c" source="Create in the app" /></span>}
       </div>
 
       {filtered.length === 0 ? (
         <div className="flex flex-col items-start gap-3 rounded-zine border-zine border-ink bg-paper2 p-8 shadow-zine-sm">
-          <h2 className="font-display font-semibold text-[20px] text-ink">{rows.length === 0 ? 'No agents yet' : 'Nothing matches that filter'}</h2>
+          <h2 className="font-display font-semibold text-[20px] text-ink">{rows.length === 0 ? uiT("web-dashboard.971b61f8cb4dab8e","No agents yet") : uiT("web-dashboard.e879d073e44621af","Nothing matches that filter")}</h2>
           <p className="max-w-md font-body font-bold text-[15px] text-inkSoft">
             {service === 'vision'
-              ? 'Create an AI vision coach — pick a template, set the prompt and rate, then publish. Sessions run in the app.'
-              : 'Create AI voice agents in the AvaTOK app, then manage and publish them here.'}
+              ? uiT("web-dashboard.60eccc20e3a19216","Create an AI vision coach — pick a template, set the prompt and rate, then publish. Sessions run in the app.")
+              : uiT("web-dashboard.7fa4b5c5ae73fd6f","Create AI voice agents in the AvaTOK app, then manage and publish them here.")}
           </p>
-          {rows.length === 0 && api.createHref && <a href={api.createHref} className="rounded-full border-zine border-ink bg-lime px-5 py-2.5 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">Create your first one</a>}
+          {rows.length === 0 && api.createHref && <a href={api.createHref} className="rounded-full border-zine border-ink bg-lime px-5 py-2.5 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine"><UiText id="web-dashboard.69fc1fd220c0cbb0" source="Create your first one" /></a>}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -113,21 +117,21 @@ function Inner({ service }: { service: 'vision' | 'voice' }) {
             return (
               <div key={a.id} className="flex flex-col overflow-hidden rounded-zine border-zine border-ink bg-card shadow-zine-sm transition-transform duration-zine hover:-translate-y-[2px]">
                 <div className="relative aspect-[16/10] w-full border-b-zine border-ink bg-paper2">
-                  {img ? <img src={cfImage(img, { width: 480 })} alt="" className="h-full w-full object-cover" loading="lazy" /> : <div className="flex h-full w-full items-center justify-center font-mono text-[14px] text-inkMute font-bold">No image</div>}
-                  <span className={`absolute left-2 top-2 rounded-full border-zine border-ink px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.04em] shadow-zine-xs ${published ? 'bg-mint text-ink' : 'bg-paper2 text-inkSoft'}`}>{published ? 'published' : 'draft'}</span>
+                  {img ? <img src={cfImage(img, { width: 480 })} alt="" className="h-full w-full object-cover" loading="lazy" /> : <div className="flex h-full w-full items-center justify-center font-mono text-[14px] text-inkMute font-bold"><UiText id="web-dashboard.0a8216612de07880" source="No image" /></div>}
+                  <span className={`absolute left-2 top-2 rounded-full border-zine border-ink px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.04em] shadow-zine-xs ${published ? 'bg-mint text-ink' : 'bg-paper2 text-inkSoft'}`}>{published ? uiT("web-dashboard.b04e5ea201bb040c","published") : uiT("web-dashboard.7743ce348d9284d6","draft")}</span>
                 </div>
                 <div className="flex flex-1 flex-col gap-1 p-3">
                   <div className="flex items-center gap-2">
-                    <span className="truncate font-display font-semibold text-[16px] text-ink">{a.name || 'Untitled agent'}</span>
+                    <span className="truncate font-display font-semibold text-[16px] text-ink">{a.name || uiT("web-dashboard.422c4855feb56ae2","Untitled agent")}</span>
                     <span className="ml-auto whitespace-nowrap font-display font-semibold text-[13px] text-blueInk">{coins(a.ratePerHourCoins)}</span>
                   </div>
                   {a.role && <p className="line-clamp-1 font-body font-bold text-[13px] text-inkSoft">{a.role}</p>}
                   <div className="mt-auto flex items-center gap-1.5 pt-2">
                     {api.editHref(a.id)
-                      ? <a href={api.editHref(a.id)} className="flex-1 rounded-zineField border-zine border-ink bg-paper px-2 py-1.5 text-center font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">Edit</a>
-                      : <span className="flex-1 rounded-zineField border-zine border-ink bg-paper2 px-2 py-1.5 text-center font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-inkMute">App</span>}
-                    <button type="button" disabled={busy === a.id} onClick={() => toggle(a)} className="flex-1 rounded-zineField border-zine border-ink bg-paper2 px-2 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-inkSoft shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50">{published ? 'Unpublish' : 'Publish'}</button>
-                    <button type="button" disabled={busy === a.id} onClick={() => del(a)} className="rounded-zineField border-zine border-ink bg-paper px-2.5 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-coral shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50" aria-label="Delete">✕</button>
+                      ? <a href={api.editHref(a.id)} className="flex-1 rounded-zineField border-zine border-ink bg-paper px-2 py-1.5 text-center font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine"><UiText id="web-dashboard.464c4ffd019e1e96" source="Edit" /></a>
+                      : <span className="flex-1 rounded-zineField border-zine border-ink bg-paper2 px-2 py-1.5 text-center font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-inkMute"><UiText id="web-dashboard.0d04bfeb7d64b71c" source="App" /></span>}
+                    <button type="button" disabled={busy === a.id} onClick={() => toggle(a)} className="flex-1 rounded-zineField border-zine border-ink bg-paper2 px-2 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-inkSoft shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50">{published ? uiT("web-dashboard.2db04a54fa743150","Unpublish") : uiT("web-dashboard.859390eb495b2ead","Publish")}</button>
+                    <button type="button" disabled={busy === a.id} onClick={() => del(a)} className="rounded-zineField border-zine border-ink bg-paper px-2.5 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.04em] text-coral shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine disabled:opacity-50" aria-label={uiT("web-dashboard.e2d0a54968ead24e","Delete")}>✕</button>
                   </div>
                 </div>
               </div>

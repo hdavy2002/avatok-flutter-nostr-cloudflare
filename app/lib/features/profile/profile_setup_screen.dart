@@ -1,3 +1,7 @@
+import '../../core/localization/known_ui_copy.dart';
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -481,7 +485,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       await _uploadAvatar(cropped);
     } catch (_) {
       if (mounted) {
-        showAdToast(context, message: "Couldn't open that image — try another.");
+        showAdToast(context, message: uiCopy(UiMessage.m_couldn_t_open_that_image_bac25c078e));
       }
     }
   }
@@ -492,7 +496,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     if (!mounted) return;
     if (url == null) {
       setState(() => _photoBusy = false);
-      showAdToast(context, message: 'Upload failed — please try again.');
+      showAdToast(context, message: uiCopy(UiMessage.m_upload_failed_please_try_again_3802cacfbf));
       return;
     }
     await AvatarCache.putBytes(url, 192, bytes);
@@ -512,12 +516,12 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s5),
         child: SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
           AdButton(
-            label: 'Take photo', fullWidth: true, variant: AdButtonVariant.teal,
+            label: uiCopy(UiMessage.m_take_photo_7100ac9979), fullWidth: true, variant: AdButtonVariant.teal,
             icon: PhosphorIcons.camera(PhosphorIconsStyle.bold), trailingIcon: false,
             onPressed: () { Navigator.pop(ctx); _pickAndCrop(ImageSource.camera); }),
           const SizedBox(height: Msg.s2),
           AdButton(
-            label: 'Choose from gallery', fullWidth: true,
+            label: uiCopy(UiMessage.m_choose_from_gallery_763abbaa72), fullWidth: true,
             icon: PhosphorIcons.image(PhosphorIconsStyle.bold), trailingIcon: false,
             onPressed: () { Navigator.pop(ctx); _pickAndCrop(ImageSource.gallery); }),
         ])),
@@ -584,7 +588,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     final seed = _bio.text.trim();
     if (seed.isEmpty) {
       showAdToast(context,
-          message: 'Type a line or two about yourself first, then tap the sparkle.');
+          message: uiCopy(UiMessage.m_type_a_line_or_two_897bd17e64));
       return;
     }
     setState(() => _bioAiBusy = true);
@@ -616,7 +620,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _bioAiBusy = false);
-      showAdToast(context, message: 'Network issue — try the sparkle again in a moment.');
+      showAdToast(context, message: uiCopy(UiMessage.m_network_issue_try_the_sparkle_5879ceda55));
     }
   }
 
@@ -670,10 +674,10 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
   String _genderLabel(String g) {
     switch (g) {
-      case 'male': return 'Male (he/him)';
-      case 'female': return 'Female (she/her)';
-      case 'other': return 'Other (they/them)';
-      default: return 'Not set';
+      case 'male': return uiCopy(UiMessage.m_male_he_him_a77d21440e);
+      case 'female': return uiCopy(UiMessage.m_female_she_her_a12c2de85a);
+      case 'other': return uiCopy(UiMessage.m_other_they_them_507f7c1902);
+      default: return uiCopy(UiMessage.m_not_set_4895f73177);
     }
   }
 
@@ -717,7 +721,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     if (id == null) {
       if (mounted) {
         setState(() { _saving = false; _holdMsg = null; });
-        showAdToast(context, message: 'Still getting your account ready — try once more.');
+        showAdToast(context, message: uiCopy(UiMessage.m_still_getting_your_account_ready_b1064fad52));
       }
       return;
     }
@@ -827,7 +831,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   Widget _errFor(String field) {
     final e = _fieldErrors[field];
     if (e == null) return const SizedBox.shrink();
-    return AdErrorMsg(e);
+    return AdErrorMsg(knownUiCopy(e));
   }
 
   void _clearErr(String field) {
@@ -884,6 +888,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final id = _id;
     // While the server vets the profile, hold the whole form (disabled + spinner).
     final held = _holdMsg != null;
@@ -911,9 +916,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 child: Row(children: [
                   Expanded(
                     child: Text.rich(
-                      const TextSpan(children: [
-                        TextSpan(text: 'Complete your '),
-                        TextSpan(text: 'profile', style: TextStyle(color: AD.primaryBadge)),
+                       TextSpan(children: [
+                        TextSpan(text: uiCopy(UiMessage.m_complete_your_107650d4f4)),
+                        TextSpan(text: uiCopy(UiMessage.m_profile_1900eab6c0), style: TextStyle(color: AD.primaryBadge)),
                       ]),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -939,11 +944,10 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                   const SizedBox(width: 18, height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch)),
                   const SizedBox(width: Msg.s2),
-                  Expanded(child: Text(_holdMsg!, style: ADText.rowName().copyWith(fontSize: 13))),
+                  Expanded(child: Text(knownUiCopy(_holdMsg!), style: ADText.rowName().copyWith(fontSize: 13))),
                 ]),
               ),
-            Text('A few details so people can recognise you. Your email and AvaTOK '
-                'number are set from sign-up and shown locked below.',
+            UiText(UiMessage.m_a_few_details_so_people_1b23b7584b,
                 style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),
             const SizedBox(height: Msg.s4),
             Center(
@@ -987,32 +991,31 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             ),
             const SizedBox(height: Msg.s1),
             if (_avatarUrl.isEmpty && !_fieldErrors.containsKey('photo'))
-              Center(child: Text('Tap to add a profile photo', style: ADText.preview(c: AD.danger).copyWith(fontSize: 12))),
+              Center(child: UiText(UiMessage.m_tap_to_add_a_profile_906dd09b66, style: ADText.preview(c: AD.danger).copyWith(fontSize: 12))),
             Center(child: _errFor('photo')),
             const SizedBox(height: Msg.s4),
-            AdField(key: _firstKey, controller: _first, label: 'First name', hint: 'Your first name',
+            AdField(key: _firstKey, controller: _first, label: uiCopy(UiMessage.m_first_name_702ef921ed), hint: uiCopy(UiMessage.m_your_first_name_6d38a850e5),
                 error: _fieldErrors.containsKey('first_name'),
                 textCapitalization: TextCapitalization.words,
                 onChanged: (_) { _clearErr('first_name'); _maybeDetectGender(); setState(() {}); }),
             _errFor('first_name'),
             const SizedBox(height: Msg.s3),
-            AdField(key: _lastKey, controller: _last, label: 'Last name', hint: 'Your last name',
+            AdField(key: _lastKey, controller: _last, label: uiCopy(UiMessage.m_last_name_7b48880494), hint: uiCopy(UiMessage.m_your_last_name_4fda057f4c),
                 error: _fieldErrors.containsKey('last_name'),
                 textCapitalization: TextCapitalization.words,
                 onChanged: (_) { _clearErr('last_name'); _maybeDetectGender(); setState(() {}); }),
             _errFor('last_name'),
             const SizedBox(height: Msg.s3),
-            AdField(controller: _email, label: 'Email', hint: 'you@example.com',
+            AdField(controller: _email, label: uiCopy(UiMessage.m_email_969ccbd3cf), hint: 'you@example.com',
                 readOnly: true),
             const SizedBox(height: 4),
-            Text('The email you signed in with — locked here.', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
+            UiText(UiMessage.m_the_email_you_signed_in_ff1e0ddfa7, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
             const SizedBox(height: Msg.s3),
-            AdField(controller: _phone, label: 'Your AvaTOK number',
-                hint: _avatokNumber.isEmpty ? 'Assigned just now' : _avatokNumber,
+            AdField(controller: _phone, label: uiCopy(UiMessage.m_your_avatok_number_729bcb7270),
+                hint: _avatokNumber.isEmpty ? uiCopy(UiMessage.m_assigned_just_now_198c062661) : _avatokNumber,
                 readOnly: true),
             const SizedBox(height: 4),
-            Text('This is your AvaTOK number — it represents you and keeps your real '
-                'phone private. You can change it later in Settings.', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
+            UiText(UiMessage.m_this_is_your_avatok_number_b7c4cfbf58, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
             const SizedBox(height: Msg.s3),
             // Personal (real) phone with SMS OTP → locked once verified.
             PersonalPhoneField(
@@ -1028,9 +1031,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             Row(key: _birthYearKey, children: [
               Expanded(
                 child: _tappableField(
-                  label: 'Date of birth (Private)',
+                  label: uiCopy(UiMessage.m_date_of_birth_private_5618f2d0bf),
                   value: _birthDateLabel,
-                  hint: 'Tap to choose',
+                  hint: uiCopy(UiMessage.m_tap_to_choose_b685ffd32d),
                   icon: PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold),
                   error: _fieldErrors.containsKey('birth_year'),
                   onTap: _pickBirthDate,
@@ -1040,7 +1043,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
               // Time of birth (optional).
               Expanded(
                 child: _tappableField(
-                  label: 'Time (optional)',
+                  label: uiCopy(UiMessage.m_time_optional_b57a98d0d9),
                   value: _birthTimeLabel,
                   hint: '--:--',
                   icon: PhosphorIcons.clock(PhosphorIconsStyle.bold),
@@ -1050,20 +1053,19 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             ]),
             _errFor('birth_year'),
             const SizedBox(height: 4),
-            Text('Private — never shown to anyone. Used to confirm your age '
-                '(under-18 accounts get extra safety protections). Time of birth is optional.',
+            UiText(UiMessage.m_private_never_shown_to_anyone_6fbb62f2d3,
                 style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
             const SizedBox(height: Msg.s3),
             // ── Gender (mandatory) — AI-detected from the name and LOCKED. Only
             //    editable when detection is uncertain, so an unusual name never traps. ──
             Row(key: _genderKey, children: [
-              Text('Gender', style: ADText.rowName().copyWith(fontSize: 13)),
+              UiText(UiMessage.m_gender_a04630ef8b, style: ADText.rowName().copyWith(fontSize: 13)),
               if (_genderDetecting) ...[
                 const SizedBox(width: 8),
                 const SizedBox(width: 13, height: 13,
                     child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch)),
                 const SizedBox(width: Msg.s1),
-                Text('detecting from your name…', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
+                UiText(UiMessage.m_detecting_from_your_name_cd47364e9e, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
               ],
             ]),
             const SizedBox(height: Msg.s1),
@@ -1080,7 +1082,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                   const SizedBox(width: Msg.s2),
                   Expanded(child: Text(_genderLabel(_gender), style: TextStyle(
                       fontFamily: ADText.family, fontWeight: FontWeight.w700, fontSize: 15, color: AD.textOnInput))),
-                  Text('set from your name', style: TextStyle(
+                  UiText(UiMessage.m_set_from_your_name_1e02c4f71b, style: TextStyle(
                       fontFamily: ADText.family, fontWeight: FontWeight.w700, fontSize: 11, color: AD.placeholderOnWhite)),
                 ]),
               )
@@ -1104,12 +1106,11 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
               ]),
             _errFor('gender'),
             const SizedBox(height: 4),
-            Text('Ava uses this when she answers your missed calls — '
-                '"can I take a message for him/her/them?"', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
+            UiText(UiMessage.m_ava_uses_this_when_she_5e3cbddb63, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
             const SizedBox(height: Msg.s3),
             // ── About you (bio) — live AI moderation + "write my bio" sparkle ──
             Row(key: _bioKey, children: [
-              Expanded(child: Text('About you', style: ADText.sectionLabel())),
+              Expanded(child: UiText(UiMessage.m_about_you_428f4d00b7, style: ADText.sectionLabel())),
               // Sparkle: type 1–2 lines, tap to have Ava draft a short bio.
               AdPress(
                 onTap: _bioAiBusy ? null : _writeBioWithAi,
@@ -1129,14 +1130,14 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                     else
                       PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), size: 15, color: Colors.white),
                     const SizedBox(width: Msg.s1),
-                    AdSwitchText(_bioAiBusy ? 'Writing…' : 'Write my bio',
+                    AdSwitchText(_bioAiBusy ? uiCopy(UiMessage.m_writing_e52fe93bbb) : uiCopy(UiMessage.m_write_my_bio_39999d5314),
                         style: const TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600, fontSize: 12, color: Colors.white)),
                   ]),
                 ),
               ),
             ]),
             const SizedBox(height: Msg.s2),
-            AdField(controller: _bio, hint: 'Tell Ava a little about yourself…',
+            AdField(controller: _bio, hint: uiCopy(UiMessage.m_tell_ava_a_little_about_8eb41dcfe3),
                 error: _fieldErrors.containsKey('about') || _bioModError != null,
                 maxLines: 4, maxLength: 600, textCapitalization: TextCapitalization.sentences,
                 onChanged: (_) => _onBioChanged()),
@@ -1148,7 +1149,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                   const SizedBox(width: 14, height: 14,
                       child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch)),
                   const SizedBox(width: Msg.s2),
-                  Text('Ava is checking your profile…', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
+                  UiText(UiMessage.m_ava_is_checking_your_profile_164189ba22, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
                 ]),
               ),
             // Red inline message when the bio is blocked by moderation.
@@ -1171,14 +1172,14 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                   PhosphorIcon(PhosphorIcons.warningCircle(PhosphorIconsStyle.fill),
                       color: AD.danger, size: 20),
                   const SizedBox(width: Msg.s2),
-                  Expanded(child: Text(_rejectBanner!,
+                  Expanded(child: Text(knownUiCopy(_rejectBanner!),
                       style: ADText.rowName().copyWith(fontSize: 13, fontWeight: FontWeight.w700))),
                 ]),
               ),
               const SizedBox(height: Msg.s3),
             ],
             AdButton(
-              label: _saving ? 'Saving…' : 'Save & continue',
+              label: _saving ? uiCopy(UiMessage.m_saving_23e39291d6) : uiCopy(UiMessage.m_save_continue_b75e6d06b9),
               fullWidth: true, fontSize: 18, loading: _saving,
               // Disabled while the bio is being AI-checked or is flagged unsafe
               // (gate on _bioOk / _bioChecking). Otherwise always tappable so an
@@ -1192,7 +1193,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             const SizedBox(height: Msg.s3),
             Center(child: GestureDetector(
               onTap: widget.onSignOut,
-              child: Text('Sign out instead', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),
+              child: UiText(UiMessage.m_sign_out_instead_b30a5505cf, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),
             )),
           ],
         ),

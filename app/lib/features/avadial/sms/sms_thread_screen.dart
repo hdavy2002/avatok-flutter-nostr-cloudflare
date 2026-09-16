@@ -1,3 +1,5 @@
+
+import '../../../core/localization/ui_text.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -117,6 +119,7 @@ class _SmsThreadScreenState extends State<SmsThreadScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final name = DeviceContacts.I.lookup(widget.address)?.name;
     return Scaffold(
       backgroundColor: AD.bg,
@@ -139,7 +142,7 @@ class _SmsThreadScreenState extends State<SmsThreadScreen> {
                 ? const Center(child: CircularProgressIndicator(color: AD.textPrimary))
                 : _rows.isEmpty
                     ? const Center(
-                        child: Text('No messages yet', style: TextStyle(color: AD.textSecondary)))
+                        child: UiText(UiMessage.m_no_messages_yet_f42e0f6601, style: TextStyle(color: AD.textSecondary)))
                     : ListView.builder(
                         controller: _scroll,
                         padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
@@ -206,7 +209,7 @@ class _SmsThreadScreenState extends State<SmsThreadScreen> {
         Expanded(
           child: AdField(
             controller: _composer,
-            hint: 'Text message',
+            hint: uiCopy(UiMessage.m_text_message_ca47049e48),
             keyboardType: TextInputType.text,
             textCapitalization: TextCapitalization.sentences,
             autocorrect: true,
@@ -229,6 +232,7 @@ class _SendButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return ZinePressable(
       onTap: loading ? null : onTap,
       color: AD.primaryBadge,

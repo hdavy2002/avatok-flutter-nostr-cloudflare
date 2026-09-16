@@ -65,11 +65,11 @@ const applyHref = (title: string) =>
   width="wide"
 >
   <p>
-    AvaTOK is operated by <strong>Ava Global International, Inc.</strong>, a Delaware corporation
+    <ui-copy style="display:contents" data-i18n="web-careers.a854e8c50db85ebe">AvaTOK is operated by</ui-copy> <strong data-i18n="web-careers.b321f789aa69e114">Ava Global International, Inc.</strong><ui-copy style="display:contents" data-i18n="web-careers.b86b5e87bd25d6cb">, a Delaware corporation
     founded by American and Indian founders. Roles listed here reflect where we are
     heading, and we are honest with every candidate about the stage we are at. We hire builders who
     take ownership, communicate clearly, and want their work in the hands of real users. Don't see a
-    perfect match? Email us anyway at
+    perfect match? Email us anyway at</ui-copy>
     <a href="mailto:support@avatok.ai">support@avatok.ai</a>.
   </p>
 
@@ -81,7 +81,7 @@ const applyHref = (title: string) =>
             <h3 class="job-title">{r.title}</h3>
             <div class="job-meta"><span class="badge">{r.team}</span><span class="job-type">{r.type}</span></div>
           </div>
-          <button class="apply" type="button" data-apply-role={r.title}>Apply →</button>
+          <button data-i18n="web-careers.dca481a1b13f5fe4" class="apply" type="button" data-apply-role={r.title}>Apply →</button>
         </div>
         <p class="job-sum">{r.summary}</p>
         <div class="job-skills">{r.skills.map((s) => <span class="chip">{s}</span>)}</div>
@@ -90,29 +90,29 @@ const applyHref = (title: string) =>
   </div>
 
   <p class="hiring-note">
-    avaTOK is an equal-opportunity employer. We welcome applicants of
-    every background and are committed to a fair, inclusive hiring process. To apply, hit any
-    <strong>Apply</strong> button or email <a href="mailto:support@avatok.ai">support@avatok.ai</a>.
+    <ui-copy style="display:contents" data-i18n="web-careers.0ecc3a8b3259bdde">avaTOK is an equal-opportunity employer. We welcome applicants of
+    every background and are committed to a fair, inclusive hiring process. To apply, hit any</ui-copy>
+    <strong data-i18n="web-careers.31e392d1c0378bec">Apply</strong> <ui-copy style="display:contents" data-i18n="web-careers.022dfe4802af7cba">button or email</ui-copy> <a href="mailto:support@avatok.ai">support@avatok.ai</a>.
   </p>
 
   <dialog class="apply-dialog" id="apply-dialog" aria-labelledby="apply-title">
     <form class="apply-form" id="apply-form" method="dialog">
-      <button class="dialog-close" type="button" data-close-apply aria-label="Close application form">×</button>
-      <p class="form-kicker">Join the team</p>
-      <h2 id="apply-title">Apply to avaTOK</h2>
-      <p class="form-intro">Send us your resume and a few details. We’ll get back to you if your experience is a match.</p>
+      <button data-india-i18n-attr="aria-label:web-careers.1b000f429ca7e46a" class="dialog-close" type="button" data-close-apply aria-label="Close application form">×</button>
+      <p data-i18n="web-careers.2baecd0a34da677a" class="form-kicker">Join the team</p>
+      <h2 data-i18n="web-careers.446fcdd03c6e7fd9" id="apply-title">Apply to avaTOK</h2>
+      <p data-i18n="web-careers.c6493011a91fe38e" class="form-intro">Send us your resume and a few details. We’ll get back to you if your experience is a match.</p>
       <input type="hidden" name="role" id="apply-role" />
-      <label>Role<input type="text" id="apply-role-label" readonly /></label>
+      <label><ui-copy style="display:contents" data-i18n="web-careers.14736a2eb9f4159f">Role</ui-copy><input type="text" id="apply-role-label" readonly /></label>
       <div class="form-grid">
-        <label>Your name<input name="name" autocomplete="name" required maxlength="120" /></label>
-        <label>Email<input name="email" type="email" autocomplete="email" required maxlength="200" /></label>
+        <label><ui-copy style="display:contents" data-i18n="web-careers.2c6b2e253c01fb2e">Your name</ui-copy><input name="name" autocomplete="name" required maxlength="120" /></label>
+        <label><ui-copy style="display:contents" data-i18n="web-careers.969ccbd3cf6300ec">Email</ui-copy><input name="email" type="email" autocomplete="email" required maxlength="200" /></label>
       </div>
-      <label>Portfolio or LinkedIn <span>(optional)</span><input name="portfolio" type="url" autocomplete="url" placeholder="https://…" maxlength="300" /></label>
-      <label>Resume <span>(PDF, DOC, or DOCX · max 8 MB)</span><input name="resume" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required /></label>
-      <label>Anything you’d like us to know <span>(optional)</span><textarea name="note" rows="3" maxlength="2000" placeholder="A short note about you or your work"></textarea></label>
+      <label><ui-copy style="display:contents" data-i18n="web-careers.5b7755efb39284c0">Portfolio or LinkedIn</ui-copy> <span data-i18n="web-careers.0059798b7f7023e4">(optional)</span><input name="portfolio" type="url" autocomplete="url" placeholder="https://…" maxlength="300" /></label>
+      <label><ui-copy style="display:contents" data-i18n="web-careers.d640c7421da06661">Resume</ui-copy> <span data-i18n="web-careers.eff752ec5884993c">(PDF, DOC, or DOCX · max 8 MB)</span><input name="resume" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required /></label>
+      <label><ui-copy style="display:contents" data-i18n="web-careers.f2b0f005e7c196ad">Anything you’d like us to know</ui-copy> <span data-i18n="web-careers.0059798b7f7023e4">(optional)</span><textarea data-india-i18n-attr="placeholder:web-careers.30cbf54a6e59e264" name="note" rows="3" maxlength="2000" placeholder="A short note about you or your work"></textarea></label>
       <input class="company-trap" name="company" tabindex="-1" autocomplete="off" aria-hidden="true" />
       <p class="form-status" id="apply-status" role="status" aria-live="polite"></p>
-      <button class="send-application" type="submit">Send application ↗</button>
+      <button data-i18n="web-careers.b330d2def66bc99a" class="send-application" type="submit">Send application ↗</button>
     </form>
   </dialog>
 </Content>

@@ -1,3 +1,4 @@
+import { UiText } from "../../lib/i18n/react";
 /* HeaderAuth — the auth-aware right side of SiteHeader.
  *
  * [WEB-HEADER-1 2026-08-26] Signed out: LOG IN + SIGN UP, exactly as the poster
@@ -21,8 +22,8 @@ import { CLERK_PUBLISHABLE_KEY } from '../../lib/config';
 function Anon() {
   return (
     <>
-      <a className="avh-cta" href="/sign-in">Log in</a>
-      <a className="avh-cta avh-cta--solid" href="/sign-up">Sign up</a>
+      <a className="avh-cta" href="/sign-in"><UiText id="web-site.c189840cf7e2d6f6" source="Log in" /></a>
+      <a className="avh-cta avh-cta--solid" href="/sign-up"><UiText id="web-site.5e2b8e96503d722e" source="Sign up" /></a>
     </>
   );
 }
@@ -68,8 +69,8 @@ function Inner() {
 function DashboardCta() {
   return (
     <>
-      <a className="avh-cta avh-cta--solid" href="/dashboard">Dashboard</a>
-      <a className="avh-cta" href="/sign-out">Sign out</a>
+      <a className="avh-cta avh-cta--solid" href="/dashboard"><UiText id="web-site.67b696468610b879" source="Dashboard" /></a>
+      <a className="avh-cta" href="/sign-out"><UiText id="web-site.48f0d3d397d49f13" source="Sign out" /></a>
     </>
   );
 }

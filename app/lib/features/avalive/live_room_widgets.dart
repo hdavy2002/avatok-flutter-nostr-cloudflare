@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 // Phase 7 — shared AvaLive overlay layer (TikTok/YouTube-Live conventions):
 // scrolling chat, flying (bullet) messages, tap-burst emoji reactions, sticker
 // sends, donation banners, viewer count, countdowns. Pure presentation — the
@@ -66,6 +68,7 @@ class LiveCircleButton extends StatelessWidget {
   const LiveCircleButton({super.key, required this.icon, this.onTap, this.fill = AD.card, this.size = 46, this.tooltip});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final fg = fill == AD.card ? AD.iconNeutral : AD.destructiveInk;
     final core = GestureDetector(
       onTap: onTap,
@@ -91,6 +94,7 @@ class LiveInkPill extends StatelessWidget {
   const LiveInkPill(this.text, {super.key, this.icon});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s1),
       // Genuine status pill.
@@ -115,6 +119,7 @@ class ChatOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return ListView.builder(
       reverse: true,
       padding: EdgeInsets.zero,
@@ -163,6 +168,7 @@ class FlyLayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return IgnorePointer(
       child: LayoutBuilder(builder: (_, c) {
         return Stack(children: [
@@ -196,6 +202,7 @@ class ReactionLayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return IgnorePointer(
       child: LayoutBuilder(builder: (_, c) {
         return Stack(children: [
@@ -223,6 +230,7 @@ class DonationBannerWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return TweenAnimationBuilder<double>(
       key: ValueKey('${banner.name}${banner.amount}${banner.hashCode}'),
       tween: Tween(begin: 0, end: 1),
@@ -239,7 +247,7 @@ class DonationBannerWidget extends StatelessWidget {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           PhosphorIcon(PhosphorIcons.coins(PhosphorIconsStyle.regular), size: 17, color: AD.bg),
           const SizedBox(width: Msg.s2),
-          Text('${banner.name} donated \u20b9${banner.amount}',
+          UiText(UiMessage.m_value1_donated_value2_8895b5769f, params: {'value1': (banner.name).toString(), 'value2': (banner.amount).toString()},
               style: ADText.rowName(c: AD.bg)),
         ]),
       ),
@@ -260,6 +268,7 @@ class LiveTopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       color: kInkScrim, // flat ink-alpha band (no gradient scrims)
       child: SafeArea(
@@ -289,7 +298,7 @@ class LiveTopBar extends StatelessWidget {
                   borderRadius: Msg.brPill,
                   border: Border.all(color: AD.borderControl, width: 1),
                 ),
-                child: Text('Live', style: ADText.sectionLabel(c: AD.destructiveInk)),
+                child: UiText(UiMessage.m_live_b64ac05f17, style: ADText.sectionLabel(c: AD.destructiveInk)),
               ),
             const SizedBox(width: Msg.s2),
             LiveInkPill('$watching', icon: PhosphorIcons.eye(PhosphorIconsStyle.regular)),
@@ -309,15 +318,16 @@ class ReconnectingOverlay extends StatelessWidget {
   const ReconnectingOverlay({super.key});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       color: kInkScrimHeavy,
       alignment: Alignment.center,
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         const CircularProgressIndicator(color: AD.primaryBadge),
         const SizedBox(height: Msg.s4),
-        Text('Creator reconnecting…', style: ADText.rowName(c: AD.textPrimary)),
+        UiText(UiMessage.m_creator_reconnecting_a11db04cb0, style: ADText.rowName(c: AD.textPrimary)),
         const SizedBox(height: Msg.s1),
-        Text('The stream resumes automatically',
+        UiText(UiMessage.m_the_stream_resumes_automatically_df0cc566f5,
             style: ADText.sectionLabel(c: AD.textSecondary)),
       ]),
     );

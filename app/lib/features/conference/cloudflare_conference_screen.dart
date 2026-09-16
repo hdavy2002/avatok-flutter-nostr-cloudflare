@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 // [CF-CALL-003/007] Cloudflare Realtime A/V group-call screen — the ONLY
 // group-call screen as of CF-CALL-007 (the prior `conference_screen.dart`
 // provider was removed). AD dark tokens (near-black chrome, hairline-bordered
@@ -218,6 +220,7 @@ class _CloudflareConferenceScreenState extends State<CloudflareConferenceScreen>
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (_ctrl.state == CfConnState.failed) {
       return Scaffold(
         backgroundColor: AD.bg,
@@ -232,10 +235,10 @@ class _CloudflareConferenceScreenState extends State<CloudflareConferenceScreen>
               // A permission refusal is the one failure the user can fix on the
               // spot — give them the door instead of a dead end.
               if (_ctrl.permissionDenied) ...[
-                ZineButton(label: 'Open settings', fontSize: 16, onPressed: openAppSettings),
+                ZineButton(label: uiCopy(UiMessage.m_open_settings_ca381c1e76), fontSize: 16, onPressed: openAppSettings),
                 const SizedBox(height: Msg.s2),
               ],
-              ZineButton(label: 'Close', variant: ZineButtonVariant.ghost, fontSize: 16,
+              ZineButton(label: uiCopy(UiMessage.m_close_7d9eb7acb1), variant: ZineButtonVariant.ghost, fontSize: 16,
                   onPressed: () => Navigator.pop(context)),
             ])),
           ),
@@ -280,8 +283,8 @@ class _CloudflareConferenceScreenState extends State<CloudflareConferenceScreen>
                       // `reconnecting` had no UI at all, so the only visible
                       // difference between recovering and dead was neither.
                       _ctrl.state == CfConnState.reconnecting
-                          ? 'Reconnecting…'
-                          : '${members.length + 1} in call · Cloudflare',
+                          ? uiCopy(UiMessage.m_reconnecting_27b80374e1)
+                          : uiCopy(UiMessage.m_value1_in_call_cloudflare_9f1ba15d96, {'value1': (members.length + 1).toString()}),
                       style: ADText.sectionLabel(),
                     ),
                   ])),
@@ -520,6 +523,7 @@ class _ConferenceRecordingPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return ValueListenableBuilder<CallRecordingPhase>(
       valueListenable: CallRecordingStore.I.phase,
       builder: (context, phase, _) => ValueListenableBuilder<String?>(
@@ -619,6 +623,7 @@ class _LocalTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(color: AD.card, borderRadius: Msg.brMd, border: Border.all(color: AD.borderControl, width: 1)),
@@ -640,6 +645,7 @@ class _RemoteTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final renderer = ctrl.rendererFor(p.uid);
     final speaking = ctrl.dominantSpeakerUid == p.uid;
     return Container(

@@ -1,0 +1,342 @@
+{
+  "reviewed": true,
+  "provenance": "Imported existing landing dictionary; native-language review is required before setting reviewed=true (except reviewed Hinglish source).",
+  "messages": {
+    "skip": {
+      "source": "Skip to main content",
+      "text": "Skip to main content"
+    },
+    "eyebrow": {
+      "source": "India creator ticket window",
+      "text": "India creator ticket window"
+    },
+    "heroTitle": {
+      "source": "Have a fanbase? Start your show.",
+      "text": "Fanbase hai? Apna show jamao."
+    },
+    "heroBody": {
+      "source": "Your skill, your story, your time — invite fans and take bookings on your terms.",
+      "text": "Apni skill, apni story, apna time — fans ko invite karo aur apne terms par book lo."
+    },
+    "heroPrimary": {
+      "source": "Start creating free",
+      "text": "Start creating free"
+    },
+    "heroSecondary": {
+      "source": "See earning formats",
+      "text": "See earning formats"
+    },
+    "heroTicket": {
+      "source": "Your page. Your price. Your people.",
+      "text": "Your page. Your price. Your people."
+    },
+    "liveEyebrow": {
+      "source": "FORMAT 01 · LIVE",
+      "text": "FORMAT 01 · LIVE"
+    },
+    "liveTitle": {
+      "source": "Turn your livestream into an event.",
+      "text": "Livestream ko event banao."
+    },
+    "liveBody": {
+      "source": "A live class, watch party, rehearsal, puja — add a ticket, open the room, meet your fans.",
+      "text": "A live class, a watch party, a rehearsal, a puja — ticket lagao, room kholo, fans se milo."
+    },
+    "liveCta": {
+      "source": "Plan a live event",
+      "text": "Plan a live event"
+    },
+    "liveMeta": {
+      "source": "Ticketed · Hosted online",
+      "text": "Ticketed · Hosted online"
+    },
+    "oneEyebrow": {
+      "source": "FORMAT 02 · 1:1",
+      "text": "FORMAT 02 · 1:1"
+    },
+    "oneTitle": {
+      "source": "Your time, one fan at a time.",
+      "text": "Apna time, one fan at a time."
+    },
+    "oneBody": {
+      "source": "Open slots for an online video meetup. Advice, practice, stories or one focused conversation.",
+      "text": "Online video meetup ke liye slots kholo. Advice, practice, stories ya bas ek focused conversation."
+    },
+    "oneCta": {
+      "source": "Offer a 1:1 session",
+      "text": "Offer a 1:1 session"
+    },
+    "oneMeta": {
+      "source": "Private · Video meetup",
+      "text": "Private · Video meetup"
+    },
+    "showcaseEyebrow": {
+      "source": "THE BIG SCREEN",
+      "text": "THE BIG SCREEN"
+    },
+    "showcaseTitle": {
+      "source": "What happens on screen can become a connection.",
+      "text": "Jo screen par hota hai, woh connection ban sakta hai."
+    },
+    "showcaseBody": {
+      "source": "Music, makeup, gaming, recipes, dance, devotion — people are already watching. Give them a room.",
+      "text": "Music, makeup, gaming, recipes, dance, devotion — fans already dekh rahe hain. Ab unhe ek room do."
+    },
+    "showcaseLabel": {
+      "source": "Live room / Saturday 8:00 PM",
+      "text": "Live room / Saturday 8:00 PM"
+    },
+    "showcaseButton": {
+      "source": "Explore the marketplace",
+      "text": "Explore the marketplace"
+    },
+    "meetupEyebrow": {
+      "source": "YOUR CALENDAR, YOUR RULES",
+      "text": "YOUR CALENDAR, YOUR RULES"
+    },
+    "meetupTitle": {
+      "source": "Your 1:1 corner.",
+      "text": "Aapka 1:1 corner."
+    },
+    "meetupBody": {
+      "source": "Set your availability, explain the format, and keep expectations clear before every booking. Online only, always.",
+      "text": "Availability set karo, format samjhao, aur har booking se pehle clear expectations rakho. Online only, always."
+    },
+    "meetupNote": {
+      "source": "Online video meetups, with clear boundaries.",
+      "text": "Online video mulaqat. Apna time, apni boundaries."
+    },
+    "ideasEyebrow": {
+      "source": "FROM CONTENT TO OFFER",
+      "text": "CONTENT SE OFFER TAK"
+    },
+    "ideasTitle": {
+      "source": "What will you host?",
+      "text": "Aap kya host karoge?"
+    },
+    "ideaOneTitle": {
+      "source": "Dance adda",
+      "text": "Dance adda"
+    },
+    "ideaOneBody": {
+      "source": "Choreography, feedback, practice room.",
+      "text": "Choreography, feedback, practice room."
+    },
+    "ideaTwoTitle": {
+      "source": "Home flavours",
+      "text": "Ghar ka swaad"
+    },
+    "ideaTwoBody": {
+      "source": "Recipe live, regional thali, kitchen hacks.",
+      "text": "Recipe live, regional thali, kitchen hacks."
+    },
+    "ideaThreeTitle": {
+      "source": "Study buddy",
+      "text": "Study buddy"
+    },
+    "ideaThreeBody": {
+      "source": "Revision sprint, language practice, exam pep talk.",
+      "text": "Revision sprint, language practice, exam pep talk."
+    },
+    "ideaFourTitle": {
+      "source": "Style desk",
+      "text": "Style desk"
+    },
+    "ideaFourBody": {
+      "source": "Look breakdowns, draping, thrift finds.",
+      "text": "Look breakdowns, draping, thrift finds."
+    },
+    "journeyEyebrow": {
+      "source": "HOW IT WORKS",
+      "text": "HOW IT WORKS"
+    },
+    "journeyTitle": {
+      "source": "From poster to booking — four easy moves.",
+      "text": "Poster se booking tak — four easy moves."
+    },
+    "stepOne": {
+      "source": "Create",
+      "text": "Create"
+    },
+    "stepOneBody": {
+      "source": "Write your creator page and offer.",
+      "text": "Apna creator page aur offer likho."
+    },
+    "stepTwo": {
+      "source": "Price",
+      "text": "Price"
+    },
+    "stepTwoBody": {
+      "source": "Choose your ticket or session price.",
+      "text": "Ticket ya session price choose karo."
+    },
+    "stepThree": {
+      "source": "Share",
+      "text": "Share"
+    },
+    "stepThreeBody": {
+      "source": "Send the link to your community.",
+      "text": "Link apni community ko bhejo."
+    },
+    "stepFour": {
+      "source": "Host",
+      "text": "Host"
+    },
+    "stepFourBody": {
+      "source": "Open the room, give your time, run your show.",
+      "text": "Room kholo, time do, apna show chalao."
+    },
+    "bookingEyebrow": {
+      "source": "FOR YOUR FANS",
+      "text": "FOR YOUR FANS"
+    },
+    "bookingTitle": {
+      "source": "What does booking look like for a fan?",
+      "text": "Fan ko booking kaise dikhegi?"
+    },
+    "bookingBody": {
+      "source": "One clear page. One date. One seat. After payment, they get the route to the room.",
+      "text": "Ek clear page. Ek date. Ek seat. Payment ke baad unhe room ka raasta milta hai."
+    },
+    "bookingCta": {
+      "source": "Browse real listings",
+      "text": "Browse real listings"
+    },
+    "bookingTicket": {
+      "source": "BOOKING PASS",
+      "text": "BOOKING PASS"
+    },
+    "bookingLive": {
+      "source": "LIVE EVENT",
+      "text": "LIVE EVENT"
+    },
+    "bookingSeat": {
+      "source": "1 seat reserved",
+      "text": "1 seat reserved"
+    },
+    "bookingOnline": {
+      "source": "Online · India",
+      "text": "Online · India"
+    },
+    "calcEyebrow": {
+      "source": "THE MATH, CLEARLY",
+      "text": "THE MATH, CLEARLY"
+    },
+    "calcTitle": {
+      "source": "See your gross estimate.",
+      "text": "Apna gross estimate dekho."
+    },
+    "calcBody": {
+      "source": "Change the inputs to see what ticketed events or 1:1 bookings could gross.",
+      "text": "Inputs badlo aur dekho ticketed events ya 1:1 bookings se kitna gross ban sakta hai."
+    },
+    "calcLiveLabel": {
+      "source": "Live ticket price",
+      "text": "Live ticket price"
+    },
+    "calcAudienceLabel": {
+      "source": "Audience per event",
+      "text": "Audience per event"
+    },
+    "calcEventsLabel": {
+      "source": "Events per month",
+      "text": "Events per month"
+    },
+    "calcOneLabel": {
+      "source": "1:1 price",
+      "text": "1:1 price"
+    },
+    "calcBookingsLabel": {
+      "source": "Bookings per month",
+      "text": "Bookings per month"
+    },
+    "calcLiveTotal": {
+      "source": "Live event gross",
+      "text": "Live event gross"
+    },
+    "calcOneTotal": {
+      "source": "1:1 gross",
+      "text": "1:1 gross"
+    },
+    "calcTotal": {
+      "source": "Combined gross estimate",
+      "text": "Combined gross estimate"
+    },
+    "calcDisclaimer": {
+      "source": "Illustrative gross before platform fees, taxes, refunds and other costs. Not a promise of earnings.",
+      "text": "Illustrative gross before platform fees, taxes, refunds and other costs. Not a promise of earnings."
+    },
+    "calcPricingNote": {
+      "source": "Planning example in INR; actual listing pricing and checkout quotes follow the current pricing guide.",
+      "text": "Planning example in INR; actual listing pricing and checkout quotes follow the current pricing guide."
+    },
+    "boundariesEyebrow": {
+      "source": "GOOD TO KNOW",
+      "text": "GOOD TO KNOW"
+    },
+    "boundariesTitle": {
+      "source": "Clear boundaries make better rooms.",
+      "text": "Clear boundaries make better rooms."
+    },
+    "faqOneQ": {
+      "source": "Do I need a big following?",
+      "text": "Do I need a big following?"
+    },
+    "faqOneA": {
+      "source": "No. Start with one useful offer and share it with people who already care about your work.",
+      "text": "No. Start with one useful offer and share it with the people who already care about your work."
+    },
+    "faqTwoQ": {
+      "source": "Is this an in-person booking?",
+      "text": "Is this an in-person booking?"
+    },
+    "faqTwoA": {
+      "source": "No. Live events and 1:1 sessions happen online. Keep your listing and expectations specific.",
+      "text": "No. Live events and 1:1 sessions happen online. Keep your listing and expectations specific."
+    },
+    "faqThreeQ": {
+      "source": "When do I get paid?",
+      "text": "When do I get paid?"
+    },
+    "faqThreeA": {
+      "source": "Payout timing and eligible methods are shown in your creator dashboard and the applicable terms.",
+      "text": "Payout timing and eligible methods are shown in your creator dashboard and the applicable terms."
+    },
+    "faqFourQ": {
+      "source": "Can I set my own boundaries?",
+      "text": "Can I set my own boundaries?"
+    },
+    "faqFourA": {
+      "source": "Yes. Choose your format, availability, price and what the session includes before publishing.",
+      "text": "Yes. Choose your format, availability, price and what the session includes before publishing."
+    },
+    "closeEyebrow": {
+      "source": "YOUR TURN",
+      "text": "YOUR TURN"
+    },
+    "closeTitle": {
+      "source": "Put a ticket on your voice.",
+      "text": "Apni awaaz ko ticket do."
+    },
+    "closeBody": {
+      "source": "Write one offer today. Open your first room tomorrow.",
+      "text": "Aaj ek offer likho. Kal apna first room kholo."
+    },
+    "closeCta": {
+      "source": "Create your free listing",
+      "text": "Create your free listing"
+    },
+    "ariaDecorative": {
+      "source": "Decorative",
+      "text": "Decorative"
+    },
+    "ariaCalculator": {
+      "source": "Gross earnings estimate calculator",
+      "text": "Gross earnings estimate calculator"
+    },
+    "ariaFaq": {
+      "source": "Frequently asked questions",
+      "text": "Frequently asked questions"
+    }
+  }
+}

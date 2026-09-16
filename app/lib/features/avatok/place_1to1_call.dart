@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -112,7 +114,7 @@ Future<bool> routeToStreamCallIfEnabled(
     });
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Calling is temporarily unavailable. Please try again later.'),
+        content: UiText(UiMessage.m_calling_is_temporarily_unavailable_please_63a4b2b01a),
       ));
     }
     return true;
@@ -134,7 +136,7 @@ Future<bool> routeToStreamCallIfEnabled(
     });
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Calling is temporarily unavailable. Please try again later.'),
+        content: UiText(UiMessage.m_calling_is_temporarily_unavailable_please_63a4b2b01a),
       ));
     }
     return true;
@@ -154,8 +156,8 @@ Future<bool> routeToStreamCallIfEnabled(
     });
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text(
-              "AvaTOK calling isn't available for this contact yet — send them a message instead")));
+          content: UiText(
+              UiMessage.m_avatok_calling_isn_t_available_f90fbce4d4)));
     }
     return true;
   }
@@ -188,7 +190,7 @@ Future<bool> routeToStreamCallIfEnabled(
       });
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Calling is temporarily unavailable. Please try again later.'),
+          content: UiText(UiMessage.m_calling_is_temporarily_unavailable_please_63a4b2b01a),
         ));
       }
       return true;
@@ -201,7 +203,7 @@ Future<bool> routeToStreamCallIfEnabled(
       billingAuthorization.provider != 'stream') {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Calling is temporarily unavailable. Please try again later.'),
+        content: UiText(UiMessage.m_calling_is_temporarily_unavailable_please_63a4b2b01a),
       ));
     }
     return true;
@@ -609,7 +611,7 @@ Future<void> place1to1Call(
     if (billingAuthorization != null) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Calling is temporarily unavailable. Please try again later.'),
+          content: UiText(UiMessage.m_calling_is_temporarily_unavailable_please_63a4b2b01a),
         ));
       }
       return;
@@ -622,7 +624,7 @@ Future<void> place1to1Call(
   if (billingAuthorization != null && placementStatus != 200) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Calling is temporarily unavailable. Please try again later.'),
+        content: UiText(UiMessage.m_calling_is_temporarily_unavailable_please_63a4b2b01a),
       ));
     }
     return;

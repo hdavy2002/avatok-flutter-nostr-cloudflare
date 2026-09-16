@@ -1,4 +1,5 @@
 ---
+import { authoredKey } from '../lib/i18n/authoredKey';
 import GlobalLocaleControls from './GlobalLocaleControls.astro';
 interface Props {
   columns: { title: string; links: { href: string; label: string }[] }[];
@@ -10,14 +11,14 @@ const { columns, legalLinks, year } = Astro.props;
 <footer class="bazaar-footer global-footer">
   <div class="global-footer__main">
     <div class="global-footer__brand">
-      <a class="global-wordmark" href="/" aria-label="avaTOK global home"><span>ava</span><span>TOK</span><i aria-hidden="true">✳</i></a>
-      <p>A global home for creator-led income.</p>
-      <span class="global-handwritten">Real people. Real moments. Your thing.</span>
+      <a data-india-i18n-attr="aria-label:web-common.7f91d6e80bf0a1be" class="global-wordmark" href="/" aria-label="avaTOK global home"><span>ava</span><span>TOK</span><i aria-hidden="true">✳</i></a>
+      <p data-i18n="web-common.d104703724429ad6">A global home for creator-led income.</p>
+      <span data-i18n="web-common.9550b9440c60af62" class="global-handwritten">Real people. Real moments. Your thing.</span>
     </div>
-    {columns.map(column => <nav class="global-footer__column" aria-label={column.title}><h2>{column.title === 'Bazaar' ? 'Explore' : column.title}</h2>{column.links.map(link => <a href={link.href}>{link.label}</a>)}{column.title === 'Bazaar' && <a href="/global-ideas">Creator ideas</a>}</nav>)}
-    <nav class="global-footer__column" aria-label="Your experience"><h2>Your experience</h2><a href="/">Global · English</a><a href="/india">🇮🇳 India experience</a><a href="/pricing-fees">Pricing & fees</a><a href="/payouts">How payouts work</a></nav>
+    {columns.map(column => <nav class="global-footer__column" aria-label={column.title} data-india-i18n-attr={`aria-label:${authoredKey(column.title)}`}><h2 data-i18n={authoredKey(column.title === 'Bazaar' ? 'Explore' : column.title)}>{column.title === 'Bazaar' ? 'Explore' : column.title}</h2>{column.links.map(link => <a href={link.href} data-i18n={authoredKey(link.label)}>{link.label}</a>)}{column.title === 'Bazaar' && <a data-i18n="web-common.2e7f5b094272808b" href="/global-ideas">Creator ideas</a>}</nav>)}
+    <nav data-india-i18n-attr="aria-label:web-common.52aae266a739ae00" class="global-footer__column" aria-label="Your experience"><h2 data-i18n="web-common.52aae266a739ae00">Your experience</h2><a data-i18n="web-common.7a5ea14f9648f409" href="/">Global · English</a><a data-i18n="web-common.149186166a461d0b" href="/india">🇮🇳 India experience</a><a data-i18n="web-common.c9363df47fa5b50a" href="/pricing-fees">Pricing & fees</a><a data-i18n="web-common.ca8acb5929c06b14" href="/payouts">How payouts work</a></nav>
   </div>
-  <div class="global-footer__world"><GlobalLocaleControls compact /><span class="global-footer__flags"><span aria-hidden="true">🇺🇸 🇧🇷 🇬🇧 🇿🇦</span> <a href="/india" aria-label="Visit the India experience">🇮🇳</a> <span aria-hidden="true">🇳🇬 🇯🇵 🇲🇽</span></span><span class="global-handwritten">Made for creators everywhere. ♡</span></div>
-  <nav class="global-footer__legal" aria-label="Legal and safety">{legalLinks.map(link => <a href={link.href}>{link.label}</a>)}</nav>
-  <div class="global-footer__bottom"><span>© {year} avaTOK</span><span>Good creators. Brighter tomorrows.</span></div>
+  <div class="global-footer__world"><GlobalLocaleControls compact /><span class="global-footer__flags"><span aria-hidden="true">🇺🇸 🇧🇷 🇬🇧 🇿🇦</span> <a data-india-i18n-attr="aria-label:web-common.964c3ef0f91c8b9f" href="/india" aria-label="Visit the India experience">🇮🇳</a> <span aria-hidden="true">🇳🇬 🇯🇵 🇲🇽</span></span><span data-i18n="web-common.96aefbc45dd78c4f" class="global-handwritten">Made for creators everywhere. ♡</span></div>
+  <nav data-india-i18n-attr="aria-label:web-common.025d9311c211f924" class="global-footer__legal" aria-label="Legal and safety">{legalLinks.map(link => <a href={link.href} data-i18n={authoredKey(link.label)}>{link.label}</a>)}</nav>
+  <div class="global-footer__bottom"><span>© {year} avaTOK</span><span data-i18n="web-common.6bce644550ebfaca">Good creators. Brighter tomorrows.</span></div>
 </footer>

@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:async';
 import 'dart:io';
 
@@ -128,6 +131,7 @@ class _AvaDialRootState extends State<AvaDialRoot> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       // The Calls app is dark end-to-end (owner request 2026-07-12) — see
       // avadial_theme.dart, which mirrors AvaPhone's existing dark palette.
@@ -152,7 +156,7 @@ class _AvaDialRootState extends State<AvaDialRoot> {
         top: false,
         child: Column(children: [
           AvaTokHeader(
-            title: 'Calls',
+            title: uiCopy(UiMessage.m_calls_b73a5e2ca6),
             bottom: _CallsTabStrip(
               items: _items,
               selectedIndex: _tab,
@@ -189,17 +193,17 @@ class _AvaDialRootState extends State<AvaDialRoot> {
                   ? const _BlockTab()
                   : ShellEmptyState(
                       icon: PhosphorIcons.prohibit(PhosphorIconsStyle.regular),
-                      title: 'Block list',
-                      subtitle: 'Blocked numbers and one-tap spam reports — coming with AvaDial.',
+                      title: uiCopy(UiMessage.m_block_list_b6cbee8a08),
+                      subtitle: uiCopy(UiMessage.m_blocked_numbers_and_one_tap_96c17b7a21),
                       color: AD.danger,
                     ),
               on
                   ? const _LogsTab()
                   : ShellEmptyState(
                       icon: PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.regular),
-                      title: 'Call logs',
+                      title: uiCopy(UiMessage.m_call_logs_04443f52d8),
                       subtitle:
-                          'Your device call history with friend/spam labels — coming with AvaDial.',
+                          uiCopy(UiMessage.m_your_device_call_history_with_59885a6496),
                       color: AD.online,
                     ),
                 ]);
@@ -239,6 +243,7 @@ class _CallsTabStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // [RAJ-SEAMS-1] Band recolour, patches.md §6: this strip was
     // `AvaDialTheme.surface` (a pale card colour) — now `AD.bandIndigo`, a
     // DARK band, so the unselected-tab foreground must flip to cream via
@@ -522,7 +527,7 @@ class _ContactsTabState extends State<_ContactsTab> {
     _searchCtrl.clear();
     Analytics.capture('avadial_contacts_server_add', const {});
     ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Saved ${saved.name.isNotEmpty ? saved.name : saved.number}')));
+        SnackBar(content: UiText(UiMessage.m_saved_value1_efbf53f3ba, params: {'value1': (saved.name.isNotEmpty ? saved.name : saved.number).toString()})));
   }
 
   void _onRev() {
@@ -610,7 +615,7 @@ class _ContactsTabState extends State<_ContactsTab> {
     if (!mounted) return;
     setState(() => _all = list);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Saved ${saved.name.isNotEmpty ? saved.name : saved.number}')));
+        content: UiText(UiMessage.m_saved_value1_efbf53f3ba, params: {'value1': (saved.name.isNotEmpty ? saved.name : saved.number).toString()})));
     Analytics.capture('avadial_contact_added', const {});
   }
 
@@ -663,13 +668,13 @@ class _ContactsTabState extends State<_ContactsTab> {
           side: const BorderSide(color: AvaDialTheme.border, width: 1),
           borderRadius: BorderRadius.circular(AD.rDialog),
         ),
-        title: Text('Rename contact', style: ADText.threadName(c: AvaDialTheme.text)),
+        title: UiText(UiMessage.m_rename_contact_202fadccda, style: ADText.threadName(c: AvaDialTheme.text)),
         content: TextField(
           controller: ctrl,
           autofocus: true,
           style: TextStyle(color: AvaDialTheme.text),
           decoration: InputDecoration(
-            hintText: 'Name',
+            hintText: uiCopy(UiMessage.m_name_dcd1d5223f),
             hintStyle: TextStyle(color: AvaDialTheme.textSoft),
             enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: AvaDialTheme.border)),
             focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: AvaDialTheme.accent)),
@@ -679,11 +684,11 @@ class _ContactsTabState extends State<_ContactsTab> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancel', style: ADText.rowName(c: AvaDialTheme.textSoft)),
+            child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.rowName(c: AvaDialTheme.textSoft)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, ctrl.text),
-            child: Text('Save', style: ADText.rowName(c: AvaDialTheme.accent)),
+            child: UiText(UiMessage.m_save_1509f561f2, style: ADText.rowName(c: AvaDialTheme.accent)),
           ),
         ],
       ),
@@ -749,39 +754,39 @@ class _ContactsTabState extends State<_ContactsTab> {
         if (RemoteConfig.messengerCallingEnabled)
           ListTile(
             leading: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold), color: AD.incomingCall),
-            title: Text('Call on AvaTOK', style: ADText.rowName(c: AvaDialTheme.text)),
+            title: UiText(UiMessage.m_call_on_avatok_023447a2af, style: ADText.rowName(c: AvaDialTheme.text)),
             onTap: () { Navigator.pop(ctx); _call(c); },
           ),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold), color: AD.iconSearch),
-          title: Text('View profile', style: ADText.rowName(c: AvaDialTheme.text)),
+          title: UiText(UiMessage.m_view_profile_d4788f256f, style: ADText.rowName(c: AvaDialTheme.text)),
           onTap: () { Navigator.pop(ctx); _openProfile(c); },
         ),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), color: AD.iconVideo),
-          title: Text('Share contact', style: ADText.rowName(c: AvaDialTheme.text)),
-          subtitle: Text('Send to an AvaTOK chat', style: ADText.preview(c: AvaDialTheme.textSoft)),
+          title: UiText(UiMessage.m_share_contact_d294640153, style: ADText.rowName(c: AvaDialTheme.text)),
+          subtitle: UiText(UiMessage.m_send_to_an_avatok_chat_dc64aae492, style: ADText.preview(c: AvaDialTheme.textSoft)),
           onTap: () { Navigator.pop(ctx); _shareToAvaTok(c); },
         ),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.floppyDisk(PhosphorIconsStyle.bold), color: AD.iconVideo),
-          title: Text('Save contact', style: ADText.rowName(c: AvaDialTheme.text)),
-          subtitle: Text('vCard — Contacts, email & more', style: ADText.preview(c: AvaDialTheme.textSoft)),
+          title: UiText(UiMessage.m_save_contact_d24f121f4a, style: ADText.rowName(c: AvaDialTheme.text)),
+          subtitle: UiText(UiMessage.m_vcard_contacts_email_more_82f9018727, style: ADText.preview(c: AvaDialTheme.textSoft)),
           onTap: () { Navigator.pop(ctx); _saveContact(c); },
         ),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), color: AD.iconVideo),
-          title: Text('Rename', style: ADText.rowName(c: AvaDialTheme.text)),
+          title: UiText(UiMessage.m_rename_3064d79a29, style: ADText.rowName(c: AvaDialTheme.text)),
           onTap: () { Navigator.pop(ctx); _rename(c); },
         ),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), color: AD.danger),
-          title: Text(isBlocked ? 'Unblock' : 'Block', style: ADText.rowName(c: AD.danger)),
+          title: Text(isBlocked ? uiCopy(UiMessage.m_unblock_712da63171) : uiCopy(UiMessage.m_block_211d0bb8cf), style: ADText.rowName(c: AD.danger)),
           onTap: () { Navigator.pop(ctx); _toggleBlock(c); },
         ),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold), color: AD.danger),
-          title: Text('Delete contact', style: ADText.rowName(c: AD.danger)),
+          title: UiText(UiMessage.m_delete_contact_f5fed436f9, style: ADText.rowName(c: AD.danger)),
           onTap: () { Navigator.pop(ctx); _deleteContact(c); },
         ),
         const SizedBox(height: 8),
@@ -799,6 +804,7 @@ class _ContactsTabState extends State<_ContactsTab> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Stack(children: [
       Column(children: [
         // [AVADIAL-CONTACTS-MERGE] Banner now explains the merged view: an orange
@@ -816,12 +822,12 @@ class _ContactsTabState extends State<_ContactsTab> {
               PhosphorIcon(PhosphorIcons.circle(PhosphorIconsStyle.fill),
                   size: 12, color: _kAvatokOrange),
               const SizedBox(width: 8),
-              Expanded(child: Text(
-                  'Orange = already on AvaTOK (tap to call). Everyone else gets a one-tap invite.',
+              Expanded(child: UiText(
+                  UiMessage.m_orange_already_on_avatok_tap_256927bcfe,
                   style: ADText.preview(c: AvaDialTheme.textSoft))),
               IconButton(
                 onPressed: _invite,
-                tooltip: 'Invite friends',
+                tooltip: uiCopy(UiMessage.m_invite_friends_2614b42d84),
                 icon: PhosphorIcon(PhosphorIcons.paperPlaneTilt(PhosphorIconsStyle.bold),
                     size: 18, color: AD.iconSearch),
               ),
@@ -850,8 +856,8 @@ class _ContactsTabState extends State<_ContactsTab> {
                   onChanged: _onQueryChanged,
                   cursorColor: AvaDialTheme.searchText,
                   style: const TextStyle(color: AvaDialTheme.searchText, fontSize: 14),
-                  decoration: const InputDecoration(
-                    hintText: 'Search name, number, email or company',
+                  decoration:  InputDecoration(
+                    hintText: uiCopy(UiMessage.m_search_name_number_email_or_adf216b64f),
                     hintStyle: TextStyle(color: AvaDialTheme.searchHint, fontSize: 14),
                     border: InputBorder.none,
                     isDense: true,
@@ -984,7 +990,7 @@ class _ContactsTabState extends State<_ContactsTab> {
               const SizedBox(width: 16, height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2, color: AvaDialTheme.accent)),
               const SizedBox(width: Msg.s2),
-              Text('Searching AvaTOK…', style: ADText.preview(c: AvaDialTheme.textSoft)),
+              UiText(UiMessage.m_searching_avatok_860d0ccb29, style: ADText.preview(c: AvaDialTheme.textSoft)),
             ]),
           );
         }
@@ -1038,14 +1044,14 @@ class _ContactsTabState extends State<_ContactsTab> {
             // is off, matching contact_detail_screen.dart / contact_row_menu.dart.
             if (RemoteConfig.messengerCallingEnabled)
               IconButton(
-                tooltip: 'Call on AvaTOK',
+                tooltip: uiCopy(UiMessage.m_call_on_avatok_023447a2af),
                 onPressed: () => place1to1Call(context, uid: c.uid,
                     name: c.name.isNotEmpty ? c.name : c.number, avatarUrl: c.avatarUrl, dialer: true),
                 icon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold),
                     color: AD.incomingCall),
               ),
             IconButton(
-              tooltip: 'Add contact',
+              tooltip: uiCopy(UiMessage.m_add_contact_a02ce0df21),
               onPressed: () => _saveServerHit(c),
               icon: PhosphorIcon(PhosphorIcons.userPlus(PhosphorIconsStyle.bold),
                   size: 20, color: AD.iconSearch),
@@ -1100,7 +1106,7 @@ class _ContactsTabState extends State<_ContactsTab> {
             // just with no dial affordance).
             if (on && RemoteConfig.messengerCallingEnabled)
               IconButton(
-                tooltip: 'On AvaTOK — call',
+                tooltip: uiCopy(UiMessage.m_on_avatok_call_14446c7d68),
                 onPressed: () => _callDevice(c),
                 icon: Container(
                   width: 34, height: 34,
@@ -1111,7 +1117,7 @@ class _ContactsTabState extends State<_ContactsTab> {
               )
             else if (!on)
               IconButton(
-                tooltip: 'Invite to AvaTOK',
+                tooltip: uiCopy(UiMessage.m_invite_to_avatok_cfc9067283),
                 onPressed: () => _inviteDevice(c),
                 icon: PhosphorIcon(PhosphorIcons.paperPlaneTilt(PhosphorIconsStyle.bold),
                     size: 20, color: AD.online),
@@ -1131,16 +1137,15 @@ class _ContactsTabState extends State<_ContactsTab> {
             Row(children: [
               PhosphorIcon(PhosphorIcons.addressBook(PhosphorIconsStyle.bold), size: 20, color: AD.iconSearch),
               const SizedBox(width: Msg.s2),
-              Expanded(child: Text('See all your contacts here',
+              Expanded(child: UiText(UiMessage.m_see_all_your_contacts_here_b9b836397b,
                   style: ADText.threadName(c: AvaDialTheme.text))),
             ]),
             const SizedBox(height: 8),
-            Text('Let AvaTOK show your phone contacts here. Anyone already on AvaTOK '
-                'gets an orange badge you can call in-app; everyone else gets a one-tap invite.',
+            UiText(UiMessage.m_let_avatok_show_your_phone_4dd8887de2,
                 style: ADText.preview(c: AvaDialTheme.textSoft)),
             const SizedBox(height: 12),
             AdButton(
-              label: 'Show my phone contacts',
+              label: uiCopy(UiMessage.m_show_my_phone_contacts_ce883d0546),
               variant: AdButtonVariant.teal,
               trailingIcon: false,
               onPressed: _grantContacts,
@@ -1152,7 +1157,7 @@ class _ContactsTabState extends State<_ContactsTab> {
   Widget _deviceEmptyCard() => Padding(
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Text(
-            _query.isEmpty ? 'No phone contacts found.' : 'No phone contacts match “$_query”.',
+            _query.isEmpty ? uiCopy(UiMessage.m_no_phone_contacts_found_1b95d8e2d8) : uiCopy(UiMessage.m_no_phone_contacts_match_query_394089f4e0, {'query': (_query).toString()}),
             style: ADText.preview(c: AvaDialTheme.textSoft)),
       );
 
@@ -1225,6 +1230,7 @@ class _AddAvaTokContactDialogState extends State<_AddAvaTokContactDialog> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final notOnAvaTok = _error == 'not_on_avatok';
     return AlertDialog(
       backgroundColor: AvaDialTheme.surface2,
@@ -1232,9 +1238,9 @@ class _AddAvaTokContactDialogState extends State<_AddAvaTokContactDialog> {
         side: const BorderSide(color: AvaDialTheme.border, width: 1),
         borderRadius: BorderRadius.circular(AD.rDialog),
       ),
-      title: Text('Add AvaTOK contact', style: ADText.threadName(c: AvaDialTheme.text)),
+      title: UiText(UiMessage.m_add_avatok_contact_ed12cc2259, style: ADText.threadName(c: AvaDialTheme.text)),
       content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Save someone by their AvaTOK number or email.',
+        UiText(UiMessage.m_save_someone_by_their_avatok_0d1bcf286f,
             style: ADText.preview(c: AvaDialTheme.textSoft)),
         const SizedBox(height: 12),
         TextField(
@@ -1242,7 +1248,7 @@ class _AddAvaTokContactDialogState extends State<_AddAvaTokContactDialog> {
           autofocus: true,
           style: TextStyle(color: AvaDialTheme.text),
           decoration: InputDecoration(
-            hintText: 'AvaTOK number or email',
+            hintText: uiCopy(UiMessage.m_avatok_number_or_email_4eab52e8e0),
             hintStyle: TextStyle(color: AvaDialTheme.textSoft),
             enabledBorder: const UnderlineInputBorder(
                 borderSide: BorderSide(color: AvaDialTheme.border)),
@@ -1258,14 +1264,14 @@ class _AddAvaTokContactDialogState extends State<_AddAvaTokContactDialog> {
         if (notOnAvaTok)
           Padding(
             padding: const EdgeInsets.only(top: Msg.s3),
-            child: Text('Not on AvaTOK yet — invite them instead?',
+            child: UiText(UiMessage.m_not_on_avatok_yet_invite_9684b3f89d,
                 style: ADText.preview(c: AD.danger)),
           ),
       ]),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: Text('Cancel', style: ADText.rowName(c: AvaDialTheme.textSoft)),
+          child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.rowName(c: AvaDialTheme.textSoft)),
         ),
         if (notOnAvaTok)
           TextButton(
@@ -1274,7 +1280,7 @@ class _AddAvaTokContactDialogState extends State<_AddAvaTokContactDialog> {
               Navigator.of(context, rootNavigator: true).push(
                   MaterialPageRoute<void>(builder: (_) => const InviteScreen()));
             },
-            child: Text('Invite', style: ADText.rowName(c: AD.online)),
+            child: UiText(UiMessage.m_invite_1fd9ae1607, style: ADText.rowName(c: AD.online)),
           )
         else
           TextButton(
@@ -1282,7 +1288,7 @@ class _AddAvaTokContactDialogState extends State<_AddAvaTokContactDialog> {
             child: _resolving
                 ? const SizedBox(width: 16, height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2, color: AvaDialTheme.accent))
-                : Text('Find & save', style: ADText.rowName(c: AvaDialTheme.accent)),
+                : UiText(UiMessage.m_find_save_f781f92450, style: ADText.rowName(c: AvaDialTheme.accent)),
           ),
       ],
     );
@@ -1325,6 +1331,7 @@ class _AvaDialSearchBarState extends State<_AvaDialSearchBar> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, 0),
       child: Container(
@@ -1479,19 +1486,19 @@ class _LogsTabState extends State<_LogsTab> {
           side: const BorderSide(color: AvaDialTheme.border, width: 1),
           borderRadius: BorderRadius.circular(AD.rDialog),
         ),
-        title: Text('Clear call history?', style: ADText.threadName(c: AvaDialTheme.text)),
-        content: Text(
-          'This clears your AvaTOK call history on every device signed into this account.',
+        title: UiText(UiMessage.m_clear_call_history_34a0af1cec, style: ADText.threadName(c: AvaDialTheme.text)),
+        content: UiText(
+          UiMessage.m_this_clears_your_avatok_call_a6c14ac95b,
           style: ADText.preview(c: AvaDialTheme.textSoft).copyWith(fontSize: 13),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: ADText.rowName(c: AvaDialTheme.textSoft)),
+            child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.rowName(c: AvaDialTheme.textSoft)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Clear', style: ADText.rowName(c: AD.danger)),
+            child: UiText(UiMessage.m_clear_83b12c2216, style: ADText.rowName(c: AD.danger)),
           ),
         ],
       ),
@@ -1524,7 +1531,7 @@ class _LogsTabState extends State<_LogsTab> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Couldn't export the call log.")),
+        const SnackBar(content: UiText(UiMessage.m_couldn_t_export_the_call_641da6f00e)),
       );
       Analytics.capture('avadial_calllog_export_failed', {'error': e.toString()});
     }
@@ -1576,12 +1583,12 @@ class _LogsTabState extends State<_LogsTab> {
         if (RemoteConfig.messengerCallingEnabled)
           ListTile(
             leading: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold), color: AD.incomingCall),
-            title: Text('Call on AvaTOK', style: ADText.rowName(c: AvaDialTheme.text)),
+            title: UiText(UiMessage.m_call_on_avatok_023447a2af, style: ADText.rowName(c: AvaDialTheme.text)),
             onTap: () { Navigator.pop(ctx); _call(c); },
           ),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold), color: AD.iconSearch),
-          title: Text('View profile', style: ADText.rowName(c: AvaDialTheme.text)),
+          title: UiText(UiMessage.m_view_profile_d4788f256f, style: ADText.rowName(c: AvaDialTheme.text)),
           onTap: () {
             Navigator.pop(ctx);
             Navigator.push(context, MaterialPageRoute<void>(
@@ -1590,12 +1597,12 @@ class _LogsTabState extends State<_LogsTab> {
         ),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), color: AD.iconVideo),
-          title: Text('Share contact', style: ADText.rowName(c: AvaDialTheme.text)),
+          title: UiText(UiMessage.m_share_contact_d294640153, style: ADText.rowName(c: AvaDialTheme.text)),
           onTap: () { Navigator.pop(ctx); ContactActions.forward(context, contact); },
         ),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold), color: AD.danger),
-          title: Text('Delete this log entry', style: ADText.rowName(c: AD.danger)),
+          title: UiText(UiMessage.m_delete_this_log_entry_7eae4618a0, style: ADText.rowName(c: AD.danger)),
           onTap: () async {
             Navigator.pop(ctx);
             if (c.id.isNotEmpty) await _store.removeById(c.id);
@@ -1609,10 +1616,11 @@ class _LogsTabState extends State<_LogsTab> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Column(children: [
       // [AVADIAL-SEARCH-1] Instant name filter over the AvaTOK call log.
       _AvaDialSearchBar(
-        hint: 'Search calls by name',
+        hint: uiCopy(UiMessage.m_search_calls_by_name_eb1c56ae8c),
         onChanged: (v) {
           if (_query.trim().isEmpty && v.trim().isNotEmpty) {
             Analytics.capture('avadial_search_started', const {'tab': 'call_logs'});
@@ -1626,8 +1634,8 @@ class _LogsTabState extends State<_LogsTab> {
             : (_calls.isEmpty
                 ? _PermState(
                     icon: PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.regular),
-                    title: 'No call history',
-                    subtitle: 'Calls you make and receive on AvaTOK will show up here.',
+                    title: uiCopy(UiMessage.m_no_call_history_f437c9e925),
+                    subtitle: uiCopy(UiMessage.m_calls_you_make_and_receive_ac37ea7d65),
                     color: AD.online,
                     onRetry: _reload,
                   )
@@ -1645,7 +1653,7 @@ class _LogsTabState extends State<_LogsTab> {
     }).toList();
     if (visible.isEmpty) {
       return Center(
-        child: Text('No matches', style: ADText.preview(c: AvaDialTheme.textSoft)),
+        child: UiText(UiMessage.m_no_matches_2df01a03ff, style: ADText.preview(c: AvaDialTheme.textSoft)),
       );
     }
     return RefreshIndicator(
@@ -1658,7 +1666,7 @@ class _LogsTabState extends State<_LogsTab> {
             return Padding(
               padding: const EdgeInsets.fromLTRB(2, Msg.s1, 2, Msg.s2),
               child: Row(children: [
-                Text('${visible.length} call${visible.length == 1 ? '' : 's'}',
+                UiText(UiMessage.m_value1_call_value2_321ec21b93, params: {'value1': (visible.length).toString(), 'value2': (visible.length == 1 ? '' : 's').toString()},
                     style: ADText.statCaption(c: AvaDialTheme.textMute)),
                 const Spacer(),
                 // [AVADIAL-LOG-EXPORT-1] Export as .txt via the OS share sheet.
@@ -1666,13 +1674,13 @@ class _LogsTabState extends State<_LogsTab> {
                   onPressed: () => _exportLogs(visible),
                   icon: PhosphorIcon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold),
                       color: AvaDialTheme.accent, size: 17),
-                  label: Text('Export', style: ADText.rowName(c: AvaDialTheme.accent)),
+                  label: UiText(UiMessage.m_export_3664895579, style: ADText.rowName(c: AvaDialTheme.accent)),
                 ),
                 TextButton.icon(
                   onPressed: _clearHistory,
                   icon: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold),
                       color: AD.danger, size: 17),
-                  label: Text('Clear history', style: ADText.rowName(c: AD.danger)),
+                  label: UiText(UiMessage.m_clear_history_496121494e, style: ADText.rowName(c: AD.danger)),
                 ),
               ]),
             );
@@ -1835,6 +1843,7 @@ class _BlockTabState extends State<_BlockTab> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // [AVADIAL-SEARCH-1] The bar lives OUTSIDE the FutureBuilder on purpose: an
     // unblock swaps in a new future and flips this to a spinner, which would
     // unmount an inner bar and silently drop the user's query mid-search.
@@ -1850,14 +1859,14 @@ class _BlockTabState extends State<_BlockTab> {
           child: Row(children: [
             PhosphorIcon(PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill), size: 16, color: AD.danger),
             const SizedBox(width: 8),
-            Expanded(child: Text(
-                'AvaTOK contacts only — not your phone’s address book.',
+            Expanded(child: UiText(
+                UiMessage.m_avatok_contacts_only_not_your_e162ca39d8,
                 style: ADText.preview(c: AvaDialTheme.textSoft))),
           ]),
         ),
       ),
       _AvaDialSearchBar(
-        hint: 'Search blocked contacts',
+        hint: uiCopy(UiMessage.m_search_blocked_contacts_47ec89e443),
         onChanged: (v) {
           if (_query.trim().isEmpty && v.trim().isNotEmpty) {
             Analytics.capture('avadial_search_started', const {'tab': 'block_list'});
@@ -1883,8 +1892,8 @@ class _BlockTabState extends State<_BlockTab> {
         if (all.isEmpty) {
           return ShellEmptyState(
             icon: PhosphorIcons.prohibit(PhosphorIconsStyle.regular),
-            title: 'Nothing blocked',
-            subtitle: 'AvaTOK contacts you block or report as spam show up here.',
+            title: uiCopy(UiMessage.m_nothing_blocked_f73c4a5a85),
+            subtitle: uiCopy(UiMessage.m_avatok_contacts_you_block_or_145094f319),
             color: AD.danger,
             // [RAJ-SEAMS-1] 11-dialer-illo-2.svg, per illustrations/MANIFEST.md.
             illustration: Illustrations.dialerNothingBlocked,
@@ -1898,7 +1907,7 @@ class _BlockTabState extends State<_BlockTab> {
             .toList();
         if (entries.isEmpty) {
           return Center(
-            child: Text('No matches', style: ADText.preview(c: AvaDialTheme.textSoft)),
+            child: UiText(UiMessage.m_no_matches_2df01a03ff, style: ADText.preview(c: AvaDialTheme.textSoft)),
           );
         }
         return ListView.builder(
@@ -1925,7 +1934,7 @@ class _BlockTabState extends State<_BlockTab> {
                     if (contact != null)
                       ListTile(
                         leading: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold), color: AD.iconSearch),
-                        title: Text('View profile', style: ADText.rowName(c: AvaDialTheme.text)),
+                        title: UiText(UiMessage.m_view_profile_d4788f256f, style: ADText.rowName(c: AvaDialTheme.text)),
                         onTap: () {
                           Navigator.pop(ctx);
                           Navigator.push(context, MaterialPageRoute<void>(
@@ -1934,7 +1943,7 @@ class _BlockTabState extends State<_BlockTab> {
                       ),
                     ListTile(
                       leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), color: AD.danger),
-                      title: Text('Unblock', style: ADText.rowName(c: AD.danger)),
+                      title: UiText(UiMessage.m_unblock_712da63171, style: ADText.rowName(c: AD.danger)),
                       onTap: () { Navigator.pop(ctx); _unblock(e.number); },
                     ),
                     const SizedBox(height: 8),
@@ -1958,13 +1967,13 @@ class _BlockTabState extends State<_BlockTab> {
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text(label, style: ADText.threadName(c: AvaDialTheme.text)),
                         Text(
-                          e.reportedSpam ? 'Reported as spam · ${e.number}' : 'Blocked · ${e.number}',
+                          e.reportedSpam ? uiCopy(UiMessage.m_reported_as_spam_value1_295b04a759, {'value1': (e.number).toString()}) : uiCopy(UiMessage.m_blocked_value1_ab06b68eed, {'value1': (e.number).toString()}),
                           style: ADText.preview(c: AvaDialTheme.textSoft),
                         ),
                       ]),
                     ),
                     AdButton(
-                      label: 'Unblock',
+                      label: uiCopy(UiMessage.m_unblock_712da63171),
                       variant: AdButtonVariant.ghost,
                       fontSize: 13,
                       trailingIcon: false,
@@ -2006,6 +2015,7 @@ class _PermState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return ListView(
       // ListView so RefreshIndicator/scroll works even in the empty state.
       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -2019,7 +2029,7 @@ class _PermState extends StatelessWidget {
         const SizedBox(height: Msg.s4),
         Center(
           child: AdButton(
-            label: 'Try again',
+            label: uiCopy(UiMessage.m_try_again_d8b8392e2c),
             variant: AdButtonVariant.ghost,
             trailingIcon: false,
             onPressed: onRetry,

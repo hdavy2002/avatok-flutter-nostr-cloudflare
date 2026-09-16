@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -155,6 +157,7 @@ class _CallsScreenState extends State<CallsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // [ISSUE-CALLS-SEARCH-1] Derived view of the log. Cheap enough to recompute
     // per build; the call log is a short, already-in-memory list.
     final visible = _query.isEmpty
@@ -210,7 +213,7 @@ class _CallsScreenState extends State<CallsScreen> {
             Expanded(
               child: AdSearchDock(
                 controller: _searchCtl,
-                hint: 'Search name or number',
+                hint: uiCopy(UiMessage.m_search_name_or_number_7deaa4fc1e),
                 onChanged: (v) => setState(() => _query = v),
               ),
             ),
@@ -250,7 +253,7 @@ class _CallsScreenState extends State<CallsScreen> {
                           fit: BoxFit.contain,
                           excludeFromSemantics: true),
                       const SizedBox(height: Msg.s3),
-                      Text('No calls yet — start one from a chat',
+                      UiText(UiMessage.m_no_calls_yet_start_one_8534af7f62,
                           textAlign: TextAlign.center,
                           style: ADText.preview(c: AD.textTertiary)),
                     ]),
@@ -270,7 +273,7 @@ class _CallsScreenState extends State<CallsScreen> {
                                   size: 40,
                                   color: AD.textFaint),
                               const SizedBox(height: Msg.s3),
-                              Text('No calls match "$_query"',
+                              UiText(UiMessage.m_no_calls_match_query_8208a4dffa, params: {'query': (_query).toString()},
                                   textAlign: TextAlign.center,
                                   style: ADText.preview(c: AD.textTertiary)),
                             ],
@@ -420,17 +423,17 @@ class _CallsScreenState extends State<CallsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AD.popover,
-        title: Text('Delete call', style: ADText.threadName()),
-        content: Text('Remove the call with ${c.name} from your history?',
+        title: UiText(UiMessage.m_delete_call_74ce54aed7, style: ADText.threadName()),
+        content: UiText(UiMessage.m_remove_the_call_with_value1_155ee23909, params: {'value1': (c.name).toString()},
             style: ADText.preview(c: AD.textSecondary)),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+              child: const UiText(UiMessage.m_cancel_19766ed6cc)),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AD.destructiveBg),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            child: const UiText(UiMessage.m_delete_e2d0a54968),
           ),
         ],
       ),
@@ -455,17 +458,17 @@ class _CallsScreenState extends State<CallsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AD.popover,
-        title: Text('Clear call logs', style: ADText.threadName()),
-        content: Text('Delete your entire call history? This cannot be undone.',
+        title: UiText(UiMessage.m_clear_call_logs_cb31d7671e, style: ADText.threadName()),
+        content: UiText(UiMessage.m_delete_your_entire_call_history_7ee7cfe8cd,
             style: ADText.preview(c: AD.textSecondary)),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+              child: const UiText(UiMessage.m_cancel_19766ed6cc)),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AD.destructiveBg),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Clear all'),
+            child: const UiText(UiMessage.m_clear_all_29a390f923),
           ),
         ],
       ),

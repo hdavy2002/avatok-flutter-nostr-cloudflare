@@ -1,3 +1,6 @@
+
+import '../../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
@@ -29,7 +32,7 @@ void registerBackupSyncSection() {
   SettingsSectionRegistry.register(
     SettingsSection(
       id: 'backup_sync',
-      title: 'Backup & sync',
+      title: uiCopy(UiMessage.m_backup_sync_9e742a3709),
       order: 40,
       builder: (context) => const _BackupSyncCard(),
     ),
@@ -107,7 +110,7 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
       Analytics.capture('backup_drive_connect_url_missing', {'after_ms': sw.elapsedMilliseconds});
       Analytics.error(
           domain: 'storage', code: 'connect_url_null', screen: 'backup_sync', action: 'connect');
-      _snack("Couldn't start Google Drive — try again in a moment.");
+      _snack(uiCopy(UiMessage.m_couldn_t_start_google_drive_efc20114d8));
     } else {
       Analytics.capture('backup_drive_connect_opened', const {'mode': 'web_auth'});
       try {
@@ -117,7 +120,7 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
         final connected = _driveConnected == true;
         Analytics.capture(connected ? 'backup_drive_connected' : 'backup_drive_connect_unverified',
             {'via': 'web_auth', 'connect_ms': sw.elapsedMilliseconds});
-        if (connected) _snack('Google Drive connected.');
+        if (connected) _snack(uiCopy(UiMessage.m_google_drive_connected_c97023e92a));
       } on PlatformException catch (e) {
         if (e.code == 'CANCELED' || e.code == 'CANCELLED') {
           Analytics.capture('backup_drive_connect_cancelled',
@@ -132,13 +135,13 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
             Analytics.capture('backup_drive_connect_fallback_opened',
                 {'mode': 'in_app_tab', 'opened': opened});
             _snack(opened
-                ? 'Authorize Google Drive, then tap "I\'ve connected".'
-                : 'Could not open Google Drive.');
+                ? uiCopy(UiMessage.m_authorize_google_drive_then_tap_67a1b4b964)
+                : uiCopy(UiMessage.m_could_not_open_google_drive_b72939218e));
           } catch (e2) {
             Analytics.error(
                 domain: 'storage', code: 'fallback_launch_failed', message: e2.toString(),
                 screen: 'backup_sync', action: 'connect');
-            _snack('Could not open Google Drive.');
+            _snack(uiCopy(UiMessage.m_could_not_open_google_drive_b72939218e));
           }
         }
       } catch (e) {
@@ -146,7 +149,7 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
         Analytics.error(
             domain: 'storage', code: 'web_auth_error', message: e.toString(),
             screen: 'backup_sync', action: 'connect');
-        _snack('Could not open Google Drive.');
+        _snack(uiCopy(UiMessage.m_could_not_open_google_drive_b72939218e));
       }
     }
     if (mounted) setState(() => _connecting = false);
@@ -180,22 +183,23 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
   String _reasonMessage(String? reason) {
     switch (reason) {
       case 'premium_required':
-        return 'Cross-device sync is a premium feature. Top up to enable it.';
+        return uiCopy(UiMessage.m_cross_device_sync_is_a_2c27dd1a7c);
       case 'no_token':
-        return 'Connect Google Drive first to back up.';
+        return uiCopy(UiMessage.m_connect_google_drive_first_to_16e4017eab);
       case 'no_backup':
-        return 'No backup found yet.';
+        return uiCopy(UiMessage.m_no_backup_found_yet_7402c74a68);
       case 'empty':
-        return 'Nothing to back up yet.';
+        return uiCopy(UiMessage.m_nothing_to_back_up_yet_48e29c4534);
       case 'network':
-        return 'Could not reach the backup service. Check your connection.';
+        return uiCopy(UiMessage.m_could_not_reach_the_backup_b8ae5b9059);
       default:
-        return 'Backup failed${reason != null ? ' ($reason)' : ''}.';
+        return uiCopy(UiMessage.m_backup_failed_value1_5536d6fce4, {'value1': (reason != null ? ' ($reason)' : '').toString()});
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _driveCard(),
       const SizedBox(height: 12),
@@ -211,14 +215,12 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
         Row(children: [
           ZineIconBadge(icon: PhosphorIcons.cloud(PhosphorIconsStyle.fill), color: AD.primaryBadge, size: 34),
           const SizedBox(width: Msg.s2),
-          Expanded(child: Text('Google Drive backup', style: ADText.rowName())),
+          Expanded(child: UiText(UiMessage.m_google_drive_backup_85feb6de07, style: ADText.rowName())),
           const _FreeChip(),
         ]),
         const SizedBox(height: 8),
-        Text(
-          'Free, encrypted backup to your own Google Drive. Your chats are '
-          'encrypted on this device before upload, so neither AvaTOK nor Google '
-          'can read them. Survives reinstalling the app.',
+        UiText(
+          UiMessage.m_free_encrypted_backup_to_your_900bc8abf5,
           style: ADText.preview(),
         ),
         const SizedBox(height: 12),
@@ -237,7 +239,7 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
         child: Row(children: [
           SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2.2)),
           SizedBox(width: Msg.s2),
-          Text('Checking Google Drive…'),
+          UiText(UiMessage.m_checking_google_drive_14d73b3588),
         ]),
       );
     }
@@ -246,7 +248,7 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
     if (!ready) {
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         AdButton(
-          label: _connecting ? 'Opening Google…' : 'Connect Google Drive',
+          label: _connecting ? uiCopy(UiMessage.m_opening_google_28caff1f82) : uiCopy(UiMessage.m_connect_google_drive_4406cf53ed),
           variant: AdButtonVariant.primary,
           fullWidth: true,
           fontSize: 14,
@@ -270,7 +272,7 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
     return Row(children: [
       Expanded(
         child: AdButton(
-          label: 'Back up now',
+          label: uiCopy(UiMessage.m_back_up_now_02a2840b59),
           variant: AdButtonVariant.primary,
           fullWidth: true,
           fontSize: 14,
@@ -283,7 +285,7 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
       const SizedBox(width: Msg.s2),
       Expanded(
         child: AdButton(
-          label: 'Restore',
+          label: uiCopy(UiMessage.m_restore_a76e13b983),
           variant: AdButtonVariant.ghost,
           fullWidth: true,
           fontSize: 14,
@@ -305,13 +307,12 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
         Row(children: [
           ZineIconBadge(icon: PhosphorIcons.devices(PhosphorIconsStyle.fill), color: AD.iconSearch, size: 34),
           const SizedBox(width: Msg.s2),
-          Expanded(child: Text('Cross-device sync', style: ADText.rowName())),
+          Expanded(child: UiText(UiMessage.m_cross_device_sync_5ed52173f0, style: ADText.rowName())),
           const PaidBadge(),
         ]),
         const SizedBox(height: 8),
-        Text(
-          'Keep your chats in sync across all your devices, encrypted end-to-end. '
-          'Premium feature${_r2Summary != null ? ' · $_r2Summary' : ''}.',
+        UiText(
+          UiMessage.m_keep_your_chats_in_sync_2ae43d81ce, params: {'value1': (_r2Summary != null ? ' · $_r2Summary' : '').toString()},
           style: ADText.preview(),
         ),
         const SizedBox(height: 12),
@@ -364,13 +365,13 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
 class _FreeChip extends StatelessWidget {
   const _FreeChip();
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Container(
         padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
         decoration: BoxDecoration(
           color: AD.primaryBadge,
           borderRadius: Msg.brPill,
           border: Border.all(color: AD.borderControl, width: 1),
         ),
-        child: Text('Free', style: ADText.statCaption(c: Colors.white)),
-      );
+        child: UiText(UiMessage.m_free_f411a1fb62, style: ADText.statCaption(c: Colors.white)),
+      ); }
 }

@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 // [AVA-IDGATE-1] Biometric consent — shown BEFORE the camera ever opens.
 // Spec: Specs/SPEC-2026-07-10-identity-gating.md §5.1, §10.4
 //
@@ -125,6 +128,7 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: AppBar(
@@ -141,12 +145,12 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Quick check before you post',
+              UiText(UiMessage.m_quick_check_before_you_post_1f5aec365c,
                   style: ADText.appTitle().copyWith(fontSize: 26, height: 1.2)),
               const SizedBox(height: Msg.s5),
 
-              const _Para(
-                title: 'A real person',
+               _Para(
+                title: uiCopy(UiMessage.m_a_real_person_ec2e692d86),
                 body: 'AvaTok asks everyone to verify they are a real person before '
                     'posting publicly. It takes a few seconds, and you will only be '
                     'asked again every few months.',
@@ -156,8 +160,8 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
               // [AVA-IDGATE-1] Softened copy (owner 2026-07-10): gentle + informative,
               // no harsh/child-harm language. Still accurate about the lawful-request
               // path (required for BIPA transparency) without the confrontational tone.
-              const _Para(
-                title: 'A safer community',
+               _Para(
+                title: uiCopy(UiMessage.m_a_safer_community_572499c143),
                 body: 'Tying each account to a quick liveness check helps keep AvaTok a '
                     'safe, friendly place for everyone. We keep it private and never '
                     'share it — the only exception is if a court or law enforcement ever '
@@ -166,7 +170,7 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
               const SizedBox(height: Msg.s6),
 
               // ---- State of residence. Drives the retention track (spec §10.2). ----
-              Text('State of residence',
+              UiText(UiMessage.m_state_of_residence_df43dd3142,
                   style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
                       color: AD.textSecondary)),
               const SizedBox(height: Msg.s2),
@@ -194,12 +198,12 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
                   ),
                   contentPadding:
                       const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
-                  hintText: 'Select your state',
+                  hintText: uiCopy(UiMessage.m_select_your_state_25b2865960),
                   hintStyle: TextStyle(fontFamily: ADText.family, color: AD.textTertiary),
                 ),
                 items: [
                   ..._kUsStates.map((s) => DropdownMenuItem(value: s, child: Text(s))),
-                  const DropdownMenuItem(value: _kOutsideUs, child: Text('I live outside the US')),
+                  const DropdownMenuItem(value: _kOutsideUs, child: UiText(UiMessage.m_i_live_outside_the_us_3ebcc91fb0)),
                 ],
                 onChanged: _submitting ? null : (v) => setState(() => _state = v),
               ),
@@ -218,17 +222,15 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
                       side: const BorderSide(color: AD.borderControl, width: 1.5),
                       onChanged: _submitting ? null : (v) => setState(() => _agreed = v ?? false),
                     ),
-                    const Expanded(
+                     Expanded(
                       child: Padding(
                         padding: EdgeInsets.only(top: 12),
                         // Names WHAT is collected, WHY, and HOW LONG — all three are
                         // required by BIPA §15(b). The "up to" wording is exact: on the
                         // protective track the scan is destroyed immediately at deletion,
                         // so 256 days is a ceiling, never a promise to keep it that long.
-                        child: Text(
-                          'I agree that AvaTOK may collect and store a scan of my facial '
-                          'geometry to verify I am a real person, and may keep it for up '
-                          'to $_kRetentionDays days after I delete my account.',
+                        child: UiText(
+                          UiMessage.m_i_agree_that_avatok_may_c4a09d034d, params: {'kRetentionDays': (_kRetentionDays).toString()},
                           style: TextStyle(
                               fontFamily: ADText.family,
                               fontWeight: FontWeight.w400,
@@ -252,8 +254,8 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
                     Uri.parse('https://avatok.ai/biometric-retention'),
                     mode: LaunchMode.externalApplication,
                   ),
-                  child: Text(
-                    'Read our biometric retention schedule',
+                  child: UiText(
+                    UiMessage.m_read_our_biometric_retention_schedule_37e432e382,
                     style: TextStyle(fontFamily: ADText.family,
                         fontWeight: FontWeight.w400,
                         decoration: TextDecoration.underline, fontSize: 13, color: AD.iconSearch),
@@ -269,7 +271,7 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
                 ),
 
               AdButton(
-                label: 'Verify with camera',
+                label: uiCopy(UiMessage.m_verify_with_camera_75098e2258),
                 fullWidth: true,
                 loading: _submitting,
                 onPressed: _canSubmit ? _submit : null,
@@ -279,7 +281,7 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
                 width: double.infinity,
                 child: TextButton(
                   onPressed: _submitting ? null : _decline,
-                  child: Text('Not now', style: ADText.preview(c: AD.textSecondary)),
+                  child: UiText(UiMessage.m_not_now_a0e63d7c71, style: ADText.preview(c: AD.textSecondary)),
                 ),
               ),
             ],
@@ -297,6 +299,7 @@ class _Para extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

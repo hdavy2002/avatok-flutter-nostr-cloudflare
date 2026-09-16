@@ -1,3 +1,4 @@
+import { UiMessage } from "../../lib/i18n/react";
 /* Phase B — AuthGate (reusable identity gate for B/C/D/E).
  *
  * Purpose (MASTER-PROMPT §4b): expose the viewer's identity LEVEL and gate a
@@ -124,7 +125,7 @@ export function AuthGate({ minLevel = 0, children, upgradeReason, fallback }: Au
 
   if (error) {
     return (
-      <p className="font-body font-bold text-[14px] text-coral">{error}</p>
+      <p className="font-body font-bold text-[14px] text-coral"><UiMessage namespace="web-auth" value={error} /></p>
     );
   }
   return <>{fallback ?? null}</>;

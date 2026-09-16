@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Public UI catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "release",
+    "locale",
+    "namespace",
+    "messages",
+    "sourceHash"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "release": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "locale": {
+      "enum": [
+        "en",
+        "hi-Latn",
+        "as",
+        "bn",
+        "brx",
+        "doi",
+        "gu",
+        "hi",
+        "kn",
+        "ks",
+        "kok",
+        "mai",
+        "ml",
+        "mni",
+        "mr",
+        "ne",
+        "or",
+        "pa",
+        "sa",
+        "sat",
+        "sd",
+        "ta",
+        "te",
+        "ur",
+        "bho",
+        "awa"
+      ]
+    },
+    "namespace": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+    },
+    "sourceHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "messages": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "minLength": 1,
+        "maxLength": 200,
+        "not": {
+          "enum": [
+            "__proto__",
+            "constructor",
+            "prototype"
+          ]
+        }
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 16000
+      }
+    }
+  }
+}

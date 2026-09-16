@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -113,7 +115,7 @@ class CommercialSpeakerTestButton extends StatelessWidget {
   final CommercialSpeakerTestController controller;
   final bool enabled;
   @override
-  Widget build(BuildContext context) => ValueListenableBuilder<CommercialSpeakerTestState>(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return ValueListenableBuilder<CommercialSpeakerTestState>(
     valueListenable: controller.state,
     builder: (context, state, _) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -121,15 +123,15 @@ class CommercialSpeakerTestButton extends StatelessWidget {
         OutlinedButton.icon(
           onPressed: !enabled ? null : () => unawaited(state.playing ? controller.stop() : controller.play()),
           icon: Icon(PhosphorIcons.speakerHigh(PhosphorIconsStyle.bold)),
-          label: Text(state.playing ? 'Stop test' : 'Test speaker'),
+          label: Text(state.playing ? uiCopy(UiMessage.m_stop_test_baf8fb004f) : uiCopy(UiMessage.m_test_speaker_97f8bc6471)),
         ),
         if (state.playing || state.tested)
-          Text('Did you hear the sound? Check your volume and connected headphones.', style: ADText.preview()),
+          UiText(UiMessage.m_did_you_hear_the_sound_4790b7ffc8, style: ADText.preview()),
         if (state.error != null)
           Padding(padding: const EdgeInsets.only(top: Msg.s2), child: Text(state.error!, style: ADText.preview(c: AD.danger))),
       ],
     ),
-  );
+  ); }
 }
 
 Uint8List commercialSpeakerTone() {

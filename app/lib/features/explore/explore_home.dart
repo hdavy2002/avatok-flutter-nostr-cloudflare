@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -68,12 +71,13 @@ class _ExploreHomeState extends State<ExploreHome> {
     final ok = await Navigator.push<bool>(context,
         MaterialPageRoute(builder: (_) => NativeListingBookingFlow(listing: l)));
     if (ok == true && mounted) {
-      showAdToast(context, message: 'You\'re in! The stream opens here when AvaLive ships (Phase 7).');
+      showAdToast(context, message: uiCopy(UiMessage.m_you_re_in_the_stream_0846970c06));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       body: SafeArea(
@@ -126,7 +130,7 @@ class _ExploreHomeState extends State<ExploreHome> {
           AdBackButton(onTap: widget.onMenu, icon: PhosphorIcons.list(PhosphorIconsStyle.bold)),
           const SizedBox(width: 12),
           Expanded(
-            child: Text('AvaExplore', style: ADText.appTitle()),
+            child: UiText(UiMessage.m_avaexplore_a18b1379fa, style: ADText.appTitle()),
           ),
           AdBackButton(
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyListingsScreen())),
@@ -147,7 +151,7 @@ class _ExploreHomeState extends State<ExploreHome> {
           child: Row(children: [
             PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), color: AD.iconSearch, size: 19),
             const SizedBox(width: Msg.s2),
-            Text('Search events, sessions, creators…', style: ADText.preview(c: AD.placeholderOnWhite)),
+            UiText(UiMessage.m_search_events_sessions_creators_d8964b6e24, style: ADText.preview(c: AD.placeholderOnWhite)),
           ]),
         ),
       );
@@ -163,7 +167,7 @@ class _ExploreHomeState extends State<ExploreHome> {
                 color: AD.danger, shape: BoxShape.circle,
                 border: Border.all(color: AD.borderControl, width: 1))),
             const SizedBox(width: 8),
-            Text('Live now', style: ADText.appTitle()),
+            UiText(UiMessage.m_live_now_96436bc476, style: ADText.appTitle()),
           ]),
         ),
         SizedBox(
@@ -200,7 +204,7 @@ class _ExploreHomeState extends State<ExploreHome> {
                           Container(width: 6, height: 6, decoration: const BoxDecoration(
                               color: Colors.white, shape: BoxShape.circle)),
                           const SizedBox(width: 4),
-                          Text('Live', style: ADText.statCaption(c: Colors.white)),
+                          UiText(UiMessage.m_live_b64ac05f17, style: ADText.statCaption(c: Colors.white)),
                         ]),
                       )),
                     ])),
@@ -214,7 +218,7 @@ class _ExploreHomeState extends State<ExploreHome> {
                             children: [
                           Text(l.title, maxLines: 1, overflow: TextOverflow.ellipsis,
                               style: ADText.rowName()),
-                          Text('${l.joinedCount} watching · ${l.priceLabel}',
+                          UiText(UiMessage.m_value1_watching_value2_2de8355061, params: {'value1': (l.joinedCount).toString(), 'value2': (l.priceLabel).toString()},
                               maxLines: 1, overflow: TextOverflow.ellipsis,
                               style: ADText.statCaption(c: AD.textSecondary)),
                         ])),
@@ -226,7 +230,7 @@ class _ExploreHomeState extends State<ExploreHome> {
                           radius: Msg.brMd,
                           boxShadow: const [],
                           padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
-                          child: Text('Join', style: ADText.rowName(c: Colors.white)),
+                          child: UiText(UiMessage.m_join_fd30fe681b, style: ADText.rowName(c: Colors.white)),
                         ),
                       ]),
                     ),
@@ -272,14 +276,14 @@ class _ExploreHomeState extends State<ExploreHome> {
               const SizedBox(width: Msg.s2),
               // [UI-CASE-1] Sentence case — the shouted label was part of the
               // "amateur UI" finding.
-              Text('Become a creator', style: ADText.sectionLabel(c: AD.iconSearch)),
+              UiText(UiMessage.m_become_a_creator_4259d2bbd1, style: ADText.sectionLabel(c: AD.iconSearch)),
             ]),
             const SizedBox(height: Msg.s3),
-            Text('Host live events & paid sessions,\nearn straight to your wallet',
+            UiText(UiMessage.m_host_live_events_paid_sessions_df4205c7bc,
                 style: ADText.threadName()),
             const SizedBox(height: Msg.s4),
             AdButton(
-              label: 'Create a listing',
+              label: uiCopy(UiMessage.m_create_a_listing_9a697d39c1),
               fontSize: 17,
               onPressed: () => Navigator.push(
                   context, MaterialPageRoute(builder: (_) => const NativeListingWizardScreen(source: 'explore_home'))),

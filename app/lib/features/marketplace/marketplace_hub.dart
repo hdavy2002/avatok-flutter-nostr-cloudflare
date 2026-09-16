@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -41,6 +44,7 @@ class MarketplaceHub extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       // [UI-MARKET-2026] Was a bespoke AppBar painting ADText.appTitle() (ink)
@@ -57,8 +61,8 @@ class MarketplaceHub extends StatelessWidget {
         children: [
           _Tile(
             icon: PhosphorIcons.storefront(PhosphorIconsStyle.regular),
-            title: 'Browse marketplace',
-            subtitle: 'Buy, sell & social listings near you',
+            title: uiCopy(UiMessage.m_browse_marketplace_2ad20c9748),
+            subtitle: uiCopy(UiMessage.m_buy_sell_social_listings_near_a049c1b7dc),
             onTap: () {
               Analytics.capture('marketplace_opened', {'via': 'hub_browse'});
               Navigator.of(context).push(MaterialPageRoute(
@@ -69,8 +73,8 @@ class MarketplaceHub extends StatelessWidget {
           const SizedBox(height: Msg.s3),
           _Tile(
             icon: PhosphorIcons.microphone(PhosphorIconsStyle.regular),
-            title: 'Voice creator studio',
-            subtitle: 'Build and manage AI voice agents',
+            title: uiCopy(UiMessage.m_voice_creator_studio_00d3771b01),
+            subtitle: uiCopy(UiMessage.m_build_and_manage_ai_voice_c16fcf4168),
             onTap: () {
               Analytics.capture('creator_studio_opened', {'studio': 'avavoice'});
               Navigator.of(context).push(MaterialPageRoute(
@@ -81,8 +85,8 @@ class MarketplaceHub extends StatelessWidget {
           const SizedBox(height: Msg.s3),
           _Tile(
             icon: PhosphorIcons.eye(PhosphorIconsStyle.regular),
-            title: 'Vision creator studio',
-            subtitle: 'Build and manage AI vision coaches',
+            title: uiCopy(UiMessage.m_vision_creator_studio_a882de6ba7),
+            subtitle: uiCopy(UiMessage.m_build_and_manage_ai_vision_2686c5e7ab),
             onTap: () {
               Analytics.capture('creator_studio_opened', {'studio': 'avavision'});
               Navigator.of(context).push(MaterialPageRoute(
@@ -93,15 +97,15 @@ class MarketplaceHub extends StatelessWidget {
           const SizedBox(height: Msg.s3),
           _Tile(
             icon: PhosphorIcons.plusSquare(PhosphorIconsStyle.regular),
-            title: 'Create listing',
-            subtitle: 'Sell, buy or post a social listing',
+            title: uiCopy(UiMessage.m_create_listing_815d30caa6),
+            subtitle: uiCopy(UiMessage.m_sell_buy_or_post_a_2477da3f5b),
             onTap: () => _openListingComposer(context),
           ),
           const SizedBox(height: Msg.s3),
           _Tile(
             icon: PhosphorIcons.package(PhosphorIconsStyle.regular),
-            title: 'My listings',
-            subtitle: 'Manage, edit, mark sold or renew',
+            title: uiCopy(UiMessage.m_my_listings_db849f91bd),
+            subtitle: uiCopy(UiMessage.m_manage_edit_mark_sold_or_45da7b0539),
             onTap: () {
               Navigator.of(context).push(MaterialPageRoute(
                 builder: (_) => const MyListingsScreen(),
@@ -122,6 +126,7 @@ class _Tile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return AdCard(
       padding: EdgeInsets.zero,
       child: ListTile(

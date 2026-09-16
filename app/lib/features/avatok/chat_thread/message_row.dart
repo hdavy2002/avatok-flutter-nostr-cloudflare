@@ -107,6 +107,7 @@ class _MessageRowState extends State<_MessageRow> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (_cached == null || _builtRev != widget.revision) {
       _cached = widget.buildBubble(widget.msg);
       _builtRev = widget.revision;

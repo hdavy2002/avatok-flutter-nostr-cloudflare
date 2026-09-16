@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 // [LIST-PAGE-2] The sticky booking box — SPEC-2026-09-01-LISTING-CONTENT-AND-
 // BOOKING.md §D "the four join flows" + SPEC-2026-09-02 §3 per-type anatomy. A
 // client island because seat quantity, slot selection and the live price
@@ -168,6 +170,8 @@ function MonthCalendar({
    *  cell for a viewer on the other side of midnight from the host. */
   timezone: string;
 }) {
+  const {t:uiT}=useUiTranslation("web-listing");
+
   const today = useMemo(() => tzDay(Date.now(), timezone), [timezone]);
   const [viewMonth, setViewMonth] = useState(() => startOfDay(selected ?? showDates[0] ?? today));
 
@@ -197,7 +201,7 @@ function MonthCalendar({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
         <button
           type="button"
-          aria-label="Previous month"
+          aria-label={uiT("web-listing.6a2769502a5dda78","Previous month")}
           style={navBtn}
           onClick={() => setViewMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
         >
@@ -208,7 +212,7 @@ function MonthCalendar({
         </span>
         <button
           type="button"
-          aria-label="Next month"
+          aria-label={uiT("web-listing.74e53211fef4b4d4","Next month")}
           style={navBtn}
           onClick={() => setViewMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
         >
@@ -258,6 +262,8 @@ export default function BookingBox({
   freeSpotsLeft, startsAtLabel, startsAtMs, timezone, slots, joinLeadMinutes,
   recurrenceDays, scheduleMode,
 }: BookingBoxProps) {
+  const {t:uiT}=useUiTranslation("web-listing");
+
   const [qty, setQty] = useState(1);
   const cap = Math.max(1, maxPerBooking || 4);
   // [LIST-DETAIL-BUG-1] Default matches the server-side default in
@@ -396,19 +402,18 @@ export default function BookingBox({
           next to any `data-listing-time` element only when the viewer's own zone
           actually differs; this line just states which zone is authoritative. */}
       {tz && (
-        <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 700, color: '#5a5a54' }}>
-          Times shown are the host's — {tz}
+        <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 700, color: '#5a5a54' }}><UiText id="web-listing.3b036ac9b6c054ee" source="Times shown are the host's —" />{" "}{tz}
         </p>
       )}
 
       {isConsult && availabilityLoading && (
-        <p role="status" style={{ margin: 0, fontSize: '0.8125rem', fontWeight: 800, color: '#5a5a54' }}>Loading available times…</p>
+        <p role="status" style={{ margin: 0, fontSize: '0.8125rem', fontWeight: 800, color: '#5a5a54' }}><UiText id="web-listing.c6b581ce260c373e" source="Loading available times…" /></p>
       )}
       {isConsult && availabilityError && !availabilityLoading && (
-        <p role="alert" style={{ margin: 0, fontSize: '0.8125rem', fontWeight: 800, color: '#d93825' }}>Could not load available times. Open booking to try again.</p>
+        <p role="alert" style={{ margin: 0, fontSize: '0.8125rem', fontWeight: 800, color: '#d93825' }}><UiText id="web-listing.21482abf57b68986" source="Could not load available times. Open booking to try again." /></p>
       )}
       {isConsult && !availabilityLoading && !availabilityError && availabilitySlots.length === 0 && (
-        <p style={{ margin: 0, fontSize: '0.8125rem', fontWeight: 800, color: '#5a5a54' }}>No available times in the next 62 days.</p>
+        <p style={{ margin: 0, fontSize: '0.8125rem', fontWeight: 800, color: '#5a5a54' }}><UiText id="web-listing.23288424610ab867" source="No available times in the next 62 days." /></p>
       )}
 
       {showCalendar && (
@@ -455,7 +460,7 @@ export default function BookingBox({
                     <span style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                       <span data-listing-time data-ms={s.starts_at} data-tz={tz}>{s.label ?? fmtSlotTime(s.starts_at, tz)}</span>
                       <span style={{ fontWeight: 800, fontSize: '0.6875rem', color: full ? '#d93825' : '#8c6a52' }}>
-                        {full ? 'FULL' : `${seatsLeftForSlot} LEFT`}
+                        {full ? uiT("web-listing.cb6839cad0217d04","FULL") : uiT("web-listing.0a9daa40361e69d0","{value0} LEFT",{value0:String(seatsLeftForSlot)})}
                       </span>
                     </span>
                     <span className="ld-slot-progress-track">
@@ -467,7 +472,7 @@ export default function BookingBox({
             </div>
           ) : (
             showCalendar && selectedDate && (
-              <p style={{ margin: 0, fontSize: '0.8125rem', fontWeight: 700, color: '#8a8a80' }}>No slots on this day — pick another date.</p>
+              <p style={{ margin: 0, fontSize: '0.8125rem', fontWeight: 700, color: '#8a8a80' }}><UiText id="web-listing.b8e193264498e187" source="No slots on this day — pick another date." /></p>
             )
           )}
         </div>
@@ -479,11 +484,11 @@ export default function BookingBox({
             {bookingBox.howManySeats}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <button type="button" style={stepperBtn} onClick={() => setQty((q) => Math.max(1, q - 1))} aria-label="Fewer seats">−</button>
+            <button type="button" style={stepperBtn} onClick={() => setQty((q) => Math.max(1, q - 1))} aria-label={uiT("web-listing.cc9e7e70bdf31bb4","Fewer seats")}>−</button>
             <span style={{ fontWeight: 900, fontSize: '1.25rem', minWidth: 24, textAlign: 'center' }}>{qty}</span>
-            <button type="button" style={stepperBtn} onClick={() => setQty((q) => Math.min(cap, q + 1))} aria-label="More seats">+</button>
+            <button type="button" style={stepperBtn} onClick={() => setQty((q) => Math.min(cap, q + 1))} aria-label={uiT("web-listing.8ccef6239957c0d4","More seats")}>+</button>
             {seatsLeft != null && (
-              <span style={{ marginLeft: 'auto', fontSize: '0.75rem', fontWeight: 700, color: '#5a5a54' }}>{seatsLeft} left</span>
+              <span style={{ marginLeft: 'auto', fontSize: '0.75rem', fontWeight: 700, color: '#5a5a54' }}>{seatsLeft}{" "}<UiText id="web-listing.360f84035942243c" source="left" /></span>
             )}
           </div>
         </div>
@@ -515,11 +520,11 @@ export default function BookingBox({
         </div>
       ) : breakdown ? (
         <div style={{ borderTop: '1.5px solid rgba(22,22,20,.15)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <Row label={kind === 'consult' ? 'Session' : `Ticket × ${qty}`} value={inrOrFree(breakdown.base)} />
-          {breakdown.fee > 0 && <Row label="Platform fee (flat)" value={inrOrFree(breakdown.fee)} />}
+          <Row label={kind === 'consult' ? uiT("web-listing.6959b4159575d8dd","Session") : `Ticket × ${qty}`} value={inrOrFree(breakdown.base)} />
+          {breakdown.fee > 0 && <Row label={uiT("web-listing.792435bed49677c6","Platform fee (flat)")} value={inrOrFree(breakdown.fee)} />}
           <Row label={`GST (${breakdown.gstRatePct}%)`} value={inrOrFree(breakdown.gst)} />
           <div style={{ height: 1, background: '#161614', margin: '4px 0' }} />
-          <Row label="TOTAL" value={inrOrFree(breakdown.total)} bold />
+          <Row label={uiT("web-listing.ab2882c86465b1da","TOTAL")} value={inrOrFree(breakdown.total)} bold />
           <a
             href={bookHref}
             onClick={() => fireCta(kind === 'consult' ? 'book_slot' : 'book_now')}
@@ -549,9 +554,7 @@ export default function BookingBox({
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {!isFreeEntry && <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 700, color: '#5a5a54' }}>{bookingBox.fees}</p>}
         {joinLeadMinutes != null && (
-          <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 700, color: '#5a5a54' }}>
-            link {joinLeadMinutes} min pehle aayega
-          </p>
+          <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 700, color: '#5a5a54' }}><UiText id="web-listing.b1b1bdb480c61d07" source="link" />{" "}{joinLeadMinutes}{" "}<UiText id="web-listing.55186809630dd22c" source="min pehle aayega" />{" "}</p>
         )}
       </div>
     </div>

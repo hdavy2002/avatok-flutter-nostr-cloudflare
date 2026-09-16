@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -21,10 +23,10 @@ String fmtWhenMs(int ms) {
   final isTomorrow = d.year == tomorrow.year && d.month == tomorrow.month && d.day == tomorrow.day;
   final hh = d.hour.toString().padLeft(2, '0');
   final mm = d.minute.toString().padLeft(2, '0');
-  if (sameDay) return 'Today $hh:$mm';
-  if (isTomorrow) return 'Tomorrow $hh:$mm';
+  if (sameDay) return uiCopy(UiMessage.m_today_hh_mm_311c650448, {'hh': (hh).toString(), 'mm': (mm).toString()});
+  if (isTomorrow) return uiCopy(UiMessage.m_tomorrow_hh_mm_30dda316ff, {'hh': (hh).toString(), 'mm': (mm).toString()});
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return '${months[d.month - 1]} ${d.day}, $hh:$mm';
+  return '${authoredUiCopy(months[d.month - 1])} ${d.day}, $hh:$mm';
 }
 
 
@@ -43,7 +45,7 @@ class MiniPill extends StatelessWidget {
   const MiniPill(this.text,
       {super.key, this.fill = AD.card, this.fg = AD.textPrimary, this.icon, this.shadow = true});
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Container(
         padding: EdgeInsets.symmetric(horizontal: icon == null ? 8 : 7, vertical: Msg.s1),
         decoration: BoxDecoration(
           color: fill,
@@ -58,7 +60,7 @@ class MiniPill extends StatelessWidget {
           ],
           Text(_sentence(text), style: ADText.tabLabel(c: fg).copyWith(fontSize: 10, letterSpacing: 0.4)),
         ]),
-      );
+      ); }
 }
 
 /// "Call Now" / "Agent Busy" live chip. busy = coral (white text), free = mint.
@@ -68,6 +70,7 @@ class AvailabilityChip extends StatelessWidget {
   const AvailabilityChip({super.key, required this.busy, this.compact = false});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final fill = busy ? AD.danger : AD.online;
     const fg = Colors.white;
     const dot = Colors.white;
@@ -82,7 +85,7 @@ class AvailabilityChip extends StatelessWidget {
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Container(width: 7, height: 7, decoration: const BoxDecoration(color: dot, shape: BoxShape.circle)),
         const SizedBox(width: Msg.s1),
-        Text(busy ? 'Agent busy' : 'Call now', style: ADText.tabLabel(c: fg).copyWith(fontSize: compact ? 10 : 12, letterSpacing: 0.44)),
+        Text(busy ? uiCopy(UiMessage.m_agent_busy_f9e486a96d) : uiCopy(UiMessage.m_call_now_2f756f1ec5), style: ADText.tabLabel(c: fg).copyWith(fontSize: compact ? 10 : 12, letterSpacing: 0.44)),
       ]),
     );
   }
@@ -92,14 +95,14 @@ class AvailabilityChip extends StatelessWidget {
 class VisionBadge extends StatelessWidget {
   const VisionBadge({super.key});
   @override
-  Widget build(BuildContext context) => MiniPill('vision',
-      fill: AD.tabCalls, fg: Colors.white, icon: PhosphorIcons.eye(PhosphorIconsStyle.regular));
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return MiniPill('vision',
+      fill: AD.tabCalls, fg: Colors.white, icon: PhosphorIcons.eye(PhosphorIconsStyle.regular)); }
 }
 
 class FreeBadge extends StatelessWidget {
   const FreeBadge({super.key});
   @override
-  Widget build(BuildContext context) => const MiniPill('free', fill: AD.online, fg: Colors.white);
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return const MiniPill('free', fill: AD.online, fg: Colors.white); }
 }
 
 /// Capability badge — e.g. "BODY POSE" with a target icon.
@@ -107,12 +110,12 @@ class CapabilityBadge extends StatelessWidget {
   final String capability;
   const CapabilityBadge(this.capability, {super.key});
   @override
-  Widget build(BuildContext context) => MiniPill(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return MiniPill(
         capabilityLabel(capability),
         fill: AD.tabGroups,
         fg: Colors.white,
         icon: PhosphorIcons.personSimpleRun(PhosphorIconsStyle.regular),
-      );
+      ); }
 }
 
 /// Overlay-style badge — only shown when the agent draws an overlay.
@@ -120,12 +123,12 @@ class OverlayBadge extends StatelessWidget {
   final String overlayStyle;
   const OverlayBadge(this.overlayStyle, {super.key});
   @override
-  Widget build(BuildContext context) => MiniPill(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return MiniPill(
         overlayLabel(overlayStyle),
         fill: AD.tabCalls,
         fg: Colors.white,
         icon: PhosphorIcons.scribbleLoop(PhosphorIconsStyle.regular),
-      );
+      ); }
 }
 
 /// Score-label badge — e.g. "FORMSCORE".
@@ -133,12 +136,12 @@ class ScoreBadge extends StatelessWidget {
   final String label;
   const ScoreBadge(this.label, {super.key});
   @override
-  Widget build(BuildContext context) => MiniPill(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return MiniPill(
         label,
         fill: AD.online,
         fg: Colors.white,
         icon: PhosphorIcons.gauge(PhosphorIconsStyle.regular),
-      );
+      ); }
 }
 
 /// Platform availability badges — Android / iOS / Web.
@@ -147,6 +150,7 @@ class PlatformBadges extends StatelessWidget {
   const PlatformBadges(this.platforms, {super.key});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final labels = platforms.labels;
     if (labels.isEmpty) return const SizedBox.shrink();
     return MiniPill(labels.join(' · '), fill: AD.card, fg: AD.textSecondary, shadow: false);
@@ -176,6 +180,7 @@ class AgentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final a = agent;
     return ZinePressable(
       onTap: onTap,
@@ -245,6 +250,7 @@ class _LanguageSheetState extends State<_LanguageSheet> {
   String _q = '';
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final items = kVoiceLanguages
         .where((e) => _q.isEmpty || e.value.toLowerCase().contains(_q.toLowerCase()))
         .toList();
@@ -256,12 +262,12 @@ class _LanguageSheetState extends State<_LanguageSheet> {
           child: Column(children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s2),
-              child: Text('Which language should the agent speak?', style: ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2)),
+              child: UiText(UiMessage.m_which_language_should_the_agent_c50d14e029, style: ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2)),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
               child: ZineField(
-                hint: 'Search languages',
+                hint: uiCopy(UiMessage.m_search_languages_98cdcf4f24),
                 leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
                 onChanged: (v) => setState(() => _q = v),
               ),

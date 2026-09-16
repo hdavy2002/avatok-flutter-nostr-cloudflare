@@ -143,11 +143,11 @@ const plainType = !Astro.url.pathname.startsWith('/dashboard/marketplace');
           mobile drawer keeps it — there the header is behind the overlay, and
           this row also holds the only close button. */}
       <div class="flex items-center gap-2 border-b-zine border-ink px-5 py-4 lg:hidden">
-        <a href="/" class="flex items-center gap-2 no-underline" aria-label="avatok.ai home">
+        <a data-india-i18n-attr="aria-label:web-dashboard.cb2388cd9265d98f" href="/" class="flex items-center gap-2 no-underline" aria-label="avatok.ai home">
           <svg width="26" height="24" viewBox="0 0 26 24" aria-hidden="true"><path d="M3 21 L13 3 L23 21" fill="none" stroke="var(--zine-blueInk)" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="13" cy="16.2" r="1.9" fill="var(--zine-coral)"></circle></svg>
           <span class="font-display font-semibold text-[21px] leading-none tracking-[0.03em] text-ink">ava<span class="text-blueInk">TOK</span></span>
         </a>
-        <button id="dash-close" type="button" aria-label="Close menu" class="ml-auto flex h-8 w-8 items-center justify-center rounded-zineBadge border-zine border-ink bg-card shadow-zine-xs lg:hidden">✕</button>
+        <button data-india-i18n-attr="aria-label:web-dashboard.6ccd5c7856042d36" id="dash-close" type="button" aria-label="Close menu" class="ml-auto flex h-8 w-8 items-center justify-center rounded-zineBadge border-zine border-ink bg-card shadow-zine-xs lg:hidden">✕</button>
       </div>
 
       <!-- Nav -->
@@ -155,7 +155,7 @@ const plainType = !Astro.url.pathname.startsWith('/dashboard/marketplace');
       <nav class="flex-1 overflow-y-auto px-3 py-3 lg:overflow-visible">
         {groups.map((g) => (
           <div class="mb-3">
-            <div class="px-3 pb-1.5 pt-2 font-mono font-bold uppercase text-[12px] tracking-[0.12em] text-inkMute">{g.title}</div>
+            <div data-i18n={`web-dashboard.nav.${g.title}`} class="px-3 pb-1.5 pt-2 font-mono font-bold uppercase text-[12px] tracking-[0.12em] text-inkMute">{g.title}</div>
             {g.items.map((it) => (
               <a
                 href={it.href}
@@ -164,7 +164,7 @@ const plainType = !Astro.url.pathname.startsWith('/dashboard/marketplace');
                 <span class={`flex h-8 w-8 shrink-0 items-center justify-center rounded-zineBadge border-zine border-ink ${active === it.key ? 'bg-paper text-ink' : `${it.tone} text-ink`} shadow-zine-xs`}>
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={it.icon} />
                 </span>
-                <span class="truncate">{it.label}</span>
+                <span data-i18n={`web-dashboard.nav.${it.label}`} class="truncate">{it.label}</span>
                 {it.pill && <span class="ml-auto rounded-full bg-coral px-2 py-0.5 font-mono text-[12px] font-bold text-paper">{it.pill}</span>}
               </a>
             ))}
@@ -182,14 +182,14 @@ const plainType = !Astro.url.pathname.startsWith('/dashboard/marketplace');
     <div class="flex min-w-0 flex-1 flex-col">
       <!-- Page header -->
       <header class="sticky top-[var(--avh-h)] z-30 flex items-center gap-3 border-b-zine border-ink bg-paper2/95 px-4 py-3 backdrop-blur sm:px-6">
-        <button id="dash-burger" type="button" aria-label="Open menu" class="flex h-9 w-9 items-center justify-center rounded-zineBadge border-zine border-ink bg-card shadow-zine-xs lg:hidden">
+        <button data-india-i18n-attr="aria-label:web-dashboard.b40b3713b43dc702" id="dash-burger" type="button" aria-label="Open menu" class="flex h-9 w-9 items-center justify-center rounded-zineBadge border-zine border-ink bg-card shadow-zine-xs lg:hidden">
           <svg width="18" height="14" viewBox="0 0 18 14" aria-hidden="true"><path d="M1 1h16M1 7h16M1 13h16" stroke="var(--zine-ink)" stroke-width="2.4" stroke-linecap="round"></path></svg>
         </button>
         <div class="min-w-0">
           <h1 class="truncate font-display font-semibold text-[22px] leading-none text-ink">{heads}</h1>
           {subtitle && <p class="mt-1 truncate font-body font-bold text-[13px] text-inkSoft">{subtitle}</p>}
         </div>
-        <a href="/dashboard/listings/new" class="ml-auto inline-flex items-center gap-1.5 rounded-zine border-zine border-ink bg-lime px-4 py-2 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">+ New</a>
+        <a data-i18n="web-dashboard.af6aa8e6e24597ab" href="/dashboard/listings/new" class="ml-auto inline-flex items-center gap-1.5 rounded-zine border-zine border-ink bg-lime px-4 py-2 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">+ New</a>
       </header>
 
       <!-- Content -->

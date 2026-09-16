@@ -1,3 +1,5 @@
+
+import '../../../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/ui/avatok_dark.dart';
@@ -29,42 +31,43 @@ class Step3Money extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (listingDraftValue(draft, 'freeEntry', 'free_entry', false) == true) {
       return NativeStepLayout(children: [
-        const NativeStepCard(child: Text('This is a free show — attendees pay nothing.')),
+        const NativeStepCard(child: UiText(UiMessage.m_this_is_a_free_show_92f477d5ec)),
       ]);
     }
     final price = int.tryParse('${listingDraftValue(draft, 'price', 'price', '')}') ?? 0;
     final split = _feeSplit(price);
     return NativeStepLayout(children: [
       nativeNumberField(
-        label: 'Price per hour (Tokens = ₹)',
+        label: uiCopy(UiMessage.m_price_per_hour_tokens_09f88bb0a7),
         value: '${listingDraftValue(draft, 'price', 'price', '')}',
-        hint: 'min $_minPrice',
+        hint: uiCopy(UiMessage.m_min_minprice_7c85e77f6b, {'minPrice': (_minPrice).toString()}),
         onChanged: (v) => patch({'price': v}),
         error: error('price'),
       ),
-      Text('Everything is priced per hour. A session shorter than an hour still bills the full hour.',
+      UiText(UiMessage.m_everything_is_priced_per_hour_dc2eb4fd57,
           style: ADText.preview(c: AD.textSecondary)),
       if (price > 0)
         NativeStepCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('At ₹$price/hr, avaTOK takes ₹${split.fee} and you keep ₹${split.creator}.',
+          UiText(UiMessage.m_at_price_hr_avatok_takes_fd228fe0be, params: {'price': (price).toString(), 'value2': (split.fee).toString(), 'value3': (split.creator).toString()},
               style: ADText.preview(c: AD.textPrimary)),
           const SizedBox(height: 6),
-          Text('₹$_flatFee flat + $_commission% of what’s left. A 2-hour booking bills the flat fee twice.',
+          UiText(UiMessage.m_flatfee_flat_commission_of_what_0269d1b66d, params: {'flatFee': (_flatFee).toString(), 'commission': (_commission).toString()},
               style: ADText.preview(c: AD.textSecondary)),
         ])),
       _examples(),
       nativeNumberField(
-        label: 'Early-bird discount % (optional)',
+        label: uiCopy(UiMessage.m_early_bird_discount_optional_1c43c0dcee),
         value: '${listingDraftValue(draft, 'earlyBirdPct', 'early_bird_pct', '')}',
-        hint: 'e.g. 20',
+        hint: uiCopy(UiMessage.m_e_g_20_e4181cc1b9),
         onChanged: (v) => patch({'early_bird_pct': v}),
         error: error('early_bird_pct'),
       ),
       AdField(
-        label: 'Promo code (optional)',
-        hint: 'e.g. FRIENDS20',
+        label: uiCopy(UiMessage.m_promo_code_optional_c620196dff),
+        hint: uiCopy(UiMessage.m_e_g_friends20_b21380d68b),
         onChanged: (v) => patch({'promo_code': v.toUpperCase().substring(0, v.length > 24 ? 24 : v.length)}),
       ),
     ]);

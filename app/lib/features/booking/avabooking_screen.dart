@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 // AvaBooking — Phase 5. Creator-facing list of all bookings (upcoming/past)
 // over the SAME data as AvaCalendar; blip→card interaction; per-booking
 // earnings shown after settlement (net = price × 0.80; the full escrow/settle
@@ -45,6 +47,7 @@ class _AvaBookingScreenState extends State<AvaBookingScreen> with SingleTickerPr
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: AppBar(
@@ -59,7 +62,7 @@ class _AvaBookingScreenState extends State<AvaBookingScreen> with SingleTickerPr
           child: Center(child: ZineBackButton()),
         ),
         leadingWidth: 60,
-        title: Text('AvaBooking', style: ADText.appTitle().copyWith(fontSize: 21)),
+        title: UiText(UiMessage.m_avabooking_5486f79fdd, style: ADText.appTitle().copyWith(fontSize: 21)),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: Msg.s4),
@@ -179,7 +182,7 @@ class _AvaBookingScreenState extends State<AvaBookingScreen> with SingleTickerPr
                 if (amCreator && settled && price > 0) ...[
                   const SizedBox(width: Msg.s2),
                   Flexible(
-                    child: Text('Earned ~\u20b9$net',
+                    child: UiText(UiMessage.m_earned_net_fbdceb70ec, params: {'net': (net).toString()},
                         maxLines: 1, overflow: TextOverflow.ellipsis,
                         style: ADText.sectionLabel(c: AD.online)),
                   ),

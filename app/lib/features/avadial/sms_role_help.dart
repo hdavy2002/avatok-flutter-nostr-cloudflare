@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/analytics.dart';
@@ -37,16 +39,9 @@ Future<void> showSmsRoleRestrictedHelp(BuildContext context) {
         borderRadius: BorderRadius.circular(AD.rDialog),
         side: const BorderSide(color: AD.borderControl, width: 1),
       ),
-      title: Text('Android blocked the request', style: ADText.threadName()),
-      content: Text(
-        'Your phone denied the request without asking you — Android restricts '
-        'SMS access for apps installed outside the Play Store.\n\n'
-        'To unlock it:\n'
-        '1. Open AvaTOK’s App info page\n'
-        '2. Tap the ⋮ menu → “Allow restricted settings”\n'
-        '3. Come back and tap Enable again\n\n'
-        'If Android has stopped asking, pick AvaTOK directly under '
-        'Default apps → SMS app.',
+      title: UiText(UiMessage.m_android_blocked_the_request_aa4133b5cc, style: ADText.threadName()),
+      content: UiText(
+        UiMessage.m_your_phone_denied_the_request_a36e4c8292,
         style: ADText.preview(),
       ),
       actions: [
@@ -56,10 +51,10 @@ Future<void> showSmsRoleRestrictedHelp(BuildContext context) {
             Analytics.capture('avadial_sms_restricted_help_default_apps', const {});
             AvaDialChannel.I.openDefaultAppsSettings();
           },
-          child: Text('Default apps', style: ADText.rowName()),
+          child: UiText(UiMessage.m_default_apps_c78c7b9f8d, style: ADText.rowName()),
         ),
         AdButton(
-          label: 'Open App info',
+          label: uiCopy(UiMessage.m_open_app_info_ec925b6ffa),
           variant: AdButtonVariant.teal,
           fontSize: 14,
           onPressed: () {

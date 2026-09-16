@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -87,7 +89,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Campaign $successVerb.')));
+          .showSnackBar(SnackBar(content: UiText(UiMessage.m_campaign_successverb_a969d67358, params: {'successVerb': (successVerb).toString()})));
     } catch (e) {
       if (!mounted) return;
       final msg = e is ApiException ? e.message : 'That action failed.';
@@ -108,19 +110,19 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
         shape: RoundedRectangleBorder(
             side: const BorderSide(color: AD.borderControl, width: 1),
             borderRadius: BorderRadius.circular(AD.rDialog)),
-        title: Text('Cancel this campaign?', style: ADText.threadName().copyWith(fontSize: 18)),
-        content: Text(
-          'This stops all future dialing. Contacts already reached keep their results.',
+        title: UiText(UiMessage.m_cancel_this_campaign_7d1cba7c8d, style: ADText.threadName().copyWith(fontSize: 18)),
+        content: UiText(
+          UiMessage.m_this_stops_all_future_dialing_fe28beab24,
           style: ADText.preview(c: AD.textSecondary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('Back', style: ADText.rowName(c: AD.textSecondary)),
+            child: UiText(UiMessage.m_back_76900f1bfd, style: ADText.rowName(c: AD.textSecondary)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text('Cancel campaign', style: ADText.rowName(c: AD.danger)),
+            child: UiText(UiMessage.m_cancel_campaign_2edc287d49, style: ADText.rowName(c: AD.danger)),
           ),
         ],
       ),
@@ -135,7 +137,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
       return;
     }
     ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Opening the thread in Inbox is coming soon.')));
+        .showSnackBar(const SnackBar(content: UiText(UiMessage.m_opening_the_thread_in_inbox_397c45afc9)));
   }
 
   void _openAnalytics() {
@@ -144,13 +146,14 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
       return;
     }
     ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Campaign analytics is coming soon.')));
+        .showSnackBar(const SnackBar(content: UiText(UiMessage.m_campaign_analytics_is_coming_soon_ed9e59bd6d)));
   }
 
   // -------------------------------------------------------------- build
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: _header(),
@@ -182,7 +185,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
           const SizedBox(height: Msg.s4),
           _shortcutRow(),
           const SizedBox(height: Msg.s4),
-          Text('Contacts', style: ADText.sectionLabel()),
+          UiText(UiMessage.m_contacts_b450645deb, style: ADText.sectionLabel()),
           const SizedBox(height: Msg.s3),
           _filterChips(),
           const SizedBox(height: Msg.s3),
@@ -190,7 +193,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: Msg.s5),
               child: Center(
-                child: Text('No contacts match this filter.',
+                child: UiText(UiMessage.m_no_contacts_match_this_filter_041a8b5358,
                     style: ADText.preview(c: AD.textSecondary)),
               ),
             )
@@ -237,7 +240,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
               ),
               const SizedBox(width: Msg.s4),
               Expanded(
-                child: Text(_campaign?.name.isNotEmpty == true ? _campaign!.name : 'Campaign',
+                child: Text(_campaign?.name.isNotEmpty == true ? _campaign!.name : uiCopy(UiMessage.m_campaign_268286d2ef),
                     style: ADText.appTitle(), maxLines: 1, overflow: TextOverflow.ellipsis),
               ),
             ]),
@@ -287,7 +290,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           PhosphorIcon(PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold), size: 16, color: AD.textPrimary),
           const SizedBox(width: Msg.s2),
-          Text('Retry', style: ADText.rowName()),
+          UiText(UiMessage.m_retry_942087cc2d, style: ADText.rowName()),
         ]),
       ),
     );
@@ -313,7 +316,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Expanded(
-            child: Text(c.name.isEmpty ? 'Untitled campaign' : c.name,
+            child: Text(c.name.isEmpty ? uiCopy(UiMessage.m_untitled_campaign_ed0fd179f1) : c.name,
                 style: ADText.threadName().copyWith(fontSize: 19),
                 maxLines: 2, overflow: TextOverflow.ellipsis),
           ),
@@ -326,7 +329,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
               maxLines: 2, overflow: TextOverflow.ellipsis),
         ],
         const SizedBox(height: Msg.s4),
-        Text('Progress', style: ADText.sectionLabel()),
+        UiText(UiMessage.m_progress_4664827f8e, style: ADText.sectionLabel()),
         const SizedBox(height: Msg.s2),
         ClipRRect(
           borderRadius: BorderRadius.circular(Msg.rSm),
@@ -340,13 +343,13 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
         const SizedBox(height: Msg.s2),
         Row(children: [
           Expanded(
-            child: Text('$done of $total called', style: ADText.preview(c: AD.textSecondary)),
+            child: UiText(UiMessage.m_done_of_total_called_0da8592db0, params: {'done': (done).toString(), 'total': (total).toString()}, style: ADText.preview(c: AD.textSecondary)),
           ),
-          Text('${c.nAnswered} answered · ${c.nMissed} missed',
+          UiText(UiMessage.m_value1_answered_value2_missed_2a12b28b6a, params: {'value1': (c.nAnswered).toString(), 'value2': (c.nMissed).toString()},
               style: ADText.statCaption(c: AD.textTertiary)),
         ]),
         const SizedBox(height: Msg.s4),
-        Text('Spend', style: ADText.sectionLabel()),
+        UiText(UiMessage.m_spend_85f3d558db, style: ADText.sectionLabel()),
         const SizedBox(height: Msg.s2),
         if (spendPct != null) ...[
           ClipRRect(
@@ -363,14 +366,14 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
           Row(children: [
             PhosphorIcon(PhosphorIcons.coin(PhosphorIconsStyle.bold), size: 13, color: AD.textTertiary),
             const SizedBox(width: Msg.s1),
-            Text('$spent of $spendCap tokens spent',
+            UiText(UiMessage.m_spent_of_spendcap_tokens_spent_732e6da5ac, params: {'spent': (spent).toString(), 'spendCap': (spendCap).toString()},
                 style: ADText.statCaption(c: AD.textTertiary)),
           ]),
         ] else ...[
           Row(children: [
             PhosphorIcon(PhosphorIcons.coin(PhosphorIconsStyle.bold), size: 13, color: AD.textTertiary),
             const SizedBox(width: Msg.s1),
-            Text('$spent tokens spent · no cap set',
+            UiText(UiMessage.m_spent_tokens_spent_no_cap_4649791991, params: {'spent': (spent).toString()},
                 style: ADText.statCaption(c: AD.textTertiary)),
           ]),
         ],
@@ -420,7 +423,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
     return Row(children: [
       Expanded(
         child: _actionButton(
-          label: 'Pause',
+          label: uiCopy(UiMessage.m_pause_858e4ba7a2),
           icon: PhosphorIcons.pause(PhosphorIconsStyle.bold),
           onPressed: _busy || !canPause ? null : _pause,
         ),
@@ -428,7 +431,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
       const SizedBox(width: Msg.s3),
       Expanded(
         child: _actionButton(
-          label: 'Resume',
+          label: uiCopy(UiMessage.m_resume_d640c7421d),
           icon: PhosphorIcons.play(PhosphorIconsStyle.bold),
           onPressed: _busy || !canResume ? null : _resume,
         ),
@@ -436,7 +439,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
       const SizedBox(width: Msg.s3),
       Expanded(
         child: _actionButton(
-          label: 'Cancel',
+          label: uiCopy(UiMessage.m_cancel_19766ed6cc),
           icon: PhosphorIcons.xCircle(PhosphorIconsStyle.bold),
           danger: true,
           onPressed: _busy || !canCancel ? null : _cancel,
@@ -476,7 +479,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
     return Row(children: [
       Expanded(
         child: _shortcutButton(
-          label: 'Open thread in Inbox',
+          label: uiCopy(UiMessage.m_open_thread_in_inbox_fa127b9229),
           icon: PhosphorIcons.chatCircleText(PhosphorIconsStyle.bold),
           onTap: _openInbox,
         ),
@@ -484,7 +487,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
       const SizedBox(width: Msg.s3),
       Expanded(
         child: _shortcutButton(
-          label: 'Open analytics',
+          label: uiCopy(UiMessage.m_open_analytics_ecf8bb4e41),
           icon: PhosphorIcons.chartBar(PhosphorIconsStyle.bold),
           onTap: _openAnalytics,
         ),
@@ -589,9 +592,8 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
               Text(contact.e164!, style: ADText.preview(c: AD.textSecondary)),
             ],
             const SizedBox(height: Msg.s1),
-            Text(
-              'Attempts: ${contact.attempts}'
-              '${(contact.lastOutcome ?? '').isNotEmpty ? ' · ${contact.lastOutcome}' : ''}',
+            UiText(
+              UiMessage.m_attempts_value1_value2_dd50c6da1d, params: {'value1': (contact.attempts).toString(), 'value2': ((contact.lastOutcome ?? '').isNotEmpty ? ' · ${contact.lastOutcome}' : '').toString()},
               style: ADText.statCaption(c: AD.textTertiary),
             ),
           ]),

@@ -1,0 +1,1904 @@
+{
+  "schemaVersion": 1,
+  "status": "partial-unreviewed",
+  "scope": "Authored static Astro and React text; dynamic interfaces and reviewed locale parity pending",
+  "routes": [
+    {
+      "path": "components/AuthRedirect.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/BazaarHero.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 7,
+      "dynamicExpressions": 3,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/BazaarSearchStrip.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 4,
+      "dynamicExpressions": 1,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/BetaBanner.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 6,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/DashSoon.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 1,
+      "dynamicExpressions": 3,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/EntityFaq.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 6,
+      "dynamicExpressions": 3,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/GlobalFooter.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 14,
+      "dynamicExpressions": 8,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/GlobalHeader.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 14,
+      "dynamicExpressions": 6,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/GlobalIdeaCard.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 1,
+      "dynamicExpressions": 3,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/GlobalLocaleControls.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 6,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/HelpRailNav.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 2,
+      "dynamicExpressions": 4,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/HelpSearch.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 5,
+      "dynamicExpressions": 5,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/IndiaLanguageSelector.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 2,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/LegalStatus.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 16,
+      "dynamicExpressions": 17,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/ListingDetailView.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 45,
+      "dynamicExpressions": 119,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/ListingDetailsComp.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 127,
+      "dynamicExpressions": 138,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/MarketplaceBrowse.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 8,
+      "dynamicExpressions": 11,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/Nav.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 7,
+      "dynamicExpressions": 6,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/OriginalGlobalSections.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 31,
+      "dynamicExpressions": 9,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/OriginalIdeasSection.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 6,
+      "dynamicExpressions": 1,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/SiteFooter.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 2,
+      "dynamicExpressions": 17,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/SiteHeader.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 9,
+      "dynamicExpressions": 19,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/TruckBorder.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 12,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/help/HelpFaqStrip.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 8,
+      "dynamicExpressions": 13,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/help/HelpHero.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 5,
+      "dynamicExpressions": 2,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/help/HelpOnThisPage.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 2,
+      "dynamicExpressions": 4,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/help/HelpTiles.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 1,
+      "dynamicExpressions": 10,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/india-preview/BookingExpress.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 14,
+      "dynamicExpressions": 6,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/india-preview/CreatorClosing.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 4,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/india-preview/CreatorFaq.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 10,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/india-preview/CreatorIdeas.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 5,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/india-preview/CreatorIntro.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 6,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/india-preview/CreatorJourney.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 10,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/india-preview/EarningsCalculator.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 13,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/india-preview/FanBooking.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 9,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/india-preview/LiveShowcase.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 5,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/india-preview/OneToOne.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 8,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/india-preview/PaidFormats.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 14,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/listing/BrowseMore.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 3,
+      "dynamicExpressions": 3,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/listing/HostCard.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 13,
+      "dynamicExpressions": 29,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/listing/PromisesBand.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 1,
+      "dynamicExpressions": 4,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/listing/ReviewsSection.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 5,
+      "dynamicExpressions": 24,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "landing/archive/2026-09-09-before-railway/index.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 1,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "layouts/Base.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 14,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "layouts/Content.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 3,
+      "dynamicExpressions": 13,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "layouts/Dashboard.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 4,
+      "dynamicExpressions": 13,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "layouts/Help.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 8,
+      "dynamicExpressions": 21,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/[username]/[slug].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 2,
+      "dynamicExpressions": 2,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/[username]/index.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/about.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 53,
+      "dynamicExpressions": 1,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/acceptable-use.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 106,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/add.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 5,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/admin/agents/[id].astro",
+      "kind": "excluded",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "excluded"
+    },
+    {
+      "path": "pages/admin/agents/index.astro",
+      "kind": "excluded",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "excluded"
+    },
+    {
+      "path": "pages/admin/agents/new.astro",
+      "kind": "excluded",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "excluded"
+    },
+    {
+      "path": "pages/admin/index.astro",
+      "kind": "excluded",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "excluded"
+    },
+    {
+      "path": "pages/admin/listings.astro",
+      "kind": "excluded",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "excluded"
+    },
+    {
+      "path": "pages/admin/reviews.astro",
+      "kind": "excluded",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "excluded"
+    },
+    {
+      "path": "pages/agent/[id].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 1,
+      "dynamicExpressions": 2,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/archive/home-2026-09-09.astro",
+      "kind": "excluded",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "excluded"
+    },
+    {
+      "path": "pages/biometric-retention.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 78,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/blog/ai-in-every-chat.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 27,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/blog/ai-voice-agents.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/blog/creator-ideas/[slug].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 50,
+      "dynamicExpressions": 19,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/blog/earn-from-day-one.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/blog/global-creator-ideas/[slug].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 53,
+      "dynamicExpressions": 19,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/blog/index.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 5,
+      "dynamicExpressions": 6,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/blog/never-miss-a-call.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 21,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/blog/real-people-safety.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/blog/your-private-number.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 20,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/book/[id].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 2,
+      "dynamicExpressions": 16,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/c/[handle].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 2,
+      "dynamicExpressions": 12,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/careers.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 22,
+      "dynamicExpressions": 7,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/child-safety.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 41,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/community-guidelines.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 25,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/consult/[booking].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/consultation-terms.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 88,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/contact.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 25,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/cookies.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 26,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/affiliate.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/billing.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/bookings.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/calendar.astro",
+      "kind": "customer",
+      "staticMessages": 1,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/consult.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/identity.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/inbox.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/l/[id].astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/library.astro",
+      "kind": "customer",
+      "staticMessages": 5,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/listings/index.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/listings/new.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 2,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/listings/publish.astro",
+      "kind": "customer",
+      "staticMessages": 2,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/live.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/marketplace.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/payout.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/saved.astro",
+      "kind": "customer",
+      "staticMessages": 3,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/settings.astro",
+      "kind": "customer",
+      "staticMessages": 2,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/storage.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/vision.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/voice.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/wallet.astro",
+      "kind": "customer",
+      "staticMessages": 2,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dmca.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 19,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/e/[event].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 2,
+      "dynamicExpressions": 2,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/embed/listing.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 1,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/explore.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/forgot-password.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/global-ideas.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 7,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/global-next.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/grievance.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 103,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/help/[...slug].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/help/index.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 2,
+      "dynamicExpressions": 4,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/ideas.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 48,
+      "dynamicExpressions": 13,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/index.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 24,
+      "dynamicExpressions": 10,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/india-next.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 24,
+      "dynamicExpressions": 11,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/india.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/j/[token].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/l/[id].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 4,
+      "dynamicExpressions": 3,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/live/[id]/host.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 2,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/live/[id].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 2,
+      "dynamicExpressions": 2,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/marketplace-terms.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 95,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/marketplace.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 1,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/pay/return.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 2,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/payouts.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 53,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/pricing-fees.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 48,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/pricing.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/privacy.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 64,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/recording.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 77,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/refunds.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 84,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/session/[booking].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/sign-in.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 7,
+      "dynamicExpressions": 1,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/sign-out.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 1,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/sign-up.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 5,
+      "dynamicExpressions": 1,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/sso-callback.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 1,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/talk/[booking].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/terms.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 47,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/tokens.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 59,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/vision/agent/[id].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 6,
+      "dynamicExpressions": 18,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/vision/index.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 6,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/vision/session/[id].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 1,
+      "dynamicExpressions": 2,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/vision/studio.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 3,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/watch/[id].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 2,
+      "dynamicExpressions": 1,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/AppDownloadCta.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 11,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/Avatar.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 10,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/Button.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 14,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/Card.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 2,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/DeviceChecks.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 3,
+      "dynamicExpressions": 18,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/Field.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 12,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/IslandBoundary.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 2,
+      "dynamicExpressions": 1,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/ListingTile.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 3,
+      "dynamicExpressions": 139,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/Modal.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 8,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/Pill.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 4,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/Sheet.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 7,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/Spinner.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 3,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/StartInApp.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 1,
+      "dynamicExpressions": 12,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/canvasui/Liquid.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 14,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/agent/AgentCall.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 4,
+      "dynamicExpressions": 48,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/agent/CallControls.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 19,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/agent-live/AgentBookingBox.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 6,
+      "dynamicExpressions": 43,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/agent-live/AgentTalkRoom.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 6,
+      "dynamicExpressions": 52,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/agent-live/TalkEndedCard.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 1,
+      "dynamicExpressions": 4,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/auth/AuthBridge.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/auth/AuthGate.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 6,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/auth/AuthKit.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 5,
+      "dynamicExpressions": 72,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/auth/AuthPanelSkeleton.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 1,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/auth/EmailCodeSignIn.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 4,
+      "dynamicExpressions": 25,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/auth/LoginIsland.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 14,
+      "dynamicExpressions": 24,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/auth/RequireAccount.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 3,
+      "dynamicExpressions": 10,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/auth/SignOutIsland.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 1,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/auth/SignUpIsland.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 12,
+      "dynamicExpressions": 113,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/auth/SsoCallbackIsland.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 1,
+      "dynamicExpressions": 2,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/auth/UpgradePrompt.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 4,
+      "dynamicExpressions": 10,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/checkout/BetaTestNotice.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 13,
+      "dynamicExpressions": 7,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/checkout/BookingFlow.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 2,
+      "dynamicExpressions": 28,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/checkout/CommercialPayStep.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 21,
+      "dynamicExpressions": 79,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/checkout/Confirmation.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 8,
+      "dynamicExpressions": 22,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/checkout/GatewayPicker.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 6,
+      "dynamicExpressions": 40,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/checkout/GuestEmail.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/checkout/PayReturn.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 16,
+      "dynamicExpressions": 17,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/checkout/PayStep.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 4,
+      "dynamicExpressions": 25,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/checkout/SlotPicker.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 18,
+      "dynamicExpressions": 89,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/consult/ConsultRoom.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 11,
+      "dynamicExpressions": 48,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/consult/Countdown.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 4,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/consult/MediaControls.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 2,
+      "dynamicExpressions": 18,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/consult/PreJoin.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 7,
+      "dynamicExpressions": 43,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/consult-gs/CallStage.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 3,
+      "dynamicExpressions": 48,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/consult-gs/ConsultRoomGS.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 21,
+      "dynamicExpressions": 62,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/consult-gs/Countdown.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 4,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/consult-gs/ExtendPanel.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 5,
+      "dynamicExpressions": 20,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/consult-gs/PreJoin.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 6,
+      "dynamicExpressions": 52,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/consult-gs/SessionChat.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 4,
+      "dynamicExpressions": 38,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/consult-gs/WaitingRoom.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 5,
+      "dynamicExpressions": 31,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/dashboard/AffiliatePanel.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 9,
+      "dynamicExpressions": 21,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/dashboard/CalendarPanel.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 108,
+      "dynamicExpressions": 423,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/dashboard/CommercialSchedule.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 6,
+      "dynamicExpressions": 32,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/dashboard/CreateListing.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/dashboard/CreatorAgents.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 10,
+      "dynamicExpressions": 30,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/dashboard/CreatorListings.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 21,
+      "dynamicExpressions": 42,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/dashboard/EmbeddedCreateListing.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/dashboard/IdentityPanel.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 2,
+      "dynamicExpressions": 15,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/dashboard/InboxPanel.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 3,
+      "dynamicExpressions": 18,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/dashboard/ListingPublish.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 1,
+      "dynamicExpressions": 1,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/dashboard/MyBookings.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/dashboard/MyFavourites.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 5,
+      "dynamicExpressions": 25,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/dashboard/MyListingsPanel.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 3,
+      "dynamicExpressions": 4,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/dashboard/Overview.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 26,
+      "dynamicExpressions": 63,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/dashboard/PayoutPanel.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 8,
+      "dynamicExpressions": 13,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/dashboard/SettingsPanel.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 6,
+      "dynamicExpressions": 9,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/dashboard/StoragePanel.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 4,
+      "dynamicExpressions": 13,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/dashboard/TicketCard.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 2,
+      "dynamicExpressions": 22,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/dashboard/WalletPanel.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 8,
+      "dynamicExpressions": 65,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/dashboard/listing-form/CopyReview.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 6,
+      "dynamicExpressions": 18,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/dashboard/listing-form/Editors.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 3,
+      "dynamicExpressions": 64,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/dashboard/listing-form/ListingWizard.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 6,
+      "dynamicExpressions": 85,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/dashboard/listing-form/PreviewCard.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 3,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/dashboard/listing-form/TimeConflictPreview.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 3,
+      "dynamicExpressions": 14,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/dashboard/listing-form/steps.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 99,
+      "dynamicExpressions": 487,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/embed/EmbedBridge.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/join/JoinLink.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 3,
+      "dynamicExpressions": 7,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/listing/AskHost.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 42,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/listing/BookingBox.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 8,
+      "dynamicExpressions": 123,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/listing/LeaveReview.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 12,
+      "dynamicExpressions": 56,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/listing/MessageHost.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 10,
+      "dynamicExpressions": 32,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/listing/QrCode.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 1,
+      "dynamicExpressions": 9,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/listing/QuickInfo.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 4,
+      "dynamicExpressions": 61,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/listing/ShareBox.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 26,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/live/DonateButton.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 6,
+      "dynamicExpressions": 23,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/live/LiveChat.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 2,
+      "dynamicExpressions": 26,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/live/LiveViewer.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 18,
+      "dynamicExpressions": 68,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/live/ViewerCount.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 1,
+      "dynamicExpressions": 5,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/live-gs/GsChat.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 4,
+      "dynamicExpressions": 40,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/live-gs/LiveGsHost.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 36,
+      "dynamicExpressions": 108,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/live-gs/LiveGsViewer.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 28,
+      "dynamicExpressions": 82,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/live-gs/LiveStage.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 10,
+      "dynamicExpressions": 48,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/marketplace/ExploreGrid.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 12,
+      "dynamicExpressions": 44,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/marketplace/FilterRail.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 10,
+      "dynamicExpressions": 50,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/marketplace/LiveNowRail.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 1,
+      "dynamicExpressions": 13,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/marketplace/SearchBox.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 2,
+      "dynamicExpressions": 4,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/marketplace/VerticalSection.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 4,
+      "dynamicExpressions": 32,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/shell/ReviewerOnboarding.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 26,
+      "dynamicExpressions": 11,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/shell/SidebarUser.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 1,
+      "dynamicExpressions": 16,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/site/HeaderAuth.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 4,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/site/HeaderCtas.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 4,
+      "dynamicExpressions": 12,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/site/SmokeTrail.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 4,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/vision/AgentCta.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 2,
+      "dynamicExpressions": 12,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/vision/AgentForm.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 35,
+      "dynamicExpressions": 115,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/vision/GatedStudio.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/vision/MarketplaceGrid.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 6,
+      "dynamicExpressions": 14,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/vision/StudioFlow.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 0,
+      "dynamicExpressions": 4,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/vision/TemplatePicker.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 5,
+      "dynamicExpressions": 21,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/vision/VisionCard.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 3,
+      "dynamicExpressions": 22,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/vision/session/SessionRoom.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 7,
+      "dynamicExpressions": 90,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "islands/vision/session/SnapshotSheet.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 3,
+      "dynamicExpressions": 18,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "lib/clerk.tsx",
+      "kind": "react-authored-ui",
+      "staticMessages": 3,
+      "dynamicExpressions": 30,
+      "status": "partial-static-extraction"
+    }
+  ],
+  "releaseReplay": {
+    "status": "source-only-unverified-runtime",
+    "reason": "Restored clean HEAD policy/blog and wallet wording while excluding preexisting unrelated financial-copy edits. Original extraction route counts above are historical; additions below reconcile the current source catalogs without asserting runtime coverage. Unused previous source keys are retained. Preview pages remain excluded from the release.",
+    "addedSourceMessages": 69,
+    "namespaces": [
+      {
+        "namespace": "web-about",
+        "addedMessages": 2,
+        "sourceKeys": [
+          "web-about.5fe32c6f3ee6d4eb",
+          "web-about.9dcebb45594fc0ad"
+        ]
+      },
+      {
+        "namespace": "web-blog",
+        "addedMessages": 7,
+        "sourceKeys": [
+          "web-blog.158d858a102238a7",
+          "web-blog.2e89df44f4d01646",
+          "web-blog.33221153b91d312e",
+          "web-blog.4aa9bfd2f175a94a",
+          "web-blog.4b479ec3c05d916e",
+          "web-blog.769f35707d9f2d87",
+          "web-blog.ba2849aa0d2a2a49"
+        ]
+      },
+      {
+        "namespace": "web-dashboard",
+        "addedMessages": 1,
+        "sourceKeys": [
+          "web-dashboard.22c9ec4e54e610a0"
+        ]
+      },
+      {
+        "namespace": "web-payouts",
+        "addedMessages": 27,
+        "sourceKeys": [
+          "web-payouts.0baae42cd4299c22",
+          "web-payouts.25ac9987f652f688",
+          "web-payouts.25f053946fd14372",
+          "web-payouts.269a92be71c604a0",
+          "web-payouts.2e080f88d0cd99b0",
+          "web-payouts.3676c8b7be74d1c2",
+          "web-payouts.382bf3f7003c393b",
+          "web-payouts.38dc2caf32c56ef2",
+          "web-payouts.41748526f53dd3ba",
+          "web-payouts.4d4a291a3e429745",
+          "web-payouts.530ff386309b28ad",
+          "web-payouts.5638d531837ce1f9",
+          "web-payouts.60b338f0f4584862",
+          "web-payouts.6b3cddaba24aaaa7",
+          "web-payouts.7158d23475846941",
+          "web-payouts.8a054a60007129ee",
+          "web-payouts.8d414cdcc99eef62",
+          "web-payouts.a4dea1a2454ba848",
+          "web-payouts.ba2849aa0d2a2a49",
+          "web-payouts.c4f51e89f0e3f517",
+          "web-payouts.d349fb3c58a94146",
+          "web-payouts.e6650bc008527cb0",
+          "web-payouts.e8169c62de522a4a",
+          "web-payouts.eede494681bbfa6b",
+          "web-payouts.f766b4d7b11bec82",
+          "web-payouts.f87b85a5d6dd28ca",
+          "web-payouts.fd430aae7dd9c2e1"
+        ]
+      },
+      {
+        "namespace": "web-pricing-fees",
+        "addedMessages": 1,
+        "sourceKeys": [
+          "web-pricing-fees.eef640c4547ff1e5"
+        ]
+      },
+      {
+        "namespace": "web-refunds",
+        "addedMessages": 18,
+        "sourceKeys": [
+          "web-refunds.1c94f9ff96e7244c",
+          "web-refunds.1d476e2b25b901c1",
+          "web-refunds.1f94bf30ba2a3b49",
+          "web-refunds.3280e101edc66bfe",
+          "web-refunds.401bf706e7d43cba",
+          "web-refunds.4b347f4c8e6c8ebf",
+          "web-refunds.5496012f16266dd9",
+          "web-refunds.5c9c166da7e6517e",
+          "web-refunds.680c3252499248a1",
+          "web-refunds.7069f11e7ad1b0bf",
+          "web-refunds.8586cf261f8b41f8",
+          "web-refunds.8f082d8c8583117a",
+          "web-refunds.a6f61f8a6164af83",
+          "web-refunds.c51e455b41df6c01",
+          "web-refunds.c72cc7569c70a9c1",
+          "web-refunds.e94bf181d3bb117d",
+          "web-refunds.ecb8a51914b9888b",
+          "web-refunds.fca7737c30a10e78"
+        ]
+      },
+      {
+        "namespace": "web-tokens",
+        "addedMessages": 13,
+        "sourceKeys": [
+          "web-tokens.064c8ea7c5081365",
+          "web-tokens.10db3ea81bd0e151",
+          "web-tokens.117ce634f0e11944",
+          "web-tokens.518b95ed869bc13e",
+          "web-tokens.56abf3d90396cd79",
+          "web-tokens.5a445fae04b07d37",
+          "web-tokens.7c97397256cd794c",
+          "web-tokens.afd80519d959de87",
+          "web-tokens.bbb7de02c0d3ace1",
+          "web-tokens.bec44f41c04e0467",
+          "web-tokens.cac0de0cbba0ed00",
+          "web-tokens.cccf553401740e24",
+          "web-tokens.d4cb066704b2f04c"
+        ]
+      }
+    ],
+    "finalNavigationAndAuth": {
+      "addedSourceMessages": 1,
+      "namespace": "web-auth",
+      "sourceKeys": [
+        "web-auth.welcomeBackTagline"
+      ],
+      "note": "Global header/footer labels reuse existing web-authored source keys. Sign-in tagline now has canonical English source and inherits selected document language. Runtime coverage remains unverified."
+    }
+  }
+}

@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* A commercial ticket/appointment row shared by customer and creator schedules. */
 import { useState } from 'react';
 import { Card } from '../../components/Card';
@@ -68,6 +70,8 @@ export interface TicketCardProps {
 }
 
 export function TicketCard({ booking, session: supplied, past, onResend }: TicketCardProps) {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   const session: CommercialScheduleSession = supplied ?? {
     kind: booking?.kind ?? 'consult_1to1', listing_id: booking?.listing_id ?? '', booking_id: booking?.id,
     title: booking?.title, starts_at: booking?.starts_at, ends_at: booking?.ends_at, booking_status: booking?.status,
@@ -86,24 +90,24 @@ export function TicketCard({ booking, session: supplied, past, onResend }: Ticke
   }
 
   return (
-    <Card shadow="sm" fillClassName={past ? 'bg-paper2' : 'bg-card'}>
+    <Card shadow="sm" fillClassName={past ? uiT("web-dashboard.0382f8a63c4c5ce5","bg-paper2") : uiT("web-dashboard.16a9cd6c3710b4e0","bg-card")}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
           {session.counterparty_avatar_url && <img src={cfImage(session.counterparty_avatar_url, { width: 72 })} alt="" className="mt-0.5 h-10 w-10 shrink-0 rounded-full border-zine border-ink object-cover" loading="lazy" />}
           <div className="flex min-w-0 flex-col gap-1">
-          <span className="truncate font-display font-semibold text-[17px] text-ink">{session.title ?? (session.kind === 'live_event' ? 'Live event' : 'AvaTOK appointment')}</span>
+          <span className="truncate font-display font-semibold text-[17px] text-ink">{session.title ?? (session.kind === 'live_event' ? uiT("web-dashboard.544b6ea60b3ba62e","Live event") : uiT("web-dashboard.41eefe0f657bb0e9","AvaTOK appointment"))}</span>
           {session.starts_at && <span className="font-mono text-[13px] font-bold uppercase tracking-[0.04em] text-inkSoft">{fmtWhen(session.starts_at)}</span>}
-          {session.counterparty_name && <span className="font-body text-[13px] font-bold text-inkSoft">{session.role === 'host' || session.role === 'creator' ? 'Customer: ' : 'Creator: '}{session.counterparty_name}</span>}
+          {session.counterparty_name && <span className="font-body text-[13px] font-bold text-inkSoft">{session.role === 'host' || session.role === 'creator' ? uiT("web-dashboard.59a2da3f3b594fd0","Customer: ") : uiT("web-dashboard.3e574560745318c4","Creator: ")}{session.counterparty_name}</span>}
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <Pill kind={status.tone}>{status.label}</Pill>
-            {session.price != null && <Pill kind="plain">{Number(session.price).toLocaleString()} Tokens</Pill>}
-            <Pill kind="hint">{session.kind === 'live_event' ? 'Live event' : '1:1'}</Pill>
+            {session.price != null && <Pill kind="plain">{Number(session.price).toLocaleString()}{" "}<UiText id="web-dashboard.a039dfb9628b53dd" source="Tokens" /></Pill>}
+            <Pill kind="hint">{session.kind === 'live_event' ? uiT("web-dashboard.544b6ea60b3ba62e","Live event") : '1:1'}</Pill>
           </div>
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
-          <a href={`/l/${encodeURIComponent(session.listing_id)}`} className="font-body text-[13px] font-bold text-inkSoft underline">View details</a>
-          {canResend && <button type="button" onClick={() => void resend()} disabled={resendState === 'sending'} className="rounded-full border-zine border-ink bg-paper px-3 py-2 font-mono text-[12px] font-bold uppercase tracking-[0.04em] text-inkSoft shadow-zine-xs disabled:opacity-50">{resendState === 'sending' ? 'Sending…' : resendState ? `Email ${resendState.replace('_', ' ')}` : 'Resend email'}</button>}
+          <a href={`/l/${encodeURIComponent(session.listing_id)}`} className="font-body text-[13px] font-bold text-inkSoft underline"><UiText id="web-dashboard.d1bf045bb524dae5" source="View details" /></a>
+          {canResend && <button type="button" onClick={() => void resend()} disabled={resendState === 'sending'} className="rounded-full border-zine border-ink bg-paper px-3 py-2 font-mono text-[12px] font-bold uppercase tracking-[0.04em] text-inkSoft shadow-zine-xs disabled:opacity-50">{resendState === 'sending' ? uiT("web-dashboard.b8ed5279e897be5d","Sending…") : resendState ? uiT("web-dashboard.d347a9102660753b","Email {value0}",{value0:String(resendState.replace('_', ' '))}) : uiT("web-dashboard.4f44603ef678e4cb","Resend email")}</button>}
           {viewer && <a href={viewer.href} className="inline-flex items-center gap-1.5 rounded-full border-zine border-ink bg-lime px-4 py-2.5 font-display font-semibold text-[15px] text-ink no-underline shadow-zine-sm active:translate-x-[2px] active:translate-y-[2px] transition-transform duration-zine">{viewer.label} →</a>}
         </div>
       </div>

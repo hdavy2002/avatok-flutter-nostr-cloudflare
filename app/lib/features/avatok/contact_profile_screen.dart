@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -136,7 +138,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
   String get _displayName {
     if (!_looksLikeRawId(_name, widget.uid)) return _name;
     if (_number.isNotEmpty) return _number;
-    return 'AvaTOK user';
+    return uiCopy(UiMessage.m_avatok_user_d606f5f109);
   }
 
   /// Deep link others can scan/click to add THIS contact by their AvaTOK number.
@@ -150,6 +152,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       // [RAJ-INDIGO-1] The outer SafeArea is gone: `_header` now paints the band
@@ -208,13 +211,13 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
                 icon: PhosphorIcon(PhosphorIcons.copy(PhosphorIconsStyle.bold), size: 18, color: AD.textPrimary),
                 onPressed: () {
                   Clipboard.setData(ClipboardData(text: _number));
-                  showAdToast(context, message: 'Copied');
+                  showAdToast(context, message: uiCopy(UiMessage.m_copied_8d525e5f15));
                 }),
           ]))
         else
           // No shared AvaTOK number — show a friendly note, never the raw user_… id.
           _box('AvaTOK number', PhosphorIcons.hash(PhosphorIconsStyle.bold), AD.iconSearch,
-              child: Text('This contact hasn’t shared an AvaTOK number yet.',
+              child: UiText(UiMessage.m_this_contact_hasn_t_shared_1f9b530200,
                   style: ADText.preview(c: AD.textSecondary))),
         if (_email.isNotEmpty) ...[
           const SizedBox(height: 12),
@@ -225,7 +228,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
                 icon: PhosphorIcon(PhosphorIcons.copy(PhosphorIconsStyle.bold), size: 18, color: AD.textPrimary),
                 onPressed: () {
                   Clipboard.setData(ClipboardData(text: _email));
-                  showAdToast(context, message: 'Copied');
+                  showAdToast(context, message: uiCopy(UiMessage.m_copied_8d525e5f15));
                 }),
           ])),
         ],
@@ -244,13 +247,13 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
             )),
             const SizedBox(height: 12),
             _primaryButton(
-              label: 'Share contact',
+              label: uiCopy(UiMessage.m_share_contact_d294640153),
               icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold),
               onPressed: () async {
                 try {
                   await QrShare.share(link: _addLink, name: _displayName, number: _number);
                 } catch (_) {
-                  if (mounted) showAdToast(context, message: "Couldn't prepare the QR image — try again.");
+                  if (mounted) showAdToast(context, message: uiCopy(UiMessage.m_couldn_t_prepare_the_qr_412816ad88));
                 }
               }),
           ])),
@@ -263,11 +266,11 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
           _avaDmSection(),
         ],
         const SizedBox(height: Msg.s4),
-        Text('SHARED GROUPS', style: ADText.sectionLabel()),
+        UiText(UiMessage.m_shared_groups_9ac657c752, style: ADText.sectionLabel()),
         const SizedBox(height: Msg.s1),
         if (_shared.isEmpty)
           Padding(padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text('No groups in common', style: ADText.preview(c: AD.textSecondary)))
+              child: UiText(UiMessage.m_no_groups_in_common_f6cb33ec80, style: ADText.preview(c: AD.textSecondary)))
         else
           for (final g in _shared)
             ListTile(
@@ -277,7 +280,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
                 child: Avatar(seed: 'group-${g.id}', name: g.name, size: 40),
               ),
               title: Text(g.name, style: ADText.rowName()),
-              subtitle: Text('${g.members.length} members', style: ADText.preview(c: AD.textSecondary)),
+              subtitle: UiText(UiMessage.m_value1_members_32b7fac4dc, params: {'value1': (g.members.length).toString()}, style: ADText.preview(c: AD.textSecondary)),
             ),
             ]),
           ),
@@ -314,21 +317,18 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
         Row(children: [
           PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), size: 16, color: AD.iconVideo),
           const SizedBox(width: 8),
-          Text('Ava in this chat', style: ADText.rowName()),
+          UiText(UiMessage.m_ava_in_this_chat_e13039ac4a, style: ADText.rowName()),
         ]),
         const SizedBox(height: 4),
-        Text(
-          'Off: no observation. Assistant: Ava replies only when asked directly. '
-          'Companion: Ava may quietly suggest things or occasionally join in — '
-          'always clearly as Ava. Either of you can change this; Off on either '
-          'side switches Ava off for both.',
+        UiText(
+          UiMessage.m_off_no_observation_assistant_ava_c7e0902bcb,
           style: ADText.preview(),
         ),
         if (s.effectiveMode != s.mode) ...[
           const SizedBox(height: 4),
-          Text(
+          UiText(
             // Never attribute the difference to the peer — see the section doc.
-            'Right now Ava is ${s.effectiveMode == 'off' ? 'off' : 'limited to "${s.effectiveMode}"'} in this chat.',
+            UiMessage.m_right_now_ava_is_value1_c8aaef2972, params: {'value1': (s.effectiveMode == 'off' ? 'off' : 'limited to "${s.effectiveMode}"').toString()},
             style: ADText.preview(c: AD.textSecondary),
           ),
         ],
@@ -372,7 +372,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
       if (next != null && next.enabled) _avaDm = next;
     });
     if (next == null) {
-      showAdToast(context, message: 'Could not change Ava for this chat — please try again.');
+      showAdToast(context, message: uiCopy(UiMessage.m_could_not_change_ava_for_16be9015db));
     }
     // Server already emits dm_ava_enabled/disabled with both emails; this is
     // the client-side interaction marker only.
@@ -422,9 +422,9 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
                 ),
                 const SizedBox(width: Msg.s1),
                 Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                  Text('CONTACT', style: ADText.sectionLabel(c: onBand)),
+                  UiText(UiMessage.m_contact_f82ecbb5e5, style: ADText.sectionLabel(c: onBand)),
                   const SizedBox(height: 1),
-                  Text('Contact info', style: ADText.appTitle(c: onBand)),
+                  UiText(UiMessage.m_contact_info_e91ded4071, style: ADText.appTitle(c: onBand)),
                 ]),
               ]),
             ),

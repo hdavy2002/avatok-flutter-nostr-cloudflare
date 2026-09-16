@@ -1,3 +1,5 @@
+
+import '../../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -72,11 +74,12 @@ class _TemplatePickerScreenState extends State<TemplatePickerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final open = _open;
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: ZineAppBar(
-        title: open == null ? 'Pick a template' : open.name,
+        title: open == null ? uiCopy(UiMessage.m_pick_a_template_21a2714bf8) : open.name,
         markWord: open == null ? 'template' : null,
         tag: open == null ? 'what should your agent coach?' : open.tagline,
         showBack: true,
@@ -121,8 +124,8 @@ class _TemplatePickerScreenState extends State<TemplatePickerScreen> {
             PhosphorIcon(PhosphorIcons.eye(PhosphorIconsStyle.regular), size: 28, color: AD.tabCalls),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                'Start from a use-case. We prefill the camera capability, overlay, score and a starter prompt — you just edit the text and set your rate.',
+              child: UiText(
+                UiMessage.m_start_from_a_use_case_c5927c7fe7,
                 style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13, height: 1.42),
               ),
             ),

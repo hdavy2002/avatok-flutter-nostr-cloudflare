@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -28,6 +30,7 @@ class RestoreScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final name = (state.displayName ?? '').trim();
     return Scaffold(
       body: ZinePaper(
@@ -36,7 +39,7 @@ class RestoreScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, Msg.s5),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                Text('Reconnecting', style: ADText.sectionLabel()),
+                UiText(UiMessage.m_reconnecting_afb118fcb1, style: ADText.sectionLabel()),
               ]),
               Expanded(
                 child: SingleChildScrollView(
@@ -53,7 +56,7 @@ class RestoreScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: Msg.s4),
                     Text(
-                      name.isNotEmpty ? 'One moment,\n$name' : 'Can’t reach\nAvaTOK',
+                      name.isNotEmpty ? uiCopy(UiMessage.m_one_moment_name_b980232381, {'name': (name).toString()}) : uiCopy(UiMessage.m_can_t_reach_avatok_1fa4428e8e),
                       style: ADText.appTitle().copyWith(
                           fontSize: 34, height: 1.08, letterSpacing: -0.02 * 34),
                       textAlign: TextAlign.center,
@@ -70,11 +73,8 @@ class RestoreScreen extends StatelessWidget {
                     Center(
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 300),
-                        child: Text(
-                          'We couldn’t load your account just now. Check your '
-                          'connection and try again — everything on your account '
-                          'comes back automatically once we’re connected. '
-                          'We won’t set you up as a new user.',
+                        child: UiText(
+                          UiMessage.m_we_couldn_t_load_your_4c068a41bd,
                           style: ADText.preview().copyWith(fontSize: 15, height: 1.42),
                           textAlign: TextAlign.center,
                         ),
@@ -85,7 +85,7 @@ class RestoreScreen extends StatelessWidget {
                 ),
               ),
               ZineButton(
-                label: 'Try again',
+                label: uiCopy(UiMessage.m_try_again_d8b8392e2c),
                 icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold),
                 fullWidth: true,
                 fontSize: 21,
@@ -99,7 +99,7 @@ class RestoreScreen extends StatelessWidget {
                     size: 14, color: AD.iconNeutral),
                 const SizedBox(width: Msg.s2),
                 Flexible(
-                  child: Text('your account is safe — nothing is lost',
+                  child: UiText(UiMessage.m_your_account_is_safe_nothing_5af512cf57,
                       style: ADText.sectionLabel(), textAlign: TextAlign.center),
                 ),
               ]),

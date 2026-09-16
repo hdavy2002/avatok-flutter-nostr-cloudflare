@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* HeaderCtas — the auth-aware right side of the site header (replicates the
  * old site's SiteHeader CTAs). Signed-in: a wallet pill (balance → /dashboard/
  * wallet) + "Open studio" (→ /dashboard) + Sign out. Signed-out: Log in + Sign
@@ -23,6 +25,8 @@ const primary =
   'rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine';
 
 function WalletPill() {
+  const {t:uiT}=useUiTranslation("web-site");
+
   const [bal, setBal] = useState<number | null>(null);
   useEffect(() => {
     void (async () => {
@@ -37,7 +41,7 @@ function WalletPill() {
     })();
   }, []);
   return (
-    <a href="/dashboard/wallet" className={`${ghost} flex items-center gap-2`} aria-label="Wallet balance" title="Wallet" onClick={() => navClick('wallet')}>
+    <a href="/dashboard/wallet" className={`${ghost} flex items-center gap-2`} aria-label={uiT("web-site.2e7ab90ac60c447d","Wallet balance")} title={uiT("web-site.d1c9a01d57e90086","Wallet")} onClick={() => navClick('wallet')}>
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <rect x="2" y="6" width="20" height="14" rx="3" />
         <path d="M2 10h20" />
@@ -52,7 +56,7 @@ function Authed({ onSignOut }: { onSignOut: () => void }) {
   return (
     <>
       <WalletPill />
-      <a href="/dashboard" className={primary} onClick={() => navClick('open_studio')}>Open studio</a>
+      <a href="/dashboard" className={primary} onClick={() => navClick('open_studio')}><UiText id="web-site.730a9d80c097a1cc" source="Open studio" /></a>
       <button
         type="button"
         onClick={() => {
@@ -60,9 +64,7 @@ function Authed({ onSignOut }: { onSignOut: () => void }) {
           onSignOut();
         }}
         className={ghost}
-      >
-        Sign out
-      </button>
+      ><UiText id="web-site.48f0d3d397d49f13" source="Sign out" />{" "}</button>
     </>
   );
 }
@@ -70,8 +72,8 @@ function Authed({ onSignOut }: { onSignOut: () => void }) {
 function Anon() {
   return (
     <>
-      <a href="/sign-in" className={ghost} onClick={() => navClick('log_in')}>Log in</a>
-      <a href="/sign-up" className={primary} onClick={() => navClick('sign_up')}>Sign up</a>
+      <a href="/sign-in" className={ghost} onClick={() => navClick('log_in')}><UiText id="web-site.c189840cf7e2d6f6" source="Log in" /></a>
+      <a href="/sign-up" className={primary} onClick={() => navClick('sign_up')}><UiText id="web-site.5e2b8e96503d722e" source="Sign up" /></a>
     </>
   );
 }

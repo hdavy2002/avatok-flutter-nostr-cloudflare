@@ -1,3 +1,6 @@
+
+import '../../../core/localization/ui_text.dart';
+
 // [DYNW-RULES-UI-1] "Call Rules" — plain-English instructions for Ava.
 //
 // The owner writes rules in their own words ("If my brother Ramesh calls,
@@ -124,7 +127,7 @@ class _ReceptionistRulesScreenState extends State<ReceptionistRulesScreen> {
   Future<void> _save() async {
     final text = _rules.text.trim();
     if (text.isEmpty) {
-      _toast('Write at least one rule before saving.');
+      _toast(uiCopy(UiMessage.m_write_at_least_one_rule_c1d7055bd6));
       return;
     }
     setState(() => _saving = true);
@@ -135,11 +138,11 @@ class _ReceptionistRulesScreenState extends State<ReceptionistRulesScreen> {
       setState(() => _active = true);
       Analytics.capture('recept_rules_saved', {'chars': text.length});
       AvaLog.I.log('receptionist', 'call rules saved (code_id=${res.codeId})');
-      _toast('Saved — Ava will follow these rules on your next call.');
+      _toast(uiCopy(UiMessage.m_saved_ava_will_follow_these_0b7070f835));
     } else {
       Analytics.capture('recept_rules_save_failed', {'error': res.error ?? ''});
       AvaLog.I.log('receptionist', 'call rules save FAILED: ${res.error}');
-      _toast(res.error ?? 'Couldn’t save — try again.');
+      _toast(res.error ?? uiCopy(UiMessage.m_couldn_t_save_try_again_d1ae454b9f));
     }
   }
 
@@ -152,20 +155,19 @@ class _ReceptionistRulesScreenState extends State<ReceptionistRulesScreen> {
           borderRadius: BorderRadius.circular(AD.rDialog),
           side: const BorderSide(color: AD.borderControl, width: 1),
         ),
-        title: Text('Turn off call rules?', style: ADText.threadName()),
-        content: Text(
-          'Ava will stop following these instructions on your next call. Your '
-          'written rules stay here so you can turn them back on later.',
+        title: UiText(UiMessage.m_turn_off_call_rules_5596e71a7b, style: ADText.threadName()),
+        content: UiText(
+          UiMessage.m_ava_will_stop_following_these_9ef6ff3f92,
           style: ADText.preview(),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: ADText.rowName()),
+            child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.rowName()),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Turn off', style: ADText.rowName(c: AD.danger)),
+            child: UiText(UiMessage.m_turn_off_06f0e210b2, style: ADText.rowName(c: AD.danger)),
           ),
         ],
       ),
@@ -179,9 +181,9 @@ class _ReceptionistRulesScreenState extends State<ReceptionistRulesScreen> {
       setState(() => _active = false);
       Analytics.capture('recept_rules_disabled', {});
       AvaLog.I.log('receptionist', 'call rules turned off');
-      _toast('Call rules turned off.');
+      _toast(uiCopy(UiMessage.m_call_rules_turned_off_6a9294a86f));
     } else {
-      _toast('Couldn’t turn off rules — try again.');
+      _toast(uiCopy(UiMessage.m_couldn_t_turn_off_rules_1a87203aa9));
     }
   }
 
@@ -192,9 +194,10 @@ class _ReceptionistRulesScreenState extends State<ReceptionistRulesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
-      appBar: _darkHeader(title: 'Call Rules', tag: 'receptionist'),
+      appBar: _darkHeader(title: uiCopy(UiMessage.m_call_rules_eb271868ee), tag: 'receptionist'),
       body: _loading
           ? const Center(
               child: SizedBox(
@@ -210,7 +213,7 @@ class _ReceptionistRulesScreenState extends State<ReceptionistRulesScreen> {
                       _activeBanner(),
                       const SizedBox(height: 16),
                     ],
-                    Text('EXAMPLES · TAP TO ADD', style: ADText.sectionLabel()),
+                    UiText(UiMessage.m_examples_tap_to_add_ee68902fb9, style: ADText.sectionLabel()),
                     const SizedBox(height: Msg.s2),
                     Wrap(
                       spacing: 8,
@@ -223,9 +226,8 @@ class _ReceptionistRulesScreenState extends State<ReceptionistRulesScreen> {
                     const SizedBox(height: 16),
                     AdField(
                       controller: _rules,
-                      label: 'Your rules',
-                      hint: "e.g. If my brother Ramesh calls, tell him I'll call back "
-                          "at 6pm. If it's a sales call, politely decline and hang up.",
+                      label: uiCopy(UiMessage.m_your_rules_a6b37899e6),
+                      hint: uiCopy(UiMessage.m_e_g_if_my_brother_b501a81642),
                       minLines: 6,
                       maxLines: null,
                       maxLength: 4000,
@@ -238,14 +240,13 @@ class _ReceptionistRulesScreenState extends State<ReceptionistRulesScreen> {
                       child: Text('${_rules.text.length}/4000', style: ADText.statCaption()),
                     ),
                     const SizedBox(height: Msg.s1),
-                    Text(
-                      'Ava follows these rules word-for-word — instantly. Write them '
-                      'as plain sentences, one instruction at a time.',
+                    UiText(
+                      UiMessage.m_ava_follows_these_rules_word_a4d1d1e8f7,
                       style: ADText.preview(),
                     ),
                     const SizedBox(height: Msg.s4),
                     AdButton(
-                      label: _saving ? 'Saving…' : 'Save',
+                      label: _saving ? uiCopy(UiMessage.m_saving_23e39291d6) : uiCopy(UiMessage.m_save_1509f561f2),
                       fullWidth: true,
                       fontSize: 15,
                       loading: _saving,
@@ -254,7 +255,7 @@ class _ReceptionistRulesScreenState extends State<ReceptionistRulesScreen> {
                     if (_active) ...[
                       const SizedBox(height: Msg.s2),
                       AdButton(
-                        label: _clearing ? 'Turning off…' : 'Turn off rules',
+                        label: _clearing ? uiCopy(UiMessage.m_turning_off_c62412a208) : uiCopy(UiMessage.m_turn_off_rules_10f0eb200c),
                         variant: AdButtonVariant.ghost,
                         fullWidth: true,
                         fontSize: 14,
@@ -279,9 +280,8 @@ class _ReceptionistRulesScreenState extends State<ReceptionistRulesScreen> {
               size: 36),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              "Tell Ava exactly what to do on a call, in your own words. She "
-              "follows these rules word-for-word — instantly.",
+            child: UiText(
+              UiMessage.m_tell_ava_exactly_what_to_b1cfd27453,
               style: ADText.preview(c: AD.textPrimary),
             ),
           ),
@@ -299,7 +299,7 @@ class _ReceptionistRulesScreenState extends State<ReceptionistRulesScreen> {
           const AdSticker('Active', kind: AdStickerKind.ok),
           const SizedBox(width: Msg.s2),
           Expanded(
-            child: Text('Your rules are live — Ava uses them on your next call.',
+            child: UiText(UiMessage.m_your_rules_are_live_ava_3cfe38dd13,
                 style: ADText.preview()),
           ),
         ]),
@@ -316,11 +316,10 @@ class _ReceptionistRulesScreenState extends State<ReceptionistRulesScreen> {
                   color: AD.iconVideo,
                   size: 36),
               const SizedBox(height: Msg.s3),
-              Text('Call Rules — coming soon', style: ADText.rowName()),
+              UiText(UiMessage.m_call_rules_coming_soon_37c9ed5bd3, style: ADText.rowName()),
               const SizedBox(height: 8),
-              Text(
-                "Plain-English call rules for Ava aren't turned on for your "
-                'account yet. Check back soon.',
+              UiText(
+                UiMessage.m_plain_english_call_rules_for_01a4392ea2,
                 style: ADText.preview(),
               ),
             ]),

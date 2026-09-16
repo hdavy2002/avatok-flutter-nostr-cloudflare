@@ -46,7 +46,7 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
           // Discard. Sits on the far left, away from send — a destructive action
           // should never be adjacent to the one you're reaching for.
           IconButton(
-            tooltip: 'Delete recording',
+            tooltip: uiCopy(UiMessage.m_delete_recording_2eb1bb6a28),
             icon: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold),
                 color: AD.danger, size: 22),
             onPressed: () => _cancelRecording(),
@@ -67,7 +67,7 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
               child: _recPaused
                   ? Align(
                       alignment: Alignment.centerLeft,
-                      child: Text('Paused · tap play to continue',
+                      child: UiText(UiMessage.m_paused_tap_play_to_continue_55f95134d0,
                           style: ADText.bubbleMeta(c: AD.textSecondary)),
                     )
                   : LiveWaveform(levels: _recLevels),
@@ -75,7 +75,7 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
           ),
           const SizedBox(width: 4),
           IconButton(
-            tooltip: _recPaused ? 'Resume recording' : 'Pause recording',
+            tooltip: _recPaused ? uiCopy(UiMessage.m_resume_recording_0a1b9d7e9a) : uiCopy(UiMessage.m_pause_recording_bb6591385f),
             icon: PhosphorIcon(
                 _recPaused
                     ? PhosphorIcons.play(PhosphorIconsStyle.fill)
@@ -116,10 +116,10 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
         // in, so the hint must not advertise one — "Message · Ava can join" on
         // a thread where she cannot is worse than no hint at all.
         hintText: !RemoteConfig.aiEnabled
-            ? 'Message'
+            ? uiCopy(UiMessage.m_message_2f77668a9d)
             : _avaMode
-                ? 'Ask Ava privately…'
-                : (_avaPublicMode ? 'Message · Ava can join' : 'Message'),
+                ? uiCopy(UiMessage.m_ask_ava_privately_ca099da0e0)
+                : (_avaPublicMode ? uiCopy(UiMessage.m_message_ava_can_join_96a5db8193) : uiCopy(UiMessage.m_message_2f77668a9d)),
         // [UI-CHAT-2026] One step lighter than the band so the pill still
         // reads as raised now that the band is paper rather than indigo.
         fieldColor: Msg.composerField,
@@ -232,7 +232,7 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
                 );
               },
               decoration: InputDecoration(
-                  hintText: _avaMode ? 'Ask Ava privately…' : 'Message',
+                  hintText: _avaMode ? uiCopy(UiMessage.m_ask_ava_privately_ca099da0e0) : uiCopy(UiMessage.m_message_2f77668a9d),
                   hintStyle: ADText.rowName(c: AD.placeholderOnWhite).copyWith(
                       fontWeight: FontWeight.w600),
                   border: InputBorder.none, isDense: true,
@@ -278,12 +278,12 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
             child: ValueListenableBuilder<String>(
               valueListenable: AvaOnDeviceStt.I.statusLine,
               builder: (_, s, __) => Text(
-                s.isEmpty ? 'Listening…' : s,
+                s.isEmpty ? uiCopy(UiMessage.m_listening_bbb4106e81) : s,
                 style: ADText.sectionLabel(c: AD.online),
               ),
             ),
           ),
-          Text('Tap stop to insert', style: ADText.sectionLabel()),
+          UiText(UiMessage.m_tap_stop_to_insert_b7b2394747, style: ADText.sectionLabel()),
         ]),
       );
 
@@ -330,13 +330,13 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
           Expanded(
             child: Text.rich(
               TextSpan(children: [
-                const TextSpan(text: 'Type '),
-                TextSpan(text: '@ava', style: ADText.preview(c: const Color(0xFF8FC0F5))
+                 TextSpan(text: uiCopy(UiMessage.m_type_068e513fa6)),
+                TextSpan(text: uiCopy(UiMessage.m_ava_2a374c4745), style: ADText.preview(c: const Color(0xFF8FC0F5))
                     .copyWith(fontWeight: FontWeight.w600)),
-                const TextSpan(text: ' for a private reply, or '),
-                TextSpan(text: '#ava', style: ADText.preview(c: const Color(0xFF7BD98C))
+                 TextSpan(text: uiCopy(UiMessage.m_for_a_private_reply_or_b009fd7e58)),
+                TextSpan(text: uiCopy(UiMessage.m_ava_3f4c7561be), style: ADText.preview(c: const Color(0xFF7BD98C))
                     .copyWith(fontWeight: FontWeight.w600)),
-                const TextSpan(text: ' to ask Ava in the chat.'),
+                 TextSpan(text: uiCopy(UiMessage.m_to_ask_ava_in_the_4e0d661432)),
               ]),
               // White base text (was grey) so the hint reads clearly on dark.
               style: ADText.preview(c: AD.textPrimary),
@@ -407,19 +407,19 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
         mainAxisSize: MainAxisSize.min,
         children: [
           _avaAudienceButton(
-            label: '@ava',
+            label: uiCopy(UiMessage.m_ava_2a374c4745),
             active: _avaMode,
             activeColor: MentionTextController.mentionBlue,
-            tooltip: 'Private Ava · only you see the reply',
+            tooltip: uiCopy(UiMessage.m_private_ava_only_you_see_7c5cbf8c8c),
             modeLabel: 'Private Mode',
             onTap: () => _setAvaAudienceMode('private'),
           ),
           const SizedBox(width: Msg.s1),
           _avaAudienceButton(
-            label: '#ava',
+            label: uiCopy(UiMessage.m_ava_3f4c7561be),
             active: _avaPublicMode,
             activeColor: MentionTextController.shareGreen,
-            tooltip: 'Public Ava · everyone sees the reply',
+            tooltip: uiCopy(UiMessage.m_public_ava_everyone_sees_the_3b75e9dede),
             modeLabel: 'Public Mode',
             onTap: () => _setAvaAudienceMode('public'),
           ),
@@ -517,7 +517,7 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
                     child: AdDotLoader(active: true, size: 18, color: AD.textPrimary))
                 : PhosphorIcon(PhosphorIcons.magicWand(PhosphorIconsStyle.bold), size: 20, color: AD.textPrimary),
             const SizedBox(width: 8),
-            Text('Help me write better', style: ADText.statCaption(c: AD.textPrimary)),
+            UiText(UiMessage.m_help_me_write_better_a7d704a3da, style: ADText.statCaption(c: AD.textPrimary)),
           ]),
         ),
       ),
@@ -546,7 +546,7 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
         ),
         padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
         child: SafeArea(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('HELP ME WRITE BETTER', style: ADText.sectionLabel()),
+          UiText(UiMessage.m_help_me_write_better_0dfd2cce95, style: ADText.sectionLabel()),
           const SizedBox(height: 12),
           // Belt and braces: even at full screen height a very large OS text
           // scale can outgrow the sheet, so the rows scroll rather than clip.
@@ -837,7 +837,7 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
               PhosphorIcon(PhosphorIcons.translate(PhosphorIconsStyle.bold),
                   size: 20, color: AD.textPrimary),
               const SizedBox(width: 10),
-              Text('Translate into…', style: ADText.threadName()),
+              UiText(UiMessage.m_translate_into_2929768abe, style: ADText.threadName()),
             ]),
           ),
           Flexible(
@@ -890,14 +890,14 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
               PhosphorIcon(PhosphorIcons.lightbulb(PhosphorIconsStyle.bold),
                   size: 20, color: AD.textPrimary),
               const SizedBox(width: 10),
-              Text('Reply ideas', style: ADText.threadName()),
+              UiText(UiMessage.m_reply_ideas_b9102bb91a, style: ADText.threadName()),
             ]),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text('Tap one to drop it into your message.',
+              child: UiText(UiMessage.m_tap_one_to_drop_it_a344a458af,
                   style: ADText.preview()),
             ),
           ),
@@ -941,7 +941,7 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
         const SizedBox(width: 8),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text(isEdit ? 'Editing' : 'Replying to ${_replyTo!.me ? "yourself" : (_replyTo!.senderLabel ?? widget.chat.name)}',
+            Text(isEdit ? uiCopy(UiMessage.m_editing_fab4539d26) : uiCopy(UiMessage.m_replying_to_value1_715faa9206, {'value1': (_replyTo!.me ? "yourself" : (_replyTo!.senderLabel ?? widget.chat.name)).toString()}),
                 style: ADText.sectionLabel(c: AD.iconSearch)),
             Text(preview, maxLines: 1, overflow: TextOverflow.ellipsis,
                 style: ADText.preview()),
@@ -1137,7 +1137,7 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
         padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
         child: SafeArea(
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('MENTION', style: ADText.sectionLabel()),
+            UiText(UiMessage.m_mention_a9c4c807c2, style: ADText.sectionLabel()),
             const SizedBox(height: 10),
             Flexible(
               child: ListView.builder(

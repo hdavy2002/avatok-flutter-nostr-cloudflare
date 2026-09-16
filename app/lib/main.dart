@@ -1,3 +1,9 @@
+import 'core/localization/ui_font_policy.dart';
+
+import 'core/localization/ui_text.dart';
+
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'core/localization/ui_locale_controller.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -151,6 +157,7 @@ void main() async {
     unawaited(_deferredInit(firstFrameMs: firstFrameMs));
   });
   // [REPLAY-1] Wrap in PostHogWidget so Session Replay can capture the UI tree.
+  unawaited(UiLocaleController.instance.initialize());
   runApp(PostHogWidget(child: const AvaTalkApp()));
 }
 
@@ -272,20 +279,18 @@ Future<void> _maybePromptFullScreenIntent() async {
     final allow = await showDialog<bool>(
       context: ctx,
       builder: (c) => AlertDialog(
-        title: const Text('Show calls on lock screen'),
-        content: const Text(
-          'To see incoming AvaTOK calls when your phone is locked, allow '
-          'AvaTOK to show full-screen call notifications. Without this, calls '
-          'ring but the call screen may not appear until you open the app.',
+        title: const UiText(UiMessage.m_show_calls_on_lock_screen_75dfcc87ea),
+        content: const UiText(
+          UiMessage.m_to_see_incoming_avatok_calls_773fa6ddbb,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(c).pop(false),
-            child: const Text('Not now'),
+            child: const UiText(UiMessage.m_not_now_a0e63d7c71),
           ),
           TextButton(
             onPressed: () => Navigator.of(c).pop(true),
-            child: const Text('Allow'),
+            child: const UiText(UiMessage.m_allow_e213c161d5),
           ),
         ],
       ),
@@ -374,12 +379,22 @@ class AvaTalkApp extends StatelessWidget {
   const AvaTalkApp({super.key});
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'AvaTOK',
+    UiLocaleScope.watch(context);
+    return ListenableBuilder(
+      listenable: UiLocaleController.instance,
+      builder: (context, _) => UiLocaleScope(child: MaterialApp(
+      locale: UiLocaleController.instance.frameworkLocale,
+      supportedLocales: GlobalMaterialLocalizations.supportedLocales,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      title: uiCopy(UiMessage.m_avatok_b692b5d2b4),
       navigatorKey: navigatorKey,
       navigatorObservers: [Analytics.observer], // auto $screen on every route
       debugShowCheckedModeBanner: false,
-      theme: AvaTheme.light,
+      theme: UiFontPolicy.theme(AvaTheme.light),
       // Text scaling = OS accessibility setting × the user's own Display &
       // fonts choice (FontScale). Listens live so the whole app re-scales the
       // instant the user moves the slider.
@@ -456,7 +471,8 @@ class AvaTalkApp extends StatelessWidget {
             // depend on whatever CallOverlay happens to size to.
             child: Stack(
               children: [
-                CallOverlay(child: child!),
+                CallOverlay(child: Directionality(
+                  textDirection: UiLocaleController.instance.direction, child: child!)),
                 const Positioned.fill(child: GrainOverlay()),
               ],
             ),
@@ -464,7 +480,7 @@ class AvaTalkApp extends StatelessWidget {
         );
       },
       home: const RootFlow(),
-    );
+    )));
   }
 }
 
@@ -997,6 +1013,7 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // Forced-update gate (A2): minAppBuild above the installed build blocks the
     // app until updated. Listens to config revisions so a remote flip applies
     // within one poll cycle without restarting.
@@ -1067,6 +1084,7 @@ class _UpdateRequiredScreen extends StatelessWidget {
   const _UpdateRequiredScreen();
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       body: ZinePaper(
         child: SafeArea(
@@ -1080,13 +1098,12 @@ class _UpdateRequiredScreen extends StatelessWidget {
                       size: 52, color: Colors.white),
                 ),
                 const SizedBox(height: 24),
-                const ZineMarkTitle(pre: 'Update ', mark: 'required', fontSize: 34),
+                 ZineMarkTitle(pre: uiCopy(UiMessage.m_update_d83faea8a6), mark: uiCopy(UiMessage.m_required_d0a3630555), fontSize: 34),
                 const SizedBox(height: 12),
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 300),
-                  child: Text(
-                    'This version of AvaTOK is taking a rest. '
-                    'Grab the latest update to pick up where you left off.',
+                  child: UiText(
+                    UiMessage.m_this_version_of_avatok_is_c9ebde2fc9,
                     textAlign: TextAlign.center,
                     style: ADText.preview(),
                   ),

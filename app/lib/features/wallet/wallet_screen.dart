@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show File, Platform;
@@ -171,7 +173,7 @@ const List<String> _kMonLong = [
 
 String _dateShort(int ms) {
   final d = DateTime.fromMillisecondsSinceEpoch(ms);
-  return '${d.day} ${_kMonShort[d.month - 1]} ${d.year != DateTime.now().year ? d.year : ''}'.trim();
+  return uiCopy(UiMessage.m_day_month_year_ade39ee8d0, {'day': (d.day).toString(), 'month': (authoredUiCopy(_kMonShort[d.month - 1])).toString(), 'year': (d.year != DateTime.now().year ? d.year.toString() : '').toString()}).trim();
 }
 
 class WalletScreen extends StatefulWidget {
@@ -566,7 +568,7 @@ class _WalletScreenState extends State<WalletScreen> {
       r = await MoneyApi.topupIntent(cents, currency: currency);
     } catch (e) {
       Analytics.error(domain: 'wallet', code: 'topup_intent_failed', message: '$e', screen: 'wallet_main', action: 'topup');
-      _snack('Could not start checkout. Please try again.');
+      _snack(uiCopy(UiMessage.m_could_not_start_checkout_please_84c5e2d031));
       return;
     }
     if (!mounted) return;
@@ -578,11 +580,11 @@ class _WalletScreenState extends State<WalletScreen> {
         'reason': '${r['reason'] ?? r['error'] ?? r['status'] ?? 'unknown'}',
       });
       if (r['reason'] == 'pending_legal_approval') {
-        _snack('Top-ups are not live yet — coming soon.');
+        _snack(uiCopy(UiMessage.m_top_ups_are_not_live_0af8b5e9f4));
       } else if (r['status'] == 429) {
-        _snack('Too many top-up attempts. Try again in a little while.');
+        _snack(uiCopy(UiMessage.m_too_many_top_up_attempts_d3127ffa19));
       } else {
-        _snack('Top-up failed: ${r['error'] ?? 'unknown error'}');
+        _snack(uiCopy(UiMessage.m_top_up_failed_value1_593c9f2909, {'value1': (r['error'] ?? 'unknown error').toString()}));
       }
       return;
     }
@@ -618,11 +620,11 @@ class _WalletScreenState extends State<WalletScreen> {
         message: e.error.localizedMessage ?? e.error.code.name,
         screen: 'wallet_main', action: 'topup', extra: {'stripe_code': e.error.code.name},
       );
-      _snack(e.error.localizedMessage ?? 'Payment failed. Please try again.');
+      _snack(e.error.localizedMessage ?? uiCopy(UiMessage.m_payment_failed_please_try_again_190aed461b));
       return;
     } catch (e) {
       Analytics.error(domain: 'wallet', code: 'payment_sheet_error', message: '$e', screen: 'wallet_main', action: 'topup');
-      _snack('Payment failed. Please try again.');
+      _snack(uiCopy(UiMessage.m_payment_failed_please_try_again_190aed461b));
       return;
     }
 
@@ -641,11 +643,11 @@ class _WalletScreenState extends State<WalletScreen> {
     if (credited) {
       final added = _balance - before;
       Analytics.capture('wallet_topup_succeeded', {'cents': cents, 'coins': added});
-      _snack('Added ${_tokens(added)} Tokens to your wallet');
+      _snack(uiCopy(UiMessage.m_added_value1_tokens_to_your_63d5ba7642, {'value1': (_tokens(added)).toString()}));
     } else {
       // Payment captured but the webhook is still settling — reassure, don't alarm.
       Analytics.capture('wallet_topup_pending_credit', {'cents': cents, 'coins': coins});
-      _snack('Payment received — your Tokens will appear here shortly.');
+      _snack(uiCopy(UiMessage.m_payment_received_your_tokens_will_c86e0e08cc));
     }
   }
 
@@ -666,7 +668,7 @@ class _WalletScreenState extends State<WalletScreen> {
         if (p is Map && p['amount'] is num) (p['amount'] as num).toInt(),
     ];
     final presets = qPresets.isNotEmpty ? qPresets : (inr ? const [100, 200, 500, 1000] : const [1, 2, 5, 10]);
-    final rateCopy = inr ? '1 Token = ${sym}1' : '1 USD = ${_tokens(kTokensPerUsd)} Tokens';
+    final rateCopy = inr ? uiCopy(UiMessage.m_1_token_sym_1_ad01351f16, {'sym': (sym).toString()}) : uiCopy(UiMessage.m_1_usd_tokens_tokens_bb75d6912c, {'tokens': (_tokens(kTokensPerUsd)).toString()});
     final ctrl = TextEditingController();
     return showModalBottomSheet<int>(
       context: context,
@@ -681,9 +683,9 @@ class _WalletScreenState extends State<WalletScreen> {
           return Padding(
             padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, MediaQuery.of(c).viewInsets.bottom + 20),
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Top up wallet', style: ADText.appTitle()),
+              UiText(UiMessage.m_top_up_wallet_43fa526d42, style: ADText.appTitle()),
               const SizedBox(height: Msg.s1),
-              Text('Pay securely in-app. $rateCopy. Minimum $sym$minUnits.', style: ADText.preview()),
+              UiText(UiMessage.m_pay_securely_in_app_ratecopy_3028891907, params: {'rateCopy': (rateCopy).toString(), 'sym': (sym).toString(), 'minUnits': (minUnits).toString()}, style: ADText.preview()),
               const SizedBox(height: Msg.s4),
               AdField(
                 controller: ctrl,
@@ -695,20 +697,20 @@ class _WalletScreenState extends State<WalletScreen> {
               ),
               const SizedBox(height: Msg.s2),
               Text(
-                valid ? '= ${_tokens(previewTokens)} Tokens' : 'Enter $sym$minUnits – $sym${_tokens(maxUnits)}',
+                valid ? uiCopy(UiMessage.m_value1_tokens_d1c8adaccd, {'value1': (_tokens(previewTokens)).toString()}) : uiCopy(UiMessage.m_enter_sym_minunits_sym_3_c378f3b5fd, {'sym': (sym).toString(), 'minUnits': (minUnits).toString(), 'sym_3': (sym).toString(), 'value4': (_tokens(maxUnits)).toString()}),
                 style: ADText.rowName(c: valid ? AD.online : AD.textTertiary),
               ),
               const SizedBox(height: Msg.s3),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 for (final v in presets)
-                  AdSticker('$sym$v · ${_tokens(v * tokensPerUnit)} Tokens', onTap: () {
+                  AdSticker(uiCopy(UiMessage.m_sym_v_value3_tokens_5f47f5b2af, {'sym': (sym).toString(), 'v': (v).toString(), 'value3': (_tokens(v * tokensPerUnit)).toString()}), onTap: () {
                     Analytics.capture('wallet_topup_preset', {'amount': v, 'currency': inr ? 'inr' : 'usd', 'tokens': v * tokensPerUnit});
                     setSheet(() => ctrl.text = inr ? '$v' : v.toStringAsFixed(2));
                   }),
               ]),
               const SizedBox(height: Msg.s4),
               AdButton(
-                label: 'Continue to payment',
+                label: uiCopy(UiMessage.m_continue_to_payment_efadf3732e),
                 fullWidth: true,
                 icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
                 onPressed: !valid ? null : () => Navigator.pop(c, (d * 100).round()),
@@ -759,16 +761,16 @@ class _WalletScreenState extends State<WalletScreen> {
       builder: (c) => Padding(
         padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, MediaQuery.of(c).viewInsets.bottom + 24),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Top up wallet', style: ADText.appTitle()),
+          UiText(UiMessage.m_top_up_wallet_43fa526d42, style: ADText.appTitle()),
           const SizedBox(height: Msg.s1),
-          Text('Pay securely with Google Play. Prices are shown in your Play account\u2019s currency.',
+          UiText(UiMessage.m_pay_securely_with_google_play_9c21f00da1,
               style: ADText.preview()),
           const SizedBox(height: Msg.s4),
           for (final t in kTopupTiers) ...[
             AdButton(
               label: prices[t.productId] == null
-                  ? '${_tokens(t.tokens)} Tokens'
-                  : '${prices[t.productId]}   ·   ${_tokens(t.tokens)} Tokens',
+                  ? uiCopy(UiMessage.m_tokens_tokens_84b36be5b0, {'tokens': (_tokens(t.tokens)).toString()})
+                  : uiCopy(UiMessage.m_price_tokens_tokens_53c5916937, {'price': (prices[t.productId]).toString(), 'tokens': (_tokens(t.tokens)).toString()}),
               fullWidth: true,
               trailingIcon: false,
               icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
@@ -786,7 +788,7 @@ class _WalletScreenState extends State<WalletScreen> {
             const SizedBox(height: Msg.s3),
           ],
           const SizedBox(height: Msg.s1),
-          Text(regionNote ?? 'Charged in your local currency at Google Play’s rate.',
+          Text(regionNote ?? uiCopy(UiMessage.m_charged_in_your_local_currency_9d0f5d5171),
               style: ADText.preview(c: AD.textTertiary)),
         ]),
       ),
@@ -831,7 +833,7 @@ class _WalletScreenState extends State<WalletScreen> {
     final last4 = '${meta['card_last4'] ?? ''}';
     String cap(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
     if (brand.isNotEmpty || method == 'card') {
-      final b = brand.isEmpty ? 'Card' : cap(brand);
+      final b = brand.isEmpty ? uiCopy(UiMessage.m_card_be3702e3f1) : cap(brand);
       return last4.isEmpty ? b : '$b ···· $last4';
     }
     if (method == 'apple_pay') return 'Apple Pay';
@@ -844,7 +846,7 @@ class _WalletScreenState extends State<WalletScreen> {
   String _fullDate(int ms) {
     final d = DateTime.fromMillisecondsSinceEpoch(ms);
     String p(int n) => n.toString().padLeft(2, '0');
-    return '${_dateShort(ms)} ${d.year == DateTime.now().year ? d.year : ''} · ${p(d.hour)}:${p(d.minute)}'.replaceAll('  ', ' ');
+    return uiCopy(UiMessage.m_date_year_hour_minute_36a2b3ec2c, {'date': (_dateShort(ms)).toString(), 'year': (d.year == DateTime.now().year ? d.year.toString() : '').toString(), 'hour': (p(d.hour)).toString(), 'minute': (p(d.minute)).toString()}).replaceAll('  ', ' ');
   }
 
   /// Relative timestamp for the flight log ("2h ago"); falls back to the short
@@ -853,10 +855,10 @@ class _WalletScreenState extends State<WalletScreen> {
   String _relTime(int ms) {
     if (ms <= 0) return '';
     final d = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(ms));
-    if (d.inMinutes < 1) return 'just now';
-    if (d.inMinutes < 60) return '${d.inMinutes}m ago';
-    if (d.inHours < 24) return '${d.inHours}h ago';
-    if (d.inDays < 7) return '${d.inDays}d ago';
+    if (d.inMinutes < 1) return uiCopy(UiMessage.m_just_now_7ddb44d8a5);
+    if (d.inMinutes < 60) return uiCopy(UiMessage.m_value1_m_ago_0393d2dadc, {'value1': (d.inMinutes).toString()});
+    if (d.inHours < 24) return uiCopy(UiMessage.m_value1_h_ago_d29b9342a3, {'value1': (d.inHours).toString()});
+    if (d.inDays < 7) return uiCopy(UiMessage.m_value1_d_ago_55c8943116, {'value1': (d.inDays).toString()});
     return _dateShort(ms);
   }
 
@@ -913,23 +915,23 @@ class _WalletScreenState extends State<WalletScreen> {
   String _catLabel(String key) {
     switch (key) {
       case 'call':
-        return 'Phone call';
+        return uiCopy(UiMessage.m_phone_call_1f0a0e2694);
       case 'agent':
-        return 'AI agent';
+        return uiCopy(UiMessage.m_ai_agent_92c7d7f84c);
       case 'transcribe':
-        return 'Transcription';
+        return uiCopy(UiMessage.m_transcription_30bf7b9b95);
       case 'ava':
-        return 'Ava AI chat';
+        return uiCopy(UiMessage.m_ava_ai_chat_d8277d6fe5);
       case 'video':
-        return 'Video call';
+        return uiCopy(UiMessage.m_video_call_7b79b4f672);
       case 'market':
-        return 'Marketplace';
+        return uiCopy(UiMessage.m_marketplace_c608981d8d);
       case 'topup':
-        return 'Top up';
+        return uiCopy(UiMessage.m_top_up_79f52e0ce6);
       case 'payout':
-        return 'Affiliate payout';
+        return uiCopy(UiMessage.m_affiliate_payout_8a1c34ff82);
     }
-    return 'Transaction';
+    return uiCopy(UiMessage.m_transaction_eec26ddd9a);
   }
 
   /// Category for a row, tolerating legacy cached rows that predate the
@@ -950,14 +952,14 @@ class _WalletScreenState extends State<WalletScreen> {
   int _tokensOf(Map<String, dynamic> e) => (((e['tokens'] ?? e['amount']) as num?) ?? 0).toInt();
 
   String _titleOf(Map<String, dynamic> e) =>
-      '${e['label'] ?? e['title'] ?? e['type'] ?? 'Transaction'}';
+      '${e['label'] ?? e['title'] ?? e['type'] ?? uiCopy(UiMessage.m_transaction_eec26ddd9a)}';
 
   /// "2:30 PM" from an epoch-ms timestamp (local).
   String _clock(int ms) {
     if (ms <= 0) return '';
     final d = DateTime.fromMillisecondsSinceEpoch(ms);
     final h12 = d.hour % 12 == 0 ? 12 : d.hour % 12;
-    return '$h12:${d.minute.toString().padLeft(2, '0')} ${d.hour < 12 ? 'AM' : 'PM'}';
+    return uiCopy(UiMessage.m_hour_minute_period_b22fe1789e, {'hour': (h12).toString(), 'minute': (d.minute.toString().padLeft(2, '0')).toString(), 'period': (authoredUiCopy(d.hour < 12 ? 'AM' : 'PM')).toString()});
   }
 
   /// Day-group heading: TODAY / YESTERDAY / "JUL 4".
@@ -968,9 +970,9 @@ class _WalletScreenState extends State<WalletScreen> {
     final today = DateTime(now.year, now.month, now.day);
     final diff = today.difference(day).inDays;
     // [UI-DS-SWEEP-1] sentence case — these are visible group headers.
-    if (diff == 0) return 'Today';
-    if (diff == 1) return 'Yesterday';
-    return '${_kMonShort[d.month - 1]} ${d.day}';
+    if (diff == 0) return uiCopy(UiMessage.m_today_2b065c7c9c);
+    if (diff == 1) return uiCopy(UiMessage.m_yesterday_566181254b);
+    return uiCopy(UiMessage.m_month_day_27f57af1f1, {'month': (authoredUiCopy(_kMonShort[d.month - 1])).toString(), 'day': (d.day).toString()});
   }
 
   static const List<String> _kDowLetter = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -1012,6 +1014,7 @@ class _WalletScreenState extends State<WalletScreen> {
   // ── build ───────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final (inn, out) = _monthInOut();
     final s = _summary;
     final earned = ((s?['earned_total'] as num?) ?? inn).toInt();
@@ -1042,7 +1045,7 @@ class _WalletScreenState extends State<WalletScreen> {
       drawer: shellScope == null ? null : const AvaSidebarForShell(),
       appBar: _darkHeader(
         context,
-        title: 'AvaWallet',
+        title: uiCopy(UiMessage.m_avawallet_b92971b9ba),
         leading: shellScope == null
             ? null
             : AdBackButton(
@@ -1057,7 +1060,7 @@ class _WalletScreenState extends State<WalletScreen> {
         // [WALLET-UX-1] Owner decision: no "Tokens" branding in the UI — the
         // wallet's user-facing unit is Tokens (display copy only; code
         // identifiers and storage keys keep their historical names).
-        tag: 'your tokens',
+        tag: uiCopy(UiMessage.m_your_tokens_52821472eb),
         showBack: false,
         actions: [
           if (_admin)
@@ -1091,7 +1094,7 @@ class _WalletScreenState extends State<WalletScreen> {
 
             // 2 — period row
             Row(children: [
-              Text('LAST $_days DAYS', style: AWText.caption(c: AW.txMute)),
+              UiText(UiMessage.m_last_days_days_5eabda10ac, params: {'days': (_days).toString()}, style: AWText.caption(c: AW.txMute)),
               const Spacer(),
               WalletChipTrack(
                 labels: const ['7D', '30D'],
@@ -1122,11 +1125,11 @@ class _WalletScreenState extends State<WalletScreen> {
                 padding: const EdgeInsets.all(Msg.s4),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
-                    Text('Daily spend', style: AWText.sectionHead()),
+                    UiText(UiMessage.m_daily_spend_99ef80364c, style: AWText.sectionHead()),
                     const Spacer(),
                     Flexible(
-                      child: Text(
-                        'last $_days days · ${_tokens(spent)} out',
+                      child: UiText(
+                        UiMessage.m_last_days_days_value2_out_e249c9925e, params: {'days': (_days).toString(), 'value2': (_tokens(spent)).toString()},
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.right,
@@ -1148,9 +1151,9 @@ class _WalletScreenState extends State<WalletScreen> {
                 padding: const EdgeInsets.all(Msg.s4),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
-                    Text('Where it went', style: AWText.sectionHead()),
+                    UiText(UiMessage.m_where_it_went_01801f7e0f, style: AWText.sectionHead()),
                     const Spacer(),
-                    Text('last $_days days', style: AWText.cardMeta()),
+                    UiText(UiMessage.m_last_days_days_666960416f, params: {'days': (_days).toString()}, style: AWText.cardMeta()),
                   ]),
                   const SizedBox(height: Msg.s4),
                   Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
@@ -1185,7 +1188,7 @@ class _WalletScreenState extends State<WalletScreen> {
             // 6 — history header
             const SizedBox(height: Msg.s5),
             Row(children: [
-              Text('History', style: AWText.sectionTitle()),
+              UiText(UiMessage.m_history_0e76960093, style: AWText.sectionTitle()),
               const Spacer(),
               WalletChipTrack(
                 labels: const ['All', 'In', 'Out'],
@@ -1242,8 +1245,8 @@ class _WalletScreenState extends State<WalletScreen> {
               const SizedBox(height: Msg.s3),
               Row(children: [
                 Expanded(
-                  child: Text(
-                    'Showing ${_dateShort(_range!.start.millisecondsSinceEpoch)}',
+                  child: UiText(
+                    UiMessage.m_showing_value1_fac787e875, params: {'value1': (_dateShort(_range!.start.millisecondsSinceEpoch)).toString()},
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: AWText.caption(c: AW.txSoft),
@@ -1255,7 +1258,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     setState(() { _range = null; _selDay = null; });
                     _applyFilters();
                   },
-                  child: Text('Clear', style: AWText.caption(c: AW.coral)),
+                  child: UiText(UiMessage.m_clear_83b12c2216, style: AWText.caption(c: AW.coral)),
                 ),
               ]),
             ],
@@ -1263,7 +1266,7 @@ class _WalletScreenState extends State<WalletScreen> {
             // 8 — transaction list
             const SizedBox(height: Msg.s4),
             Text(
-              (_loading && rows.isEmpty) ? 'TRANSACTIONS · loading…' : 'TRANSACTIONS · ${rows.length}',
+              (_loading && rows.isEmpty) ? uiCopy(UiMessage.m_transactions_loading_38f6f7b9ff) : uiCopy(UiMessage.m_transactions_value1_4740eb5b5c, {'value1': (rows.length).toString()}),
               style: AWText.caption(c: AW.txMute),
             ),
             const SizedBox(height: Msg.s3),
@@ -1331,7 +1334,7 @@ class _WalletScreenState extends State<WalletScreen> {
             child: Icon(PhosphorIcons.wallet(PhosphorIconsStyle.fill), size: 19, color: AW.glyph),
           ),
           const SizedBox(width: Msg.s3),
-          Text('Balance', style: AWText.cardLabel()),
+          UiText(UiMessage.m_balance_d05e07b7c1, style: AWText.cardLabel()),
         ]),
         const SizedBox(height: Msg.s3),
         Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -1345,13 +1348,12 @@ class _WalletScreenState extends State<WalletScreen> {
           const SizedBox(width: Msg.s2),
           Padding(
             padding: const EdgeInsets.only(bottom: Msg.s2),
-            child: Text('tokens', style: AWText.balanceUnit()),
+            child: UiText(UiMessage.m_tokens_c51e455b41, style: AWText.balanceUnit()),
           ),
         ]),
         const SizedBox(height: Msg.s2),
-        Text(
-          '≈ \u20b9$inrValue value · refills monthly'
-          '${_held > 0 ? ' · ${_tokens(_held)} on hold' : ''}',
+        UiText(
+          UiMessage.m_inrvalue_value_refills_monthly_value2_f35ddc4243, params: {'inrValue': (inrValue).toString(), 'value2': (_held > 0 ? uiCopy(UiMessage.m_tokens_on_hold_a89ed34962, {'tokens': (_tokens(_held)).toString()}) : '').toString()},
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: AWText.balanceSub(),
@@ -1371,12 +1373,12 @@ class _WalletScreenState extends State<WalletScreen> {
               borderRadius: Msg.brMd,
               border: Border.all(color: AW.ink, width: 1),
             ),
-            child: Text('Everything is free right now — no top-ups needed.',
+            child: UiText(UiMessage.m_everything_is_free_right_now_0e55c1122d,
                 style: AWText.rowTitle(c: AW.mint)),
           )
         else
           _heroButton(
-            label: 'Top up',
+            label: uiCopy(UiMessage.m_top_up_79f52e0ce6),
             icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
             fill: AW.coral,
             ink: Colors.white,
@@ -1387,7 +1389,7 @@ class _WalletScreenState extends State<WalletScreen> {
         if (_kShowWithdraw) ...[
           const SizedBox(height: Msg.s3),
           _heroButton(
-            label: 'Withdraw',
+            label: uiCopy(UiMessage.m_withdraw_164546a9c5),
             icon: PhosphorIcons.handCoins(PhosphorIconsStyle.fill),
             fill: AW.lime,
             ink: AW.glyph,
@@ -1426,7 +1428,7 @@ class _WalletScreenState extends State<WalletScreen> {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(icon, size: 18, color: ink),
           const SizedBox(width: Msg.s2),
-          Text(label, style: AWText.sectionHead(c: ink)),
+          Text(authoredUiCopy(label), style: AWText.sectionHead(c: ink)),
         ]),
       ),
     );
@@ -1453,7 +1455,7 @@ class _WalletScreenState extends State<WalletScreen> {
           child: Text('${isIn ? '+' : '−'}${_tokens(tokens)}', style: AWText.statBig(c: color)),
         ),
         const SizedBox(height: 2),
-        Text(isIn ? 'Money in' : 'Money out', style: AWText.caption(c: AW.txMute)),
+        Text(isIn ? uiCopy(UiMessage.m_money_in_8e0d3721fb) : uiCopy(UiMessage.m_money_out_77cd5be37f), style: AWText.caption(c: AW.txMute)),
       ]),
     );
   }
@@ -1474,8 +1476,8 @@ class _WalletScreenState extends State<WalletScreen> {
           const SizedBox(height: Msg.s3),
           Text(
             _filtered
-                ? 'Nothing matches those filters.'
-                : 'No transactions yet — top up to get rolling.',
+                ? uiCopy(UiMessage.m_nothing_matches_those_filters_8d0771eede)
+                : uiCopy(UiMessage.m_no_transactions_yet_top_up_792926f0d1),
             textAlign: TextAlign.center,
             style: AWText.rowSub(c: AW.txMute),
           ),
@@ -1618,7 +1620,7 @@ class _WalletScreenState extends State<WalletScreen> {
     final h12 = d.hour % 12 == 0 ? 12 : d.hour % 12;
     // Built from the shifted fields directly: `d` is a UTC DateTime carrying IST wall
     // time, so handing its epoch to a local-time formatter would shift it again.
-    return '${d.day} ${_kMonShort[d.month - 1]} ${d.year} · $h12:${d.minute.toString().padLeft(2, '0')} ${d.hour < 12 ? 'AM' : 'PM'}${ist ? ' IST' : ''}';
+    return uiCopy(UiMessage.m_day_month_year_hour_minute_a2c6bacc6f, {'day': (d.day).toString(), 'month': (authoredUiCopy(_kMonShort[d.month - 1])).toString(), 'year': (d.year).toString(), 'hour': (h12).toString(), 'minute': (d.minute.toString().padLeft(2, '0')).toString(), 'period': (authoredUiCopy(d.hour < 12 ? 'AM' : 'PM')).toString(), 'zone': (ist ? ' IST' : '').toString()});
   }
 
   Widget _activityPanel(Map<String, dynamic> row) {
@@ -1631,7 +1633,7 @@ class _WalletScreenState extends State<WalletScreen> {
         child: Row(children: [
           const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
           const SizedBox(width: Msg.s2),
-          Text('Loading details…', style: AWText.rowSub(c: AW.txMute)),
+          UiText(UiMessage.m_loading_details_b1905aae7f, style: AWText.rowSub(c: AW.txMute)),
         ]),
       );
     }
@@ -1642,19 +1644,19 @@ class _WalletScreenState extends State<WalletScreen> {
     final whoHandle = '${who?['handle'] ?? ''}'.trim();
     final status = '${a?['status'] ?? row['status'] ?? ''}';
     final rows = <({String label, String value})>[
-      (label: 'Activity', value: '${a?['activity'] ?? row['type_label'] ?? _titleOf(row)}'),
+      (label: uiCopy(UiMessage.m_activity_38da1505ca), value: '${a?['activity'] ?? row['type_label'] ?? _titleOf(row)}'),
       if (listing != null)
-        (label: listing['kind'] == 'live_event' ? 'Show' : 'Listing', value: '${listing['title'] ?? ''}'),
+        (label: listing['kind'] == 'live_event' ? uiCopy(UiMessage.m_show_0df6f1cad3) : uiCopy(UiMessage.m_listing_fc7f1aa205), value: '${listing['title'] ?? ''}'),
       if (listing?['starts_at'] is num)
-        (label: 'Scheduled for', value: _istWhen((listing!['starts_at'] as num).toInt(), listing['timezone']?.toString())),
+        (label: uiCopy(UiMessage.m_scheduled_for_75ba69e3a8), value: _istWhen((listing!['starts_at'] as num).toInt(), listing['timezone']?.toString())),
       if (whoName.isNotEmpty)
-        (label: who?['role'] == 'buyer' ? 'Buyer' : 'Creator', value: whoHandle.isEmpty ? whoName : '$whoName · @$whoHandle'),
-      (label: 'Date & time', value: _istWhen(_tsOf(a ?? row), null)),
-      (label: 'Amount', value: '${tokens >= 0 ? '+' : '−'}${_tokens(tokens.abs())} tokens (₹${tokens.abs()})'),
-      if ('${a?['refunded_to'] ?? ''}'.isNotEmpty) (label: 'Refunded to', value: '${a!['refunded_to']}'),
-      if (status.isNotEmpty) (label: 'Status', value: status[0].toUpperCase() + status.substring(1)),
-      if (a?['balance_after'] is num) (label: 'Balance after', value: '${_tokens((a!['balance_after'] as num).toInt())} tokens'),
-      if ('${a?['order_id'] ?? ''}'.isNotEmpty) (label: 'Reference', value: '${a!['order_id']}'),
+        (label: who?['role'] == 'buyer' ? uiCopy(UiMessage.m_buyer_a2a54d668c) : uiCopy(UiMessage.m_creator_88447b8309), value: whoHandle.isEmpty ? whoName : '$whoName · @$whoHandle'),
+      (label: uiCopy(UiMessage.m_date_time_2459ea4289), value: _istWhen(_tsOf(a ?? row), null)),
+      (label: uiCopy(UiMessage.m_amount_49e96d7cdf), value: '${tokens >= 0 ? '+' : '−'}${_tokens(tokens.abs())} tokens (₹${tokens.abs()})'),
+      if ('${a?['refunded_to'] ?? ''}'.isNotEmpty) (label: uiCopy(UiMessage.m_refunded_to_6ca12b6cff), value: '${a!['refunded_to']}'),
+      if (status.isNotEmpty) (label: uiCopy(UiMessage.m_status_920e413c7d), value: status[0].toUpperCase() + status.substring(1)),
+      if (a?['balance_after'] is num) (label: uiCopy(UiMessage.m_balance_after_148dac4dcd), value: '${_tokens((a!['balance_after'] as num).toInt())} tokens'),
+      if ('${a?['order_id'] ?? ''}'.isNotEmpty) (label: uiCopy(UiMessage.m_reference_71bf90935f), value: '${a!['order_id']}'),
     ].where((r) => r.value.trim().isNotEmpty).toList();
     final reason = '${a?['reason'] ?? ''}'.trim();
     return Container(
@@ -1678,14 +1680,14 @@ class _WalletScreenState extends State<WalletScreen> {
           if (failed)
             Padding(
               padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, 0),
-              child: Text('Couldn\'t load the full details. Pull to refresh and try again.',
+              child: UiText(UiMessage.m_couldn_t_load_the_full_f23db78f84,
                   style: AWText.rowSub(c: AW.coral)),
             ),
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
               onPressed: () => _showDetail(row),
-              child: Text('Receipt & more', style: AWText.rowTitle(c: AW.blue)),
+              child: UiText(UiMessage.m_receipt_more_6e32874587, style: AWText.rowTitle(c: AW.blue)),
             ),
           ),
         ],
@@ -1736,13 +1738,13 @@ class _WalletScreenState extends State<WalletScreen> {
     final ref = '${entry['ref'] ?? ''}'.trim();
 
     final infoRows = <({String label, String value})>[
-      (label: 'Date', value: _fullDate(ts)),
-      (label: 'Type', value: _catLabel(cat)),
-      (label: 'Reference', value: ref),
-      (label: 'Paid', value: usdLabel),
-      (label: 'Paid with', value: paidWith),
-      (label: 'Status', value: status.isEmpty ? '' : status[0].toUpperCase() + status.substring(1)),
-      (label: 'Balance after', value: balAfter == null ? '' : '${_tokens(balAfter)} tokens'),
+      (label: uiCopy(UiMessage.m_date_99c40ab405), value: _fullDate(ts)),
+      (label: uiCopy(UiMessage.m_type_baaddf70fb), value: _catLabel(cat)),
+      (label: uiCopy(UiMessage.m_reference_71bf90935f), value: ref),
+      (label: uiCopy(UiMessage.m_paid_fb81b961af), value: usdLabel),
+      (label: uiCopy(UiMessage.m_paid_with_961e348759), value: paidWith),
+      (label: uiCopy(UiMessage.m_status_920e413c7d), value: status.isEmpty ? '' : status[0].toUpperCase() + status.substring(1)),
+      (label: uiCopy(UiMessage.m_balance_after_148dac4dcd), value: balAfter == null ? '' : '${_tokens(balAfter)} tokens'),
     ].where((r) => r.value.trim().isNotEmpty).toList();
 
     await showModalBottomSheet<void>(
@@ -1778,7 +1780,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   ),
                 ),
                 IconButton(
-                  tooltip: 'Close transaction details',
+                  tooltip: uiCopy(UiMessage.m_close_transaction_details_e47aff4f23),
                   visualDensity: VisualDensity.compact,
                   style: IconButton.styleFrom(
                     backgroundColor: AW.surf,
@@ -1799,7 +1801,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 child: Text(amountLabel, style: AWText.detailAmount(c: isIn ? AW.mint : AW.coral)),
               ),
               const SizedBox(height: Msg.s1),
-              Text('tokens · ${_catLabel(cat)}',
+              UiText(UiMessage.m_tokens_value1_9e542d8d0d, params: {'value1': (_catLabel(cat)).toString()},
                   textAlign: TextAlign.center, style: AWText.sectionHead(c: AW.txMute)),
               const SizedBox(height: Msg.s4),
               WalletStatusPill(status: status.isEmpty ? 'completed' : status),
@@ -1834,7 +1836,7 @@ class _WalletScreenState extends State<WalletScreen> {
               ),
               const SizedBox(height: Msg.s4),
               _heroButton(
-                label: 'Get receipt',
+                label: uiCopy(UiMessage.m_get_receipt_a832eec5da),
                 icon: PhosphorIcons.envelopeSimple(PhosphorIconsStyle.bold),
                 fill: AW.blue,
                 ink: AW.glyph,
@@ -1851,9 +1853,9 @@ class _WalletScreenState extends State<WalletScreen> {
                   onPressed: () {
                     Analytics.capture('wallet_txn_reported', {'id': id, 'type': '${entry['type']}'});
                     if (c.mounted) Navigator.pop(c);
-                    _snack('Thanks — we\'ll look into it.');
+                    _snack(uiCopy(UiMessage.m_thanks_we_ll_look_into_dabcee1375));
                   },
-                  child: Text('Report an issue', style: AWText.rowTitle(c: AW.coral)),
+                  child: UiText(UiMessage.m_report_an_issue_635ae219ad, style: AWText.rowTitle(c: AW.coral)),
                 ),
               ),
             ]),
@@ -1884,9 +1886,9 @@ class _WalletScreenState extends State<WalletScreen> {
               ),
             ),
             const SizedBox(height: Msg.s4),
-            Text('Export statement', style: AWText.sectionTitle()),
+            UiText(UiMessage.m_export_statement_0f89e1afe7, style: AWText.sectionTitle()),
             const SizedBox(height: Msg.s1),
-            Text('Your ${_kMonLong[now.month - 1]} ${now.year} transaction history',
+            UiText(UiMessage.m_your_value1_value2_transaction_history_54d008ca8f, params: {'value1': (authoredUiCopy(_kMonLong[now.month - 1])).toString(), 'value2': (now.year).toString()},
                 style: AWText.rowSub(c: AW.txMute)),
             const SizedBox(height: Msg.s4),
             _exportTile(c, 'share', 'Share', 'Send via AvaTalk or apps',
@@ -1901,7 +1903,7 @@ class _WalletScreenState extends State<WalletScreen> {
             Center(
               child: TextButton(
                 onPressed: () => Navigator.pop(c),
-                child: Text('Cancel', style: AWText.rowTitle(c: AW.txMute)),
+                child: UiText(UiMessage.m_cancel_19766ed6cc, style: AWText.rowTitle(c: AW.txMute)),
               ),
             ),
           ]),
@@ -1925,9 +1927,9 @@ class _WalletScreenState extends State<WalletScreen> {
           const SizedBox(width: Msg.s4),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-              Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: AWText.rowTitle()),
+              Text(authoredUiCopy(label), maxLines: 1, overflow: TextOverflow.ellipsis, style: AWText.rowTitle()),
               const SizedBox(height: 2),
-              Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: AWText.rowSub(c: AW.txMute)),
+              Text(authoredUiCopy(sub), maxLines: 1, overflow: TextOverflow.ellipsis, style: AWText.rowSub(c: AW.txMute)),
             ]),
           ),
           Icon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: AW.txMute),
@@ -1959,7 +1961,7 @@ class _WalletScreenState extends State<WalletScreen> {
     final body = csv?.trim() ?? '';
     // A JSON error envelope means the endpoint rejected the window.
     if (body.isEmpty || body.startsWith('{')) {
-      _snack('Could not build the statement.');
+      _snack(uiCopy(UiMessage.m_could_not_build_the_statement_0be7cd926b));
       return;
     }
     final lines = body.split('\n');
@@ -1979,9 +1981,9 @@ class _WalletScreenState extends State<WalletScreen> {
         domain: 'wallet', code: 'statement_share_failed',
         message: '$e', screen: 'wallet_main', action: 'export_$mode',
       );
-      _snack('Could not build the statement.');
+      _snack(uiCopy(UiMessage.m_could_not_build_the_statement_0be7cd926b));
       return;
     }
-    _snack('Statement ready ($count rows).');
+    _snack(uiCopy(UiMessage.m_statement_ready_count_rows_eae875471f, {'count': (count).toString()}));
   }
 }

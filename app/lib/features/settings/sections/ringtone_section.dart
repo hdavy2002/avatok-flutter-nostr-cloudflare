@@ -1,3 +1,6 @@
+
+import '../../../core/localization/ui_text.dart';
+
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -31,7 +34,7 @@ void registerRingtoneSection() {
       SettingsSectionRegistry.register(
         SettingsSection(
           id: 'ai_ringback',
-          title: 'Ringback tone',
+          title: uiCopy(UiMessage.m_ringback_tone_82ab615058),
           order: 26,
           builder: (context) => const _RingtoneCard(),
         ),
@@ -132,7 +135,7 @@ class _RingtoneCardState extends State<_RingtoneCard> {
     });
     if (ok) {
       Analytics.capture('ringback_set', {'id': t.id, 'name': t.name, 'set_ms': DateTime.now().difference(t0).inMilliseconds});
-      _toast('Callers will now hear “${t.name}”');
+      _toast(uiCopy(UiMessage.m_callers_will_now_hear_value1_32cfdac003, {'value1': (t.name).toString()}));
     } else {
       // The HTTP wrapper already emits api_error with endpoint+status; this adds
       // the product-level failure so it's queryable by ringback domain + email.
@@ -143,7 +146,7 @@ class _RingtoneCardState extends State<_RingtoneCard> {
         action: 'make_default',
         extra: {'id': t.id},
       );
-      _toast('Couldn’t set that — try again');
+      _toast(uiCopy(UiMessage.m_couldn_t_set_that_try_75d3dbebe8));
     }
   }
 
@@ -154,6 +157,7 @@ class _RingtoneCardState extends State<_RingtoneCard> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return AdCard(
       padding: const EdgeInsets.all(Msg.s4),
       child: _loading
@@ -171,11 +175,10 @@ class _RingtoneCardState extends State<_RingtoneCard> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Ringback tone', style: ADText.rowName()),
+                    UiText(UiMessage.m_ringback_tone_82ab615058, style: ADText.rowName()),
                     const SizedBox(height: 2),
-                    Text(
-                      'Preview a tone and set it as your ringback — the sound people '
-                      'hear while your phone is ringing.',
+                    UiText(
+                      UiMessage.m_preview_a_tone_and_set_6595d36761,
                       style: ADText.preview(),
                     ),
                   ]),
@@ -209,7 +212,7 @@ class _RingtoneCardState extends State<_RingtoneCard> {
           const MiniPill('Default', fill: AD.online, fg: Colors.white)
         else
           AdButton(
-            label: 'Make default',
+            label: uiCopy(UiMessage.m_make_default_f43b942510),
             variant: AdButtonVariant.ghost,
             fontSize: 12,
             onPressed: _saving ? null : () => _makeDefault(t),

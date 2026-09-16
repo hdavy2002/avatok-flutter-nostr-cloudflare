@@ -1,3 +1,5 @@
+
+import '../../../core/localization/ui_text.dart';
 // catchup_card.dart — [GROUP-AI-1] a dismissible "What did I miss?" summary card
 // pinned above the unread divider in a group thread. Renders the <=6 attributed
 // bullets returned by /api/ai/catchup. The summary is NEVER stored server-side
@@ -17,6 +19,7 @@ class CatchupCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (bullets.isEmpty) return const SizedBox.shrink();
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 8),
@@ -31,7 +34,7 @@ class CatchupCard extends StatelessWidget {
           PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), size: 15, color: AD.iconVideo),
           const SizedBox(width: Msg.s1),
           Expanded(
-            child: Text('WHAT YOU MISSED · $msgCount messages',
+            child: UiText(UiMessage.m_what_you_missed_msgcount_messages_944d3dc91a, params: {'msgCount': (msgCount).toString()},
                 style: ADText.statCaption(c: AD.textSecondary)),
           ),
           GestureDetector(

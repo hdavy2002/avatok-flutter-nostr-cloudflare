@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -89,8 +92,8 @@ abstract class _CommercialCheckoutSheetState<T extends _CommercialCheckoutSheet>
             enabled: !busy,
             textCapitalization: TextCapitalization.characters,
             decoration: InputDecoration(
-              labelText: 'Promo code (optional)',
-              hintText: 'MONSOON20',
+              labelText: uiCopy(UiMessage.m_promo_code_optional_c620196dff),
+              hintText: uiCopy(UiMessage.m_monsoon20_dca9a1e1b5),
               errorText: promoError,
               filled: true,
               fillColor: AD.inputField,
@@ -100,7 +103,7 @@ abstract class _CommercialCheckoutSheetState<T extends _CommercialCheckoutSheet>
             },
           ),
           const SizedBox(height: Msg.s1),
-          Text('The discount is worked out and applied by the server when you pay.',
+          UiText(UiMessage.m_the_discount_is_worked_out_39316fac1e,
               style: ADText.preview(c: AD.textSecondary)),
         ]),
       );
@@ -153,17 +156,17 @@ abstract class _CommercialCheckoutSheetState<T extends _CommercialCheckoutSheet>
             PhosphorIcon(PhosphorIcons.lockKey(PhosphorIconsStyle.bold),
                 color: AD.primaryBadge),
             const SizedBox(width: Msg.s2),
-            Text('Payment and session terms', style: ADText.rowName()),
+            UiText(UiMessage.m_payment_and_session_terms_f3c84d7dcd, style: ADText.rowName()),
           ]),
           const SizedBox(height: Msg.s2),
-          Text('Total: ${listing.priceLabel}',
+          UiText(UiMessage.m_total_value1_97abc49716, params: {'value1': (listing.priceLabel).toString()},
               style: ADText.preview(c: AD.textPrimary)),
-          Text('Held safely until the session rules are completed.',
+          UiText(UiMessage.m_held_safely_until_the_session_2980f5f969,
               style: ADText.preview()),
           Text(scheduleLine, style: ADText.preview()),
           Text(cancellationLine, style: ADText.preview()),
-          Text(
-              'No-show policy: the session charge applies when the customer does not attend.',
+          UiText(
+              UiMessage.m_no_show_policy_the_session_ff04494f9c,
               style: ADText.preview()),
         ]),
       );
@@ -174,8 +177,8 @@ abstract class _CommercialCheckoutSheetState<T extends _CommercialCheckoutSheet>
         onChanged: busy
             ? null
             : (value) => setState(() => acceptedPolicy = value == true),
-        title: Text(
-          'I understand the session, price and cancellation terms.',
+        title: UiText(
+          UiMessage.m_i_understand_the_session_price_02ec0f8bab,
           style: ADText.preview(c: AD.textPrimary),
         ),
         controlAffinity: ListTileControlAffinity.leading,
@@ -196,10 +199,10 @@ abstract class _CommercialCheckoutSheetState<T extends _CommercialCheckoutSheet>
             : Icon(PhosphorIcons.lockKey(PhosphorIconsStyle.bold)),
         label: Text(
           busy
-              ? 'Confirming securely…'
+              ? uiCopy(UiMessage.m_confirming_securely_9157d0e73d)
               : insufficientBalance
-                  ? 'Not enough Tokens'
-                  : 'Confirm & pay',
+                  ? uiCopy(UiMessage.m_not_enough_tokens_9cd758e80f)
+                  : uiCopy(UiMessage.m_confirm_pay_133ff9d546),
         ),
       );
 
@@ -212,7 +215,7 @@ abstract class _CommercialCheckoutSheetState<T extends _CommercialCheckoutSheet>
                 if (mounted) _loadBalance();
               },
         icon: Icon(PhosphorIcons.plusCircle(PhosphorIconsStyle.bold)),
-        label: const Text('Add Tokens'),
+        label: const UiText(UiMessage.m_add_tokens_73cf1d56f0),
       );
 
   Widget shell({required List<Widget> children}) => Container(
@@ -350,13 +353,13 @@ class _LiveCheckoutSheetState
 
   String _when() {
     final start = listing.startsAt;
-    if (start == null) return 'Event time will be confirmed by the server.';
+    if (start == null) return uiCopy(UiMessage.m_event_time_will_be_confirmed_faf8a758ba);
     final date = DateTime.fromMillisecondsSinceEpoch(start).toLocal();
-    return 'Starts ${date.day}/${date.month}/${date.year} at ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')} local time.';
+    return uiCopy(UiMessage.m_starts_value1_value2_value3_at_879f6fb72c, {'value1': (date.day).toString(), 'value2': (date.month).toString(), 'value3': (date.year).toString(), 'value4': (date.hour.toString().padLeft(2, '0')).toString(), 'value5': (date.minute.toString().padLeft(2, '0')).toString()});
   }
 
   @override
-  Widget build(BuildContext context) => shell(children: [
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return shell(children: [
         policyBlock(
           scheduleLine: _when(),
           cancellationLine: listing.commercialRefundWindowHours == 0
@@ -365,7 +368,7 @@ class _LiveCheckoutSheetState
         ),
         const SizedBox(height: Msg.s3),
         if (balance != null)
-          Text('Spendable wallet balance: $balance ${listing.currency}',
+          UiText(UiMessage.m_spendable_wallet_balance_balance_value2_746ee51b2f, params: {'balance': (balance).toString(), 'value2': (listing.currency).toString()},
               style: ADText.preview()),
         if (walletUnavailable)
           const _CheckoutInfo(
@@ -381,7 +384,7 @@ class _LiveCheckoutSheetState
           promoBlock(),
         consentBlock(),
         actionButton(),
-      ]);
+      ]); }
 }
 
 class ConsultCheckoutSheet extends _CommercialCheckoutSheet {
@@ -485,8 +488,8 @@ class _ConsultCheckoutSheetState
   }
 
   @override
-  Widget build(BuildContext context) => shell(children: [
-        Text('Choose a time · $_ymd', style: ADText.sectionLabel()),
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return shell(children: [
+        UiText(UiMessage.m_choose_a_time_ymd_2f7b808e2f, params: {'ymd': (_ymd).toString()}, style: ADText.sectionLabel()),
         const SizedBox(height: Msg.s2),
         OutlinedButton.icon(
           onPressed: busy
@@ -504,7 +507,7 @@ class _ConsultCheckoutSheetState
                   }
                 },
           icon: Icon(PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold)),
-          label: const Text('Change day'),
+          label: const UiText(UiMessage.m_change_day_a151f350e7),
         ),
         const SizedBox(height: Msg.s2),
         if (loadingSlots)
@@ -540,7 +543,7 @@ class _ConsultCheckoutSheetState
         ),
         const SizedBox(height: Msg.s3),
         if (balance != null)
-          Text('Spendable wallet balance: $balance ${listing.currency}',
+          UiText(UiMessage.m_spendable_wallet_balance_balance_value2_746ee51b2f, params: {'balance': (balance).toString(), 'value2': (listing.currency).toString()},
               style: ADText.preview()),
         if (walletUnavailable)
           const _CheckoutInfo(
@@ -556,7 +559,7 @@ class _ConsultCheckoutSheetState
           promoBlock(),
         consentBlock(),
         actionButton(),
-      ]);
+      ]); }
 }
 
 class _CheckoutInfo extends StatelessWidget {
@@ -564,6 +567,6 @@ class _CheckoutInfo extends StatelessWidget {
   final String text;
 
   @override
-  Widget build(BuildContext context) =>
-      Text(text, style: ADText.preview(c: AD.textSecondary));
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return
+      Text(text, style: ADText.preview(c: AD.textSecondary)); }
 }

@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -69,7 +71,7 @@ class _CampaignVoicePickerState extends State<CampaignVoicePicker> {
       if (bytes == null || bytes.isEmpty) return;
       _bytesCache[v.id] = bytes;
       await AudioPlaybackService.I.play(
-        track: AudioTrack(trackId: trackId, title: v.name, subtitle: 'Voice preview'),
+        track: AudioTrack(trackId: trackId, title: v.name, subtitle: uiCopy(UiMessage.m_voice_preview_a056c675e4)),
         bytes: bytes,
       );
     } catch (_) {
@@ -81,24 +83,25 @@ class _CampaignVoicePickerState extends State<CampaignVoicePicker> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final voices = widget.voices;
     if (voices.isEmpty) {
-      return Text('Voices are loading — a default voice will be used.',
+      return UiText(UiMessage.m_voices_are_loading_a_default_bd93ca3c0c,
           style: ADText.preview(c: AD.textTertiary));
     }
     final visible = _visible;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Wrap(spacing: 8, runSpacing: 8, children: [
-        AdChip(label: 'All', active: _filter == _GenderFilter.all,
+        AdChip(label: uiCopy(UiMessage.m_all_a52ace420f), active: _filter == _GenderFilter.all,
             onTap: () => setState(() => _filter = _GenderFilter.all)),
-        AdChip(label: 'Female', active: _filter == _GenderFilter.female,
+        AdChip(label: uiCopy(UiMessage.m_female_e8cca808ae), active: _filter == _GenderFilter.female,
             onTap: () => setState(() => _filter = _GenderFilter.female)),
-        AdChip(label: 'Male', active: _filter == _GenderFilter.male,
+        AdChip(label: uiCopy(UiMessage.m_male_03f8c1273e), active: _filter == _GenderFilter.male,
             onTap: () => setState(() => _filter = _GenderFilter.male)),
       ]),
       const SizedBox(height: Msg.s3),
       if (visible.isEmpty)
-        Text('No voices in this filter.', style: ADText.preview(c: AD.textTertiary)),
+        UiText(UiMessage.m_no_voices_in_this_filter_3ea2229438, style: ADText.preview(c: AD.textTertiary)),
       for (final v in visible) _voiceRow(v),
     ]);
   }

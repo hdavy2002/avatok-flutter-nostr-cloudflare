@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/ui/messenger_theme.dart';
@@ -223,6 +225,7 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // [RAJ-SEAMS-1] TorranDivider is retired. This is the FOOTER, so the seam
     // sits ABOVE the bar, flipped — mirrors shellNavBar() in shell_chrome.dart
     // (patches.md §5/§6). Band moved AD.headerFooter -> AD.bandIndigo.
@@ -393,7 +396,7 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
       child: _labelledIcon(
         icon: PhosphorIcons.voicemail(PhosphorIconsStyle.regular),
         selectedIcon: PhosphorIcons.voicemail(PhosphorIconsStyle.fill),
-        label: 'Inbox',
+        label: uiCopy(UiMessage.m_inbox_94835ea2fc),
         // Selected while the pushed Inbox route is on top ([inboxActive]) —
         // the slot is not a root, but the user IS "in" Inbox, so the footer
         // must say so (owner bug 2026-07-16; same fix as [askAvaActive]).
@@ -417,7 +420,7 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
       child: _labelledIcon(
         icon: PhosphorIcons.sparkle(PhosphorIconsStyle.regular),
         selectedIcon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
-        label: 'AvaBrain',
+        label: uiCopy(UiMessage.m_avabrain_7012aa07e1),
         selected: widget.askAvaActive,
         iconWidget: const LotusRosettePlate(size: 22),
       ),
@@ -438,9 +441,9 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
     return _labelledIcon(
       icon: m.$1,
       selectedIcon: m.$2,
-      label: root == RootId.services && RemoteConfig.marketplaceVisible
-          ? 'Marketplace'
-          : m.$3,
+      label: authoredUiCopy(root == RootId.services && RemoteConfig.marketplaceVisible
+          ? uiCopy(UiMessage.m_marketplace_c608981d8d)
+          : m.$3),
       selected: selected,
     );
   }
@@ -545,7 +548,7 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Icon(m.$2, size: 22, color: AD.textPrimary),
             const SizedBox(height: Msg.s1),
-            Text(m.$3, style: ADText.navLabelPrimary()),
+            Text(authoredUiCopy(m.$3), style: ADText.navLabelPrimary()),
           ]),
         ),
       ),

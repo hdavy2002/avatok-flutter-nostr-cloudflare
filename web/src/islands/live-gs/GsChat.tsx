@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 // GsChat — Stream Chat-powered chat for the GetStream live viewer.
 //
 // The message transport is now the official Stream Chat SDK instead of the
@@ -87,6 +89,8 @@ function readAttachment(raw: unknown): ChatAttachment | null {
 }
 
 export function GsChat({ apiKey, userId, token, channelId, channelType = 'messaging', myName, disabled, getJwt, listingId }: GsChatProps) {
+  const {t:uiT}=useUiTranslation("web-live-gs");
+
   const [messages, setMessages] = useState<GsChatMessage[]>([]);
   const [text, setText] = useState('');
   const [status, setStatus] = useState<'connecting' | 'online' | 'offline'>('connecting');
@@ -287,9 +291,7 @@ export function GsChat({ apiKey, userId, token, channelId, channelType = 'messag
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center justify-between border-b-zine border-ink px-3 py-2">
-        <div className="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-inkSoft">
-          Chat
-        </div>
+        <div className="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-inkSoft"><UiText id="web-live-gs.460b3a7da007b7af" source="Chat" />{" "}</div>
         <div className="flex items-center gap-2">
           <span className={[
             'rounded-full border-zine px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.06em]',
@@ -302,9 +304,7 @@ export function GsChat({ apiKey, userId, token, channelId, channelType = 'messag
               type="button"
               onClick={() => void reconnect()}
               className="rounded-full border-zine border-ink bg-card px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.06em] text-ink"
-            >
-              Retry
-            </button>
+            ><UiText id="web-live-gs.942087cc2d41e013" source="Retry" />{" "}</button>
           )}
         </div>
       </div>
@@ -315,9 +315,7 @@ export function GsChat({ apiKey, userId, token, channelId, channelType = 'messag
         className="flex-1 min-h-0 space-y-2 overflow-y-auto px-3 py-3 [scrollbar-width:thin]"
       >
         {messages.length === 0 ? (
-          <p className="px-1 py-2 font-body font-bold text-[13px] text-inkMute">
-            Say hi 👋 - chat appears here.
-          </p>
+          <p className="px-1 py-2 font-body font-bold text-[13px] text-inkMute"><UiText id="web-live-gs.5532b4c3f66e1918" source="Say hi 👋 - chat appears here." />{" "}</p>
         ) : (
           messages.map((m) => (
             <div key={m.id} className="group flex items-start gap-2">
@@ -326,7 +324,7 @@ export function GsChat({ apiKey, userId, token, channelId, channelType = 'messag
                 onClick={() => void reportMessage(m.id)}
                 disabled={reportingId === m.id}
                 className="mt-0.5 rounded-full border-zine border-ink bg-paper px-2 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.06em] text-ink opacity-0 transition-opacity group-hover:opacity-100 disabled:opacity-40"
-                title="Report for moderation"
+                title={uiT("web-live-gs.14cdabccdbb7d9b1","Report for moderation")}
               >
                 {reportingId === m.id ? '...' : '!'}
               </button>
@@ -335,7 +333,7 @@ export function GsChat({ apiKey, userId, token, channelId, channelType = 'messag
                   <span className={['font-display font-semibold', m.mine ? 'text-mintInk' : 'text-blueInk'].join(' ')}>
                     {m.from}
                   </span>{' '}
-                  <span className="font-bold text-inkSoft">{m.text || (m.attachment ? 'sent a file' : '')}</span>
+                  <span className="font-bold text-inkSoft">{m.text || (m.attachment ? uiT("web-live-gs.1e84119699665b7e","sent a file") : '')}</span>
                 </p>
                 {m.attachment && (
                   <a
@@ -375,8 +373,8 @@ export function GsChat({ apiKey, userId, token, channelId, channelType = 'messag
             <input ref={fileRef} type="file" accept={ATTACHMENT_ACCEPT} hidden onChange={(e) => void pickFile(e.target.files)} />
             <button
               type="button"
-              aria-label="Attach a file"
-              title="Attach a file (max 25 MB)"
+              aria-label={uiT("web-live-gs.21298c62c8e5e476","Attach a file")}
+              title={uiT("web-live-gs.5c5b8cd129d01226","Attach a file (max 25 MB)")}
               disabled={disabled || status !== 'online' || uploading}
               onClick={() => fileRef.current?.click()}
               className="shrink-0 rounded-full border-zine border-ink bg-paper px-3 py-2 font-mono text-[14px] font-bold text-ink shadow-zine-xs disabled:opacity-50"
@@ -391,7 +389,7 @@ export function GsChat({ apiKey, userId, token, channelId, channelType = 'messag
           maxLength={MAX_CHARS}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && void submit(null)}
-          placeholder={disabled ? 'Chat unavailable' : status !== 'online' ? 'Reconnecting…' : 'Send a message'}
+          placeholder={disabled ? uiT("web-live-gs.a45aae80dcc1570c","Chat unavailable") : status !== 'online' ? uiT("web-live-gs.27b80374e1151af6","Reconnecting…") : uiT("web-live-gs.56e541ad86e099c0","Send a message")}
           className="min-w-0 flex-1 rounded-zineField border-zine border-ink bg-paper px-3 py-2 font-body font-bold text-[14px] text-ink placeholder:text-placeholder focus:outline-none focus:shadow-zine-focus disabled:bg-paper2 disabled:text-inkMute"
         />
         <button
@@ -399,9 +397,7 @@ export function GsChat({ apiKey, userId, token, channelId, channelType = 'messag
           disabled={disabled || status !== 'online' || !text.trim()}
           onClick={() => void submit(null)}
           className="shrink-0 rounded-full border-zine border-ink bg-lime px-4 py-2 font-display font-semibold text-[15px] text-ink shadow-zine-sm transition-transform duration-zine active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed disabled:border-inkMute disabled:bg-paper2 disabled:text-inkMute disabled:shadow-none"
-        >
-          Send
-        </button>
+        ><UiText id="web-live-gs.f6f4688ff23d50c6" source="Send" />{" "}</button>
       </div>
     </div>
   );

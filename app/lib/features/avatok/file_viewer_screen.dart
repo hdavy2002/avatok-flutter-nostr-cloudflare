@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -95,7 +97,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> {
       AvaLog.I.log('media', 'file viewer share failed: $e');
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text("Couldn't share this file")));
+            .showSnackBar(const SnackBar(content: UiText(UiMessage.m_couldn_t_share_this_file_970203287f)));
       }
     } finally {
       if (mounted) setState(() => _sharing = false);
@@ -104,6 +106,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -121,7 +124,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> {
                   style: const TextStyle(color: Colors.white70, fontSize: 13)),
             )),
           IconButton(
-            tooltip: 'Share',
+            tooltip: uiCopy(UiMessage.m_share_29887a5ff9),
             icon: _sharing
                 ? const SizedBox(
                     width: 18, height: 18,
@@ -184,7 +187,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> {
             TextButton.icon(
               onPressed: _share,
               icon: Icon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.regular), color: Colors.white),
-              label: const Text('Share / open elsewhere',
+              label: const UiText(UiMessage.m_share_open_elsewhere_8e67aa3b6f,
                   style: TextStyle(color: Colors.white)),
             ),
           ]),

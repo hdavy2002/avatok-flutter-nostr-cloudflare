@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
@@ -54,6 +57,7 @@ class _DarkHeader extends StatelessWidget implements PreferredSizeWidget {
   Size get preferredSize => Size.fromHeight(tag == null ? 60 : 74);
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       decoration: const BoxDecoration(
         color: AD.headerFooter,
@@ -144,6 +148,7 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final d = _data;
     final total = (d?['used_bytes'] as num?)?.toDouble() ?? 0;
     final quota = (d?['quota_bytes'] as num?)?.toDouble() ?? (5 * 1024 * 1024 * 1024);
@@ -155,8 +160,8 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
 
     return Scaffold(
       backgroundColor: AD.bg,
-      appBar: const _DarkHeader(
-        title: 'Backup',
+      appBar:  _DarkHeader(
+        title: uiCopy(UiMessage.m_backup_838557924a),
         tag: 'Back up & restore',
       ),
       body: _loading
@@ -175,7 +180,7 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
                 const SizedBox(height: 16),
                 _meterBar(frac, state),
                 const SizedBox(height: Msg.s2),
-                Text('${(frac * 100).toStringAsFixed(frac >= 0.1 ? 0 : 1)}% OF YOUR PLAN USED',
+                UiText(UiMessage.m_value1_of_your_plan_used_13a19de617, params: {'value1': ((frac * 100).toStringAsFixed(frac >= 0.1 ? 0 : 1)).toString()},
                     style: ADText.sectionLabel()),
                 if (state == 'read_only') _readOnlyCard()
                 else if (state == 'over_quota_paying') _warnCard(
@@ -187,14 +192,14 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
                   text: 'You\'ve used ${(frac * 100).toStringAsFixed(0)}% of your free ${_fmt(quota)}. Past it, storage costs $tokensPerGb Tokens/GB per month.',
                 ),
                 const SizedBox(height: 24),
-                Text('By type', style: ADText.sectionLabel()),
+                UiText(UiMessage.m_by_type_df03ee78b5, style: ADText.sectionLabel()),
                 const SizedBox(height: Msg.s2),
                 _stackedBar(total, quota, byCat),
                 const SizedBox(height: Msg.s3),
                 for (final e in _catStyles.entries) _ledgerRow(e.key, e.value, byCat, total),
                 if (_trend.isNotEmpty) ...[
                   const SizedBox(height: Msg.s5),
-                  Text('Last 6 months', style: ADText.sectionLabel()),
+                  UiText(UiMessage.m_last_6_months_87d3cac8d0, style: ADText.sectionLabel()),
                   const SizedBox(height: 12),
                   _trendBars(quota),
                 ],
@@ -218,7 +223,7 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
               child: Text(_fmt(total), style: ADText.appTitle().copyWith(fontSize: 30)),
             ),
             const SizedBox(height: Msg.s1),
-            Text('Used of ${_fmt(quota)}', style: ADText.sectionLabel()),
+            UiText(UiMessage.m_used_of_value1_019f597725, params: {'value1': (_fmt(quota)).toString()}, style: ADText.sectionLabel()),
           ]),
         ),
       ),
@@ -234,7 +239,7 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
               child: Text(_fmt(left), style: ADText.appTitle(c: AD.online).copyWith(fontSize: 30)),
             ),
             const SizedBox(height: Msg.s1),
-            Text('Still free', style: ADText.sectionLabel()),
+            UiText(UiMessage.m_still_free_5b020ed2e3, style: ADText.sectionLabel()),
           ]),
         ),
       ),
@@ -286,16 +291,16 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
             Row(children: [
               PhosphorIcon(PhosphorIcons.lock(PhosphorIconsStyle.bold), size: 18, color: Colors.white),
               const SizedBox(width: 8),
-              Text('Read-only', style: ADText.sectionLabel(c: Colors.white)),
+              UiText(UiMessage.m_read_only_72bb90897a, style: ADText.sectionLabel(c: Colors.white)),
             ]),
             const SizedBox(height: 8),
-            Text(
-              'Over your free quota with an empty AvaWallet. Your files are safe and read-only — top up Tokens to add more.',
+            UiText(
+              UiMessage.m_over_your_free_quota_with_b1181f5e35,
               style: ADText.preview(c: Colors.white),
             ),
             const SizedBox(height: Msg.s3),
             AdButton(
-              label: 'Top up wallet',
+              label: uiCopy(UiMessage.m_top_up_wallet_43fa526d42),
               fullWidth: true,
               fontSize: 17,
               icon: PhosphorIcons.coins(PhosphorIconsStyle.bold),
@@ -525,7 +530,7 @@ class _DriveSectionState extends State<_DriveSection> {
       setState(() => _connecting = false);
       if (url != null && !connected) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Authorize Google Drive to finish — tap Connect to retry if needed.')));
+            content: UiText(UiMessage.m_authorize_google_drive_to_finish_74335fecae)));
       }
     }
   }
@@ -570,6 +575,7 @@ class _DriveSectionState extends State<_DriveSection> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return AdCard(
       radius: AD.rListCard,
       padding: const EdgeInsets.all(Msg.s4),
@@ -578,9 +584,9 @@ class _DriveSectionState extends State<_DriveSection> {
           ZineIconBadge(icon: PhosphorIcons.googleDriveLogo(PhosphorIconsStyle.fill), color: AD.online, size: 34),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Google Drive · AvaTOK', style: ADText.rowName()),
+            UiText(UiMessage.m_google_drive_avatok_45e73b1ba8, style: ADText.rowName()),
             const SizedBox(height: 2),
-            Text(_s.connected ? '${_fmt(_s.avatokBytes)} in your AvaTOK folder' : 'Store your own files in your Drive',
+            Text(_s.connected ? uiCopy(UiMessage.m_value1_in_your_avatok_folder_b1b07c4916, {'value1': (_fmt(_s.avatokBytes)).toString()}) : uiCopy(UiMessage.m_store_your_own_files_in_6da923b3a5),
                 style: ADText.preview()),
           ])),
           if (_s.connected)
@@ -592,17 +598,17 @@ class _DriveSectionState extends State<_DriveSection> {
         ] else if (!_s.connected) ...[
           const SizedBox(height: 12),
           AdButton(
-            label: 'Connect Google Drive', onPressed: _connect, fullWidth: true, fontSize: 15,
+            label: uiCopy(UiMessage.m_connect_google_drive_4406cf53ed), onPressed: _connect, fullWidth: true, fontSize: 15,
             loading: _connecting, icon: PhosphorIcons.plugsConnected(PhosphorIconsStyle.bold), trailingIcon: false,
           ),
         ] else ...[
           if (_s.totalLimit > 0) ...[
             const SizedBox(height: Msg.s2),
-            Text('Drive: ${_fmt(_s.totalUsage)} of ${_fmt(_s.totalLimit)} used', style: ADText.preview(c: AD.textTertiary)),
+            UiText(UiMessage.m_drive_value1_of_value2_used_af111f0822, params: {'value1': (_fmt(_s.totalUsage)).toString(), 'value2': (_fmt(_s.totalLimit)).toString()}, style: ADText.preview(c: AD.textTertiary)),
           ],
           const SizedBox(height: 8),
           if (_files.isEmpty)
-            Text('No AvaTOK files yet — anything you save to Drive appears here.', style: ADText.preview())
+            UiText(UiMessage.m_no_avatok_files_yet_anything_e7f23a4af0, style: ADText.preview())
           else
             ...(_files.take(12).map((f) => Padding(
                   padding: const EdgeInsets.symmetric(vertical: Msg.s2),
@@ -679,15 +685,15 @@ class _BackupRestoreSectionState extends State<_BackupRestoreSection> {
   String _reason(String? r) {
     switch (r) {
       case 'no_token':
-        return 'Connect Google Drive first (the panel above) to back up.';
+        return uiCopy(UiMessage.m_connect_google_drive_first_the_5ff5880068);
       case 'no_backup':
-        return 'No backup found in your Drive yet.';
+        return uiCopy(UiMessage.m_no_backup_found_in_your_28929fef5f);
       case 'empty':
-        return 'Nothing to back up yet.';
+        return uiCopy(UiMessage.m_nothing_to_back_up_yet_48e29c4534);
       case 'drive_upload_failed':
-        return 'Upload failed — check your connection and try again.';
+        return uiCopy(UiMessage.m_upload_failed_check_your_connection_00e3d94ef8);
       default:
-        return 'Backup failed${r != null ? ' ($r)' : ''}.';
+        return uiCopy(UiMessage.m_backup_failed_value1_5536d6fce4, {'value1': (r != null ? ' ($r)' : '').toString()});
     }
   }
 
@@ -702,8 +708,8 @@ class _BackupRestoreSectionState extends State<_BackupRestoreSection> {
           {'ok': res.ok, if (res.reason != null) 'reason': res.reason!, 'ms': sw.elapsedMilliseconds});
       _snack(res.ok
           ? (res.reason == 'media_partial'
-              ? 'Backed up ✓ (some media will retry on the next backup)'
-              : 'Chats + media backed up to your Google Drive ✓')
+              ? uiCopy(UiMessage.m_backed_up_some_media_will_7d0f13e7f8)
+              : uiCopy(UiMessage.m_chats_media_backed_up_to_9b860a8f88))
           : _reason(res.reason));
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -720,20 +726,18 @@ class _BackupRestoreSectionState extends State<_BackupRestoreSection> {
           borderRadius: BorderRadius.circular(AD.rDialog),
           side: const BorderSide(color: AD.borderControl, width: 1),
         ),
-        title: Text('Restore from Google Drive?', style: ADText.threadName()),
-        content: Text(
-          'This replaces the data on this device with your latest Drive backup '
-          '(chats, history and media). Anything newer on this device that has '
-          'not been backed up will be overwritten.',
+        title: UiText(UiMessage.m_restore_from_google_drive_ccb6046a70, style: ADText.threadName()),
+        content: UiText(
+          UiMessage.m_this_replaces_the_data_on_fa3a3f294e,
           style: ADText.preview(),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: ADText.rowName(c: AD.textSecondary)),
+            child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.rowName(c: AD.textSecondary)),
           ),
           AdButton(
-            label: 'Restore',
+            label: uiCopy(UiMessage.m_restore_a76e13b983),
             variant: AdButtonVariant.teal,
             fontSize: 15,
             onPressed: () => Navigator.pop(ctx, true),
@@ -751,8 +755,8 @@ class _BackupRestoreSectionState extends State<_BackupRestoreSection> {
           {'ok': res.ok, if (res.reason != null) 'reason': res.reason!, 'ms': sw.elapsedMilliseconds});
       _snack(res.ok
           ? (res.reason == 'media_partial'
-              ? 'Chats restored ✓ — remaining media re-downloads inside chats.'
-              : 'Chats + media restored from your Drive ✓')
+              ? uiCopy(UiMessage.m_chats_restored_remaining_media_re_eb9969459a)
+              : uiCopy(UiMessage.m_chats_media_restored_from_your_2019c067ba))
           : _reason(res.reason));
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -761,6 +765,7 @@ class _BackupRestoreSectionState extends State<_BackupRestoreSection> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return AdCard(
       radius: AD.rListCard,
       padding: const EdgeInsets.all(Msg.s4),
@@ -769,15 +774,14 @@ class _BackupRestoreSectionState extends State<_BackupRestoreSection> {
           ZineIconBadge(icon: PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.fill), color: AD.primaryBadge, size: 34),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Back up & restore', style: ADText.rowName()),
+            UiText(UiMessage.m_back_up_restore_2133ceb8ce, style: ADText.rowName()),
             const SizedBox(height: 2),
-            Text('Encrypted backup to your Google Drive', style: ADText.preview()),
+            UiText(UiMessage.m_encrypted_backup_to_your_google_d063a2bad8, style: ADText.preview()),
           ])),
         ]),
         const SizedBox(height: Msg.s2),
-        Text(
-          'Your chats are encrypted on this device before upload, so neither '
-          'AvaTOK nor Google can read them. Survives reinstalling the app.',
+        UiText(
+          UiMessage.m_your_chats_are_encrypted_on_ea0de8bfc0,
           style: ADText.preview(),
         ),
         const SizedBox(height: 12),
@@ -793,16 +797,15 @@ class _BackupRestoreSectionState extends State<_BackupRestoreSection> {
         child: Row(children: [
           const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2.2, color: AD.iconSearch)),
           const SizedBox(width: Msg.s2),
-          Text('Checking Google Drive…', style: ADText.preview()),
+          UiText(UiMessage.m_checking_google_drive_14d73b3588, style: ADText.preview()),
         ]),
       );
     }
     final ready = _connected == true && _folderReady;
     if (!ready) {
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text(
-          'Connect Google Drive in the panel above, then come back here to back '
-          'up or restore.',
+        UiText(
+          UiMessage.m_connect_google_drive_in_the_4c31862a05,
           style: ADText.preview(c: AD.textTertiary),
         ),
         const SizedBox(height: 8),
@@ -812,7 +815,7 @@ class _BackupRestoreSectionState extends State<_BackupRestoreSection> {
     return Row(children: [
       Expanded(
         child: AdButton(
-          label: 'Back up now',
+          label: uiCopy(UiMessage.m_back_up_now_02a2840b59),
           variant: AdButtonVariant.primary,
           fullWidth: true,
           fontSize: 14,
@@ -825,7 +828,7 @@ class _BackupRestoreSectionState extends State<_BackupRestoreSection> {
       const SizedBox(width: Msg.s2),
       Expanded(
         child: AdButton(
-          label: 'Restore',
+          label: uiCopy(UiMessage.m_restore_a76e13b983),
           variant: AdButtonVariant.ghost,
           fullWidth: true,
           fontSize: 14,

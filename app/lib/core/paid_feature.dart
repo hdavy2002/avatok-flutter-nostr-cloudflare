@@ -10,6 +10,8 @@
 /// a later phase — here [AvaWalletHook] is a thin interface with a safe default
 /// stub so any phase can wrap an action now and have it light up later.
 library;
+import 'localization/ui_text.dart';
+
 
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -78,13 +80,11 @@ class _StubWallet implements AvaWalletHook {
               ZineIconBadge(icon: PhosphorIcons.wallet(PhosphorIconsStyle.fill),
                   color: AD.online, size: 36),
               const SizedBox(width: Msg.s3),
-              Expanded(child: Text('Top up to use this',
+              Expanded(child: UiText(UiMessage.m_top_up_to_use_this_3644df84e1,
                   style: ADText.threadName().copyWith(fontSize: 18))),
             ]),
             const SizedBox(height: Msg.s3),
-            Text('Premium Ava features run on Tokens. Add Tokens to your wallet '
-                '(minimum $kMinTopUpLabel) to unlock image and voice generation, '
-                'MCP tools, and always-on Guardian.',
+            UiText(UiMessage.m_premium_ava_features_run_on_7374b15136, params: {'kMinTopUpLabel': (kMinTopUpLabel).toString()},
                 style: ADText.preview()),
             const SizedBox(height: Msg.s4),
             ZineButton(
@@ -100,7 +100,7 @@ class _StubWallet implements AvaWalletHook {
             const SizedBox(height: Msg.s2),
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Not now',
+              child: UiText(UiMessage.m_not_now_a0e63d7c71,
                   style: ADText.rowName(c: AD.textSecondary).copyWith(fontSize: 14)),
             ),
           ]),
@@ -122,6 +122,7 @@ class PaidBadge extends StatelessWidget {
   const PaidBadge({super.key, this.label = 'Paid'});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final fam = AD.familyByName('mint');
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
@@ -177,7 +178,7 @@ class PaidFeature extends StatelessWidget {
       // Show the cost preview, then route to top-up.
       if (costTokens > 0) {
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('$actionLabel — $costTokens coins. Top up to continue.')));
+            SnackBar(content: UiText(UiMessage.m_actionlabel_costtokens_coins_top_up_5e9d9f90d1, params: {'actionLabel': (actionLabel).toString(), 'costTokens': (costTokens).toString()})));
       }
       await _w.openTopUp(context, suggestedTokens: kMinTopUpTokens);
       return;
@@ -193,9 +194,9 @@ class PaidFeature extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => _onTap(context),
         child: child,
-      );
+      ); }
 }

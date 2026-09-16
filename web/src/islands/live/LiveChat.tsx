@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 // Live chat — renders messages from the shared room socket and sends new ones.
 // Chat + reactions travel over the same WS (room.ts). PHASE-C §5.
 import { useEffect, useRef, useState } from 'react';
@@ -16,6 +18,8 @@ export interface LiveChatProps {
 const QUICK_REACTIONS = ['❤️', '🔥', '👏', '😂', '🎉'];
 
 export function LiveChat({ messages, onSend, onReact, warn, onWarnSeen, disabled }: LiveChatProps) {
+  const {t:uiT}=useUiTranslation("web-live");
+
   const [text, setText] = useState('');
   const listRef = useRef<HTMLDivElement | null>(null);
   const pinnedBottom = useRef(true);
@@ -54,9 +58,7 @@ export function LiveChat({ messages, onSend, onReact, warn, onWarnSeen, disabled
         className="flex-1 min-h-0 space-y-1.5 overflow-y-auto px-3 py-3 [scrollbar-width:thin]"
       >
         {messages.length === 0 ? (
-          <p className="px-1 py-2 font-body font-bold text-[13px] text-inkMute">
-            Say hi 👋 — chat appears here.
-          </p>
+          <p className="px-1 py-2 font-body font-bold text-[13px] text-inkMute"><UiText id="web-live.3aa7d5d7157d68b7" source="Say hi 👋 — chat appears here." />{" "}</p>
         ) : (
           messages.map((m) =>
             m.kind === 'system' ? (
@@ -101,7 +103,7 @@ export function LiveChat({ messages, onSend, onReact, warn, onWarnSeen, disabled
           maxLength={120}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && submit()}
-          placeholder={disabled ? 'Join to chat' : 'Send a message'}
+          placeholder={disabled ? uiT("web-live.5af813761f57aea8","Join to chat") : uiT("web-live.56e541ad86e099c0","Send a message")}
           className="min-w-0 flex-1 rounded-zineField border-zine border-ink bg-paper px-3 py-2 font-body font-bold text-[14px] text-ink placeholder:text-placeholder focus:outline-none focus:shadow-zine-focus disabled:bg-paper2 disabled:text-inkMute"
         />
         <button
@@ -109,9 +111,7 @@ export function LiveChat({ messages, onSend, onReact, warn, onWarnSeen, disabled
           disabled={disabled || !text.trim()}
           onClick={submit}
           className="shrink-0 rounded-full border-zine border-ink bg-lime px-4 py-2 font-display font-semibold text-[15px] text-ink shadow-zine-sm transition-transform duration-zine active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed disabled:border-inkMute disabled:bg-paper2 disabled:text-inkMute disabled:shadow-none"
-        >
-          Send
-        </button>
+        ><UiText id="web-live.f6f4688ff23d50c6" source="Send" />{" "}</button>
       </div>
     </div>
   );

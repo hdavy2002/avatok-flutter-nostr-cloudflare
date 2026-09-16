@@ -1,3 +1,5 @@
+
+import '../../../core/localization/ui_text.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -212,7 +214,7 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
         track: AudioTrack(
           trackId: _trackId,
           title: _title,
-          subtitle: 'Call recording',
+          subtitle: uiCopy(UiMessage.m_call_recording_bb8d55c975),
           originRoute: 'inbox:${_c.conv}',
         ),
         bytes: bytes,
@@ -290,7 +292,7 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
                 ? PhosphorIcons.pauseCircle(PhosphorIconsStyle.bold)
                 : PhosphorIcons.playCircle(PhosphorIconsStyle.bold),
             color: AD.primaryBadge,
-            label: playing ? 'Pause' : 'Play',
+            label: playing ? uiCopy(UiMessage.m_pause_858e4ba7a2) : uiCopy(UiMessage.m_play_436e61016e),
             onTap: () {
               Navigator.pop(sheetCtx);
               unawaited(_togglePlay());
@@ -299,7 +301,7 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
           _RecMenuRow(
             icon: PhosphorIcons.textAa(PhosphorIconsStyle.bold),
             color: AD.iconSearch,
-            label: 'Edit title & description',
+            label: uiCopy(UiMessage.m_edit_title_description_81d3cbb5e8),
             onTap: () {
               Navigator.pop(sheetCtx);
               unawaited(_openDetail());
@@ -308,7 +310,7 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
           _RecMenuRow(
             icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold),
             color: AD.iconVideo,
-            label: 'Share',
+            label: uiCopy(UiMessage.m_share_29887a5ff9),
             onTap: () {
               Navigator.pop(sheetCtx);
               unawaited(callRecShare(context,
@@ -320,7 +322,7 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
           _RecMenuRow(
             icon: PhosphorIcons.downloadSimple(PhosphorIconsStyle.bold),
             color: AD.iconSearch,
-            label: 'Download',
+            label: uiCopy(UiMessage.m_download_d6eafe8235),
             onTap: () {
               Navigator.pop(sheetCtx);
               unawaited(callRecDownload(context,
@@ -330,7 +332,7 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
           _RecMenuRow(
             icon: PhosphorIcons.trash(PhosphorIconsStyle.bold),
             color: AD.danger,
-            label: 'Delete',
+            label: uiCopy(UiMessage.m_delete_e2d0a54968),
             danger: true,
             onTap: () {
               Navigator.pop(sheetCtx);
@@ -345,6 +347,7 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final size = callRecBytesLabel(_c.recBytes);
     // Duration has moved onto the play row ("Play recording · 3:41"), so it is
     // deliberately NOT repeated here.
@@ -420,7 +423,7 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
                             color: AD.unreadAccent, shape: BoxShape.circle),
                       ),
                       const SizedBox(width: 5),
-                      Text('New',
+                      UiText(UiMessage.m_new_18fdd549b2,
                           style: ADText.statCaption(c: AD.primaryBadge)
                               .copyWith(fontWeight: FontWeight.w700)),
                     ],
@@ -429,7 +432,7 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
                   // The green consent line. Deliberately explicit about who is
                   // on the recording — this is the only place, once the call is
                   // over, that says both parties are on it.
-                  Text('Call between $_peerName and you',
+                  UiText(UiMessage.m_call_between_peername_and_you_96a86c039c, params: {'peerName': (_peerName).toString()},
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: ADText.statCaption(c: AD.online)
@@ -492,10 +495,10 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
                         Expanded(
                           child: Text(
                             playing
-                                ? 'Playing${label.isEmpty ? '' : ' · $label'}'
+                                ? uiCopy(UiMessage.m_playing_value1_d4a901d3ab, {'value1': (label.isEmpty ? '' : ' · $label').toString()})
                                 : (label.isEmpty
-                                    ? 'Play recording'
-                                    : 'Play recording · $label'),
+                                    ? uiCopy(UiMessage.m_play_recording_67e0ddff71)
+                                    : uiCopy(UiMessage.m_play_recording_label_e5c0276a89, {'label': (label).toString()})),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: ADText.rowName(c: AD.primaryBadge),
@@ -603,6 +606,7 @@ class _CallRecSeekBarState extends State<CallRecSeekBar> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return ValueListenableBuilder<PlaybackState?>(
       valueListenable: AudioPlaybackService.I.state,
       builder: (context, st, _) {
@@ -695,6 +699,7 @@ class CallRecAvatarPair extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final overlap = size * 0.55;
     return SizedBox(
       width: size + overlap,
@@ -873,7 +878,7 @@ Future<void> callRecShare(
       if (peerUid != null && peerUid.isNotEmpty) 'peer_uid': peerUid,
     }));
     messenger.showSnackBar(const SnackBar(
-        content: Text('Couldn’t load the recording to share.')));
+        content: UiText(UiMessage.m_couldn_t_load_the_recording_4ec86fa426)));
     return;
   }
   try {
@@ -908,7 +913,7 @@ Future<void> callRecShare(
       if (peerUid != null && peerUid.isNotEmpty) 'peer_uid': peerUid,
     }));
     messenger.showSnackBar(
-        const SnackBar(content: Text('Couldn’t share the recording.')));
+        const SnackBar(content: UiText(UiMessage.m_couldn_t_share_the_recording_cd18328c20)));
   }
 }
 
@@ -931,7 +936,7 @@ Future<void> callRecDownload(
       'source': CallRecordingStore.I.lastAudioSource,
     }));
     messenger.showSnackBar(const SnackBar(
-        content: Text('Couldn’t load the recording to download.')));
+        content: UiText(UiMessage.m_couldn_t_load_the_recording_8aab3cadc0)));
     return;
   }
   try {
@@ -952,7 +957,7 @@ Future<void> callRecDownload(
       'source': CallRecordingStore.I.lastAudioSource,
     }));
     messenger.showSnackBar(
-        SnackBar(content: Text('Saved to Downloads/AvaTok/$fileName')));
+        SnackBar(content: UiText(UiMessage.m_saved_to_downloads_avatok_filename_38806d4107, params: {'fileName': (fileName).toString()})));
   } catch (e, st) {
     unawaited(Analytics.captureException(e, st,
         screen: 'callrec', handled: true, extra: {'stage': 'download', 'call_id': callId}));
@@ -964,7 +969,7 @@ Future<void> callRecDownload(
       'bytes': bytes.length,
     }));
     messenger.showSnackBar(
-        const SnackBar(content: Text('Couldn’t save the recording.')));
+        const SnackBar(content: UiText(UiMessage.m_couldn_t_save_the_recording_0e30088009)));
   }
 }
 
@@ -984,21 +989,20 @@ Future<bool> callRecConfirmDelete(
     context: context,
     builder: (d) => AlertDialog(
       backgroundColor: AvaDialTheme.surface2,
-      title: Text('Delete this recording?',
+      title: UiText(UiMessage.m_delete_this_recording_8cc797daec,
           style: ADText.threadName(c: AvaDialTheme.text)),
-      content: Text(
-        'The audio is removed from this phone and from your AvaStorage, and '
-        'the space it used is freed. This cannot be undone.',
+      content: UiText(
+        UiMessage.m_the_audio_is_removed_from_dddcd616fd,
         style: ADText.preview(c: AvaDialTheme.textSoft),
       ),
       actions: [
         TextButton(
             onPressed: () => Navigator.pop(d, false),
             child:
-                Text('Cancel', style: ADText.preview(c: AvaDialTheme.textSoft))),
+                UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.preview(c: AvaDialTheme.textSoft))),
         TextButton(
             onPressed: () => Navigator.pop(d, true),
-            child: Text('Delete', style: ADText.preview(c: AD.danger))),
+            child: UiText(UiMessage.m_delete_e2d0a54968, style: ADText.preview(c: AD.danger))),
       ],
     ),
   );
@@ -1020,8 +1024,7 @@ Future<bool> callRecConfirmDelete(
         'had_local_row': false,
       }));
       messenger.showSnackBar(const SnackBar(
-          content: Text('Couldn’t delete the recording. Nothing was '
-              'removed — try again.')));
+          content: UiText(UiMessage.m_couldn_t_delete_the_recording_e7bd8ebeb5)));
       return false;
     }
   } catch (e, st) {
@@ -1035,7 +1038,7 @@ Future<bool> callRecConfirmDelete(
       'stage': 'exception',
     }));
     messenger.showSnackBar(
-        const SnackBar(content: Text('Couldn’t delete the recording.')));
+        const SnackBar(content: UiText(UiMessage.m_couldn_t_delete_the_recording_1a99621904)));
     return false;
   }
   unawaited(Analytics.capture('callrec_deleted', {
@@ -1066,10 +1069,10 @@ class _RecMenuRow extends StatelessWidget {
   final bool danger;
 
   @override
-  Widget build(BuildContext context) => ListTile(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return ListTile(
         leading: PhosphorIcon(icon, color: color),
         title: Text(label,
             style: ADText.rowName(c: danger ? AD.danger : AvaDialTheme.text)),
         onTap: onTap,
-      );
+      ); }
 }

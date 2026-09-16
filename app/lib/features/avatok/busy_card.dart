@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/ui/avatok_dark.dart';
@@ -63,32 +65,32 @@ class BusyCard extends StatelessWidget {
   });
 
   String get _title {
-    final n = name.trim().isEmpty ? 'They' : name.trim();
+    final n = name.trim().isEmpty ? uiCopy(UiMessage.m_they_a32efbd9d6) : name.trim();
     switch (busyReason) {
       case 'active_call':
-        return '$n is on another call.';
+        return uiCopy(UiMessage.m_n_is_on_another_call_21276a9b4b, {'n': (n).toString()});
       case 'do_not_disturb':
-        return "$n isn't taking calls right now.";
+        return uiCopy(UiMessage.m_n_isn_t_taking_calls_21f53cf0a6, {'n': (n).toString()});
       case 'receptionist':
-        return '$n is busy right now.';
+        return uiCopy(UiMessage.m_n_is_busy_right_now_5d04823a39, {'n': (n).toString()});
       default:
-        return '$n is busy right now.';
+        return uiCopy(UiMessage.m_n_is_busy_right_now_5d04823a39, {'n': (n).toString()});
     }
   }
 
   String get _subtitle {
     // "them" for the neutral pronoun reads better than "they's" in the
     // possessive-ish "when {pronoun}'s available" slot.
-    final p = switch (pronoun) {
-      'he' => "he's",
-      'she' => "she's",
-      _ => "they're",
+    return switch (pronoun) {
+      'he' => uiCopy(UiMessage.m_we_can_notify_you_when_9f9ab4e7b9),
+      'she' => uiCopy(UiMessage.m_we_can_notify_you_when_7390022d8b),
+      _ => uiCopy(UiMessage.m_we_can_notify_you_when_98bd5d2ff4),
     };
-    return 'We can notify you when $p available.';
   }
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 380),
       child: AdCard(
@@ -112,7 +114,7 @@ class BusyCard extends StatelessWidget {
             // (accent fill) because it's the one thing WhatsApp can't do.
             if (receptionistEnabled) ...[
               _adPillButton(
-                label: 'Leave a message for Ava',
+                label: uiCopy(UiMessage.m_leave_a_message_for_ava_a4efabf9f2),
                 fill: AD.primaryBadge,
                 fontSize: 16,
                 onPressed: onLeaveMessage,
@@ -120,7 +122,7 @@ class BusyCard extends StatelessWidget {
               const SizedBox(height: Msg.s2),
             ],
             _adPillButton(
-              label: notifyRegistered ? "We'll notify you" : 'Notify me',
+              label: notifyRegistered ? uiCopy(UiMessage.m_we_ll_notify_you_de7baff89c) : uiCopy(UiMessage.m_notify_me_a5b3a74811),
               fill: AD.iconSearch,
               fontSize: 16,
               loading: notifyInFlight,
@@ -130,7 +132,7 @@ class BusyCard extends StatelessWidget {
             ),
             const SizedBox(height: Msg.s2),
             _adPillButton(
-              label: 'Cancel',
+              label: uiCopy(UiMessage.m_cancel_19766ed6cc),
               fill: AD.card,
               border: AD.borderControl,
               textColor: AD.textPrimary,

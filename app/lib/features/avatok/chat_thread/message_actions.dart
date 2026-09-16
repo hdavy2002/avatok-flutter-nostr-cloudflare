@@ -312,7 +312,7 @@ extension _ChatThreadActions on _ChatThreadScreenState {
     HapticFeedback.selectionClick();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Copied'), duration: Duration(seconds: 1)));
+        const SnackBar(content: UiText(UiMessage.m_copied_8d525e5f15), duration: Duration(seconds: 1)));
     }
   }
 
@@ -334,7 +334,7 @@ extension _ChatThreadActions on _ChatThreadScreenState {
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text('Copy which link?', style: ADText.rowName()),
+                child: UiText(UiMessage.m_copy_which_link_923d9fda14, style: ADText.rowName()),
               ),
             ),
             for (final u in urls)
@@ -354,7 +354,7 @@ extension _ChatThreadActions on _ChatThreadScreenState {
     HapticFeedback.selectionClick();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Link copied'), duration: Duration(seconds: 1)));
+        const SnackBar(content: UiText(UiMessage.m_link_copied_d12860c21e), duration: Duration(seconds: 1)));
     }
     Analytics.capture('chat_link_copied', {'count': urls.length});
   }
@@ -514,7 +514,7 @@ extension _ChatThreadActions on _ChatThreadScreenState {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
               child: Align(alignment: Alignment.centerLeft,
-                  child: Text('React with…', style: ADText.rowName())),
+                  child: UiText(UiMessage.m_react_with_ea043ab13d, style: ADText.rowName())),
             ),
             Flexible(
               child: ListView(
@@ -573,7 +573,7 @@ extension _ChatThreadActions on _ChatThreadScreenState {
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
             child: Align(alignment: Alignment.centerLeft,
-                child: Text('Reactions', style: ADText.rowName())),
+                child: UiText(UiMessage.m_reactions_8a7ede6b5f, style: ADText.rowName())),
           ),
           for (final e in m.reactBy.entries)
             for (final uid in e.value)
@@ -624,7 +624,7 @@ extension _ChatThreadActions on _ChatThreadScreenState {
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
             child: Align(alignment: Alignment.centerLeft,
-                child: Text('Info', style: ADText.rowName())),
+                child: UiText(UiMessage.m_info_170322a32f, style: ADText.rowName())),
           ),
           if (m.readBy.isEmpty && m.deliveredTo.isEmpty)
             Padding(
@@ -637,15 +637,15 @@ extension _ChatThreadActions on _ChatThreadScreenState {
               // look like the receipt system is broken.
               child: Text(
                 RemoteConfig.groupReceiptsEnabled
-                    ? 'No read receipts yet'
-                    : 'Read receipts are off for group chats.',
+                    ? uiCopy(UiMessage.m_no_read_receipts_yet_31744231a0)
+                    : uiCopy(UiMessage.m_read_receipts_are_off_for_1760b0aa47),
                 style: ADText.bubbleBody(c: AD.textSecondary)),
             )
           else ...[
             if (m.readBy.isNotEmpty) ...[
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
-                child: Text('READ BY (${m.readBy.length})', style: ADText.sectionLabel(c: AD.iconSearch)),
+                child: UiText(UiMessage.m_read_by_value1_46ead820d6, params: {'value1': (m.readBy.length).toString()}, style: ADText.sectionLabel(c: AD.iconSearch)),
               ),
               for (final uid in m.readBy.keys)
                 ListTile(
@@ -669,7 +669,7 @@ extension _ChatThreadActions on _ChatThreadScreenState {
             if (m.deliveredTo.isNotEmpty) ...[
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
-                child: Text('DELIVERED TO (${m.deliveredTo.length})', style: ADText.sectionLabel(c: AD.textSecondary)),
+                child: UiText(UiMessage.m_delivered_to_value1_4723de89da, params: {'value1': (m.deliveredTo.length).toString()}, style: ADText.sectionLabel(c: AD.textSecondary)),
               ),
               for (final uid in m.deliveredTo.keys)
                 ListTile(
@@ -710,7 +710,7 @@ extension _ChatThreadActions on _ChatThreadScreenState {
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
             child: Align(alignment: Alignment.centerLeft,
-                child: Text('Voted "$option"', style: ADText.rowName())),
+                child: UiText(UiMessage.m_voted_option_6dc81e986c, params: {'option': (option).toString()}, style: ADText.rowName())),
           ),
           ConstrainedBox(constraints: const BoxConstraints(maxHeight: 360), child: ListView(shrinkWrap: true, children: [
             for (final uid in uids)
@@ -735,13 +735,12 @@ extension _ChatThreadActions on _ChatThreadScreenState {
     final approved = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Let Ava read this file?'),
-        content: const Text(
-          'A temporary server-readable copy is needed to summarize or translate it. '
-          'The original Messenger attachment stays encrypted, and the temporary copy is deleted within 24 hours.'),
+        title: const UiText(UiMessage.m_let_ava_read_this_file_114e607bc8),
+        content: const UiText(
+          UiMessage.m_a_temporary_server_readable_copy_6d36be3ed4),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Allow once')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const UiText(UiMessage.m_cancel_19766ed6cc)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const UiText(UiMessage.m_allow_once_168511d24d)),
         ],
       ),
     );
@@ -924,7 +923,7 @@ extension _ChatThreadActions on _ChatThreadScreenState {
   Future<void> _forward(_Msg m) async {
     if (!RemoteConfig.unlimitedForwardEnabled) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Forwarding is temporarily unavailable')));
+          const SnackBar(content: UiText(UiMessage.m_forwarding_is_temporarily_unavailable_b9f4cf9242)));
       return;
     }
     final msgKind = m.media?.kind.name ?? 'text';
@@ -1038,10 +1037,10 @@ extension _ChatThreadActions on _ChatThreadScreenState {
           bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
         ),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Forward to ${c.name}', style: ADText.threadName()),
+          UiText(UiMessage.m_forward_to_value1_6d2d9e7f0c, params: {'value1': (c.name).toString()}, style: ADText.threadName()),
           const SizedBox(height: 4),
-          Text(isMedia ? 'Edit or remove the caption before sending'
-                       : 'Edit the message before sending',
+          Text(isMedia ? uiCopy(UiMessage.m_edit_or_remove_the_caption_9fdba5cf1c)
+                       : uiCopy(UiMessage.m_edit_the_message_before_sending_d032ab31d3),
               style: ADText.preview(c: AD.textTertiary)),
           const SizedBox(height: 12),
           // For media, show a small preview chip so it's clear what rides along.
@@ -1087,7 +1086,7 @@ extension _ChatThreadActions on _ChatThreadScreenState {
                     border: InputBorder.none,
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                    hintText: isMedia ? 'Add a caption…' : 'Message',
+                    hintText: isMedia ? uiCopy(UiMessage.m_add_a_caption_92a9f3fa63) : uiCopy(UiMessage.m_message_2f77668a9d),
                     hintStyle: ADText.preview(c: AD.textTertiary),
                   ),
                 ),
@@ -1145,6 +1144,6 @@ extension _ChatThreadActions on _ChatThreadScreenState {
       });
       PushService.notifyMessage([c.uid], _myName ?? 'AvaTOK');
     } catch (_) {}
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Forwarded to ${c.name}')));
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: UiText(UiMessage.m_forwarded_to_value1_bedc3132ef, params: {'value1': (c.name).toString()})));
   }
 }

@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -102,18 +105,19 @@ class _CommercialServicePolicyScreenState
       'listing_id': widget.listingId,
       'kind': listing.kind,
     });
-    showAdToast(context, message: 'Policy updated for future bookings.');
+    showAdToast(context, message: uiCopy(UiMessage.m_policy_updated_for_future_bookings_4b623d16c0));
     Navigator.pop(context, true);
   }
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final listing = _listing;
     final live = listing?.kind == 'live_event';
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: ZineAppBar(
-        title: live ? 'Live ticket policy' : 'Consultation policy',
+        title: live ? uiCopy(UiMessage.m_live_ticket_policy_4c796173fb) : uiCopy(UiMessage.m_consultation_policy_fad5962a45),
         markWord: 'policy',
         tag: 'future bookings',
       ),
@@ -136,8 +140,8 @@ class _CommercialServicePolicyScreenState
                       size: 19,
                     ),
                     const SizedBox(width: Msg.s2),
-                    Expanded(child: Text(
-                      'Changes apply only to future checkouts. Customers who already booked keep the exact policy they accepted.',
+                    Expanded(child: UiText(
+                      UiMessage.m_changes_apply_only_to_future_da964378e8,
                       style: ADText.preview(c: AD.textPrimary),
                     )),
                   ]),
@@ -145,38 +149,38 @@ class _CommercialServicePolicyScreenState
                 const SizedBox(height: Msg.s4),
                 if (live)
                   ZineDropdown<int>(
-                    label: 'customer refund deadline',
+                    label: uiCopy(UiMessage.m_customer_refund_deadline_4059cf46b6),
                     value: _refundHours,
                     items: const [
-                      DropdownMenuItem(value: 48, child: Text('48 hours before')),
-                      DropdownMenuItem(value: 24, child: Text('24 hours before')),
-                      DropdownMenuItem(value: 12, child: Text('12 hours before')),
-                      DropdownMenuItem(value: 0, child: Text('Non-refundable')),
+                      DropdownMenuItem(value: 48, child: UiText(UiMessage.m_48_hours_before_406d1049a0)),
+                      DropdownMenuItem(value: 24, child: UiText(UiMessage.m_24_hours_before_7dc76e45dd)),
+                      DropdownMenuItem(value: 12, child: UiText(UiMessage.m_12_hours_before_86e15248a2)),
+                      DropdownMenuItem(value: 0, child: UiText(UiMessage.m_non_refundable_9916b61a64)),
                     ],
                     onChanged: (v) => setState(() => _refundHours = v ?? 24),
                   )
                 else ...[
                   ZineDropdown<int>(
-                    label: 'customer cancellation deadline',
+                    label: uiCopy(UiMessage.m_customer_cancellation_deadline_359276e1fa),
                     value: _cancellationHours,
                     items: const [
-                      DropdownMenuItem(value: 48, child: Text('48 hours before')),
-                      DropdownMenuItem(value: 24, child: Text('24 hours before')),
-                      DropdownMenuItem(value: 12, child: Text('12 hours before')),
-                      DropdownMenuItem(value: 0, child: Text('Non-refundable')),
+                      DropdownMenuItem(value: 48, child: UiText(UiMessage.m_48_hours_before_406d1049a0)),
+                      DropdownMenuItem(value: 24, child: UiText(UiMessage.m_24_hours_before_7dc76e45dd)),
+                      DropdownMenuItem(value: 12, child: UiText(UiMessage.m_12_hours_before_86e15248a2)),
+                      DropdownMenuItem(value: 0, child: UiText(UiMessage.m_non_refundable_9916b61a64)),
                     ],
                     onChanged: (v) =>
                         setState(() => _cancellationHours = v ?? 24),
                   ),
                   const SizedBox(height: Msg.s4),
                   ZineDropdown<int>(
-                    label: 'minimum booking notice',
+                    label: uiCopy(UiMessage.m_minimum_booking_notice_4ade523a4d),
                     value: _bookingNoticeHours,
                     items: const [
-                      DropdownMenuItem(value: 1, child: Text('1 hour')),
-                      DropdownMenuItem(value: 2, child: Text('2 hours')),
-                      DropdownMenuItem(value: 6, child: Text('6 hours')),
-                      DropdownMenuItem(value: 24, child: Text('24 hours')),
+                      DropdownMenuItem(value: 1, child: UiText(UiMessage.m_1_hour_f8b8883f0c)),
+                      DropdownMenuItem(value: 2, child: UiText(UiMessage.m_2_hours_9808e0ec3c)),
+                      DropdownMenuItem(value: 6, child: UiText(UiMessage.m_6_hours_4105ae3b8a)),
+                      DropdownMenuItem(value: 24, child: UiText(UiMessage.m_24_hours_f0514e8df8)),
                     ],
                     onChanged: (v) =>
                         setState(() => _bookingNoticeHours = v ?? 2),
@@ -186,8 +190,8 @@ class _CommercialServicePolicyScreenState
                     Expanded(child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Allow rescheduling', style: ADText.rowName()),
-                        Text('Before the same cancellation deadline.',
+                        UiText(UiMessage.m_allow_rescheduling_375a56532a, style: ADText.rowName()),
+                        UiText(UiMessage.m_before_the_same_cancellation_deadline_89826a77c5,
                             style: ADText.preview()),
                       ],
                     )),
@@ -200,15 +204,15 @@ class _CommercialServicePolicyScreenState
                   const SizedBox(height: Msg.s4),
                   ZineField(
                     controller: _preparation,
-                    label: 'preparation instructions (optional)',
-                    hint: 'What should the customer prepare before the call?',
+                    label: uiCopy(UiMessage.m_preparation_instructions_optional_8587c70140),
+                    hint: uiCopy(UiMessage.m_what_should_the_customer_prepare_db42b5b82c),
                     maxLines: 4,
                     maxLength: 600,
                     textCapitalization: TextCapitalization.sentences,
                   ),
                   const SizedBox(height: Msg.s3),
-                  Text(
-                    'Customer no-show: the booked session is charged. Creator absence or provider failure remains subject to server evidence and support review.',
+                  UiText(
+                    UiMessage.m_customer_no_show_the_booked_c8f14adead,
                     style: ADText.preview(c: AD.textSecondary),
                   ),
                 ],
@@ -228,7 +232,7 @@ class _CommercialServicePolicyScreenState
               child: SafeArea(
                 minimum: const EdgeInsets.all(Msg.s3),
                 child: AdButton(
-                  label: _saving ? 'Saving…' : 'Save policy',
+                  label: _saving ? uiCopy(UiMessage.m_saving_23e39291d6) : uiCopy(UiMessage.m_save_policy_57ee14ce14),
                   fullWidth: true,
                   loading: _saving,
                   onPressed: _saving || listing == null ? null : _save,

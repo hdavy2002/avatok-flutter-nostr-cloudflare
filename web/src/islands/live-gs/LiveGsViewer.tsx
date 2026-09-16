@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 // LiveGsViewer — the /live/<id> island orchestrator. [WEB-GS-LIVE-1]
 //
 // New TRANSPORT for the paid-live-event product (GetStream, region Mumbai — see
@@ -71,6 +73,8 @@ function reducer(s: State, a: Action): State {
 }
 
 function Inner({ listingId, title, poster, price, creatorName, creatorHandle, creatorAvatar }: LiveGsViewerProps) {
+  const {t:uiT}=useUiTranslation("web-live-gs");
+
   const [state, dispatch] = useReducer(reducer, { phase: 'idle', refusal: null, creds: null });
   const jwtRef = useRef<string | null>(null);
   const [client, setClient] = useState<Awaited<ReturnType<typeof streamClientFor>> | null>(null);
@@ -314,7 +318,7 @@ function Inner({ listingId, title, poster, price, creatorName, creatorHandle, cr
       <StreamVideo client={client as any}>
         <StreamCall call={call}>
           <LiveStage
-            title={title ?? 'Live'}
+            title={title ?? uiT("web-live-gs.b64ac05f17e64d03","Live")}
             creatorName={creatorName ?? null}
             creatorAvatar={creatorAvatar ?? null}
             myName={creatorHandle ?? state.creds.user_id}
@@ -354,30 +358,31 @@ function PosterGate({
   title?: string; poster?: string | null; price?: number | null; creatorName?: string | null;
   busy: boolean; onJoin: () => void;
 }) {
+  const {t:uiT}=useUiTranslation("web-live-gs");
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-6">
       <div className="overflow-hidden rounded-zine border-zine border-ink bg-paper2 shadow-zine">
         <div className="relative aspect-video w-full bg-ink">
           {poster ? (
-            <img src={cfImage(poster, { width: 1280, fit: 'cover' })} alt={title ?? 'Live'} className="h-full w-full object-cover opacity-90" />
+            <img src={cfImage(poster, { width: 1280, fit: 'cover' })} alt={title ?? uiT("web-live-gs.b64ac05f17e64d03","Live")} className="h-full w-full object-cover opacity-90" />
           ) : (
-            <div className="flex h-full w-full items-center justify-center font-mono uppercase tracking-[0.08em] text-inkMute font-bold">Live</div>
+            <div className="flex h-full w-full items-center justify-center font-mono uppercase tracking-[0.08em] text-inkMute font-bold"><UiText id="web-live-gs.b64ac05f17e64d03" source="Live" /></div>
           )}
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-ink/55 px-6 text-center">
-            <h1 className="font-display font-semibold text-[26px] leading-tight text-white drop-shadow">{title ?? 'Live session'}</h1>
-            {creatorName && <p className="font-body font-bold text-[15px] text-white/90">with {creatorName}</p>}
+            <h1 className="font-display font-semibold text-[26px] leading-tight text-white drop-shadow">{title ?? uiT("web-live-gs.94f506b7d34d68a2","Live session")}</h1>
+            {creatorName && <p className="font-body font-bold text-[15px] text-white/90"><UiText id="web-live-gs.0695b563acde461f" source="with" />{" "}{creatorName}</p>}
             <button
               type="button"
               onClick={onJoin}
               disabled={busy}
               className="inline-flex items-center gap-2.5 rounded-full border-zine border-ink bg-lime px-8 py-4 font-display font-semibold text-[20px] text-ink shadow-zine-sm transition-transform duration-zine active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed disabled:opacity-80"
             >
-              {busy ? <><Spinner size={18} /> Joining…</> : <>▶ Join the stream</>}
+              {busy ? <><Spinner size={18} />{" "}<UiText id="web-live-gs.6bbb89ee5d48b326" source="Joining…" /></> : <><UiText id="web-live-gs.4477824203f397da" source="▶ Join the stream" /></>}
             </button>
             {typeof price === 'number' && price > 0 && (
               <p className="font-mono font-bold uppercase text-[13px] tracking-[0.06em] text-white/80">
-                {inrOrFree(price)} ticket
-              </p>
+                {inrOrFree(price)}{" "}<UiText id="web-live-gs.14069429150abcbf" source="ticket" />{" "}</p>
             )}
           </div>
         </div>
@@ -387,17 +392,17 @@ function PosterGate({
 }
 
 function EndedCard({ title, creatorHref, ended, refund, rejoin }: { title?: string; creatorHref: string; ended: boolean; refund: boolean; rejoin: () => void }) {
+  const {t:uiT}=useUiTranslation("web-live-gs");
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-16 text-center">
       <div className="rounded-zine border-zine border-ink bg-card p-10 shadow-zine">
         <p className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">
-          {refund ? 'Refund on the way' : ended ? 'Session ended' : 'You left the stream'}
+          {refund ? uiT("web-live-gs.17c2838d2719098d","Refund on the way") : ended ? uiT("web-live-gs.4a50e4c0c4ffa965","Session ended") : uiT("web-live-gs.12a8ae6a6915353c","You left the stream")}
         </p>
-        <h1 className="mt-3 font-display font-semibold text-[26px] leading-tight text-ink">{title ?? 'Live session'}</h1>
+        <h1 className="mt-3 font-display font-semibold text-[26px] leading-tight text-ink">{title ?? uiT("web-live-gs.94f506b7d34d68a2","Live session")}</h1>
         {refund && (
-          <p className="mt-2 font-body font-bold text-[15px] leading-relaxed text-inkSoft">
-            The creator couldn't return — the unused part of your ticket is being refunded.
-          </p>
+          <p className="mt-2 font-body font-bold text-[15px] leading-relaxed text-inkSoft"><UiText id="web-live-gs.aa3c07495699aacd" source="The creator couldn't return — the unused part of your ticket is being refunded." />{" "}</p>
         )}
         <div className="mt-6 flex items-center justify-center gap-3">
           {!refund && (
@@ -406,12 +411,10 @@ function EndedCard({ title, creatorHref, ended, refund, rejoin }: { title?: stri
               onClick={rejoin}
               className="inline-flex rounded-full border-zine border-ink bg-lime px-7 py-3.5 font-display font-semibold text-[18px] text-ink shadow-zine-sm transition-transform duration-zine active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
             >
-              {ended ? 'Check again' : 'Rejoin'}
+              {ended ? uiT("web-live-gs.fb7099ad8e818d42","Check again") : uiT("web-live-gs.fb5cdea2e140edbf","Rejoin")}
             </button>
           )}
-          <a href={creatorHref} className="inline-flex rounded-full border-zine border-ink bg-card px-7 py-3.5 font-display font-semibold text-[18px] text-ink no-underline shadow-zine-sm">
-            View the creator
-          </a>
+          <a href={creatorHref} className="inline-flex rounded-full border-zine border-ink bg-card px-7 py-3.5 font-display font-semibold text-[18px] text-ink no-underline shadow-zine-sm"><UiText id="web-live-gs.e73afff1478776ab" source="View the creator" />{" "}</a>
         </div>
       </div>
     </div>
@@ -430,6 +433,8 @@ function RefusalScreen({
   title?: string; poster?: string | null; price?: number | null; creatorName?: string | null;
   creatorHref: string; bookHref: string; listingId: string; onRetry: () => void; onJoin: () => void;
 }) {
+  const {t:uiT}=useUiTranslation("web-live-gs");
+
   // [WEB-POSTHOG-1] §2.6 live_refusal_shown — once per distinct refusal
   // actually rendered to the viewer (the free-lane branches below resolve to
   // a screen the raw `refusal.reason` alone wouldn't tell you).
@@ -453,7 +458,7 @@ function RefusalScreen({
   const Frame = ({ children, tone = 'blueInk' }: { children: React.ReactNode; tone?: string }) => (
     <div className="mx-auto max-w-2xl px-4 py-16 text-center">
       <div className="rounded-zine border-zine border-ink bg-card p-10 shadow-zine">
-        <p className={`font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-${tone}`}>{title ?? 'Live session'}</p>
+        <p className={`font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-${tone}`}>{title ?? uiT("web-live-gs.94f506b7d34d68a2","Live session")}</p>
         {children}
       </div>
     </div>
@@ -474,10 +479,8 @@ function RefusalScreen({
     return (
       <Frame tone="blueInk">
         <h1 className="mt-3 font-display font-semibold text-[26px] leading-tight text-ink">{freeBox.full}</h1>
-        <p className="mt-2 font-body font-bold text-[15px] text-inkSoft">Sab spots bhar gaye — koi buy zaroori nahi tha.</p>
-        <a href={creatorHref} className="mt-6 inline-flex rounded-full border-zine border-ink bg-card px-7 py-3.5 font-display font-semibold text-[16px] text-ink no-underline shadow-zine-sm">
-          View the creator
-        </a>
+        <p className="mt-2 font-body font-bold text-[15px] text-inkSoft"><UiText id="web-live-gs.8f01e8752ccec47f" source="Sab spots bhar gaye — koi buy zaroori nahi tha." /></p>
+        <a href={creatorHref} className="mt-6 inline-flex rounded-full border-zine border-ink bg-card px-7 py-3.5 font-display font-semibold text-[16px] text-ink no-underline shadow-zine-sm"><UiText id="web-live-gs.e73afff1478776ab" source="View the creator" />{" "}</a>
       </Frame>
     );
   }
@@ -485,9 +488,7 @@ function RefusalScreen({
     return (
       <Frame>
         <h1 className="mt-3 font-display font-semibold text-[26px] leading-tight text-ink">{freeBox.disabled}</h1>
-        <a href="/explore" className="mt-6 inline-flex rounded-full border-zine border-ink bg-card px-7 py-3.5 font-display font-semibold text-[16px] text-ink no-underline shadow-zine-sm">
-          Back to explore
-        </a>
+        <a href="/explore" className="mt-6 inline-flex rounded-full border-zine border-ink bg-card px-7 py-3.5 font-display font-semibold text-[16px] text-ink no-underline shadow-zine-sm"><UiText id="web-live-gs.8d8733bfd7fdf8f4" source="Back to explore" />{" "}</a>
       </Frame>
     );
   }
@@ -507,15 +508,11 @@ function RefusalScreen({
     case 'too_late':
       return (
         <Frame tone="coral">
-          <h1 className="mt-3 font-display font-semibold text-[26px] leading-tight text-ink">This session has ended</h1>
-          <p className="mt-2 font-body font-bold text-[15px] text-inkSoft">Thanks for your interest — this one has wrapped up.</p>
+          <h1 className="mt-3 font-display font-semibold text-[26px] leading-tight text-ink"><UiText id="web-live-gs.e5ff4964c447ad8c" source="This session has ended" /></h1>
+          <p className="mt-2 font-body font-bold text-[15px] text-inkSoft"><UiText id="web-live-gs.04abe8973a77074e" source="Thanks for your interest — this one has wrapped up." /></p>
           <div className="mt-6 flex items-center justify-center gap-3">
-            <a href="/dashboard/bookings" className="inline-flex rounded-full border-zine border-ink bg-lime px-7 py-3.5 font-display font-semibold text-[16px] text-ink no-underline shadow-zine-sm">
-              View your receipt
-            </a>
-            <a href={creatorHref} className="inline-flex rounded-full border-zine border-ink bg-card px-7 py-3.5 font-display font-semibold text-[16px] text-ink no-underline shadow-zine-sm">
-              View the creator
-            </a>
+            <a href="/dashboard/bookings" className="inline-flex rounded-full border-zine border-ink bg-lime px-7 py-3.5 font-display font-semibold text-[16px] text-ink no-underline shadow-zine-sm"><UiText id="web-live-gs.10c6f3643e79618f" source="View your receipt" />{" "}</a>
+            <a href={creatorHref} className="inline-flex rounded-full border-zine border-ink bg-card px-7 py-3.5 font-display font-semibold text-[16px] text-ink no-underline shadow-zine-sm"><UiText id="web-live-gs.e73afff1478776ab" source="View the creator" />{" "}</a>
           </div>
         </Frame>
       );
@@ -526,15 +523,14 @@ function RefusalScreen({
       // with this listing preloaded so they can pay and walk straight in.
       return (
         <Frame tone="mintInk">
-          <h1 className="mt-3 font-display font-semibold text-[26px] leading-tight text-ink">This is live right now</h1>
-          <p className="mt-2 font-body font-bold text-[15px] text-inkSoft">
-            Get your ticket and you'll be watching in a moment{creatorName ? ` — ${creatorName} is streaming now` : ''}.
+          <h1 className="mt-3 font-display font-semibold text-[26px] leading-tight text-ink"><UiText id="web-live-gs.a15d0ff65a82faae" source="This is live right now" /></h1>
+          <p className="mt-2 font-body font-bold text-[15px] text-inkSoft"><UiText id="web-live-gs.b093bfe139941a63" source="Get your ticket and you'll be watching in a moment" />{creatorName ? uiT("web-live-gs.bae66a73dcacded3"," — {value0} is streaming now",{value0:String(creatorName)}) : ''}.
           </p>
           <a
             href={bookHref}
             className="mt-6 inline-flex items-center gap-2 rounded-full border-zine border-ink bg-lime px-8 py-4 font-display font-semibold text-[18px] text-ink no-underline shadow-zine-sm transition-transform duration-zine active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
           >
-            {typeof price === 'number' ? `Get your ticket — ${inrOrFree(price)}` : 'Get your ticket'}
+            {typeof price === 'number' ? uiT("web-live-gs.97493f16afec7825","Get your ticket — {value0}",{value0:String(inrOrFree(price))}) : uiT("web-live-gs.f750370b27aec8f5","Get your ticket")}
           </a>
         </Frame>
       );
@@ -542,22 +538,18 @@ function RefusalScreen({
     case 'not_yours':
       return (
         <Frame tone="coral">
-          <h1 className="mt-3 font-display font-semibold text-[26px] leading-tight text-ink">Not your session</h1>
-          <p className="mt-2 font-body font-bold text-[15px] text-inkSoft">This session is booked for someone else.</p>
-          <a href="/explore" className="mt-6 inline-flex rounded-full border-zine border-ink bg-card px-7 py-3.5 font-display font-semibold text-[16px] text-ink no-underline shadow-zine-sm">
-            Back to explore
-          </a>
+          <h1 className="mt-3 font-display font-semibold text-[26px] leading-tight text-ink"><UiText id="web-live-gs.c37264783e427dfe" source="Not your session" /></h1>
+          <p className="mt-2 font-body font-bold text-[15px] text-inkSoft"><UiText id="web-live-gs.ce40935e74e4e096" source="This session is booked for someone else." /></p>
+          <a href="/explore" className="mt-6 inline-flex rounded-full border-zine border-ink bg-card px-7 py-3.5 font-display font-semibold text-[16px] text-ink no-underline shadow-zine-sm"><UiText id="web-live-gs.8d8733bfd7fdf8f4" source="Back to explore" />{" "}</a>
         </Frame>
       );
 
     case 'disabled':
       return (
         <Frame>
-          <h1 className="mt-3 font-display font-semibold text-[26px] leading-tight text-ink">Not open yet</h1>
-          <p className="mt-2 font-body font-bold text-[15px] text-inkSoft">Live sessions aren't open on the web yet — check back soon.</p>
-          <a href="/explore" className="mt-6 inline-flex rounded-full border-zine border-ink bg-card px-7 py-3.5 font-display font-semibold text-[16px] text-ink no-underline shadow-zine-sm">
-            Back to explore
-          </a>
+          <h1 className="mt-3 font-display font-semibold text-[26px] leading-tight text-ink"><UiText id="web-live-gs.a52b97a613669bf9" source="Not open yet" /></h1>
+          <p className="mt-2 font-body font-bold text-[15px] text-inkSoft"><UiText id="web-live-gs.91eb72b90b9c8681" source="Live sessions aren't open on the web yet — check back soon." /></p>
+          <a href="/explore" className="mt-6 inline-flex rounded-full border-zine border-ink bg-card px-7 py-3.5 font-display font-semibold text-[16px] text-ink no-underline shadow-zine-sm"><UiText id="web-live-gs.8d8733bfd7fdf8f4" source="Back to explore" />{" "}</a>
         </Frame>
       );
 
@@ -565,15 +557,13 @@ function RefusalScreen({
     default:
       return (
         <Frame tone="coral">
-          <h1 className="mt-3 font-display font-semibold text-[26px] leading-tight text-ink">Couldn't join the stream</h1>
-          <p className="mt-2 font-body font-bold text-[15px] text-inkSoft">Something went wrong on our end. Please try again.</p>
+          <h1 className="mt-3 font-display font-semibold text-[26px] leading-tight text-ink"><UiText id="web-live-gs.99cd86d6307ae880" source="Couldn't join the stream" /></h1>
+          <p className="mt-2 font-body font-bold text-[15px] text-inkSoft"><UiText id="web-live-gs.a3dcdf028063c109" source="Something went wrong on our end. Please try again." /></p>
           <button
             type="button"
             onClick={onRetry}
             className="mt-6 rounded-full border-zine border-ink bg-lime px-7 py-3.5 font-display font-semibold text-[16px] text-ink shadow-zine-sm"
-          >
-            Try again
-          </button>
+          ><UiText id="web-live-gs.d8b8392e2c542950" source="Try again" />{" "}</button>
         </Frame>
       );
   }
@@ -586,6 +576,8 @@ function TooEarlyScreen({
 }: {
   opensAt: number | null; title?: string; poster?: string | null; creatorName?: string | null; onWindowOpen: () => void;
 }) {
+  const {t:uiT}=useUiTranslation("web-live-gs");
+
   const [now, setNow] = useState(Date.now());
   const firedRef = useRef(false);
   useEffect(() => {
@@ -613,19 +605,19 @@ function TooEarlyScreen({
       <div className="overflow-hidden rounded-zine border-zine border-ink bg-paper2 shadow-zine">
         <div className="relative aspect-video w-full bg-ink">
           {poster ? (
-            <img src={cfImage(poster, { width: 1280, fit: 'cover' })} alt={title ?? 'Live'} className="h-full w-full object-cover opacity-60" />
+            <img src={cfImage(poster, { width: 1280, fit: 'cover' })} alt={title ?? uiT("web-live-gs.b64ac05f17e64d03","Live")} className="h-full w-full object-cover opacity-60" />
           ) : null}
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-ink/60 px-6 text-center">
-            <h1 className="font-display font-semibold text-[24px] leading-tight text-white drop-shadow">{title ?? 'Live session'}</h1>
-            {creatorName && <p className="font-body font-bold text-[15px] text-white/90">with {creatorName}</p>}
+            <h1 className="font-display font-semibold text-[24px] leading-tight text-white drop-shadow">{title ?? uiT("web-live-gs.94f506b7d34d68a2","Live session")}</h1>
+            {creatorName && <p className="font-body font-bold text-[15px] text-white/90"><UiText id="web-live-gs.0695b563acde461f" source="with" />{" "}{creatorName}</p>}
             <p className="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-white/80">
-              {ms === 0 ? 'Starting any moment…' : 'Doors open in'}
+              {ms === 0 ? uiT("web-live-gs.ac4b984674c624d9","Starting any moment…") : uiT("web-live-gs.4393151378584154","Doors open in")}
             </p>
             {parts && ms !== 0 && (
               <p className="font-mono font-bold text-[34px] tabular-nums text-white">{parts.join(' ')}</p>
             )}
-            {startTimeLabel && <p className="font-body font-bold text-[13px] text-white/70">Starts {startTimeLabel}</p>}
-            <p className="font-body font-bold text-[13px] text-white/70">You'll be pulled in automatically when the window opens.</p>
+            {startTimeLabel && <p className="font-body font-bold text-[13px] text-white/70"><UiText id="web-live-gs.96dbedeca7dfb7fa" source="Starts" />{" "}{startTimeLabel}</p>}
+            <p className="font-body font-bold text-[13px] text-white/70"><UiText id="web-live-gs.6852a522f5be278d" source="You'll be pulled in automatically when the window opens." /></p>
           </div>
         </div>
       </div>

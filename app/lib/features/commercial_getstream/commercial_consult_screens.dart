@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 // Phase 2D — commercial GetStream consultation prejoin, room and completion.
 // This lane never calls Messenger, Cloudflare Realtime or legacy CallRoom.
 import 'dart:async';
@@ -178,9 +181,9 @@ class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultati
 
   Future<void> _cancelBooking() async {
     final yes = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
-      title: const Text('Cancel booking?'),
-      content: const Text('The server will apply the accepted cancellation policy and return the authoritative result.'),
-      actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Keep booking')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Cancel'))],
+      title: const UiText(UiMessage.m_cancel_booking_bcadf57213),
+      content: const UiText(UiMessage.m_the_server_will_apply_the_4a19902b40),
+      actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const UiText(UiMessage.m_keep_booking_a21cf13de4)), FilledButton(onPressed: () => Navigator.pop(c, true), child: const UiText(UiMessage.m_cancel_19766ed6cc))],
     ));
     if (yes != true || _joining) return;
     try { await widget.gateway.cancelConsultation(widget.bookingId); if (mounted) Navigator.pop(context); }
@@ -188,17 +191,17 @@ class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultati
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Scaffold(
     backgroundColor: AD.bg,
-    appBar: AppBar(backgroundColor: AD.headerFooter, foregroundColor: AD.onBand(AD.headerFooter), title: const Text('Consultation setup')),
+    appBar: AppBar(backgroundColor: AD.headerFooter, foregroundColor: AD.onBand(AD.headerFooter), title: const UiText(UiMessage.m_consultation_setup_7486a10cd5)),
     body: ListView(padding: const EdgeInsets.all(Msg.s5), children: [
       Text(widget.title, style: ADText.appTitle()),
       const SizedBox(height: Msg.s2),
-      Text('Private appointment · ${widget.isCreator ? 'Creator' : 'Customer'}', style: ADText.preview()),
+      UiText(UiMessage.m_private_appointment_value1_14603bc676, params: {'value1': (widget.isCreator ? 'Creator' : 'Customer').toString()}, style: ADText.preview()),
       const SizedBox(height: Msg.s4),
-      _Check(label: 'Camera permission', value: _camera?.isGranted == true && _cameraAvailable, warning: !_cameraAvailable, detail: _cameraAvailable ? null : 'No camera — joining with audio only'),
-      _Check(label: 'Microphone permission', value: _microphone?.isGranted == true),
-      _Check(label: 'Connection', value: _network?.verdict == 'green', warning: _network?.verdict == 'yellow', detail: _network == null ? 'Checking…' : _network!.tip),
+      _Check(label: uiCopy(UiMessage.m_camera_permission_51e7271f90), value: _camera?.isGranted == true && _cameraAvailable, warning: !_cameraAvailable, detail: _cameraAvailable ? null : 'No camera — joining with audio only'),
+      _Check(label: uiCopy(UiMessage.m_microphone_permission_efd38df8e6), value: _microphone?.isGranted == true),
+      _Check(label: uiCopy(UiMessage.m_connection_639a40e82b), value: _network?.verdict == 'green', warning: _network?.verdict == 'yellow', detail: _network == null ? 'Checking…' : _network!.tip),
       const SizedBox(height: Msg.s3),
       // A denied permission can still be an intentional receive-only choice;
       // allow the user to turn that device off rather than blocking the room.
@@ -219,11 +222,11 @@ class _CommercialConsultationPrejoinFlowState extends State<CommercialConsultati
       if (_checking) const Center(child: CircularProgressIndicator()),
       if (_error != null) Text(_error!, style: ADText.preview(c: AD.danger)),
       const SizedBox(height: Msg.s3),
-      FilledButton.icon(onPressed: _ready && !_joining ? _join : null, icon: _joining ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)) : Icon(PhosphorIcons.arrowRight(PhosphorIconsStyle.bold)), label: Text(_joining ? 'Joining securely…' : 'Join consultation')),
-      TextButton(onPressed: _joining ? null : _cancelBooking, child: const Text('Cancel booking')),
-      TextButton.icon(onPressed: _checking || _joining ? null : _check, icon: Icon(PhosphorIcons.arrowClockwise(PhosphorIconsStyle.regular)), label: const Text('Run checks again')),
+      FilledButton.icon(onPressed: _ready && !_joining ? _join : null, icon: _joining ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)) : Icon(PhosphorIcons.arrowRight(PhosphorIconsStyle.bold)), label: Text(_joining ? uiCopy(UiMessage.m_joining_securely_20bc21dac6) : uiCopy(UiMessage.m_join_consultation_bb95861bf0))),
+      TextButton(onPressed: _joining ? null : _cancelBooking, child: const UiText(UiMessage.m_cancel_booking_cb33063ef5)),
+      TextButton.icon(onPressed: _checking || _joining ? null : _check, icon: Icon(PhosphorIcons.arrowClockwise(PhosphorIconsStyle.regular)), label: const UiText(UiMessage.m_run_checks_again_04e3b04969)),
     ]),
-  );
+  ); }
 }
 
 /// [WAITROOM-APP-2] Fix 2: how [CommercialConsultationRoomScreen] pops back
@@ -339,7 +342,7 @@ class _CommercialConsultationRoomScreenState extends State<CommercialConsultatio
                   padding: const EdgeInsets.all(Msg.s3),
                   child: Column(children: [
                     Row(children: [
-                      Text('Chat', style: ADText.sectionLabel()),
+                      UiText(UiMessage.m_chat_460b3a7da0, style: ADText.sectionLabel()),
                       const Spacer(),
                       IconButton(
                         icon: Icon(PhosphorIcons.x(PhosphorIconsStyle.bold)),
@@ -375,13 +378,13 @@ class _CommercialConsultationRoomScreenState extends State<CommercialConsultatio
       final quote = _extension ?? await widget.gateway.extensionQuote(widget.bookingId);
       if (!mounted) return;
       final yes = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
-        title: const Text('Extend this consultation?'),
-        content: Text('${quote.minutes} minutes · ${quote.amount} ${quote.currency}\n\nThis exact server quote is held from the customer only after both people agree.'),
-        actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Not now')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Agree'))],
+        title: const UiText(UiMessage.m_extend_this_consultation_fe0a276cc9),
+        content: UiText(UiMessage.m_value1_minutes_value2_value3_this_76d1d9ee20, params: {'value1': (quote.minutes).toString(), 'value2': (quote.amount).toString(), 'value3': (quote.currency).toString()}),
+        actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const UiText(UiMessage.m_not_now_a0e63d7c71)), FilledButton(onPressed: () => Navigator.pop(c, true), child: const UiText(UiMessage.m_agree_da288642c9))],
       ));
       if (yes != true) return;
       final confirmed = await widget.gateway.confirmExtension(widget.bookingId, quote.extensionId, accept: true);
-      if (mounted) { setState(() => _extension = confirmed); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(confirmed.state == 'applied' ? 'Extension applied.' : 'Your consent is recorded; waiting for the other person.'))); }
+      if (mounted) { setState(() => _extension = confirmed); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(confirmed.state == 'applied' ? uiCopy(UiMessage.m_extension_applied_b59dba04d1) : uiCopy(UiMessage.m_your_consent_is_recorded_waiting_4f0e9fb471)))); }
     } catch (e) { if (mounted) setState(() => _error = e.toString()); }
     finally { if (mounted) setState(() => _busy = false); }
   }
@@ -404,7 +407,7 @@ class _CommercialConsultationRoomScreenState extends State<CommercialConsultatio
 
   Future<void> _leave() async {
     if (_ending) return;
-    final confirm = await showDialog<bool>(context: context, builder: (c) => AlertDialog(title: const Text('Leave consultation?'), content: Text(widget.returnToWaitingRoom ? 'You can rejoin from the waiting room while the slot is still open.' : 'The session remains governed by the booking and provider evidence.'), actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Stay')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Leave'))]));
+    final confirm = await showDialog<bool>(context: context, builder: (c) => AlertDialog(title: const UiText(UiMessage.m_leave_consultation_313ad5e1bb), content: Text(widget.returnToWaitingRoom ? uiCopy(UiMessage.m_you_can_rejoin_from_the_f90420ecca) : uiCopy(UiMessage.m_the_session_remains_governed_by_75108d61b2)), actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const UiText(UiMessage.m_stay_08fd1de4b0)), FilledButton(onPressed: () => Navigator.pop(c, true), child: const UiText(UiMessage.m_leave_fc6e4a408d))]));
     if (confirm != true) return;
     if (widget.returnToWaitingRoom) {
       // [WAITROOM-APP-2] Fix 2: a deliberate Leave here must NOT end the
@@ -424,9 +427,9 @@ class _CommercialConsultationRoomScreenState extends State<CommercialConsultatio
 
   Future<void> _reportNoShow() async {
     final yes = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
-      title: const Text('Report a no-show?'),
-      content: const Text('The server will review signed attendance evidence and the accepted policy. This phone will not guess a refund.'),
-      actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Not now')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Report'))],
+      title: const UiText(UiMessage.m_report_a_no_show_b8c210a6b7),
+      content: const UiText(UiMessage.m_the_server_will_review_signed_fd07708ed0),
+      actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const UiText(UiMessage.m_not_now_a0e63d7c71)), FilledButton(onPressed: () => Navigator.pop(c, true), child: const UiText(UiMessage.m_report_b6ce788d97))],
     ));
     if (yes != true || _ending) return;
     try { await widget.gateway.cancelConsultation(widget.bookingId, reason: 'creator_no_show'); } catch (_) {}
@@ -453,13 +456,14 @@ class _CommercialConsultationRoomScreenState extends State<CommercialConsultatio
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final other = _call.state.value.otherParticipants.toList();
     final remaining = _state?.endsAt == null ? null : (_state!.endsAt! - DateTime.now().millisecondsSinceEpoch);
     return PopScope(canPop: false, onPopInvokedWithResult: (didPop, _) { if (!didPop) unawaited(_leave()); }, child: Scaffold(
       backgroundColor: AD.bg,
       appBar: AppBar(backgroundColor: AD.headerFooter, foregroundColor: AD.onBand(AD.headerFooter), title: Text(widget.title), actions: [IconButton(onPressed: _reconnect, icon: Icon(PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold))), if (_extensionAvailable) IconButton(onPressed: _extend, icon: Icon(PhosphorIcons.clock(PhosphorIconsStyle.bold))), IconButton(onPressed: _reportNoShow, icon: Icon(PhosphorIcons.warning(PhosphorIconsStyle.bold)))]),
       body: Column(children: [
-        Padding(padding: const EdgeInsets.all(Msg.s3), child: Row(children: [Text(_state?.state == LiveServerState.live ? 'CONNECTED' : 'CONNECTING', style: ADText.sectionLabel(c: AD.online)), const Spacer(), if (remaining != null && remaining > 0) Text('${(remaining ~/ 60000)} min remaining', style: ADText.sectionLabel())])),
+        Padding(padding: const EdgeInsets.all(Msg.s3), child: Row(children: [Text(_state?.state == LiveServerState.live ? uiCopy(UiMessage.m_connected_1f914c4386) : uiCopy(UiMessage.m_connecting_a0e1a519f0), style: ADText.sectionLabel(c: AD.online)), const Spacer(), if (remaining != null && remaining > 0) UiText(UiMessage.m_value1_min_remaining_12aa43d368, params: {'value1': ((remaining ~/ 60000)).toString()}, style: ADText.sectionLabel())])),
         if (_error != null) Padding(padding: const EdgeInsets.symmetric(horizontal: Msg.s4), child: Text(_error!, style: ADText.preview(c: AD.danger))),
         Expanded(child: Stack(children: [
           // [AV-AUDIO-ONLY-1] A participant with no published video track is
@@ -493,7 +497,7 @@ class _CommercialConsultationRoomScreenState extends State<CommercialConsultatio
                   ),
               ]),
             ),
-          FilledButton.icon(onPressed: _leave, icon: Icon(PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.bold)), label: const Text('Leave')),
+          FilledButton.icon(onPressed: _leave, icon: Icon(PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.bold)), label: const UiText(UiMessage.m_leave_fc6e4a408d)),
         ]),
         const SizedBox(height: Msg.s3),
       ]),
@@ -512,7 +516,7 @@ class _CommercialConsultationCompletionScreenState extends State<CommercialConsu
   CommercialReceiptResponse? _receipt; bool _loading = true;
   @override void initState() { super.initState(); _load(); }
   Future<void> _load() async { final r = await widget.gateway.consultationReceipt(widget.sessionId); if (mounted) setState(() { _receipt = r; _loading = false; }); }
-  @override Widget build(BuildContext context) => Scaffold(backgroundColor: AD.bg, appBar: AppBar(backgroundColor: AD.headerFooter, foregroundColor: AD.onBand(AD.headerFooter), title: const Text('Consultation complete')), body: ListView(padding: const EdgeInsets.all(Msg.s5), children: [Text(widget.heading, style: ADText.appTitle()), const SizedBox(height: Msg.s3), Text(widget.title, style: ADText.preview()), const SizedBox(height: Msg.s4), if (_loading) const CircularProgressIndicator() else if (_receipt?.ready != true) const _Notice(text: 'Settlement is still being finalized from signed GetStream evidence.') else const _Notice(text: 'Your server receipt is ready.'), const SizedBox(height: Msg.s4), FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done'))]));
+  @override Widget build(BuildContext context) { UiLocaleScope.watch(context); return Scaffold(backgroundColor: AD.bg, appBar: AppBar(backgroundColor: AD.headerFooter, foregroundColor: AD.onBand(AD.headerFooter), title: const UiText(UiMessage.m_consultation_complete_50709be31f)), body: ListView(padding: const EdgeInsets.all(Msg.s5), children: [Text(widget.heading, style: ADText.appTitle()), const SizedBox(height: Msg.s3), Text(widget.title, style: ADText.preview()), const SizedBox(height: Msg.s4), if (_loading) const CircularProgressIndicator() else if (_receipt?.ready != true) const _Notice(text: 'Settlement is still being finalized from signed GetStream evidence.') else const _Notice(text: 'Your server receipt is ready.'), const SizedBox(height: Msg.s4), FilledButton(onPressed: () => Navigator.pop(context), child: const UiText(UiMessage.m_done_11a6767d56))])); }
 }
 
 /// [AV-AUDIO-ONLY-1] One participant slot that survives a missing camera:
@@ -544,6 +548,7 @@ class _ParticipantTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (participant.publishedTracks.containsKey(SfuTrackType.video)) {
       return StreamVideoRenderer(call: call, participant: participant, videoTrackType: SfuTrackType.video);
     }
@@ -573,5 +578,5 @@ class _ParticipantTile extends StatelessWidget {
   }
 }
 
-class _Check extends StatelessWidget { const _Check({required this.label, required this.value, this.warning = false, this.detail}); final String label; final bool value, warning; final String? detail; @override Widget build(BuildContext context) => ListTile(contentPadding: EdgeInsets.zero, leading: Icon(value ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill) : PhosphorIcons.warningCircle(PhosphorIconsStyle.regular), color: value ? AD.online : warning ? AD.primaryBadge : AD.danger), title: Text(label), subtitle: Text(detail ?? (value ? 'Ready' : 'Permission required'))); }
-class _Notice extends StatelessWidget { const _Notice({required this.text}); final String text; @override Widget build(BuildContext context) => Card(color: AD.card, child: Padding(padding: const EdgeInsets.all(Msg.s3), child: Text(text))); }
+class _Check extends StatelessWidget { const _Check({required this.label, required this.value, this.warning = false, this.detail}); final String label; final bool value, warning; final String? detail; @override Widget build(BuildContext context) { UiLocaleScope.watch(context); return ListTile(contentPadding: EdgeInsets.zero, leading: Icon(value ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill) : PhosphorIcons.warningCircle(PhosphorIconsStyle.regular), color: value ? AD.online : warning ? AD.primaryBadge : AD.danger), title: Text(label), subtitle: Text(detail ?? (value ? uiCopy(UiMessage.m_ready_5fa7aac537) : uiCopy(UiMessage.m_permission_required_dbb6cf8178)))); } }
+class _Notice extends StatelessWidget { const _Notice({required this.text}); final String text; @override Widget build(BuildContext context) { UiLocaleScope.watch(context); return Card(color: AD.card, child: Padding(padding: const EdgeInsets.all(Msg.s3), child: Text(text))); } }

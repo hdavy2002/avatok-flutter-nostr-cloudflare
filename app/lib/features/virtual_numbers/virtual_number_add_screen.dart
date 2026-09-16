@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -57,12 +60,12 @@ class _VirtualNumberAddScreenState extends State<VirtualNumberAddScreen> {
           ? await widget.api.purchaseDid(
               inventoryId: _selectedInventory ?? '',
               label: _label.text.trim().isEmpty
-                  ? 'Virtual number'
+                  ? uiCopy(UiMessage.m_virtual_number_0a343526ae)
                   : _label.text.trim())
           : await widget.api.createAvaTok(
               requestedNumber: _requested.text,
               label: _label.text.trim().isEmpty
-                  ? 'AvaTOK number'
+                  ? uiCopy(UiMessage.m_avatok_number_aff0836a28)
                   : _label.text.trim());
       if (mounted) Navigator.of(context).pop(line);
     } catch (e) {
@@ -77,13 +80,13 @@ class _VirtualNumberAddScreenState extends State<VirtualNumberAddScreen> {
       .showSnackBar(SnackBar(content: Text(value)));
 
   @override
-  Widget build(BuildContext context) => VirtualNumbersUi.shell(
-      title: 'Add new number',
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return VirtualNumbersUi.shell(
+      title: uiCopy(UiMessage.m_add_new_number_2950d5a822),
       onBack: () => Navigator.of(context).pop(),
       child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
           children: [
-            Text('Choose a line type', style: AvaDialTheme.title(size: 18)),
+            UiText(UiMessage.m_choose_a_line_type_1af9e21613, style: AvaDialTheme.title(size: 18)),
             const SizedBox(height: 12),
             _choiceCard(
                 0,
@@ -99,21 +102,21 @@ class _VirtualNumberAddScreenState extends State<VirtualNumberAddScreen> {
                 controller: _label,
                 textCapitalization: TextCapitalization.words,
                 decoration: InputDecoration(
-                    hintText: 'For work, family, deliveries…',
+                    hintText: uiCopy(UiMessage.m_for_work_family_deliveries_eba1ce00ee),
                     prefixIcon: Icon(PhosphorIcons.tag(PhosphorIconsStyle.regular)))),
             const SizedBox(height: 16),
             if (_choice == 0) _didForm() else _avatokForm(),
             const SizedBox(height: 22),
             VirtualNumbersUi.primaryButton(
                 label: _choice == 0
-                    ? 'Purchase DID · 600 tokens / 30 days'
-                    : 'Create free AvaTOK number',
+                    ? uiCopy(UiMessage.m_purchase_did_600_tokens_30_84e7ff6de3)
+                    : uiCopy(UiMessage.m_create_free_avatok_number_976aef8104),
                 onPressed: (_choice == 0 && _selectedInventory == null) || _busy
                     ? null
                     : _create,
                 icon: _choice == 0 ? PhosphorIcons.shoppingBag(PhosphorIconsStyle.regular) : PhosphorIcons.plus(PhosphorIconsStyle.regular),
                 busy: _busy),
-          ]));
+          ])); }
 
   Widget _choiceCard(
       int value, IconData icon, String title, String description) {
@@ -168,9 +171,9 @@ class _VirtualNumberAddScreenState extends State<VirtualNumberAddScreen> {
         DropdownButtonFormField<String>(
             value: _country,
             items: const [
-              DropdownMenuItem(value: 'IN', child: Text('India (+91)')),
-              DropdownMenuItem(value: 'US', child: Text('United States (+1)')),
-              DropdownMenuItem(value: 'GB', child: Text('United Kingdom (+44)'))
+              DropdownMenuItem(value: 'IN', child: UiText(UiMessage.m_india_91_08ca9a2226)),
+              DropdownMenuItem(value: 'US', child: UiText(UiMessage.m_united_states_1_ce5c3821df)),
+              DropdownMenuItem(value: 'GB', child: UiText(UiMessage.m_united_kingdom_44_0f6c5402c0))
             ],
             onChanged: (value) {
               if (value != null) {
@@ -184,7 +187,7 @@ class _VirtualNumberAddScreenState extends State<VirtualNumberAddScreen> {
           OutlinedButton.icon(
               onPressed: _search,
               icon: Icon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.regular)),
-              label: const Text('Search available numbers')),
+              label: const UiText(UiMessage.m_search_available_numbers_148451e7cc)),
         if (_loadingInventory)
           const Padding(
               padding: EdgeInsets.all(12),
@@ -199,10 +202,10 @@ class _VirtualNumberAddScreenState extends State<VirtualNumberAddScreen> {
                 return DropdownMenuItem(value: id, child: Text(number));
               }).toList(),
               onChanged: (value) => setState(() => _selectedInventory = value),
-              decoration: const InputDecoration(labelText: 'Available number')),
+              decoration:  InputDecoration(labelText: uiCopy(UiMessage.m_available_number_fef43ca719))),
         const SizedBox(height: 8),
-        Text(
-            'Rental is 600 tokens for 30 days. PSTN calls are charged separately at 0.50 tokens/minute.',
+        UiText(
+            UiMessage.m_rental_is_600_tokens_for_0ec5c55de4,
             style: AvaDialTheme.sub(size: 12)),
       ]);
 
@@ -213,7 +216,7 @@ class _VirtualNumberAddScreenState extends State<VirtualNumberAddScreen> {
             controller: _requested,
             keyboardType: TextInputType.phone,
             decoration: InputDecoration(
-                hintText: 'Leave blank to generate one',
+                hintText: uiCopy(UiMessage.m_leave_blank_to_generate_one_43c967bf29),
                 prefixIcon: Icon(PhosphorIcons.numpad(PhosphorIconsStyle.regular)))),
         const SizedBox(height: 10),
         Container(
@@ -226,8 +229,8 @@ class _VirtualNumberAddScreenState extends State<VirtualNumberAddScreen> {
               Icon(PhosphorIcons.info(PhosphorIconsStyle.regular), color: AvaDialTheme.unknown),
               const SizedBox(width: 10),
               Expanded(
-                  child: Text(
-                      'Free AvaTOK numbers are in-network aliases. They cannot receive PSTN calls, carrier SMS or bank/delivery OTPs.',
+                  child: UiText(
+                      UiMessage.m_free_avatok_numbers_are_in_18a1a134cf,
                       style: AvaDialTheme.sub(size: 12)))
             ])),
       ]);

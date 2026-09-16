@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 // Phase 2E — commercial live product flow.
 //
 // This file is deliberately independent from the legacy AvaLive/Cloudflare
@@ -130,33 +133,33 @@ class _LiveReadinessScreenState extends State<LiveReadinessScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Scaffold(
         backgroundColor: AD.bg,
         appBar: AppBar(
           backgroundColor: AD.headerFooter,
           foregroundColor: AD.onBand(AD.headerFooter),
-          title: const Text('Live readiness'),
+          title: const UiText(UiMessage.m_live_readiness_88cdc736af),
         ),
         body: ListView(
           padding: const EdgeInsets.all(Msg.s5),
           children: [
             Text(widget.title, style: ADText.appTitle()),
             const SizedBox(height: Msg.s2),
-            Text(
-              'Check your setup before opening the private GetStream backstage room.',
+            UiText(
+              UiMessage.m_check_your_setup_before_opening_e300963666,
               style: ADText.preview(c: AD.textSecondary),
             ),
             const SizedBox(height: Msg.s5),
             _ReadinessRow(
               icon: PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
-              label: 'Camera',
+              label: uiCopy(UiMessage.m_camera_03494b0d1f),
               detail:
                   _camera?.isGranted == true ? 'Ready' : 'Permission required',
               good: _camera?.isGranted == true,
             ),
             _ReadinessRow(
               icon: PhosphorIcons.microphone(PhosphorIconsStyle.bold),
-              label: 'Microphone',
+              label: uiCopy(UiMessage.m_microphone_186352a881),
               detail: _microphone?.isGranted == true
                   ? 'Ready'
                   : 'Permission required',
@@ -164,7 +167,7 @@ class _LiveReadinessScreenState extends State<LiveReadinessScreen> {
             ),
             _ReadinessRow(
               icon: PhosphorIcons.wifiHigh(PhosphorIconsStyle.bold),
-              label: 'Connection',
+              label: uiCopy(UiMessage.m_connection_639a40e82b),
               detail: _network == null
                   ? 'Checking…'
                   : '${_network!.tip} · ${_network!.rttMs} ms',
@@ -197,17 +200,17 @@ class _LiveReadinessScreenState extends State<LiveReadinessScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : Icon(PhosphorIcons.broadcast(PhosphorIconsStyle.bold)),
-              label: Text(_opening ? 'Opening backstage…' : 'Open backstage'),
+              label: Text(_opening ? uiCopy(UiMessage.m_opening_backstage_31daf18e80) : uiCopy(UiMessage.m_open_backstage_d30130e1b7)),
             ),
             TextButton.icon(
               onPressed: _checking ? null : _check,
               icon: Icon(
                   PhosphorIcons.arrowClockwise(PhosphorIconsStyle.regular)),
-              label: const Text('Run checks again'),
+              label: const UiText(UiMessage.m_run_checks_again_04e3b04969),
             ),
           ],
         ),
-      );
+      ); }
 }
 
 class LiveBackstageScreen extends StatefulWidget {
@@ -290,10 +293,10 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> with WidgetsB
     final remainingMs =
         (startsAt - DateTime.now().millisecondsSinceEpoch).clamp(0, capMs);
     final totalSec = (remainingMs / 1000).ceil();
-    if (totalSec <= 0) return 'Starting now';
+    if (totalSec <= 0) return uiCopy(UiMessage.m_starting_now_11dc78f6ce);
     final m = totalSec ~/ 60;
     final s = totalSec % 60;
-    return 'Starts in ${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+    return uiCopy(UiMessage.m_starts_in_value1_value2_cc936a960a, {'value1': (m.toString().padLeft(2, '0')).toString(), 'value2': (s.toString().padLeft(2, '0')).toString()});
   }
 
   Future<void> _toggleMicrophone() async {
@@ -355,17 +358,17 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> with WidgetsB
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: AD.card,
-        title: const Text('Start the live event?'),
-        content: const Text(
-          'You are not live yet. Confirm only when your camera, microphone and presentation are ready. Ticket holders will be able to join after the server confirms the broadcast.',
+        title: const UiText(UiMessage.m_start_the_live_event_1dcc0d5541),
+        content: const UiText(
+          UiMessage.m_you_are_not_live_yet_a6777ffb5a,
         ),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Not yet')),
+              child: const UiText(UiMessage.m_not_yet_a9549d7d06)),
           FilledButton(
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Start live')),
+              child: const UiText(UiMessage.m_start_live_d2cfdf716a)),
         ],
       ),
     );
@@ -411,12 +414,12 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> with WidgetsB
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Scaffold(
         backgroundColor: AD.bg,
         appBar: AppBar(
           backgroundColor: AD.headerFooter,
           foregroundColor: AD.onBand(AD.headerFooter),
-          title: const Text('Backstage'),
+          title: const UiText(UiMessage.m_backstage_e8dde66276),
         ),
         body: LayoutBuilder(builder: (context, constraints) {
           final compact = constraints.maxWidth < 600 || constraints.maxHeight < 520;
@@ -427,7 +430,7 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> with WidgetsB
                 minHeight: (constraints.maxHeight - Msg.s5 * 2).clamp(0.0, double.infinity).toDouble(),
               ),
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            const _LiveStatusBadge(label: 'NOT LIVE', color: AD.danger),
+             _LiveStatusBadge(label: uiCopy(UiMessage.m_not_live_ce01aa9a4f), color: AD.danger),
             if (_backstageCountdownLabel != null) ...[
               const SizedBox(height: Msg.s2),
               Text(_backstageCountdownLabel!, style: ADText.sectionLabel()),
@@ -435,8 +438,8 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> with WidgetsB
             const SizedBox(height: Msg.s4),
             Text(widget.title, style: ADText.appTitle()),
             const SizedBox(height: Msg.s2),
-            const Text(
-              'This is private backstage. Ticket holders cannot watch until you confirm Start live.',
+            const UiText(
+              UiMessage.m_this_is_private_backstage_ticket_498e6abf63,
             ),
             const SizedBox(height: Msg.s5),
             SizedBox(
@@ -450,8 +453,8 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> with WidgetsB
                   child: Builder(builder: (_) {
                     final local = _local;
                     if (local == null) {
-                      return Text(
-                        'Camera is initializing\nBackstage only',
+                      return UiText(
+                        UiMessage.m_camera_is_initializing_backstage_only_404d98fa71,
                         textAlign: TextAlign.center,
                         style: ADText.preview(c: Colors.white),
                       );
@@ -490,13 +493,13 @@ class _LiveBackstageScreenState extends State<LiveBackstageScreen> with WidgetsB
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : Icon(PhosphorIcons.broadcast(PhosphorIconsStyle.bold)),
-              label: Text(_starting ? 'Starting…' : 'Start live'),
+              label: Text(_starting ? uiCopy(UiMessage.m_starting_bbe5fc3b9e) : uiCopy(UiMessage.m_start_live_d2cfdf716a)),
             ),
           ]),
             ),
           );
         }),
-      );
+      ); }
 }
 
 class _BackstageDeviceControls extends StatelessWidget {
@@ -521,7 +524,7 @@ class _BackstageDeviceControls extends StatelessWidget {
   final Future<void> Function() onFlipCamera;
 
   @override
-  Widget build(BuildContext context) => Card(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Card(
         color: AD.card,
         child: Padding(
           padding: const EdgeInsets.all(Msg.s3),
@@ -535,19 +538,19 @@ class _BackstageDeviceControls extends StatelessWidget {
                 icon: cameraEnabled
                     ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)
                     : PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold),
-                label: cameraEnabled ? 'Camera on' : 'Camera off',
+                label: cameraEnabled ? uiCopy(UiMessage.m_camera_on_071a189a5d) : uiCopy(UiMessage.m_camera_off_ce3ef7450f),
                 onPressed: enabled ? onToggleCamera : null,
               ),
               _BackstageControl(
                 icon: microphoneEnabled
                     ? PhosphorIcons.microphone(PhosphorIconsStyle.bold)
                     : PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold),
-                label: microphoneEnabled ? 'Mic on' : 'Mic off',
+                label: microphoneEnabled ? uiCopy(UiMessage.m_mic_on_c0673f4405) : uiCopy(UiMessage.m_mic_off_003aaf9e0a),
                 onPressed: enabled ? onToggleMicrophone : null,
               ),
               _BackstageControl(
                 icon: PhosphorIcons.cameraRotate(PhosphorIconsStyle.bold),
-                label: 'Flip camera',
+                label: uiCopy(UiMessage.m_flip_camera_c6fbc83ef2),
                 onPressed: enabled && cameraEnabled ? onFlipCamera : null,
               ),
               CommercialSpeakerTestButton(controller: speaker, enabled: enabled),
@@ -564,14 +567,14 @@ class _BackstageDeviceControls extends StatelessWidget {
               ),
               Text(
                 microphoneEnabled
-                    ? 'Speak to test your microphone'
-                    : 'Microphone is off',
+                    ? uiCopy(UiMessage.m_speak_to_test_your_microphone_2fef465b88)
+                    : uiCopy(UiMessage.m_microphone_is_off_69aebf6951),
                 style: ADText.navLabel(c: AD.textSecondary),
               ),
             ],
           ),
         ),
-      );
+      ); }
 }
 
 class _BackstageControl extends StatelessWidget {
@@ -586,11 +589,11 @@ class _BackstageControl extends StatelessWidget {
   final Future<void> Function()? onPressed;
 
   @override
-  Widget build(BuildContext context) => OutlinedButton.icon(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return OutlinedButton.icon(
         onPressed: onPressed,
         icon: Icon(icon),
         label: Text(label),
-      );
+      ); }
 }
 
 class LiveBroadcastScreen extends StatefulWidget {
@@ -718,16 +721,16 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: AD.card,
-        title: const Text('End the live event?'),
-        content: const Text(
-            'Ticket holders will no longer be able to join the live room.'),
+        title: const UiText(UiMessage.m_end_the_live_event_ccbd129c59),
+        content: const UiText(
+            UiMessage.m_ticket_holders_will_no_longer_081946ec73),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Keep live')),
+              child: const UiText(UiMessage.m_keep_live_a2b4efdba1)),
           FilledButton(
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('End event')),
+              child: const UiText(UiMessage.m_end_event_14c18fa6ec)),
         ],
       ),
     );
@@ -756,7 +759,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
         await ListingsApi.report('listing', widget.listingId, 'live_event');
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(ok ? 'Report submitted.' : 'Could not submit report.'),
+        content: Text(ok ? uiCopy(UiMessage.m_report_submitted_631db5cf54) : uiCopy(UiMessage.m_could_not_submit_report_df9fdf6dc1)),
       ));
     }
   }
@@ -771,6 +774,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final others = _call.state.value.otherParticipants.toList();
     final chatClient = widget.session.chatClient;
     final chatChannel = widget.session.chatChannel;
@@ -788,7 +792,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
           title: Text(widget.title),
           actions: [
             IconButton(
-              tooltip: 'Report a problem',
+              tooltip: uiCopy(UiMessage.m_report_a_problem_53de38dec8),
               onPressed: _report,
               icon: Icon(PhosphorIcons.flag(PhosphorIconsStyle.bold)),
             ),
@@ -805,7 +809,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
             child: Row(children: [
               _LiveStatusBadge(label: _healthLabel, color: _healthColor),
               const Spacer(),
-              Text('Audience count unavailable', style: ADText.sectionLabel()),
+              UiText(UiMessage.m_audience_count_unavailable_bd7e560b7c, style: ADText.sectionLabel()),
             ]),
           ),
           Expanded(
@@ -815,8 +819,8 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
                   flex: hasChat ? 3 : 4,
                   child: others.isEmpty
                       ? Center(
-                          child: Text(
-                              'Your camera is ready. Audience media will appear here when available.',
+                          child: UiText(
+                              UiMessage.m_your_camera_is_ready_audience_7ed8c14760,
                               textAlign: TextAlign.center,
                               style: ADText.preview()))
                       : GridView.builder(
@@ -870,7 +874,7 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
                                   padding: EdgeInsets.all(Msg.s3),
                                   child: Align(
                                     alignment: Alignment.centerLeft,
-                                    child: Text('Live chat'),
+                                    child: UiText(UiMessage.m_live_chat_1c7cc7287c),
                                   ),
                                 ),
                                 Expanded(child: StreamMessageListView()),
@@ -886,9 +890,9 @@ class _LiveBroadcastScreenState extends State<LiveBroadcastScreen> {
             ),
           ),
           if (widget.capabilities.captions)
-            const Text('Captions available', style: TextStyle(fontSize: 12)),
+            const UiText(UiMessage.m_captions_available_e8482c3ad8, style: TextStyle(fontSize: 12)),
           if (widget.capabilities.qualityControls)
-            const Text('Quality controls available',
+            const UiText(UiMessage.m_quality_controls_available_fffcbc89bb,
                 style: TextStyle(fontSize: 12)),
           if (_error != null)
             Text(_error!, style: ADText.preview(c: AD.danger)),
@@ -1050,7 +1054,7 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
     if (mounted)
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content:
-              Text(ok ? 'Report submitted.' : 'Could not submit report.')));
+              Text(ok ? uiCopy(UiMessage.m_report_submitted_631db5cf54) : uiCopy(UiMessage.m_could_not_submit_report_df9fdf6dc1))));
   }
 
   @override
@@ -1063,6 +1067,7 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (_loading)
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     if (_error != null) return _stateScaffold('Unable to join', _error!);
@@ -1094,7 +1099,7 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
         title: Text(widget.title),
         actions: [
           IconButton(
-            tooltip: 'Report a problem',
+            tooltip: uiCopy(UiMessage.m_report_a_problem_53de38dec8),
             onPressed: _report,
             icon: Icon(PhosphorIcons.flag(PhosphorIconsStyle.bold)),
           ),
@@ -1105,10 +1110,10 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
           padding: const EdgeInsets.all(Msg.s4),
           child: _LiveStatusBadge(
             label: live
-                ? 'LIVE'
+                ? uiCopy(UiMessage.m_live_35e0d0360a)
                 : reconnecting
-                    ? 'RECONNECTING'
-                    : 'WAITING FOR CREATOR',
+                    ? uiCopy(UiMessage.m_reconnecting_d0ed8f2c26)
+                    : uiCopy(UiMessage.m_waiting_for_creator_ae2d11da61),
             color: live ? AD.danger : AD.primaryBadge,
           ),
         ),
@@ -1121,14 +1126,14 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
                 flex: chatClient != null && chatChannel != null ? 3 : 4,
                 child: !active
                     ? Center(
-                        child: Text(
-                            'The creator has not started yet.\nKeep this screen open to join when the event begins.',
+                        child: UiText(
+                            UiMessage.m_the_creator_has_not_started_f5fb62675c,
                             textAlign: TextAlign.center,
                             style: ADText.preview()))
                     : others.isEmpty
                         ? Center(
-                            child: Text(
-                                'Live is on. Waiting for the creator’s camera…',
+                            child: UiText(
+                                UiMessage.m_live_is_on_waiting_for_6325f3a5b1,
                                 style: ADText.preview()))
                         : GridView.builder(
                             padding: const EdgeInsets.all(Msg.s3),
@@ -1183,7 +1188,7 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
                                 padding: EdgeInsets.all(Msg.s3),
                                 child: Align(
                                   alignment: Alignment.centerLeft,
-                                  child: Text('Live chat'),
+                                  child: UiText(UiMessage.m_live_chat_1c7cc7287c),
                                 ),
                               ),
                               Expanded(child: StreamMessageListView()),
@@ -1199,11 +1204,11 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
           ),
         ),
         if (widget.capabilities.captions)
-          const Text('Captions available', style: TextStyle(fontSize: 12)),
+          const UiText(UiMessage.m_captions_available_e8482c3ad8, style: TextStyle(fontSize: 12)),
         TextButton.icon(
             onPressed: _leave,
             icon: Icon(PhosphorIcons.x(PhosphorIconsStyle.regular)),
-            label: const Text('Leave live event')),
+            label: const UiText(UiMessage.m_leave_live_event_7ab5e633e8)),
       ]),
     );
   }
@@ -1273,6 +1278,7 @@ class _LiveSummaryScreenState extends State<LiveSummaryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final rows = _receipt?.receipts ?? const <CommercialReceipt>[];
     final summary = CommercialReceiptSummary.fromReceipts(rows);
     return Scaffold(
@@ -1280,12 +1286,12 @@ class _LiveSummaryScreenState extends State<LiveSummaryScreen> {
       appBar: AppBar(
         backgroundColor: AD.headerFooter,
         foregroundColor: AD.onBand(AD.headerFooter),
-        title: const Text('Live summary'),
+        title: const UiText(UiMessage.m_live_summary_a54441d5b1),
       ),
       body: ListView(padding: const EdgeInsets.all(Msg.s5), children: [
         Text(widget.title, style: ADText.appTitle()),
         const SizedBox(height: Msg.s2),
-        const Text('The live event has ended.'),
+        const UiText(UiMessage.m_the_live_event_has_ended_0cc3a48eb7),
         const SizedBox(height: Msg.s5),
         if (_loading)
           const Center(child: CircularProgressIndicator())
@@ -1300,7 +1306,7 @@ class _LiveSummaryScreenState extends State<LiveSummaryScreen> {
                 'Settlement is still being finalized. Earnings are not estimated from tickets or viewer counts.',
           )
         else ...[
-          const Text('Settled receipts'),
+          const UiText(UiMessage.m_settled_receipts_ca7a80fce7),
           const SizedBox(height: Msg.s2),
           for (final receipt in summary.settledReceipts)
             ListTile(
@@ -1308,7 +1314,7 @@ class _LiveSummaryScreenState extends State<LiveSummaryScreen> {
               leading: Icon(PhosphorIcons.receipt(PhosphorIconsStyle.bold),
                   color: AD.online),
               title: Text('${receipt.creatorAmount} ${receipt.currency}'),
-              subtitle: Text('Receipt ${receipt.receiptId}'),
+              subtitle: UiText(UiMessage.m_receipt_value1_81b6ce57cc, params: {'value1': (receipt.receiptId).toString()}),
             ),
         ],
       ]),
@@ -1330,7 +1336,7 @@ class _ReadinessRow extends StatelessWidget {
   final bool warning;
 
   @override
-  Widget build(BuildContext context) => ListTile(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return ListTile(
         contentPadding: EdgeInsets.zero,
         leading: Icon(icon,
             color: good
@@ -1345,7 +1351,7 @@ class _ReadinessRow extends StatelessWidget {
                 ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill)
                 : PhosphorIcons.warningCircle(PhosphorIconsStyle.regular),
             color: good ? AD.online : AD.primaryBadge),
-      );
+      ); }
 }
 
 class _ReadinessNotice extends StatelessWidget {
@@ -1354,7 +1360,7 @@ class _ReadinessNotice extends StatelessWidget {
   final String text;
 
   @override
-  Widget build(BuildContext context) => Card(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Card(
         color: AD.card,
         child: Padding(
           padding: const EdgeInsets.all(Msg.s4),
@@ -1364,7 +1370,7 @@ class _ReadinessNotice extends StatelessWidget {
             Expanded(child: Text(text)),
           ]),
         ),
-      );
+      ); }
 }
 
 class _LiveStatusBadge extends StatelessWidget {
@@ -1373,14 +1379,14 @@ class _LiveStatusBadge extends StatelessWidget {
   final Color color;
 
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Container(
         padding:
             const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
         decoration: BoxDecoration(color: color, borderRadius: Msg.brPill),
         child: Text(label,
             style: TextStyle(
                 color: AD.onBand(color), fontWeight: FontWeight.w700)),
-      );
+      ); }
 }
 
 
@@ -1431,7 +1437,7 @@ class _ReconnectBannerState extends State<_ReconnectBanner> {
       : 'Reconnecting\u2026 you have${_remaining} to get back';
 
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Container(
         width: double.infinity,
         color: AD.danger,
         padding:
@@ -1449,12 +1455,12 @@ class _ReconnectBannerState extends State<_ReconnectBanner> {
           ),
           TextButton(
             onPressed: () => unawaited(widget.onRejoin()),
-            child: Text('Rejoin',
+            child: UiText(UiMessage.m_rejoin_fb5cdea2e1,
                 style: TextStyle(
                     color: AD.onBand(AD.danger), fontWeight: FontWeight.w700)),
           ),
         ]),
-      );
+      ); }
 }
 
 /// [LIVE-GRACE-APP-1] Viewer-side overlay kept above the still-mounted player
@@ -1490,17 +1496,17 @@ class _ReconnectingOverlayBannerState
 
   String get _label {
     final deadline = widget.deadlineMs;
-    if (deadline == null) return 'Creator reconnecting\u2026';
+    if (deadline == null) return uiCopy(UiMessage.m_creator_reconnecting_a11db04cb0);
     final remainingMs = (deadline - DateTime.now().millisecondsSinceEpoch)
         .clamp(0, 60 * 60 * 1000);
     final totalSec = (remainingMs / 1000).ceil();
     final m = totalSec ~/ 60;
     final sec = totalSec % 60;
-    return 'Creator reconnecting \u00b7 ${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
+    return uiCopy(UiMessage.m_creator_reconnecting_value1_value2_0b6acf398c, {'value1': (m.toString().padLeft(2, '0')).toString(), 'value2': (sec.toString().padLeft(2, '0')).toString()});
   }
 
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Container(
         width: double.infinity,
         color: AD.primaryBadge,
         padding:
@@ -1514,5 +1520,5 @@ class _ReconnectingOverlayBannerState
                   color: AD.onBand(AD.primaryBadge),
                   fontWeight: FontWeight.w600)),
         ]),
-      );
+      ); }
 }

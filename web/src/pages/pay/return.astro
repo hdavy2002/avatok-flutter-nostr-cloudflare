@@ -32,8 +32,8 @@ Astro.response.headers.set('Cache-Control', 'no-store');
 <Base headerAuth="static" title="Payment status · avatok.ai" description="Confirming your avatok.ai payment." navStatic={true}>
   <main class="mx-auto max-w-lg px-4 py-10">
     <header class="mb-6">
-      <span class="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">Payment</span>
-      <h1 class="mt-2 font-display font-semibold text-[28px] leading-tight text-ink">Confirming your payment</h1>
+      <span data-i18n="web-pay.7048f38b33f135df" class="font-mono font-bold uppercase text-[14px] tracking-[0.1em] text-blueInk">Payment</span>
+      <h1 data-i18n="web-pay.0c78a03c7cc8b1f5" class="mt-2 font-display font-semibold text-[28px] leading-tight text-ink">Confirming your payment</h1>
     </header>
     <PayReturn client:load gateway={gateway} orderId={orderIdParam} />
   </main>

@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../../lib/i18n/react";
+import { UiText } from "../../../lib/i18n/react";
 /* [LIST-WIZ-1] The 8-step listing wizard — one island, one draft object.
  *
  * Spec: Specs/SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING.md §A1 item 4, §C.1,
@@ -124,6 +126,8 @@ const AVAILABILITY_DRAFT_FIELDS = new Set<keyof ListingDraft>(['timezone', 'avai
 interface PromoRow { id: string; kind: 'early_bird' | 'promo_code'; pct_off: number; code: string | null }
 
 export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boolean }) {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   const [draft, setDraft] = useState<ListingDraft>(() => emptyDraft());
   const [step, setStep] = useState<StepIndex>(startAtPublish ? 7 : 0);
   const [loading, setLoading] = useState(startAtPublish);
@@ -864,7 +868,7 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
   const publicHref = draft.id ? `/l/${encodeURIComponent(draft.id)}` : null;
   const availabilityStepReady = draft.kind !== 'consult' || !draft.id || availabilityHydrate.status === 'ready';
 
-  if (loading) return <div className="font-body font-bold text-inkSoft">Loading…</div>;
+  if (loading) return <div className="font-body font-bold text-inkSoft"><UiText id="web-dashboard.ba3bbbe10d8bef66" source="Loading…" /></div>;
 
   return (
     <div className="flex flex-col gap-6 pb-32 sm:pb-24">
@@ -879,10 +883,9 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
           rows. */}
       <div className="sm:hidden">
         <div className="flex items-baseline gap-2">
-          <span className="font-mono font-bold uppercase text-[13px] tracking-[0.1em] text-inkMute">
-            Step {step + 1} of {STEP_LABELS.length}
+          <span className="font-mono font-bold uppercase text-[13px] tracking-[0.1em] text-inkMute"><UiText id="web-dashboard.8e6a6cca7aae1d1e" source="Step" />{" "}{step + 1}{" "}<UiText id="web-dashboard.28391d3bc64ec15c" source="of" />{" "}{STEP_LABELS.length}
           </span>
-          {saving && <span className="font-mono font-bold uppercase text-[13px] tracking-[0.1em] text-inkSoft">· Saving…</span>}
+          {saving && <span className="font-mono font-bold uppercase text-[13px] tracking-[0.1em] text-inkSoft"><UiText id="web-dashboard.a4dcd72a77f0fc22" source="· Saving…" /></span>}
         </div>
         <h2 className="mt-0.5 font-display font-semibold text-[24px] leading-tight text-ink">{STEP_LABELS[step]}</h2>
         <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full border-zine border-ink bg-paper2">
@@ -902,9 +905,7 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
         {/* [LIST-WIZ-PERF-1] The step already advanced — this pill is the only
             sign a background save is still in flight. */}
         {saving && (
-          <span className="ml-1 rounded-full border-zine border-ink bg-paper2 px-2.5 py-1 font-mono font-bold uppercase text-[10px] tracking-[0.06em] text-inkSoft">
-            Saving…
-          </span>
+          <span className="ml-1 rounded-full border-zine border-ink bg-paper2 px-2.5 py-1 font-mono font-bold uppercase text-[10px] tracking-[0.06em] text-inkSoft"><UiText id="web-dashboard.23e39291d6135814" source="Saving…" />{" "}</span>
         )}
       </div>
 
@@ -930,11 +931,11 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
             <Card fillClassName="bg-paper2" className="mb-4">
               <p className="font-body font-bold text-[14px] text-inkSoft">
                 {availabilityHydrate.status === 'loading'
-                  ? 'Loading this listing’s calendar schedule before availability can be saved…'
-                  : availabilityHydrate.message || 'Could not load this listing’s calendar schedule.'}
+                  ? uiT("web-dashboard.5a4e0aadd333fdde","Loading this listing’s calendar schedule before availability can be saved…")
+                  : availabilityHydrate.message || uiT("web-dashboard.466b1ac15084e5e5","Could not load this listing’s calendar schedule.")}
               </p>
               {availabilityHydrate.status === 'error' && (
-                <Button variant="ghost" label="Discard availability edits and reload" onClick={() => setAvailabilityHydrateNonce((value) => value + 1)} className="mt-3" />
+                <Button variant="ghost" label={uiT("web-dashboard.8171926f7157ac1b","Discard availability edits and reload")} onClick={() => setAvailabilityHydrateNonce((value) => value + 1)} className="mt-3" />
               )}
             </Card>
           )}
@@ -962,9 +963,9 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
       {gate && (
         <Card fillClassName="bg-paper2" className="max-w-2xl">
           <p className="font-body font-bold text-[13px] text-inkSoft">
-            {gate === 'liveness' ? 'This takes about a minute with your camera.' : 'This is a one-time identity check before you can sell sessions.'}
+            {gate === 'liveness' ? uiT("web-dashboard.b3c09b9e47556db0","This takes about a minute with your camera.") : uiT("web-dashboard.aeb58497c97b5740","This is a one-time identity check before you can sell sessions.")}
           </p>
-          <a href="/dashboard/identity" className="mt-2 inline-block font-body font-bold text-[14px] text-blueInk underline">Verify now</a>
+          <a href="/dashboard/identity" className="mt-2 inline-block font-body font-bold text-[14px] text-blueInk underline"><UiText id="web-dashboard.db383efba6aef9d9" source="Verify now" /></a>
         </Card>
       )}
 
@@ -978,12 +979,12 @@ export function ListingWizard({ startAtPublish = false }: { startAtPublish?: boo
            is a small target for a thumb. */
         <div className="fixed inset-x-0 bottom-0 z-10 border-t-zine border-ink bg-paper px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
           <div className="mx-auto flex max-w-2xl items-center gap-3">
-            {step > 0 && <Button variant="ghost" label="Back" onClick={back} className="shrink-0" />}
+            {step > 0 && <Button variant="ghost" label={uiT("web-dashboard.76900f1bfd16c8d4","Back")} onClick={back} className="shrink-0" />}
             <div className="hidden flex-1 sm:block" />
             {/* [LIST-WIZ-PERF-1] No `loading` spinner here on purpose — next()
                 advances the step immediately; the "Saving…" pill by the
                 stepper is the only in-flight indicator now. */}
-            <Button variant="lime" label={step === 0 ? 'Next' : 'Save and continue'} onClick={next}
+            <Button variant="lime" label={step === 0 ? uiT("web-dashboard.1ff57a29d7c9d11b","Next") : uiT("web-dashboard.6880daf172a2e6c5","Save and continue")} onClick={next}
               className="flex-1 sm:flex-none" />
           </div>
         </div>

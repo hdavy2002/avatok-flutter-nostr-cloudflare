@@ -1,0 +1,342 @@
+{
+  "reviewed": false,
+  "provenance": "Imported existing landing dictionary; native-language review is required before setting reviewed=true (except reviewed Hinglish source).",
+  "messages": {
+    "skip": {
+      "source": "Skip to main content",
+      "text": "مکيه مواد ڏانهن وڃو"
+    },
+    "eyebrow": {
+      "source": "India creator ticket window",
+      "text": "ڀارت جي تخليقڪارن لاءِ ٽڪيٽ ونڊو"
+    },
+    "heroTitle": {
+      "source": "Have a fanbase? Start your show.",
+      "text": "توهان وٽ فئن بيس آهي؟ پنهنجو شو شروع ڪريو."
+    },
+    "heroBody": {
+      "source": "Your skill, your story, your time — invite fans and take bookings on your terms.",
+      "text": "پنهنجي مهارت، ڪهاڻي ۽ وقت کي مداحن سان ونڊيو؛ کين سڏيو ۽ پنهنجي شرطن تي بکنگ وٺو."
+    },
+    "heroPrimary": {
+      "source": "Start creating free",
+      "text": "مفت تخليق شروع ڪريو"
+    },
+    "heroSecondary": {
+      "source": "See earning formats",
+      "text": "آمدني جا فارميٽ ڏسو"
+    },
+    "heroTicket": {
+      "source": "Your page. Your price. Your people.",
+      "text": "توهان جو صفحو. توهان جي قيمت. توهان جا ماڻهو."
+    },
+    "liveEyebrow": {
+      "source": "FORMAT 01 · LIVE",
+      "text": "فارميٽ ۰۱ · لائيو"
+    },
+    "liveTitle": {
+      "source": "Turn your livestream into an event.",
+      "text": "لائيو اسٽريم کي تقريب بڻايو."
+    },
+    "liveBody": {
+      "source": "A live class, watch party, rehearsal, puja — add a ticket, open the room, meet your fans.",
+      "text": "لائيو ڪلاس، واچ پارٽي، ريهرسل يا پوجا—ٽڪيٽ لڳايو، ڪمرو کوليو ۽ مداحن سان ملو."
+    },
+    "liveCta": {
+      "source": "Plan a live event",
+      "text": "لائيو تقريب رٿيو"
+    },
+    "liveMeta": {
+      "source": "Ticketed · Hosted online",
+      "text": "ٽڪيٽ وارو · آن لائن ميزباني"
+    },
+    "oneEyebrow": {
+      "source": "FORMAT 02 · 1:1",
+      "text": "فارميٽ ۰۲ · 1:1"
+    },
+    "oneTitle": {
+      "source": "Your time, one fan at a time.",
+      "text": "هڪ مداح لاءِ توهان جو وقت."
+    },
+    "oneBody": {
+      "source": "Open slots for an online video meetup. Advice, practice, stories or one focused conversation.",
+      "text": "آن لائن وڊيو ملاقات لاءِ سلاٽ کوليو—صلاح، مشق، ڪهاڻي يا ڌيان سان ڳالهه ٻولهه."
+    },
+    "oneCta": {
+      "source": "Offer a 1:1 session",
+      "text": "1:1 سيشن پيش ڪريو"
+    },
+    "oneMeta": {
+      "source": "Private · Video meetup",
+      "text": "خانگي · وڊيو ملاقات"
+    },
+    "showcaseEyebrow": {
+      "source": "THE BIG SCREEN",
+      "text": "وڏي اسڪرين"
+    },
+    "showcaseTitle": {
+      "source": "What happens on screen can become a connection.",
+      "text": "اسڪرين تي ٿيندڙ ڳالهه لاڳاپو بڻجي سگهي ٿي."
+    },
+    "showcaseBody": {
+      "source": "Music, makeup, gaming, recipes, dance, devotion — people are already watching. Give them a room.",
+      "text": "موسيقي، ميڪ اپ، گيمنگ، ترڪيب، ناچ يا عقيدت—ماڻهو اڳ ئي ڏسي رهيا آهن؛ کين هڪ ڪمرو ڏيو."
+    },
+    "showcaseLabel": {
+      "source": "Live room / Saturday 8:00 PM",
+      "text": "لائيو ڪمرو / ڇنڇر رات ۸:۰۰ وڳي"
+    },
+    "showcaseButton": {
+      "source": "Explore the marketplace",
+      "text": "مارڪيٽ پليس ڏسو"
+    },
+    "meetupEyebrow": {
+      "source": "YOUR CALENDAR, YOUR RULES",
+      "text": "توهان جو ڪئلينڊر، توهان جا اصول"
+    },
+    "meetupTitle": {
+      "source": "Your 1:1 corner.",
+      "text": "توهان جو 1:1 ڪنڊو."
+    },
+    "meetupBody": {
+      "source": "Set your availability, explain the format, and keep expectations clear before every booking. Online only, always.",
+      "text": "دستياب وقت مقرر ڪريو، فارميٽ سمجهايو ۽ هر بکنگ کان اڳ اميدون صاف رکو. هميشه صرف آن لائن."
+    },
+    "meetupNote": {
+      "source": "Online video meetups, with clear boundaries.",
+      "text": "صاف حدن سان آن لائن وڊيو ملاقاتون."
+    },
+    "ideasEyebrow": {
+      "source": "FROM CONTENT TO OFFER",
+      "text": "مواد کان آفر تائين"
+    },
+    "ideasTitle": {
+      "source": "What will you host?",
+      "text": "توهان ڇا ميزباني ڪندا؟"
+    },
+    "ideaOneTitle": {
+      "source": "Dance adda",
+      "text": "ناچ جي محفل"
+    },
+    "ideaOneBody": {
+      "source": "Choreography, feedback, practice room.",
+      "text": "ڪوريگرافي، راءِ ۽ مشق لاءِ ڪمرو."
+    },
+    "ideaTwoTitle": {
+      "source": "Home flavours",
+      "text": "گهر جو ذائقو"
+    },
+    "ideaTwoBody": {
+      "source": "Recipe live, regional thali, kitchen hacks.",
+      "text": "لائيو ترڪيب، علائقائي ٿالي ۽ باورچيخاني جا طريقا."
+    },
+    "ideaThreeTitle": {
+      "source": "Study buddy",
+      "text": "پڙهائي ساٿي"
+    },
+    "ideaThreeBody": {
+      "source": "Revision sprint, language practice, exam pep talk.",
+      "text": "ورجاءُ جو وقت، ٻوليءَ جي مشق ۽ امتحان لاءِ همٿ."
+    },
+    "ideaFourTitle": {
+      "source": "Style desk",
+      "text": "اسٽائل ڊيسڪ"
+    },
+    "ideaFourBody": {
+      "source": "Look breakdowns, draping, thrift finds.",
+      "text": "لباس جو جائزو، پهرڻ جا طريقا ۽ سستي خريداري."
+    },
+    "journeyEyebrow": {
+      "source": "HOW IT WORKS",
+      "text": "هي ڪيئن ڪم ڪري ٿو"
+    },
+    "journeyTitle": {
+      "source": "From poster to booking — four easy moves.",
+      "text": "پوسٽر کان بکنگ تائين—چار آسان قدم."
+    },
+    "stepOne": {
+      "source": "Create",
+      "text": "ٺاهيو"
+    },
+    "stepOneBody": {
+      "source": "Write your creator page and offer.",
+      "text": "پنهنجو تخليقڪار صفحو ۽ آفر لکو."
+    },
+    "stepTwo": {
+      "source": "Price",
+      "text": "قيمت رکو"
+    },
+    "stepTwoBody": {
+      "source": "Choose your ticket or session price.",
+      "text": "ٽڪيٽ يا سيشن جي قيمت چونڊيو."
+    },
+    "stepThree": {
+      "source": "Share",
+      "text": "ونڊيو"
+    },
+    "stepThreeBody": {
+      "source": "Send the link to your community.",
+      "text": "لنڪ پنهنجي برادري ڏانهن موڪليو."
+    },
+    "stepFour": {
+      "source": "Host",
+      "text": "ميزبان ٿيو"
+    },
+    "stepFourBody": {
+      "source": "Open the room, give your time, run your show.",
+      "text": "ڪمرو کوليو، وقت ڏيو ۽ پنهنجو شو هلايو."
+    },
+    "bookingEyebrow": {
+      "source": "FOR YOUR FANS",
+      "text": "توهان جي مداحن لاءِ"
+    },
+    "bookingTitle": {
+      "source": "What does booking look like for a fan?",
+      "text": "مداح لاءِ بکنگ ڪيئن نظر ايندي؟"
+    },
+    "bookingBody": {
+      "source": "One clear page. One date. One seat. After payment, they get the route to the room.",
+      "text": "هڪ صاف صفحو، هڪ تاريخ ۽ هڪ سيٽ. ادائيگي کان پوءِ ڪمري تائين پهچڻ جو رستو ملندو."
+    },
+    "bookingCta": {
+      "source": "Browse real listings",
+      "text": "حقيقي لسٽنگ ڏسو"
+    },
+    "bookingTicket": {
+      "source": "BOOKING PASS",
+      "text": "بکنگ پاس"
+    },
+    "bookingLive": {
+      "source": "LIVE EVENT",
+      "text": "لائيو تقريب"
+    },
+    "bookingSeat": {
+      "source": "1 seat reserved",
+      "text": "۱ سيٽ محفوظ"
+    },
+    "bookingOnline": {
+      "source": "Online · India",
+      "text": "آن لائن · ڀارت"
+    },
+    "calcEyebrow": {
+      "source": "THE MATH, CLEARLY",
+      "text": "حساب صاف نموني"
+    },
+    "calcTitle": {
+      "source": "See your gross estimate.",
+      "text": "پنهنجي مجموعي آمدني جو اندازو ڏسو."
+    },
+    "calcBody": {
+      "source": "Change the inputs to see what ticketed events or 1:1 bookings could gross.",
+      "text": "ان پٽ تبديل ڪري ڏسو ته ٽڪيٽ وارن واقعن يا 1:1 بکنگ مان ڪيتري مجموعي آمدني ٿي سگهي ٿي."
+    },
+    "calcLiveLabel": {
+      "source": "Live ticket price",
+      "text": "لائيو ٽڪيٽ جي قيمت"
+    },
+    "calcAudienceLabel": {
+      "source": "Audience per event",
+      "text": "هر تقريب جا ڏسندڙ"
+    },
+    "calcEventsLabel": {
+      "source": "Events per month",
+      "text": "هر مهيني تقريبون"
+    },
+    "calcOneLabel": {
+      "source": "1:1 price",
+      "text": "1:1 قيمت"
+    },
+    "calcBookingsLabel": {
+      "source": "Bookings per month",
+      "text": "هر مهيني بکنگ"
+    },
+    "calcLiveTotal": {
+      "source": "Live event gross",
+      "text": "لائيو تقريب جو مجموع"
+    },
+    "calcOneTotal": {
+      "source": "1:1 gross",
+      "text": "1:1 مجموع"
+    },
+    "calcTotal": {
+      "source": "Combined gross estimate",
+      "text": "گڏيل مجموعي آمدني جو اندازو"
+    },
+    "calcDisclaimer": {
+      "source": "Illustrative gross before platform fees, taxes, refunds and other costs. Not a promise of earnings.",
+      "text": "پليٽ فارم فيس، ٽيڪس، واپسي ۽ ٻين خرچن کان اڳ جو مثالِي مجموعو. آمدني جي ضمانت ناهي."
+    },
+    "calcPricingNote": {
+      "source": "Planning example in INR; actual listing pricing and checkout quotes follow the current pricing guide.",
+      "text": "INR ۾ منصوبابنديءَ جو مثال؛ حقيقي لسٽنگ قيمت ۽ چيڪ آئوٽ جا اگهه موجوده قيمت گائيڊ موجب هوندا."
+    },
+    "boundariesEyebrow": {
+      "source": "GOOD TO KNOW",
+      "text": "ڄاڻڻ لاءِ سٺو"
+    },
+    "boundariesTitle": {
+      "source": "Clear boundaries make better rooms.",
+      "text": "صاف حدون بهتر ڪمرا ٺاهين ٿيون."
+    },
+    "faqOneQ": {
+      "source": "Do I need a big following?",
+      "text": "ڇا مون کي وڏو فالوئنگ گهرجي؟"
+    },
+    "faqOneA": {
+      "source": "No. Start with one useful offer and share it with people who already care about your work.",
+      "text": "نه. هڪ فائديمند آفر سان شروع ڪريو ۽ انهن ماڻهن سان ونڊيو جيڪي توهان جي ڪم ۾ دلچسپي رکن ٿا."
+    },
+    "faqTwoQ": {
+      "source": "Is this an in-person booking?",
+      "text": "ڇا هي روبرو ملاقات جي بکنگ آهي؟"
+    },
+    "faqTwoA": {
+      "source": "No. Live events and 1:1 sessions happen online. Keep your listing and expectations specific.",
+      "text": "نه. لائيو تقريبون ۽ 1:1 سيشن آن لائن ٿين ٿا؛ لسٽنگ ۽ اميدون مخصوص رکو."
+    },
+    "faqThreeQ": {
+      "source": "When do I get paid?",
+      "text": "مون کي ادائيگي ڪڏهن ملندي؟"
+    },
+    "faqThreeA": {
+      "source": "Payout timing and eligible methods are shown in your creator dashboard and the applicable terms.",
+      "text": "ادائيگيءَ جو وقت ۽ اهل طريقا توهان جي تخليقڪار ڊيش بورڊ ۽ لاڳو شرطن ۾ ڏيکاريا ويندا."
+    },
+    "faqFourQ": {
+      "source": "Can I set my own boundaries?",
+      "text": "ڇا مان پنهنجون حدون مقرر ڪري سگهان ٿو؟"
+    },
+    "faqFourA": {
+      "source": "Yes. Choose your format, availability, price and what the session includes before publishing.",
+      "text": "ها. شايع ڪرڻ کان اڳ فارميٽ، دستيابي، قيمت ۽ سيشن ۾ شامل شيون چونڊيو."
+    },
+    "closeEyebrow": {
+      "source": "YOUR TURN",
+      "text": "هاڻي توهان جو وارو"
+    },
+    "closeTitle": {
+      "source": "Put a ticket on your voice.",
+      "text": "پنهنجي آواز کي ٽڪيٽ ڏيو."
+    },
+    "closeBody": {
+      "source": "Write one offer today. Open your first room tomorrow.",
+      "text": "اڄ هڪ آفر لکو. سڀاڻي پنهنجو پهريون ڪمرو کوليو."
+    },
+    "closeCta": {
+      "source": "Create your free listing",
+      "text": "پنهنجي مفت لسٽنگ ٺاهيو"
+    },
+    "ariaDecorative": {
+      "source": "Decorative",
+      "text": "سجاوٽي"
+    },
+    "ariaCalculator": {
+      "source": "Gross earnings estimate calculator",
+      "text": "مجموعي آمدنيءَ جو اندازو لڳائڻ وارو حسابگر"
+    },
+    "ariaFaq": {
+      "source": "Frequently asked questions",
+      "text": "اڪثر پڇيا ويندڙ سوال"
+    }
+  }
+}

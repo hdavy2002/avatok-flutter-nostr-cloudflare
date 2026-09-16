@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 // NOTE: `dart:async` was dropped with [VOICE-SCRUB-1] — the voice bubble's local
 // 1s Timer is gone, replaced by real position/duration streamed from the parent's
 // AudioPlayer, and nothing else in this file needs it.
@@ -109,6 +112,7 @@ class ChatLinkText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final spans = urlSpans(text);
     if (spans.isEmpty) return Text(text, style: style);
     // Link accent: [theme.play] is the closest role to "tappable accent" the
@@ -161,6 +165,7 @@ class MediaShimmerPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius),
       child: SizedBox(
@@ -292,6 +297,7 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final active = widget.playing;
     final t = widget.theme;
     final barPlayed = t?.play ?? (widget.onRight ? AD.bubbleOutPlay : AD.bubbleInPlay);
@@ -451,8 +457,8 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
                 ),
                 child: Text(
                   widget.speed == 1.0
-                      ? '1x'
-                      : (widget.speed == 1.5 ? '1.5x' : '2x'),
+                      ? uiCopy(UiMessage.m_1x_a048e64090)
+                      : (widget.speed == 1.5 ? uiCopy(UiMessage.m_1_5x_9ff89eb345) : uiCopy(UiMessage.m_2x_b595b214b5)),
                   style: ADText.bubbleMeta(c: inkC),
                 ),
               ),
@@ -493,6 +499,7 @@ class PendingVoiceNoteBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final metaC = theme?.meta ?? (onRight ? AD.bubbleOutMeta : AD.bubbleInMeta);
     final playC = theme?.play ?? (onRight ? AD.bubbleOutPlay : AD.bubbleInPlay);
     final borderC = theme?.border ?? AD.borderControl;
@@ -514,7 +521,7 @@ class PendingVoiceNoteBubble extends StatelessWidget {
         ),
       ),
       const SizedBox(width: Msg.s2),
-      Text('Posting your voice note…', style: ADText.bubbleMeta(c: metaC)),
+      UiText(UiMessage.m_posting_your_voice_note_b054af46c6, style: ADText.bubbleMeta(c: metaC)),
     ]);
   }
 }
@@ -536,6 +543,7 @@ class FailedVoiceNoteBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return GestureDetector(
       onTap: onRetry,
       behavior: HitTestBehavior.opaque,
@@ -551,7 +559,7 @@ class FailedVoiceNoteBubble extends StatelessWidget {
           child: Icon(PhosphorIcons.arrowClockwise(PhosphorIconsStyle.bold), size: 20, color: AD.danger),
         ),
         const SizedBox(width: Msg.s2),
-        Text("Couldn't send · tap to retry", style: ADText.bubbleMeta(c: AD.danger)),
+        UiText(UiMessage.m_couldn_t_send_tap_to_a5d52fa835, style: ADText.bubbleMeta(c: AD.danger)),
       ]),
     );
   }
@@ -582,7 +590,7 @@ class MediaTimestampScrim extends StatelessWidget {
   /// timestamp.
   final BubbleTheme? theme;
   @override
-  Widget build(BuildContext context) => Positioned(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Positioned(
         left: 0,
         right: 0,
         bottom: 0,
@@ -597,7 +605,7 @@ class MediaTimestampScrim extends StatelessWidget {
           ),
           child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [trailing]),
         ),
-      );
+      ); }
 }
 
 /// "↪ Forwarded" label overlaid top-left on media (render when envelope fwd:true).
@@ -609,7 +617,7 @@ class MediaForwardedLabel extends StatelessWidget {
   /// not the bubble fill, so it stays a fixed black/white badge.
   final BubbleTheme? theme;
   @override
-  Widget build(BuildContext context) => Positioned(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Positioned(
         left: 6,
         top: 6,
         child: Container(
@@ -622,10 +630,10 @@ class MediaForwardedLabel extends StatelessWidget {
             PhosphorIcon(PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold),
                 size: 11, color: Colors.white),
             const SizedBox(width: Msg.s1),
-            Text('FORWARDED', style: ADText.statCaption(c: Colors.white)),
+            UiText(UiMessage.m_forwarded_8b881e5a5d, style: ADText.statCaption(c: Colors.white)),
           ]),
         ),
-      );
+      ); }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -725,6 +733,7 @@ class ChatImageCard extends StatelessWidget {
   final Object? heroTag;
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // [CHAT-MEDIA-FIRSTFRAME-1] Bound the decode. The card is `height` tall and
     // at most the screen wide, so decoding a 12-megapixel camera photo at full
     // resolution into it is pure cost — and the decode is what the eye reads as
@@ -750,7 +759,7 @@ class ChatImageCard extends StatelessWidget {
             PhosphorIcon(PhosphorIcons.imageBroken(PhosphorIconsStyle.bold),
                 size: 26, color: Colors.white70),
             const SizedBox(height: Msg.s1),
-            const Text("Couldn't load", style: TextStyle(color: Colors.white70, fontSize: 12)),
+            const UiText(UiMessage.m_couldn_t_load_2c1cff23cb, style: TextStyle(color: Colors.white70, fontSize: 12)),
           ]),
         );
 
@@ -1118,6 +1127,7 @@ class _ChatVideoCardState extends State<ChatVideoCard> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // STREAM J (D17): auto-download off & nothing cached yet → tap-to-download.
     // Tapping fetches the bytes, then builds the thumbnail + plays inline.
     if (_needsDownload && widget.media != null) {
@@ -1209,7 +1219,7 @@ class _ChatVideoCardState extends State<ChatVideoCard> {
           Positioned(
             left: 6,
             bottom: 6,
-            child: _pill(PhosphorIcons.videoCamera(PhosphorIconsStyle.fill), label: 'VIDEO'),
+            child: _pill(PhosphorIcons.videoCamera(PhosphorIconsStyle.fill), label: uiCopy(UiMessage.m_video_65b2f9ec33)),
           ),
         ]),
       ),
@@ -1396,30 +1406,31 @@ class _ChatFileCardState extends State<ChatFileCard> {
     final ext = extOf(widget.name);
     final n = widget.name.toLowerCase();
     final m = widget.mime.toLowerCase();
-    if (_isPdf) return (icon: PhosphorIcons.filePdf(PhosphorIconsStyle.fill), color: const Color(0xFFE8553B), label: 'PDF');
+    if (_isPdf) return (icon: PhosphorIcons.filePdf(PhosphorIconsStyle.fill), color: const Color(0xFFE8553B), label: uiCopy(UiMessage.m_pdf_1d393b0081));
     if (n.endsWith('.doc') || n.endsWith('.docx') || m.contains('word')) {
-      return (icon: PhosphorIcons.fileDoc(PhosphorIconsStyle.fill), color: const Color(0xFF2B6CB0), label: ext.isEmpty ? 'DOC' : ext);
+      return (icon: PhosphorIcons.fileDoc(PhosphorIconsStyle.fill), color: const Color(0xFF2B6CB0), label: ext.isEmpty ? uiCopy(UiMessage.m_doc_c9ff9d7d29) : ext);
     }
     if (n.endsWith('.xls') || n.endsWith('.xlsx') || n.endsWith('.csv') || m.contains('sheet')) {
-      return (icon: PhosphorIcons.fileXls(PhosphorIconsStyle.fill), color: const Color(0xFF2F855A), label: ext.isEmpty ? 'XLS' : ext);
+      return (icon: PhosphorIcons.fileXls(PhosphorIconsStyle.fill), color: const Color(0xFF2F855A), label: ext.isEmpty ? uiCopy(UiMessage.m_xls_d42b61d014) : ext);
     }
     if (n.endsWith('.ppt') || n.endsWith('.pptx') || m.contains('presentation')) {
-      return (icon: PhosphorIcons.filePpt(PhosphorIconsStyle.fill), color: const Color(0xFFDD6B20), label: ext.isEmpty ? 'PPT' : ext);
+      return (icon: PhosphorIcons.filePpt(PhosphorIconsStyle.fill), color: const Color(0xFFDD6B20), label: ext.isEmpty ? uiCopy(UiMessage.m_ppt_9dbd298afb) : ext);
     }
     if (n.endsWith('.zip') || n.endsWith('.rar') || n.endsWith('.7z') || n.endsWith('.tar') || n.endsWith('.gz')) {
-      return (icon: PhosphorIcons.fileZip(PhosphorIconsStyle.fill), color: const Color(0xFF6B46C1), label: ext.isEmpty ? 'ZIP' : ext);
+      return (icon: PhosphorIcons.fileZip(PhosphorIconsStyle.fill), color: const Color(0xFF6B46C1), label: ext.isEmpty ? uiCopy(UiMessage.m_zip_eaca4b3069) : ext);
     }
     if (n.endsWith('.mp3') || n.endsWith('.wav') || n.endsWith('.m4a') || m.startsWith('audio/')) {
-      return (icon: PhosphorIcons.fileAudio(PhosphorIconsStyle.fill), color: const Color(0xFFB83280), label: ext.isEmpty ? 'AUDIO' : ext);
+      return (icon: PhosphorIcons.fileAudio(PhosphorIconsStyle.fill), color: const Color(0xFFB83280), label: ext.isEmpty ? uiCopy(UiMessage.m_audio_859e89a729) : ext);
     }
     if (n.endsWith('.txt') || n.endsWith('.md') || m.startsWith('text/')) {
-      return (icon: PhosphorIcons.fileText(PhosphorIconsStyle.fill), color: AD.textSecondary, label: ext.isEmpty ? 'TXT' : ext);
+      return (icon: PhosphorIcons.fileText(PhosphorIconsStyle.fill), color: AD.textSecondary, label: ext.isEmpty ? uiCopy(UiMessage.m_txt_d3dc6ac949) : ext);
     }
-    return (icon: PhosphorIcons.file(PhosphorIconsStyle.fill), color: AD.textSecondary, label: ext.isEmpty ? 'FILE' : ext);
+    return (icon: PhosphorIcons.file(PhosphorIconsStyle.fill), color: AD.textSecondary, label: ext.isEmpty ? uiCopy(UiMessage.m_file_9ef2faffd2) : ext);
   }
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final info = _typeInfo();
     final sizeLabel = prettySize(widget.size);
 
@@ -1550,7 +1561,7 @@ class _ChatFileCardState extends State<ChatFileCard> {
                   PhosphorIcon(PhosphorIcons.downloadSimple(PhosphorIconsStyle.bold),
                       size: 13, color: accentC),
                   const SizedBox(width: Msg.s1),
-                  Text('OPEN', style: ADText.statCaption(c: accentC)),
+                  UiText(UiMessage.m_open_6e10953f3e, style: ADText.statCaption(c: accentC)),
                 ]),
               ],
             ),
@@ -1644,6 +1655,7 @@ class _YouTubeCardState extends State<YouTubeCard> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final c = _ctrl;
     final t = widget.theme;
     return Container(
@@ -1696,7 +1708,7 @@ class _YouTubeCardState extends State<YouTubeCard> {
                       color: Colors.black.withValues(alpha: 0.7),
                       borderRadius: Msg.brPill,
                     ),
-                    child: Text('YouTube', style: ADText.statCaption(c: Colors.white)),
+                    child: UiText(UiMessage.m_youtube_fb7accfff8, style: ADText.statCaption(c: Colors.white)),
                   ),
                 ),
               ]),
@@ -1706,7 +1718,7 @@ class _YouTubeCardState extends State<YouTubeCard> {
           padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s2, Msg.s3, Msg.s3),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             Text(
-              _loadingMeta ? 'YouTube video' : (_title?.isNotEmpty == true ? _title! : 'YouTube video'),
+              _loadingMeta ? uiCopy(UiMessage.m_youtube_video_4d78938a8a) : (_title?.isNotEmpty == true ? _title! : uiCopy(UiMessage.m_youtube_video_4d78938a8a)),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: t != null ? ADText.rowName(c: t.ink) : ADText.rowName(),

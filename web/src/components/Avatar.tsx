@@ -1,3 +1,4 @@
+import { useTranslation as useUiTranslation } from "../lib/i18n/react";
 import { cfImage } from '../lib/config';
 
 export interface AvatarProps {
@@ -23,6 +24,8 @@ function initials(name?: string | null): string {
  * URL pattern (/cdn-cgi/image/format=avif,quality=60,width=N,fit=cover/<path>).
  */
 export function Avatar({ src, name, size = 44, fallbackClassName = 'bg-blue', className = '' }: AvatarProps) {
+  const {t:uiT}=useUiTranslation("web-common");
+
   const px = { width: size, height: size };
   if (src) {
     return (
@@ -39,7 +42,7 @@ export function Avatar({ src, name, size = 44, fallbackClassName = 'bg-blue', cl
   }
   return (
     <span
-      aria-label={name ?? 'avatar'}
+      aria-label={name ?? uiT("web-common.87bbe879c7a5f578","avatar")}
       className={[
         'inline-flex items-center justify-center rounded-full border-zine border-ink shadow-zine-xs',
         'font-display font-semibold text-ink',

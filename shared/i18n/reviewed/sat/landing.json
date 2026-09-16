@@ -1,0 +1,342 @@
+{
+  "reviewed": false,
+  "provenance": "Imported existing landing dictionary; native-language review is required before setting reviewed=true (except reviewed Hinglish source).",
+  "messages": {
+    "skip": {
+      "source": "Skip to main content",
+      "text": "ᱢᱩᱬ ᱵᱤᱥᱚᱭ ᱛᱮ ᱥᱮᱫᱟᱭ ᱢᱮ"
+    },
+    "eyebrow": {
+      "source": "India creator ticket window",
+      "text": "ᱵᱷᱟᱨᱚᱛ ᱠᱨᱤᱭᱮᱴᱚᱨ ᱴᱤᱠᱮᱴ ᱡᱟᱭᱜᱟ"
+    },
+    "heroTitle": {
+      "source": "Have a fanbase? Start your show.",
+      "text": "ᱯᱷᱮᱱᱵᱮᱥ ᱢᱮᱱᱟᱜ ᱟ? ᱟᱢᱟᱜ ᱥᱚ ᱵᱟᱹᱭᱥᱟᱹᱣ ᱢᱮ."
+    },
+    "heroBody": {
+      "source": "Your skill, your story, your time — invite fans and take bookings on your terms.",
+      "text": "ᱟᱢᱟᱜ ᱥᱤᱠᱷᱟᱹ, ᱟᱢᱟᱜ ᱠᱟᱹᱦᱱᱤ, ᱟᱢᱟᱜ ᱚᱠᱛᱚ — ᱯᱷᱮᱱ ᱠᱚ ᱦᱚᱦᱚ ᱢᱮ ᱟᱨ ᱟᱢᱟᱜ ᱱᱤᱭᱚᱢ ᱛᱮ ᱵᱩᱠᱤᱝ ᱞᱮᱵᱚᱜ ᱢᱮ."
+    },
+    "heroPrimary": {
+      "source": "Start creating free",
+      "text": "ᱢᱟᱹᱢᱟᱹᱠᱟᱹᱭᱛᱮ ᱵᱟᱹᱭᱥᱟᱹᱣ ᱮᱦᱚᱵ ᱢᱮ"
+    },
+    "heroSecondary": {
+      "source": "See earning formats",
+      "text": "ᱟᱭ ᱨᱟᱥᱤ ᱫᱷᱟᱨᱟ ᱧᱮᱞ ᱢᱮ"
+    },
+    "heroTicket": {
+      "source": "Your page. Your price. Your people.",
+      "text": "ᱟᱢᱟᱜ ᱯᱮᱡ. ᱟᱢᱟᱜ ᱫᱟᱢ. ᱟᱢᱟᱜ ᱦᱚᱲ."
+    },
+    "liveEyebrow": {
+      "source": "FORMAT 01 · LIVE",
+      "text": "FORMAT 01 · ᱞᱟᱭᱤᱵ"
+    },
+    "liveTitle": {
+      "source": "Turn your livestream into an event.",
+      "text": "ᱟᱢᱟᱜ livestream ᱮ ᱤᱵᱮᱱᱴ ᱵᱟᱹᱭᱥᱟᱹᱣ ᱢᱮ."
+    },
+    "liveBody": {
+      "source": "A live class, watch party, rehearsal, puja — add a ticket, open the room, meet your fans.",
+      "text": "ᱞᱟᱭᱤᱵ ᱠᱞᱟᱥ, watch party, ᱨᱤᱦᱟᱹᱨᱥᱮᱞ ᱟᱨ ᱯᱩᱡᱟ — ᱴᱤᱠᱮᱴ ᱥᱮᱞᱮᱫ ᱢᱮ, ᱨᱩᱢ ᱡᱷᱤᱡ ᱢᱮ, ᱯᱷᱮᱱ ᱠᱚ ᱧᱮᱞ ᱢᱮ."
+    },
+    "liveCta": {
+      "source": "Plan a live event",
+      "text": "ᱞᱟᱭᱤᱵ ᱤᱵᱮᱱᱴ ᱵᱟᱹᱭᱥᱟᱹᱣ ᱢᱮ"
+    },
+    "liveMeta": {
+      "source": "Ticketed · Hosted online",
+      "text": "ᱴᱤᱠᱮᱴ ᱥᱟᱶᱛᱮ · ᱚᱱᱞᱟᱭᱤᱱ ᱦᱚᱥᱴ"
+    },
+    "oneEyebrow": {
+      "source": "FORMAT 02 · 1:1",
+      "text": "FORMAT 02 · 1:1"
+    },
+    "oneTitle": {
+      "source": "Your time, one fan at a time.",
+      "text": "ᱢᱤᱫ ᱯᱷᱮᱱ ᱥᱟᱶ ᱢᱤᱫ ᱵᱟᱹᱨ ᱟᱢᱟᱜ ᱚᱠᱛᱚ."
+    },
+    "oneBody": {
+      "source": "Open slots for an online video meetup. Advice, practice, stories or one focused conversation.",
+      "text": "ᱚᱱᱞᱟᱭᱤᱱ ᱵᱷᱤᱰᱤᱭᱚ ᱢᱤᱴᱚᱯ ᱞᱟᱹᱜᱤᱫ ᱥᱞᱚᱴ ᱡᱷᱤᱡ ᱢᱮ. ᱥᱞᱟᱦᱟ, ᱚᱱᱩᱥᱤᱞᱟᱱ, ᱠᱟᱹᱦᱱᱤ ᱟᱨ ᱢᱤᱫ ᱯᱷᱟᱸᱠᱟ ᱠᱚᱛᱷᱟ ᱮᱢ ᱢᱮ."
+    },
+    "oneCta": {
+      "source": "Offer a 1:1 session",
+      "text": "1:1 ᱥᱮᱥᱚᱱ ᱮᱢ ᱢᱮ"
+    },
+    "oneMeta": {
+      "source": "Private · Video meetup",
+      "text": "ᱛᱤᱱᱟᱹᱜ · ᱵᱷᱤᱰᱤᱭᱚ ᱢᱤᱴᱚᱯ"
+    },
+    "showcaseEyebrow": {
+      "source": "THE BIG SCREEN",
+      "text": "THE BIG SCREEN"
+    },
+    "showcaseTitle": {
+      "source": "What happens on screen can become a connection.",
+      "text": "ᱥᱠᱨᱤᱱ ᱨᱮ ᱚᱠᱟ ᱦᱚᱪᱚ ᱛᱟᱦᱮᱸ ᱛᱟᱦᱮᱸ ᱥᱟᱶᱛᱟ ᱵᱟᱹᱭᱥᱟᱹᱣ ᱫᱚ ᱦᱚᱭᱚᱜ ᱫᱟᱲᱮᱭᱟ."
+    },
+    "showcaseBody": {
+      "source": "Music, makeup, gaming, recipes, dance, devotion — people are already watching. Give them a room.",
+      "text": "ᱥᱟᱹᱝᱜᱤᱛ, ᱢᱮᱠᱟᱯ, ᱜᱮᱢᱤᱝ, ᱡᱚᱢᱟᱜ, ᱱᱟᱪ, ᱫᱷᱟᱹᱨᱢᱤ — ᱯᱷᱮᱱ ᱠᱚ ᱱᱤᱨᱟᱹ ᱧᱮᱞ ᱮᱫᱟ. ᱱᱤᱛᱚᱜ ᱩᱱᱠᱩ ᱨᱩᱢ ᱮᱢ ᱢᱮ."
+    },
+    "showcaseLabel": {
+      "source": "Live room / Saturday 8:00 PM",
+      "text": "ᱞᱟᱭᱤᱵ ᱨᱩᱢ / ᱥᱟᱹᱛ ᱵᱟᱹᱨ ᱨᱟᱹᱛ 8:00"
+    },
+    "showcaseButton": {
+      "source": "Explore the marketplace",
+      "text": "ᱢᱟᱨᱠᱮᱴᱯᱞᱮᱥ ᱧᱮᱞ ᱢᱮ"
+    },
+    "meetupEyebrow": {
+      "source": "YOUR CALENDAR, YOUR RULES",
+      "text": "ᱟᱢᱟᱜ ᱠᱮᱞᱮᱱᱰᱟᱨ, ᱟᱢᱟᱜ ᱱᱤᱭᱚᱢ"
+    },
+    "meetupTitle": {
+      "source": "Your 1:1 corner.",
+      "text": "ᱟᱢᱟᱜ 1:1 ᱡᱟᱭᱜᱟ."
+    },
+    "meetupBody": {
+      "source": "Set your availability, explain the format, and keep expectations clear before every booking. Online only, always.",
+      "text": "ᱟᱢᱟᱜ ᱞᱟᱹᱣ ᱚᱠᱛᱚ ᱥᱮᱴ ᱢᱮ, ᱯᱷᱚᱨᱢᱮᱴ ᱵᱩᱡᱷᱟᱹᱣ ᱢᱮ, ᱟᱨ ᱵᱩᱠᱤᱝ ᱢᱟᱲᱟᱝ ᱮ ᱟᱥᱟ ᱥᱟᱯᱷᱟ ᱮᱢ ᱢᱮ. ᱥᱟᱹᱛ ᱞᱮ ᱚᱱᱞᱟᱭᱤᱱ."
+    },
+    "meetupNote": {
+      "source": "Online video meetups, with clear boundaries.",
+      "text": "ᱥᱟᱯᱷᱟ ᱥᱤᱢᱟ ᱥᱟᱶᱛᱮ ᱚᱱᱞᱟᱭᱤᱱ ᱵᱷᱤᱰᱤᱭᱚ ᱢᱤᱴᱚᱯ."
+    },
+    "ideasEyebrow": {
+      "source": "FROM CONTENT TO OFFER",
+      "text": "ᱠᱚᱱᱴᱮᱱᱴ ᱠᱷᱚᱱ ᱚᱯᱷᱟᱨ ᱛᱮ"
+    },
+    "ideasTitle": {
+      "source": "What will you host?",
+      "text": "ᱟᱢ ᱪᱮᱫ ᱦᱚᱥᱴ ᱢᱮᱭᱟ?"
+    },
+    "ideaOneTitle": {
+      "source": "Dance adda",
+      "text": "ᱱᱟᱪ ᱟᱰᱰᱟ"
+    },
+    "ideaOneBody": {
+      "source": "Choreography, feedback, practice room.",
+      "text": "ᱱᱟᱪ ᱥᱟᱡᱟᱣ, ᱨᱟᱭ, ᱚᱱᱩᱥᱤᱞᱟᱱ ᱨᱩᱢ."
+    },
+    "ideaTwoTitle": {
+      "source": "Home flavours",
+      "text": "ᱚᱲᱟᱜ ᱨᱟᱥᱤ"
+    },
+    "ideaTwoBody": {
+      "source": "Recipe live, regional thali, kitchen hacks.",
+      "text": "ᱞᱟᱭᱤᱵ ᱨᱮᱥᱤᱯᱤ, ᱫᱤᱥᱚᱢ ᱡᱚᱢᱟᱜ, ᱠᱤᱪᱮᱱ ᱩᱯᱟᱹᱭ."
+    },
+    "ideaThreeTitle": {
+      "source": "Study buddy",
+      "text": "ᱯᱟᱲᱦᱟᱣ ᱥᱟᱹᱛᱷᱤ"
+    },
+    "ideaThreeBody": {
+      "source": "Revision sprint, language practice, exam pep talk.",
+      "text": "ᱨᱤᱵᱷᱤᱡᱚᱱ, ᱯᱟᱹᱨᱥᱤ ᱚᱱᱩᱥᱤᱞᱟᱱ, ᱯᱟᱨᱤᱠᱷᱟ ᱦᱟᱹᱞᱤ."
+    },
+    "ideaFourTitle": {
+      "source": "Style desk",
+      "text": "ᱥᱴᱟᱭᱤᱞ ᱰᱮᱥᱠ"
+    },
+    "ideaFourBody": {
+      "source": "Look breakdowns, draping, thrift finds.",
+      "text": "ᱞᱩᱠ ᱵᱤᱵᱨᱚᱱ, ᱥᱟᱲᱤ ᱵᱟᱹᱭᱥᱟᱹᱣ, ᱠᱚᱢ ᱫᱟᱢ ᱥᱮᱫ ᱠᱷᱚᱱ."
+    },
+    "journeyEyebrow": {
+      "source": "HOW IT WORKS",
+      "text": "ᱱᱚᱣᱟ ᱪᱮᱞᱮᱫ ᱠᱟᱹᱢᱤᱭᱟ?"
+    },
+    "journeyTitle": {
+      "source": "From poster to booking — four easy moves.",
+      "text": "ᱯᱚᱥᱴᱟᱨ ᱠᱷᱚᱱ ᱵᱩᱠᱤᱝ ᱛᱮ — ᱯᱟᱹᱨ ᱥᱟᱦᱚᱡ ᱥᱮᱫ."
+    },
+    "stepOne": {
+      "source": "Create",
+      "text": "ᱵᱟᱹᱭᱥᱟᱹᱣ"
+    },
+    "stepOneBody": {
+      "source": "Write your creator page and offer.",
+      "text": "ᱟᱢᱟᱜ ᱠᱨᱤᱭᱮᱴᱚᱨ ᱯᱮᱡ ᱟᱨ ᱚᱯᱷᱟᱨ ᱚᱞ ᱢᱮ."
+    },
+    "stepTwo": {
+      "source": "Price",
+      "text": "ᱫᱟᱢ"
+    },
+    "stepTwoBody": {
+      "source": "Choose your ticket or session price.",
+      "text": "ᱴᱤᱠᱮᱴ ᱟᱨ ᱥᱮᱥᱚᱱ ᱫᱟᱢ ᱵᱟᱪᱷᱟᱣ ᱢᱮ."
+    },
+    "stepThree": {
+      "source": "Share",
+      "text": "ᱵᱷᱟᱜ ᱢᱮ"
+    },
+    "stepThreeBody": {
+      "source": "Send the link to your community.",
+      "text": "ᱞᱤᱝᱠ ᱟᱢᱟᱜ ᱥᱟᱹᱛᱷᱤ ᱠᱚ ᱮᱢ ᱢᱮ."
+    },
+    "stepFour": {
+      "source": "Host",
+      "text": "ᱦᱚᱥᱴ ᱢᱮ"
+    },
+    "stepFourBody": {
+      "source": "Open the room, give your time, run your show.",
+      "text": "ᱨᱩᱢ ᱡᱷᱤᱡ ᱢᱮ, ᱚᱠᱛᱚ ᱮᱢ ᱢᱮ, ᱟᱢᱟᱜ ᱥᱚ ᱪᱟᱞᱟᱣ ᱢᱮ."
+    },
+    "bookingEyebrow": {
+      "source": "FOR YOUR FANS",
+      "text": "ᱟᱢᱟᱜ ᱯᱷᱮᱱ ᱠᱚ ᱞᱟᱹᱜᱤᱫ"
+    },
+    "bookingTitle": {
+      "source": "What does booking look like for a fan?",
+      "text": "ᱯᱷᱮᱱ ᱞᱟᱹᱜᱤᱫ ᱵᱩᱠᱤᱝ ᱪᱮᱞᱮᱫ ᱧᱮᱞᱚᱜᱼᱟ?"
+    },
+    "bookingBody": {
+      "source": "One clear page. One date. One seat. After payment, they get the route to the room.",
+      "text": "ᱢᱤᱫ ᱥᱟᱯᱷᱟ ᱯᱮᱡ. ᱢᱤᱫ ᱫᱤᱱ. ᱢᱤᱫ ᱥᱤᱴ. ᱯᱮᱢᱮᱱᱴ ᱛᱟᱭᱚᱢ ᱨᱩᱢ ᱛᱮ ᱥᱮᱫᱟᱭ ᱞᱟᱹᱜᱤᱫ ᱞᱟᱢᱱᱟ ᱮᱢᱚᱜᱼᱟ."
+    },
+    "bookingCta": {
+      "source": "Browse real listings",
+      "text": "ᱥᱟᱹᱪ ᱞᱤᱥᱴᱤᱝ ᱧᱮᱞ ᱢᱮ"
+    },
+    "bookingTicket": {
+      "source": "BOOKING PASS",
+      "text": "ᱵᱩᱠᱤᱝ ᱯᱟᱥ"
+    },
+    "bookingLive": {
+      "source": "LIVE EVENT",
+      "text": "ᱞᱟᱭᱤᱵ ᱤᱵᱮᱱᱴ"
+    },
+    "bookingSeat": {
+      "source": "1 seat reserved",
+      "text": "ᱢᱤᱫ ᱥᱤᱴ ᱵᱟᱪᱷᱟᱣ ᱦᱩᱭ ᱟ"
+    },
+    "bookingOnline": {
+      "source": "Online · India",
+      "text": "ᱚᱱᱞᱟᱭᱤᱱ · ᱵᱷᱟᱨᱚᱛ"
+    },
+    "calcEyebrow": {
+      "source": "THE MATH, CLEARLY",
+      "text": "ᱞᱮᱠᱷᱟ ᱥᱟᱯᱷᱟ"
+    },
+    "calcTitle": {
+      "source": "See your gross estimate.",
+      "text": "ᱟᱢᱟᱜ ᱢᱚᱴ ᱟᱱᱩᱢᱟᱱ ᱧᱮᱞ ᱢᱮ."
+    },
+    "calcBody": {
+      "source": "Change the inputs to see what ticketed events or 1:1 bookings could gross.",
+      "text": "ᱤᱱᱯᱩᱴ ᱵᱚᱫᱚᱞ ᱢᱮ ᱟᱨ ᱴᱤᱠᱮᱴ ᱤᱵᱮᱱᱴ ᱟᱨ 1:1 ᱵᱩᱠᱤᱝ ᱠᱷᱚᱱ ᱪᱮᱫ ᱢᱚᱴ ᱦᱚᱭᱚᱜ ᱫᱟᱲᱮᱭᱟ ᱧᱮᱞ ᱢᱮ."
+    },
+    "calcLiveLabel": {
+      "source": "Live ticket price",
+      "text": "ᱞᱟᱭᱤᱵ ᱴᱤᱠᱮᱴ ᱫᱟᱢ"
+    },
+    "calcAudienceLabel": {
+      "source": "Audience per event",
+      "text": "ᱢᱤᱫ ᱤᱵᱮᱱᱴ ᱨᱮ ᱧᱮᱞᱚᱜ ᱠᱚ"
+    },
+    "calcEventsLabel": {
+      "source": "Events per month",
+      "text": "ᱪᱟᱸᱫᱚ ᱨᱮ ᱤᱵᱮᱱᱴ"
+    },
+    "calcOneLabel": {
+      "source": "1:1 price",
+      "text": "1:1 ᱫᱟᱢ"
+    },
+    "calcBookingsLabel": {
+      "source": "Bookings per month",
+      "text": "ᱪᱟᱸᱫᱚ ᱨᱮ ᱵᱩᱠᱤᱝ"
+    },
+    "calcLiveTotal": {
+      "source": "Live event gross",
+      "text": "ᱞᱟᱭᱤᱵ ᱤᱵᱮᱱᱴ ᱢᱚᱴ"
+    },
+    "calcOneTotal": {
+      "source": "1:1 gross",
+      "text": "1:1 ᱢᱚᱴ"
+    },
+    "calcTotal": {
+      "source": "Combined gross estimate",
+      "text": "ᱡᱚᱴ ᱢᱚᱴ ᱟᱱᱩᱢᱟᱱ"
+    },
+    "calcDisclaimer": {
+      "source": "Illustrative gross before platform fees, taxes, refunds and other costs. Not a promise of earnings.",
+      "text": "ᱯᱞᱮᱴᱯᱷᱚᱨᱢ ᱯᱷᱤ, ᱠᱚᱨ, ᱯᱟᱭᱥᱟ ᱨᱩᱦᱟᱹᱲ, ᱟᱨ ᱮᱴᱟᱜ ᱠᱷᱚᱨᱪ ᱢᱟᱲᱟᱝ ᱨᱮ ᱥᱮᱫᱟᱭ ᱢᱚᱴ. ᱟᱭ ᱮᱢ ᱠᱟᱹᱢᱤᱭᱟ ᱱᱟ ᱜᱟᱹᱨᱟᱱᱴᱤ."
+    },
+    "calcPricingNote": {
+      "source": "Planning example in INR; actual listing pricing and checkout quotes follow the current pricing guide.",
+      "text": "INR ᱨᱮ ᱯᱞᱟᱱᱤᱝ ᱩᱫᱟᱹᱦᱚᱨᱚᱱ; ᱥᱟᱹᱪ ᱞᱤᱥᱴᱤᱝ ᱫᱟᱢ ᱟᱨ checkout ᱠᱚᱴ ᱱᱤᱛᱚᱜ ᱫᱟᱢ ᱜᱟᱭᱰ ᱛᱮ ᱪᱟᱞᱟᱣᱟ."
+    },
+    "boundariesEyebrow": {
+      "source": "GOOD TO KNOW",
+      "text": "ᱵᱩᱡᱷᱟᱹᱣ ᱞᱟᱹᱜᱤᱫ"
+    },
+    "boundariesTitle": {
+      "source": "Clear boundaries make better rooms.",
+      "text": "ᱥᱟᱯᱷᱟ ᱥᱤᱢᱟ ᱫᱚ ᱵᱷᱟᱞᱟ ᱨᱩᱢ ᱵᱟᱹᱭᱥᱟᱹᱣ ᱮᱫᱟ."
+    },
+    "faqOneQ": {
+      "source": "Do I need a big following?",
+      "text": "ᱟᱢ ᱵᱟᱲᱤᱭᱟ ᱯᱷᱮᱱᱵᱮᱥ ᱞᱟᱹᱜᱤᱫ ᱱᱟᱢ?"
+    },
+    "faqOneA": {
+      "source": "No. Start with one useful offer and share it with people who already care about your work.",
+      "text": "ᱵᱟᱝ. ᱢᱤᱫ ᱞᱟᱹᱭᱟᱹᱜ ᱚᱯᱷᱟᱨ ᱛᱮ ᱮᱦᱚᱵ ᱢᱮ ᱟᱨ ᱟᱢᱟᱜ ᱠᱟᱹᱢᱤ ᱠᱚ ᱵᱟᱝ ᱯᱟᱥᱟᱱᱫ ᱦᱚᱲ ᱥᱟᱶ ᱵᱷᱟᱜ ᱢᱮ."
+    },
+    "faqTwoQ": {
+      "source": "Is this an in-person booking?",
+      "text": "ᱱᱚᱣᱟ ᱪᱮᱫ ᱡᱟᱭᱜᱟ ᱨᱮ ᱵᱩᱠᱤᱝ ᱠᱟᱱᱟ?"
+    },
+    "faqTwoA": {
+      "source": "No. Live events and 1:1 sessions happen online. Keep your listing and expectations specific.",
+      "text": "ᱵᱟᱝ. ᱞᱟᱭᱤᱵ ᱤᱵᱮᱱᱴ ᱟᱨ 1:1 ᱥᱮᱥᱚᱱ ᱚᱱᱞᱟᱭᱤᱱ ᱨᱮ ᱦᱩᱭᱩᱜᱼᱟ. ᱟᱢᱟᱜ ᱞᱤᱥᱴᱤᱝ ᱟᱨ ᱟᱥᱟ ᱠᱚ ᱥᱟᱯᱷᱟ ᱢᱮ."
+    },
+    "faqThreeQ": {
+      "source": "When do I get paid?",
+      "text": "ᱪᱮᱫ ᱚᱠᱛᱚ ᱨᱮ ᱯᱟᱭᱥᱟ ᱧᱟᱢᱚᱜᱼᱟ?"
+    },
+    "faqThreeA": {
+      "source": "Payout timing and eligible methods are shown in your creator dashboard and the applicable terms.",
+      "text": "ᱯᱟᱭᱥᱟ ᱮᱢ ᱚᱠᱛᱚ ᱟᱨ ᱡᱚᱜᱽᱭᱚ ᱩᱯᱟᱹᱭ ᱠᱨᱤᱭᱮᱴᱚᱨ ᱰᱮᱥᱵᱚᱨᱰ ᱟᱨ ᱱᱤᱭᱚᱢ ᱨᱮ ᱧᱮᱞᱚᱜᱼᱟ."
+    },
+    "faqFourQ": {
+      "source": "Can I set my own boundaries?",
+      "text": "ᱟᱢ ᱟᱢᱟᱜ ᱥᱤᱢᱟ ᱥᱮᱴ ᱢᱮ ᱫᱟᱲᱮᱭᱟ ᱠᱟᱱᱟ?"
+    },
+    "faqFourA": {
+      "source": "Yes. Choose your format, availability, price and what the session includes before publishing.",
+      "text": "ᱦᱚᱭ. ᱯᱨᱚᱠᱟᱥ ᱢᱟᱲᱟᱝ ᱯᱷᱚᱨᱢᱮᱴ, ᱞᱟᱹᱣ ᱚᱠᱛᱚ, ᱫᱟᱢ ᱟᱨ ᱥᱮᱥᱚᱱ ᱨᱮ ᱪᱮᱫ ᱢᱮᱱᱟᱜ ᱫᱚ ᱵᱟᱪᱷᱟᱣ ᱢᱮ."
+    },
+    "closeEyebrow": {
+      "source": "YOUR TURN",
+      "text": "ᱟᱢᱟᱜ ᱯᱟᱞᱤ"
+    },
+    "closeTitle": {
+      "source": "Put a ticket on your voice.",
+      "text": "ᱟᱢᱟᱜ ᱨᱟᱣ ᱨᱮ ᱴᱤᱠᱮᱴ ᱮᱢ ᱢᱮ."
+    },
+    "closeBody": {
+      "source": "Write one offer today. Open your first room tomorrow.",
+      "text": "ᱱᱤᱛᱚᱜ ᱢᱤᱫ ᱚᱯᱷᱟᱨ ᱚᱞ ᱢᱮ. ᱜᱟᱯᱟ ᱟᱢᱟᱜ ᱯᱟᱹᱦᱤᱞ ᱨᱩᱢ ᱡᱷᱤᱡ ᱢᱮ."
+    },
+    "closeCta": {
+      "source": "Create your free listing",
+      "text": "ᱟᱢᱟᱜ ᱢᱟᱹᱢᱟᱹᱠᱟᱹᱭ ᱞᱤᱥᱴᱤᱝ ᱵᱟᱹᱭᱥᱟᱹᱣ ᱢᱮ"
+    },
+    "ariaDecorative": {
+      "source": "Decorative",
+      "text": "ᱥᱟᱡᱟᱣ ᱯᱤᱠᱪᱟᱨ"
+    },
+    "ariaCalculator": {
+      "source": "Gross earnings estimate calculator",
+      "text": "ᱢᱚᱴ ᱟᱭ ᱟᱱᱩᱢᱟᱱ ᱜᱟᱱᱟᱜ"
+    },
+    "ariaFaq": {
+      "source": "Frequently asked questions",
+      "text": "ᱥᱟᱫᱷᱟᱨᱚᱱ ᱠᱚᱛᱷᱟ ᱠᱚ"
+    }
+  }
+}

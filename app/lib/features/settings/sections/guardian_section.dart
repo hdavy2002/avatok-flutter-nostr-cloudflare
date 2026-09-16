@@ -1,3 +1,5 @@
+
+import '../../../core/localization/ui_text.dart';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -47,7 +49,7 @@ void registerGuardianSection() {
       SettingsSectionRegistry.register(
         SettingsSection(
           id: 'ava_guardian',
-          title: 'Guardian / safety',
+          title: uiCopy(UiMessage.m_guardian_safety_83ec8eb7c7),
           order: 28, // just below "Ava delegate" (27), above "Tools & connectors" (30)
           builder: (context) => const _GuardianCard(),
         ),
@@ -129,12 +131,13 @@ class _GuardianCardState extends State<_GuardianCard> {
     Analytics.capture('brain_toggle_set', {'scope': 'guardian_adult_optout', 'on': v});
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('This setting isn\'t available on this account.')));
+          content: UiText(UiMessage.m_this_setting_isn_t_available_0cb8d47e32)));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final isParent = _kind == AccountKind.parent;
     return AdCard(
       padding: const EdgeInsets.all(Msg.s4),
@@ -143,10 +146,8 @@ class _GuardianCardState extends State<_GuardianCard> {
           ZineIconBadge(icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 36),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              'Ava watches for scams, spam, and unsafe behaviour and warns you '
-              'privately — only you ever see a warning, never the other person. '
-              'Turn on secure-chat mode per chat from the chat’s Ava menu.',
+            child: UiText(
+              UiMessage.m_ava_watches_for_scams_spam_c3cf0d135b,
               style: ADText.preview(),
             ),
           ),
@@ -158,8 +159,8 @@ class _GuardianCardState extends State<_GuardianCard> {
           const SizedBox(width: 8),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Scam & spam shield', style: ADText.rowName()),
-              Text('Always on and free. Ava flags likely scams and spam.', style: ADText.preview()),
+              UiText(UiMessage.m_scam_spam_shield_35486a26ef, style: ADText.rowName()),
+              UiText(UiMessage.m_always_on_and_free_ava_3f97d4a4a2, style: ADText.preview()),
             ]),
           ),
         ]),
@@ -170,8 +171,8 @@ class _GuardianCardState extends State<_GuardianCard> {
           builder: (context, on, _) => Row(children: [
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Show prominent warning cards', style: ADText.rowName()),
-                Text('In addition to the private in-chat note.', style: ADText.preview()),
+                UiText(UiMessage.m_show_prominent_warning_cards_49b93b0215, style: ADText.rowName()),
+                UiText(UiMessage.m_in_addition_to_the_private_41f0d82d37, style: ADText.preview()),
               ]),
             ),
             const SizedBox(width: Msg.s2),
@@ -187,8 +188,8 @@ class _GuardianCardState extends State<_GuardianCard> {
             builder: (context, optedOut, _) => Row(children: [
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Show adult-only content warnings', style: ADText.rowName()),
-                  Text('Turn off to view adult content without the extra caution card.',
+                  UiText(UiMessage.m_show_adult_only_content_warnings_cd043f3f30, style: ADText.rowName()),
+                  UiText(UiMessage.m_turn_off_to_view_adult_b19cef2870,
                       style: ADText.preview()),
                 ]),
               ),
@@ -216,8 +217,8 @@ class _GuardianCardState extends State<_GuardianCard> {
               const SizedBox(width: Msg.s2),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Weekly safety digest', style: ADText.rowName()),
-                  Text('A weekly summary of safety flags for your children.', style: ADText.preview()),
+                  UiText(UiMessage.m_weekly_safety_digest_2448d4ebf3, style: ADText.rowName()),
+                  UiText(UiMessage.m_a_weekly_summary_of_safety_d2ac514a91, style: ADText.preview()),
                 ]),
               ),
               const SizedBox(width: Msg.s2),
@@ -237,6 +238,7 @@ class _AdToggle extends StatelessWidget {
   const _AdToggle({required this.value, this.onChanged});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final reduce = MediaQuery.of(context).disableAnimations;
     return GestureDetector(
       onTap: onChanged == null ? null : () => onChanged!(!value),

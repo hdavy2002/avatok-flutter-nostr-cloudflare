@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 // a2ui_renderer.dart — AvaTOK's A2UI renderer (the "GenUI" client surface).
 //
 // The worker emits an A2UI surface (worker/src/lib/a2ui.ts) in the Ava envelope:
@@ -161,7 +163,7 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
   }
 
   @override
-  Widget build(BuildContext context) => _render((widget.surface['root'] ?? '').toString(), _data);
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return _render((widget.surface['root'] ?? '').toString(), _data); }
 
   Widget _render(String? id, Map scope) {
     final n = _node(id);
@@ -610,10 +612,10 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
           backgroundColor: AD.overlaySheet,
           content: Text(message, style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: ADText.rowName(c: AD.textSecondary).copyWith(fontSize: 14, height: 1.0, letterSpacing: -0.2))),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.rowName(c: AD.textSecondary).copyWith(fontSize: 14, height: 1.0, letterSpacing: -0.2))),
             TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: Text(destructive ? 'Delete' : 'Confirm', style: ADText.rowName(c: destructive ? AD.danger : AD.textPrimary).copyWith(fontSize: 14, height: 1.0, letterSpacing: -0.2)),
+              child: Text(destructive ? uiCopy(UiMessage.m_delete_e2d0a54968) : uiCopy(UiMessage.m_confirm_eebdd24a77), style: ADText.rowName(c: destructive ? AD.danger : AD.textPrimary).copyWith(fontSize: 14, height: 1.0, letterSpacing: -0.2)),
             ),
           ],
         ),
@@ -657,7 +659,7 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
       shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: _ComposioForm(title: title.isEmpty ? 'Details' : title, fields: fields),
+        child: _ComposioForm(title: title.isEmpty ? uiCopy(UiMessage.m_details_45989de49f) : title, fields: fields),
       ),
     );
   }
@@ -764,7 +766,7 @@ class _FieldLabel extends StatelessWidget {
   final Widget child;
   const _FieldLabel({required this.label, required this.child});
   @override
-  Widget build(BuildContext context) => Column(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -772,7 +774,7 @@ class _FieldLabel extends StatelessWidget {
           const SizedBox(height: 4),
           child,
         ],
-      );
+      ); }
 }
 
 // The collecting form: renders an editor per field, validates required fields,
@@ -851,6 +853,7 @@ class _ComposioFormState extends State<_ComposioForm> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final editors = <Widget>[];
     for (final f in widget.fields) {
       editors.add(Padding(padding: const EdgeInsets.only(bottom: 12), child: _editor(f)));
@@ -881,7 +884,7 @@ class _ComposioFormState extends State<_ComposioForm> {
                   alignment: Alignment.center,
                   child: _busy
                       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : Text(widget.inlineSubmitLabel ?? 'Confirm', style: ADText.rowName().copyWith(fontSize: 15, height: 1.0, letterSpacing: -0.2)),
+                      : Text(widget.inlineSubmitLabel ?? uiCopy(UiMessage.m_confirm_eebdd24a77), style: ADText.rowName().copyWith(fontSize: 15, height: 1.0, letterSpacing: -0.2)),
                 ),
               ),
             ),
@@ -933,7 +936,7 @@ class _ComposioFormState extends State<_ComposioForm> {
               alignment: Alignment.centerLeft,
               decoration: BoxDecoration(color: AD.card, border: Border.all(color: AD.borderControl, width: 1), borderRadius: BorderRadius.circular(Msg.rMd)),
               child: Text(
-                (_values[f.name] ?? '').toString().isEmpty ? (f.placeholder ?? 'Pick…') : _values[f.name].toString(),
+                (_values[f.name] ?? '').toString().isEmpty ? (f.placeholder ?? uiCopy(UiMessage.m_pick_92c719c59f)) : _values[f.name].toString(),
                 style: ADText.rowName(c: (_values[f.name] ?? '').toString().isEmpty ? AD.textSecondary : AD.textPrimary).copyWith(fontSize: 14, height: 1.3),
               ),
             ),

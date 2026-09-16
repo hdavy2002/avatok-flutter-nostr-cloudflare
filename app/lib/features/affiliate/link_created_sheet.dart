@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -35,7 +38,7 @@ class _LinkSheet extends StatelessWidget {
     Analytics.capture('affiliate_link_shared', {'link_id': link.id, 'share_channel': 'copy'});
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Link copied')));
+          const SnackBar(content: UiText(UiMessage.m_link_copied_d12860c21e)));
     }
   }
 
@@ -49,6 +52,7 @@ class _LinkSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       decoration: const BoxDecoration(
         color: AD.bg,
@@ -66,14 +70,14 @@ class _LinkSheet extends StatelessWidget {
                     borderRadius: Msg.brPill))),
             Center(
               child: ZineMarkTitle(
-                pre: justCreated ? 'Your link is ' : 'Share your ',
-                mark: justCreated ? 'ready' : 'link',
+                pre: justCreated ? uiCopy(UiMessage.m_your_link_is_28d1205859) : uiCopy(UiMessage.m_share_your_060ce95ea8),
+                mark: justCreated ? uiCopy(UiMessage.m_ready_b24d6d3373) : uiCopy(UiMessage.m_link_b1b1bdb480),
                 fontSize: 26,
               ),
             ),
             const SizedBox(height: Msg.s2),
-            Text(
-              'Earn 10% of every payment your referrals ever make on this listing — for life.',
+            UiText(
+              UiMessage.m_earn_10_of_every_payment_b83372e845,
               textAlign: TextAlign.center,
               style: ADText.preview(),
             ),
@@ -112,7 +116,7 @@ class _LinkSheet extends StatelessWidget {
             ),
             const SizedBox(height: Msg.s4),
             ZineButton(
-              label: 'Share it',
+              label: uiCopy(UiMessage.m_share_it_692991f8b6),
               fullWidth: true,
               fontSize: 18,
               icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold),

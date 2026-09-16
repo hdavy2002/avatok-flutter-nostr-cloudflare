@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* [POSTER-FIRST-1 2026-09-05] The "More info" panel.
  *
  * The poster carries a title and a tagline and nothing else, deliberately: no
@@ -88,6 +90,8 @@ function whenLabel(startsAt: number | null, timeZone: string | null | undefined)
 }
 
 export function QuickInfo({ card: c, listing, lane, href, onClose, onBook }: QuickInfoProps) {
+  const {t:uiT}=useUiTranslation("web-listing");
+
   useEffect(() => {
     capture('listing_quick_info_open', { listing_id: c.id, kind: c.kind ?? null, lane });
   }, [c.id, c.kind, lane]);
@@ -141,7 +145,7 @@ export function QuickInfo({ card: c, listing, lane, href, onClose, onBook }: Qui
                 table for price_semantics, so it is now carried across. The id
                 remains the fallback: wrong-looking is better than blank. */}
             <p style={{ ...labelStyle, color: RED }}>
-              {c.categoryLabel ?? c.category ?? c.kind ?? 'Listing'}
+              {c.categoryLabel ?? c.category ?? c.kind ?? uiT("web-listing.fc7f1aa2054c2283","Listing")}
             </p>
               <h2 style={{
                 fontFamily: "'Comfortaa', 'Baloo 2', sans-serif", fontWeight: 400, fontSize: '1.75rem',
@@ -152,7 +156,7 @@ export function QuickInfo({ card: c, listing, lane, href, onClose, onBook }: Qui
                 <p style={{ ...bodyStyle, margin: '8px 0 0', fontWeight: 600 }}>{c.oneLiner}</p>
               )}
             </div>
-            <button type="button" aria-label="Close" onClick={onClose} style={{
+            <button type="button" aria-label={uiT("web-listing.7d9eb7acb13e2462","Close")} onClick={onClose} style={{
               flex: 'none', width: 32, height: 32, borderRadius: '50%', border: `2px solid ${INK}`,
               background: 'transparent', color: INK, fontSize: '1.125rem', lineHeight: 1, cursor: 'pointer',
             }}>×</button>
@@ -161,19 +165,19 @@ export function QuickInfo({ card: c, listing, lane, href, onClose, onBook }: Qui
           <div style={{ height: 1, background: RULE, margin: '18px 0' }} />
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '16px 18px' }}>
-            {price && <Row label="Price" value={price} />}
-            {duration && <Row label="Duration" value={duration} />}
-            {when && <Row label="Date & time" value={when} />}
-            {language && <Row label="Language" value={language} />}
-            {mediaMode && <Row label="Session" value={mediaMode} />}
-            {c.location && <Row label="Location" value={c.location} />}
-            {c.seatsLeft != null && <Row label="Seats left" value={String(c.seatsLeft)} />}
+            {price && <Row label={uiT("web-listing.93c91c851e7acc17","Price")} value={price} />}
+            {duration && <Row label={uiT("web-listing.4fc52a3c4c558b51","Duration")} value={duration} />}
+            {when && <Row label={uiT("web-listing.2459ea42894c5c5b","Date & time")} value={when} />}
+            {language && <Row label={uiT("web-listing.a4fe65264ef7dbb3","Language")} value={language} />}
+            {mediaMode && <Row label={uiT("web-listing.6959b4159575d8dd","Session")} value={mediaMode} />}
+            {c.location && <Row label={uiT("web-listing.15b61974b2707a7b","Location")} value={c.location} />}
+            {c.seatsLeft != null && <Row label={uiT("web-listing.a4a887df28cef884","Seats left")} value={String(c.seatsLeft)} />}
           </div>
 
           {about && (
             <>
               <div style={{ height: 1, background: RULE, margin: '18px 0' }} />
-              <p style={labelStyle}>About</p>
+              <p style={labelStyle}><UiText id="web-listing.4efca0d10c5feb8e" source="About" /></p>
               <p style={{ ...bodyStyle, marginTop: 6 }}>{about}</p>
             </>
           )}
@@ -181,7 +185,7 @@ export function QuickInfo({ card: c, listing, lane, href, onClose, onBook }: Qui
           {expect.length > 0 && (
             <>
               <div style={{ height: 1, background: RULE, margin: '18px 0' }} />
-              <p style={labelStyle}>What to expect</p>
+              <p style={labelStyle}><UiText id="web-listing.7ef84dcd839c5fcf" source="What to expect" /></p>
               <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
                 {expect.map((e, i) => <li key={i} style={{ ...bodyStyle, marginTop: 4 }}>{e}</li>)}
               </ul>
@@ -192,7 +196,7 @@ export function QuickInfo({ card: c, listing, lane, href, onClose, onBook }: Qui
               "no house rules" while the fetch is still in flight would be a
               statement about the listing that we cannot yet make. */}
           {!listing && (
-            <p style={{ ...bodyStyle, marginTop: 14, color: '#8a7a63' }}>Loading the rest…</p>
+            <p style={{ ...bodyStyle, marginTop: 14, color: '#8a7a63' }}><UiText id="web-listing.d6a35f17e1486885" source="Loading the rest…" /></p>
           )}
         </div>
 
@@ -204,13 +208,13 @@ export function QuickInfo({ card: c, listing, lane, href, onClose, onBook }: Qui
             fontSize: '0.8125rem', letterSpacing: '.08em', padding: '13px 8px', borderRadius: 100,
             border: `2px solid ${INK}`, background: closedLabel ? '#b39c82' : RED, color: PAPER,
             cursor: closedLabel ? 'not-allowed' : 'pointer',
-          }}>{closedLabel ?? 'BOOK NOW'}</button>
+          }}>{closedLabel ?? uiT("web-listing.6c3fd27160fa9168","BOOK NOW")}</button>
           <a href={href} style={{
             flex: 1, textAlign: 'center', textDecoration: 'none',
             fontFamily: 'Nunito, system-ui, sans-serif', fontWeight: 900,
             fontSize: '0.8125rem', letterSpacing: '.08em', padding: '13px 8px', borderRadius: 100,
             border: `2px solid ${INK}`, background: 'transparent', color: INK,
-          }}>DETAILS</a>
+          }}><UiText id="web-listing.14fdc0f6c77f7978" source="DETAILS" /></a>
         </div>
       </div>
     </Modal>

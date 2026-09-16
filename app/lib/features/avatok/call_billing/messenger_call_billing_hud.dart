@@ -1,3 +1,5 @@
+
+import '../../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -31,36 +33,37 @@ class MessengerCallBillingHud extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final renewalEnded = renewalFailure != null && renewalFailure!.isNotEmpty;
     final danger = fundsExhausted || lowBalance || renewalEnded;
     final isAudio = authorization.qualitySku == MessengerCallQualitySku.audio;
     final paidAudio = isAudio && authorization.provider == 'stream';
     final title = renewalEnded
-        ? 'Paid time could not be renewed'
+        ? uiCopy(UiMessage.m_paid_time_could_not_be_7b20c6a710)
         : fundsExhausted
-        ? (paidAudio ? 'Paid audio time exhausted' : 'Free audio allowance exhausted')
+        ? (paidAudio ? uiCopy(UiMessage.m_paid_audio_time_exhausted_9fa25dc89a) : uiCopy(UiMessage.m_free_audio_allowance_exhausted_b281595cb7))
         : lowBalance
-            ? 'Low wallet balance'
+            ? uiCopy(UiMessage.m_low_wallet_balance_8c01b86070)
             : paidAudio
-                ? 'Paid audio call'
+                ? uiCopy(UiMessage.m_paid_audio_call_1070fcaac9)
             : isAudio
-                ? 'Free audio allowance'
-                : '${authorization.qualitySku.label} video';
+                ? uiCopy(UiMessage.m_free_audio_allowance_2847569870)
+                : uiCopy(UiMessage.m_value1_video_82879885c0, {'value1': (authorization.qualitySku.label).toString()});
     final detail = renewalEnded
-        ? 'The call ended because paid time could not be renewed: $renewalFailure'
+        ? uiCopy(UiMessage.m_the_call_ended_because_paid_7bfb11e55e, {'renewalFailure': (renewalFailure).toString()})
         : fundsExhausted
         ? (paidAudio
-            ? 'Connected time has been settled. Add tokens to make another paid call.'
-            : 'This free call is ending. Continue with paid GetStream audio to keep talking.')
+            ? uiCopy(UiMessage.m_connected_time_has_been_settled_ba2c8a7ee8)
+            : uiCopy(UiMessage.m_this_free_call_is_ending_15c1d9345f))
         : lowBalance
             ? _remainingCopy()
             : isAudio && showFreeAllowance
-                ? '${_wallMinutes(freeParticipantSecondsRemaining ?? 0)} free minutes remaining today'
+                ? uiCopy(UiMessage.m_value1_free_minutes_remaining_today_a6f525d1ac, {'value1': (_wallMinutes(freeParticipantSecondsRemaining ?? 0)).toString()})
                 : paidAudio
-                    ? 'You pay for both connected participants.'
+                    ? uiCopy(UiMessage.m_you_pay_for_both_connected_628ec9bb6d)
                 : isAudio
-                    ? 'Audio is free while today’s allowance remains.'
-                    : 'You pay for both connected participants.';
+                    ? uiCopy(UiMessage.m_audio_is_free_while_today_c4b047a5cf)
+                    : uiCopy(UiMessage.m_you_pay_for_both_connected_628ec9bb6d);
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: Msg.s4),
@@ -105,7 +108,7 @@ class MessengerCallBillingHud extends StatelessWidget {
             TextButton(
               onPressed: onTopUp,
               style: TextButton.styleFrom(foregroundColor: AD.destructiveInk),
-              child: const Text('Top up'),
+              child: const UiText(UiMessage.m_top_up_79f52e0ce6),
             ),
         ],
       ),
@@ -114,8 +117,8 @@ class MessengerCallBillingHud extends StatelessWidget {
 
   String _remainingCopy() {
     final seconds = paidRemainingWallSeconds;
-    if (seconds == null) return 'Keep this call connected only while you want to spend tokens.';
-    return '${_duration(seconds)} of reserved paid time remains. The call will end cleanly if renewal fails.';
+    if (seconds == null) return uiCopy(UiMessage.m_keep_this_call_connected_only_4cf52b2fc6);
+    return uiCopy(UiMessage.m_value1_of_reserved_paid_time_00f2b62682, {'value1': (_duration(seconds)).toString()});
   }
 }
 
@@ -126,7 +129,7 @@ String _duration(int seconds) {
   final safe = seconds < 0 ? 0 : seconds;
   final m = safe ~/ 60;
   final s = safe % 60;
-  if (m >= 60) return '${m ~/ 60}h ${m % 60}m';
-  if (m > 0) return '${m}m ${s}s';
-  return '${s}s';
+  if (m >= 60) return uiCopy(UiMessage.m_value1_h_value2_m_bbceabb1db, {'value1': (m ~/ 60).toString(), 'value2': (m % 60).toString()});
+  if (m > 0) return uiCopy(UiMessage.m_m_m_s_s_53e203758f, {'m': (m).toString(), 's': (s).toString()});
+  return uiCopy(UiMessage.m_s_s_07f67a1535, {'s': (s).toString()});
 }

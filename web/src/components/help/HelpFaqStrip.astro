@@ -1,4 +1,6 @@
 ---
+import { authoredKey } from '../../lib/i18n/authoredKey';
+import { publicImage } from '../../lib/config';
 // [WEB-HELP-2 2026-09-11] "Frequently asked" strip: the brick banner (with
 // the real TruckBorder "eyes" strip and the log-kya-kahenge-wide.jpg art)
 // from design/help-centre/Main.dc.html, followed by a native <details>
@@ -47,14 +49,14 @@ while (preview.length < 6 && rest.length > 0) {
       <div class="help-faq-truck"><TruckBorder kind="eyes" count={20} /></div>
       <div class="help-faq-banner-inner">
         <div>
-          <p class="help-faq-eyebrow">Popular questions</p>
+          <p data-i18n="web-common.224d93a42e4f877e" class="help-faq-eyebrow">Popular questions</p>
           <h2 id="help-faq-title" class="help-faq-title">
-            Frequently<br /><span>asked</span>
+            <ui-copy style="display:contents" data-i18n="web-common.66b51bbb80f8952d">Frequently</ui-copy><br /><span data-i18n="web-common.c66790da5943c446">asked</span>
           </h2>
         </div>
-        <img
+        <img data-india-i18n-attr="alt:web-common.5ed88592e974898e"
           class="help-faq-banner-art"
-          src="/help/art/log-kya-kahenge-wide.jpg"
+          src={publicImage('/help/art/log-kya-kahenge-wide.jpg', { width: 621, fit: 'scale-down' })}
           alt="Illustration captioned &quot;log kya kahenge&quot; — what will people say — the help centre’s FAQ banner."
           width="621"
           height="360"
@@ -67,12 +69,12 @@ while (preview.length < 6 && rest.length > 0) {
       {preview.map((f) => (
         <details class="help-faq-item">
           <summary>
-            <span class="help-faq-item-section">{f.section}</span>
-            <span class="help-faq-item-q">{f.q}</span>
+            <span class="help-faq-item-section"><ui-copy style="display:contents" data-i18n={authoredKey(f.section)}>{f.section}</ui-copy></span>
+            <span class="help-faq-item-q"><ui-copy style="display:contents" data-i18n={authoredKey(f.q)}>{f.q}</ui-copy></span>
           </summary>
           <p class="help-faq-item-a">
-            {f.a}{' '}
-            <a class="help-faq-item-source" href={f.source}>Read more →</a>
+            <ui-copy style="display:contents" data-i18n={authoredKey(f.a)}>{f.a}</ui-copy>{' '}
+            <a data-i18n="web-common.50290b5b329439e5" class="help-faq-item-source" href={f.source}>Read more →</a>
           </p>
         </details>
       ))}
@@ -80,17 +82,17 @@ while (preview.length < 6 && rest.length > 0) {
 
     {rest.length > 0 && (
       <details class="help-faq-more">
-        <summary class="help-faq-more-summary">Show all {items.length} questions</summary>
+        <summary class="help-faq-more-summary"><ui-copy style="display:contents" data-i18n="web-common.2150d8df37e48957">Show all</ui-copy> {items.length} <ui-copy style="display:contents" data-i18n="web-common.17d5efa695de036a">questions</ui-copy></summary>
         <div class="help-faq-list help-faq-list-more">
           {rest.map((f) => (
             <details class="help-faq-item">
               <summary>
-                <span class="help-faq-item-section">{f.section}</span>
-                <span class="help-faq-item-q">{f.q}</span>
+                <span class="help-faq-item-section"><ui-copy style="display:contents" data-i18n={authoredKey(f.section)}>{f.section}</ui-copy></span>
+                <span class="help-faq-item-q"><ui-copy style="display:contents" data-i18n={authoredKey(f.q)}>{f.q}</ui-copy></span>
               </summary>
               <p class="help-faq-item-a">
-                {f.a}{' '}
-                <a class="help-faq-item-source" href={f.source}>Read more →</a>
+                <ui-copy style="display:contents" data-i18n={authoredKey(f.a)}>{f.a}</ui-copy>{' '}
+                <a data-i18n="web-common.50290b5b329439e5" class="help-faq-item-source" href={f.source}>Read more →</a>
               </p>
             </details>
           ))}

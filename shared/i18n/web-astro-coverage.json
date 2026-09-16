@@ -1,0 +1,1001 @@
+{
+  "schemaVersion": 1,
+  "status": "partial-unreviewed",
+  "scope": "Authored static Astro and React text; dynamic interfaces and reviewed locale parity pending",
+  "routes": [
+    {
+      "path": "components/AuthRedirect.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/BazaarHero.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 7,
+      "dynamicExpressions": 3,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/BazaarSearchStrip.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 4,
+      "dynamicExpressions": 1,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/BetaBanner.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 6,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/DashSoon.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 1,
+      "dynamicExpressions": 3,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/EntityFaq.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 6,
+      "dynamicExpressions": 3,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/GlobalFooter.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 14,
+      "dynamicExpressions": 8,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/GlobalHeader.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 14,
+      "dynamicExpressions": 6,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/GlobalIdeaCard.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 1,
+      "dynamicExpressions": 3,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/GlobalLocaleControls.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 12,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/HelpRailNav.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 2,
+      "dynamicExpressions": 4,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/HelpSearch.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 5,
+      "dynamicExpressions": 5,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/IndiaLanguageSelector.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 2,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/LegalStatus.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 16,
+      "dynamicExpressions": 17,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/ListingDetailView.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 45,
+      "dynamicExpressions": 119,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/ListingDetailsComp.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 127,
+      "dynamicExpressions": 138,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/MarketplaceBrowse.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 8,
+      "dynamicExpressions": 11,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/Nav.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 7,
+      "dynamicExpressions": 6,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/OptimizedImage.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/OriginalGlobalSections.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 31,
+      "dynamicExpressions": 9,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/OriginalIdeasSection.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 6,
+      "dynamicExpressions": 1,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/SiteFooter.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 2,
+      "dynamicExpressions": 17,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/SiteHeader.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 9,
+      "dynamicExpressions": 19,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/TruckBorder.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 12,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/help/HelpFaqStrip.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 8,
+      "dynamicExpressions": 13,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/help/HelpHero.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 5,
+      "dynamicExpressions": 2,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/help/HelpOnThisPage.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 2,
+      "dynamicExpressions": 4,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/help/HelpTiles.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 1,
+      "dynamicExpressions": 10,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/india-preview/BookingExpress.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 14,
+      "dynamicExpressions": 6,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/india-preview/CreatorClosing.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 4,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/india-preview/CreatorFaq.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 10,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/india-preview/CreatorIdeas.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 5,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/india-preview/CreatorIntro.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 6,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/india-preview/CreatorJourney.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 10,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/india-preview/EarningsCalculator.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 13,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/india-preview/FanBooking.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 9,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/india-preview/LiveShowcase.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 5,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/india-preview/OneToOne.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 8,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/india-preview/PaidFormats.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 14,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/listing/BrowseMore.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 3,
+      "dynamicExpressions": 3,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/listing/HostCard.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 13,
+      "dynamicExpressions": 29,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/listing/PromisesBand.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 1,
+      "dynamicExpressions": 4,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "components/listing/ReviewsSection.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 5,
+      "dynamicExpressions": 24,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "landing/archive/2026-09-09-before-railway/index.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 1,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "layouts/Base.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 14,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "layouts/Content.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 3,
+      "dynamicExpressions": 13,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "layouts/Dashboard.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 4,
+      "dynamicExpressions": 13,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "layouts/Help.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 8,
+      "dynamicExpressions": 21,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/[username]/[slug].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 2,
+      "dynamicExpressions": 2,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/[username]/index.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/about.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 53,
+      "dynamicExpressions": 1,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/acceptable-use.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 106,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/add.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 5,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/admin/agents/[id].astro",
+      "kind": "excluded",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "excluded"
+    },
+    {
+      "path": "pages/admin/agents/index.astro",
+      "kind": "excluded",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "excluded"
+    },
+    {
+      "path": "pages/admin/agents/new.astro",
+      "kind": "excluded",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "excluded"
+    },
+    {
+      "path": "pages/admin/index.astro",
+      "kind": "excluded",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "excluded"
+    },
+    {
+      "path": "pages/admin/listings.astro",
+      "kind": "excluded",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "excluded"
+    },
+    {
+      "path": "pages/admin/reviews.astro",
+      "kind": "excluded",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "excluded"
+    },
+    {
+      "path": "pages/agent/[id].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 1,
+      "dynamicExpressions": 2,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/archive/home-2026-09-09.astro",
+      "kind": "excluded",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "excluded"
+    },
+    {
+      "path": "pages/biometric-retention.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 78,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/blog/ai-in-every-chat.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 27,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/blog/ai-voice-agents.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/blog/creator-ideas/[slug].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 50,
+      "dynamicExpressions": 19,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/blog/earn-from-day-one.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/blog/global-creator-ideas/[slug].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 53,
+      "dynamicExpressions": 19,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/blog/index.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 5,
+      "dynamicExpressions": 6,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/blog/never-miss-a-call.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 21,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/blog/real-people-safety.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/blog/your-private-number.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 20,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/book/[id].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 2,
+      "dynamicExpressions": 16,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/c/[handle].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 2,
+      "dynamicExpressions": 12,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/careers.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 22,
+      "dynamicExpressions": 7,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/child-safety.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 41,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/community-guidelines.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 25,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/consult/[booking].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/consultation-terms.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 88,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/contact.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 25,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/cookies.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 26,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/affiliate.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/billing.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/bookings.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/calendar.astro",
+      "kind": "customer",
+      "staticMessages": 1,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/consult.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/identity.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/inbox.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/l/[id].astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/library.astro",
+      "kind": "customer",
+      "staticMessages": 5,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/listings/index.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/listings/new.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 2,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/listings/publish.astro",
+      "kind": "customer",
+      "staticMessages": 2,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/live.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/marketplace.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/payout.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/saved.astro",
+      "kind": "customer",
+      "staticMessages": 3,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/settings.astro",
+      "kind": "customer",
+      "staticMessages": 2,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/storage.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/vision.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/voice.astro",
+      "kind": "customer",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard/wallet.astro",
+      "kind": "customer",
+      "staticMessages": 2,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dashboard.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/dmca.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 19,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/e/[event].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 2,
+      "dynamicExpressions": 2,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/embed/listing.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 1,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/explore.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/forgot-password.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/global-ideas.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 7,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/global-next.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/grievance.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 103,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/help/[...slug].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/help/index.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 2,
+      "dynamicExpressions": 4,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/ideas.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 48,
+      "dynamicExpressions": 13,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/index.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 24,
+      "dynamicExpressions": 10,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/india-next.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 24,
+      "dynamicExpressions": 11,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/india.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/j/[token].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/l/[id].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 4,
+      "dynamicExpressions": 3,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/live/[id]/host.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 2,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/live/[id].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 2,
+      "dynamicExpressions": 2,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/marketplace-terms.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 95,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/marketplace.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 1,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/pay/return.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 2,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/payouts.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 53,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/pricing-fees.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 48,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/pricing.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/privacy.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 64,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/recording.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 77,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/refunds.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 84,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/session/[booking].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/sign-in.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 7,
+      "dynamicExpressions": 1,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/sign-out.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 1,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/sign-up.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 5,
+      "dynamicExpressions": 1,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/sso-callback.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 1,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/talk/[booking].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 0,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/terms.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 47,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/tokens.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 59,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/vision/agent/[id].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 6,
+      "dynamicExpressions": 18,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/vision/index.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 6,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/vision/session/[id].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 1,
+      "dynamicExpressions": 2,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/vision/studio.astro",
+      "kind": "public-or-shared",
+      "staticMessages": 3,
+      "dynamicExpressions": 0,
+      "status": "partial-static-extraction"
+    },
+    {
+      "path": "pages/watch/[id].astro",
+      "kind": "public-or-shared",
+      "staticMessages": 2,
+      "dynamicExpressions": 1,
+      "status": "partial-static-extraction"
+    }
+  ]
+}

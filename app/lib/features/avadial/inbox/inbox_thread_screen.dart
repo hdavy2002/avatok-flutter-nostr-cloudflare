@@ -1,3 +1,6 @@
+
+import '../../../core/localization/ui_text.dart';
+
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
@@ -76,24 +79,24 @@ Future<String?> promptRenameCaller(BuildContext context, {String? currentName}) 
         side: const BorderSide(color: AvaDialTheme.border, width: 1),
         borderRadius: BorderRadius.circular(AD.rListCard),
       ),
-      title: Text('Rename caller', style: ADText.threadName(c: AvaDialTheme.text)),
+      title: UiText(UiMessage.m_rename_caller_85db651e82, style: ADText.threadName(c: AvaDialTheme.text)),
       content: TextField(
         controller: ctrl,
         autofocus: true,
         style: ADText.rowName(c: AvaDialTheme.text),
         decoration: InputDecoration(
-          hintText: 'Display name',
+          hintText: uiCopy(UiMessage.m_display_name_2b7f6a84de),
           hintStyle: ADText.preview(c: AvaDialTheme.textMute),
         ),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(ctx),
-          child: Text('Cancel', style: ADText.preview(c: AvaDialTheme.textSoft)),
+          child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.preview(c: AvaDialTheme.textSoft)),
         ),
         TextButton(
           onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-          child: Text('Save', style: ADText.preview(c: AvaDialTheme.accent)),
+          child: UiText(UiMessage.m_save_1509f561f2, style: ADText.preview(c: AvaDialTheme.accent)),
         ),
       ],
     ),
@@ -374,19 +377,19 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
           side: const BorderSide(color: AvaDialTheme.border, width: 1),
           borderRadius: BorderRadius.circular(AD.rListCard),
         ),
-        title: Text('Delete this voicemail?', style: ADText.threadName(c: AvaDialTheme.text)),
-        content: Text(
-          'The recording will be removed from your inbox.',
+        title: UiText(UiMessage.m_delete_this_voicemail_2b00a04939, style: ADText.threadName(c: AvaDialTheme.text)),
+        content: UiText(
+          UiMessage.m_the_recording_will_be_removed_8467e67563,
           style: ADText.preview(c: AvaDialTheme.textSoft),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: ADText.preview(c: AvaDialTheme.textSoft)),
+            child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.preview(c: AvaDialTheme.textSoft)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Delete', style: ADText.preview(c: AD.danger)),
+            child: UiText(UiMessage.m_delete_e2d0a54968, style: ADText.preview(c: AD.danger)),
           ),
         ],
       ),
@@ -401,7 +404,7 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
       });
     } else {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Couldn’t delete — try again.')));
+          .showSnackBar(const SnackBar(content: UiText(UiMessage.m_couldn_t_delete_try_again_c05fe1260f)));
     }
   }
 
@@ -467,19 +470,20 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
     final phone = _phone;
     if (phone == null) return;
     if (reportSpam) {
-      await BlockList.I.reportSpam(phone, label: 'Reported from Inbox');
+      await BlockList.I.reportSpam(phone, label: uiCopy(UiMessage.m_reported_from_inbox_2a1cc510ce));
     } else {
       await BlockList.I.block(phone);
     }
     Analytics.capture('inbox_block_tapped', {'report_spam': reportSpam});
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(reportSpam ? 'Blocked and reported as spam.' : 'Number blocked.'),
+      content: Text(reportSpam ? uiCopy(UiMessage.m_blocked_and_reported_as_spam_202f1598b4) : uiCopy(UiMessage.m_number_blocked_af09a3ed7a)),
     ));
   }
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final phone = _phone;
     // [UI-CALLS-2026] Shared AvaTOK chrome — the indigo `ZineAppBar` band (which
     // declares the LIGHT status-bar overlay, so the clock/wifi/battery icons are
@@ -508,15 +512,15 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
                 if (!_isSavedContact)
                   PopupMenuItem(
                     value: 'add',
-                    child: Text('Add to contacts', style: ADText.preview(c: AD.textPrimary)),
+                    child: UiText(UiMessage.m_add_to_contacts_724e05d19d, style: ADText.preview(c: AD.textPrimary)),
                   ),
                 PopupMenuItem(
                   value: 'spam',
-                  child: Text('Block & report spam', style: ADText.preview(c: AD.textPrimary)),
+                  child: UiText(UiMessage.m_block_report_spam_191729fcba, style: ADText.preview(c: AD.textPrimary)),
                 ),
                 PopupMenuItem(
                   value: 'block',
-                  child: Text('Block', style: ADText.preview(c: AD.textPrimary)),
+                  child: UiText(UiMessage.m_block_211d0bb8cf, style: ADText.preview(c: AD.textPrimary)),
                 ),
               ],
             ),
@@ -535,7 +539,7 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
             final cards = snap.data ?? widget.thread.cards;
             if (cards.isEmpty) {
               return Center(
-                child: Text('No messages in this thread yet',
+                child: UiText(UiMessage.m_no_messages_in_this_thread_e5b4f65503,
                     style: ADText.preview(c: AvaDialTheme.textSoft)),
               );
             }
@@ -676,6 +680,7 @@ class _DateSeparator extends StatelessWidget {
   const _DateSeparator({required this.label});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Center(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
@@ -879,7 +884,7 @@ class _VoicemailCardState extends State<_VoicemailCard> {
         track: AudioTrack(
           trackId: _trackId,
           title: widget.callerName,
-          subtitle: 'Voicemail',
+          subtitle: uiCopy(UiMessage.m_voicemail_9c1a51d97b),
           originRoute: widget.originRoute,
         ),
         bytes: bytes,
@@ -967,7 +972,7 @@ class _VoicemailCardState extends State<_VoicemailCard> {
     if (bytes == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Couldn’t load the recording to share.')));
+            const SnackBar(content: UiText(UiMessage.m_couldn_t_load_the_recording_4ec86fa426)));
       }
       return;
     }
@@ -982,7 +987,7 @@ class _VoicemailCardState extends State<_VoicemailCard> {
       Analytics.capture('inbox_voicemail_shared', {'ok': false});
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Couldn’t share the recording.')));
+            .showSnackBar(const SnackBar(content: UiText(UiMessage.m_couldn_t_share_the_recording_cd18328c20)));
       }
     }
   }
@@ -1001,7 +1006,7 @@ class _VoicemailCardState extends State<_VoicemailCard> {
     if (bytes == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Couldn’t load the recording to download.')));
+            const SnackBar(content: UiText(UiMessage.m_couldn_t_load_the_recording_8aab3cadc0)));
       }
       return;
     }
@@ -1017,7 +1022,7 @@ class _VoicemailCardState extends State<_VoicemailCard> {
       Analytics.capture('inbox_voicemail_downloaded', {'ok': true, 'via': 'mediastore'});
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Saved to Downloads/AvaTok/$_fileName')));
+            .showSnackBar(SnackBar(content: UiText(UiMessage.m_saved_to_downloads_avatok_filename_38806d4107, params: {'fileName': (_fileName).toString()})));
       }
     } catch (e) {
       // Non-Android platform, or the native write failed (e.g. legacy Android
@@ -1032,13 +1037,13 @@ class _VoicemailCardState extends State<_VoicemailCard> {
         Analytics.capture('inbox_voicemail_downloaded', {'ok': true, 'via': 'fallback'});
         if (mounted) {
           ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text('Saved to ${f.path}')));
+              .showSnackBar(SnackBar(content: UiText(UiMessage.m_saved_to_value1_a84a619008, params: {'value1': (f.path).toString()})));
         }
       } catch (e2) {
         Analytics.capture('inbox_voicemail_downloaded', {'ok': false});
         if (mounted) {
           ScaffoldMessenger.of(context)
-              .showSnackBar(const SnackBar(content: Text('Couldn’t save the recording.')));
+              .showSnackBar(const SnackBar(content: UiText(UiMessage.m_couldn_t_save_the_recording_0e30088009)));
         }
       }
     }
@@ -1058,24 +1063,24 @@ class _VoicemailCardState extends State<_VoicemailCard> {
           side: const BorderSide(color: AvaDialTheme.border, width: 1),
           borderRadius: BorderRadius.circular(AD.rListCard),
         ),
-        title: Text('Edit voicemail title', style: ADText.threadName(c: AvaDialTheme.text)),
+        title: UiText(UiMessage.m_edit_voicemail_title_2d544cce9c, style: ADText.threadName(c: AvaDialTheme.text)),
         content: TextField(
           controller: ctrl,
           autofocus: true,
           style: ADText.rowName(c: AvaDialTheme.text),
           decoration: InputDecoration(
-            hintText: 'e.g. "Follow up with Sonal"',
+            hintText: uiCopy(UiMessage.m_e_g_follow_up_with_a2b0c24981),
             hintStyle: ADText.preview(c: AvaDialTheme.textMute),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancel', style: ADText.preview(c: AvaDialTheme.textSoft)),
+            child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.preview(c: AvaDialTheme.textSoft)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: Text('Save', style: ADText.preview(c: AvaDialTheme.accent)),
+            child: UiText(UiMessage.m_save_1509f561f2, style: ADText.preview(c: AvaDialTheme.accent)),
           ),
         ],
       ),
@@ -1101,24 +1106,24 @@ class _VoicemailCardState extends State<_VoicemailCard> {
           side: const BorderSide(color: AvaDialTheme.border, width: 1),
           borderRadius: BorderRadius.circular(AD.rListCard),
         ),
-        title: Text('Tag this voicemail', style: ADText.threadName(c: AvaDialTheme.text)),
+        title: UiText(UiMessage.m_tag_this_voicemail_f54aab78cf, style: ADText.threadName(c: AvaDialTheme.text)),
         content: TextField(
           controller: ctrl,
           autofocus: true,
           style: ADText.rowName(c: AvaDialTheme.text),
           decoration: InputDecoration(
-            hintText: 'Comma-separated, e.g. "urgent, follow-up"',
+            hintText: uiCopy(UiMessage.m_comma_separated_e_g_urgent_8bd1531db2),
             hintStyle: ADText.preview(c: AvaDialTheme.textMute),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancel', style: ADText.preview(c: AvaDialTheme.textSoft)),
+            child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.preview(c: AvaDialTheme.textSoft)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: Text('Save', style: ADText.preview(c: AvaDialTheme.accent)),
+            child: UiText(UiMessage.m_save_1509f561f2, style: ADText.preview(c: AvaDialTheme.accent)),
           ),
         ],
       ),
@@ -1162,14 +1167,14 @@ class _VoicemailCardState extends State<_VoicemailCard> {
             _CardMenuRow(
               icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold),
               color: AD.iconVideo,
-              label: 'Share',
+              label: uiCopy(UiMessage.m_share_29887a5ff9),
               onTap: () { Navigator.pop(sheetCtx); _shareRecording(); },
             ),
           if (_c.hasRecording)
             _CardMenuRow(
               icon: PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold),
               color: AD.iconVideo,
-              label: 'Forward',
+              label: uiCopy(UiMessage.m_forward_f1c65e1481),
               onTap: () {
                 Navigator.pop(sheetCtx);
                 forwardVoicemail(context, card: _c, callerName: widget.callerName, fetchBytes: _fetchBytes);
@@ -1179,14 +1184,14 @@ class _VoicemailCardState extends State<_VoicemailCard> {
             _CardMenuRow(
               icon: PhosphorIcons.downloadSimple(PhosphorIconsStyle.bold),
               color: AD.iconSearch,
-              label: 'Download',
+              label: uiCopy(UiMessage.m_download_d6eafe8235),
               onTap: () { Navigator.pop(sheetCtx); _downloadRecording(); },
             ),
           if (_c.hasRecording)
             _CardMenuRow(
               icon: PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.bold),
               color: AD.iconVideo,
-              label: 'Send to AvaTOK chat',
+              label: uiCopy(UiMessage.m_send_to_avatok_chat_9ef251839e),
               onTap: () {
                 Navigator.pop(sheetCtx);
                 sendVoicemailToChat(context, card: _c, callerName: widget.callerName);
@@ -1195,32 +1200,32 @@ class _VoicemailCardState extends State<_VoicemailCard> {
           _CardMenuRow(
             icon: PhosphorIcons.textAa(PhosphorIconsStyle.bold),
             color: AD.iconSearch,
-            label: 'Edit voicemail title',
+            label: uiCopy(UiMessage.m_edit_voicemail_title_2d544cce9c),
             onTap: () { Navigator.pop(sheetCtx); _editTitle(); },
           ),
           _CardMenuRow(
             icon: PhosphorIcons.tag(PhosphorIconsStyle.bold),
             color: AD.iconSearch,
-            label: 'Tag',
+            label: uiCopy(UiMessage.m_tag_1503916a2a),
             onTap: () { Navigator.pop(sheetCtx); _editTags(); },
           ),
           _CardMenuRow(
             icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold),
             color: AD.iconSearch,
-            label: 'Rename caller',
+            label: uiCopy(UiMessage.m_rename_caller_85db651e82),
             onTap: () { Navigator.pop(sheetCtx); widget.onRename?.call(); },
           ),
           if (widget.isTel)
             _CardMenuRow(
               icon: PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
               color: AD.danger,
-              label: 'Block caller',
+              label: uiCopy(UiMessage.m_block_caller_d0e4cd307b),
               onTap: () { Navigator.pop(sheetCtx); widget.onBlock?.call(); },
             ),
           _CardMenuRow(
             icon: PhosphorIcons.trash(PhosphorIconsStyle.bold),
             color: AD.danger,
-            label: 'Delete',
+            label: uiCopy(UiMessage.m_delete_e2d0a54968),
             danger: true,
             onTap: () { Navigator.pop(sheetCtx); widget.onDelete?.call(); },
           ),
@@ -1261,6 +1266,7 @@ class _VoicemailCardState extends State<_VoicemailCard> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final unheard = _c.hasRecording && !_heard;
     // Dark-on-light ink pair for whichever surface is showing.
     // [UI-CALLS-2026] One ink pair for both states — both surfaces are light
@@ -1294,7 +1300,7 @@ class _VoicemailCardState extends State<_VoicemailCard> {
                       size: 15, color: _heard ? _heardTick : _unheardTick),
                   const SizedBox(width: Msg.s1),
                   Text(
-                    _heard ? 'Heard' : 'Not heard yet',
+                    _heard ? uiCopy(UiMessage.m_heard_868a3a327a) : uiCopy(UiMessage.m_not_heard_yet_7f143b5925),
                     style: ADText.statCaption(c: _heard ? _heardTick : _unheardTick)
                         .copyWith(fontWeight: FontWeight.w700),
                   ),
@@ -1343,8 +1349,8 @@ class _VoicemailCardState extends State<_VoicemailCard> {
                       const SizedBox(width: 8),
                       Text(
                         _durationLabel(dur).isNotEmpty
-                            ? 'Voicemail · ${_durationLabel(dur)}'
-                            : 'Play voicemail',
+                            ? uiCopy(UiMessage.m_voicemail_value1_805c7e7ba5, {'value1': (_durationLabel(dur)).toString()})
+                            : uiCopy(UiMessage.m_play_voicemail_0fc3b5dfc5),
                         style: ADText.rowName(c: AD.primaryBadge),
                       ),
                     ]),
@@ -1356,7 +1362,7 @@ class _VoicemailCardState extends State<_VoicemailCard> {
               const SizedBox(height: 8),
               GestureDetector(
                 onTap: () => setState(() => _expanded = !_expanded),
-                child: Text(_expanded ? 'Hide transcript ▲' : 'Show transcript ▼',
+                child: Text(_expanded ? uiCopy(UiMessage.m_hide_transcript_7050dca018) : uiCopy(UiMessage.m_show_transcript_81d7502b49),
                     style: ADText.statCaption(c: subInk)),
               ),
               if (_expanded)
@@ -1412,6 +1418,7 @@ class _CardMenuRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return ListTile(
       leading: PhosphorIcon(icon, color: color),
       title: Text(label,

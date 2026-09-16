@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -92,10 +94,11 @@ class _CreatorReceiptSummaryScreenState extends State<CreatorReceiptSummaryScree
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: ZineAppBar(
-        title: 'Earnings & receipts',
+        title: uiCopy(UiMessage.m_earnings_receipts_6af39eae49),
         markWord: 'receipts',
         tag: widget.serviceTitle ?? 'creator studio',
       ),
@@ -144,27 +147,27 @@ class _CreatorReceiptSummaryScreenState extends State<CreatorReceiptSummaryScree
         const SizedBox(height: Msg.s4),
         Text(
           hasSettled
-              ? 'These amounts come from immutable server receipts. Reserved tickets and listing prices are not used to estimate earnings.'
-              : 'No settled receipt yet. Earnings appear after signed provider evidence and settlement complete.',
+              ? uiCopy(UiMessage.m_these_amounts_come_from_immutable_2b41794710)
+              : uiCopy(UiMessage.m_no_settled_receipt_yet_earnings_6d61a62ba8),
           style: ADText.preview(c: AD.textSecondary),
         ),
         if (summary.reviewPendingReceiptCount > 0) ...[
           const SizedBox(height: Msg.s3),
-          Text(
-            '${summary.reviewPendingReceiptCount} receipt${summary.reviewPendingReceiptCount == 1 ? '' : 's'} is still pending review or has incomplete financial data.',
+          UiText(
+            UiMessage.m_value1_receipt_value2_is_still_c78fdc9d8f, params: {'value1': (summary.reviewPendingReceiptCount).toString(), 'value2': (summary.reviewPendingReceiptCount == 1 ? '' : 's').toString()},
             style: ADText.sectionLabel(c: AD.textTertiary),
           ),
         ],
         if (summary.refundedReceiptCount > 0) ...[
           const SizedBox(height: Msg.s2),
-          Text(
-            '${summary.refundedReceiptCount} receipt${summary.refundedReceiptCount == 1 ? '' : 's'} refunded; refunded amounts are not included in creator earnings.',
+          UiText(
+            UiMessage.m_value1_receipt_value2_refunded_refunded_fd0cac9c39, params: {'value1': (summary.refundedReceiptCount).toString(), 'value2': (summary.refundedReceiptCount == 1 ? '' : 's').toString()},
             style: ADText.sectionLabel(c: AD.textTertiary),
           ),
         ],
         if (hasSettled) ...[
           const SizedBox(height: Msg.s5),
-          Text('Settled receipts', style: ADText.appTitle()),
+          UiText(UiMessage.m_settled_receipts_ca7a80fce7, style: ADText.appTitle()),
           const SizedBox(height: Msg.s2),
           for (final receipt in summary.settledReceipts) _receiptRow(receipt),
         ],
@@ -191,12 +194,12 @@ class _CreatorReceiptSummaryScreenState extends State<CreatorReceiptSummaryScree
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    receipt.kind == 'live_event' ? 'Live event' : '1:1 consultation',
+                    receipt.kind == 'live_event' ? uiCopy(UiMessage.m_live_event_544b6ea60b) : uiCopy(UiMessage.m_1_1_consultation_d334ee946a),
                     style: ADText.rowName().copyWith(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: Msg.s1),
-                  Text(
-                    'Receipt ${receipt.receiptId} · ${_dateLabel(receipt.issuedAt)}',
+                  UiText(
+                    UiMessage.m_receipt_value1_value2_32a468ae9e, params: {'value1': (receipt.receiptId).toString(), 'value2': (_dateLabel(receipt.issuedAt)).toString()},
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: ADText.sectionLabel(c: AD.textTertiary),

@@ -1,3 +1,6 @@
+
+import '../../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -63,12 +66,12 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
       case 'publish':
         final r = await AvaVisionApi.publish(a.id);
         _snack(r.isEmpty
-            ? '${a.name} is live in the marketplace!'
-            : (r['detail']?.toString() ?? r['error']?.toString() ?? 'Publish failed'));
+            ? uiCopy(UiMessage.m_value1_is_live_in_the_40e2328a51, {'value1': (a.name).toString()})
+            : (r['detail']?.toString() ?? r['error']?.toString() ?? uiCopy(UiMessage.m_publish_failed_2fe0dacea2)));
       case 'unpublish':
-        _snack(await AvaVisionApi.unpublish(a.id) ? 'Removed from the marketplace' : 'Failed');
+        _snack(await AvaVisionApi.unpublish(a.id) ? uiCopy(UiMessage.m_removed_from_the_marketplace_6bae5904d4) : uiCopy(UiMessage.m_failed_031a8f0f65));
       case 'delete':
-        _snack(await AvaVisionApi.deleteAgent(a.id) ? 'Deleted' : 'Failed');
+        _snack(await AvaVisionApi.deleteAgent(a.id) ? uiCopy(UiMessage.m_deleted_b48ff39c2e) : uiCopy(UiMessage.m_failed_031a8f0f65));
     }
     _load();
   }
@@ -81,14 +84,14 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 ListTile(
                     leading: PhosphorIcon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), color: AD.textPrimary),
-                    title: Text('Edit agent', style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
+                    title: UiText(UiMessage.m_edit_agent_6ff5e7a947, style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
                     onTap: () {
                       Navigator.pop(s);
                       _edit(a);
                     }),
                 ListTile(
                     leading: PhosphorIcon(PhosphorIcons.chartLineUp(PhosphorIconsStyle.bold), color: AD.textPrimary),
-                    title: Text('Dashboard & earnings', style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
+                    title: UiText(UiMessage.m_dashboard_earnings_b920d2c900, style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
                     onTap: () {
                       Navigator.pop(s);
                       Navigator.push(context, MaterialPageRoute(builder: (_) => AgentDashboardScreen(agent: a)));
@@ -96,7 +99,7 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
                 if (a.status == 'draft')
                   ListTile(
                       leading: PhosphorIcon(PhosphorIcons.uploadSimple(PhosphorIconsStyle.bold), color: AD.online),
-                      title: Text('Publish to marketplace', style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
+                      title: UiText(UiMessage.m_publish_to_marketplace_de33ec5ca3, style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
                       onTap: () {
                         Navigator.pop(s);
                         _act(a, 'publish');
@@ -104,31 +107,31 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
                 if (a.status == 'published')
                   ListTile(
                       leading: PhosphorIcon(PhosphorIcons.eyeSlash(PhosphorIconsStyle.bold), color: AD.textPrimary),
-                      title: Text('Unpublish (back to draft)', style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
+                      title: UiText(UiMessage.m_unpublish_back_to_draft_b5d2e80da2, style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
                       onTap: () {
                         Navigator.pop(s);
                         _act(a, 'unpublish');
                       }),
                 ListTile(
                     leading: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold), color: AD.danger),
-                    title: Text('Delete agent', style: ADText.rowName(c: AD.danger).copyWith(fontSize: 15, height: 1.3)),
+                    title: UiText(UiMessage.m_delete_agent_602cc4da98, style: ADText.rowName(c: AD.danger).copyWith(fontSize: 15, height: 1.3)),
                     onTap: () async {
                       Navigator.pop(s);
                       final ok = await showDialog<bool>(
                           context: context,
                           builder: (d) => AlertDialog(
                                 backgroundColor: AD.card,
-                                title: Text('Delete ${a.name}?', style: ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2)),
-                                content: Text(
-                                    'Its listing, knowledge files and availability are removed. Past earnings are kept in your ledger.',
+                                title: UiText(UiMessage.m_delete_value1_073bfafa85, params: {'value1': (a.name).toString()}, style: ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2)),
+                                content: UiText(
+                                    UiMessage.m_its_listing_knowledge_files_and_3a7f498fe0,
                                     style: ADText.preview().copyWith(fontSize: 14, height: 1.42)),
                                 actions: [
                                   TextButton(
                                       onPressed: () => Navigator.pop(d, false),
-                                      child: Text('Keep', style: ADText.tabLabel(c: AD.textSecondary).copyWith(fontSize: 13, letterSpacing: 0.52))),
+                                      child: UiText(UiMessage.m_keep_183f00f483, style: ADText.tabLabel(c: AD.textSecondary).copyWith(fontSize: 13, letterSpacing: 0.52))),
                                   TextButton(
                                       onPressed: () => Navigator.pop(d, true),
-                                      child: Text('Delete', style: ADText.tabLabel(c: AD.danger).copyWith(fontSize: 13, letterSpacing: 0.52))),
+                                      child: UiText(UiMessage.m_delete_e2d0a54968, style: ADText.tabLabel(c: AD.danger).copyWith(fontSize: 13, letterSpacing: 0.52))),
                                 ],
                               ));
                       if (ok == true) _act(a, 'delete');
@@ -145,15 +148,16 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       appBar: ZineAppBar(
-        title: 'My vision agents',
+        title: uiCopy(UiMessage.m_my_vision_agents_368de52670),
         markWord: 'vision',
         tag: 'AvaVision studio',
         showBack: Navigator.of(context).canPop(),
       ),
       floatingActionButton: ZineButton(
-        label: 'New agent',
+        label: uiCopy(UiMessage.m_new_agent_98a23e6db3),
         icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
         trailingIcon: false,
         onPressed: _create,
@@ -205,8 +209,8 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
                                 Flexible(
                                     child: Text(
                                   a.isFreeForCallers
-                                      ? 'Free · you pay ${fmtTokens(kCreatorPaysRateTokensPerHour)}/hr'
-                                      : '${fmtTokens(a.ratePerHourTokens)}/hr · earn ${fmtTokens(creatorNetPerHour(a.ratePerHourTokens))}/hr',
+                                      ? uiCopy(UiMessage.m_free_you_pay_value1_hr_0974234f35, {'value1': (fmtTokens(kCreatorPaysRateTokensPerHour)).toString()})
+                                      : uiCopy(UiMessage.m_value1_hr_earn_value2_hr_a4ad80f058, {'value1': (fmtTokens(a.ratePerHourTokens)).toString(), 'value2': (fmtTokens(creatorNetPerHour(a.ratePerHourTokens))).toString()}),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: ADText.preview().copyWith(fontSize: 12, height: 1.42),
@@ -240,16 +244,16 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
               child: Center(child: PhosphorIcon(PhosphorIcons.eye(PhosphorIconsStyle.fill), size: 36, color: Colors.white)),
             ),
             const SizedBox(height: Msg.s4),
-            Text('Create your first AI vision agent', style: ADText.appTitle().copyWith(fontSize: 26, height: 1.08, letterSpacing: 0.52), textAlign: TextAlign.center),
+            UiText(UiMessage.m_create_your_first_ai_vision_a56a919d33, style: ADText.appTitle().copyWith(fontSize: 26, height: 1.08, letterSpacing: 0.52), textAlign: TextAlign.center),
             const SizedBox(height: Msg.s2),
-            Text(
-              'Pick a use-case template, give it a personality, choose a voice and vision overlay, set your rate — and publish. You earn 50% of every minute people train with it.',
+            UiText(
+              UiMessage.m_pick_a_use_case_template_b05cde205e,
               textAlign: TextAlign.center,
               style: ADText.preview().copyWith(fontSize: 14, height: 1.42),
             ),
             const SizedBox(height: Msg.s4),
             ZineButton(
-              label: 'Create an agent',
+              label: uiCopy(UiMessage.m_create_an_agent_04a077f349),
               variant: ZineButtonVariant.blue,
               icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
               trailingIcon: false,

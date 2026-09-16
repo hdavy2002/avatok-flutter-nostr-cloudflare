@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:async';
 import 'dart:convert';
 
@@ -128,7 +131,7 @@ class _AskAvaHomeState extends State<AskAvaScreen> {
         await CompanionSessionStore.I.upsert(
           sessionId: 'askava_legacy_v1',
           persona: kAskAvaPersonaId,
-          title: 'Earlier AvaBrain chat',
+          title: uiCopy(UiMessage.m_earlier_avabrain_chat_2ad6c46c94),
           messages: msgs,
         );
         Analytics.capture('avabrain_legacy_thread_migrated', {'turns': msgs.length});
@@ -224,7 +227,7 @@ class _AskAvaHomeState extends State<AskAvaScreen> {
             padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s2, Msg.s5, Msg.s2),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text(s.title.isEmpty ? 'AvaBrain chat' : s.title,
+              child: Text(s.title.isEmpty ? uiCopy(UiMessage.m_avabrain_chat_b48f551b5a) : s.title,
                   style: ADText.threadName(),
                   maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
@@ -278,7 +281,7 @@ class _AskAvaHomeState extends State<AskAvaScreen> {
         shape: RoundedRectangleBorder(
             side: const BorderSide(color: AD.borderControl, width: 1),
             borderRadius: BorderRadius.circular(AD.rDialog)),
-        title: Text('Rename chat', style: ADText.threadName()),
+        title: UiText(UiMessage.m_rename_chat_26076241b3, style: ADText.threadName()),
         content: TextField(
           controller: ctrl,
           autofocus: true,
@@ -288,7 +291,7 @@ class _AskAvaHomeState extends State<AskAvaScreen> {
               fontFamily: ADText.family, fontWeight: FontWeight.w700,
               fontSize: 15, color: AD.textOnInput),
           decoration: InputDecoration(
-            hintText: 'Chat name',
+            hintText: uiCopy(UiMessage.m_chat_name_09c3e4caec),
             hintStyle: ADText.preview(c: AD.textTertiary),
           ),
           onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
@@ -296,10 +299,10 @@ class _AskAvaHomeState extends State<AskAvaScreen> {
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: Text('Cancel', style: ADText.preview(c: AD.textSecondary))),
+              child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.preview(c: AD.textSecondary))),
           TextButton(
               onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-              child: Text('Save', style: ADText.preview(c: AD.iconSearch))),
+              child: UiText(UiMessage.m_save_1509f561f2, style: ADText.preview(c: AD.iconSearch))),
         ],
       ),
     );
@@ -317,18 +320,17 @@ class _AskAvaHomeState extends State<AskAvaScreen> {
         shape: RoundedRectangleBorder(
             side: const BorderSide(color: AD.borderControl, width: 1),
             borderRadius: BorderRadius.circular(AD.rDialog)),
-        title: Text('Delete chat?', style: ADText.threadName()),
-        content: Text(
-            'This removes the conversation from this device and the cloud '
-            'backup. This can’t be undone.',
+        title: UiText(UiMessage.m_delete_chat_80aaa1b502, style: ADText.threadName()),
+        content: UiText(
+            UiMessage.m_this_removes_the_conversation_from_5f657c4d7c,
             style: ADText.preview()),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Cancel', style: ADText.preview(c: AD.textSecondary))),
+              child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.preview(c: AD.textSecondary))),
           TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: Text('Delete', style: ADText.preview(c: AD.danger))),
+              child: UiText(UiMessage.m_delete_e2d0a54968, style: ADText.preview(c: AD.danger))),
         ],
       ),
     );
@@ -342,6 +344,7 @@ class _AskAvaHomeState extends State<AskAvaScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // [UI-BRAIN-INDIGO-2026] Owner decision: AvaBrain drops the rani pink band.
     // Header AND the wave seam under it are both indigo, so they read as ONE
     // continuous indigo header whose bottom edge is the haldi wave — the same
@@ -383,7 +386,7 @@ class _AskAvaHomeState extends State<AskAvaScreen> {
       floatingActionButton: null,
       body: Column(children: [
         AvaTokHeader(
-          title: _showArchived ? 'Archived' : 'AvaBrain',
+          title: _showArchived ? uiCopy(UiMessage.m_archived_bdb86505f8) : uiCopy(UiMessage.m_avabrain_7012aa07e1),
           // In the shell: hamburger, no back arrow (owner). Outside it: a back
           // button, because a hamburger with no drawer is a dead control.
           leading: shell == null ? AdBackButton(color: AD.onBand(band)) : null,
@@ -392,7 +395,7 @@ class _AskAvaHomeState extends State<AskAvaScreen> {
           bottom: null,
           actions: [
             IconButton(
-              tooltip: _showArchived ? 'Back to chats' : 'Archived',
+              tooltip: _showArchived ? uiCopy(UiMessage.m_back_to_chats_62922190a0) : uiCopy(UiMessage.m_archived_bdb86505f8),
               icon: PhosphorIcon(
                   _showArchived
                       ? PhosphorIcons.chatsCircle(PhosphorIconsStyle.bold)
@@ -449,20 +452,19 @@ class _AskAvaHomeState extends State<AskAvaScreen> {
                 icon: PhosphorIcons.brain(PhosphorIconsStyle.fill),
                 color: AD.haldi, size: 54),
             const SizedBox(height: Msg.s3),
-            Text(_showArchived ? 'No archived chats' : 'Ask me anything',
+            Text(_showArchived ? uiCopy(UiMessage.m_no_archived_chats_272c9ab46d) : uiCopy(UiMessage.m_ask_me_anything_4e5bf19167),
                 style: ADText.threadName(), textAlign: TextAlign.center),
             const SizedBox(height: Msg.s1),
             Text(
               _showArchived
-                  ? 'Chats you archive will show up here.'
-                  : '"Call the plumber from last Tuesday", "who called me most '
-                      'this month?", "is +1 555 0100 spam?"',
+                  ? uiCopy(UiMessage.m_chats_you_archive_will_show_41914eab33)
+                  : uiCopy(UiMessage.m_call_the_plumber_from_last_7dae47e379),
               style: ADText.preview(), textAlign: TextAlign.center,
             ),
             if (!_showArchived) ...[
               const SizedBox(height: Msg.s4),
               AdButton(
-                label: 'Start a chat',
+                label: uiCopy(UiMessage.m_start_a_chat_d80b18887a),
                 // [UI-BRAIN-INDIGO-2026] `primary` is rani pink. `teal` is the
                 // enum's marigold slot (AD.newGroup == AD.haldi), so the CTA
                 // stays the loudest thing on the page without reintroducing
@@ -509,6 +511,7 @@ class _AskAvaSessionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final title = session.title.trim().isEmpty ? 'New chat' : session.title.trim();
     return GestureDetector(
       onTap: onTap,
@@ -535,7 +538,7 @@ class _AskAvaSessionCard extends StatelessWidget {
                   maxLines: 1, overflow: TextOverflow.ellipsis),
               const SizedBox(height: Msg.s1),
               Text(
-                session.preview.isEmpty ? 'Tap to continue' : session.preview,
+                session.preview.isEmpty ? uiCopy(UiMessage.m_tap_to_continue_f339da6783) : session.preview,
                 style: ADText.preview(), maxLines: 1, overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: Msg.s1),
@@ -545,7 +548,7 @@ class _AskAvaSessionCard extends StatelessWidget {
           ),
           IconButton(
             visualDensity: VisualDensity.compact,
-            tooltip: 'More',
+            tooltip: uiCopy(UiMessage.m_more_d47d7cb0e4),
             icon: PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold),
                 size: 20, color: AD.textSecondary),
             onPressed: onMenu,
@@ -948,6 +951,7 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // [UI-BRAIN-INDIGO-2026] Indigo band, matched to AskAvaScreen — the wave
     // seam below it is the same indigo, so header + seam are one band ending in
     // the haldi wave. The band is still DARK, so every foreground on it keeps
@@ -974,7 +978,7 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
           // Short, responsive title: ellipsizes before the trailing control
           // can be pushed off a narrow screen.
           Expanded(
-            child: Text(_title.isEmpty ? 'AvaBrain' : _title,
+            child: Text(_title.isEmpty ? uiCopy(UiMessage.m_avabrain_7012aa07e1) : _title,
                 style: ADText.appTitle(c: onBand),
                 maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false),
           ),
@@ -982,7 +986,7 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
         actions: [
           if (_turns.isNotEmpty)
             IconButton(
-              tooltip: 'Clear',
+              tooltip: uiCopy(UiMessage.m_clear_83b12c2216),
               icon: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold),
                   color: onBand, size: 20),
               onPressed: _clearThread,
@@ -1031,11 +1035,10 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             _sparkleBadge(54),
             const SizedBox(height: Msg.s3),
-            Text('Ask me anything', textAlign: TextAlign.center, style: ADText.threadName().copyWith(fontSize: 18)),
+            UiText(UiMessage.m_ask_me_anything_4e5bf19167, textAlign: TextAlign.center, style: ADText.threadName().copyWith(fontSize: 18)),
             const SizedBox(height: 8),
-            Text(
-              '"Call the plumber from last Tuesday", "who called me most this month?", '
-              '"is +1 555 0100 spam?"',
+            UiText(
+              UiMessage.m_call_the_plumber_from_last_7dae47e379,
               textAlign: TextAlign.center,
               style: ADText.preview(c: AD.textSecondary),
             ),
@@ -1148,7 +1151,7 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
             borderRadius: AD.bubbleInRadius,
             border: Border.all(color: AD.borderControl, width: 1),
           ),
-          child: Text('Ava is thinking…', style: ADText.preview(c: AD.textSecondary)),
+          child: UiText(UiMessage.m_ava_is_thinking_55ecde9f01, style: ADText.preview(c: AD.textSecondary)),
         ),
       );
 
@@ -1188,9 +1191,9 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
               cursorColor: AD.iconSearch,
               style: const TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
                   fontSize: 15, color: AD.textOnInput),
-              decoration: const InputDecoration(
+              decoration:  InputDecoration(
                 border: InputBorder.none,
-                hintText: 'Ask Ava…',
+                hintText: uiCopy(UiMessage.m_ask_ava_41b0b679b5),
                 hintStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
                     fontSize: 15, color: AD.placeholderOnWhite),
                 isDense: true,

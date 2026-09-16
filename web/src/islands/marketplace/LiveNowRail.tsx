@@ -1,3 +1,4 @@
+import { UiText } from "../../lib/i18n/react";
 import { useEffect, useRef, useState } from 'react';
 import { getLiveNow } from '../../lib/apiClient';
 import type { Card } from '../../lib/types';
@@ -48,7 +49,7 @@ export function LiveNowRail({ title = 'Live now', hideWhenEmpty = true }: LiveNo
 
       {!items ? (
         <div className="flex items-center gap-2 py-6 text-inkSoft">
-          <Spinner size={18} /> <span className="font-body font-bold text-[0.875rem]">Loading live…</span>
+          <Spinner size={18} /> <span className="font-body font-bold text-[0.875rem]"><UiText id="web-marketplace.f5038a2d4f400452" source="Loading live…" /></span>
         </div>
       ) : (
         <div className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

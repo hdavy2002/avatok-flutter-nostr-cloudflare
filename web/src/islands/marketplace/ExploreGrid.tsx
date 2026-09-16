@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getExplore, request } from '../../lib/apiClient';
 import { searchListings, getCategories, type MarketCategory } from './api';
@@ -62,6 +64,8 @@ function ExploreGridInner({
   showSearch = true,
   hrefBase = '',
 }: ExploreGridProps) {
+  const {t:uiT}=useUiTranslation("web-marketplace");
+
   const [q, setQ] = useState(initialQ?.trim() ?? '');
   const [rail, setRail] = useState<RailState>({
     group: (initialGroup as GroupId) || undefined,
@@ -301,9 +305,7 @@ function ExploreGridInner({
               className="inline-flex flex-none items-center gap-2 rounded-full border-zine border-ink bg-card px-5 py-2.5 font-label text-[0.75rem] font-extrabold uppercase tracking-[0.1em] text-ink shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
               aria-expanded={filtersOpen}
             >
-              <span aria-hidden="true">☰</span>
-              Filters
-              {appliedCount > 0 && (
+              <span aria-hidden="true">☰</span><UiText id="web-marketplace.546ebb8eb993ea56" source="Filters" />{" "}{appliedCount > 0 && (
                 <span className="grid h-5 min-w-[20px] place-items-center rounded-full bg-coral px-1.5 font-label text-[0.6875rem] font-extrabold text-card">
                   {appliedCount}
                 </span>
@@ -317,14 +319,12 @@ function ExploreGridInner({
                   clearAll();
                 }}
                 className="flex-none font-label text-[0.75rem] font-extrabold uppercase tracking-[0.08em] text-coral underline"
-              >
-                Sab hatao
-              </button>
+              ><UiText id="web-marketplace.178eae80f69580f8" source="Sab hatao" />{" "}</button>
             )}
             <span className="font-label text-[0.8125rem] font-extrabold uppercase tracking-[0.12em] text-ink">
               {loaded
-                ? `${items.length} ${items.length === 1 ? 'listing' : 'listings'} · Pura bazaar`
-                : 'Loading the bazaar…'}
+                ? uiT("web-marketplace.e464441e0b11cb75","{value0} {value1} · Pura bazaar",{value0:String(items.length),value1:String(items.length === 1 ? 'listing' : 'listings')})
+                : uiT("web-marketplace.72077f6d13c05345","Loading the bazaar…")}
             </span>
             <span className="h-0.5 min-w-[60px] flex-1 bg-ink/20" />
           </div>
@@ -332,9 +332,7 @@ function ExploreGridInner({
           {error && (
             <div className="rounded-zine border-zine border-coral bg-card p-4 font-body text-[0.9375rem] font-bold text-ink shadow-zine-error">
               {error}{' '}
-              <button type="button" className="text-blueInk underline" onClick={() => void fetchPage(null, false)}>
-                Retry
-              </button>
+              <button type="button" className="text-blueInk underline" onClick={() => void fetchPage(null, false)}><UiText id="web-marketplace.942087cc2d41e013" source="Retry" />{" "}</button>
             </div>
           )}
 
@@ -347,17 +345,17 @@ function ExploreGridInner({
             <div className="flex flex-wrap items-center justify-center gap-6 rounded-[22px] border-zine border-dashed border-ink bg-card px-7 py-10 text-center">
               <div className="grid h-[104px] w-[104px] flex-none -rotate-[8deg] place-items-center rounded-full border-zine border-dashed border-coral">
                 <span className="font-label text-[0.6875rem] font-extrabold uppercase leading-[1.7] tracking-[0.06em] text-coral">
-                  {narrowed ? (<>Buri nazar<br />lag gayi<br />· 404 ·</>) : (<>Bazaar<br />khul raha<br />hai</>)}
+                  {narrowed ? (<><UiText id="web-marketplace.b5b9eb055f3f31f8" source="Buri nazar" /><br /><UiText id="web-marketplace.6c1c6e85669fb48c" source="lag gayi" /><br />· 404 ·</>) : (<><UiText id="web-marketplace.4e6b8f6a7f14abf9" source="Bazaar" /><br /><UiText id="web-marketplace.50be7504b658cd6f" source="khul raha" /><br /><UiText id="web-marketplace.739b9d664d77db3e" source="hai" /></>)}
                 </span>
               </div>
               <div className="max-w-[40ch] text-left">
                 <p className="font-display text-[1.5rem] font-normal uppercase tracking-[0.055em] [word-spacing:0.2em] text-ink">
-                  {narrowed ? 'Koi nahi mila, boss.' : 'Abhi dukaan saj rahi hai.'}
+                  {narrowed ? uiT("web-marketplace.7ba2d4b4e2244d2c","Koi nahi mila, boss.") : uiT("web-marketplace.b35908a94a11f32d","Abhi dukaan saj rahi hai.")}
                 </p>
                 <p className="mt-2 font-body text-[0.9375rem] font-medium leading-[1.5] text-inkSoft">
                   {narrowed
-                    ? 'Is filter combination mein full sannata hai. Thoda filter loosen karo.'
-                    : 'No listings are published yet. Creators are still setting up their stalls — check back soon, or open your own.'}
+                    ? uiT("web-marketplace.81deae8ffc16e5d4","Is filter combination mein full sannata hai. Thoda filter loosen karo.")
+                    : uiT("web-marketplace.4b46fe3be22fa4ef","No listings are published yet. Creators are still setting up their stalls — check back soon, or open your own.")}
                 </p>
                 <div className="mt-4">
                   {narrowed ? (
@@ -365,16 +363,12 @@ function ExploreGridInner({
                       type="button"
                       onClick={clearAll}
                       className="rounded-full border-zine border-ink bg-coral px-7 py-3 font-display text-[0.875rem] font-normal uppercase tracking-[0.06em] text-card transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px]"
-                    >
-                      Sab dikhao
-                    </button>
+                    ><UiText id="web-marketplace.0fda15a3954fb235" source="Sab dikhao" />{" "}</button>
                   ) : (
                     <a
                       href="/sign-up"
                       className="inline-flex rounded-full border-zine border-ink bg-lime px-7 py-3 font-display text-[0.875rem] font-normal uppercase tracking-[0.06em] text-ink no-underline shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
-                    >
-                      Become a creator
-                    </a>
+                    ><UiText id="web-marketplace.4259d2bbd1a3d7d3" source="Become a creator" />{" "}</a>
                   )}
                 </div>
               </div>
@@ -397,15 +391,13 @@ function ExploreGridInner({
 
           {loading && (
             <div className="flex items-center justify-center gap-2 py-6 text-inkSoft">
-              <Spinner size={20} /> <span className="font-body text-[0.875rem] font-bold">Loading…</span>
+              <Spinner size={20} /> <span className="font-body text-[0.875rem] font-bold"><UiText id="web-marketplace.ba3bbbe10d8bef66" source="Loading…" /></span>
             </div>
           )}
 
           {!loading && cursor && (
             <div className="flex justify-center pt-8">
-              <Button variant="blue" onClick={() => void fetchPage(cursor, true)}>
-                Load more
-              </Button>
+              <Button variant="blue" onClick={() => void fetchPage(cursor, true)}><UiText id="web-marketplace.ac8991ef01019cf5" source="Load more" />{" "}</Button>
             </div>
           )}
         </main>

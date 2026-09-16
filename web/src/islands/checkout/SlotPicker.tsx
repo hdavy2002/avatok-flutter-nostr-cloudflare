@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* Phase B — SlotPicker (the "pick" step).
  *
  * [WEB-COMM-PAY-1] Branches on listing.kind per
@@ -165,6 +167,8 @@ export function SlotPicker({ listing, token, onNeedAuth, onSelect }: SlotPickerP
  *  not to schedule (SPEC §3.1). Hands off a `commercial` selection so PayStep
  *  routes to CommercialPayStep → POST /api/commercial/live/:id/checkout. */
 function LiveTicket({ listing, onSelect }: { listing: Listing; onSelect: (s: BookSelection) => void }) {
+  const {t:uiT}=useUiTranslation("web-checkout");
+
   // [CHECKOUT-PROMO-1 2026-09-13] `effective_price` FIRST. The operands were
   // inverted: `price` is always a number, so `??` never fell through and the
   // discounted price was unreachable — the card advertised ₹400 and checkout
@@ -184,12 +188,10 @@ function LiveTicket({ listing, onSelect }: { listing: Listing; onSelect: (s: Boo
       <Card>
         <div className="flex flex-col gap-3">
           <p className="font-display font-semibold text-[18px] text-ink">
-            {state === 'cancelled' ? 'This show was cancelled.' : state === 'ended' || state === 'expired' ? 'This show has ended.' : 'Booking for this show has closed.'}
+            {state === 'cancelled' ? uiT("web-checkout.fa0e32f868a24906","This show was cancelled.") : state === 'ended' || state === 'expired' ? uiT("web-checkout.60f8f77036e16b06","This show has ended.") : uiT("web-checkout.96268d8d8bc8c9ac","Booking for this show has closed.")}
           </p>
-          <p className="font-body text-[15px] text-inkSoft">
-            Tickets are no longer sold for <span className="text-ink">{listing.title}</span>. Anyone who booked a show that did not happen is refunded automatically.
-          </p>
-          <a className="font-body font-bold text-[15px] underline" href="/marketplace">Browse other shows →</a>
+          <p className="font-body text-[15px] text-inkSoft"><UiText id="web-checkout.6a18508440e434d9" source="Tickets are no longer sold for" />{" "}<span className="text-ink">{listing.title}</span><UiText id="web-checkout.0063aba65d46e3df" source=". Anyone who booked a show that did not happen is refunded automatically." />{" "}</p>
+          <a className="font-body font-bold text-[15px] underline" href="/marketplace"><UiText id="web-checkout.370688e3bffcad70" source="Browse other shows →" /></a>
         </div>
       </Card>
     );
@@ -197,18 +199,17 @@ function LiveTicket({ listing, onSelect }: { listing: Listing; onSelect: (s: Boo
   return (
     <Card>
       <div className="flex flex-col gap-4">
-        <p className="font-body font-bold text-[15px] text-inkSoft">
-          Get your ticket for <span className="text-ink">{listing.title}</span>
+        <p className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-checkout.cd82b405bbd92a71" source="Get your ticket for" />{" "}<span className="text-ink">{listing.title}</span>
           {listing.starts_at ? <> · {fmtWhen(listing.starts_at)}</> : null}.
         </p>
         <div className="flex items-center justify-between border-t-zine border-inkMute pt-3">
-          <span className="font-display font-semibold text-[16px] text-ink">Ticket price</span>
-          <Pill kind={price > 0 ? 'plain' : 'ok'}>{inrOrFree(price)}</Pill>
+          <span className="font-display font-semibold text-[16px] text-ink"><UiText id="web-checkout.d0075d10512c0cf6" source="Ticket price" /></span>
+          <Pill kind={price > 0 ? uiT("web-checkout.a116c9ed46d62077","plain") : uiT("web-checkout.2689367b205c16ce","ok")}>{inrOrFree(price)}</Pill>
         </div>
         <Button
           variant="lime"
           fullWidth
-          label="Continue"
+          label={uiT("web-checkout.31fbef162594de01","Continue")}
           icon="→"
           onClick={() =>
             onSelect({
@@ -239,6 +240,8 @@ function ConsultSlots({ listing, token, onNeedAuth, onSelect }: SlotPickerProps)
 }
 
 function ConsultAvailability({ listing, onSelect }: { listing: Listing; onSelect: (s: BookSelection) => void }) {
+  const {t:uiT}=useUiTranslation("web-checkout");
+
   const loadGeneration = useRef(0);
   const [availability, setAvailability] = useState<ListingAvailabilityResponse | null>(null);
   const [viewMonth, setViewMonth] = useState(() => monthKey(dateKeyFromMs(Date.now(), browserTimezone())));
@@ -365,7 +368,7 @@ function ConsultAvailability({ listing, onSelect }: { listing: Listing; onSelect
       <Card>
         <div className="flex items-center gap-3" role="status" aria-live="polite">
           <Spinner size={22} />
-          <span className="font-body font-bold text-[15px] text-inkSoft">Loading available times…</span>
+          <span className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-checkout.c6b581ce260c373e" source="Loading available times…" /></span>
         </div>
       </Card>
     );
@@ -375,7 +378,7 @@ function ConsultAvailability({ listing, onSelect }: { listing: Listing; onSelect
     return (
       <Card fillClassName="bg-paper2">
         <p className="font-body font-bold text-[15px] text-coral" role="alert">⚠ {error}</p>
-        <div className="mt-3"><Button variant="blue" label="Try again" onClick={() => void load()} /></div>
+        <div className="mt-3"><Button variant="blue" label={uiT("web-checkout.d8b8392e2c542950","Try again")} onClick={() => void load()} /></div>
       </Card>
     );
   }
@@ -387,19 +390,19 @@ function ConsultAvailability({ listing, onSelect }: { listing: Listing; onSelect
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-inkSoft">Choose a time</p>
-            <p className="mt-1 font-body text-[13px] font-bold text-inkSoft">Times shown in {responseTimezone}.</p>
+            <p className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-inkSoft"><UiText id="web-checkout.c32650bdcd218f0a" source="Choose a time" /></p>
+            <p className="mt-1 font-body text-[13px] font-bold text-inkSoft"><UiText id="web-checkout.80b891d1975cf0a7" source="Times shown in" />{" "}{responseTimezone}.</p>
           </div>
           <button type="button" className="font-mono text-[12px] font-bold uppercase tracking-[0.06em] text-blueInk underline" onClick={() => { setRefreshing(true); void load(false); }} disabled={refreshing}>
-            {refreshing ? 'Refreshing…' : 'Refresh'}
+            {refreshing ? uiT("web-checkout.1c0def7be0607b96","Refreshing…") : uiT("web-checkout.0e91610117029a62","Refresh")}
           </button>
         </div>
 
         <div className="rounded-zine border-zine border-ink bg-paper2 p-3">
           <div className="mb-3 flex items-center justify-between gap-2">
-            <button type="button" aria-label="Previous month" disabled={!!validatingSlotId} className="h-8 w-8 rounded-full border-zine border-ink bg-card font-display text-[20px] leading-none" onClick={() => moveMonth(-1)}>‹</button>
+            <button type="button" aria-label={uiT("web-checkout.6a2769502a5dda78","Previous month")} disabled={!!validatingSlotId} className="h-8 w-8 rounded-full border-zine border-ink bg-card font-display text-[20px] leading-none" onClick={() => moveMonth(-1)}>‹</button>
             <span className="font-display text-[16px] font-semibold uppercase">{monthLabel(viewMonth)}</span>
-            <button type="button" aria-label="Next month" disabled={!!validatingSlotId} className="h-8 w-8 rounded-full border-zine border-ink bg-card font-display text-[20px] leading-none" onClick={() => moveMonth(1)}>›</button>
+            <button type="button" aria-label={uiT("web-checkout.74e53211fef4b4d4","Next month")} disabled={!!validatingSlotId} className="h-8 w-8 rounded-full border-zine border-ink bg-card font-display text-[20px] leading-none" onClick={() => moveMonth(1)}>›</button>
           </div>
           <div className="mb-1 grid grid-cols-7 gap-1 text-center font-mono text-[10px] font-bold uppercase text-inkSoft" aria-hidden="true">
             {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((label, index) => <span key={`${label}-${index}`}>{label}</span>)}
@@ -432,7 +435,7 @@ function ConsultAvailability({ listing, onSelect }: { listing: Listing; onSelect
         </div>
 
         {availableSlots.length === 0 && (
-          <p className="font-body text-[14px] font-bold text-inkSoft">No available times in this window. Try another month or refresh later.</p>
+          <p className="font-body text-[14px] font-bold text-inkSoft"><UiText id="web-checkout.eb3be31fe9ca940e" source="No available times in this window. Try another month or refresh later." /></p>
         )}
 
         {error && <p className="font-body text-[14px] font-bold text-coral" role="alert">⚠ {error}</p>}
@@ -446,7 +449,7 @@ function ConsultAvailability({ listing, onSelect }: { listing: Listing; onSelect
                 <button key={slot.id} type="button" className={`${cardClass} text-left transition-colors ${selected ? 'bg-lime' : 'hover:bg-paper2'} ${checking ? 'opacity-70' : ''}`} disabled={Boolean(validatingSlotId) || loading || refreshing} onClick={() => void chooseSlot(slot)}>
                   <span className="flex items-center justify-between gap-3">
                     <span className="font-display text-[16px] font-semibold text-ink">{fmtWhenInZone(Number(slot.start_at), responseTimezone)}</span>
-                    <span className="font-mono text-[11px] font-bold uppercase tracking-[0.06em] text-inkSoft">{checking ? 'Checking…' : selected ? 'Selected' : 'Available'}</span>
+                    <span className="font-mono text-[11px] font-bold uppercase tracking-[0.06em] text-inkSoft">{checking ? uiT("web-checkout.ec963ffc911b8401","Checking…") : selected ? uiT("web-checkout.57fd7a0cf33f2666","Selected") : uiT("web-checkout.e674447337e83c13","Available")}</span>
                   </span>
                   <span className="mt-1 block font-body text-[13px] font-bold text-inkSoft">{fmtDuration(Number(slot.start_at), Number(slot.end_at))}</span>
                 </button>
@@ -454,7 +457,7 @@ function ConsultAvailability({ listing, onSelect }: { listing: Listing; onSelect
             })}
           </div>
         ) : (
-          <p className="font-body text-[14px] font-bold text-inkSoft">Choose a date with available times.</p>
+          <p className="font-body text-[14px] font-bold text-inkSoft"><UiText id="web-checkout.f8869cabcdccf5f7" source="Choose a date with available times." /></p>
         )}
       </div>
     </Card>
@@ -496,6 +499,8 @@ function CreatorSlotList({
   onNeedAuth: () => Promise<string>;
   onPick: (slot: CalendarSlot) => void;
 }) {
+  const {t:uiT}=useUiTranslation("web-checkout");
+
   const creatorId = listing.creator?.id ?? '';
   const [slots, setSlots] = useState<CalendarSlot[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -539,11 +544,8 @@ function CreatorSlotList({
     return (
       <Card>
         <div className="flex flex-col gap-3">
-          <p className="font-body font-bold text-[15px] text-inkSoft">
-            Pick a time with <span className="text-ink">{listing.creator?.name ?? 'the creator'}</span>. We’ll
-            ask for your email next so we can send your confirmation.
-          </p>
-          <Button variant="lime" label="See available times" icon="→" onClick={reveal} />
+          <p className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-checkout.f992b8cfa77f3442" source="Pick a time with" />{" "}<span className="text-ink">{listing.creator?.name ?? uiT("web-checkout.590aff5ff5318373","the creator")}</span><UiText id="web-checkout.0afcf16ce8ddd2b3" source=". We’ll ask for your email next so we can send your confirmation." />{" "}</p>
+          <Button variant="lime" label={uiT("web-checkout.fe953d922669bdb0","See available times")} icon="→" onClick={reveal} />
         </div>
       </Card>
     );
@@ -553,7 +555,7 @@ function CreatorSlotList({
     return (
       <div className="flex items-center gap-3 p-4">
         <Spinner size={22} />
-        <span className="font-body font-bold text-[15px] text-inkSoft">Loading times…</span>
+        <span className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-checkout.9f1ee8e24acc6098" source="Loading times…" /></span>
       </div>
     );
   }
@@ -563,7 +565,7 @@ function CreatorSlotList({
       <Card fillClassName="bg-paper2">
         <p className="font-body font-bold text-[15px] text-coral">⚠ {error}</p>
         <div className="mt-3">
-          <Button variant="blue" label="Try again" onClick={() => void load(authToken)} />
+          <Button variant="blue" label={uiT("web-checkout.d8b8392e2c542950","Try again")} onClick={() => void load(authToken)} />
         </div>
       </Card>
     );
@@ -573,9 +575,7 @@ function CreatorSlotList({
   if (!bookable.length) {
     return (
       <Card fillClassName="bg-paper2">
-        <p className="font-body font-bold text-[15px] text-inkSoft">
-          No open times right now. Check back soon or follow the creator for new slots.
-        </p>
+        <p className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-checkout.f71a18ebc97c6f08" source="No open times right now. Check back soon or follow the creator for new slots." />{" "}</p>
       </Card>
     );
   }
@@ -591,7 +591,7 @@ function CreatorSlotList({
                 {fmtDuration(s.start_at, s.end_at)} · {s.title}
               </span>
             </div>
-            <Pill kind={s.price_coins > 0 ? 'plain' : 'ok'}>{coinLabel(Math.trunc(Number(s.price_coins || 0)))}</Pill>
+            <Pill kind={s.price_coins > 0 ? uiT("web-checkout.a116c9ed46d62077","plain") : uiT("web-checkout.2689367b205c16ce","ok")}>{coinLabel(Math.trunc(Number(s.price_coins || 0)))}</Pill>
           </div>
         </Card>
       ))}
@@ -610,6 +610,8 @@ const LANGS = [
 ] as const;
 
 function AgentForm({ listing, onSelect }: { listing: Listing; onSelect: (s: BookSelection) => void }) {
+  const {t:uiT}=useUiTranslation("web-checkout");
+
   const [minutes, setMinutes] = useState('15');
   const [when, setWhen] = useState(() => {
     const d = new Date(Date.now() + 60 * 60 * 1000); // default: +1h
@@ -629,19 +631,15 @@ function AgentForm({ listing, onSelect }: { listing: Listing; onSelect: (s: Book
   return (
     <Card>
       <div className="flex flex-col gap-4">
-        <p className="font-body font-bold text-[15px] text-inkSoft">
-          Schedule a voice session with <span className="text-ink">{listing.title}</span>. We’ll confirm by email.
-        </p>
+        <p className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-checkout.0ad972dfe4aa6862" source="Schedule a voice session with" />{" "}<span className="text-ink">{listing.title}</span><UiText id="web-checkout.4cbf43a06783cb17" source=". We’ll confirm by email." />{" "}</p>
         <Field
-          label="Minutes"
+          label={uiT("web-checkout.4f846a84e7fc9ef6","Minutes")}
           inputMode="numeric"
           value={minutes}
           onChange={(e) => setMinutes(e.target.value.replace(/\D/g, '').slice(0, 3))}
         />
         <label className="block">
-          <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">
-            When
-          </span>
+          <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft"><UiText id="web-checkout.cf9c7aa24a26aac4" source="When" />{" "}</span>
           <input
             type="datetime-local"
             value={when}
@@ -650,9 +648,7 @@ function AgentForm({ listing, onSelect }: { listing: Listing; onSelect: (s: Book
           />
         </label>
         <label className="block">
-          <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">
-            Language
-          </span>
+          <span className="mb-2 block font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft"><UiText id="web-checkout.a4fe65264ef7dbb3" source="Language" />{" "}</span>
           <select
             value={language}
             onChange={(e) => setLanguage(e.target.value)}
@@ -669,7 +665,7 @@ function AgentForm({ listing, onSelect }: { listing: Listing; onSelect: (s: Book
           variant="lime"
           fullWidth
           disabled={!valid}
-          label="Continue"
+          label={uiT("web-checkout.31fbef162594de01","Continue")}
           icon="→"
           onClick={() =>
             onSelect({

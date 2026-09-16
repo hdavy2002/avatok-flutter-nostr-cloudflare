@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 // Phase 2D — GetStream-only commercial rooms.
 //
 // These routes are intentionally separate from AvaTalk, AvaLive's old
@@ -40,7 +42,7 @@ class CommercialLiveViewerScreen extends StatelessWidget {
   final CommercialGetStreamConnector connector;
 
   @override
-  Widget build(BuildContext context) => CommercialGetStreamEntryScreen(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return CommercialGetStreamEntryScreen(
         title: title,
         request: CommercialGetStreamJoinRequest(
           listingId: listingId,
@@ -59,7 +61,7 @@ class CommercialLiveViewerScreen extends StatelessWidget {
           role: handoff.role,
           session: session,
         ),
-      );
+      ); }
 }
 
 class CommercialLiveBackstageScreen extends StatelessWidget {
@@ -79,7 +81,7 @@ class CommercialLiveBackstageScreen extends StatelessWidget {
   final CommercialGetStreamConnector connector;
 
   @override
-  Widget build(BuildContext context) => CommercialGetStreamEntryScreen(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return CommercialGetStreamEntryScreen(
         title: title,
         request: CommercialGetStreamJoinRequest(
           listingId: listingId,
@@ -97,7 +99,7 @@ class CommercialLiveBackstageScreen extends StatelessWidget {
           role: handoff.role,
           session: session,
         ),
-      );
+      ); }
 }
 
 class CommercialConsultationPrejoinScreen extends StatelessWidget {
@@ -121,7 +123,7 @@ class CommercialConsultationPrejoinScreen extends StatelessWidget {
   final CommercialGetStreamConnector connector;
 
   @override
-  Widget build(BuildContext context) => CommercialConsultationPrejoinFlow(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return CommercialConsultationPrejoinFlow(
         listingId: listingId,
         bookingId: bookingId,
         title: title,
@@ -129,7 +131,7 @@ class CommercialConsultationPrejoinScreen extends StatelessWidget {
         isCreator: isCreator,
         flags: flags,
         connector: connector,
-      );
+      ); }
 }
 
 class CommercialGetStreamEntryScreen extends StatefulWidget {
@@ -201,11 +203,12 @@ class _CommercialGetStreamEntryScreenState
     if (error is FormatException || error is StateError) {
       return error.toString().replaceFirst('FormatException: ', '');
     }
-    return 'This secure room could not be opened. Please try again.';
+    return uiCopy(UiMessage.m_this_secure_room_could_not_8ed4554a58);
   }
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final enabled = _flags.allows(widget.expectedProduct);
     final consultation = widget.consultationPrejoin;
     return Scaffold(
@@ -229,16 +232,16 @@ class _CommercialGetStreamEntryScreenState
             const SizedBox(height: Msg.s4),
             Text(
               consultation
-                  ? 'Private 1:1 consultation'
-                  : 'GetStream live event',
+                  ? uiCopy(UiMessage.m_private_1_1_consultation_3289560d8f)
+                  : uiCopy(UiMessage.m_getstream_live_event_83b39662bb),
               textAlign: TextAlign.center,
               style: ADText.appTitle(c: AD.textPrimary),
             ),
             const SizedBox(height: Msg.s2),
             Text(
               consultation
-                  ? 'Your booking unlocks a private room for you and the creator.'
-                  : 'Your ticket unlocks this live room. Watching the public page does not grant access.',
+                  ? uiCopy(UiMessage.m_your_booking_unlocks_a_private_569de6fdd8)
+                  : uiCopy(UiMessage.m_your_ticket_unlocks_this_live_b7bda5bbf6),
               textAlign: TextAlign.center,
               style: ADText.preview(c: AD.textSecondary),
             ),
@@ -272,10 +275,10 @@ class _CommercialGetStreamEntryScreenState
                       )
                     : Icon(PhosphorIcons.arrowRight(PhosphorIconsStyle.bold)),
                 label: Text(_joining
-                    ? 'Authorizing securely…'
+                    ? uiCopy(UiMessage.m_authorizing_securely_242fc7eea8)
                     : consultation
-                        ? 'Check setup and join'
-                        : 'Join live event'),
+                        ? uiCopy(UiMessage.m_check_setup_and_join_fb03cbb502)
+                        : uiCopy(UiMessage.m_join_live_event_206dcc4dfc)),
               ),
             if (_error != null) ...[
               const SizedBox(height: Msg.s3),
@@ -296,7 +299,7 @@ class _InfoCard extends StatelessWidget {
   final String text;
 
   @override
-  Widget build(BuildContext context) => Card(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Card(
         color: AD.card,
         child: Padding(
           padding: const EdgeInsets.all(Msg.s4),
@@ -307,7 +310,7 @@ class _InfoCard extends StatelessWidget {
                 child: Text(text, style: ADText.preview(c: AD.textPrimary))),
           ]),
         ),
-      );
+      ); }
 }
 
 class CommercialGetStreamRoomScreen extends StatefulWidget {
@@ -378,6 +381,7 @@ class _CommercialGetStreamRoomScreenState
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final others = _call.state.value.otherParticipants.toList();
     final local = _call.state.value.localParticipant;
     return PopScope(
@@ -391,13 +395,13 @@ class _CommercialGetStreamRoomScreenState
           backgroundColor: AD.headerFooter,
           foregroundColor: AD.onBand(AD.headerFooter),
           title: Text(_live
-              ? (_roleLabel == 'Creator' ? 'Backstage' : 'Live event')
+              ? (_roleLabel == 'Creator' ? uiCopy(UiMessage.m_backstage_e8dde66276) : uiCopy(UiMessage.m_live_event_544b6ea60b))
               : widget.title),
           actions: [
             if (_live)
               Padding(
                 padding: const EdgeInsets.only(right: Msg.s4),
-                child: Center(child: Text('${others.length + 1} here')),
+                child: Center(child: UiText(UiMessage.m_value1_here_2cfb958887, params: {'value1': (others.length + 1).toString()})),
               ),
           ],
         ),
@@ -409,7 +413,7 @@ class _CommercialGetStreamRoomScreenState
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: Msg.s4),
               child: Text(
-                _cameraOff ? 'Camera off' : 'Camera on',
+                _cameraOff ? uiCopy(UiMessage.m_camera_off_ce3ef7450f) : uiCopy(UiMessage.m_camera_on_071a189a5d),
                 style: ADText.preview(c: AD.textSecondary),
               ),
             ),
@@ -438,8 +442,8 @@ class _CommercialGetStreamRoomScreenState
           padding: const EdgeInsets.all(Msg.s5),
           child: Text(
             _live && widget.role == CommercialGetStreamRole.host
-                ? 'Backstage is ready. Your audience will appear here when they join.'
-                : 'Waiting for the creator to join…',
+                ? uiCopy(UiMessage.m_backstage_is_ready_your_audience_c1b3adde0e)
+                : uiCopy(UiMessage.m_waiting_for_the_creator_to_2b67b72ce8),
             textAlign: TextAlign.center,
             style: ADText.preview(c: AD.textSecondary),
           ),
@@ -503,7 +507,7 @@ class CommercialGetStreamRoomControls extends StatelessWidget {
   final Future<void> Function() onLeave;
 
   @override
-  Widget build(BuildContext context) => Padding(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Padding(
         padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s5),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -513,7 +517,7 @@ class CommercialGetStreamRoomControls extends StatelessWidget {
                 icon: muted
                     ? PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold)
                     : PhosphorIcons.microphone(PhosphorIconsStyle.bold),
-                label: muted ? 'Unmute' : 'Mute',
+                label: muted ? uiCopy(UiMessage.m_unmute_ce4ee4efc5) : uiCopy(UiMessage.m_mute_8dd6857baf),
                 onTap: onToggleMute,
               ),
             if (canPublish)
@@ -521,18 +525,18 @@ class CommercialGetStreamRoomControls extends StatelessWidget {
                 icon: cameraOff
                     ? PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold)
                     : PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
-                label: cameraOff ? 'Camera on' : 'Camera off',
+                label: cameraOff ? uiCopy(UiMessage.m_camera_on_071a189a5d) : uiCopy(UiMessage.m_camera_off_ce3ef7450f),
                 onTap: onToggleCamera,
               ),
             _Control(
               danger: true,
               icon: PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.bold),
-              label: 'Leave',
+              label: uiCopy(UiMessage.m_leave_fc6e4a408d),
               onTap: onLeave,
             ),
           ],
         ),
-      );
+      ); }
 }
 
 class _Control extends StatelessWidget {
@@ -547,7 +551,7 @@ class _Control extends StatelessWidget {
   final bool danger;
 
   @override
-  Widget build(BuildContext context) => Column(children: [
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Column(children: [
         IconButton.filled(
           onPressed: () => unawaited(onTap()),
           style: IconButton.styleFrom(
@@ -557,5 +561,5 @@ class _Control extends StatelessWidget {
           icon: Icon(icon),
         ),
         Text(label, style: ADText.navLabel(c: AD.textSecondary)),
-      ]);
+      ]); }
 }

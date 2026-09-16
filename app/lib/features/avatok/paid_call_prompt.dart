@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:async';
 
 import 'package:audioplayers/audioplayers.dart';
@@ -168,6 +171,7 @@ class _PaidCallPromptScreenState extends State<PaidCallPromptScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final o = widget.offer;
     return Scaffold(
       backgroundColor: AD.bg,
@@ -180,7 +184,7 @@ class _PaidCallPromptScreenState extends State<PaidCallPromptScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(o.isAgent ? 'Paid Ava AI call' : 'Paid call', style: ADText.threadName()),
+                  Text(o.isAgent ? uiCopy(UiMessage.m_paid_ava_ai_call_40ed6fc7bc) : uiCopy(UiMessage.m_paid_call_f86a76e675), style: ADText.threadName()),
                   if (o.calleeName.isNotEmpty)
                     Text(o.calleeName, style: ADText.preview()),
                 ]),
@@ -192,14 +196,14 @@ class _PaidCallPromptScreenState extends State<PaidCallPromptScreen> {
               boxShadow: const [],
               color: AD.card,
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('This call costs ${o.rate} tokens per minute.', style: ADText.rowName()),
+                UiText(UiMessage.m_this_call_costs_value1_tokens_6cbf1345fe, params: {'value1': (o.rate).toString()}, style: ADText.rowName()),
                 const SizedBox(height: 4),
-                Text('You’ll only be charged for the minutes you actually use — anything unused is refunded.',
+                UiText(UiMessage.m_you_ll_only_be_charged_76109e2348,
                     style: ADText.preview()),
               ]),
             ),
             const SizedBox(height: Msg.s4),
-            Text('CHOOSE A LENGTH', style: ADText.sectionLabel()),
+            UiText(UiMessage.m_choose_a_length_ff1ccb946d, style: ADText.sectionLabel()),
             const SizedBox(height: Msg.s2),
             Wrap(spacing: 8, runSpacing: 8, children: [
               for (final m in o.lengthOptions)
@@ -217,8 +221,8 @@ class _PaidCallPromptScreenState extends State<PaidCallPromptScreen> {
               child: Row(children: [
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Total', style: ADText.preview()),
-                    Text('$_total tokens', style: ADText.rowName()),
+                    UiText(UiMessage.m_total_c9b3c38247, style: ADText.preview()),
+                    UiText(UiMessage.m_total_tokens_dbd7a3cd20, params: {'total': (_total).toString()}, style: ADText.rowName()),
                   ]),
                 ),
                 if (_loadingBalance)
@@ -226,7 +230,7 @@ class _PaidCallPromptScreenState extends State<PaidCallPromptScreen> {
                 else if (_balanceUnavailable)
                   Text(kWalletUnavailableMessage, style: ADText.preview(c: AD.textSecondary))
                 else
-                  Text('Balance: $_balance', style: ADText.preview(
+                  UiText(UiMessage.m_balance_balance_10f2cfc361, params: {'balance': (_balance).toString()}, style: ADText.preview(
                       c: _canAfford ? AD.textSecondary : AD.danger)),
               ]),
             ),
@@ -234,9 +238,8 @@ class _PaidCallPromptScreenState extends State<PaidCallPromptScreen> {
             // out explicitly under the total so the caller never mistakes the
             // hold for a charge before anyone's even answered.
             const SizedBox(height: 8),
-            Text(
-              'Tokens are only held now — charging starts when the call is answered. '
-              'Unused minutes are refunded automatically.',
+            UiText(
+              UiMessage.m_tokens_are_only_held_now_c4dfabac55,
               textAlign: TextAlign.center,
               style: ADText.preview(),
             ),
@@ -246,7 +249,7 @@ class _PaidCallPromptScreenState extends State<PaidCallPromptScreen> {
             ],
             const Spacer(),
             AdButton(
-              label: _confirming ? 'Confirming…' : 'Confirm & call',
+              label: _confirming ? uiCopy(UiMessage.m_confirming_b9378c00f9) : uiCopy(UiMessage.m_confirm_call_daa9d31aa1),
               loading: _confirming,
               fullWidth: true,
               onPressed: (_selectedMinutes == null || _confirming || (!_loadingBalance && !_canAfford))
@@ -256,14 +259,14 @@ class _PaidCallPromptScreenState extends State<PaidCallPromptScreen> {
             // ZineButton has no subtitle slot — the same reassurance repeated
             // briefly just under the button, right where the tap happens.
             const SizedBox(height: Msg.s1),
-            Text(
-              'Tokens are held, not charged, until the call connects.',
+            UiText(
+              UiMessage.m_tokens_are_held_not_charged_819e95fd0f,
               textAlign: TextAlign.center,
               style: ADText.preview(),
             ),
             const SizedBox(height: Msg.s2),
             AdButton(
-              label: 'Cancel',
+              label: uiCopy(UiMessage.m_cancel_19766ed6cc),
               variant: AdButtonVariant.ghost,
               fullWidth: true,
               onPressed: _confirming ? null : () {

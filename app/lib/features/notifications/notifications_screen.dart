@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -100,18 +102,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AD.card,
-        title: Text('Clear all notifications?',
+        title: UiText(UiMessage.m_clear_all_notifications_f79f1acf69,
             style: ADText.rowName().copyWith(fontSize: 16)),
-        content: Text('This removes every notification from this feed. It can\'t be undone.',
+        content: UiText(UiMessage.m_this_removes_every_notification_from_fa73729a6f,
             style: ADText.preview(c: AD.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: ADText.rowName(c: AD.textSecondary)),
+            child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.rowName(c: AD.textSecondary)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Clear all', style: ADText.rowName(c: AD.danger)),
+            child: UiText(UiMessage.m_clear_all_29a390f923, style: ADText.rowName(c: AD.danger)),
           ),
         ],
       ),
@@ -127,7 +129,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       // you get a bug report that says "clear all doesn't work".
       // [UI-MOTION-LIB] Plain informational notice, no action button.
       showAdToast(context,
-          message: "Couldn't reach the server — pull to refresh to retry.");
+          message: uiCopy(UiMessage.m_couldn_t_reach_the_server_2a23234ed7));
     }
   }
 
@@ -149,6 +151,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: PreferredSize(
@@ -172,15 +175,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     children: [
                       Text.rich(
                         TextSpan(children: [
-                          const TextSpan(text: 'Notif'),
-                          const TextSpan(text: 'ications',
+                           TextSpan(text: uiCopy(UiMessage.m_notif_c21f3b065e)),
+                           TextSpan(text: uiCopy(UiMessage.m_ications_cc7ba87790),
                               style: TextStyle(color: AD.primaryBadge)),
                         ]),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: ADText.appTitle().copyWith(fontSize: 22, height: 1.08),
                       ),
-                      Text('WHAT HAPPENED', style: ADText.sectionLabel()),
+                      UiText(UiMessage.m_what_happened_1e3455c3f4, style: ADText.sectionLabel()),
                     ],
                   ),
                 ),
@@ -188,7 +191,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 if (_items.isNotEmpty)
                   TextButton(
                     onPressed: _clearAll,
-                    child: Text('Clear all', style: ADText.rowName(c: AD.danger)),
+                    child: UiText(UiMessage.m_clear_all_29a390f923, style: ADText.rowName(c: AD.danger)),
                   ),
               ]),
             ),
@@ -215,7 +218,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               size: 30, color: AD.textTertiary),
                         ),
                         const SizedBox(height: 12),
-                        Text('All caught up',
+                        UiText(UiMessage.m_all_caught_up_7773db01ae,
                             style: ADText.preview(c: AD.textSecondary),
                             textAlign: TextAlign.center),
                       ]),

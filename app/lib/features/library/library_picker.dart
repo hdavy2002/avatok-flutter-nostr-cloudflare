@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -93,9 +95,10 @@ class _LibraryPickerScreenState extends State<LibraryPickerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
-      appBar: _darkHeader(title: 'Add from Library'),
+      appBar: _darkHeader(title: uiCopy(UiMessage.m_add_from_library_e9a0efb195)),
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s2),
@@ -110,7 +113,7 @@ class _LibraryPickerScreenState extends State<LibraryPickerScreen> {
           child: _loading
               ? const Center(child: CircularProgressIndicator(color: AD.iconSearch))
               : _items.isEmpty
-                  ? Center(child: Text('No files here yet.', style: ADText.preview()))
+                  ? Center(child: UiText(UiMessage.m_no_files_here_yet_732d3d01d3, style: ADText.preview()))
                   : GridView.builder(
                       padding: const EdgeInsets.all(Msg.s4),
                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(

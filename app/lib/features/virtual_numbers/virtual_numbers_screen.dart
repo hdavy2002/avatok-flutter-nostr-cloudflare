@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
@@ -126,16 +129,16 @@ class _VirtualNumbersScreenState extends State<VirtualNumbersScreen> {
       .showSnackBar(SnackBar(content: Text(message)));
 
   @override
-  Widget build(BuildContext context) => VirtualNumbersUi.shell(
-        title: 'Virtual Numbers',
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return VirtualNumbersUi.shell(
+        title: uiCopy(UiMessage.m_virtual_numbers_7622353b71),
         actions: [
           IconButton(
               onPressed: _loading ? null : _load,
               icon: Icon(PhosphorIcons.arrowClockwise(PhosphorIconsStyle.regular)),
-              tooltip: 'Refresh numbers')
+              tooltip: uiCopy(UiMessage.m_refresh_numbers_37c72caaf1))
         ],
         child: RefreshIndicator(onRefresh: _load, child: _body()),
-      );
+      ); }
 
   Widget _body() {
     if (_loading && _lines.isEmpty)
@@ -143,11 +146,11 @@ class _VirtualNumbersScreenState extends State<VirtualNumbersScreen> {
     if (_error != null && _lines.isEmpty)
       return ListView(children: [
         const SizedBox(height: 120),
-        Center(child: Text('Could not load your numbers')),
+        Center(child: UiText(UiMessage.m_could_not_load_your_numbers_ad82dd424b)),
         Padding(
             padding: const EdgeInsets.all(16),
             child: VirtualNumbersUi.primaryButton(
-                label: 'Try again', onPressed: _load, icon: PhosphorIcons.arrowClockwise(PhosphorIconsStyle.regular)))
+                label: uiCopy(UiMessage.m_try_again_d8b8392e2c), onPressed: _load, icon: PhosphorIcons.arrowClockwise(PhosphorIconsStyle.regular)))
       ]);
     return ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
@@ -165,15 +168,15 @@ class _VirtualNumbersScreenState extends State<VirtualNumbersScreen> {
                     color: AvaDialTheme.unknown),
                 const SizedBox(width: 10),
                 Expanded(
-                    child: Text(
-                  'Sponsor demo · sample data only. No calls, purchases or token charges are made.',
+                    child: UiText(
+                  UiMessage.m_sponsor_demo_sample_data_only_f358752b53,
                   style: AvaDialTheme.sub(size: 12),
                 )),
               ]),
             ),
             const SizedBox(height: 12),
           ],
-          Text('Your lines · ${_lines.length}',
+          UiText(UiMessage.m_your_lines_value1_777b078217, params: {'value1': (_lines.length).toString()},
               style: AvaDialTheme.tag(size: 11, color: AvaDialTheme.textMute)),
           const SizedBox(height: 10),
           if (_lines.isEmpty)
@@ -187,14 +190,14 @@ class _VirtualNumbersScreenState extends State<VirtualNumbersScreen> {
               child: OutlinedButton.icon(
                   onPressed: _add,
                   icon: Icon(PhosphorIcons.plus(PhosphorIconsStyle.regular)),
-                  label: const Text('Add new number'),
+                  label: const UiText(UiMessage.m_add_new_number_2950d5a822),
                   style: OutlinedButton.styleFrom(
                       side:
                           BorderSide(color: AvaDialTheme.textSoft, width: 1.5),
                       foregroundColor: AvaDialTheme.text))),
           const SizedBox(height: 14),
-          Text(
-              'AvaTOK numbers work in-network. DID numbers can receive calls and SMS where supported.',
+          UiText(
+              UiMessage.m_avatok_numbers_work_in_network_0c64efbf12,
               style: AvaDialTheme.sub(size: 12)),
         ]);
   }
@@ -208,13 +211,13 @@ class _VirtualNumbersScreenState extends State<VirtualNumbersScreen> {
       child: Column(children: [
         Icon(PhosphorIcons.phoneCall(PhosphorIconsStyle.regular), size: 40),
         const SizedBox(height: 10),
-        Text('No virtual numbers yet', style: AvaDialTheme.value()),
+        UiText(UiMessage.m_no_virtual_numbers_yet_18473166d8, style: AvaDialTheme.value()),
         const SizedBox(height: 6),
-        Text('Add a free AvaTOK alias or rent a DID for PSTN calls.',
+        UiText(UiMessage.m_add_a_free_avatok_alias_1708a458f5,
             textAlign: TextAlign.center, style: AvaDialTheme.sub()),
         const SizedBox(height: 14),
         VirtualNumbersUi.primaryButton(
-            label: 'Add a number', onPressed: _add, icon: PhosphorIcons.plus(PhosphorIconsStyle.regular))
+            label: uiCopy(UiMessage.m_add_a_number_50c5d2c86a), onPressed: _add, icon: PhosphorIcons.plus(PhosphorIconsStyle.regular))
       ]));
 
   Widget _card(VirtualLine line) => Semantics(
@@ -264,7 +267,7 @@ class _VirtualNumbersScreenState extends State<VirtualNumbersScreen> {
                                   style:
                                       AvaDialTheme.tag(color: Colors.white)))),
                     PopupMenuButton<String>(
-                        tooltip: 'Options for ${line.label}',
+                        tooltip: uiCopy(UiMessage.m_options_for_value1_82d262d389, {'value1': (line.label).toString()}),
                         iconColor: Colors.white,
                         onSelected: (value) {
                           switch (value) {
@@ -278,19 +281,19 @@ class _VirtualNumbersScreenState extends State<VirtualNumbersScreen> {
                         },
                         itemBuilder: (_) => [
                               const PopupMenuItem(
-                                  value: 'settings', child: Text('Settings')),
+                                  value: 'settings', child: UiText(UiMessage.m_settings_74a883a037)),
                               if (line.isDid && !line.isDefaultOutgoing)
                                 const PopupMenuItem(
                                     value: 'default',
-                                    child: Text('Make default outgoing')),
+                                    child: UiText(UiMessage.m_make_default_outgoing_d9c681d308)),
                               if (line.isDid &&
                                   line.status != VirtualLineStatus.released)
                                 PopupMenuItem(
                                     value: 'suspend',
                                     child: Text(line.status ==
                                             VirtualLineStatus.suspended
-                                        ? 'Resume'
-                                        : 'Suspend'))
+                                        ? uiCopy(UiMessage.m_resume_d640c7421d)
+                                        : uiCopy(UiMessage.m_suspend_4948e13418)))
                             ]),
                     Icon(PhosphorIcons.caretRight(PhosphorIconsStyle.regular), color: Colors.white),
                   ])),

@@ -1,3 +1,6 @@
+
+import '../../../core/localization/ui_text.dart';
+
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
@@ -96,15 +99,15 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
   bool _validStep() {
     switch (_step) {
       case 0:
-        if (_name.text.trim().length < 2) { _snack('Give your agent a name.'); return false; }
-        if (_role.text.trim().isEmpty) { _snack('Describe the role (e.g. "Mock job interviewer").'); return false; }
+        if (_name.text.trim().length < 2) { _snack(uiCopy(UiMessage.m_give_your_agent_a_name_850617a06b)); return false; }
+        if (_role.text.trim().isEmpty) { _snack(uiCopy(UiMessage.m_describe_the_role_e_g_5fb4f6585d)); return false; }
         if (_profile.text.trim().length < 30) {
-          _snack('Tell your agent who it is and what\'s expected — at least a few sentences.');
+          _snack(uiCopy(UiMessage.m_tell_your_agent_who_it_e7b0e2867f));
           return false;
         }
       case 3:
         if (_payerMode == 'user_pays' && _rateTokens < 100) {
-          _snack('Set a rate of at least \u20b9100/hour.');
+          _snack(uiCopy(UiMessage.m_set_a_rate_of_at_5894a21440));
           return false;
         }
     }
@@ -122,7 +125,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
       ok = await AvaVoiceApi.updateAgent(_agentId!, _fields);
     }
     if (mounted) setState(() => _working = false);
-    if (!ok) _snack('Could not save — check your connection and try again.');
+    if (!ok) _snack(uiCopy(UiMessage.m_could_not_save_check_your_5242516260));
     return ok;
   }
 
@@ -165,7 +168,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
     if (!_validStep() || _working) return;
     if (_images.isEmpty) {
       setState(() => _step = 0);
-      _snack('Add at least one photo (up to 5) before publishing.');
+      _snack(uiCopy(UiMessage.m_add_at_least_one_photo_c380b74411));
       return;
     }
     if (!await _save()) return;
@@ -187,15 +190,14 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
             side: const BorderSide(color: AD.borderControl, width: 1)),
         titleTextStyle: ADText.threadName().copyWith(fontSize: 20, height: 1.1, letterSpacing: -0.2),
         contentTextStyle: ADText.preview().copyWith(fontSize: 14, height: 1.42),
-        title: const Text('🎉 Your agent is live!'),
-        content: Text('${_name.text.trim()} is now in the AvaVoice marketplace. '
-            'Check your dashboard each morning for bookings, calls and earnings.'),
+        title: const UiText(UiMessage.m_your_agent_is_live_13f5b67b76),
+        content: UiText(UiMessage.m_value1_is_now_in_the_2501b8019a, params: {'value1': (_name.text.trim()).toString()}),
         actions: [TextButton(
             onPressed: () { Navigator.pop(d); Navigator.pop(context, true); },
-            child: const Text('Done'))],
+            child: const UiText(UiMessage.m_done_11a6767d56))],
       ));
     } else {
-      _snack(r['detail']?.toString() ?? r['error']?.toString() ?? 'Publish failed — saved as draft.');
+      _snack(r['detail']?.toString() ?? r['error']?.toString() ?? uiCopy(UiMessage.m_publish_failed_saved_as_draft_5d39c9070f));
     }
   }
 
@@ -205,7 +207,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
         allowedExtensions: ['pdf', 'doc', 'docx', 'txt', 'md', 'csv', 'json', 'html', 'xlsx', 'pptx']);
     final f = picked?.files.firstOrNull;
     if (f == null || f.bytes == null) return;
-    if (f.size > 25 * 1024 * 1024) { _snack('Max file size is 25 MB.'); return; }
+    if (f.size > 25 * 1024 * 1024) { _snack(uiCopy(UiMessage.m_max_file_size_is_25_d926f55369)); return; }
     setState(() => _uploading = true);
     final rec = await AvaVoiceApi.uploadBrainFile(_agentId!, f.name, f.bytes!);
     if (!mounted) return;
@@ -217,7 +219,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
       'agent': _agentId ?? '', 'ok': rec != null, 'size': f.size,
       'indexed': rec?.indexed ?? false,
     });
-    if (rec == null) _snack('Upload failed — try again.');
+    if (rec == null) _snack(uiCopy(UiMessage.m_upload_failed_try_again_d0fe713dbc));
   }
 
   Future<void> _removeFile(AgentBrainFile f) async {
@@ -229,10 +231,11 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: ZineAppBar(
-        title: widget.existing == null ? 'New voice agent' : 'Edit ${widget.existing!.name}',
+        title: widget.existing == null ? uiCopy(UiMessage.m_new_voice_agent_af78024f19) : uiCopy(UiMessage.m_edit_value1_b3cfc66057, {'value1': (widget.existing!.name).toString()}),
         markWord: 'voice',
         tag: 'creator studio · ${_step + 1} / 4',
       ),
@@ -294,7 +297,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
                       Expanded(
                         child: i == 3
                             ? ZineButton(
-                                label: 'Publish',
+                                label: uiCopy(UiMessage.m_publish_859390eb49),
                                 icon: PhosphorIcons.rocketLaunch(PhosphorIconsStyle.bold),
                                 fullWidth: true,
                                 fontSize: 18,
@@ -302,7 +305,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
                                 onPressed: _working ? null : _publish,
                               )
                             : ZineButton(
-                                label: 'Continue',
+                                label: uiCopy(UiMessage.m_continue_31fbef1625),
                                 icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
                                 fullWidth: true,
                                 fontSize: 18,
@@ -377,38 +380,38 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
   Widget _stepIdentity() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         ZineField(
           controller: _name,
-          label: 'agent name',
+          label: uiCopy(UiMessage.m_agent_name_b274a9b897),
           labelIcon: PhosphorIcons.robot(PhosphorIconsStyle.bold),
-          hint: 'e.g. Ava the Interview Coach',
+          hint: uiCopy(UiMessage.m_e_g_ava_the_interview_225f7ac34c),
           maxLength: 40,
           textCapitalization: TextCapitalization.words,
         ),
         const SizedBox(height: 16),
         ZineField(
           controller: _role,
-          label: 'role it plays',
+          label: uiCopy(UiMessage.m_role_it_plays_469c3b23b8),
           labelIcon: PhosphorIcons.identificationBadge(PhosphorIconsStyle.bold),
-          hint: 'e.g. Mock US-visa interviewer · Tech support',
+          hint: uiCopy(UiMessage.m_e_g_mock_us_visa_4dd8053d49),
           maxLength: 80,
           textCapitalization: TextCapitalization.sentences,
         ),
         const SizedBox(height: 16),
         ZineField(
           controller: _profile,
-          label: 'system profile — who is this agent?',
+          label: uiCopy(UiMessage.m_system_profile_who_is_this_ffff5fbae7),
           labelIcon: PhosphorIcons.brain(PhosphorIconsStyle.bold),
-          hint: 'You are a friendly but rigorous job-interview coach. Greet the caller, ask about the role they\'re applying for, then run a realistic mock interview with follow-up questions. End with constructive feedback…',
+          hint: uiCopy(UiMessage.m_you_are_a_friendly_but_f8238e4355),
           maxLines: 7,
           maxLength: 4000,
           textCapitalization: TextCapitalization.sentences,
         ),
         const SizedBox(height: 8),
-        Text(
-          '💡 The better you describe the personality, tone and tasks, the better your agent performs. Time-keeping and polite wrap-up are handled automatically by the platform.',
+        UiText(
+          UiMessage.m_the_better_you_describe_the_79cefe9019,
           style: ADText.preview().copyWith(fontSize: 12, height: 1.42),
         ),
         const SizedBox(height: 16),
-        Text('Listing photos (1–5)', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
+        UiText(UiMessage.m_listing_photos_1_5_3aea2c80ae, style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
         const SizedBox(height: Msg.s2),
         Wrap(spacing: 12, runSpacing: 12, children: [
           for (var i = 0; i < _images.length; i++)
@@ -456,7 +459,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
             ),
         ]),
         const SizedBox(height: 8),
-        Text('At least one photo is required to publish. Shown on your marketplace card and agent page.',
+        UiText(UiMessage.m_at_least_one_photo_is_9487a29f3d,
             style: ADText.preview().copyWith(fontSize: 12, height: 1.42)),
       ]);
 
@@ -468,7 +471,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
               color: AD.tabCalls, size: 30),
           const SizedBox(width: Msg.s2),
           Expanded(
-            child: Text('Choose how your agent sounds. Tap ▶ to hear a sample.',
+            child: UiText(UiMessage.m_choose_how_your_agent_sounds_d20a0175d9,
                 style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
           ),
         ]),
@@ -478,13 +481,13 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
 
   // ── Step 3: brain files ───────────────────────────────────────────────
   Widget _stepBrain() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(
-          'Upload documents your agent should know — FAQs, scripts, product info, schedules. During calls it consults these files to answer accurately instead of guessing.',
+        UiText(
+          UiMessage.m_upload_documents_your_agent_should_7ae7a9b7c1,
           style: ADText.preview().copyWith(fontSize: 13, height: 1.42),
         ),
         const SizedBox(height: 16),
         ZineButton(
-          label: _uploading ? 'Uploading…' : 'Add knowledge file',
+          label: _uploading ? uiCopy(UiMessage.m_uploading_5ce44dd77d) : uiCopy(UiMessage.m_add_knowledge_file_b739f6061d),
           variant: ZineButtonVariant.blue,
           icon: PhosphorIcons.uploadSimple(PhosphorIconsStyle.bold),
           trailingIcon: false,
@@ -494,7 +497,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
         ),
         const SizedBox(height: Msg.s3),
         if (_files.isEmpty)
-          Text('No files yet — that\'s OK, you can add them anytime. Agents work without files too.',
+          UiText(UiMessage.m_no_files_yet_that_s_6ec7c3742a,
               style: ADText.preview().copyWith(fontSize: 12, height: 1.42))
         else
           for (final f in _files)
@@ -518,7 +521,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
                       Text(f.filename, maxLines: 1, overflow: TextOverflow.ellipsis,
                           style: ADText.rowName().copyWith(fontSize: 14, height: 1.3)),
                       const SizedBox(height: 2),
-                      Text(f.indexed ? 'Indexed — ready' : 'Indexing…',
+                      Text(f.indexed ? uiCopy(UiMessage.m_indexed_ready_28799259d7) : uiCopy(UiMessage.m_indexing_740c08d6b6),
                           style: ADText.tabLabel(c: f.indexed ? AD.online : AD.textSecondary).copyWith(fontSize: 10, letterSpacing: 0.4)),
                     ]),
                   ),
@@ -545,7 +548,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
   Widget _stepPricing() {
     final userPays = _payerMode == 'user_pays';
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('Who pays for calls?', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
+      UiText(UiMessage.m_who_pays_for_calls_628c468eeb, style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
       const SizedBox(height: Msg.s2),
       _payerCard('user_pays', 'Callers pay you',
           'You set an hourly rate. Callers are billed per minute; you earn 50% after the platform fee.'),
@@ -556,7 +559,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
       if (userPays) ...[
         ZineField(
           controller: _rate,
-          label: 'your hourly rate (₹)',
+          label: uiCopy(UiMessage.m_your_hourly_rate_b6b0aa94a2),
           labelIcon: PhosphorIcons.coins(PhosphorIconsStyle.bold),
           leadText: '₹',
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -579,8 +582,8 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
             Expanded(
               child: Text(
                 _rateTokens >= 100
-                    ? 'Callers pay ${fmtTokens(perMinuteTokens(_rateTokens))}/min · You earn ${fmtTokens(creatorNetPerHour(_rateTokens))}/hr after the 50% platform fee'
-                    : 'Enter your hourly rate to see what you\'ll earn',
+                    ? uiCopy(UiMessage.m_callers_pay_value1_min_you_74b8eaa39b, {'value1': (fmtTokens(perMinuteTokens(_rateTokens))).toString(), 'value2': (fmtTokens(creatorNetPerHour(_rateTokens))).toString()})
+                    : uiCopy(UiMessage.m_enter_your_hourly_rate_to_2973edb9bf),
                 style: ADText.rowName().copyWith(fontSize: 13, height: 1.3),
               ),
             ),
@@ -588,15 +591,15 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
         ),
         const SizedBox(height: Msg.s4),
       ],
-      Text('Maximum session length', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
+      UiText(UiMessage.m_maximum_session_length_3c0cab50c4, style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
       const SizedBox(height: 4),
-      Text('Your agent works toward a polite close as this limit approaches. 1 hour is the platform maximum.',
+      UiText(UiMessage.m_your_agent_works_toward_a_81f4899a7d,
           style: ADText.preview().copyWith(fontSize: 12, height: 1.42)),
       const SizedBox(height: Msg.s2),
       Wrap(spacing: 8, runSpacing: 8, children: [
         for (final m in kSessionLimitChoices)
           ZineChip(
-            label: m == 60 ? '1 hour' : '$m min',
+            label: m == 60 ? uiCopy(UiMessage.m_1_hour_f8b8883f0c) : uiCopy(UiMessage.m_m_min_b8b9f90dff, {'m': (m).toString()}),
             active: m == _sessionLimit,
             onTap: () => setState(() => _sessionLimit = m),
           ),
@@ -605,10 +608,10 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Vision (screen & camera)', style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
+            UiText(UiMessage.m_vision_screen_camera_b2704fa9ce, style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
             const SizedBox(height: Msg.s1),
-            Text(
-                'Let callers share their screen or camera so the agent can see and help — e.g. step-by-step tech support.',
+            UiText(
+                UiMessage.m_let_callers_share_their_screen_85e9b862f3,
                 style: ADText.preview().copyWith(fontSize: 12, height: 1.42)),
           ]),
         ),

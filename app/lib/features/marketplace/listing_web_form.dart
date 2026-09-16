@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+import '../../core/localization/ui_webview_bridge.dart';
 // [LIST-EMBED-1 2026-09-05, owner decision] "Create listing" in the app IS the
 // web wizard, shown in an in-app WebView.
 //
@@ -105,7 +108,10 @@ class _ListingWebFormScreenState extends State<ListingWebFormScreen> {
       ..setBackgroundColor(AD.bg)
       ..addJavaScriptChannel('AvatokHost', onMessageReceived: _onHostMessage)
       ..setNavigationDelegate(NavigationDelegate(
-        onPageFinished: (_) { if (mounted) setState(() => _loading = false); },
+        onPageFinished: (url) {
+          unawaited(applyUiLocaleToWebView(_controller, url));
+          if (mounted) setState(() => _loading = false);
+        },
         onWebResourceError: (e) {
           // Sub-resource failures (an image, a font) are not the page failing,
           // and treating them as fatal would replace a working form with an
@@ -285,19 +291,19 @@ class _ListingWebFormScreenState extends State<ListingWebFormScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AD.menu,
-        title: Text('Leave without saving?', style: ADText.rowName()),
-        content: Text(
-          'You have not saved this listing yet. Close now and what you typed is gone.',
+        title: UiText(UiMessage.m_leave_without_saving_2190d03af9, style: ADText.rowName()),
+        content: UiText(
+          UiMessage.m_you_have_not_saved_this_9c8d63fe6b,
           style: ADText.preview(),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text('Keep editing', style: ADText.rowName()),
+            child: UiText(UiMessage.m_keep_editing_e76fd2add0, style: ADText.rowName()),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text('Discard', style: ADText.rowName(c: AD.danger)),
+            child: UiText(UiMessage.m_discard_eb1a70e392, style: ADText.rowName(c: AD.danger)),
           ),
         ],
       ),
@@ -317,6 +323,7 @@ class _ListingWebFormScreenState extends State<ListingWebFormScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return PopScope(
       // The system Back gesture must ask the same question the ✕ does, or the
       // confirm is decoration — Back is how most people leave a screen.
@@ -336,10 +343,10 @@ class _ListingWebFormScreenState extends State<ListingWebFormScreen> {
           foregroundColor: AD.onBandCream,
           elevation: 0,
           automaticallyImplyLeading: false,
-          title: Text('New listing', style: ADText.appTitle(c: AD.onBandCream)),
+          title: UiText(UiMessage.m_new_listing_706a22635b, style: ADText.appTitle(c: AD.onBandCream)),
           actions: [
             IconButton(
-              tooltip: 'Close',
+              tooltip: uiCopy(UiMessage.m_close_7d9eb7acb1),
               onPressed: _close,
               icon: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold), color: AD.onBandCream),
             ),
@@ -381,7 +388,7 @@ class _ListingWebFormScreenState extends State<ListingWebFormScreen> {
                 });
                 _controller.loadRequest(Uri.parse(_url));
               },
-              child: Text('Try again', style: ADText.rowName()),
+              child: UiText(UiMessage.m_try_again_d8b8392e2c, style: ADText.rowName()),
             ),
           ]),
         ),

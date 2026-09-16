@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 // [WALLET-REDESIGN-1] AvaWallet redesign — reusable widget kit.
 //
 // [UI-DS-SWEEP-1] 2026-08-05 — de-postered. The kit used to render PURE-black
@@ -44,6 +46,7 @@ class WalletMoneyTilesRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -97,6 +100,7 @@ class WalletCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       padding: padding,
       clipBehavior: Clip.antiAlias,
@@ -143,6 +147,7 @@ class WalletBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final ink = color == AW.coral ? Colors.white : AW.glyph;
     return Container(
       width: size,
@@ -180,6 +185,7 @@ class WalletChipTrack extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       padding: const EdgeInsets.all(Msg.s1),
       decoration: BoxDecoration(
@@ -237,6 +243,7 @@ class WalletBarChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (bars.isEmpty) return const SizedBox(height: chartHeight);
 
     var max = 0.0;
@@ -332,6 +339,7 @@ class WalletDonut extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return SizedBox(
       width: size,
       height: size,
@@ -346,7 +354,7 @@ class WalletDonut extends StatelessWidget {
             children: [
               Text(centerValue, style: AWText.donutCenter()),
               const SizedBox(height: 2),
-              Text('Tokens', style: AWText.caption(c: AW.txMute)),
+              UiText(UiMessage.m_tokens_a039dfb962, style: AWText.caption(c: AW.txMute)),
             ],
           ),
         ],
@@ -455,6 +463,7 @@ class WalletLegendRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Row(
       children: [
         Container(
@@ -505,6 +514,7 @@ class WalletSearchField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
       decoration: BoxDecoration(
@@ -534,7 +544,7 @@ class WalletSearchField extends StatelessWidget {
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
                 contentPadding: EdgeInsets.zero,
-                hintText: 'Search transactions',
+                hintText: uiCopy(UiMessage.m_search_transactions_0fa803624e),
                 hintStyle: AWText.searchText(c: AW.txMute),
               ),
             ),
@@ -574,6 +584,7 @@ class WalletCircleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -633,6 +644,7 @@ class WalletTxnRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -706,6 +718,7 @@ class WalletStatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final key = status.trim().toLowerCase();
     final Color fill;
     final Color ink;
@@ -813,6 +826,7 @@ class WalletBreakdownBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return WalletCard(
       radius: Msg.rLg,
       padding: const EdgeInsets.all(Msg.s4),
@@ -850,6 +864,7 @@ class WalletInfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
       decoration: BoxDecoration(
@@ -925,6 +940,7 @@ class WalletCalendar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final year = month.year;
     final m = month.month;
     final days = _daysInMonth(year, m);

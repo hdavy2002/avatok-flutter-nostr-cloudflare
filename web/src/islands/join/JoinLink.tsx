@@ -1,3 +1,4 @@
+import { UiText } from "../../lib/i18n/react";
 /* [JOIN-LINK-1] /j/<token> — the link in the confirmation email.
  *
  * THE RULE (owner, 2026-09-12; RULEBOOK-PAID-SESSIONS §7): "He clicks the link
@@ -131,9 +132,9 @@ function Inner({ token }: { token: string }) {
       <Card fillClassName="bg-card" shadow="lg">
         <div className="flex flex-col items-center gap-3 py-2 text-center">
           <Spinner size={22} />
-          <p className="font-body font-bold text-[15px] text-inkSoft">Opening your session…</p>
+          <p className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-join.d6aa6df93d7fc89d" source="Opening your session…" /></p>
           {masked && (
-            <p className="font-body font-bold text-[13px] text-inkMute">Joining as {masked}</p>
+            <p className="font-body font-bold text-[13px] text-inkMute"><UiText id="web-join.1d70cbcf1571f4ba" source="Joining as" />{" "}{masked}</p>
           )}
         </div>
       </Card>
@@ -160,7 +161,7 @@ function Inner({ token }: { token: string }) {
       <div className="flex flex-col gap-4">
         <h1 className="font-display font-semibold text-[24px] leading-tight text-ink">{copy.title}</h1>
         <p className="font-body font-bold text-[15px] text-inkSoft">{copy.body}</p>
-        <a href="/dashboard/bookings" className={ctaClass}>Sign in to see your bookings →</a>
+        <a href="/dashboard/bookings" className={ctaClass}><UiText id="web-join.190c3e57a69aff76" source="Sign in to see your bookings →" /></a>
       </div>
     </Card>
   );

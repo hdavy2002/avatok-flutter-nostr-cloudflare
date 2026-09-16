@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -408,6 +411,7 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (_loading) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 32),
@@ -463,7 +467,7 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
                         borderRadius: Msg.brPill,
                         border: Border.all(color: AD.online, width: 1),
                       ),
-                      child: Text('Paid',
+                      child: UiText(UiMessage.m_paid_fb81b961af,
                           style: ADText.sectionLabel(c: AD.online)),
                     ),
                   ],
@@ -487,20 +491,15 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
           ],
           if (s == _StepState.needsVisibleDial) ...[
             const SizedBox(height: Msg.s2),
-            Text(
-              'Your phone won\'t let AvaTOK do this quietly in the background, '
-              'so your phone app will open with the code '
-              '${_enableCodeFor(kind)} filled in. That code is the standard, '
-              'safe instruction phone companies worldwide use to switch on '
-              'call forwarding — it only talks to your phone company and '
-              'can\'t read or change anything on your phone.',
+            UiText(
+              UiMessage.m_your_phone_won_t_let_b6fa552e24, params: {'value1': (_enableCodeFor(kind)).toString()},
               style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12),
             ),
             const SizedBox(height: 8),
             Row(children: [
               Expanded(
                 child: AdButton(
-                  label: 'Dial it for me',
+                  label: uiCopy(UiMessage.m_dial_it_for_me_85f2d575d8),
                   fontSize: 13,
                   onPressed: () => _enable(kind, visible: true),
                 ),
@@ -508,7 +507,7 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
               const SizedBox(width: 8),
               Expanded(
                 child: AdButton(
-                  label: "I'll dial it myself",
+                  label: uiCopy(UiMessage.m_i_ll_dial_it_myself_33f364e719),
                   fontSize: 13,
                   onPressed: () => _manualDial(kind),
                 ),
@@ -518,16 +517,15 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
           if (s == _StepState.awaitReturn) ...[
             const SizedBox(height: Msg.s2),
             if (detail == null)
-              Text(
-                'Your phone app showed your phone company\'s reply to the '
-                'forwarding code (a standard, safe carrier code). What did it say?',
+              UiText(
+                UiMessage.m_your_phone_app_showed_your_264bab6921,
                 style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12),
               ),
             const SizedBox(height: 8),
             Row(children: [
               Expanded(
                 child: AdButton(
-                  label: 'It turned on',
+                  label: uiCopy(UiMessage.m_it_turned_on_d0c770701f),
                   fontSize: 13,
                   onPressed: () => _attest(kind, true),
                 ),
@@ -535,7 +533,7 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
               const SizedBox(width: 8),
               Expanded(
                 child: AdButton(
-                  label: "It didn't work",
+                  label: uiCopy(UiMessage.m_it_didn_t_work_0488031b0d),
                   fontSize: 13,
                   onPressed: () => _attest(kind, false),
                 ),
@@ -598,9 +596,9 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
       case _StepState.needsVisibleDial:
         return const SizedBox.shrink(); // choices render inline in the card body
       case _StepState.failed:
-        return AdButton(label: 'Check again', fontSize: 13, onPressed: () => _verifyRetry(kind));
+        return AdButton(label: uiCopy(UiMessage.m_check_again_fb7099ad8e), fontSize: 13, onPressed: () => _verifyRetry(kind));
       case _StepState.ready:
-        return AdButton(label: 'Turn on', fontSize: 13, onPressed: () => _enable(kind));
+        return AdButton(label: uiCopy(UiMessage.m_turn_on_5a1f096a0d), fontSize: 13, onPressed: () => _enable(kind));
       case _StepState.locked:
         return PhosphorIcon(PhosphorIcons.lockSimple(PhosphorIconsStyle.bold),
             size: 18, color: AD.textTertiary);

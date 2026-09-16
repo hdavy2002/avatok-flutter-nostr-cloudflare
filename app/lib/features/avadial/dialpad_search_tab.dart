@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -224,11 +226,10 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
           side: const BorderSide(color: AvaDialTheme.border, width: 1),
           borderRadius: BorderRadius.circular(AD.rDialog),
         ),
-        title: Text('Not on AvaTOK',
+        title: UiText(UiMessage.m_not_on_avatok_25f9ca82b1,
             style: ADText.threadName(c: AvaDialTheme.text)),
-        content: Text(
-          '$number isn’t an AvaTOK number yet. AvaDial only calls other AvaTOK '
-          'users — invite them to join.',
+        content: UiText(
+          UiMessage.m_number_isn_t_an_avatok_186f58277a, params: {'number': (number).toString()},
           style: ADText.preview(c: AvaDialTheme.textSoft),
         ),
         actionsPadding: const EdgeInsets.fromLTRB(Msg.s5, 0, Msg.s5, Msg.s4),
@@ -236,7 +237,7 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
           TextButton(
             onPressed: () => Navigator.pop(dialogCtx),
             child:
-                Text('Cancel', style: ADText.rowName(c: AvaDialTheme.textSoft)),
+                UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.rowName(c: AvaDialTheme.textSoft)),
           ),
           TextButton(
             onPressed: () {
@@ -245,7 +246,7 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
                   MaterialPageRoute<void>(
                       builder: (_) => const InviteScreen()));
             },
-            child: Text('Invite', style: ADText.rowName(c: AD.online)),
+            child: UiText(UiMessage.m_invite_1fd9ae1607, style: ADText.rowName(c: AD.online)),
           ),
         ],
       ),
@@ -254,6 +255,7 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s2),
@@ -269,7 +271,7 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
           cursorColor: AvaDialTheme.searchText,
           style: AvaDialTheme.value(size: 15, color: AvaDialTheme.searchText),
           decoration: InputDecoration(
-            hintText: 'Search by AvaTOK number or email…',
+            hintText: uiCopy(UiMessage.m_search_by_avatok_number_or_2f19edb2ef),
             hintStyle:
                 AvaDialTheme.sub(size: 14, color: AvaDialTheme.searchHint),
             prefixIcon: Icon(
@@ -322,7 +324,7 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
     if (hit == null) {
       if (!_searchedNoHit) {
         return Center(
-          child: Text('No matches yet',
+          child: UiText(UiMessage.m_no_matches_yet_417b217a64,
               style: AvaDialTheme.sub(size: 14, color: AvaDialTheme.textSoft)),
         );
       }
@@ -333,16 +335,16 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
             SvgPicture.asset(Illustrations.dialerNotOnAvatok,
                 height: 120, fit: BoxFit.contain, excludeFromSemantics: true),
             const SizedBox(height: Msg.s3),
-            Text('Not on AvaTOK',
+            UiText(UiMessage.m_not_on_avatok_25f9ca82b1,
                 style: AvaDialTheme.title(size: 16, color: AvaDialTheme.text)),
             const SizedBox(height: Msg.s1),
-            Text('No AvaTOK account matches that number or email.',
+            UiText(UiMessage.m_no_avatok_account_matches_that_c93164870c,
                 textAlign: TextAlign.center,
                 style:
                     AvaDialTheme.sub(size: 13, color: AvaDialTheme.textSoft)),
             const SizedBox(height: Msg.s3),
             AdButton(
-              label: 'Invite',
+              label: uiCopy(UiMessage.m_invite_1fd9ae1607),
               variant: AdButtonVariant.teal,
               fontSize: 14,
               trailingIcon: false,
@@ -404,7 +406,7 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
         height: 44,
         child: Center(
           child: Text(
-            _digits.isEmpty ? 'Enter a number' : _digits,
+            _digits.isEmpty ? uiCopy(UiMessage.m_enter_a_number_8bc1221bdf) : _digits,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: AvaDialTheme.title(
@@ -420,10 +422,10 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
           padding: const EdgeInsets.only(bottom: 4),
           child: Text(
             _destination!.state == AvaCallsDestinationState.avatok
-                ? 'AvaTOK number · free in-network call'
+                ? uiCopy(UiMessage.m_avatok_number_free_in_network_45ea0047d0)
                 : _destination!.state == AvaCallsDestinationState.pstn
-                    ? '${_destination!.countryName.isEmpty ? _destination!.countryIso2 : _destination!.countryName} · 0.50 tokens/minute'
-                    : (_destination!.message ?? 'Checking number…'),
+                    ? uiCopy(UiMessage.m_value1_0_50_tokens_minute_fc0fdb707a, {'value1': (_destination!.countryName.isEmpty ? _destination!.countryIso2 : _destination!.countryName).toString()})
+                    : (_destination!.message ?? uiCopy(UiMessage.m_checking_number_f97fc4e687)),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: AvaDialTheme.sub(
@@ -517,6 +519,7 @@ class _DialKey extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return GestureDetector(
       onTap: onTap,
       onLongPress: onLongPress,

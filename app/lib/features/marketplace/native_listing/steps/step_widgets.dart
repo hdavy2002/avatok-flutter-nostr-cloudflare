@@ -1,3 +1,4 @@
+import '../../../../core/localization/known_ui_copy.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -153,12 +154,12 @@ class NativeErrorText extends StatelessWidget {
   final String? message;
 
   @override
-  Widget build(BuildContext context) => message == null || message!.isEmpty
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return message == null || message!.isEmpty
       ? const SizedBox.shrink()
       : Padding(
           padding: const EdgeInsets.only(top: 6),
-          child: Text('⚠ $message', style: ADText.preview(c: AD.danger)),
-        );
+          child: Text('⚠ ${knownUiCopy(message!)}', style: ADText.preview(c: AD.danger)),
+        ); }
 }
 
 Widget nativeSelect<T>({

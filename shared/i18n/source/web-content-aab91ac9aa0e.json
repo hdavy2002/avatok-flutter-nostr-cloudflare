@@ -1,0 +1,20 @@
+{
+  "web-content-aab91ac9aa0e.ecaa2d612e25ac61": "The internal anchor: 100 Tokens = $1",
+  "web-content-aab91ac9aa0e.2053d6057c6ca7b1": "Tokens are the unit you pay with everywhere on avaTOK — booking a session, buying a ticket to a live show, or using an AI feature. ",
+  "web-content-aab91ac9aa0e.1333886bf7b67378": "100 Tokens = $1",
+  "web-content-aab91ac9aa0e.e4f9d043367af487": " is the internal accounting anchor. It is not a promise that checkout or any future payout uses USD.",
+  "web-content-aab91ac9aa0e.1334f29a42896afd": "Topping up",
+  "web-content-aab91ac9aa0e.31a82155c15e4773": "Top-ups use a server-owned FX quote to show the local-currency amount for the requested token amount. The quote and payment snapshot are immutable records for that payment. Before you confirm, the token amount and local-currency amount are shown up front.",
+  "web-content-aab91ac9aa0e.23133ba6d240cee8": "What tokens are not",
+  "web-content-aab91ac9aa0e.294d9ad2196e44bb": "A token is an in-app unit of account, not a bank product. It is not a deposit, not e-money, not a security, and not a cryptocurrency. It does not earn interest, and it cannot be sent to another person's account. Withdrawal semantics are not yet available. The full legal detail lives on the ",
+  "web-content-aab91ac9aa0e.4f40c430b4aba8c5": "Tokens & Wallet",
+  "web-content-aab91ac9aa0e.cd80fb49ce59ea0d": " policy page.",
+  "web-content-aab91ac9aa0e.dc808959338579e0": "Your balance",
+  "web-content-aab91ac9aa0e.e85a3b16358b91a7": "Your current balance and your recent activity are visible in the app at all times. Worth checking in on now and then, and worth flagging to support quickly if a number looks off.",
+  "web-content-aab91ac9aa0e.41257e9d358db1d4": "Refunds and reversals",
+  "web-content-aab91ac9aa0e.0bc018e73a1b7968": "Unused tokens remain in your wallet as tokens. If a refund or reversal applies, avaTOK returns the exact token amount recorded in the original transaction snapshot, without repricing it at a later FX rate. See ",
+  "web-content-aab91ac9aa0e.7f529853635b4f28": "Refunds & Cancellations",
+  "web-content-aab91ac9aa0e.68a06a7ddc30a777": "Payments are still being tested",
+  "web-content-aab91ac9aa0e.2a1d10f98aaa1f29": "avaTOK uses a server-owned FX quote for local-currency checkout. If a refund or reversal is approved, it returns the exact token amount in the immutable transaction snapshot — see ",
+  "web-content-aab91ac9aa0e.411d87de38b0e498": " for the details."
+}

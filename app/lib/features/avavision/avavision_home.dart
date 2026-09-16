@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -88,10 +91,11 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (!RemoteConfig.avavisionEnabled) {
       return Scaffold(
         backgroundColor: AD.bg,
-        appBar: const ZineAppBar(title: 'AvaVision', markWord: 'Vision'),
+        appBar:  ZineAppBar(title: uiCopy(UiMessage.m_avavision_c06fa2f982), markWord: 'Vision'),
         body: ZinePaper(
           child: Center(
             child: Padding(
@@ -107,7 +111,7 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: ZineAppBar(
-        title: 'AvaVision',
+        title: uiCopy(UiMessage.m_avavision_c06fa2f982),
         markWord: 'Vision',
         tag: 'ai vision coaches',
         actions: [
@@ -129,9 +133,9 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
           Padding(
             padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s2),
             child: Row(children: [
-              Expanded(child: ZineChip(label: 'Marketplace', active: _tabs.index == 0, onTap: () => _tabs.animateTo(0))),
+              Expanded(child: ZineChip(label: uiCopy(UiMessage.m_marketplace_c608981d8d), active: _tabs.index == 0, onTap: () => _tabs.animateTo(0))),
               const SizedBox(width: Msg.s2),
-              Expanded(child: ZineChip(label: 'My bookings', active: _tabs.index == 1, onTap: () => _tabs.animateTo(1))),
+              Expanded(child: ZineChip(label: uiCopy(UiMessage.m_my_bookings_be1b53baca), active: _tabs.index == 1, onTap: () => _tabs.animateTo(1))),
             ]),
           ),
           Expanded(
@@ -151,7 +155,7 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
         children: [
           ZineField(
             leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
-            hint: 'Search vision coaches…',
+            hint: uiCopy(UiMessage.m_search_vision_coaches_d2b34dd77f),
             onSubmitted: (v) {
               _q = v;
               Analytics.capture('avavision_search', {'q_len': v.trim().length});
@@ -171,8 +175,8 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
               PhosphorIcon(PhosphorIcons.eye(PhosphorIconsStyle.regular), size: 28, color: AD.tabCalls),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  'AI coaches that SEE you — form, technique and skill, live on camera. A skeleton overlay + live score, and "Analyze my form" for a deep look. Pay per minute, max 1 hour.',
+                child: UiText(
+                  UiMessage.m_ai_coaches_that_see_you_714f43e5f5,
                   style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13, height: 1.42),
                 ),
               ),
@@ -182,7 +186,7 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
           Align(
             alignment: Alignment.centerLeft,
             child: ZineButton(
-              label: 'New vision agent',
+              label: uiCopy(UiMessage.m_new_vision_agent_49fc1a1b3b),
               variant: ZineButtonVariant.blue,
               icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
               trailingIcon: false,
@@ -246,9 +250,8 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(b.agentName, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
                   const SizedBox(height: Msg.s1),
-                  Text(
-                    '${fmtWhenMs(b.scheduledAt)} · ${b.bookedMinutes} min'
-                    '${b.escrowTokens > 0 ? ' · ${fmtTokens(b.escrowTokens)} held' : ''} · ${b.status}',
+                  UiText(
+                    UiMessage.m_value1_value2_min_value3_value4_00b7eee2bf, params: {'value1': (fmtWhenMs(b.scheduledAt)).toString(), 'value2': (b.bookedMinutes).toString(), 'value3': (b.escrowTokens > 0 ? ' · ${fmtTokens(b.escrowTokens)} held' : '').toString(), 'value4': (b.status).toString()},
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: ADText.tabLabel(c: AD.textSecondary).copyWith(fontSize: 10, letterSpacing: 0.4),
@@ -263,7 +266,7 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
                   radius: BorderRadius.circular(Msg.rPill),
                   boxShadow: Msg.none,
                   padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
-                  child: Text('Join', style: ADText.rowName().copyWith(fontSize: 14, height: 1.0, letterSpacing: -0.2)),
+                  child: UiText(UiMessage.m_join_fd30fe681b, style: ADText.rowName().copyWith(fontSize: 14, height: 1.0, letterSpacing: -0.2)),
                 ),
               ],
             ]),

@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../../lib/i18n/react";
+import { UiText } from "../../../lib/i18n/react";
 /* [CAL-AUDIT-2026-09-15 · #11] Immediate conflict preview for the Time step.
  *
  * Before this, the ONLY check of a fixed time ran at save time
@@ -45,6 +47,8 @@ export function TimeConflictPreview({ draft, listingId, onUseTime }: {
   listingId: string | null;
   onUseTime?: (localDateTime: string) => void;
 }) {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   const [state, setState] = useState<PreviewStateShape>(IDLE_PREVIEW_STATE);
   const gate = useRef(createRequestGate());
 
@@ -107,15 +111,14 @@ export function TimeConflictPreview({ draft, listingId, onUseTime }: {
     return (
       <p className="mt-2 font-body text-[12px] font-bold text-inkSoft">
         {draft.kind === 'consult' && draft.availability_mode !== 'exclusive'
-          ? 'This listing uses your calendar hours, so there is no single fixed time to check.'
-          : 'Pick a date and time and this is checked against your calendar straight away.'}
+          ? uiT("web-dashboard.65da2026b5cfbdd4","This listing uses your calendar hours, so there is no single fixed time to check.")
+          : uiT("web-dashboard.28aca592adbe5de9","Pick a date and time and this is checked against your calendar straight away.")}
       </p>
     );
   }
   if (!listingId) {
     return (
-      <p className="mt-2 font-body text-[12px] font-bold text-inkSoft">
-        Save this step once and the time you pick is checked against your calendar before you continue. {reservation}
+      <p className="mt-2 font-body text-[12px] font-bold text-inkSoft"><UiText id="web-dashboard.089bf1f8a806d1f0" source="Save this step once and the time you pick is checked against your calendar before you continue." />{" "}{reservation}
       </p>
     );
   }
@@ -125,21 +128,19 @@ export function TimeConflictPreview({ draft, listingId, onUseTime }: {
       <div className="font-body text-[13px] font-bold text-ink">
         {previewHeadline({ status: visibleState.status, firstTitle: visibleState.conflicts[0]?.title ?? null, message: visibleState.message })}
       </div>
-      <p className="font-body text-[12px] font-bold text-inkSoft">
-        This checks for calendar clashes only. Working hours, booking notice, gaps, Google readiness and listing policy are still applied when you save and when a customer books.
-      </p>
+      <p className="font-body text-[12px] font-bold text-inkSoft"><UiText id="web-dashboard.fc19549b4e8bedc5" source="This checks for calendar clashes only. Working hours, booking notice, gaps, Google readiness and listing policy are still applied when you save and when a customer books." />{" "}</p>
       {visibleState.conflicts.length > 0 && (
         <ul className="flex flex-col gap-1 font-body text-[12px] font-bold text-inkSoft">
           {visibleState.conflicts.map((conflict) => (
             <li key={`${conflict.title}-${conflict.start_at}`}>
-              {conflict.title || 'Commitment'} · {new Date(conflict.start_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone: draft.timezone })}
+              {conflict.title || uiT("web-dashboard.b6f2bf45e5d4d89a","Commitment")} · {new Date(conflict.start_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone: draft.timezone })}
             </li>
           ))}
         </ul>
       )}
       {visibleState.alternatives.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 font-body text-[12px] font-bold text-ink">
-          <span>Free times nearby:</span>
+          <span><UiText id="web-dashboard.6b4830c892887634" source="Free times nearby:" /></span>
           {visibleState.alternatives.map((slot) => (
             <button
               key={slot.start_at}

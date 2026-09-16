@@ -14,53 +14,53 @@ import LegalStatus from '../components/LegalStatus.astro';
   tone="pink"
 >
   <p>
-    You can always email us directly at <a href="mailto:support@avatok.ai">support@avatok.ai</a>, or
-    use the form below. For copyright issues see our <a href="/dmca">DMCA / Copyright</a> policy; for
-    anything about your data, see our <a href="/privacy">Privacy Policy</a>. To file a formal
-    complaint, use <a href="/grievance">Grievance Redressal</a>.
+    <ui-copy style="display:contents" data-i18n="web-contact.3561417b16521b57">You can always email us directly at</ui-copy> <a href="mailto:support@avatok.ai">support@avatok.ai</a><ui-copy style="display:contents" data-i18n="web-contact.5ebe030573ca42a3">, or
+    use the form below. For copyright issues see our</ui-copy> <a data-i18n="web-contact.0606b89431ebdb4b" href="/dmca">DMCA / Copyright</a> <ui-copy style="display:contents" data-i18n="web-contact.26b6e19408dd9c56">policy; for
+    anything about your data, see our</ui-copy> <a data-i18n="web-contact.506ff394621596dd" href="/privacy">Privacy Policy</a><ui-copy style="display:contents" data-i18n="web-contact.908bc4dab31f73e1">. To file a formal
+    complaint, use</ui-copy> <a data-i18n="web-contact.b5d03028fbc1d7ac" href="/grievance">Grievance Redressal</a>.
   </p>
 
-  <h2 id="status">Who we are and where to find us</h2>
+  <h2 data-i18n="web-contact.8739a7eb5fa17cb1" id="status">Who we are and where to find us</h2>
   <LegalStatus variant="full" />
 
   <form id="contact-form" class="cform" novalidate>
     <label class="honeypot" aria-hidden="true">
-      <span>Company website</span>
+      <span data-i18n="web-contact.78dd534863d4fb0a">Company website</span>
       <input type="text" name="company" tabindex="-1" autocomplete="off" />
     </label>
     <div class="row">
       <label>
-        <span>Your name</span>
+        <span data-i18n="web-contact.2c6b2e253c01fb2e">Your name</span>
         <input type="text" name="name" autocomplete="name" required maxlength="120" />
       </label>
       <label>
-        <span>Email</span>
+        <span data-i18n="web-contact.969ccbd3cf6300ec">Email</span>
         <input type="email" name="email" autocomplete="email" required maxlength="200" />
       </label>
     </div>
     <label>
-      <span>What can we help with?</span>
+      <span data-i18n="web-contact.80d7546c2da066f8">What can we help with?</span>
       <select name="category">
-        <option value="Support">Product support</option>
-        <option value="Feedback">Feedback or an idea</option>
-        <option value="Safety">Safety or abuse report</option>
-        <option value="Privacy">Privacy request</option>
-        <option value="Press">Press or media</option>
-        <option value="Partnership">Partnership</option>
-        <option value="Other">Something else</option>
+        <option data-i18n="web-contact.f2d5cbe11cddc437" value="Support">Product support</option>
+        <option data-i18n="web-contact.045cad4755b7ffcc" value="Feedback">Feedback or an idea</option>
+        <option data-i18n="web-contact.9ffa741ded2441d8" value="Safety">Safety or abuse report</option>
+        <option data-i18n="web-contact.6e7dbc6b206c441e" value="Privacy">Privacy request</option>
+        <option data-i18n="web-contact.57e09dc50abdcdfc" value="Press">Press or media</option>
+        <option data-i18n="web-contact.b61dd8f40159a9b8" value="Partnership">Partnership</option>
+        <option data-i18n="web-contact.cc72843144841a6f" value="Other">Something else</option>
       </select>
     </label>
     <label>
-      <span>Subject</span>
-      <input type="text" name="subject" maxlength="160" placeholder="What’s this about?" />
+      <span data-i18n="web-contact.68971283841aecdf">Subject</span>
+      <input data-india-i18n-attr="placeholder:web-contact.416de4ff9b44bc18" type="text" name="subject" maxlength="160" placeholder="What’s this about?" />
     </label>
     <label>
-      <span>Message</span>
-      <textarea name="message" rows="6" required maxlength="5000" placeholder="How can we help?"></textarea>
+      <span data-i18n="web-contact.2f77668a9dfbf8d5">Message</span>
+      <textarea data-india-i18n-attr="placeholder:web-contact.7b56e0d0b308abe4" name="message" rows="6" required maxlength="5000" placeholder="How can we help?"></textarea>
     </label>
-    <button type="submit" class="cbtn">Send message</button>
+    <button data-i18n="web-contact.93a26b1eaff99b3a" type="submit" class="cbtn">Send message</button>
     <p class="cstatus" id="contact-status" role="status" aria-live="polite"></p>
-    <p class="delivery-note">Every form submission is delivered through Brevo to <strong>support@avatok.ai</strong>.</p>
+    <p class="delivery-note"><ui-copy style="display:contents" data-i18n="web-contact.5ff3490d40ebce43">Every form submission is delivered through Brevo to</ui-copy> <strong>support@avatok.ai</strong>.</p>
   </form>
 </Content>
 

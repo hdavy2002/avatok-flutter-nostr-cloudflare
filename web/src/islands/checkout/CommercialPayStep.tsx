@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* [WEB-COMM-PAY-1 / WEB-COMM-PAY-2] CommercialPayStep — the paid-session lane (SPEC §3).
  *
  * Replaces the legacy /api/calendar/book call for `live_event` and `consult` listings,
@@ -100,6 +102,8 @@ export interface CommercialPayStepProps {
 }
 
 export function CommercialPayStep({ listing, selection, token, onBooked, onBack }: CommercialPayStepProps) {
+  const {t:uiT}=useUiTranslation("web-checkout");
+
   const [idemKey] = useState(uuidv4);
   const [slotHold,setSlotHold]=useState<{hold_id:string;expires_at:number}|null>(null);
   const [holdError,setHoldError]=useState<string|null>(null);
@@ -496,31 +500,29 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
   // wallet card, no GatewayPicker, no "Pay ₹0" button. Still shows the honest
   // breakdown ("Free") and the cancellation terms (a free booking can still be
   // a no-show), then one summary, one button, one back link.
-  if(selection.kind==='consult_1to1'&&!slotHold) return <Card><p role="status" className="font-body font-bold text-ink">{holdError || (slotHold ? 'Your hold expired. Choose an available time again.' : 'Reserving your selected time…')}</p>{!holdError&&!slotHold&&<Spinner size={22}/>}<div className="mt-3 flex gap-3">{holdError&&<Button label="Try again" onClick={()=>setHoldRetry(v=>v+1)}/>}<Button label="Choose another time" onClick={onBack}/></div></Card>;
+  if(selection.kind==='consult_1to1'&&!slotHold) return <Card><p role="status" className="font-body font-bold text-ink">{holdError || (slotHold ? uiT("web-checkout.8a16a84e79fc07e0","Your hold expired. Choose an available time again.") : uiT("web-checkout.75f61ff4a08d7550","Reserving your selected time…"))}</p>{!holdError&&!slotHold&&<Spinner size={22}/>}<div className="mt-3 flex gap-3">{holdError&&<Button label={uiT("web-checkout.d8b8392e2c542950","Try again")} onClick={()=>setHoldRetry(v=>v+1)}/>}<Button label={uiT("web-checkout.099028b1293f9cdf","Choose another time")} onClick={onBack}/></div></Card>;
   if (isFreeEntry) {
     return (
       <div className="flex flex-col gap-4">
-      {slotHold && <p role="status" className="font-body font-bold text-inkSoft">{holdReady ? `This time is held for ${Math.ceil((slotHold.expires_at-clock)/60000)} more minute(s).` : 'This hold expired. Go back to choose an available time. If payment is already open, wait for its result.'}</p>}
+      {slotHold && <p role="status" className="font-body font-bold text-inkSoft">{holdReady ? uiT("web-checkout.0fe278697ba04f88","This time is held for {value0} more minute(s).",{value0:String(Math.ceil((slotHold.expires_at-clock)/60000))}) : uiT("web-checkout.1009f2fea2594e71","This hold expired. Go back to choose an available time. If payment is already open, wait for its result.")}</p>}
         <Card>
           <div className="flex items-center justify-between">
-            <span className="font-mono font-bold uppercase text-[14px] tracking-[0.08em] text-inkSoft">
-              You’re reserving
-            </span>
+            <span className="font-mono font-bold uppercase text-[14px] tracking-[0.08em] text-inkSoft"><UiText id="web-checkout.651c8aa65b6510b7" source="You’re reserving" />{" "}</span>
             <Pill kind="plain">{selection.title}</Pill>
           </div>
           <div className="flex items-center justify-between border-t-zine border-inkMute pt-3">
-            <span className="font-display font-semibold text-[16px] text-ink">Price</span>
-            <span className="font-mono font-bold text-[16px] text-ink">Free</span>
+            <span className="font-display font-semibold text-[16px] text-ink"><UiText id="web-checkout.93c91c851e7acc17" source="Price" /></span>
+            <span className="font-mono font-bold text-[16px] text-ink"><UiText id="web-checkout.f411a1fb62758b4c" source="Free" /></span>
           </div>
         </Card>
 
         <Card fillClassName="bg-mint" shadow="sm">
-          <p className="font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink">Free</p>
+          <p className="font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink"><UiText id="web-checkout.f411a1fb62758b4c" source="Free" /></p>
           <p className="mt-1 font-body font-bold text-[15px] text-ink">{freeBox.hostPays}</p>
         </Card>
 
         <Card fillClassName="bg-paper2" shadow="sm">
-          <p className="font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-inkSoft">Cancellation terms</p>
+          <p className="font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-inkSoft"><UiText id="web-checkout.b71bcd61e9e73d0b" source="Cancellation terms" /></p>
           <p className="mt-1 font-body font-bold text-[14px] text-ink">{policyText}</p>
         </Card>
 
@@ -549,42 +551,38 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
           className="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-blueInk underline decoration-blue decoration-2 underline-offset-2 disabled:text-inkMute"
           disabled={freeBusy}
           onClick={onBack}
-        >
-          ← Back
-        </button>
+        ><UiText id="web-checkout.aceb696a04c19971" source="← Back" />{" "}</button>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-4">
-      {slotHold && <p role="status" className="font-body font-bold text-inkSoft">{holdReady ? `This time is held for ${Math.ceil((slotHold.expires_at-clock)/60000)} more minute(s).` : 'This hold expired. Go back to choose an available time. If payment is already open, wait for its result.'}</p>}
+      {slotHold && <p role="status" className="font-body font-bold text-inkSoft">{holdReady ? uiT("web-checkout.0fe278697ba04f88","This time is held for {value0} more minute(s).",{value0:String(Math.ceil((slotHold.expires_at-clock)/60000))}) : uiT("web-checkout.1009f2fea2594e71","This hold expired. Go back to choose an available time. If payment is already open, wait for its result.")}</p>}
       <Card>
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <span className="font-mono font-bold uppercase text-[14px] tracking-[0.08em] text-inkSoft">
-              You’re booking
-            </span>
+            <span className="font-mono font-bold uppercase text-[14px] tracking-[0.08em] text-inkSoft"><UiText id="web-checkout.6b6af615f345b4d0" source="You’re booking" />{" "}</span>
             <Pill kind="plain">{selection.title}</Pill>
           </div>
           {breakdown ? (
             <>
               <div className="flex items-center justify-between border-t-zine border-inkMute pt-3">
-                <span className="font-body font-bold text-[14px] text-inkSoft">Price</span>
+                <span className="font-body font-bold text-[14px] text-inkSoft"><UiText id="web-checkout.93c91c851e7acc17" source="Price" /></span>
                 <span className="font-mono font-bold text-[14px] text-ink">{inr(breakdown.base)}</span>
               </div>
               {breakdown.fee > 0 && (
                 <div className="flex items-center justify-between">
-                  <span className="font-body font-bold text-[14px] text-inkSoft">Platform fee</span>
+                  <span className="font-body font-bold text-[14px] text-inkSoft"><UiText id="web-checkout.483538e6058acea7" source="Platform fee" /></span>
                   <span className="font-mono font-bold text-[14px] text-ink">{inr(breakdown.fee)}</span>
                 </div>
               )}
               <div className="flex items-center justify-between">
-                <span className="font-body font-bold text-[14px] text-inkSoft">GST ({breakdown.gstRatePct}%)</span>
+                <span className="font-body font-bold text-[14px] text-inkSoft"><UiText id="web-checkout.0b3ccae9cf18259a" source="GST (" />{breakdown.gstRatePct}%)</span>
                 <span className="font-mono font-bold text-[14px] text-ink">{inr(breakdown.gst)}</span>
               </div>
               <div className="flex items-center justify-between border-t-zine border-inkMute pt-3">
-                <span className="font-display font-semibold text-[16px] text-ink">Total</span>
+                <span className="font-display font-semibold text-[16px] text-ink"><UiText id="web-checkout.c9b3c38247f744e1" source="Total" /></span>
                 <span className="font-mono font-bold text-[16px] text-ink">{inr(breakdown.total)}</span>
               </div>
               {/* [CHECKOUT-PROMO-1] Only ever rendered from a server-confirmed
@@ -592,8 +590,7 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
                   above — no optimistic discount, ever. */}
               {confirmedTotal != null && confirmedTotal !== breakdown.total && (
                 <div className="flex items-center justify-between border-t-zine border-inkMute pt-3">
-                  <span className="font-display font-semibold text-[16px] text-mintInk">
-                    Charged{appliedPromo ? ` (code ${appliedPromo})` : ''}
+                  <span className="font-display font-semibold text-[16px] text-mintInk"><UiText id="web-checkout.4d640df4f7ceace2" source="Charged" />{appliedPromo ? uiT("web-checkout.172c8797011cfd5e"," (code {value0})",{value0:String(appliedPromo)}) : ''}
                   </span>
                   <span className="font-mono font-bold text-[16px] text-mintInk">{inr(confirmedTotal)}</span>
                 </div>
@@ -601,7 +598,7 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
             </>
           ) : (
             <div className="flex items-center justify-between border-t-zine border-inkMute pt-3">
-              <span className="font-display font-semibold text-[16px] text-ink">Price</span>
+              <span className="font-display font-semibold text-[16px] text-ink"><UiText id="web-checkout.93c91c851e7acc17" source="Price" /></span>
               <span className="font-mono font-bold text-[15px] text-ink">{inrOrFree(baseTokens)}</span>
             </div>
           )}
@@ -618,7 +615,7 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
           card back exactly as it was. */}
       {CHECKOUT_PROMOTIONS_ENABLED && (
       <Card fillClassName="bg-paper2" shadow="sm">
-        <p className="font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-inkSoft">Promo code</p>
+        <p className="font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-inkSoft"><UiText id="web-checkout.ec0c21885e3f3e67" source="Promo code" /></p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <input
             type="text"
@@ -628,8 +625,8 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
             spellCheck={false}
             maxLength={24}
             value={promoInput}
-            aria-label="Promo code"
-            placeholder="EARLYBIRD"
+            aria-label={uiT("web-checkout.ec0c21885e3f3e67","Promo code")}
+            placeholder={uiT("web-checkout.630c0aa609e5443c","EARLYBIRD")}
             disabled={walletBusy}
             onChange={(e) => setPromoInput(normalizePromo(e.target.value))}
             onKeyDown={(e) => {
@@ -641,7 +638,7 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
             className="min-w-0 flex-1 rounded-zine border-zine border-ink bg-card px-3 py-2 font-mono font-bold uppercase tracking-[0.08em] text-[14px] text-ink"
           />
           <Button
-            label={appliedPromo ? 'Remove' : 'Apply'}
+            label={appliedPromo ? uiT("web-checkout.c3812fc4acb861d5","Remove") : uiT("web-checkout.31e392d1c0378bec","Apply")}
             onClick={() => (appliedPromo ? clearPromo() : applyPromo())}
             disabled={walletBusy}
           />
@@ -649,15 +646,13 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
         {promoError && <p className="mt-2 font-body font-bold text-[14px] text-coral">⚠ {promoError}</p>}
         {appliedPromo && !promoError && (
           <p className="mt-2 font-body font-bold text-[13px] text-inkSoft">
-            {appliedPromo} will be checked when you pay from your wallet. The total above updates to the
-            amount actually charged once it is confirmed — a code that has expired is refused before any money moves.
-          </p>
+            {appliedPromo}{" "}<UiText id="web-checkout.9bdc2938a26f3cd0" source="will be checked when you pay from your wallet. The total above updates to the amount actually charged once it is confirmed — a code that has expired is refused before any money moves." />{" "}</p>
         )}
       </Card>
       )}
 
       <Card fillClassName="bg-paper2" shadow="sm">
-        <p className="font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-inkSoft">Cancellation terms</p>
+        <p className="font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-inkSoft"><UiText id="web-checkout.b71bcd61e9e73d0b" source="Cancellation terms" /></p>
         <p className="mt-1 font-body font-bold text-[14px] text-ink">{policyText}</p>
       </Card>
 
@@ -668,9 +663,7 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
           onChange={(e) => setAccepted(e.target.checked)}
           className="mt-0.5 h-5 w-5 shrink-0 rounded border-zine border-ink"
         />
-        <span className="font-body font-bold text-[14px] text-ink">
-          I’ve read and agree to the cancellation terms above.
-        </span>
+        <span className="font-body font-bold text-[14px] text-ink"><UiText id="web-checkout.85377555e7f9b0cd" source="I’ve read and agree to the cancellation terms above." />{" "}</span>
       </label>
 
       {/* Wallet rail — POST /api/commercial/{live|consult}/:id/checkout. Fastest path for
@@ -678,9 +671,9 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
       <Card>
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <span className="font-display font-semibold text-[16px] text-ink">Pay from wallet</span>
+            <span className="font-display font-semibold text-[16px] text-ink"><UiText id="web-checkout.f6fbaeb897fef239" source="Pay from wallet" /></span>
             <span className="font-mono font-bold text-[15px] text-mintInk">
-              {loadingBal ? <Spinner size={16} /> : balance != null ? `${balance.toLocaleString()} Tokens` : '—'}
+              {loadingBal ? <Spinner size={16} /> : balance != null ? uiT("web-checkout.f9002c0259242e61","{value0} Tokens",{value0:String(balance.toLocaleString())}) : '—'}
             </span>
           </div>
           {walletError && <p className="font-body font-bold text-[14px] text-coral">⚠ {walletError}</p>}
@@ -691,10 +684,10 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
             disabled={!accepted || walletInsufficient || !holdReady}
             label={
               walletInsufficient
-                ? 'Not enough balance'
+                ? uiT("web-checkout.79f2aac512bfcdc3","Not enough balance")
                 : breakdown
                   ? `Pay ${inr(breakdown.total)} from balance`
-                  : 'Confirm booking'
+                  : uiT("web-checkout.fa1e17d8f8632479","Confirm booking")
             }
             onClick={() => void payFromWallet()}
           />
@@ -704,18 +697,14 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
       {/* Gateway rail — POST /api/pay/:gateway/order, self-sufficient. Offered side by
           side with the wallet, not as a fallback the buyer waits for a 402 to reach. */}
       <div className="flex flex-col gap-3">
-        <p className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">
-          Or pay by card / UPI
-        </p>
+        <p className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft"><UiText id="web-checkout.97f05fde79e34686" source="Or pay by card / UPI" />{" "}</p>
         {/* [CHECKOUT-PROMO-1] Honest limitation: the gateway rail mints its own
             order server-side (POST /api/pay/:gateway/order) and carries no promo
             field today, so a code applied here only reaches the wallet rail. Say
             so rather than let a buyer pay full price wondering where it went. */}
         {/* [PROMO-SHELVE-1] Hidden with the field it explains. */}
         {CHECKOUT_PROMOTIONS_ENABLED && appliedPromo && (
-          <p className="font-body font-bold text-[13px] text-inkSoft">
-            Promo codes apply to wallet payments only right now — paying by card or UPI charges the total shown above.
-          </p>
+          <p className="font-body font-bold text-[13px] text-inkSoft"><UiText id="web-checkout.105015c2605654b2" source="Promo codes apply to wallet payments only right now — paying by card or UPI charges the total shown above." />{" "}</p>
         )}
         <GatewayPicker
           token={token}
@@ -736,9 +725,7 @@ export function CommercialPayStep({ listing, selection, token, onBooked, onBack 
         className="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-blueInk underline decoration-blue decoration-2 underline-offset-2 disabled:text-inkMute"
         disabled={walletBusy}
         onClick={onBack}
-      >
-        ← Back
-      </button>
+      ><UiText id="web-checkout.aceb696a04c19971" source="← Back" />{" "}</button>
     </div>
   );
 }

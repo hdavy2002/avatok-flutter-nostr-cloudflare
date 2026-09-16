@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -246,6 +249,7 @@ class AvaTokHeader extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     const band = AD.headerFooter;
     final onBand = AD.onBand(band);
     final s = ZineBreakpoints.chromeScale(context);
@@ -325,7 +329,7 @@ class _MenuButton extends StatelessWidget {
   const _MenuButton({required this.onTap, required this.color});
 
   @override
-  Widget build(BuildContext context) => Builder(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Builder(
         builder: (ctx) => GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: onTap ?? () => Scaffold.of(ctx).openDrawer(),
@@ -338,7 +342,7 @@ class _MenuButton extends StatelessWidget {
                 size: 22, color: color),
           ),
         ),
-      );
+      ); }
 }
 
 /// Notification bell + rani unread badge.
@@ -350,6 +354,7 @@ class _HeaderBell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final bell = GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap ??
@@ -428,7 +433,7 @@ class _ShellProfileAvatarState extends State<ShellProfileAvatar> {
   }
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return GestureDetector(
         behavior: HitTestBehavior.opaque,
         // Pushed directly rather than via `openShellDestination`, which calls
         // `ShellScope.of` and therefore asserts when this header is mounted on
@@ -441,7 +446,7 @@ class _ShellProfileAvatarState extends State<ShellProfileAvatar> {
           size: widget.size,
           avatarUrl: _url.isEmpty ? null : _url,
         ),
-      );
+      ); }
 }
 
 /// A themed empty state used by placeholder tabs ("coming with AvaDial", card
@@ -468,6 +473,7 @@ class ShellEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 36),
@@ -518,6 +524,7 @@ class ShellSidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final scope = ShellScope.of(context);
 
     void go(RootId r) {
@@ -567,9 +574,9 @@ class ShellSidebar extends StatelessWidget {
                       letterSpacing: -0.38,
                       color: AD.textPrimary),
                   children: [
-                    const TextSpan(text: 'Ava'),
+                     TextSpan(text: uiCopy(UiMessage.m_ava_149f7514de)),
                     TextSpan(
-                        text: 'TOK', style: TextStyle(color: AD.iconSearch)),
+                        text: uiCopy(UiMessage.m_tok_ca36cd3eaf), style: TextStyle(color: AD.iconSearch)),
                   ],
                 ),
               ),
@@ -587,7 +594,7 @@ class ShellSidebar extends StatelessWidget {
                   Padding(
                       padding: const EdgeInsets.fromLTRB(
                           Msg.s2, Msg.s2, Msg.s2, Msg.s2),
-                      child: Text('APPS',
+                      child: UiText(UiMessage.m_apps_075ab5a330,
                           style: ADText.sectionLabel(c: AD.textTertiary))),
                   appRow(
                       RootId.avaTalk,
@@ -626,8 +633,8 @@ class ShellSidebar extends StatelessWidget {
                       // 2026-07-14 owner rename: 'Ask Ava' → 'AvaBrain', matching
                       // the fixed AI action label in app_switcher_bar.
                       // Display-only — the analytics key stays `askava`.
-                      title: 'AvaBrain',
-                      subtitle: 'Universal assistant',
+                      title: uiCopy(UiMessage.m_avabrain_7012aa07e1),
+                      subtitle: uiCopy(UiMessage.m_universal_assistant_075187ab54),
                       onTap: () {
                         Navigator.of(context).maybePop();
                         scope.askAva(current
@@ -642,15 +649,15 @@ class ShellSidebar extends StatelessWidget {
                   Padding(
                       padding: const EdgeInsets.fromLTRB(
                           Msg.s2, Msg.s2, Msg.s2, Msg.s2),
-                      child: Text('MORE',
+                      child: UiText(UiMessage.m_more_036a27cbfe,
                           style: ADText.sectionLabel(c: AD.textTertiary))),
                   // Rescued from the retired Home dashboard drawer (2026-07-12 nav
                   // rebrand) so they stay reachable from every app, not just Home.
                   _SidebarRow(
                     icon: PhosphorIcons.listNumbers(PhosphorIconsStyle.bold),
                     color: AD.iconVideo,
-                    title: 'App order',
-                    subtitle: 'Reorder apps & pick your landing app',
+                    title: uiCopy(UiMessage.m_app_order_fa7be25a9d),
+                    subtitle: uiCopy(UiMessage.m_reorder_apps_pick_your_landing_0e41196218),
                     onTap: () {
                       Navigator.of(context).maybePop();
                       Navigator.of(context).push(MaterialPageRoute(
@@ -661,7 +668,7 @@ class ShellSidebar extends StatelessWidget {
                     icon: PhosphorIcons.identificationCard(
                         PhosphorIconsStyle.bold),
                     color: AD.iconSearch,
-                    title: 'Identity',
+                    title: uiCopy(UiMessage.m_identity_999f23fcd7),
                     onTap: () {
                       Navigator.of(context).maybePop();
                       openShellDestination(context, 'identity');
@@ -670,7 +677,7 @@ class ShellSidebar extends StatelessWidget {
                   _SidebarRow(
                     icon: PhosphorIcons.chartPieSlice(PhosphorIconsStyle.bold),
                     color: AD.online,
-                    title: 'Backup',
+                    title: uiCopy(UiMessage.m_backup_838557924a),
                     onTap: () {
                       Navigator.of(context).maybePop();
                       openShellDestination(context, 'avastorage');
@@ -679,7 +686,7 @@ class ShellSidebar extends StatelessWidget {
                   _SidebarRow(
                     icon: PhosphorIcons.info(PhosphorIconsStyle.bold),
                     color: AD.iconVideo,
-                    title: 'About',
+                    title: uiCopy(UiMessage.m_about_4efca0d10c),
                     onTap: () {
                       Navigator.of(context).maybePop();
                       openShellDestination(context, 'about');
@@ -689,7 +696,7 @@ class ShellSidebar extends StatelessWidget {
                     icon:
                         PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold),
                     color: AD.danger,
-                    title: 'Update',
+                    title: uiCopy(UiMessage.m_update_c1c1009d3f),
                     onTap: () {
                       Navigator.of(context).maybePop();
                       UpdateService.runManual();
@@ -699,7 +706,7 @@ class ShellSidebar extends StatelessWidget {
                   _SidebarRow(
                     icon: PhosphorIcons.gearSix(PhosphorIconsStyle.bold),
                     color: AD.textTertiary,
-                    title: 'Settings',
+                    title: uiCopy(UiMessage.m_settings_74a883a037),
                     onTap: () {
                       Navigator.of(context).maybePop();
                       openShellDestination(context, 'settings');
@@ -722,7 +729,7 @@ class ShellSidebar extends StatelessWidget {
                     color: AD.danger,
                     size: 30),
                 const SizedBox(width: 12),
-                Text('Log out',
+                UiText(UiMessage.m_log_out_4961614551,
                     style: ADText.rowName(c: AD.danger).copyWith(fontSize: 15)),
               ]),
             ),
@@ -751,13 +758,13 @@ class ShellMenuRow extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => _SidebarRow(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return _SidebarRow(
         icon: icon,
         color: color,
         title: title,
         subtitle: subtitle,
         onTap: onTap,
-      );
+      ); }
 }
 
 class _SidebarRow extends StatelessWidget {
@@ -775,7 +782,7 @@ class _SidebarRow extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => Padding(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: ZinePressable(
           onTap: onTap,
@@ -807,5 +814,5 @@ class _SidebarRow extends StatelessWidget {
                 size: 14, color: AD.textSecondary),
           ]),
         ),
-      );
+      ); }
 }

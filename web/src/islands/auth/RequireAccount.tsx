@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* RequireAccount — a client-side gate for CREATE/manage surfaces (listing
  * creation, the vision/voice studio). Mirrors the app's AccountGate: browsing is
  * free, but creating anything needs a session.
@@ -19,6 +21,8 @@ import { Card } from '../../components/Card';
 import { Spinner } from '../../components/Spinner';
 
 function Gate({ label, children }: { label: string; children: ReactNode }) {
+  const {t:uiT}=useUiTranslation("web-auth");
+
   const [token, setToken] = useState<string | null>(null);
   const [checked, setChecked] = useState(false);
 
@@ -42,20 +46,18 @@ function Gate({ label, children }: { label: string; children: ReactNode }) {
   return (
     <Card shadow="lg">
       <div className="flex flex-col gap-3">
-        <h2 className="font-display font-semibold text-[22px] text-ink">Sign in to continue</h2>
+        <h2 className="font-display font-semibold text-[22px] text-ink"><UiText id="web-auth.607a80121c655651" source="Sign in to continue" /></h2>
         <p className="font-body font-bold text-[15px] text-inkSoft">
-          {label} needs an account. It's quick — your email gets you in, and you can finish setting up your
-          creator profile after.
-        </p>
+          {label}{" "}<UiText id="web-auth.159c0d7aa55560e9" source="needs an account. It's quick — your email gets you in, and you can finish setting up your creator profile after." />{" "}</p>
         <div className="flex flex-wrap items-center gap-3">
           {CLERK_PUBLISHABLE_KEY ? (
-            <SignInButton mode="modal" forceRedirectUrl={typeof location !== 'undefined' ? location.pathname : '/dashboard'}>
-              <Button variant="lime" label="Sign in / sign up" />
+            <SignInButton mode="modal" forceRedirectUrl={typeof location !== 'undefined' ? location.pathname : uiT("web-auth.89347bb23a645278","/dashboard")}>
+              <Button variant="lime" label={uiT("web-auth.720519730f2dd642","Sign in / sign up")} />
             </SignInButton>
           ) : (
             <Button
               variant="lime"
-              label="Continue with email"
+              label={uiT("web-auth.8c99a08652d20738","Continue with email")}
               onClick={async () => {
                 try {
                   const t = await requireGuestAuth();
@@ -69,9 +71,7 @@ function Gate({ label, children }: { label: string; children: ReactNode }) {
           <a
             href="/marketplace"
             className="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-blueInk underline decoration-blue decoration-2 underline-offset-2"
-          >
-            Browse instead
-          </a>
+          ><UiText id="web-auth.477fe30ad5ec78e4" source="Browse instead" />{" "}</a>
         </div>
       </div>
     </Card>

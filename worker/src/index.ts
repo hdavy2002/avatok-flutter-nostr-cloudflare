@@ -1,3 +1,4 @@
+import { uiLocalization } from './routes/ui_localization';
 import {gcalExportSweep} from "./cal/gcal";
 // AvaTok API Worker — route-based dispatch (one Worker, not one-per-app).
 //
@@ -517,6 +518,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
     if (req.method === "OPTIONS") return preflight();
     const url = new URL(req.url);
     const p = url.pathname;
+
+    if (p.startsWith("/i18n/")) return uiLocalization(req, env, ctx);
 
     if (p === "/health") return json({ ok: true, service: "avatok-api", ts: Date.now() });
 

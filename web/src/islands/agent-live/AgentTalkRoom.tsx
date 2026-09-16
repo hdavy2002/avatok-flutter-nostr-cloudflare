@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 // AgentTalkRoom — the customer's live call with an AI voice agent
 // (`[AGENT-LIVE-1]`, BUILD SPEC §6, R2 §3.1-3.3). Mounted at
 // `/talk/[booking].astro`.
@@ -51,6 +53,8 @@ function visitorTz(): string {
 }
 
 function AgentTalkRoomInner({ bookingId }: { bookingId: string }) {
+  const {t:uiT}=useUiTranslation("web-agent-live");
+
   const [phase, setPhase] = useState<Phase>('loading');
   const [refusalMsg, setRefusalMsg] = useState<string | null>(null);
   const [prejoin, setPrejoin] = useState<AgentPrejoin | null>(null);
@@ -300,9 +304,9 @@ function AgentTalkRoomInner({ bookingId }: { bookingId: string }) {
     return (
       <Centered>
         <div className="flex w-full max-w-md flex-col items-center gap-4 text-center">
-          <h1 className="font-display font-semibold text-[24px] text-ink">Couldn&rsquo;t open this session</h1>
+          <h1 className="font-display font-semibold text-[24px] text-ink"><UiText id="web-agent-live.8b6611fb041b275d" source="Couldn’t open this session" /></h1>
           <p className="font-body font-bold text-[14px] text-inkSoft">{refusalMsg}</p>
-          <a href="/dashboard" className="no-underline"><Button variant="lime" label="My bookings" /></a>
+          <a href="/dashboard" className="no-underline"><Button variant="lime" label={uiT("web-agent-live.be1b53baca18d782","My bookings")} /></a>
         </div>
       </Centered>
     );
@@ -332,11 +336,9 @@ function AgentTalkRoomInner({ bookingId }: { bookingId: string }) {
     return (
       <Centered>
         <div className="flex w-full max-w-md flex-col items-center gap-4 text-center">
-          <h1 className="font-display font-semibold text-[24px] text-ink">Connection lost</h1>
-          <p className="font-body font-bold text-[14px] text-inkSoft">
-            We couldn&rsquo;t reconnect you in time. Check your receipt in My bookings.
-          </p>
-          <a href="/dashboard" className="no-underline"><Button variant="lime" label="My bookings" /></a>
+          <h1 className="font-display font-semibold text-[24px] text-ink"><UiText id="web-agent-live.6c44751e62681094" source="Connection lost" /></h1>
+          <p className="font-body font-bold text-[14px] text-inkSoft"><UiText id="web-agent-live.4cbedec09d3a9756" source="We couldn’t reconnect you in time. Check your receipt in My bookings." />{" "}</p>
+          <a href="/dashboard" className="no-underline"><Button variant="lime" label={uiT("web-agent-live.be1b53baca18d782","My bookings")} /></a>
         </div>
       </Centered>
     );
@@ -349,12 +351,12 @@ function AgentTalkRoomInner({ bookingId }: { bookingId: string }) {
           {mic.state === 'denied' ? (
             <>
               <p className="font-body font-bold text-[14px] text-coral">{mic.error}</p>
-              <Button variant="blue" label="Allow & retry" onClick={mic.retry} />
+              <Button variant="blue" label={uiT("web-agent-live.d85928b810be02e2","Allow & retry")} onClick={mic.retry} />
             </>
           ) : (
             <>
               <Spinner size={26} />
-              <p className="font-body font-bold text-[14px] text-inkSoft">Starting your microphone…</p>
+              <p className="font-body font-bold text-[14px] text-inkSoft"><UiText id="web-agent-live.4ac6179b67484be6" source="Starting your microphone…" /></p>
             </>
           )}
         </div>
@@ -387,30 +389,30 @@ function AgentTalkRoomInner({ bookingId }: { bookingId: string }) {
               speaking ? 'ring-4 ring-lilac animate-pulse' : '',
             ].join(' ')}
           >
-            <Avatar src={agentInfo?.avatar ?? null} name={agentInfo?.name ?? 'Agent'} size={96} fallbackClassName="bg-lilac" />
+            <Avatar src={agentInfo?.avatar ?? null} name={agentInfo?.name ?? uiT("web-agent-live.11b39c93777e8f1f","Agent")} size={96} fallbackClassName="bg-lilac" />
           </div>
         </div>
 
-        <h1 className="font-display font-semibold text-[24px] leading-tight text-ink">{agentInfo?.name ?? 'AI voice agent'}</h1>
+        <h1 className="font-display font-semibold text-[24px] leading-tight text-ink">{agentInfo?.name ?? uiT("web-agent-live.c89eff1a5f8f97aa","AI voice agent")}</h1>
 
         {showCountdown && prejoin && (
-          <Countdown target={prejoin.startsAt} label="Starts in" onZero={() => {}} />
+          <Countdown target={prejoin.startsAt} label={uiT("web-agent-live.5fefbb92603fab9c","Starts in")} onZero={() => {}} />
         )}
         {phase === 'connecting' && !showCountdown && (
-          <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">Connecting…</span>
+          <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft"><UiText id="web-agent-live.72021eb70e91b4d5" source="Connecting…" /></span>
         )}
         {phase === 'reconnecting' && (
-          <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-coral">Reconnecting…</span>
+          <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-coral"><UiText id="web-agent-live.27b80374e1151af6" source="Reconnecting…" /></span>
         )}
         {phase === 'live' && endsAt != null && (
-          <Countdown target={endsAt} label="Ends in" onZero={() => {}} />
+          <Countdown target={endsAt} label={uiT("web-agent-live.87d0485a90e5ebb0","Ends in")} onZero={() => {}} />
         )}
 
         {captions.length > 0 && (
           <div className="flex max-h-40 w-full flex-col gap-1.5 overflow-y-auto rounded-zine border-zine border-ink bg-card p-3">
             {captions.slice(-6).map((c) => (
               <p key={c.id} className="font-body text-[13px] leading-snug text-ink">
-                <span className="font-bold text-inkSoft">{c.speaker === 'agent' ? (agentInfo?.name ?? 'Agent') : 'You'}: </span>
+                <span className="font-bold text-inkSoft">{c.speaker === 'agent' ? (agentInfo?.name ?? uiT("web-agent-live.11b39c93777e8f1f","Agent")) : uiT("web-agent-live.08b041935798fbf6","You")}: </span>
                 {c.text}
               </p>
             ))}
@@ -421,7 +423,7 @@ function AgentTalkRoomInner({ bookingId }: { bookingId: string }) {
           <div className="flex w-full gap-2 overflow-x-auto">
             {images.map((im) => (
               <div key={im.clientUploadId} className="relative flex-none">
-                <img src={im.thumbUrl} alt="Shared" className="h-16 w-16 rounded-zineField border-zine border-ink object-cover" />
+                <img src={im.thumbUrl} alt={uiT("web-agent-live.e3c4b39d6d501347","Shared")} className="h-16 w-16 rounded-zineField border-zine border-ink object-cover" />
                 <span className="absolute -bottom-1 left-0 right-0 truncate rounded-b-zineField bg-ink/80 px-1 text-center font-mono text-[9px] font-bold uppercase text-paper">
                   {im.status}
                 </span>
@@ -462,7 +464,7 @@ function AgentTalkRoomInner({ bookingId }: { bookingId: string }) {
               type="button"
               onClick={onPickPhoto}
               className="flex h-14 w-14 items-center justify-center rounded-full border-zine border-ink bg-card text-ink shadow-zine-xs"
-              aria-label="Share a photo"
+              aria-label={uiT("web-agent-live.7a5508f657d21dc8","Share a photo")}
             >
               📷
             </button>
@@ -471,7 +473,7 @@ function AgentTalkRoomInner({ bookingId }: { bookingId: string }) {
             type="button"
             onClick={endCall}
             className="flex h-14 w-14 items-center justify-center rounded-full border-zine border-ink bg-coral text-white shadow-zine-xs"
-            aria-label="End call"
+            aria-label={uiT("web-agent-live.2fe13d93a1f4b267","End call")}
           >
             ☎
           </button>
@@ -484,7 +486,7 @@ function AgentTalkRoomInner({ bookingId }: { bookingId: string }) {
             disabled={forgetting}
             className="font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkMute underline"
           >
-            {forgetting ? 'Forgetting…' : 'Forget me'}
+            {forgetting ? uiT("web-agent-live.f935bf31caf8e3a9","Forgetting…") : uiT("web-agent-live.bcb66ca711be5812","Forget me")}
           </button>
         )}
       </div>

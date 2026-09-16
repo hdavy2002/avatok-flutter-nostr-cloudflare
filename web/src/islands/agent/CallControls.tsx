@@ -1,3 +1,4 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
 // CallControls — the in-call control bar (mic / vision / hang-up) + timer +
 // status sticker. Pure presentation; AgentCall owns all state & lifecycle.
 // zine look: bordered control circles, hard shadows, coral hang-up.
@@ -49,6 +50,8 @@ export function CallControls({
   onToggleVision,
   onHangup,
 }: CallControlsProps) {
+  const {t:uiT}=useUiTranslation("web-common");
+
   const liveish = phase === 'live' || phase === 'wrapup';
   const ended = phase === 'ended' || phase === 'error';
 
@@ -70,7 +73,7 @@ export function CallControls({
         {visionEnabled && (
           <button
             type="button"
-            aria-label={visionOn ? 'Stop sharing video' : 'Share camera or screen'}
+            aria-label={visionOn ? uiT("web-common.dad80a220d9ee6c8","Stop sharing video") : uiT("web-common.b80d4f4cc845cf1a","Share camera or screen")}
             className={circle(visionOn, false, false)}
             disabled={!liveish}
             onClick={onToggleVision}
@@ -81,7 +84,7 @@ export function CallControls({
 
         <button
           type="button"
-          aria-label={muted ? 'Unmute microphone' : 'Mute microphone'}
+          aria-label={muted ? uiT("web-common.a22cb32b07345be1","Unmute microphone") : uiT("web-common.2d1be6900bbed8f9","Mute microphone")}
           className={circle(muted, false, false)}
           disabled={!liveish}
           onClick={onToggleMute}
@@ -91,7 +94,7 @@ export function CallControls({
 
         <button
           type="button"
-          aria-label={ended ? 'Close' : 'End call'}
+          aria-label={ended ? uiT("web-common.7d9eb7acb13e2462","Close") : uiT("web-common.2fe13d93a1f4b267","End call")}
           className={circle(false, true, true)}
           onClick={onHangup}
         >

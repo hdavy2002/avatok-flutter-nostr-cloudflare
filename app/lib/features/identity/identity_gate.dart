@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -103,6 +106,7 @@ class _GateSheetState extends State<_GateSheet> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // Dark bottom-sheet surface with a hairline top border.
     return Container(
       decoration: const BoxDecoration(
@@ -130,22 +134,19 @@ class _GateSheetState extends State<_GateSheet> {
             ),
           ),
           const SizedBox(height: Msg.s4),
-          Text('Verify your identity',
+          UiText(UiMessage.m_verify_your_identity_ed32a9b235,
               textAlign: TextAlign.center,
               style: ADText.appTitle().copyWith(
                   fontSize: 27, height: 1.08, letterSpacing: -0.02 * 27)),
           const SizedBox(height: Msg.s3),
-          Text(
-            'We need to verify your identity before you can ${widget.reason}. '
-            'You\'ll photograph a government ID and take a quick selfie — it '
-            'usually takes under two minutes.',
+          UiText(
+            UiMessage.m_we_need_to_verify_your_3ad47ff418, params: {'value1': (widget.reason).toString()},
             textAlign: TextAlign.center,
             style: ADText.preview().copyWith(fontSize: 14, height: 1.42),
           ),
           const SizedBox(height: Msg.s2),
-          Text(
-            'Your documents are processed securely by Stripe Identity. AvaTOK '
-            'never stores your ID images.',
+          UiText(
+            UiMessage.m_your_documents_are_processed_securely_fe6b3784b9,
             textAlign: TextAlign.center,
             style: ADText.preview(c: AD.textTertiary).copyWith(fontSize: 12, height: 1.42),
           ),
@@ -162,7 +163,7 @@ class _GateSheetState extends State<_GateSheet> {
           if (_polling) ...[
             const Center(child: CircularProgressIndicator(color: Msg.accent)),
             const SizedBox(height: Msg.s3),
-            Text('Waiting for verification to finish…',
+            UiText(UiMessage.m_waiting_for_verification_to_finish_b10bfd6d33,
                 textAlign: TextAlign.center,
                 style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
             const SizedBox(height: Msg.s3),
@@ -172,7 +173,7 @@ class _GateSheetState extends State<_GateSheet> {
             ),
           ] else ...[
             ZineButton(
-              label: 'Start verification',
+              label: uiCopy(UiMessage.m_start_verification_913ce10407),
               fullWidth: true,
               fontSize: 19,
               loading: _busy,
@@ -180,7 +181,7 @@ class _GateSheetState extends State<_GateSheet> {
             ),
             const SizedBox(height: Msg.s3),
             ZineButton(
-              label: 'Not now',
+              label: uiCopy(UiMessage.m_not_now_a0e63d7c71),
               variant: ZineButtonVariant.ghost,
               fullWidth: true,
               fontSize: 16,

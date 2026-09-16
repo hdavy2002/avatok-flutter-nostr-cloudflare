@@ -1,3 +1,6 @@
+import { UiMessage } from "../../lib/i18n/react";
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* /sign-in — avaTOK log in. Email, a 6-digit code, done. Or Google.
  *
  * [WEB-AUTH-DESIGN-1 2026-08-26] Custom Clerk flow, NOT the prebuilt <SignIn/>
@@ -61,6 +64,8 @@ function nextUrl(): string {
 }
 
 function Inner() {
+  const {t:uiT}=useUiTranslation("web-auth");
+
   const { isLoaded: signInLoaded, signIn, setActive } = useSignIn();
   const { isLoaded: signUpLoaded, signUp } = useSignUp();
   const { user } = useUser();
@@ -196,14 +201,14 @@ function Inner() {
   }
 
   if (leaving) {
-    return <p className="auth-footline">You’re already signed in — taking you through…</p>;
+    return <p className="auth-footline"><UiText id="web-auth.85a4acfc80f40e78" source="You’re already signed in — taking you through…" /></p>;
   }
 
   if (stage === 'code') {
     return (
       <CodeStep
-        eyebrow="One last check"
-        heading={<>Check your<br />email</>}
+        eyebrow={uiT("web-auth.4e897b88efea4f9f","One last check")}
+        heading={<><UiText id="web-auth.46546a0764fe7aeb" source="Check your" /><br /><UiText id="web-auth.82244417f956ac7c" source="email" /></>}
         sentTo={email.trim().toLowerCase()}
         code={code}
         onCode={set(setCode, 'code')}
@@ -213,16 +218,14 @@ function Inner() {
         onSubmit={onSubmitCode}
         onResend={() => void resend()}
         resent={resent}
-        cta="Verify and log in"
+        cta={uiT("web-auth.1f1ecba8f9a619cf","Verify and log in")}
       >
         <button
           type="button"
           className="auth-forgot"
           style={{ alignSelf: 'flex-start' }}
           onClick={() => { setStage('email'); setCode(''); setErrors({}); setFormError(null); }}
-        >
-          Use a different email
-        </button>
+        ><UiText id="web-auth.b7337027ef1f69f1" source="Use a different email" />{" "}</button>
       </CodeStep>
     );
   }
@@ -230,22 +233,20 @@ function Inner() {
   return (
     <form className="auth-form" onSubmit={onSubmitEmail} noValidate>
       <div className="auth-desktop-head">
-        <p className="auth-eyebrow">Welcome back</p>
-        <h1 className="auth-h2">Good to<br />see you</h1>
+        <p className="auth-eyebrow"><UiText id="web-auth.6621249514b7887c" source="Welcome back" /></p>
+        <h1 className="auth-h2"><UiText id="web-auth.c3854d65cd242a9e" source="Good to" /><br /><UiText id="web-auth.10c91675b679b066" source="see you" /></h1>
       </div>
 
       {(formError || stalled) && (
-        <p className="auth-formerr" role="alert">{formError ?? STALLED_MESSAGE}</p>
+        <p className="auth-formerr" role="alert"><UiMessage namespace="web-auth" value={formError ?? STALLED_MESSAGE} /></p>
       )}
 
       <Field
-        label="Email" name="email" type="email" inputMode="email"
-        autoComplete="email" placeholder="you@email.com"
+        label={uiT("web-auth.969ccbd3cf6300ec","Email")} name="email" type="email" inputMode="email"
+        autoComplete="email" placeholder={uiT("web-auth.8d12b7f58c0d3fc8","you@email.com")}
         value={email} onChange={set(setEmail, 'email')} error={errors.email}
       />
-      <p className="auth-hint">
-        No password. We&rsquo;ll email you a 6-digit code — new here or not, this is the way in.
-      </p>
+      <p className="auth-hint"><UiText id="web-auth.b079d8697ba95cab" source="No password. We’ll email you a 6-digit code — new here or not, this is the way in." />{" "}</p>
 
       {/* Clerk smart-CAPTCHA mount point. `captcha_enabled` is on for this
           instance and this form can create an account, so a custom flow MUST
@@ -255,18 +256,15 @@ function Inner() {
 
       {/* Never clickable-but-dead: while Clerk is still loading the button shows
           its loading state, and if loading fails the message above explains it. */}
-      <Button type="submit" loading={submitting || (!isLoaded && !stalled)} disabled={stalled}>
-        Email me a code
-      </Button>
+      <Button type="submit" loading={submitting || (!isLoaded && !stalled)} disabled={stalled}><UiText id="web-auth.88d420398edd3a06" source="Email me a code" />{" "}</Button>
 
-      <Divider label="Ya phir" />
+      <Divider label={uiT("web-auth.4aec6108de24a9f0","Ya phir")} />
 
       <GoogleButton onClick={() => void google()} disabled={stalled || submitting} />
 
       <div className="auth-foot">
-        <p className="auth-aside">Chai ho jaye?<br />Woh bhi ho jayega.</p>
-        <p className="auth-footline">
-          New here?<a href="/sign-up">Create an account</a>
+        <p className="auth-aside"><UiText id="web-auth.147f03f49b15afba" source="Chai ho jaye?" /><br /><UiText id="web-auth.eef3540404312d17" source="Woh bhi ho jayega." /></p>
+        <p className="auth-footline"><UiText id="web-auth.38c1c4457cd164cc" source="New here?" /><a href="/sign-up"><UiText id="web-auth.86033f75a4c0876a" source="Create an account" /></a>
         </p>
       </div>
     </form>
@@ -277,9 +275,7 @@ export function LoginIsland() {
   if (!CLERK_PUBLISHABLE_KEY) {
     return (
       <div className="auth-form">
-        <p className="auth-formerr">
-          Sign-in isn’t configured on this build. Set PUBLIC_CLERK_PUBLISHABLE_KEY.
-        </p>
+        <p className="auth-formerr"><UiText id="web-auth.a85f365b9695e2dd" source="Sign-in isn’t configured on this build. Set PUBLIC_CLERK_PUBLISHABLE_KEY." />{" "}</p>
       </div>
     );
   }

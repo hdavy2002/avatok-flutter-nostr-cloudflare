@@ -1,0 +1,342 @@
+{
+  "reviewed": false,
+  "provenance": "Imported existing landing dictionary; native-language review is required before setting reviewed=true (except reviewed Hinglish source).",
+  "messages": {
+    "skip": {
+      "source": "Skip to main content",
+      "text": "गोदान थाखोआव थां"
+    },
+    "eyebrow": {
+      "source": "India creator ticket window",
+      "text": "भारतनि क्रियेटर टिकट जानाय जायगा"
+    },
+    "heroTitle": {
+      "source": "Have a fanbase? Start your show.",
+      "text": "फेनबेस दंना? निजर श’ सुरू खालाम।"
+    },
+    "heroBody": {
+      "source": "Your skill, your story, your time — invite fans and take bookings on your terms.",
+      "text": "नोंनि सोलोंथाइ, नोंनि सान्दों, नोंनि सम — फेनफोरखौ बुथुम आरो निजर नियमजों बुकिं लाबो।"
+    },
+    "heroPrimary": {
+      "source": "Start creating free",
+      "text": "बिनामूल्य सृजना जागाय"
+    },
+    "heroSecondary": {
+      "source": "See earning formats",
+      "text": "आयनि फार्मफोर नाय"
+    },
+    "heroTicket": {
+      "source": "Your page. Your price. Your people.",
+      "text": "नोंनि पेज। नोंनि दाम। नोंनि मानसि।"
+    },
+    "liveEyebrow": {
+      "source": "FORMAT 01 · LIVE",
+      "text": "FORMAT 01 · लाइभ"
+    },
+    "liveTitle": {
+      "source": "Turn your livestream into an event.",
+      "text": "नोंनि livestream खौ इभेन्ट खालाम।"
+    },
+    "liveBody": {
+      "source": "A live class, watch party, rehearsal, puja — add a ticket, open the room, meet your fans.",
+      "text": "लाइभ क्लास, watch party, रिहर्सेल एबा पूजा — टिकट जरा, रुम खेव आरो फेनफोरजों मिलो।"
+    },
+    "liveCta": {
+      "source": "Plan a live event",
+      "text": "लाइभ इभेन्ट प्लेन खालाम"
+    },
+    "liveMeta": {
+      "source": "Ticketed · Hosted online",
+      "text": "टिकटआव · अनलाइना होस्ट"
+    },
+    "oneEyebrow": {
+      "source": "FORMAT 02 · 1:1",
+      "text": "FORMAT 02 · 1:1"
+    },
+    "oneTitle": {
+      "source": "Your time, one fan at a time.",
+      "text": "सोरबा फेनजों सोरबा सम, नोंनि सम।"
+    },
+    "oneBody": {
+      "source": "Open slots for an online video meetup. Advice, practice, stories or one focused conversation.",
+      "text": "अनलाइना भिडिय’ मिटअपनि थाखाय स्लट खेव। सोलोंनाय, प्रेक्टिस, सान्दों एबा मोनसे गोनां गोनां सम्बाद हो।"
+    },
+    "oneCta": {
+      "source": "Offer a 1:1 session",
+      "text": "1:1 सेसन हो"
+    },
+    "oneMeta": {
+      "source": "Private · Video meetup",
+      "text": "गोपोन · भिडिय’ मिटअप"
+    },
+    "showcaseEyebrow": {
+      "source": "THE BIG SCREEN",
+      "text": "THE BIG SCREEN"
+    },
+    "showcaseTitle": {
+      "source": "What happens on screen can become a connection.",
+      "text": "स्क्रिनआव जाया जायोखौ सम्बन्ध खालामनो हायो।"
+    },
+    "showcaseBody": {
+      "source": "Music, makeup, gaming, recipes, dance, devotion — people are already watching. Give them a room.",
+      "text": "संगीत, मेकअप, गेमिं, जानाय, नाच, भक्ति — फेनफोरा दानाय नायगासिनो। दा नोंथांखौ मोनसे रुम हो।"
+    },
+    "showcaseLabel": {
+      "source": "Live room / Saturday 8:00 PM",
+      "text": "लाइभ रुम / सनिबार राइत ८:००"
+    },
+    "showcaseButton": {
+      "source": "Explore the marketplace",
+      "text": "मार्केटप्लेस नाय"
+    },
+    "meetupEyebrow": {
+      "source": "YOUR CALENDAR, YOUR RULES",
+      "text": "नोंनि केलेंडर, नोंनि नियम"
+    },
+    "meetupTitle": {
+      "source": "Your 1:1 corner.",
+      "text": "नोंनि 1:1 कोना।"
+    },
+    "meetupBody": {
+      "source": "Set your availability, explain the format, and keep expectations clear before every booking. Online only, always.",
+      "text": "नोंनि लाबोनाय सम सेट खालाम, फार्मेट बुजाय आरो फोरों बुकिंनि सिगाङाव आखाइ साफा दं। जाबाय अनलाइना।"
+    },
+    "meetupNote": {
+      "source": "Online video meetups, with clear boundaries.",
+      "text": "साफा सीमा-जों अनलाइना भिडिय’ मिटअप।"
+    },
+    "ideasEyebrow": {
+      "source": "FROM CONTENT TO OFFER",
+      "text": "कन्टेन्ट निफ्राय अफार्फि"
+    },
+    "ideasTitle": {
+      "source": "What will you host?",
+      "text": "नों मा होस्ट खालामगोन?"
+    },
+    "ideaOneTitle": {
+      "source": "Dance adda",
+      "text": "नाचनि अड्डा"
+    },
+    "ideaOneBody": {
+      "source": "Choreography, feedback, practice room.",
+      "text": "नाचनि साजाय, राय आरो प्रेक्टिस रुम।"
+    },
+    "ideaTwoTitle": {
+      "source": "Home flavours",
+      "text": "न’नि स्वाद"
+    },
+    "ideaTwoBody": {
+      "source": "Recipe live, regional thali, kitchen hacks.",
+      "text": "लाइभ रेसिपि, जायगानि जानाय आरो किचेननि सोलोंनाय।"
+    },
+    "ideaThreeTitle": {
+      "source": "Study buddy",
+      "text": "फरायसालिनि जोथाइ"
+    },
+    "ideaThreeBody": {
+      "source": "Revision sprint, language practice, exam pep talk.",
+      "text": "रिभिजन, रावनि प्रेक्टिस आरो परिक्खानि हौसला।"
+    },
+    "ideaFourTitle": {
+      "source": "Style desk",
+      "text": "स्टाइल डेस्क"
+    },
+    "ideaFourBody": {
+      "source": "Look breakdowns, draping, thrift finds.",
+      "text": "लुकनि बुजाय, सारी फानाय आरो कम दामनि नायनाय।"
+    },
+    "journeyEyebrow": {
+      "source": "HOW IT WORKS",
+      "text": "बेयो माबोरै खामानि खालामो"
+    },
+    "journeyTitle": {
+      "source": "From poster to booking — four easy moves.",
+      "text": "पोस्टार निफ्राय बुकिंसिम — ब्रै सुगम स्टेप।"
+    },
+    "stepOne": {
+      "source": "Create",
+      "text": "सृजना"
+    },
+    "stepOneBody": {
+      "source": "Write your creator page and offer.",
+      "text": "नोंनि क्रियेटर पेज आरो अफार लिर।"
+    },
+    "stepTwo": {
+      "source": "Price",
+      "text": "दाम दां"
+    },
+    "stepTwoBody": {
+      "source": "Choose your ticket or session price.",
+      "text": "टिकट एबा सेसननि दाम सायख।"
+    },
+    "stepThree": {
+      "source": "Share",
+      "text": "सेयर खालाम"
+    },
+    "stepThreeBody": {
+      "source": "Send the link to your community.",
+      "text": "लिंकखौ नोंनि कम्युनिटियाव दैथाय।"
+    },
+    "stepFour": {
+      "source": "Host",
+      "text": "होस्ट खालाम"
+    },
+    "stepFourBody": {
+      "source": "Open the room, give your time, run your show.",
+      "text": "रुम खेव, सम हो आरो नोंनि श’ चलाय।"
+    },
+    "bookingEyebrow": {
+      "source": "FOR YOUR FANS",
+      "text": "नोंनि फेनफोरनि थाखाय"
+    },
+    "bookingTitle": {
+      "source": "What does booking look like for a fan?",
+      "text": "फेननि थाखाय बुकिं माबोरै नुजायो?"
+    },
+    "bookingBody": {
+      "source": "One clear page. One date. One seat. After payment, they get the route to the room.",
+      "text": "मोनसे साफा पेज। मोनसे तारीख। मोनसे सिट। पेमेन्टनि उनाव रुमआव थांनाय लामाखौ मोनो।"
+    },
+    "bookingCta": {
+      "source": "Browse real listings",
+      "text": "सच्चा लिस्टिं नाय"
+    },
+    "bookingTicket": {
+      "source": "BOOKING PASS",
+      "text": "बुकिं पास"
+    },
+    "bookingLive": {
+      "source": "LIVE EVENT",
+      "text": "लाइभ इभेन्ट"
+    },
+    "bookingSeat": {
+      "source": "1 seat reserved",
+      "text": "१ सिट रेजार्भ खालामनाय"
+    },
+    "bookingOnline": {
+      "source": "Online · India",
+      "text": "अनलाइना · भारत"
+    },
+    "calcEyebrow": {
+      "source": "THE MATH, CLEARLY",
+      "text": "हिसाब साफासिन"
+    },
+    "calcTitle": {
+      "source": "See your gross estimate.",
+      "text": "नोंनि ग्रस अनुमान नाय।"
+    },
+    "calcBody": {
+      "source": "Change the inputs to see what ticketed events or 1:1 bookings could gross.",
+      "text": "इनपुट सोलाय आरो टिकट इभेन्ट एबा 1:1 बुकिं निफ्राय माबा ग्रस जाबाय नाय।"
+    },
+    "calcLiveLabel": {
+      "source": "Live ticket price",
+      "text": "लाइभ टिकट दाम"
+    },
+    "calcAudienceLabel": {
+      "source": "Audience per event",
+      "text": "फोरों इभेन्टनि दर्शक"
+    },
+    "calcEventsLabel": {
+      "source": "Events per month",
+      "text": "दाननि इभेन्ट"
+    },
+    "calcOneLabel": {
+      "source": "1:1 price",
+      "text": "1:1 दाम"
+    },
+    "calcBookingsLabel": {
+      "source": "Bookings per month",
+      "text": "दाननि बुकिं"
+    },
+    "calcLiveTotal": {
+      "source": "Live event gross",
+      "text": "लाइभ इभेन्ट ग्रस"
+    },
+    "calcOneTotal": {
+      "source": "1:1 gross",
+      "text": "1:1 ग्रस"
+    },
+    "calcTotal": {
+      "source": "Combined gross estimate",
+      "text": "जोनाय ग्रस अनुमान"
+    },
+    "calcDisclaimer": {
+      "source": "Illustrative gross before platform fees, taxes, refunds and other costs. Not a promise of earnings.",
+      "text": "प्लेटफार्म फी, टेक्स, रिफन्ड आरो गुबुन खारचिनि सिगाङाव नुजायनाय उदाहरण ग्रस। आयनि गारान्टी नङा।"
+    },
+    "calcPricingNote": {
+      "source": "Planning example in INR; actual listing pricing and checkout quotes follow the current pricing guide.",
+      "text": "INR आव होनाय प्लेनिङ उदाहरण; सच्चा लिस्टिं दाम आरो checkout कोटआ दानि दामनि गाइड फालांगोन।"
+    },
+    "boundariesEyebrow": {
+      "source": "GOOD TO KNOW",
+      "text": "बुजिनाय जाथाय"
+    },
+    "boundariesTitle": {
+      "source": "Clear boundaries make better rooms.",
+      "text": "साफा सीमा जोबोद गोदान रुम सोरजियो।"
+    },
+    "faqOneQ": {
+      "source": "Do I need a big following?",
+      "text": "आंनो दाथाय फेनबेस लागोन नामा?"
+    },
+    "faqOneA": {
+      "source": "No. Start with one useful offer and share it with people who already care about your work.",
+      "text": "लागा नङा। मोनसे खामानि अफारजों जागाय आरो नोंनि खामानिखौ मोनसे सानाय मानसिफोरजों सेयर खालाम।"
+    },
+    "faqTwoQ": {
+      "source": "Is this an in-person booking?",
+      "text": "बेयो नामा निजर भेटनि बुकिं?"
+    },
+    "faqTwoA": {
+      "source": "No. Live events and 1:1 sessions happen online. Keep your listing and expectations specific.",
+      "text": "नङा। लाइभ इभेन्ट आरो 1:1 सेसन अनलाइना जाबाय। नोंनि लिस्टिं आरो उमाय साफा राख।"
+    },
+    "faqThreeQ": {
+      "source": "When do I get paid?",
+      "text": "आं बेतन कदा मोनगोन?"
+    },
+    "faqThreeA": {
+      "source": "Payout timing and eligible methods are shown in your creator dashboard and the applicable terms.",
+      "text": "पेयआउट सम आरो सायखायनाय जायगा नोंनि क्रियेटर डेसबोर्ड आरो दाननि नियमाव नुजायगोन।"
+    },
+    "faqFourQ": {
+      "source": "Can I set my own boundaries?",
+      "text": "आं निजर सीमा दांनो हायोना?"
+    },
+    "faqFourA": {
+      "source": "Yes. Choose your format, availability, price and what the session includes before publishing.",
+      "text": "हायो। पब्लिशनि सिगाङाव फार्मेट, लाबोनाय सम, दाम आरो सेसनआव मा दं बे सायख।"
+    },
+    "closeEyebrow": {
+      "source": "YOUR TURN",
+      "text": "नोंनि पालि"
+    },
+    "closeTitle": {
+      "source": "Put a ticket on your voice.",
+      "text": "नोंनि रावखौ टिकट हो।"
+    },
+    "closeBody": {
+      "source": "Write one offer today. Open your first room tomorrow.",
+      "text": "दिनै मोनसे अफार लिर। फैदिनै निजर फोथार रुम खेव।"
+    },
+    "closeCta": {
+      "source": "Create your free listing",
+      "text": "नोंनि बिनामूल्य लिस्टिं सृजना खालाम"
+    },
+    "ariaDecorative": {
+      "source": "Decorative",
+      "text": "साजायनाय सावगारि"
+    },
+    "ariaCalculator": {
+      "source": "Gross earnings estimate calculator",
+      "text": "ग्रस आय अनुमान हिसाब"
+    },
+    "ariaFaq": {
+      "source": "Frequently asked questions",
+      "text": "सोंनाय-फिननाय जेंना"
+    }
+  }
+}

@@ -1,3 +1,6 @@
+import { useTranslation as useUiTranslation } from "./i18n/react";
+import { UiText } from "./i18n/react";
+import { setLocaleAccount } from './i18n/localeStore';
 /* Clerk provider + the shared GuestGate — the auth foundation every other
  * phase (B/C/D/E) depends on. See MASTER-PROMPT §4b.
  *
@@ -252,7 +255,8 @@ export function ClerkIsland({ children }: { children: ReactNode }) {
 /** Keeps the module-level Clerk bridges in sync with the live session. */
 function ClerkBridge() {
   const { isSignedIn, getToken } = useAuth();
-  const { user } = useUser();
+  const { user, isLoaded: localeUserLoaded } = useUser();
+  useEffect(() => { if (localeUserLoaded) setLocaleAccount(user?.id ?? null); }, [localeUserLoaded, user?.id]);
   useEffect(() => {
     _clerkSignedIn = !!isSignedIn;
     _clerkGetToken = (opts) => getToken(opts);
@@ -349,6 +353,8 @@ type Step = 'email' | 'code';
  * next cleanup pass, delete it.
  */
 export function GuestGate({ open, onAuthed, onCancel }: GuestGateProps) {
+  const {t:uiT}=useUiTranslation("web-common");
+
   const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -427,36 +433,33 @@ export function GuestGate({ open, onAuthed, onCancel }: GuestGateProps) {
         reset();
         onCancel?.();
       }}
-      title={step === 'email' ? 'Just your email' : 'Enter the code'}
+      title={step === 'email' ? uiT("web-common.98e9e7366f2ff657","Just your email") : uiT("web-common.b0ed70c457e2eeee","Enter the code")}
       dismissable={!busy}
     >
       {step === 'email' ? (
         <div className="space-y-4">
-          <p className="font-body font-bold text-[15px] text-inkSoft">
-            We use it to send your booking and reminders. No password, no app needed.
-          </p>
+          <p className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-common.2f43d8ef1a67945a" source="We use it to send your booking and reminders. No password, no app needed." />{" "}</p>
           <Field
-            label="Email"
+            label={uiT("web-common.969ccbd3cf6300ec","Email")}
             lead="@"
             type="email"
             inputMode="email"
             autoComplete="email"
             autoFocus
-            placeholder="you@email.com"
+            placeholder={uiT("web-common.8d12b7f58c0d3fc8","you@email.com")}
             value={email}
             error={error}
             onChange={(e) => setEmail(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && submitEmail()}
           />
-          <Button fullWidth loading={busy} disabled={!emailValid} label="Send code" onClick={submitEmail} />
+          <Button fullWidth loading={busy} disabled={!emailValid} label={uiT("web-common.66a5b4090d14cb41","Send code")} onClick={submitEmail} />
         </div>
       ) : (
         <div className="space-y-4">
-          <p className="font-body font-bold text-[15px] text-inkSoft">
-            We sent a 6-digit code to <span className="text-ink">{email}</span>.
+          <p className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-common.e1bb527efffc74b7" source="We sent a 6-digit code to" />{" "}<span className="text-ink">{email}</span>.
           </p>
           <Field
-            label="Code"
+            label={uiT("web-common.340f463033e0fd5d","Code")}
             inputMode="numeric"
             autoComplete="one-time-code"
             autoFocus
@@ -467,15 +470,13 @@ export function GuestGate({ open, onAuthed, onCancel }: GuestGateProps) {
             onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
             onKeyDown={(e) => e.key === 'Enter' && submitCode()}
           />
-          <Button fullWidth loading={busy} disabled={code.trim().length < 4} label="Verify" onClick={submitCode} />
+          <Button fullWidth loading={busy} disabled={code.trim().length < 4} label={uiT("web-common.eea2745e2867a677","Verify")} onClick={submitCode} />
           <button
             type="button"
             className="w-full font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-blueInk underline decoration-blue decoration-2 underline-offset-2 disabled:text-inkMute"
             disabled={busy}
             onClick={resend}
-          >
-            Resend code
-          </button>
+          ><UiText id="web-common.b97457409ab5b375" source="Resend code" />{" "}</button>
         </div>
       )}
     </Modal>

@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -50,7 +53,7 @@ class _TeamInboxScreenState extends State<TeamInboxScreen> {
   }
 
   Future<void> _play(TeamMessage m) async {
-    if (!m.hasRecording) { _toast('No recording for this message'); return; }
+    if (!m.hasRecording) { _toast(uiCopy(UiMessage.m_no_recording_for_this_message_7df7b43b51)); return; }
     if (_playingId == m.id) { await _player.stop(); setState(() => _playingId = null); return; }
     // The recording endpoint requires signed auth, so fetch the bytes with the
     // signed GET (manager or staffer authorized server-side) and play from memory.
@@ -61,10 +64,10 @@ class _TeamInboxScreenState extends State<TeamInboxScreen> {
         await _player.play(BytesSource(r.bodyBytes, mimeType: 'audio/wav'));
         setState(() => _playingId = m.id);
       } else {
-        _toast('Recording unavailable');
+        _toast(uiCopy(UiMessage.m_recording_unavailable_2ef4c842e6));
       }
     } catch (_) {
-      _toast('Could not play recording');
+      _toast(uiCopy(UiMessage.m_could_not_play_recording_8cede48276));
     }
   }
 
@@ -99,9 +102,9 @@ class _TeamInboxScreenState extends State<TeamInboxScreen> {
     }
     // External / unknown caller (no in-network account) → copy the number to dial.
     final number = (m.callback?.isNotEmpty == true) ? m.callback! : (m.callerPhone ?? '');
-    if (number.isEmpty) { _toast('No callback number'); return; }
+    if (number.isEmpty) { _toast(uiCopy(UiMessage.m_no_callback_number_c299b492d7)); return; }
     Clipboard.setData(ClipboardData(text: number));
-    _toast('Number copied — $number');
+    _toast(uiCopy(UiMessage.m_number_copied_number_646b29b7b1, {'number': (number).toString()}));
   }
 
   void _toast(String s) => ScaffoldMessenger.of(context)
@@ -112,9 +115,10 @@ class _TeamInboxScreenState extends State<TeamInboxScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
-      appBar: const ZineAppBar(title: 'Messages', markWord: 'Messages', tag: 'Team voicemail'),
+      appBar:  ZineAppBar(title: uiCopy(UiMessage.m_messages_04d7b48339), markWord: 'Messages', tag: 'Team voicemail'),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: AD.primaryBadge))
           : _messages.isEmpty
@@ -150,7 +154,7 @@ class _TeamInboxScreenState extends State<TeamInboxScreen> {
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('$who${m.slot != null ? '  ·  #${m.slot}' : ''}', style: ADText.rowName()),
-                Text('Called$from · ${_ago(m.createdAt)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.sectionLabel(c: AD.textSecondary)),
+                UiText(UiMessage.m_called_from_value2_88a2062784, params: {'from': (from).toString(), 'value2': (_ago(m.createdAt)).toString()}, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.sectionLabel(c: AD.textSecondary)),
               ]),
             ),
           ]),
@@ -166,7 +170,7 @@ class _TeamInboxScreenState extends State<TeamInboxScreen> {
             if (RemoteConfig.messengerCallingEnabled) ...[
               Expanded(
                 child: ZineButton(
-                  label: 'Call back', icon: PhosphorIcons.phone(PhosphorIconsStyle.bold), trailingIcon: false,
+                  label: uiCopy(UiMessage.m_call_back_fbb0a343f6), icon: PhosphorIcons.phone(PhosphorIconsStyle.bold), trailingIcon: false,
                   fontSize: 14, variant: ZineButtonVariant.lime, onPressed: () => _callBack(m),
                 ),
               ),
@@ -174,7 +178,7 @@ class _TeamInboxScreenState extends State<TeamInboxScreen> {
             ],
             Expanded(
               child: ZineButton(
-                label: playing ? 'Stop' : 'Play',
+                label: playing ? uiCopy(UiMessage.m_stop_cae7d57bc0) : uiCopy(UiMessage.m_play_436e61016e),
                 icon: playing ? PhosphorIcons.stop(PhosphorIconsStyle.regular) : PhosphorIcons.play(PhosphorIconsStyle.regular),
                 trailingIcon: false, fontSize: 14,
                 variant: ZineButtonVariant.blue, onPressed: () => _play(m),

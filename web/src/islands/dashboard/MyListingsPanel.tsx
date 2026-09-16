@@ -1,3 +1,4 @@
+import { UiText } from "../../lib/i18n/react";
 /* MyListingsPanel — the creator's listings pipeline (app: My Listings).
  * GET /api/listings/mine → { listings: Card[] } (drafts + published + live,
  * newest first). Empty state offers the create CTA. Never shows fake data.
@@ -43,13 +44,9 @@ function Inner() {
     return (
       <Card fillClassName="bg-paper2" shadow="sm">
         <div className="flex flex-col items-start gap-3 p-2">
-          <h2 className="font-display font-semibold text-[20px] text-ink">No listings yet</h2>
-          <p className="font-body font-bold text-[15px] text-inkSoft">
-            Publish a live event, a 1:1 consult, a class or an AI agent — fans book and pay right from the web.
-          </p>
-          <a href="/dashboard/listings/new" className="rounded-full border-zine border-ink bg-lime px-5 py-2.5 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">
-            Create your first listing
-          </a>
+          <h2 className="font-display font-semibold text-[20px] text-ink"><UiText id="web-dashboard.38975ad4e8356135" source="No listings yet" /></h2>
+          <p className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-dashboard.090cab0b52917af6" source="Publish a live event, a 1:1 consult, a class or an AI agent — fans book and pay right from the web." />{" "}</p>
+          <a href="/dashboard/listings/new" className="rounded-full border-zine border-ink bg-lime px-5 py-2.5 font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine"><UiText id="web-dashboard.51c8f370595cc421" source="Create your first listing" />{" "}</a>
         </div>
       </Card>
     );

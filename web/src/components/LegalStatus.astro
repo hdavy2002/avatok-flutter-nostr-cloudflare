@@ -28,40 +28,40 @@ const { variant = 'full', heading } = Astro.props;
 <div class="note" id={heading ? undefined : 'status'}>
   {variant === 'short' ? (
     <p>
-      avaTOK is built and operated by American and Indian founders through
-      <strong>{ORG.legalName}</strong>, a Delaware corporation. The service is
-      being developed and expanded globally. Contact:
+      <ui-copy style="display:contents" data-i18n="web-common.0f8ef52b8743d566">avaTOK is built and operated by American and Indian founders through</ui-copy>
+      <strong>{ORG.legalName}</strong><ui-copy style="display:contents" data-i18n="web-common.c8dc98e3e76b237a">, a Delaware corporation. The service is
+      being developed and expanded globally. Contact:</ui-copy>
       <a href={`mailto:${ORG.email}`}>{ORG.email}</a>.
     </p>
   ) : (
     <Fragment>
       <p>
-        <strong>Who you are dealing with.</strong> avaTOK is the platform brand of
-        <strong>{ORG.legalName}</strong>, a domestic Delaware corporation founded by
-        American and Indian founders.
+        <strong data-i18n="web-common.111d670158826d45">Who you are dealing with.</strong> <ui-copy style="display:contents" data-i18n="web-common.b47db0c3cd5c3c93">avaTOK is the platform brand of</ui-copy>
+        <strong>{ORG.legalName}</strong><ui-copy style="display:contents" data-i18n="web-common.92be743e72be1116">, a domestic Delaware corporation founded by
+        American and Indian founders.</ui-copy>
       </p>
       <p style="margin-top:12px">
-        <strong>Our legal entity.</strong> {ORG.legalName} is registered in Delaware.
-        The public registered-agent address is {ORG.address.street}, {ORG.address.locality},
-        {ORG.address.region} {ORG.address.postalCode}. For general and investor enquiries,
-        write to <a href="mailto:hello@avatok.ai">hello@avatok.ai</a>.
+        <strong data-i18n="web-common.d3bcb3151962cd25">Our legal entity.</strong> {ORG.legalName} <ui-copy style="display:contents" data-i18n="web-common.4f0efbd0c721c459">is registered in Delaware.
+        The public registered-agent address is</ui-copy> {ORG.address.street}, {ORG.address.locality},
+        {ORG.address.region} {ORG.address.postalCode}<ui-copy style="display:contents" data-i18n="web-common.12a81824123d9b3a">. For general and investor enquiries,
+        write to</ui-copy> <a href="mailto:hello@avatok.ai">hello@avatok.ai</a>.
       </p>
 
       {variant === 'full' && (
         <p style="margin-top:12px">
-          <strong>The site is evolving.</strong> Features may change, be paused, or be
+          <strong data-i18n="web-common.10e95e374afe1262">The site is evolving.</strong> <ui-copy style="display:contents" data-i18n="web-common.9293a402b5bac613">Features may change, be paused, or be
           removed as we expand the service. Prices, fees and token values shown on the
-          site are subject to the applicable product terms.
+          site are subject to the applicable product terms.</ui-copy>
         </p>
       )}
 
       <p style="margin-top:12px">
-        <strong>Registered office.</strong> {ORG.address.street}, {ORG.address.locality},
-        {ORG.address.region} {ORG.address.postalCode}, United States.<br />
-        <strong>Contact.</strong> <a href={`mailto:${ORG.email}`}>{ORG.email}</a>
-        (support and billing) · <a href="mailto:hello@avatok.ai">hello@avatok.ai</a>
-        (general and investor enquiries) ·
-        <a href="mailto:privacy@avatok.ai">privacy@avatok.ai</a> (privacy).
+        <strong data-i18n="web-common.fe2a3ce339afe0a0">Registered office.</strong> {ORG.address.street}, {ORG.address.locality},
+        {ORG.address.region} {ORG.address.postalCode}<ui-copy style="display:contents" data-i18n="web-common.6ce614f2ee8cbd80">, United States.</ui-copy><br />
+        <strong data-i18n="web-common.b30d6d5e28d714c8">Contact.</strong> <a href={`mailto:${ORG.email}`}>{ORG.email}</a>
+        <ui-copy style="display:contents" data-i18n="web-common.1e2754fc6999db70">(support and billing) ·</ui-copy> <a href="mailto:hello@avatok.ai">hello@avatok.ai</a>
+        <ui-copy style="display:contents" data-i18n="web-common.e355f15f55aecab4">(general and investor enquiries) ·</ui-copy>
+        <a href="mailto:privacy@avatok.ai">privacy@avatok.ai</a> <ui-copy style="display:contents" data-i18n="web-common.a3496efa95e8fcbd">(privacy).</ui-copy>
       </p>
     </Fragment>
   )}

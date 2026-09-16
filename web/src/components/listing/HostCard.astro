@@ -40,18 +40,18 @@ const initials = hostInitials || name.split(/\s+/).map((w) => w[0]).filter(Boole
       {profileHref ? (
         <a href={profileHref} class="ld-host-photo">
           <Avatar src={avatarUrl} name={name} size={210} />
-          {verified && <span class="ld-host-photo-badge">✓ ID VERIFIED</span>}
+          {verified && <span data-i18n="web-common.1d7a10662e0a2a44" class="ld-host-photo-badge">✓ ID VERIFIED</span>}
         </a>
       ) : (
         <div class="ld-host-photo">
           <Avatar src={avatarUrl} name={name} size={210} />
-          {verified && <span class="ld-host-photo-badge">✓ ID VERIFIED</span>}
+          {verified && <span data-i18n="web-common.1d7a10662e0a2a44" class="ld-host-photo-badge">✓ ID VERIFIED</span>}
         </div>
       )}
       <div>
         <div class="ld-host-name-big">
           {profileHref ? <a href={profileHref} style="color:inherit;">{name}</a> : name}
-          {isAgent && <span class="ld-chip ld-chip--ai" style="margin-left:8px; vertical-align:middle;">AI</span>}
+          {isAgent && <span data-i18n="web-common.11fb682be0a0233d" class="ld-chip ld-chip--ai" style="margin-left:8px; vertical-align:middle;">AI</span>}
         </div>
         <div class="ld-host-meta-line">
           {hostSinceLabel && <>HOST SINCE {hostSinceLabel}</>}
@@ -65,35 +65,35 @@ const initials = hostInitials || name.split(/\s+/).map((w) => w[0]).filter(Boole
         </div>
       )}
       {profileHref && !isAgent && (
-        <a href={profileHref} class="ld-msg-btn" data-cta="message_host">MESSAGE {name.split(' ')[0].toUpperCase()}</a>
+        <a href={profileHref} class="ld-msg-btn" data-cta="message_host"><ui-copy style="display:contents" data-i18n="web-common.b194d92018d60742">MESSAGE</ui-copy> {name.split(' ')[0].toUpperCase()}</a>
       )}
-      <span class="ld-msg-note">MESSAGES STAY ON AVATOK · NO PHONE NUMBERS SHARED</span>
+      <span data-i18n="web-common.1e547fbf5c3a3102" class="ld-msg-note">MESSAGES STAY ON AVATOK · NO PHONE NUMBERS SHARED</span>
     </div>
 
     <div class="ld-host-bio-col">
       {bio && (
         <div>
-          <div class="ld-about-label">ABOUT {name.split(' ')[0].toUpperCase()}</div>
+          <div class="ld-about-label"><ui-copy style="display:contents" data-i18n="web-common.72b70ae3032dfe31">ABOUT</ui-copy> {name.split(' ')[0].toUpperCase()}</div>
           <p class="ld-about-text">{bio}</p>
         </div>
       )}
 
       {trust && trust.shows_hosted > 0 && (
         <div class="ld-stats-board" style="margin-top:0;">
-          <div><b>{trust.shows_hosted}</b><span>SHOWS</span></div>
-          {trust.comeback_pct != null && <div><b>{Math.round(trust.comeback_pct)}%</b><span>COME BACK</span></div>}
-          {trust.on_time_pct != null && <div><b>{Math.round(trust.on_time_pct)}%</b><span>ON TIME</span></div>}
-          {trust.sold_out_count > 0 && <div><b>{trust.sold_out_count}</b><span>SOLD OUT</span></div>}
+          <div><b>{trust.shows_hosted}</b><span data-i18n="web-common.f635846943615a4d">SHOWS</span></div>
+          {trust.comeback_pct != null && <div><b>{Math.round(trust.comeback_pct)}%</b><span data-i18n="web-common.e8a2ef56fd114c90">COME BACK</span></div>}
+          {trust.on_time_pct != null && <div><b>{Math.round(trust.on_time_pct)}%</b><span data-i18n="web-common.0d9ae5bff8e4f705">ON TIME</span></div>}
+          {trust.sold_out_count > 0 && <div><b>{trust.sold_out_count}</b><span data-i18n="web-common.52844487eeaa8eff">SOLD OUT</span></div>}
         </div>
       )}
 
       {profileHref && (
         <div>
           <div class="ld-also-listed-head">
-            <span class="ld-also-listed-label">MORE FROM {name.split(' ')[0].toUpperCase()}</span>
+            <span class="ld-also-listed-label"><ui-copy style="display:contents" data-i18n="web-common.ef5f686eb26ed0e9">MORE FROM</ui-copy> {name.split(' ')[0].toUpperCase()}</span>
           </div>
           <a href={profileHref} class="ld-also-listed-label" style="color:#2d7180; text-decoration:none;" data-cta="also_listed_by">
-            See {name.split(' ')[0]}'s full profile →
+            <ui-copy style="display:contents" data-i18n="web-common.6863067eb0a2c749">See</ui-copy> {name.split(' ')[0]}<ui-copy style="display:contents" data-i18n="web-common.50b58fabaca48a15">'s full profile →</ui-copy>
           </a>
         </div>
       )}

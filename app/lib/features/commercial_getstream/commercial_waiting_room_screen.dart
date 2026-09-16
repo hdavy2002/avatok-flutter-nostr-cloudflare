@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 // [WAITROOM-APP-1] Commercial 1:1 consult waiting room.
 // [WAITROOM-APP-2] Applies the Opus client-review fixes: auto-join that
 // cannot get stuck (fix 1), a Leave from the call that does not end the
@@ -309,7 +311,7 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
           content: Row(mainAxisSize: MainAxisSize.min, children: [
             PhosphorIcon(PhosphorIcons.timer(PhosphorIconsStyle.regular), size: 16, color: AD.textPrimary),
             const SizedBox(width: Msg.s2),
-            Text('5 minutes remaining', style: ADText.preview(c: AD.textPrimary)),
+            UiText(UiMessage.m_5_minutes_remaining_dae9e3934e, style: ADText.preview(c: AD.textPrimary)),
           ]),
           backgroundColor: AD.card,
         ));
@@ -494,7 +496,7 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
           title: widget.title,
           sessionId: sessionId,
           gateway: widget.gateway,
-          heading: 'Session ended',
+          heading: uiCopy(UiMessage.m_session_ended_4a50e4c0c4),
           creator: widget.isCreator,
         ),
       ));
@@ -513,6 +515,7 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final now = DateTime.now().millisecondsSinceEpoch;
     final startsAt = _startsAt, endsAt = _endsAt;
     final counterparty = widget.grant.counterparty;
@@ -569,7 +572,7 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
             child: Column(children: [
               Avatar(seed: widget.bookingId, name: counterpartyName, size: 84, avatarUrl: counterparty?.avatarUrl),
               const SizedBox(height: Msg.s3),
-              Text('Waiting for $counterpartyName…', style: ADText.threadName(), textAlign: TextAlign.center),
+              UiText(UiMessage.m_waiting_for_counterpartyname_cb48f58c88, params: {'counterpartyName': (counterpartyName).toString()}, style: ADText.threadName(), textAlign: TextAlign.center),
               const SizedBox(height: Msg.s2),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
@@ -616,7 +619,7 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
               child: OutlinedButton.icon(
                 onPressed: _rejoinNow,
                 icon: Icon(PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold)),
-                label: const Text('Rejoin call'),
+                label: const UiText(UiMessage.m_rejoin_call_fb96dba67c),
               ),
             ),
           if (_error != null) Padding(
@@ -624,7 +627,7 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
             child: Text(_error!, style: ADText.preview(c: AD.danger)),
           ),
           const SizedBox(height: Msg.s4),
-          Text('Chat', style: ADText.sectionLabel()),
+          UiText(UiMessage.m_chat_460b3a7da0, style: ADText.sectionLabel()),
           const SizedBox(height: Msg.s2),
           // [APP-ONLY-TX-APP-2] Same `_chatCtrl`/channel the in-call chat
           // sheet reads from — one shared widget, no duplicated state.
@@ -634,7 +637,7 @@ class _CommercialWaitingRoomScreenState extends State<CommercialWaitingRoomScree
             onPressed: () => _leave(),
             style: FilledButton.styleFrom(backgroundColor: AD.destructiveBg),
             icon: Icon(PhosphorIcons.signOut(PhosphorIconsStyle.bold)),
-            label: const Text('Leave'),
+            label: const UiText(UiMessage.m_leave_fc6e4a408d),
           ),
           const SizedBox(height: Msg.s3),
         ]),
@@ -649,7 +652,7 @@ class _Notice extends StatelessWidget {
   final Color iconColor;
   final String text;
   @override
-  Widget build(BuildContext context) => Padding(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Padding(
         padding: const EdgeInsets.only(top: Msg.s2),
         child: Container(
           padding: const EdgeInsets.all(Msg.s3),
@@ -660,5 +663,5 @@ class _Notice extends StatelessWidget {
             Expanded(child: Text(text, style: ADText.preview(c: AD.textPrimary))),
           ]),
         ),
-      );
+      ); }
 }

@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /*
  * ExtendPanel — the "+ extend time" flow (SPEC-2026-09-01 §4.4).
  *
@@ -38,6 +40,8 @@ const POLL_MS = 3000;
 const MAX_POLLS = 100; // ~5 minutes — long enough for a slow counterpart, not forever.
 
 export function ExtendPanel({ bookingId, jwt, role, onClose, onExtended }: ExtendPanelProps) {
+  const {t:uiT}=useUiTranslation("web-consult-gs");
+
   const [step, setStep] = useState<Step>('loading');
   const [quote, setQuote] = useState<ExtensionQuote | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -212,10 +216,10 @@ export function ExtendPanel({ bookingId, jwt, role, onClose, onExtended }: Exten
     <div className="absolute inset-0 z-10 flex items-center justify-center bg-ink/60 p-4">
       <div className="w-full max-w-sm rounded-zine border-zine border-ink bg-card p-5 shadow-zine">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-display font-semibold text-[19px] text-ink">Extend this session</h2>
+          <h2 className="font-display font-semibold text-[19px] text-ink"><UiText id="web-consult-gs.f95bfff94d94b842" source="Extend this session" /></h2>
           <button
             type="button"
-            aria-label="Close"
+            aria-label={uiT("web-consult-gs.7d9eb7acb13e2462","Close")}
             onClick={decline}
             className="font-display text-[18px] text-inkMute"
           >
@@ -226,36 +230,34 @@ export function ExtendPanel({ bookingId, jwt, role, onClose, onExtended }: Exten
         {step === 'loading' && (
           <div className="flex flex-col items-center gap-3 py-6">
             <Spinner size={24} />
-            <p className="font-body font-bold text-[14px] text-inkSoft">Pricing the extension…</p>
+            <p className="font-body font-bold text-[14px] text-inkSoft"><UiText id="web-consult-gs.8d0d0bb8098796e0" source="Pricing the extension…" /></p>
           </div>
         )}
 
         {(step === 'quoted' || step === 'waiting') && quote && (
           <div className="flex flex-col gap-4">
             <p className="font-body font-bold text-[15px] text-inkSoft">
-              +{quote.extension_minutes} minutes for{' '}
+              +{quote.extension_minutes}{" "}<UiText id="web-consult-gs.3ecb1fdbf3342f42" source="minutes for" />{' '}
               <span className="text-ink">{inr(quote.amount)}</span>
               {quote.rate_per_minute > 0 && (
-                <span className="text-inkMute"> ({inr(quote.rate_per_minute)}/min)</span>
+                <span className="text-inkMute"> ({inr(quote.rate_per_minute)}<UiText id="web-consult-gs.88c37bd0b4421597" source="/min)" /></span>
               )}
             </p>
-            <p className="font-body font-bold text-[13px] text-inkMute">
-              Held from your wallet only once both sides agree. Nothing is charged before that.
-            </p>
+            <p className="font-body font-bold text-[13px] text-inkMute"><UiText id="web-consult-gs.1469173d221dc49d" source="Held from your wallet only once both sides agree. Nothing is charged before that." />{" "}</p>
 
             {step === 'waiting' ? (
               <div className="flex items-center gap-2 rounded-zineField border-zine border-ink bg-paper2 px-3 py-2.5">
                 <Spinner size={18} />
                 <span className="font-body font-bold text-[13px] text-inkSoft">
                   {theirConsent(quote)
-                    ? 'Finishing up…'
-                    : `Waiting for the other side to accept…`}
+                    ? uiT("web-consult-gs.4bc99680df209ffb","Finishing up…")
+                    : uiT("web-consult-gs.74c9b9fd93672b0e","Waiting for the other side to accept…",{})}
                 </span>
               </div>
             ) : (
               <div className="flex gap-2">
                 <Button variant="lime" fullWidth label={`Accept — ${inr(quote.amount)}`} onClick={() => void accept()} />
-                <Button variant="ghost" label="Not now" onClick={() => void decline()} />
+                <Button variant="ghost" label={uiT("web-consult-gs.a0e63d7c7125d29a","Not now")} onClick={() => void decline()} />
               </div>
             )}
           </div>
@@ -266,9 +268,9 @@ export function ExtendPanel({ bookingId, jwt, role, onClose, onExtended }: Exten
             <p className="font-body font-bold text-[14px] text-ink">{error}</p>
             <div className="flex gap-2">
               {step === 'error' && (
-                <Button variant="blue" label="Try again" onClick={() => void fetchQuote()} />
+                <Button variant="blue" label={uiT("web-consult-gs.d8b8392e2c542950","Try again")} onClick={() => void fetchQuote()} />
               )}
-              <Button variant="ghost" label="Close" onClick={onClose} />
+              <Button variant="ghost" label={uiT("web-consult-gs.7d9eb7acb13e2462","Close")} onClick={onClose} />
             </div>
           </div>
         )}

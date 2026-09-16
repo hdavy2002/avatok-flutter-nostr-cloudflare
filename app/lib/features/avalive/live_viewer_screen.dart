@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 // Phase 7 — AvaLive VIEWER. Full-bleed player (WHEP over the shared
 // flutter_webrtc — no second engine), overlay: scrolling chat, flying messages,
 // tap-burst reactions, sticker sends, Donate. Top bar: creator chip, LIVE
@@ -153,7 +156,7 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
         case 'session_ended':
           setState(() { _live = false; _streamEnded = true; _status = 'stream ended'; });
         case 'warn':
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e['reason']?.toString() ?? 'blocked')));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e['reason']?.toString() ?? uiCopy(UiMessage.m_blocked_6973dddd3e))));
         case 'mod':
           if (e['action'] == 'ban') setState(() {});
       }
@@ -190,13 +193,13 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
           ZineCardHead(
             icon: PhosphorIcons.coins(PhosphorIconsStyle.regular),
             accent: AD.online,
-            title: 'Send a donation',
+            title: uiCopy(UiMessage.m_send_a_donation_920f577aad),
           ),
           const SizedBox(height: Msg.s1),
           Text(
               balUnavailable
-                  ? '$kWalletUnavailableMessage · goes to the creator instantly'
-                  : 'Balance \u20b9$bal · goes to the creator instantly',
+                  ? uiCopy(UiMessage.m_kwalletunavailablemessage_goes_to_the_creator_838983eb05, {'kWalletUnavailableMessage': (kWalletUnavailableMessage).toString()})
+                  : uiCopy(UiMessage.m_balance_bal_goes_to_the_dd2d036b5f, {'bal': (bal).toString()}),
               style: ADText.preview()),
           const SizedBox(height: Msg.s4),
           Wrap(spacing: Msg.s2, runSpacing: Msg.s2, children: [
@@ -224,7 +227,7 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
         final t = await MoneyApi.topup((amount - ((e.body['balance'] as num?)?.toInt() ?? 0)).clamp(50, 50000));
         final url = t['checkout_url']?.toString();
         if (url != null && url.isNotEmpty) { await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication); }
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Top up your wallet, then donate again.')));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: UiText(UiMessage.m_top_up_your_wallet_then_e27a8df5e1)));
       } else {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
       }
@@ -244,6 +247,7 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (_error != null) return _errorScreen();
     if (_streamEnded) return _endedScreen();
     final remaining = _endsAt > 0 ? _endsAt - DateTime.now().millisecondsSinceEpoch : null;
@@ -306,7 +310,7 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
                     style: ADText.tabLabel(c: AD.textPrimary),
                     cursorColor: AD.primaryBadge,
                     decoration: InputDecoration(
-                      hintText: 'Say something…',
+                      hintText: uiCopy(UiMessage.m_say_something_fd8c1cd4ac),
                       hintStyle: ADText.tabLabel(c: AD.textSecondary),
                       border: InputBorder.none,
                     ),
@@ -318,14 +322,14 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
               LiveCircleButton(
                 icon: PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.bold),
                 size: 40,
-                tooltip: 'Chat',
+                tooltip: uiCopy(UiMessage.m_chat_460b3a7da0),
                 onTap: _sendChat,
               ),
               const SizedBox(width: Msg.s1),
               LiveCircleButton(
                 icon: PhosphorIcons.rocketLaunch(PhosphorIconsStyle.regular),
                 size: 40,
-                tooltip: 'Flying message',
+                tooltip: uiCopy(UiMessage.m_flying_message_8504d833ed),
                 onTap: () {
                   final t = _chatCtl.text.trim();
                   if (t.isEmpty) return;
@@ -378,7 +382,7 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
                 icon: PhosphorIcons.coins(PhosphorIconsStyle.regular),
                 fill: AD.online,
                 size: 46,
-                tooltip: 'Donate',
+                tooltip: uiCopy(UiMessage.m_donate_c91ee0f279),
                 onTap: _donateSheet,
               ),
             ]),
@@ -392,7 +396,7 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
   Widget _errorScreen() {
     return Scaffold(
       backgroundColor: AD.bg,
-      appBar: const ZineAppBar(title: 'AvaLive', markWord: 'Live', tag: 'live stream'),
+      appBar:  ZineAppBar(title: uiCopy(UiMessage.m_avalive_4cbcfc1f7c), markWord: 'Live', tag: 'live stream'),
       body: ZinePaper(
         child: Center(
           child: Padding(

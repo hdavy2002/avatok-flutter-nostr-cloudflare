@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* [WEB-COMM-PAY-1 / WEB-COMM-PAY-2] GatewayPicker — SPEC §3.3, corrected per the
  * [PAY-HANDOFF-1] design in worker/src/routes/commercial_checkout.ts and
  * worker/src/routes/pay.ts: the wallet lane (`POST .../checkout`) and the gateway lane
@@ -73,6 +75,8 @@ export function GatewayPicker({
   onPaid,
   onSlotConflict,
 }: GatewayPickerProps) {
+  const {t:uiT}=useUiTranslation("web-checkout");
+
   const [methods, setMethods] = useState<PayMethod[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selected, setSelected] = useState<GatewayId | null>(null);
@@ -384,7 +388,7 @@ export function GatewayPicker({
     return (
       <div className="flex items-center gap-3 p-4">
         <Spinner size={22} />
-        <span className="font-body font-bold text-[15px] text-inkSoft">Loading payment options…</span>
+        <span className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-checkout.b21c5f7e0eb34666" source="Loading payment options…" /></span>
       </div>
     );
   }
@@ -396,7 +400,7 @@ export function GatewayPicker({
       <div className="flex flex-col gap-4">
         <Card>
           <div className="flex items-center justify-between">
-            <span className="font-display font-semibold text-[16px] text-ink">Total to pay</span>
+            <span className="font-display font-semibold text-[16px] text-ink"><UiText id="web-checkout.574fe85ced0956d4" source="Total to pay" /></span>
             <span className="font-mono font-bold text-[16px] text-ink">{inr(displayTotal)}</span>
           </div>
         </Card>
@@ -418,9 +422,7 @@ export function GatewayPicker({
           className="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-blueInk underline decoration-blue decoration-2 underline-offset-2 disabled:text-inkMute"
           disabled={busy}
           onClick={backToPick}
-        >
-          ← Choose a different payment method
-        </button>
+        ><UiText id="web-checkout.b179c90e9e54b714" source="← Choose a different payment method" />{" "}</button>
       </div>
     );
   }
@@ -429,7 +431,7 @@ export function GatewayPicker({
     <div className="flex flex-col gap-4">
       <Card>
         <div className="flex items-center justify-between">
-          <span className="font-display font-semibold text-[16px] text-ink">Total to pay</span>
+          <span className="font-display font-semibold text-[16px] text-ink"><UiText id="web-checkout.574fe85ced0956d4" source="Total to pay" /></span>
           <span className="font-mono font-bold text-[16px] text-ink">{inr(displayTotal)}</span>
         </div>
       </Card>
@@ -442,12 +444,10 @@ export function GatewayPicker({
 
       {!loadError && methods.length === 0 ? (
         <Card fillClassName="bg-paper2">
-          <p className="font-body font-bold text-[15px] text-inkSoft">
-            Payments aren’t open yet. Check back soon — this booking is held for you in the meantime.
-          </p>
+          <p className="font-body font-bold text-[15px] text-inkSoft"><UiText id="web-checkout.31d87103e0391531" source="Payments aren’t open yet. Check back soon — this booking is held for you in the meantime." />{" "}</p>
         </Card>
       ) : (
-        <div role="radiogroup" aria-label="Payment method" className="flex flex-col gap-3">
+        <div role="radiogroup" aria-label={uiT("web-checkout.b948ac04b854394f","Payment method")} className="flex flex-col gap-3">
           {methods.map((m) => {
             const isSelected = selected === m.gateway;
             return (
@@ -521,20 +521,16 @@ export function GatewayPicker({
         <div className="flex items-center gap-3 p-2">
           <Spinner size={20} />
           <span className="font-body font-bold text-[14px] text-inkSoft">
-            {phase === 'opening' ? 'Opening payment window…' : 'Confirming your payment…'}
+            {phase === 'opening' ? uiT("web-checkout.d4a8096c249d5c91","Opening payment window…") : uiT("web-checkout.a29081aa8c17604d","Confirming your payment…")}
           </span>
         </div>
       )}
 
       {phase === 'timeout' && (
         <Card fillClassName="bg-paper2" shadow="sm">
-          <p className="font-body font-bold text-[14px] text-inkSoft">
-            This is taking longer than usual. If the money left your account, your booking will confirm shortly —
-            check My Bookings. If nothing was charged, it’s safe to try again — please don’t pay twice for the same
-            booking.
-          </p>
+          <p className="font-body font-bold text-[14px] text-inkSoft"><UiText id="web-checkout.f7ebba85466f415d" source="This is taking longer than usual. If the money left your account, your booking will confirm shortly — check My Bookings. If nothing was charged, it’s safe to try again — please don’t pay twice for the same booking." />{" "}</p>
           <div className="mt-3">
-            <Button variant="blue" label="Try again" onClick={backToPick} />
+            <Button variant="blue" label={uiT("web-checkout.d8b8392e2c542950","Try again")} onClick={backToPick} />
           </div>
         </Card>
       )}
@@ -544,7 +540,7 @@ export function GatewayPicker({
         fullWidth
         loading={busy}
         disabled={!selected || disabled || methods.length === 0}
-        label={displayTotal != null ? `Pay ${inr(displayTotal)}` : 'Pay'}
+        label={displayTotal != null ? `Pay ${inr(displayTotal)}` : uiT("web-checkout.723afa394daeea97","Pay")}
         onClick={() => void pay()}
       />
     </div>

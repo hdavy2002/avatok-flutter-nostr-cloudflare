@@ -37,7 +37,7 @@ fi
 
 DIR="$1"; shift
 
-if [[ ! -f "$REPO_ROOT/$DIR/wrangler.toml" ]]; then
+if [[ "$DIR" != "catalogs" && ! -f "$REPO_ROOT/$DIR/wrangler.toml" ]]; then
   echo "cf.sh: no wrangler.toml in '$DIR'" >&2
   exit 66
 fi
@@ -92,6 +92,18 @@ if [[ "$TARGET" == "prod" && "${ALLOW_PROD:-}" != "1" ]]; then
 
 EOF
   exit 77
+fi
+
+# Public UI catalog publication shares the same environment and production gate.
+if [[ "$DIR" == "catalogs" ]]; then
+  if [[ "$#" -ne 1 || "$1" != "publish" ]]; then
+    echo "usage: scripts/cf.sh catalogs publish" >&2
+    exit 64
+  fi
+  cd "$REPO_ROOT"
+  export AVATOK_TARGET="$TARGET"
+  export AVATOK_CF_WRAPPER=1
+  exec python3 scripts/i18n/publish_catalogs.py
 fi
 
 # --- run ------------------------------------------------------------------

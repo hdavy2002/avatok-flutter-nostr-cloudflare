@@ -1,3 +1,6 @@
+
+import '../../../core/localization/ui_text.dart';
+
 // [PA-UI-2] "Phone calls" — Ava as your PA on your SIM (cell / PSTN) number.
 //
 // One of the two lane screens of the approved receptionist redesign. The hub
@@ -220,8 +223,8 @@ class _PaPhoneScreenState extends State<PaPhoneScreen> {
     AvaLog.I.log('receptionist', 'pa_phone toggle $field save FAILED (want=$value)');
     Analytics.capture('pa_phone_toggle_failed', {'toggle': field, 'value': value});
     _toast(res.blocked
-        ? 'That needs a premium plan.'
-        : 'Couldn’t save — check your connection and try again.');
+        ? uiCopy(UiMessage.m_that_needs_a_premium_plan_4a67a0bfe9)
+        : uiCopy(UiMessage.m_couldn_t_save_check_your_da12340aa9));
   }
 
   void _toast(String m) {
@@ -274,9 +277,10 @@ class _PaPhoneScreenState extends State<PaPhoneScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
-      appBar: _paHeader(title: 'Phone calls', tag: 'Ava PA'),
+      appBar: _paHeader(title: uiCopy(UiMessage.m_phone_calls_0a69128459), tag: 'Ava PA'),
       body: _loading
           ? const Center(
               child: SizedBox(
@@ -290,14 +294,14 @@ class _PaPhoneScreenState extends State<PaPhoneScreen> {
                   _loadFailedCard(),
                 ],
                 const SizedBox(height: 16),
-                Text('WHEN SHOULD AVA ANSWER?', style: ADText.sectionLabel()),
+                UiText(UiMessage.m_when_should_ava_answer_5ac80bdb4f, style: ADText.sectionLabel()),
                 const SizedBox(height: Msg.s2),
                 AdCard(
                   padding: const EdgeInsets.symmetric(
                       horizontal: Msg.s4, vertical: Msg.s2),
                   child: Column(children: [
                     _toggleRow(
-                      title: 'I decline a call',
+                      title: uiCopy(UiMessage.m_i_decline_a_call_47c497f499),
                       sub: 'You tap decline in your dialer',
                       field: 'recept_pstn_rejected',
                       value: _rejected,
@@ -305,7 +309,7 @@ class _PaPhoneScreenState extends State<PaPhoneScreen> {
                     ),
                     const Divider(height: 1, color: AD.borderHairline),
                     _toggleRow(
-                      title: 'I miss a call',
+                      title: uiCopy(UiMessage.m_i_miss_a_call_c6ed31770c),
                       sub: 'It rings out before you answer',
                       field: 'recept_pstn_not_picked_up',
                       value: _notPickedUp,
@@ -313,7 +317,7 @@ class _PaPhoneScreenState extends State<PaPhoneScreen> {
                     ),
                     const Divider(height: 1, color: AD.borderHairline),
                     _toggleRow(
-                      title: 'My phone is off',
+                      title: uiCopy(UiMessage.m_my_phone_is_off_988612addc),
                       sub: 'No signal or switched off',
                       field: 'recept_pstn_unreachable',
                       value: _unreachable,
@@ -326,13 +330,13 @@ class _PaPhoneScreenState extends State<PaPhoneScreen> {
                   _carrierBanner(),
                 ],
                 const SizedBox(height: 16),
-                Text('ADVANCED', style: ADText.sectionLabel()),
+                UiText(UiMessage.m_advanced_573e3dce59, style: ADText.sectionLabel()),
                 const SizedBox(height: Msg.s2),
                 AdCard(
                   padding: const EdgeInsets.symmetric(
                       horizontal: Msg.s4, vertical: Msg.s2),
                   child: _toggleRow(
-                    title: 'Send every call to Ava',
+                    title: uiCopy(UiMessage.m_send_every_call_to_ava_59c4de9a44),
                     sub: 'She always answers first',
                     field: 'recept_pstn_redirect_all',
                     value: _redirectAll,
@@ -353,9 +357,8 @@ class _PaPhoneScreenState extends State<PaPhoneScreen> {
               size: 36),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              'Decline or miss a call and Ava answers it, takes the message, '
-              'and sends it to your inbox with a recording.',
+            child: UiText(
+              UiMessage.m_decline_or_miss_a_call_ee45c66ab0,
               style: ADText.preview(),
             ),
           ),
@@ -370,18 +373,17 @@ class _PaPhoneScreenState extends State<PaPhoneScreen> {
                 size: 18, color: AD.primaryBadge),
             const SizedBox(width: 8),
             Expanded(
-                child: Text('Couldn’t load your settings',
+                child: UiText(UiMessage.m_couldn_t_load_your_settings_a099ff88e5,
                     style: ADText.rowName())),
           ]),
           const SizedBox(height: Msg.s1),
-          Text(
-            'These switches are showing defaults and can’t be changed until '
-            'AvaTOK reaches the server.',
+          UiText(
+            UiMessage.m_these_switches_are_showing_defaults_65711872b8,
             style: ADText.preview(),
           ),
           const SizedBox(height: 12),
           AdButton(
-            label: 'Try again',
+            label: uiCopy(UiMessage.m_try_again_d8b8392e2c),
             variant: AdButtonVariant.ghost,
             fullWidth: true,
             fontSize: 14,
@@ -407,20 +409,18 @@ class _PaPhoneScreenState extends State<PaPhoneScreen> {
               size: 18, color: AD.primaryBadge),
           const SizedBox(width: 8),
           Expanded(
-            child: Text('Carrier setup needed for $joined',
+            child: UiText(UiMessage.m_carrier_setup_needed_for_joined_2ebe963f00, params: {'joined': (joined).toString()},
                 style: ADText.rowName(c: AD.primaryBadge)),
           ),
         ]),
         const SizedBox(height: Msg.s1),
-        Text(
-          'Your phone company still has to hand those calls to Ava. It takes '
-          'one short code per condition and only turns green once your carrier '
-          'confirms it.',
+        UiText(
+          UiMessage.m_your_phone_company_still_has_7f37760e71,
           style: ADText.preview(),
         ),
         const SizedBox(height: 12),
         AdButton(
-          label: 'Fix it',
+          label: uiCopy(UiMessage.m_fix_it_8c6c8d92df),
           fullWidth: true,
           fontSize: 14,
           onPressed: _openFixIt,
@@ -445,7 +445,7 @@ class _PaPhoneScreenState extends State<PaPhoneScreen> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(title, style: ADText.rowName()),
             const SizedBox(height: 2),
-            Text(saving ? 'Saving…' : sub, style: ADText.preview()),
+            Text(saving ? uiCopy(UiMessage.m_saving_23e39291d6) : sub, style: ADText.preview()),
           ]),
         ),
         const SizedBox(width: 8),
@@ -472,6 +472,7 @@ class _PaToggle extends StatelessWidget {
   const _PaToggle({required this.value, this.onChanged});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final reduce = MediaQuery.of(context).disableAnimations;
     return GestureDetector(
       onTap: onChanged == null ? null : () => onChanged!(!value),

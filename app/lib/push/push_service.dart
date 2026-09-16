@@ -1,3 +1,7 @@
+import '../core/localization/ui_locale_controller.dart';
+
+import '../core/localization/ui_text.dart';
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -283,6 +287,28 @@ const String _kBrandedIncomingPayloadKind = 'bizcall';
 // two helpers below fix both: idempotently initialize `_local` in whichever
 // isolate is about to show a banner, and durably record bg events/errors to a
 // device-level queue the main isolate ships to PostHog on next foreground.
+
+// Only display metadata is localized. Channel IDs and the OS/user-controlled
+// importance, sound and vibration settings retain their original policy.
+AndroidNotificationChannel _localizedNotificationChannel(AndroidNotificationChannel channel) =>
+    AndroidNotificationChannel(channel.id, authoredUiCopy(channel.name),
+      description: authoredUiCopy(channel.description ?? ''),
+      importance: channel.importance, playSound: channel.playSound,
+      enableVibration: channel.enableVibration);
+
+bool _channelLocaleListenerInstalled = false;
+Future<void> _refreshChannelLocale() async {
+  if (!_localReady) return;
+  final android = _local.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+  for (final channel in const [
+    _msgChannel, _callsChannel, _incomingCallChannel, _updatesChannel,
+    _commercialChannel, _msgMutedChannel,
+  ]) {
+    try { await android?.createNotificationChannel(_localizedNotificationChannel(channel)); }
+    catch (_) { /* Display metadata must never interrupt notification delivery. */ }
+  }
+}
+
 bool _localReady = false;
 Future<void> _ensureLocalInit() async {
   if (_localReady) return;
@@ -300,16 +326,22 @@ Future<void> _ensureLocalInit() async {
     );
     final android = _local.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
-    await android?.createNotificationChannel(_msgChannel);
-    await android?.createNotificationChannel(_callsChannel);
+    await android?.createNotificationChannel(_localizedNotificationChannel(_msgChannel));
+    await android?.createNotificationChannel(_localizedNotificationChannel(_callsChannel));
     await android
-        ?.createNotificationChannel(_incomingCallChannel); // [AVACALL-INUI-2]
+        ?.createNotificationChannel(_localizedNotificationChannel(_incomingCallChannel)); // [AVACALL-INUI-2]
     await android
-        ?.createNotificationChannel(_updatesChannel); // [AVA-UPDATE-PUSH-1]
-    await android?.createNotificationChannel(_commercialChannel);
+        ?.createNotificationChannel(_localizedNotificationChannel(_updatesChannel)); // [AVA-UPDATE-PUSH-1]
+    await android?.createNotificationChannel(_localizedNotificationChannel(_commercialChannel));
     await android
-        ?.createNotificationChannel(_msgMutedChannel); // [NOTIF-ACTIONS-1]
+        ?.createNotificationChannel(_localizedNotificationChannel(_msgMutedChannel)); // [NOTIF-ACTIONS-1]
     _localReady = true;
+    if (!_channelLocaleListenerInstalled) {
+      _channelLocaleListenerInstalled = true;
+      UiLocaleController.instance.addListener(() {
+        if (!UiLocaleController.instance.loading) unawaited(_refreshChannelLocale());
+      });
+    }
   } catch (_) {/* leave false so the next push retries init */}
 }
 
@@ -548,8 +580,8 @@ Future<void> _showCommercialNotif(Map<String, dynamic> data) async {
     NotificationDetails(
       android: AndroidNotificationDetails(
         _commercialChannel.id,
-        _commercialChannel.name,
-        channelDescription: _commercialChannel.description,
+        authoredUiCopy(_commercialChannel.name),
+        channelDescription: authoredUiCopy(_commercialChannel.description ?? ''),
         icon: _kNotifIcon,
         color: _kNotifAccent,
         importance: Importance.defaultImportance,
@@ -615,8 +647,8 @@ Future<void> _showCommercialReconnectNotif(Map<String, dynamic> data) async {
     NotificationDetails(
       android: AndroidNotificationDetails(
         _commercialChannel.id,
-        _commercialChannel.name,
-        channelDescription: _commercialChannel.description,
+        authoredUiCopy(_commercialChannel.name),
+        channelDescription: authoredUiCopy(_commercialChannel.description ?? ''),
         icon: _kNotifIcon,
         color: _kNotifAccent,
         importance: Importance.high,
@@ -651,7 +683,7 @@ Future<void> _openCommercialReconnect(String listingId) async {
   nav.push(MaterialPageRoute<void>(
     builder: (_) => LiveReadinessScreen(
       listingId: listingId,
-      title: 'Live event',
+      title: uiCopy(UiMessage.m_live_event_544b6ea60b),
     ),
   ));
 }
@@ -750,8 +782,8 @@ Future<void> _showCallRecordingNotif(Map<String, dynamic> d) async {
     body,
     NotificationDetails(
       android: AndroidNotificationDetails(
-        _msgChannel.id, _msgChannel.name,
-        channelDescription: _msgChannel.description,
+        _msgChannel.id, authoredUiCopy(_msgChannel.name),
+        channelDescription: authoredUiCopy(_msgChannel.description ?? ''),
         icon: _kNotifIcon, // [NOTIF-ICON-1]
         color: _kNotifAccent,
         importance: Importance.defaultImportance,
@@ -781,8 +813,8 @@ Future<void> _showGroupInviteNotif(Map<String, dynamic> d) async {
     '$who added you to $group',
     NotificationDetails(
       android: AndroidNotificationDetails(
-        _msgChannel.id, _msgChannel.name,
-        channelDescription: _msgChannel.description,
+        _msgChannel.id, authoredUiCopy(_msgChannel.name),
+        channelDescription: authoredUiCopy(_msgChannel.description ?? ''),
         icon: _kNotifIcon, // [NOTIF-ICON-1]
         color: _kNotifAccent,
         importance: Importance.high, priority: Priority.high,
@@ -809,8 +841,8 @@ Future<void> _showUpdateNotif(Map<String, dynamic> d) async {
     'A new version of AvaTOK is ready. Tap to update.',
     NotificationDetails(
       android: AndroidNotificationDetails(
-        _updatesChannel.id, _updatesChannel.name,
-        channelDescription: _updatesChannel.description,
+        _updatesChannel.id, authoredUiCopy(_updatesChannel.name),
+        channelDescription: authoredUiCopy(_updatesChannel.description ?? ''),
         icon: _kNotifIcon, // [NOTIF-ICON-1]
         importance: Importance.defaultImportance,
         priority: Priority.defaultPriority,
@@ -1828,8 +1860,8 @@ Future<void> _updateMissedCallsSummary(String line) async {
       n > 1 ? list.first : '',
       NotificationDetails(
         android: AndroidNotificationDetails(
-          _callsChannel.id, _callsChannel.name,
-          channelDescription: _callsChannel.description,
+          _callsChannel.id, authoredUiCopy(_callsChannel.name),
+          channelDescription: authoredUiCopy(_callsChannel.description ?? ''),
           icon: _kNotifIcon, // [NOTIF-ICON-1]
           importance: Importance.high, priority: Priority.high,
           groupKey: _kMissedCallsGroupKey,
@@ -2152,8 +2184,8 @@ Future<void> _renderShadeSummary(Map<String, dynamic> byConv) async {
       headline,
       NotificationDetails(
         android: AndroidNotificationDetails(
-          _msgChannel.id, _msgChannel.name,
-          channelDescription: _msgChannel.description,
+          _msgChannel.id, authoredUiCopy(_msgChannel.name),
+          channelDescription: authoredUiCopy(_msgChannel.description ?? ''),
           icon: _kNotifIcon, // [NOTIF-ICON-1]
           color: _kNotifAccent,
           importance: Importance.high, priority: Priority.high,
@@ -2298,9 +2330,9 @@ List<AndroidNotificationAction> _msgActions() => <AndroidNotificationAction>[
         // Keep the card up while the send is in flight; the handler redraws it
         // with the sent message appended, or restores it on failure.
         cancelNotification: false,
-        inputs: const <AndroidNotificationActionInput>[
+        inputs:  <AndroidNotificationActionInput>[
           AndroidNotificationActionInput(
-            label: 'Reply',
+            label: uiCopy(UiMessage.m_reply_c253f451bd),
             // Our OWN chips, in addition to Smart Reply. Smart Reply is
             // Android-version and OEM dependent — it is absent on plenty of the
             // handsets AvaTOK's testers actually use — so these guarantee the
@@ -2872,8 +2904,8 @@ Future<void> _showMessageNotif(Map<String, dynamic> d) async {
     body,
     NotificationDetails(
       android: AndroidNotificationDetails(
-        _msgChannel.id, _msgChannel.name,
-        channelDescription: _msgChannel.description,
+        _msgChannel.id, authoredUiCopy(_msgChannel.name),
+        channelDescription: authoredUiCopy(_msgChannel.description ?? ''),
         icon: _kNotifIcon, // [NOTIF-ICON-1]
         color: _kNotifAccent,
         importance: Importance.high, priority: Priority.high,
@@ -3013,8 +3045,8 @@ Future<void> _showMissedCallNotif(Map<String, dynamic> d) async {
       fromPhone.isNotEmpty ? fromPhone : (fromUid.isNotEmpty ? fromUid : who);
   final notifId = _missedCallNotifId(callerKey);
   final androidDetails = AndroidNotificationDetails(
-    _callsChannel.id, _callsChannel.name,
-    channelDescription: _callsChannel.description,
+    _callsChannel.id, authoredUiCopy(_callsChannel.name),
+    channelDescription: authoredUiCopy(_callsChannel.description ?? ''),
     icon: _kNotifIcon, // [NOTIF-ICON-1]
     importance: Importance.high, priority: Priority.high,
     number: count,
@@ -3076,8 +3108,8 @@ Future<void> _showNowFreeNotif(Map<String, dynamic> d) async {
   }
   await _ensureLocalInit();
   final androidDetails = AndroidNotificationDetails(
-    _callsChannel.id, _callsChannel.name,
-    channelDescription: _callsChannel.description,
+    _callsChannel.id, authoredUiCopy(_callsChannel.name),
+    channelDescription: authoredUiCopy(_callsChannel.description ?? ''),
     icon: _kNotifIcon, // [NOTIF-ICON-1]
     importance: Importance.high, priority: Priority.high,
     number: count,
@@ -5157,14 +5189,14 @@ class PushService {
     };
     final androidLocal = _local.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
-    await androidLocal?.createNotificationChannel(_msgChannel);
-    await androidLocal?.createNotificationChannel(_callsChannel);
+    await androidLocal?.createNotificationChannel(_localizedNotificationChannel(_msgChannel));
+    await androidLocal?.createNotificationChannel(_localizedNotificationChannel(_callsChannel));
     await androidLocal
-        ?.createNotificationChannel(_incomingCallChannel); // [AVACALL-INUI-2]
+        ?.createNotificationChannel(_localizedNotificationChannel(_incomingCallChannel)); // [AVACALL-INUI-2]
     // [NOTIF-ACTIONS-1] The quiet channel muted conversations post to. Created in
     // BOTH isolates because whichever one draws a banner first must find it —
     // posting to a channel that does not exist yet is silently dropped by Android.
-    await androidLocal?.createNotificationChannel(_msgMutedChannel);
+    await androidLocal?.createNotificationChannel(_localizedNotificationChannel(_msgMutedChannel));
     _localReady =
         true; // main isolate is now initialized → _ensureLocalInit no-ops
     // Ship any telemetry the BACKGROUND isolate parked (incl. bg crashes) now that
@@ -6883,8 +6915,8 @@ class PushService {
         final refuseCtx = navigatorKey.currentState?.context;
         if (refuseCtx != null) {
           ScaffoldMessenger.maybeOf(refuseCtx)?.showSnackBar(const SnackBar(
-              content: Text(
-                  'That call came from an older version of AvaTOK — ask them to update the app')));
+              content: UiText(
+                  UiMessage.m_that_call_came_from_an_fc550085b1)));
         }
         return;
       }
@@ -7079,7 +7111,7 @@ class PushService {
       nav.push(MaterialPageRoute(
         builder: (_) => CallScreen(
           room: ((e['callId'] ?? e['call_id']) ?? '').toString(),
-          title: (e['fromName'] ?? 'Caller').toString(),
+          title: (e['fromName'] ?? uiCopy(UiMessage.m_caller_9bc9b83c11)).toString(),
           seed: (e['from'] ?? 'caller').toString(),
           video: e['kind'] == 'video',
           outgoing: false,
@@ -7190,7 +7222,7 @@ class PushService {
     nav.push(MaterialPageRoute(
       builder: (_) => CloudflareConferenceScreen(
         gid: gid,
-        title: title.isEmpty ? 'Group call' : title,
+        title: title.isEmpty ? uiCopy(UiMessage.m_group_call_39aa01ba79) : title,
         video: e['kind'] == 'video',
         // Whoever accepts a ring is joining a call that already exists — never
         // the starter. Getting this wrong would post a second "call started"

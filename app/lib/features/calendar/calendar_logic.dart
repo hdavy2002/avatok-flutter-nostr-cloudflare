@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 // Pure decision logic for the creator calendar (audit findings 2–12 and the
 // phone findings A1–A8, 15 September 2026).
 //
@@ -120,9 +123,9 @@ const List<String> _weekdayShort = [
   'Sun',
 ];
 
-String weekdayShort(DateTime day) => _weekdayShort[(day.weekday - 1) % 7];
+String weekdayShort(DateTime day) => authoredUiCopy(_weekdayShort[(day.weekday - 1) % 7]);
 
-String monthShort(DateTime day) => _monthShort[(day.month - 1) % 12];
+String monthShort(DateTime day) => authoredUiCopy(_monthShort[(day.month - 1) % 12]);
 
 /// Header caption for the active view: one month, one week or one day.
 String calendarRangeLabel({
@@ -268,7 +271,7 @@ List<AvailabilityException> mergeExceptions(
 }
 
 String? validateExceptionCount(int count) => count > kMaxExceptions
-    ? 'A schedule can hold at most $kMaxExceptions exceptions. Remove some before adding more.'
+    ? uiCopy(UiMessage.m_a_schedule_can_hold_at_3579b5501d, {'kMaxExceptions': (kMaxExceptions).toString()})
     : null;
 
 /// The server's duplicate key for one date interval ("Duplicate date interval").
@@ -312,10 +315,9 @@ String? pickedRangeError(int startMin, int endMin) {
     return null;
   }
   if (endMin == AvailabilityException.allDayStartMin && startMin > 0) {
-    return 'Midnight is the START of a day. Turn on "Ends at midnight" to run '
-        'until the end of the day, or pick an earlier end time.';
+    return uiCopy(UiMessage.m_midnight_is_the_start_of_661f65a277);
   }
-  return 'The end time must be after the start time.';
+  return uiCopy(UiMessage.m_the_end_time_must_be_bd501195de);
 }
 
 // ── Scope-safe day edits (review item 1) ───────────────────────────────────
@@ -731,8 +733,8 @@ int _clampMinute(int value) {
 // ── Policy numbers (finding 10, A3) ────────────────────────────────────────
 String? validateIntInRange(int? value,
     {required int min, required int max}) {
-  if (value == null) return 'Enter a number between $min and $max.';
-  if (value < min || value > max) return 'Enter a number between $min and $max.';
+  if (value == null) return uiCopy(UiMessage.m_enter_a_number_between_min_eefaf91aff, {'min': (min).toString(), 'max': (max).toString()});
+  if (value < min || value > max) return uiCopy(UiMessage.m_enter_a_number_between_min_eefaf91aff, {'min': (min).toString(), 'max': (max).toString()});
   return null;
 }
 
@@ -760,35 +762,35 @@ String? validateNoticeMinutes(int? value) =>
 /// or a guessed offset (finding 8: one explicit schedule timezone everywhere).
 String? validateTimezone(String raw) {
   final value = raw.trim();
-  if (value.isEmpty) return 'Enter a timezone such as Asia/Kolkata.';
+  if (value.isEmpty) return uiCopy(UiMessage.m_enter_a_timezone_such_as_c83e063fba);
   try {
     AvailabilityTime.location(value);
     return null;
   } catch (_) {
-    return 'That timezone is not recognised. Use an IANA name such as Asia/Kolkata.';
+    return uiCopy(UiMessage.m_that_timezone_is_not_recognised_f293bb6a4a);
   }
 }
 
 /// Never render an unset/legacy 0 as a promise of "no limit".
 String maxPerDayLabel(int maxPerDay) =>
-    maxPerDay >= 1 && maxPerDay <= 100 ? '$maxPerDay per day' : 'Not set';
+    maxPerDay >= 1 && maxPerDay <= 100 ? uiCopy(UiMessage.m_maxperday_per_day_977df3cbb6, {'maxPerDay': (maxPerDay).toString()}) : uiCopy(UiMessage.m_not_set_4895f73177);
 
 // ── Availability display (finding 4, A7) ───────────────────────────────────
 /// Unknown availability must never be rendered as zero bookable slots.
 String availabilityCountLabel(int? availableCount) =>
-    availableCount == null ? '—' : '$availableCount open';
+    availableCount == null ? '—' : uiCopy(UiMessage.m_availablecount_open_d1848e67b1, {'availableCount': (availableCount).toString()});
 
 String weekAvailabilityLabel({
   required int? availableCount,
   required bool listingSelected,
 }) {
-  if (!listingSelected) return 'Select a listing';
+  if (!listingSelected) return uiCopy(UiMessage.m_select_a_listing_0d4de94eec);
   return availabilityCountLabel(availableCount);
 }
 
 String availabilityHint({required bool listingSelected}) => listingSelected
-    ? 'Counts come from the selected listing’s bookable slots.'
-    : 'Select a listing to see bookable slots. Availability is unknown, not zero.';
+    ? uiCopy(UiMessage.m_counts_come_from_the_selected_c6a67c362f)
+    : uiCopy(UiMessage.m_select_a_listing_to_see_d1fd3c75ed);
 
 // ── One card per booking (finding 7, A1) ───────────────────────────────────
 /// Blocks that carry the same canonical booking id are one commitment shown
@@ -932,7 +934,7 @@ BookingRoute bookingRouteForBlock(
       management: BookingManagement.customerSessions,
       bookingId: hasBookingId ? bookingId : null,
       listingId: listingId,
-      actionLabel: hasBookingId ? 'Manage booking' : 'Open my bookings',
+      actionLabel: hasBookingId ? uiCopy(UiMessage.m_manage_booking_4e4fd7fbd1) : uiCopy(UiMessage.m_open_my_bookings_3ac6e77b99),
     );
   }
   if (role == 'creator') {
@@ -941,7 +943,7 @@ BookingRoute bookingRouteForBlock(
           isEvent ? BookingManagement.creatorEvents : BookingManagement.creatorAppointments,
       bookingId: hasBookingId ? bookingId : null,
       listingId: listingId,
-      actionLabel: isEvent ? 'Open live event' : 'Manage appointment',
+      actionLabel: isEvent ? uiCopy(UiMessage.m_open_live_event_ce8af99999) : uiCopy(UiMessage.m_manage_appointment_59a80fa3ac),
       isEvent: isEvent,
     );
   }
@@ -958,7 +960,7 @@ BookingRoute bookingRouteForBlock(
           isEvent ? BookingManagement.creatorEvents : BookingManagement.creatorAppointments,
       bookingId: hasBookingId ? bookingId : null,
       listingId: listingId,
-      actionLabel: isEvent ? 'Open live event' : 'Manage appointment',
+      actionLabel: isEvent ? uiCopy(UiMessage.m_open_live_event_ce8af99999) : uiCopy(UiMessage.m_manage_appointment_59a80fa3ac),
       isEvent: isEvent,
     );
   }
@@ -979,20 +981,20 @@ String blockStatusLabel(CalBlock block) {
   switch (status) {
     case 'confirmed':
     case 'scheduled':
-      return 'Confirmed';
+      return uiCopy(UiMessage.m_confirmed_fe00b67b6d);
     case 'reserved':
-      return 'Reserved';
+      return uiCopy(UiMessage.m_reserved_3385ffe674);
     case 'held':
-      return 'Held — not confirmed yet';
+      return uiCopy(UiMessage.m_held_not_confirmed_yet_0b52ae1c65);
     case 'pending':
-      return 'Awaiting confirmation';
+      return uiCopy(UiMessage.m_awaiting_confirmation_d0ae0b38ea);
     case 'cancelled':
     case 'canceled':
-      return 'Cancelled';
+      return uiCopy(UiMessage.m_cancelled_d353a99eb4);
     case '':
       return block.bookingId == null || block.bookingId!.isEmpty
-          ? 'Busy time'
-          : 'Status unavailable';
+          ? uiCopy(UiMessage.m_busy_time_32cb76d3cc)
+          : uiCopy(UiMessage.m_status_unavailable_7eb5af92e4);
     default:
       return status[0].toUpperCase() + status.substring(1);
   }
@@ -1025,20 +1027,20 @@ String editingScopeLabel({
   required List<ListingCard> listings,
 }) {
   if (selectedListingId == null || selectedListingId.isEmpty) {
-    return 'Editing: all listings';
+    return uiCopy(UiMessage.m_editing_all_listings_22708c6356);
   }
   for (final listing in listings) {
-    if (listing.id == selectedListingId) return 'Editing: ${listing.title}';
+    if (listing.id == selectedListingId) return uiCopy(UiMessage.m_editing_value1_84f89b8fce, {'value1': (listing.title).toString()});
   }
-  return 'Editing: this listing';
+  return uiCopy(UiMessage.m_editing_this_listing_8aaf788532);
 }
 
 /// Personal busy time is creator-wide by default; a listing filter changes what
 /// is DISPLAYED, not what a new block applies to unless the creator asks.
 String blockScopeLabel({required bool listingScoped, String? listingTitle}) =>
     listingScoped
-        ? 'Only this listing${listingTitle == null ? '' : ' ($listingTitle)'}'
-        : 'All listings (personal busy time)';
+        ? uiCopy(UiMessage.m_only_this_listing_value1_d605e51ae7, {'value1': (listingTitle == null ? '' : ' ($listingTitle)').toString()})
+        : uiCopy(UiMessage.m_all_listings_personal_busy_time_a4f8aabd1f);
 
 // ── Effective notice + horizon honesty (finding 10, review item 6) ─────────
 /// The server's fallback when a listing does not set a commercial notice:
@@ -1107,33 +1109,26 @@ NoticePolicySummary noticePolicySummary({
 }
 
 String noticeMinutesLabel(int minutes) {
-  if (minutes <= 0) return 'no minimum';
+  if (minutes <= 0) return uiCopy(UiMessage.m_no_minimum_2f9116d2eb);
   if (minutes % 1440 == 0) {
     final days = minutes ~/ 1440;
-    return days == 1 ? '1 day' : '$days days';
+    return days == 1 ? uiCopy(UiMessage.m_1_day_fa665d95d2) : uiCopy(UiMessage.m_days_days_a2246fbc25, {'days': (days).toString()});
   }
-  if (minutes % 60 == 0) return '${minutes ~/ 60} h';
-  return '$minutes min';
+  if (minutes % 60 == 0) return uiCopy(UiMessage.m_value1_h_b30c713499, {'value1': (minutes ~/ 60).toString()});
+  return uiCopy(UiMessage.m_minutes_min_e1bded87ee, {'minutes': (minutes).toString()});
 }
 
 String noticePolicyLine(NoticePolicySummary summary) {
   if (summary.listingTitle == null) {
-    return 'Effective minimum notice: ${noticeMinutesLabel(summary.effectiveMinNoticeMin)} '
-        'from your calendar. A listing can require longer notice; the larger value applies.';
+    return uiCopy(UiMessage.m_effective_minimum_notice_value1_from_8255b42ee7, {'value1': (noticeMinutesLabel(summary.effectiveMinNoticeMin)).toString()});
   }
   if (summary.fromServerEffective) {
-    return 'Effective minimum notice for ${summary.listingTitle}: '
-        '${noticeMinutesLabel(summary.effectiveMinNoticeMin)} (confirmed by the server).';
+    return uiCopy(UiMessage.m_effective_minimum_notice_for_value1_69b27f4b28, {'value1': (summary.listingTitle).toString(), 'value2': (noticeMinutesLabel(summary.effectiveMinNoticeMin)).toString()});
   }
   if (summary.listingCommercialNoticeMin == null) {
-    return 'Effective minimum notice for ${summary.listingTitle}: at least '
-        '${noticeMinutesLabel(summary.effectiveMinNoticeMin)} from your calendar. This '
-        'listing\u2019s commercial notice could not be read, so the real value may be longer.';
+    return uiCopy(UiMessage.m_effective_minimum_notice_for_value1_8c641c3a77, {'value1': (summary.listingTitle).toString(), 'value2': (noticeMinutesLabel(summary.effectiveMinNoticeMin)).toString()});
   }
-  return 'Effective minimum notice for ${summary.listingTitle}: '
-      '${noticeMinutesLabel(summary.effectiveMinNoticeMin)} — the larger of the calendar '
-      '(${noticeMinutesLabel(summary.calendarNoticeMin)}) and the listing\u2019s commercial notice '
-      '(${noticeMinutesLabel(summary.listingCommercialNoticeMin!)}, 24 h when unset).';
+  return uiCopy(UiMessage.m_effective_minimum_notice_for_value1_776482df77, {'value1': (summary.listingTitle).toString(), 'value2': (noticeMinutesLabel(summary.effectiveMinNoticeMin)).toString(), 'value3': (noticeMinutesLabel(summary.calendarNoticeMin)).toString(), 'value4': (noticeMinutesLabel(summary.listingCommercialNoticeMin!)).toString()});
 }
 
 /// The stored horizon the server will actually accept, or null when the cached
@@ -1146,9 +1141,7 @@ int? storedHorizonDays(AvailabilitySchedule schedule) =>
 /// Explains an omitted horizon instead of implying the value on screen was saved.
 String? horizonPersistenceNotice(AvailabilitySchedule schedule) {
   if (storedHorizonDays(schedule) != null) return null;
-  return 'Your stored booking horizon (${schedule.horizonDays} days) is outside the '
-      'supported 1–$kMaxHorizonDays-day range. AvaTOK will not save a horizon until you set '
-      'one, so listings fall back to the server default.';
+  return uiCopy(UiMessage.m_your_stored_booking_horizon_value1_b752db9cf4, {'value1': (schedule.horizonDays).toString(), 'kMaxHorizonDays': (kMaxHorizonDays).toString()});
 }
 
 // ── View orchestration (review item 7) ─────────────────────────────────────
@@ -1194,8 +1187,7 @@ List<CalendarNotice> calendarNotices({
 
 String partialFailureMessage(List<String> failedSources) {
   if (failedSources.isEmpty) return '';
-  return 'Some calendar data could not be refreshed (${failedSources.join(', ')}). '
-      'Time you cannot see here is NOT confirmed free — pull to refresh before relying on this day.';
+  return uiCopy(UiMessage.m_some_calendar_data_could_not_7a7696aba4, {'value1': (failedSources.join(', ')).toString()});
 }
 
 /// Foreground refresh gate. The first resume after opening always refreshes; a
@@ -1242,19 +1234,19 @@ GcalSyncOutcome gcalSyncOutcome({
   if (routeUnavailable) {
     return GcalSyncOutcome(
         message:
-            'This server does not offer manual sync yet. Busy times still import automatically — nothing was reported as synced.');
+            uiCopy(UiMessage.m_this_server_does_not_offer_cb2decc4c9));
   }
   if (!ok) {
     return GcalSyncOutcome(
       reloadStatus: true,
-      message: error ?? 'Google sync failed. Nothing was reported as synced.',
+      message: error ?? uiCopy(UiMessage.m_google_sync_failed_nothing_was_87c8131202),
     );
   }
   if (json['connected'] is bool) {
     final readiness = gcalReadinessFromStatus(json);
     return GcalSyncOutcome(
       readiness: readiness,
-      message: readiness.isReady ? 'Busy times synced.' : readiness.detail,
+      message: readiness.isReady ? uiCopy(UiMessage.m_busy_times_synced_26f8a750e3) : readiness.detail,
     );
   }
   return GcalSyncOutcome(
@@ -1348,15 +1340,15 @@ class GcalReadiness {
       .toList(growable: false);
 }
 
-GcalReadiness gcalChecking() => const GcalReadiness(
+GcalReadiness gcalChecking() =>  GcalReadiness(
       state: GcalState.checking,
-      label: 'Checking…',
+      label: uiCopy(UiMessage.m_checking_ec963ffc91),
       detail: 'Reading Google Calendar status.',
     );
 
 GcalReadiness gcalUnknown(String detail) => GcalReadiness(
       state: GcalState.unknown,
-      label: 'Status unavailable',
+      label: uiCopy(UiMessage.m_status_unavailable_7eb5af92e4),
       detail: detail,
     );
 
@@ -1388,7 +1380,7 @@ GcalReadiness gcalReadinessFromStatus(
   if (!connected) {
     return GcalReadiness(
       state: GcalState.notConnected,
-      label: 'Not connected',
+      label: uiCopy(UiMessage.m_not_connected_0303e18246),
       detail:
           'Customers cannot book until Google Calendar is connected and its busy times have synced.',
       calendars: calendars,
@@ -1399,7 +1391,7 @@ GcalReadiness gcalReadinessFromStatus(
   if (!status.containsKey('ready')) {
     return GcalReadiness(
       state: GcalState.unknown,
-      label: 'Status unavailable',
+      label: uiCopy(UiMessage.m_status_unavailable_7eb5af92e4),
       detail:
           'This build cannot verify Google sync readiness yet. New bookings stay paused until the server confirms a recent sync.',
       lastSuccessAt: lastSuccessAt,
@@ -1415,7 +1407,7 @@ GcalReadiness gcalReadinessFromStatus(
     if (lastError != null) {
       return GcalReadiness(
         state: GcalState.needsAttention,
-        label: 'Needs attention',
+        label: uiCopy(UiMessage.m_needs_attention_c1ebc78178),
         detail: lastError,
         lastSuccessAt: lastSuccessAt,
         calendars: calendars,
@@ -1432,7 +1424,7 @@ GcalReadiness gcalReadinessFromStatus(
           .join(', ');
       return GcalReadiness(
         state: GcalState.needsAttention,
-        label: 'Needs attention',
+        label: uiCopy(UiMessage.m_needs_attention_c1ebc78178),
         detail: 'Some selected calendars are not syncing: $names.',
         lastSuccessAt: lastSuccessAt,
         calendars: calendars,
@@ -1442,7 +1434,7 @@ GcalReadiness gcalReadinessFromStatus(
     if (lastSuccessAt == null) {
       return GcalReadiness(
         state: GcalState.unknown,
-        label: 'Status unavailable',
+        label: uiCopy(UiMessage.m_status_unavailable_7eb5af92e4),
         detail:
             'The server reports readiness without a successful sync time, so recency cannot be verified.',
         calendars: calendars,
@@ -1451,7 +1443,7 @@ GcalReadiness gcalReadinessFromStatus(
     }
     return GcalReadiness(
       state: GcalState.ready,
-      label: 'Ready',
+      label: uiCopy(UiMessage.m_ready_5fa7aac537),
       detail: 'Busy times from the selected Google calendars are imported.',
       lastSuccessAt: lastSuccessAt,
       calendars: calendars,
@@ -1463,7 +1455,7 @@ GcalReadiness gcalReadinessFromStatus(
     case 'disconnected':
       return GcalReadiness(
         state: GcalState.notConnected,
-        label: 'Not connected',
+        label: uiCopy(UiMessage.m_not_connected_0303e18246),
         detail:
             'Customers cannot book until Google Calendar is connected and its busy times have synced.',
         lastSuccessAt: lastSuccessAt,
@@ -1473,7 +1465,7 @@ GcalReadiness gcalReadinessFromStatus(
     case 'pending':
       return GcalReadiness(
         state: GcalState.syncing,
-        label: 'Syncing',
+        label: uiCopy(UiMessage.m_syncing_5c8b9e1ce0),
         detail:
             'Busy times have not synced yet. Sync now, or wait for the next automatic import.',
         lastSuccessAt: lastSuccessAt,
@@ -1483,7 +1475,7 @@ GcalReadiness gcalReadinessFromStatus(
     case 'stale':
       return GcalReadiness(
         state: GcalState.needsAttention,
-        label: 'Needs attention',
+        label: uiCopy(UiMessage.m_needs_attention_c1ebc78178),
         detail:
             'Busy times are out of date. Sync now so AvaTOK does not offer time that Google already holds.',
         lastSuccessAt: lastSuccessAt,
@@ -1493,7 +1485,7 @@ GcalReadiness gcalReadinessFromStatus(
     case 'no_selected_calendars':
       return GcalReadiness(
         state: GcalState.needsAttention,
-        label: 'Needs attention',
+        label: uiCopy(UiMessage.m_needs_attention_c1ebc78178),
         detail:
             'No Google calendar is selected, so its busy times cannot protect this schedule.',
         lastSuccessAt: lastSuccessAt,
@@ -1503,7 +1495,7 @@ GcalReadiness gcalReadinessFromStatus(
     case 'error':
       return GcalReadiness(
         state: GcalState.needsAttention,
-        label: 'Needs attention',
+        label: uiCopy(UiMessage.m_needs_attention_c1ebc78178),
         detail: lastError ??
             'Google sync reported an error. Reconnect or sync again to recover.',
         lastSuccessAt: lastSuccessAt,
@@ -1513,7 +1505,7 @@ GcalReadiness gcalReadinessFromStatus(
     default:
       return GcalReadiness(
         state: GcalState.needsAttention,
-        label: 'Needs attention',
+        label: uiCopy(UiMessage.m_needs_attention_c1ebc78178),
         detail: lastError ??
             'Google sync is not ready. New bookings stay paused until this is resolved.',
         lastSuccessAt: lastSuccessAt,
@@ -1555,8 +1547,8 @@ String blockTimeLabel({
   // NEXT day, so "same day" can never describe it. It must read as "All day"
   // rather than as an apparently empty 00:00–00:00.
   if (minutes >= 1440 && start.hour == 0 && start.minute == 0) {
-    if (minutes == 1440) return 'All day';
-    return 'All day · ${start.day} ${monthShort(start)} – ${end.day} ${monthShort(end)}';
+    if (minutes == 1440) return uiCopy(UiMessage.m_all_day_34233e542b);
+    return uiCopy(UiMessage.m_all_day_value1_value2_value3_8f5bc19c75, {'value1': (start.day).toString(), 'value2': (monthShort(start)).toString(), 'value3': (end.day).toString(), 'value4': (monthShort(end)).toString()});
   }
   return clockRangeInZone(startMs, endMs, timezone);
 }
@@ -1572,7 +1564,7 @@ String blockDateLabel({
 String minutesRangeLabel(int startMin, int endMin) {
   if (startMin <= AvailabilityException.allDayStartMin &&
       endMin >= AvailabilityException.allDayEndMin) {
-    return 'All day';
+    return uiCopy(UiMessage.m_all_day_34233e542b);
   }
   final start = '${(startMin ~/ 60).toString().padLeft(2, '0')}:${(startMin % 60).toString().padLeft(2, '0')}';
   final end = '${(endMin ~/ 60).toString().padLeft(2, '0')}:${(endMin % 60).toString().padLeft(2, '0')}';
@@ -1580,16 +1572,16 @@ String minutesRangeLabel(int startMin, int endMin) {
 }
 
 String timezoneLabel(String? timezone) =>
-    timezone == null || timezone.isEmpty ? 'Timezone unknown' : 'Times in $timezone';
+    timezone == null || timezone.isEmpty ? uiCopy(UiMessage.m_timezone_unknown_83e22beccb) : uiCopy(UiMessage.m_times_in_timezone_4ca9686ed7, {'timezone': (timezone).toString()});
 
 String deviceTimeLabel(int epochMs) {
   final local = DateTime.fromMillisecondsSinceEpoch(epochMs);
-  return 'Your device: ${hm(local)}';
+  return uiCopy(UiMessage.m_your_device_value1_70b8c2dd10, {'value1': (hm(local)).toString()});
 }
 
 String updatedAtLabel(DateTime? at) {
-  if (at == null) return 'Not updated yet';
-  return 'Updated ${hm(at)}';
+  if (at == null) return uiCopy(UiMessage.m_not_updated_yet_048a985e61);
+  return uiCopy(UiMessage.m_updated_value1_582239ce75, {'value1': (hm(at)).toString()});
 }
 
 /// Human label for an exception row in the day editor.
@@ -1598,15 +1590,15 @@ String exceptionLabel(
   String Function(String? listingId)? listingTitle,
 }) {
   final range = exception.isAllDay || exception.looksLikeMidnightToMidnight
-      ? 'All day'
+      ? uiCopy(UiMessage.m_all_day_34233e542b)
       : minutesRangeLabel(exception.startMin, exception.endMin);
   switch (exception.status) {
     case AvailabilityExceptionStatus.available:
-      return "I'm available · $range";
+      return uiCopy(UiMessage.m_i_m_available_range_0266ef98d2, {'range': (range).toString()});
     case AvailabilityExceptionStatus.unavailable:
-      return "I'm busy · $range";
+      return uiCopy(UiMessage.m_i_m_busy_range_0c79270ede, {'range': (range).toString()});
     case AvailabilityExceptionStatus.reserved:
       final title = listingTitle?.call(exception.listingId);
-      return 'Kept for ${title ?? 'a listing'} · $range';
+      return uiCopy(UiMessage.m_kept_for_value1_range_82bf1c43b9, {'value1': (title ?? uiCopy(UiMessage.m_a_listing_f53dbd41ba)).toString(), 'range': (range).toString()});
   }
 }

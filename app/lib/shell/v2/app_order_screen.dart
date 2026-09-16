@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -49,6 +51,7 @@ class AppOrderScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final scope = ShellScope.of(context);
     final order = scope.rootOrder;
 
@@ -68,12 +71,12 @@ class AppOrderScreen extends StatelessWidget {
         elevation: 0,
         shape: const Border(
             bottom: BorderSide(color: AD.borderHairline, width: 1)),
-        title: Text('App order', style: ADText.appTitle()),
+        title: UiText(UiMessage.m_app_order_fa7be25a9d, style: ADText.appTitle()),
         actions: [
           TextButton(
             onPressed: () => scope
                 .setRootOrder(List<RootId>.from(RootOrderPrefs.defaultOrder)),
-            child: Text('Reset', style: ADText.rowName(c: AD.iconSearch)),
+            child: UiText(UiMessage.m_reset_daee7606b3, style: ADText.rowName(c: AD.iconSearch)),
           ),
         ],
       ),
@@ -82,8 +85,8 @@ class AppOrderScreen extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: Align(
             alignment: Alignment.centerLeft,
-            child: Text(
-              'Drag to reorder your apps. The first app opens automatically when you launch AvaTalk.',
+            child: UiText(
+              UiMessage.m_drag_to_reorder_your_apps_a4a44f092d,
               style: ADText.preview(),
             ),
           ),
@@ -128,7 +131,7 @@ class AppOrderScreen extends StatelessWidget {
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(
                   root == RootId.services && !RemoteConfig.marketplaceVisible
-                      ? 'Services'
+                      ? uiCopy(UiMessage.m_services_604dce445e)
                       : m.$2,
                   style: ADText.rowName()),
               const SizedBox(height: 1),
@@ -144,7 +147,7 @@ class AppOrderScreen extends StatelessWidget {
                 borderRadius: Msg.brPill,
                 border: Border.all(color: AD.borderControl, width: 1),
               ),
-              child: Text('Opens at launch',
+              child: UiText(UiMessage.m_opens_at_launch_00f7f888f2,
                   style: ADText.statCaption(c: Colors.white)),
             ),
         ]),

@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 // Donate to the creator during a live stream.
 //   POST /api/live/:id/donate { amount }  (auth: session JWT — guest or full)
 // The Worker moves the Tokens instantly and broadcasts a banner over the room
@@ -26,6 +28,8 @@ interface DonateResult {
 const PRESETS = [10, 50, 100, 500];
 
 export function DonateButton({ listingId, auth, requireAuth }: DonateButtonProps) {
+  const {t:uiT}=useUiTranslation("web-live");
+
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState(50);
   const [busy, setBusy] = useState(false);
@@ -81,16 +85,15 @@ export function DonateButton({ listingId, auth, requireAuth }: DonateButtonProps
         }}
         className="inline-flex items-center gap-2 rounded-full border-zine border-ink bg-mint px-4 py-2.5 font-display font-semibold text-[15px] text-mintInk shadow-zine-sm transition-transform duration-zine active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
       >
-        <span className="text-[17px] leading-none">✨</span> Donate
-      </button>
+        <span className="text-[17px] leading-none">✨</span>{" "}<UiText id="web-live.c91ee0f2799df915" source="Donate" />{" "}</button>
 
-      <Sheet open={open} onClose={() => !busy && setOpen(false)} title="Send Tokens" dismissable={!busy}>
+      <Sheet open={open} onClose={() => !busy && setOpen(false)} title={uiT("web-live.be83a99dd6ae1c4d","Send Tokens")} dismissable={!busy}>
         {sent ? (
           <div className="flex flex-col items-center gap-2 py-8 text-center">
             <span className="text-[56px] leading-none" style={{ animation: 'zine-pop 0.5s ease-out' }}>✨</span>
-            <p className="font-display font-semibold text-[20px] text-ink">Sent {amount} Tokens!</p>
-            <p className="font-body font-bold text-[14px] text-inkSoft">Thanks for supporting the creator.</p>
-            <style>{'@keyframes zine-pop{0%{transform:scale(.3);opacity:0}60%{transform:scale(1.25)}100%{transform:scale(1);opacity:1}}'}</style>
+            <p className="font-display font-semibold text-[20px] text-ink"><UiText id="web-live.c16bc82bf1f04ede" source="Sent" />{" "}{amount}{" "}<UiText id="web-live.878257c3736780a4" source="Tokens!" /></p>
+            <p className="font-body font-bold text-[14px] text-inkSoft"><UiText id="web-live.15399a1b2c459b15" source="Thanks for supporting the creator." /></p>
+            <style>{uiT("web-live.d95830d666441879","@keyframes zine-pop{0%{transform:scale(.3);opacity:0}60%{transform:scale(1.25)}100%{transform:scale(1);opacity:1}}")}</style>
           </div>
         ) : (
           <div className="space-y-4">
@@ -111,7 +114,7 @@ export function DonateButton({ listingId, auth, requireAuth }: DonateButtonProps
             </div>
 
             <label className="block">
-              <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft">Custom amount</span>
+              <span className="font-mono font-bold uppercase text-[13px] tracking-[0.08em] text-inkSoft"><UiText id="web-live.5ff2b5b3d9517a8e" source="Custom amount" /></span>
               <input
                 type="number"
                 min={1}
@@ -132,9 +135,7 @@ export function DonateButton({ listingId, auth, requireAuth }: DonateButtonProps
               <a
                 href="/dashboard"
                 className="flex w-full items-center justify-center rounded-full border-zine border-ink bg-lime px-6 py-3.5 font-display font-semibold text-[18px] text-ink no-underline shadow-zine-sm transition-transform duration-zine active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
-              >
-                Top up your wallet
-              </a>
+              ><UiText id="web-live.fa9164cfde972f18" source="Top up your wallet" />{" "}</a>
             ) : (
               <button
                 type="button"
@@ -142,7 +143,7 @@ export function DonateButton({ listingId, auth, requireAuth }: DonateButtonProps
                 onClick={donate}
                 className="flex w-full items-center justify-center gap-2 rounded-full border-zine border-ink bg-lime px-6 py-3.5 font-display font-semibold text-[18px] text-ink shadow-zine-sm transition-transform duration-zine active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed disabled:border-inkMute disabled:bg-paper2 disabled:text-inkMute disabled:shadow-none"
               >
-                {busy ? 'Sending…' : `Send ${amount} Tokens`}
+                {busy ? uiT("web-live.b8ed5279e897be5d","Sending…") : uiT("web-live.f656eefdf06efb1d","Send {value0} Tokens",{value0:String(amount)})}
               </button>
             )}
           </div>

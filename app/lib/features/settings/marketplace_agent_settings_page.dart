@@ -17,6 +17,9 @@
 // AccountScope.id) so the screen paints instantly offline. The whole surface is
 // hidden when RemoteConfig.marketplaceAgentSettingsEnabled is false.
 library;
+import '../../core/localization/ui_text.dart';
+
+
 
 import 'dart:convert';
 
@@ -78,7 +81,7 @@ void registerMarketplaceAgentSection() {
   SettingsSectionRegistry.register(
     SettingsSection(
       id: 'marketplace_agent',
-      title: 'Marketplace Agent',
+      title: uiCopy(UiMessage.m_marketplace_agent_0e07c22415),
       order: 32, // near the other Ava/marketplace sections
       builder: (context) => const _MarketplaceAgentTile(),
     ),
@@ -90,6 +93,7 @@ class _MarketplaceAgentTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // Client-side hide when the kill switch is off.
     return ValueListenableBuilder<int>(
       valueListenable: RemoteConfig.revision,
@@ -115,11 +119,10 @@ class _MarketplaceAgentTile extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Marketplace Agent', style: ADText.rowName()),
+                  UiText(UiMessage.m_marketplace_agent_0e07c22415, style: ADText.rowName()),
                   const SizedBox(height: 2),
-                  Text(
-                    'Language, voice, tone and negotiation limits your buying/selling '
-                    'agent uses on your behalf.',
+                  UiText(
+                    UiMessage.m_language_voice_tone_and_negotiation_004ea8d03f,
                     style: ADText.preview(),
                   ),
                 ]),
@@ -277,7 +280,7 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
     if (!mounted) return;
     setState(() => _saving = false);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(saved != null ? 'Marketplace Agent saved' : 'Could not reach the server — saved on this device')),
+      SnackBar(content: Text(saved != null ? uiCopy(UiMessage.m_marketplace_agent_saved_32aac901b0) : uiCopy(UiMessage.m_could_not_reach_the_server_f46d932b65))),
     );
   }
 
@@ -290,13 +293,14 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: AppBar(
         backgroundColor: AD.headerFooter,
         elevation: 0,
         leading: AdBackButton(color: AD.onBand(AD.headerFooter)),
-        title: Text('Marketplace Agent', style: ADText.appTitle(c: AD.onBand(AD.headerFooter))),
+        title: UiText(UiMessage.m_marketplace_agent_0e07c22415, style: ADText.appTitle(c: AD.onBand(AD.headerFooter))),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -355,7 +359,7 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
                       ),
                       SizedBox(
                         width: 56,
-                        child: Text('Never below $_floorPct%', style: ADText.preview()),
+                        child: UiText(UiMessage.m_never_below_floorpct_619c50b117, params: {'floorPct': (_floorPct).toString()}, style: ADText.preview()),
                       ),
                     ]),
                   ),
@@ -384,8 +388,8 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
                 ]),
                 Padding(
                   padding: const EdgeInsets.only(top: Msg.s2),
-                  child: Text(
-                    'During quiet hours your agent defers new negotiations until they end.',
+                  child: UiText(
+                    UiMessage.m_during_quiet_hours_your_agent_24452b563f,
                     style: ADText.preview(),
                   ),
                 ),
@@ -402,7 +406,7 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
                 const SizedBox(height: Msg.s5),
 
                 AdButton(
-                  label: 'Save',
+                  label: uiCopy(UiMessage.m_save_1509f561f2),
                   fullWidth: true,
                   loading: _saving,
                   variant: AdButtonVariant.danger,

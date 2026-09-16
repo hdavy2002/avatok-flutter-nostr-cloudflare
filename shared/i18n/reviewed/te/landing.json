@@ -1,0 +1,342 @@
+{
+  "reviewed": false,
+  "provenance": "Imported existing landing dictionary; native-language review is required before setting reviewed=true (except reviewed Hinglish source).",
+  "messages": {
+    "skip": {
+      "source": "Skip to main content",
+      "text": "ప్రధాన విషయానికి వెళ్లండి"
+    },
+    "eyebrow": {
+      "source": "India creator ticket window",
+      "text": "భారతీయ క్రియేటర్ల టికెట్ విండో"
+    },
+    "heroTitle": {
+      "source": "Have a fanbase? Start your show.",
+      "text": "ఫ్యాన్‌బేస్ ఉందా? మీ షోను ప్రారంభించండి."
+    },
+    "heroBody": {
+      "source": "Your skill, your story, your time — invite fans and take bookings on your terms.",
+      "text": "మీ నైపుణ్యం, మీ కథ, మీ సమయం — అభిమానులను ఆహ్వానించి, మీ నియమాల ప్రకారం బుకింగ్‌లు పొందండి."
+    },
+    "heroPrimary": {
+      "source": "Start creating free",
+      "text": "ఉచితంగా సృష్టించడం ప్రారంభించండి"
+    },
+    "heroSecondary": {
+      "source": "See earning formats",
+      "text": "ఆదాయ రూపాలను చూడండి"
+    },
+    "heroTicket": {
+      "source": "Your page. Your price. Your people.",
+      "text": "మీ పేజీ. మీ ధర. మీ ప్రజలు."
+    },
+    "liveEyebrow": {
+      "source": "FORMAT 01 · LIVE",
+      "text": "FORMAT 01 · లైవ్"
+    },
+    "liveTitle": {
+      "source": "Turn your livestream into an event.",
+      "text": "మీ livestream‌ను ఈవెంట్‌గా మార్చండి."
+    },
+    "liveBody": {
+      "source": "A live class, watch party, rehearsal, puja — add a ticket, open the room, meet your fans.",
+      "text": "లైవ్ క్లాస్, watch party, రిహార్సల్ లేదా పూజ — టికెట్ జోడించి, రూమ్ తెరిచి, అభిమానులను కలవండి."
+    },
+    "liveCta": {
+      "source": "Plan a live event",
+      "text": "లైవ్ ఈవెంట్‌ను ప్లాన్ చేయండి"
+    },
+    "liveMeta": {
+      "source": "Ticketed · Hosted online",
+      "text": "టికెట్‌తో · ఆన్‌లైన్‌లో నిర్వహణ"
+    },
+    "oneEyebrow": {
+      "source": "FORMAT 02 · 1:1",
+      "text": "FORMAT 02 · 1:1"
+    },
+    "oneTitle": {
+      "source": "Your time, one fan at a time.",
+      "text": "ఒక్కో అభిమానితో ఒక్కోసారి మీ సమయం."
+    },
+    "oneBody": {
+      "source": "Open slots for an online video meetup. Advice, practice, stories or one focused conversation.",
+      "text": "ఆన్‌లైన్ వీడియో మీట్‌అప్ కోసం స్లాట్‌లు తెరవండి. సలహా, ప్రాక్టీస్, కథలు లేదా ఒక దృష్టి పెట్టిన సంభాషణను అందించండి."
+    },
+    "oneCta": {
+      "source": "Offer a 1:1 session",
+      "text": "1:1 సెషన్‌ను అందించండి"
+    },
+    "oneMeta": {
+      "source": "Private · Video meetup",
+      "text": "ప్రైవేట్ · వీడియో మీట్‌అప్"
+    },
+    "showcaseEyebrow": {
+      "source": "THE BIG SCREEN",
+      "text": "పెద్ద తెర"
+    },
+    "showcaseTitle": {
+      "source": "What happens on screen can become a connection.",
+      "text": "స్క్రీన్‌పై జరిగేది ఒక అనుబంధంగా మారవచ్చు."
+    },
+    "showcaseBody": {
+      "source": "Music, makeup, gaming, recipes, dance, devotion — people are already watching. Give them a room.",
+      "text": "సంగీతం, మేకప్, గేమింగ్, వంటలు, నృత్యం, భక్తి — అభిమానులు ఇప్పటికే చూస్తున్నారు. ఇప్పుడు వారికి ఒక రూమ్ ఇవ్వండి."
+    },
+    "showcaseLabel": {
+      "source": "Live room / Saturday 8:00 PM",
+      "text": "లైవ్ రూమ్ / శనివారం రాత్రి 8:00"
+    },
+    "showcaseButton": {
+      "source": "Explore the marketplace",
+      "text": "మార్కెట్‌ప్లేస్‌ను చూడండి"
+    },
+    "meetupEyebrow": {
+      "source": "YOUR CALENDAR, YOUR RULES",
+      "text": "మీ క్యాలెండర్, మీ నియమాలు"
+    },
+    "meetupTitle": {
+      "source": "Your 1:1 corner.",
+      "text": "మీ 1:1 మూల."
+    },
+    "meetupBody": {
+      "source": "Set your availability, explain the format, and keep expectations clear before every booking. Online only, always.",
+      "text": "మీ అందుబాటు సమయాన్ని సెట్ చేసి, రూపాన్ని వివరించి, ప్రతి బుకింగ్‌కు ముందు అంచనాలను స్పష్టంగా ఉంచండి. ఎల్లప్పుడూ ఆన్‌లైన్‌లో మాత్రమే."
+    },
+    "meetupNote": {
+      "source": "Online video meetups, with clear boundaries.",
+      "text": "స్పష్టమైన హద్దులతో ఆన్‌లైన్ వీడియో మీట్‌అప్‌లు."
+    },
+    "ideasEyebrow": {
+      "source": "FROM CONTENT TO OFFER",
+      "text": "కంటెంట్ నుంచి ఆఫర్ వరకు"
+    },
+    "ideasTitle": {
+      "source": "What will you host?",
+      "text": "మీరు ఏమి హోస్ట్ చేస్తారు?"
+    },
+    "ideaOneTitle": {
+      "source": "Dance adda",
+      "text": "డాన్స్ అడ్డా"
+    },
+    "ideaOneBody": {
+      "source": "Choreography, feedback, practice room.",
+      "text": "కొరియోగ్రఫీ, అభిప్రాయం మరియు ప్రాక్టీస్ రూమ్."
+    },
+    "ideaTwoTitle": {
+      "source": "Home flavours",
+      "text": "ఇంటి రుచులు"
+    },
+    "ideaTwoBody": {
+      "source": "Recipe live, regional thali, kitchen hacks.",
+      "text": "లైవ్ రెసిపీ, ప్రాంతీయ భోజనం మరియు వంటింటి చిట్కాలు."
+    },
+    "ideaThreeTitle": {
+      "source": "Study buddy",
+      "text": "స్టడీ బడ్డీ"
+    },
+    "ideaThreeBody": {
+      "source": "Revision sprint, language practice, exam pep talk.",
+      "text": "రివిజన్ స్ప్రింట్, భాషా అభ్యాసం మరియు పరీక్షకు ప్రోత్సాహం."
+    },
+    "ideaFourTitle": {
+      "source": "Style desk",
+      "text": "స్టైల్ డెస్క్"
+    },
+    "ideaFourBody": {
+      "source": "Look breakdowns, draping, thrift finds.",
+      "text": "లుక్ వివరణలు, చీర కట్టుకునే విధానం మరియు పొదుపు షాపింగ్ కనుగొన్నవి."
+    },
+    "journeyEyebrow": {
+      "source": "HOW IT WORKS",
+      "text": "ఇది ఎలా పనిచేస్తుంది"
+    },
+    "journeyTitle": {
+      "source": "From poster to booking — four easy moves.",
+      "text": "పోస్టర్‌ నుంచి బుకింగ్‌ వరకు — నాలుగు సులభమైన అడుగులు."
+    },
+    "stepOne": {
+      "source": "Create",
+      "text": "సృష్టించండి"
+    },
+    "stepOneBody": {
+      "source": "Write your creator page and offer.",
+      "text": "మీ క్రియేటర్ పేజీ మరియు ఆఫర్‌ను రాయండి."
+    },
+    "stepTwo": {
+      "source": "Price",
+      "text": "ధర నిర్ణయించండి"
+    },
+    "stepTwoBody": {
+      "source": "Choose your ticket or session price.",
+      "text": "టికెట్ లేదా సెషన్ ధరను ఎంచుకోండి."
+    },
+    "stepThree": {
+      "source": "Share",
+      "text": "పంచుకోండి"
+    },
+    "stepThreeBody": {
+      "source": "Send the link to your community.",
+      "text": "లింక్‌ను మీ కమ్యూనిటీకి పంపండి."
+    },
+    "stepFour": {
+      "source": "Host",
+      "text": "హోస్ట్ చేయండి"
+    },
+    "stepFourBody": {
+      "source": "Open the room, give your time, run your show.",
+      "text": "రూమ్ తెరిచి, మీ సమయాన్ని ఇచ్చి, మీ షోను నడపండి."
+    },
+    "bookingEyebrow": {
+      "source": "FOR YOUR FANS",
+      "text": "మీ అభిమానుల కోసం"
+    },
+    "bookingTitle": {
+      "source": "What does booking look like for a fan?",
+      "text": "అభిమానులకు బుకింగ్ ఎలా కనిపిస్తుంది?"
+    },
+    "bookingBody": {
+      "source": "One clear page. One date. One seat. After payment, they get the route to the room.",
+      "text": "ఒక స్పష్టమైన పేజీ. ఒక తేదీ. ఒక సీటు. చెల్లింపు తర్వాత రూమ్‌కు వెళ్లే మార్గం వారికి లభిస్తుంది."
+    },
+    "bookingCta": {
+      "source": "Browse real listings",
+      "text": "నిజమైన లిస్టింగ్‌లను చూడండి"
+    },
+    "bookingTicket": {
+      "source": "BOOKING PASS",
+      "text": "బుకింగ్ పాస్"
+    },
+    "bookingLive": {
+      "source": "LIVE EVENT",
+      "text": "లైవ్ ఈవెంట్"
+    },
+    "bookingSeat": {
+      "source": "1 seat reserved",
+      "text": "1 సీటు రిజర్వ్ అయింది"
+    },
+    "bookingOnline": {
+      "source": "Online · India",
+      "text": "ఆన్‌లైన్ · భారతదేశం"
+    },
+    "calcEyebrow": {
+      "source": "THE MATH, CLEARLY",
+      "text": "లెక్కలు స్పష్టంగా"
+    },
+    "calcTitle": {
+      "source": "See your gross estimate.",
+      "text": "మీ గ్రాస్ అంచనాను చూడండి."
+    },
+    "calcBody": {
+      "source": "Change the inputs to see what ticketed events or 1:1 bookings could gross.",
+      "text": "ఇన్‌పుట్‌లను మార్చి, టికెట్ ఈవెంట్‌లు లేదా 1:1 బుకింగ్‌లతో ఎంత గ్రాస్ రావచ్చో చూడండి."
+    },
+    "calcLiveLabel": {
+      "source": "Live ticket price",
+      "text": "లైవ్ టికెట్ ధర"
+    },
+    "calcAudienceLabel": {
+      "source": "Audience per event",
+      "text": "ప్రతి ఈవెంట్ ప్రేక్షకులు"
+    },
+    "calcEventsLabel": {
+      "source": "Events per month",
+      "text": "నెలకు ఈవెంట్‌లు"
+    },
+    "calcOneLabel": {
+      "source": "1:1 price",
+      "text": "1:1 ధర"
+    },
+    "calcBookingsLabel": {
+      "source": "Bookings per month",
+      "text": "నెలకు బుకింగ్‌లు"
+    },
+    "calcLiveTotal": {
+      "source": "Live event gross",
+      "text": "లైవ్ ఈవెంట్ గ్రాస్"
+    },
+    "calcOneTotal": {
+      "source": "1:1 gross",
+      "text": "1:1 గ్రాస్"
+    },
+    "calcTotal": {
+      "source": "Combined gross estimate",
+      "text": "మొత్తం గ్రాస్ అంచనా"
+    },
+    "calcDisclaimer": {
+      "source": "Illustrative gross before platform fees, taxes, refunds and other costs. Not a promise of earnings.",
+      "text": "ప్లాట్‌ఫారమ్ ఫీజులు, పన్నులు, రీఫండ్‌లు మరియు ఇతర ఖర్చులకు ముందు చూపించే ఉదాహరణ గ్రాస్. ఆదాయానికి హామీ కాదు."
+    },
+    "calcPricingNote": {
+      "source": "Planning example in INR; actual listing pricing and checkout quotes follow the current pricing guide.",
+      "text": "INR‌లో చూపించే ప్రణాళిక ఉదాహరణ; నిజమైన లిస్టింగ్ ధర మరియు checkout కోట్ ప్రస్తుత ధరల మార్గదర్శిని అనుసరిస్తాయి."
+    },
+    "boundariesEyebrow": {
+      "source": "GOOD TO KNOW",
+      "text": "తెలుసుకోవాల్సిన విషయం"
+    },
+    "boundariesTitle": {
+      "source": "Clear boundaries make better rooms.",
+      "text": "స్పష్టమైన హద్దులు మంచి రూమ్‌లను సృష్టిస్తాయి."
+    },
+    "faqOneQ": {
+      "source": "Do I need a big following?",
+      "text": "నాకు పెద్ద ఫాలోయింగ్ అవసరమా?"
+    },
+    "faqOneA": {
+      "source": "No. Start with one useful offer and share it with people who already care about your work.",
+      "text": "అవసరం లేదు. ఒక ఉపయోగకరమైన ఆఫర్‌తో ప్రారంభించి, మీ పనిని ఇప్పటికే ఇష్టపడే వారితో పంచుకోండి."
+    },
+    "faqTwoQ": {
+      "source": "Is this an in-person booking?",
+      "text": "ఇది వ్యక్తిగతంగా జరిగే బుకింగ్‌నా?"
+    },
+    "faqTwoA": {
+      "source": "No. Live events and 1:1 sessions happen online. Keep your listing and expectations specific.",
+      "text": "కాదు. లైవ్ ఈవెంట్‌లు మరియు 1:1 సెషన్‌లు ఆన్‌లైన్‌లో జరుగుతాయి. మీ లిస్టింగ్, అంచనాలను స్పష్టంగా ఉంచండి."
+    },
+    "faqThreeQ": {
+      "source": "When do I get paid?",
+      "text": "నాకు ఎప్పుడు చెల్లింపు వస్తుంది?"
+    },
+    "faqThreeA": {
+      "source": "Payout timing and eligible methods are shown in your creator dashboard and the applicable terms.",
+      "text": "చెల్లింపు సమయం, అర్హత ఉన్న పద్ధతులు మీ క్రియేటర్ డాష్‌బోర్డ్ మరియు వర్తించే నిబంధనల్లో కనిపిస్తాయి."
+    },
+    "faqFourQ": {
+      "source": "Can I set my own boundaries?",
+      "text": "నా హద్దులను నేనే సెట్ చేసుకోవచ్చా?"
+    },
+    "faqFourA": {
+      "source": "Yes. Choose your format, availability, price and what the session includes before publishing.",
+      "text": "అవును. ప్రచురించే ముందు రూపం, అందుబాటు, ధర మరియు సెషన్‌లో ఉన్న అంశాలను ఎంచుకోండి."
+    },
+    "closeEyebrow": {
+      "source": "YOUR TURN",
+      "text": "మీ వంతు"
+    },
+    "closeTitle": {
+      "source": "Put a ticket on your voice.",
+      "text": "మీ స్వరానికి ఒక టికెట్ ఇవ్వండి."
+    },
+    "closeBody": {
+      "source": "Write one offer today. Open your first room tomorrow.",
+      "text": "ఈరోజే ఒక ఆఫర్ రాయండి. రేపు మీ మొదటి రూమ్‌ను తెరవండి."
+    },
+    "closeCta": {
+      "source": "Create your free listing",
+      "text": "మీ ఉచిత లిస్టింగ్‌ను సృష్టించండి"
+    },
+    "ariaDecorative": {
+      "source": "Decorative",
+      "text": "అలంకార చిత్రం"
+    },
+    "ariaCalculator": {
+      "source": "Gross earnings estimate calculator",
+      "text": "గ్రాస్ ఆదాయ అంచనా గణకం"
+    },
+    "ariaFaq": {
+      "source": "Frequently asked questions",
+      "text": "తరచుగా అడిగే ప్రశ్నలు"
+    }
+  }
+}

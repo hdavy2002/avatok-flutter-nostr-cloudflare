@@ -1,0 +1,10 @@
+{
+  "sourceEditingOnly": true,
+  "adjustments": [
+    {
+      "file": "app/lib/push/push_service.dart",
+      "constModifiersRemoved": 1
+    }
+  ],
+  "manual": []
+}

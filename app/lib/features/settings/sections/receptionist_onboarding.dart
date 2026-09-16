@@ -1,3 +1,5 @@
+
+import '../../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -207,12 +209,13 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
       Navigator.of(context).pop(_scope);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Couldn’t save — check your connection and try again.')));
+          content: UiText(UiMessage.m_couldn_t_save_check_your_da12340aa9)));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -227,7 +230,7 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
           shape: const Border(bottom: BorderSide(color: AD.borderControl, width: 1)),
           leading: AdBackButton(onTap: _back),
           iconTheme: const IconThemeData(color: AD.textPrimary),
-          title: Text('AI Voice Agent',
+          title: UiText(UiMessage.m_ai_voice_agent_bca0477435,
               style: ADText.rowName().copyWith(fontSize: 17)),
         ),
         body: SafeArea(
@@ -245,7 +248,7 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Center(
-                        child: Text('STEP ${_idx + 1} OF ${_steps.length}',
+                        child: UiText(UiMessage.m_step_value1_of_value2_5b327dfe3e, params: {'value1': (_idx + 1).toString(), 'value2': (_steps.length).toString()},
                             style: ADText.sectionLabel()),
                       ),
                       const SizedBox(height: Msg.s3),
@@ -259,8 +262,8 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
               child: AdButton(
                 label: _saving
-                    ? 'Saving…'
-                    : (_idx >= _steps.length - 1 ? 'Done' : 'Continue'),
+                    ? uiCopy(UiMessage.m_saving_23e39291d6)
+                    : (_idx >= _steps.length - 1 ? uiCopy(UiMessage.m_done_11a6767d56) : uiCopy(UiMessage.m_continue_31fbef1625)),
                 fullWidth: true,
                 loading: _saving,
                 onPressed: _canContinue ? _next : null,
@@ -288,11 +291,10 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
   Widget _costStep() {
     return _stepCard(
       icon: PhosphorIcons.coins(PhosphorIconsStyle.fill),
-      title: 'What it costs',
+      title: uiCopy(UiMessage.m_what_it_costs_00499529d7),
       children: [
-        Text(
-          'An AI conversation costs 3 tokens/min, calls capped at 3 minutes to '
-          'save you money.',
+        UiText(
+          UiMessage.m_an_ai_conversation_costs_3_6ebc6821f4,
           style: _wizBody(c: AD.textPrimary),
         ),
       ],
@@ -303,14 +305,14 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
   Widget _balanceStep() {
     return _stepCard(
       icon: PhosphorIcons.wallet(PhosphorIconsStyle.fill),
-      title: 'Your token balance',
+      title: uiCopy(UiMessage.m_your_token_balance_037ef63484),
       children: [
         if (_balLoading)
           Row(children: [
             const SizedBox(width: 16, height: 16,
                 child: CircularProgressIndicator(strokeWidth: 2)),
             const SizedBox(width: Msg.s2),
-            Text('Checking your wallet…', style: _wizBody()),
+            UiText(UiMessage.m_checking_your_wallet_1f344aaf75, style: _wizBody()),
           ])
         else ...[
           Text(
@@ -319,22 +321,22 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
             // Report §17/§53).
             _balanceUnavailable
                 ? kWalletUnavailableMessage
-                : 'You have $_balance token${_balance == 1 ? '' : 's'}.',
+                : uiCopy(UiMessage.m_you_have_balance_token_value2_0577b8e9e1, {'balance': (_balance).toString(), 'value2': (_balance == 1 ? '' : 's').toString()}),
             style: _wizBody(c: AD.textPrimary),
           ),
           const SizedBox(height: 8),
           Text(
             _balanceUnavailable
-                ? "We'll check again when you actually turn the agent on — you can continue."
+                ? uiCopy(UiMessage.m_we_ll_check_again_when_6457aaff93)
                 : _balanceOk
-                    ? 'That’s enough to get started (you need at least $_needTokens).'
-                    : 'You need at least $_needTokens tokens to turn Ava on.',
+                    ? uiCopy(UiMessage.m_that_s_enough_to_get_880e24f168, {'needTokens': (_needTokens).toString()})
+                    : uiCopy(UiMessage.m_you_need_at_least_needtokens_774ff6ab8d, {'needTokens': (_needTokens).toString()}),
             style: _wizBody(),
           ),
           if (!_balanceUnavailable && !_balanceOk) ...[
             const SizedBox(height: Msg.s3),
             AdButton(
-              label: 'Top up your wallet',
+              label: uiCopy(UiMessage.m_top_up_your_wallet_fa9164cfde),
               variant: AdButtonVariant.teal,
               fullWidth: true,
               onPressed: () async {
@@ -349,7 +351,7 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
           const SizedBox(height: Msg.s2),
           GestureDetector(
             onTap: _fetchBalance,
-            child: Text('Refresh balance',
+            child: UiText(UiMessage.m_refresh_balance_8ac7e2ead4,
                 style: _wizBody(c: AD.textSecondary)
                     .copyWith(decoration: TextDecoration.underline,
                         decorationColor: AD.textTertiary)),
@@ -363,7 +365,7 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
   Widget _scopeStep() {
     return _stepCard(
       icon: PhosphorIcons.phoneCall(PhosphorIconsStyle.fill),
-      title: 'Where should Ava answer?',
+      title: uiCopy(UiMessage.m_where_should_ava_answer_cc628a8fe9),
       children: [
         _scopeTile(kAgentScopeCell, 'Cell phone calls',
             'Calls to your phone number, via your virtual number.'),
@@ -413,17 +415,16 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
   Widget _didStep() {
     return _stepCard(
       icon: PhosphorIcons.hash(PhosphorIconsStyle.fill),
-      title: 'Your virtual phone number',
+      title: uiCopy(UiMessage.m_your_virtual_phone_number_9005f64e0e),
       children: [
-        Text(
-          'You need a virtual phone number so your carrier can hand Ava the '
-          'calls you can’t take.',
+        UiText(
+          UiMessage.m_you_need_a_virtual_phone_06707b32c1,
           style: _wizBody(c: AD.textPrimary),
         ),
         const SizedBox(height: 16),
         Row(children: [
-          Text(
-            '700 tokens/month',
+          UiText(
+            UiMessage.m_700_tokens_month_e471fac1e0,
             style: ADText.rowName(c: AD.textTertiary)
                 .copyWith(fontSize: 17,
                     decoration: TextDecoration.lineThrough,
@@ -457,17 +458,15 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
   Widget _forwardingStep() {
     return _stepCard(
       icon: PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.fill),
-      title: 'When should your carrier hand calls to Ava?',
+      title: uiCopy(UiMessage.m_when_should_your_carrier_hand_9e92d8972d),
       children: [
-        Text(
-          'Pick the conditions: when you reject a call, when your phone is '
-          'off, and when you’re not picking up. Each one dials a short '
-          'carrier code and only turns green once your carrier confirms it.',
+        UiText(
+          UiMessage.m_pick_the_conditions_when_you_274a3116e6,
           style: _wizBody(c: AD.textPrimary),
         ),
         const SizedBox(height: Msg.s3),
         AdButton(
-          label: 'Set up call forwarding',
+          label: uiCopy(UiMessage.m_set_up_call_forwarding_46c05af02c),
           variant: AdButtonVariant.teal,
           fullWidth: true,
           onPressed: () {
@@ -478,8 +477,8 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
           },
         ),
         const SizedBox(height: Msg.s2),
-        Text(
-          'You can change these any time in Settings → AI receptionist.',
+        UiText(
+          UiMessage.m_you_can_change_these_any_bfe433a96c,
           style: _wizBody(),
         ),
       ],
@@ -490,13 +489,10 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
   Widget _privacyStep() {
     return _stepCard(
       icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill),
-      title: 'Your privacy',
+      title: uiCopy(UiMessage.m_your_privacy_d2a7115d04),
       children: [
-        Text(
-          'Under these conditions your call is diverted to your DiD number by '
-          'YOUR phone company. No SMS, OTP or text messages are forwarded, '
-          'and no information leaves your phone — this is standard carrier '
-          'call routing.',
+        UiText(
+          UiMessage.m_under_these_conditions_your_call_f864804a9c,
           style: _wizBody(c: AD.textPrimary),
         ),
       ],
@@ -507,7 +503,7 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
   Widget _summaryStep() {
     return _stepCard(
       icon: PhosphorIcons.receipt(PhosphorIconsStyle.fill),
-      title: 'What you’ll pay',
+      title: uiCopy(UiMessage.m_what_you_ll_pay_85f4ba1921),
       children: [
         _summaryRow('700 tokens/month for your number', pill: 'Free in Beta'),
         const SizedBox(height: 8),

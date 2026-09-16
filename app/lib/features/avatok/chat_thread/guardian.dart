@@ -115,16 +115,16 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
               Row(children: [
                 PhosphorIcon(PhosphorIcons.userCircle(PhosphorIconsStyle.bold), size: 26, color: AD.iconSearch),
                 const SizedBox(width: 10),
-                Expanded(child: Text('Message request', style: ADText.rowName())),
+                Expanded(child: UiText(UiMessage.m_message_request_2de564f22a, style: ADText.rowName())),
               ]),
               const SizedBox(height: 10),
-              Text('$name is not in your contacts. Accept to reply, or block/report if it looks like spam. Decline keeps it under Message requests.',
+              UiText(UiMessage.m_name_is_not_in_your_68ac8ff0d9, params: {'name': (name).toString()},
                   style: ADText.preview()),
               const SizedBox(height: 18),
               // Accept — restore the composer and resume normal receipts.
               _gateSheetBtn(
                 icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.bold),
-                label: 'Accept', bg: AD.primaryBadge, fg: AD.textPrimary, busy: busy,
+                label: uiCopy(UiMessage.m_accept_89713b9c9c), bg: AD.primaryBadge, fg: AD.textPrimary, busy: busy,
                 onTap: () => run(() async {
                   await StrangerGateApi.accept(conv);
                   trackStrangerGate('stranger_gate_accept', {'conv': conv, 'peer': peerHex, 'via': 'overlay'});
@@ -136,7 +136,7 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
               Row(children: [
                 Expanded(child: _gateSheetBtn(
                   icon: PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
-                  label: 'Block', bg: AD.iconVideo, fg: AD.textPrimary, busy: busy,
+                  label: uiCopy(UiMessage.m_block_211d0bb8cf), bg: AD.iconVideo, fg: AD.textPrimary, busy: busy,
                   onTap: () => run(() async {
                     await StrangerGateApi.block(conv: conv, uid: peerHex.isEmpty ? null : peerHex);
                     trackStrangerGate('stranger_gate_block', {'conv': conv, 'peer': peerHex, 'via': 'overlay'});
@@ -147,7 +147,7 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
                 const SizedBox(width: 10),
                 Expanded(child: _gateSheetBtn(
                   icon: PhosphorIcons.flag(PhosphorIconsStyle.bold),
-                  label: 'Report', bg: AD.danger, fg: Colors.white, busy: busy,
+                  label: uiCopy(UiMessage.m_report_b6ce788d97), bg: AD.danger, fg: Colors.white, busy: busy,
                   onTap: () => run(() async {
                     final id = await StrangerGateApi.report(conv: conv, lastN: 10);
                     trackStrangerGate('stranger_gate_report', {'conv': conv, 'peer': peerHex, 'ok': id != null, 'via': 'overlay'});
@@ -163,7 +163,7 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
                   trackStrangerGate('stranger_gate_decline', {'conv': conv, 'peer': peerHex, 'via': 'overlay'});
                   Navigator.of(ctx).pop();
                 },
-                child: Text('Decline', style: ADText.rowName(c: AD.textSecondary)),
+                child: UiText(UiMessage.m_decline_a2d285b352, style: ADText.rowName(c: AD.textSecondary)),
               )),
             ]),
           ),
@@ -203,13 +203,13 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
   Future<void> _toggleGuardian() async {
     if (_isMinorAccount) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Guardian always protects this account')));
+          const SnackBar(content: UiText(UiMessage.m_guardian_always_protects_this_account_b414fa552b)));
       return;
     }
     final conv = _guardianConv;
     if (conv == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Guardian isn’t available for this chat yet')));
+          const SnackBar(content: UiText(UiMessage.m_guardian_isn_t_available_for_c8394ad9b9)));
       return;
     }
     final next = await GuardianPrefsClient.I.set(conv, secureChat: !_guardian.secureChat, source: 'tap');
@@ -221,7 +221,7 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
       _showGuardianNotice(true);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Ava watch turned off for this chat')));
+          content: UiText(UiMessage.m_ava_watch_turned_off_for_220f674a9d)));
     }
   }
 
@@ -258,16 +258,16 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
             ),
             const SizedBox(height: 12),
             Text(
-              on ? 'Guardian is watching this chat'
-                 : 'Guardian is not monitoring this chat',
+              on ? uiCopy(UiMessage.m_guardian_is_watching_this_chat_c401dc9263)
+                 : uiCopy(UiMessage.m_guardian_is_not_monitoring_this_851a61b0bd),
               textAlign: TextAlign.center,
               style: ADText.threadName().copyWith(fontSize: 16.5),
             ),
             const SizedBox(height: 8),
             Text(
               on
-                  ? 'Ava is now reviewing this conversation for safety. You’ll get a private heads-up if something looks unsafe.'
-                  : 'Messages in this conversation aren’t being reviewed for safety. Stay alert and only share what you’re comfortable with.',
+                  ? uiCopy(UiMessage.m_ava_is_now_reviewing_this_e83bfc906d)
+                  : uiCopy(UiMessage.m_messages_in_this_conversation_aren_75a9489aa2),
               textAlign: TextAlign.center,
               style: ADText.preview(c: AD.textSecondary).copyWith(height: 1.55),
             ),
@@ -282,7 +282,7 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
                   color: AD.sendActiveBg,
                   borderRadius: BorderRadius.circular(Msg.rSm),
                 ),
-                child: Text('Got it',
+                child: UiText(UiMessage.m_got_it_5ad3dbd124,
                     style: ADText.rowName(c: AD.sendActiveInk)),
               ),
             ),
@@ -305,7 +305,7 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
       if (!mounted) return;
       setState(() => _guardian = next);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Ava Guardian is on for this chat — tap the shield to turn it off.')));
+          content: UiText(UiMessage.m_ava_guardian_is_on_for_730b1dd91b)));
     } catch (_) {/* best-effort — never block the accept */}
   }
 
@@ -346,7 +346,7 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
         child: _headerAction(
           PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill),
           () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Guardian always protects this account'))),
+              content: UiText(UiMessage.m_guardian_always_protects_this_account_b414fa552b))),
           color: kGuardianGreen,
         ),
       );
@@ -417,7 +417,7 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
           Row(mainAxisSize: MainAxisSize.min, children: [
             PhosphorIcon(PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill), size: 14, color: AD.bubbleInInk),
             const SizedBox(width: 5),
-            Text('AVA · HUMAN CHECK', style: TextStyle(color: AD.bubbleInInk, fontSize: 9.5,
+            UiText(UiMessage.m_ava_human_check_75cdc84c9e, style: TextStyle(color: AD.bubbleInInk, fontSize: 9.5,
                 fontWeight: FontWeight.w600, letterSpacing: 0.6)),
           ]),
           const SizedBox(height: 4),
@@ -441,10 +441,10 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
                 // records the pass and flips the chat gate exactly as before.
                 final passed = await ensurePublicActionAllowed(context, 'guardian_verify');
                 if (passed && mounted) {
-                  _toast('Verified — thanks for keeping chats human.');
+                  _toast(uiCopy(UiMessage.m_verified_thanks_for_keeping_chats_009c36d682));
                 }
               },
-              child: const Text('Start face check',
+              child: const UiText(UiMessage.m_start_face_check_1c63d68426,
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
             ),
           ),
@@ -489,7 +489,7 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), size: 14, color: _sysPillMeta),
           const SizedBox(width: 6),
-          Text('You deleted this message',
+          UiText(UiMessage.m_you_deleted_this_message_531e1c2794,
               style: ADText.preview(c: _sysPillMeta)),
           const SizedBox(width: 12),
           GestureDetector(
@@ -498,7 +498,7 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               PhosphorIcon(PhosphorIcons.arrowCounterClockwise(PhosphorIconsStyle.bold), size: 13, color: AD.iconSearch),
               const SizedBox(width: 3),
-              Text('UNDO', style: ADText.statCaption(c: AD.iconSearch)),
+              UiText(UiMessage.m_undo_6f8365b681, style: ADText.statCaption(c: AD.iconSearch)),
             ]),
           ),
         ]),
@@ -592,8 +592,8 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
 
   String _safetyCategoryLabel(String category) {
     final c = category.trim();
-    if (c.isEmpty) return 'Flagged by Ava';
-    return 'Flagged by Ava — ${c.replaceAll('_', ' ')}';
+    if (c.isEmpty) return uiCopy(UiMessage.m_flagged_by_ava_ed67e82f66);
+    return uiCopy(UiMessage.m_flagged_by_ava_value1_e872a8d785, {'value1': (c.replaceAll('_', ' ')).toString()});
   }
 
   Widget _safetyFlagBubble(_Msg m, String category) {
@@ -629,7 +629,7 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
             Row(mainAxisSize: MainAxisSize.min, children: [
               Text(m.time, style: const TextStyle(color: Colors.white70, fontSize: 10)),
               const SizedBox(width: 8),
-              Text('Tap for options', style: const TextStyle(color: Colors.white70, fontSize: 10,
+              UiText(UiMessage.m_tap_for_options_b0bce141f3, style: const TextStyle(color: Colors.white70, fontSize: 10,
                   fontWeight: FontWeight.w600)),
             ]),
           ]),
@@ -656,8 +656,8 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
               ZineIconBadge(icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill), color: AD.danger, size: 40),
               const SizedBox(width: 12),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Ava flagged this message', style: ADText.threadName()),
-                Text('From Ava — only you can see this', style: ADText.preview()),
+                UiText(UiMessage.m_ava_flagged_this_message_a1c0be0fb3, style: ADText.threadName()),
+                UiText(UiMessage.m_from_ava_only_you_can_f1f5033979, style: ADText.preview()),
               ])),
             ]),
             const SizedBox(height: 14),
@@ -672,7 +672,7 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
             ),
             const SizedBox(height: 16),
             AdButton(
-              label: 'Block sender',
+              label: uiCopy(UiMessage.m_block_sender_536fd07622),
               variant: AdButtonVariant.danger,
               fullWidth: true,
               icon: PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
@@ -681,7 +681,7 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
             ),
             const SizedBox(height: 8),
             AdButton(
-              label: 'Report',
+              label: uiCopy(UiMessage.m_report_b6ce788d97),
               variant: AdButtonVariant.teal,
               fullWidth: true,
               icon: PhosphorIcons.flag(PhosphorIconsStyle.bold),
@@ -690,7 +690,7 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
             ),
             const SizedBox(height: 8),
             AdButton(
-              label: 'This is fine',
+              label: uiCopy(UiMessage.m_this_is_fine_4755f6e346),
               variant: AdButtonVariant.ghost,
               fullWidth: true,
               icon: PhosphorIcons.check(PhosphorIconsStyle.bold),
@@ -706,7 +706,7 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
   Future<void> _blockSender(String category) async {
     final uid = _peerNpub;
     if (uid == null || uid.isEmpty) {
-      _toast('Couldn\'t identify the sender to block.');
+      _toast(uiCopy(UiMessage.m_couldn_t_identify_the_sender_51303650bf));
       return;
     }
     Analytics.capture('safety_flag_block', {'category': category, 'is_group': _isGroup});
@@ -716,10 +716,10 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
       // Same `blocks` table the messaging gate reads — a block silently stops all
       // future sends from this uid. The sender is not notified.
       final res = await ApiAuth.postJson('$kApiBase/creators/$uid/block', const {});
-      _toast(res.statusCode == 200 ? 'Blocked. They can no longer message you.'
-                                   : 'Couldn\'t block right now — try again.');
+      _toast(res.statusCode == 200 ? uiCopy(UiMessage.m_blocked_they_can_no_longer_4fc062ac39)
+                                   : uiCopy(UiMessage.m_couldn_t_block_right_now_c68bcd09d8));
     } catch (_) {
-      _toast('Couldn\'t block right now — try again.');
+      _toast(uiCopy(UiMessage.m_couldn_t_block_right_now_c68bcd09d8));
     }
   }
 
@@ -737,10 +737,10 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
         'reason': 'safety_flag:$category',
         if (m.evId != null) 'msgId': m.evId,
       });
-      _toast(res.statusCode == 200 ? 'Thanks — reported to our safety team.'
-                                   : 'Couldn\'t send the report — try again.');
+      _toast(res.statusCode == 200 ? uiCopy(UiMessage.m_thanks_reported_to_our_safety_d9b99c56a8)
+                                   : uiCopy(UiMessage.m_couldn_t_send_the_report_ef3bd50843));
     } catch (_) {
-      _toast('Couldn\'t send the report — try again.');
+      _toast(uiCopy(UiMessage.m_couldn_t_send_the_report_ef3bd50843));
     }
   }
 

@@ -27,7 +27,7 @@ import LeaveReviewIsland from '../islands/listing/LeaveReview';
 // agent has no calendar, no seat count and no legacy vanilla-JS booking script.
 import AgentBookingBoxIsland from '../islands/agent-live/AgentBookingBox';
 import { inrOrFree } from '../lib/money';
-import { API_BASE, cfImage } from '../lib/config';
+import { API_BASE, cfImage, publicImage } from '../lib/config';
 import { durationLabel, languageLabel, recurrenceLabel, timePillLabel, scheduleStateOf } from '../lib/card';
 import { earlyBird } from '../lib/copy';
 import type { Listing, ReviewList, ListingSlot, Card, Creator } from '../lib/types';
@@ -509,7 +509,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
 
   <nav class="breadcrumb">
     <div class="breadcrumb__inner">
-      <a href="/marketplace">BAZAAR</a>
+      <a data-i18n="web-common.12dfddb2d5d5f752" href="/marketplace">BAZAAR</a>
       <span class="breadcrumb__sep">›</span>
       <a href="/marketplace">{cat.label}</a>
       <span class="breadcrumb__sep">›</span>
@@ -528,15 +528,15 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
   ) : isLive ? (
     <div class="ticker ticker--live">
       <div class="ticker__inner">
-        <span class="ticker__lead"><span class="ticker__dot ticker__dot--pulse"></span>LIVE NOW — {(listing.title ?? '').toUpperCase()}</span>
+        <span class="ticker__lead"><span class="ticker__dot ticker__dot--pulse"></span><ui-copy style="display:contents" data-i18n="web-common.381e73f0a4bd700d">LIVE NOW —</ui-copy> {(listing.title ?? '').toUpperCase()}</span>
         <span class="ticker__sub">{watching}</span>
-        <button type="button" class="btn btn--pill js-join-btn ticker__join">Join now ▸</button>
+        <button data-i18n="web-common.c5283aa56917eb1b" type="button" class="btn btn--pill js-join-btn ticker__join">Join now ▸</button>
       </div>
     </div>
   ) : (
     <div class="ticker ticker--countdown">
       <div class="ticker__inner">
-        <span class="ticker__lead"><span class="ticker__dot"></span>NEXT SHOW: <span id="next-show-label"></span></span>
+        <span class="ticker__lead"><span class="ticker__dot"></span><ui-copy style="display:contents" data-i18n="web-common.09bcfc6c589a474d">NEXT SHOW:</ui-copy> <span id="next-show-label"></span></span>
         <span class="ticker__sub" id="countdown-sub"></span>
       </div>
     </div>
@@ -545,9 +545,9 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
   <div class="hero">
     <div class="hero__player">
       <div class="nazar">
-        <img src="/assets/lol-sticker.png" alt="LOL sticker" class="nazar__img" />
-        <span class="nazar__text">BURI NAZAR WALE, TERA MUH KALA · USE DIPPER AT NIGHT</span>
-        <img src="/assets/luv-it-sticker.png" alt="I luv it sticker" class="nazar__img" />
+        <img data-india-i18n-attr="alt:web-common.08b399f0d2b213bd" src={publicImage('/assets/lol-sticker.png', { width: 900, fit: 'scale-down' })} alt="LOL sticker" class="nazar__img" />
+        <span data-i18n="web-common.dd4a48fbce9370b2" class="nazar__text">BURI NAZAR WALE, TERA MUH KALA · USE DIPPER AT NIGHT</span>
+        <img data-india-i18n-attr="alt:web-common.28f62d6ed88328fa" src={publicImage('/assets/luv-it-sticker.png', { width: 900, fit: 'scale-down' })} alt="I luv it sticker" class="nazar__img" />
       </div>
 
       <div class="player-card">
@@ -587,7 +587,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
                   generated with NO text at all, so the painted avatok.ai mark
                   does not exist — this draws it. On the normal path this whole
                   block is not rendered and the mark is inside the image. */}
-              <span class="player-card__mark">avatok.ai</span>
+              <span data-i18n="web-common.6c268582050557ce" class="player-card__mark">avatok.ai</span>
             </div>
           )}
           {/* [POSTER-CLEAN-1 2026-09-06] The diagonal-stripe scrim is GONE.
@@ -603,26 +603,26 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
               {scheduleLabel}
             </span>
             <span class="player-badge player-badge--dark">◉ {watching}</span>
-            <span class="player-badge player-badge--dark" id="hero-booked-badge">✓ BOOKED</span>
+            <span data-i18n="web-common.94f611456c82e99f" class="player-badge player-badge--dark" id="hero-booked-badge">✓ BOOKED</span>
             <span class="player-card__actions">
-              <button type="button" id="share-icon-btn" class="icon-btn" aria-label="Share">⇗</button>
-              <button type="button" id="fav-btn" class="icon-btn" aria-label="Favorite">♡</button>
+              <button data-india-i18n-attr="aria-label:web-common.29887a5ff9846ccc" type="button" id="share-icon-btn" class="icon-btn" aria-label="Share">⇗</button>
+              <button data-india-i18n-attr="aria-label:web-common.ea713ecd8537f77e" type="button" id="fav-btn" class="icon-btn" aria-label="Favorite">♡</button>
             </span>
           </div>
-          {!heroBase && !videoIsHero && <span class="player-card__center-label">LIVE STAGE · HOST CAMERA<br />16:9 STREAM DROPS HERE</span>}
+          {!heroBase && !videoIsHero && <span class="player-card__center-label"><ui-copy style="display:contents" data-i18n="web-common.e1b03986432ddb27">LIVE STAGE · HOST CAMERA</ui-copy><br /><ui-copy style="display:contents" data-i18n="web-common.bfe7bf486171cd5e">16:9 STREAM DROPS HERE</ui-copy></span>}
           {/* [VIDEO-HERO-1] With a video in the frame these move OUT of it and
               into the bar below — overlaid on a player they would sit on top of
               YouTube's own controls and the scrubber. Exactly one #join-note and
               one #cd-* set exist either way; the inline script below is
               null-guarded on both and reads whichever position they are in. */}
           {videoIsHero ? null : isLive ? (
-            <button type="button" class="btn btn--cta js-join-btn player-card__cta" style={`background:${ctaColor}`}>▸ Join now</button>
+            <button data-i18n="web-common.b2ea024914520bd5" type="button" class="btn btn--cta js-join-btn player-card__cta" style={`background:${ctaColor}`}>▸ Join now</button>
           ) : !countdownActive ? null : (
             <div class="countdown">
-              <span class="countdown__unit"><span id="cd-d">00</span><em>DAYS</em></span>
-              <span class="countdown__unit"><span id="cd-h">00</span><em>HRS</em></span>
-              <span class="countdown__unit"><span id="cd-m">00</span><em>MIN</em></span>
-              <span class="countdown__unit"><span id="cd-s">00</span><em>SEC</em></span>
+              <span class="countdown__unit"><span id="cd-d">00</span><em data-i18n="web-common.a7b1b6e0c4dd38ed">DAYS</em></span>
+              <span class="countdown__unit"><span id="cd-h">00</span><em data-i18n="web-common.fb8b179fde388716">HRS</em></span>
+              <span class="countdown__unit"><span id="cd-m">00</span><em data-i18n="web-common.d319c28c2d23e115">MIN</em></span>
+              <span class="countdown__unit"><span id="cd-s">00</span><em data-i18n="web-common.945f2ee1303eb1f2">SEC</em></span>
             </div>
           )}
           {/* [POSTER-FULL-1 2026-09-05] The host bar under the poster is gone, and
@@ -642,13 +642,13 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
         {videoIsHero && (
           <div class="player-card__underbar">
             {isLive ? (
-              <button type="button" class="btn btn--cta js-join-btn player-card__cta" style={`background:${ctaColor}`}>▸ Join now</button>
+              <button data-i18n="web-common.b2ea024914520bd5" type="button" class="btn btn--cta js-join-btn player-card__cta" style={`background:${ctaColor}`}>▸ Join now</button>
             ) : countdownActive ? (
               <div class="countdown">
-                <span class="countdown__unit"><span id="cd-d">00</span><em>DAYS</em></span>
-                <span class="countdown__unit"><span id="cd-h">00</span><em>HRS</em></span>
-                <span class="countdown__unit"><span id="cd-m">00</span><em>MIN</em></span>
-                <span class="countdown__unit"><span id="cd-s">00</span><em>SEC</em></span>
+                <span class="countdown__unit"><span id="cd-d">00</span><em data-i18n="web-common.a7b1b6e0c4dd38ed">DAYS</em></span>
+                <span class="countdown__unit"><span id="cd-h">00</span><em data-i18n="web-common.fb8b179fde388716">HRS</em></span>
+                <span class="countdown__unit"><span id="cd-m">00</span><em data-i18n="web-common.d319c28c2d23e115">MIN</em></span>
+                <span class="countdown__unit"><span id="cd-s">00</span><em data-i18n="web-common.945f2ee1303eb1f2">SEC</em></span>
               </div>
             ) : null}
             <span class="player-card__joinnote" id="join-note"></span>
@@ -698,9 +698,9 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
           carries no client framework to lean on. Rendered only when there is
           something to open. */}
       {stills.length > 0 && (
-        <dialog id="photo-lightbox" class="lightbox" aria-label="Photo">
+        <dialog data-india-i18n-attr="aria-label:web-common.d84eebada93efee1" id="photo-lightbox" class="lightbox" aria-label="Photo">
           <form method="dialog" class="lightbox__closeform">
-            <button type="submit" class="lightbox__close" aria-label="Close photo">✕</button>
+            <button data-india-i18n-attr="aria-label:web-common.0a040c7f8ef25d76" type="submit" class="lightbox__close" aria-label="Close photo">✕</button>
           </form>
           <img id="photo-lightbox-img" class="lightbox__img" src="" alt={`${listing.title} — photo`} />
         </dialog>
@@ -710,27 +710,27 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
         <div class="share-card__row">
           <div class="share-card__main">
             <div class="share-card__head">
-              <span class="share-card__label">SHARE THE SHOW</span>
-              <button type="button" id="copy-link-btn" class="link-btn">COPY LINK</button>
+              <span data-i18n="web-common.f4f73ddb6513a2a9" class="share-card__label">SHARE THE SHOW</span>
+              <button data-i18n="web-common.7473b9adb710b0e0" type="button" id="copy-link-btn" class="link-btn">COPY LINK</button>
             </div>
             <div class="share-card__buttons">
-              <button type="button" id="share-wa" class="chip-btn chip-btn--wa"><span class="chip-btn__dot"></span>WHATSAPP</button>
-              <button type="button" id="share-fb" class="chip-btn chip-btn--fb"><span class="chip-btn__dot"></span>FACEBOOK</button>
-              <button type="button" id="share-yt" class="chip-btn chip-btn--yt"><span class="chip-btn__dot"></span>YOUTUBE</button>
-              <button type="button" id="embed-toggle-btn" class="chip-btn chip-btn--embed">&lt;/&gt; EMBED ▼</button>
+              <button type="button" id="share-wa" class="chip-btn chip-btn--wa"><span class="chip-btn__dot"></span><ui-copy style="display:contents" data-i18n="web-common.77877a6e15b4b85d">WHATSAPP</ui-copy></button>
+              <button type="button" id="share-fb" class="chip-btn chip-btn--fb"><span class="chip-btn__dot"></span><ui-copy style="display:contents" data-i18n="web-common.5777d2c733695fdd">FACEBOOK</ui-copy></button>
+              <button type="button" id="share-yt" class="chip-btn chip-btn--yt"><span class="chip-btn__dot"></span><ui-copy style="display:contents" data-i18n="web-common.422d1cffc3b2e5bd">YOUTUBE</ui-copy></button>
+              <button data-i18n="web-common.f87ea7543bd807dd" type="button" id="embed-toggle-btn" class="chip-btn chip-btn--embed">&lt;/&gt; EMBED ▼</button>
             </div>
           </div>
           <div class="share-card__qr">
             <div class="share-card__qr-box">
-              <img src={`https://api.qrserver.com/v1/create-qr-code/?size=176x176&margin=0&color=161614&bgcolor=ffffff&data=${encodeURIComponent(SHOW_URL)}`} alt="QR code — open this show" />
+              <img data-india-i18n-attr="alt:web-common.a73d89a4beb79262" src={`https://api.qrserver.com/v1/create-qr-code/?size=176x176&margin=0&color=161614&bgcolor=ffffff&data=${encodeURIComponent(SHOW_URL)}`} alt="QR code — open this show" />
             </div>
-            <span class="share-card__qr-label">SCAN TO OPEN THIS SHOW ON YOUR PHONE</span>
+            <span data-i18n="web-common.da5bbd7292be7f57" class="share-card__qr-label">SCAN TO OPEN THIS SHOW ON YOUR PHONE</span>
           </div>
         </div>
         <div id="embed-panel" class="embed-panel">
           <div class="embed-panel__head">
-            <span>PASTE THIS ON YOUR SITE OR BLOG</span>
-            <button type="button" id="copy-embed-btn" class="embed-panel__copy">COPY CODE</button>
+            <span data-i18n="web-common.170c11e9121d9f3c">PASTE THIS ON YOUR SITE OR BLOG</span>
+            <button data-i18n="web-common.026b84a6c49a4513" type="button" id="copy-embed-btn" class="embed-panel__copy">COPY CODE</button>
           </div>
           <code id="embed-code" class="embed-panel__code"></code>
         </div>
@@ -750,18 +750,18 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
       </div>
       {lede && <p class="lede">{lede}</p>}
       <div class="stat-card">
-        <span><strong id="stat-booked-value">{bookedCount}</strong><em>✓ BOOKED THIS SHOW</em></span>
+        <span><strong id="stat-booked-value">{bookedCount}</strong><em data-i18n="web-common.dd1344139b951d1c">✓ BOOKED THIS SHOW</em></span>
         {/* [STATS-REAL-1] The favourite slot replaces "FOLLOW THIS SHOW", which
             had no button anywhere on the site to drive it — the heart is the
             control, so the heart is what this counts. Live shows still show the
             watching count, which is a real, different number. */}
         {isLive
           ? <span><strong>{watchStat}</strong><em>{watchStatLabel}</em></span>
-          : <span><strong id="stat-fav-value">{favouritesCount}</strong><em>♡ FAVOURITES</em></span>}
-        <span><strong>{showsListed}</strong><em>SHOWS LISTED</em></span>
+          : <span><strong id="stat-fav-value">{favouritesCount}</strong><em data-i18n="web-common.2f16e813a887ddb2">♡ FAVOURITES</em></span>}
+        <span><strong>{showsListed}</strong><em data-i18n="web-common.28b44d29f196e7eb">SHOWS LISTED</em></span>
         {showsHosted > 0
-          ? <span><strong>{showsHosted}</strong><em>SHOWS HOSTED</em></span>
-          : <span><strong>{comebackPct}</strong><em>♡ COME BACK AGAIN</em></span>}
+          ? <span><strong>{showsHosted}</strong><em data-i18n="web-common.4aceb8dc2d0e2155">SHOWS HOSTED</em></span>
+          : <span><strong>{comebackPct}</strong><em data-i18n="web-common.13ee7fd4145e0959">♡ COME BACK AGAIN</em></span>}
       </div>
       <div class="price-line">
         <span class="price-line__amount">{priceLine}{!isFree && <small>{priceUnitLabel}</small>}</span>
@@ -769,17 +769,17 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
             through, and the shared EARLY BIRD chip. */}
         {hasPromo && <span class="price-line__was">{inrOrFree(listPriceTokens)}</span>}
         {promoChip && <span class="price-line__promo">{promoChip}</span>}
-        <span class="price-line__note">FEES &amp; GST SHOWN BEFORE YOU BOOK</span>
+        <span data-i18n="web-common.d0c81ca7a5b68afd" class="price-line__note">FEES &amp; GST SHOWN BEFORE YOU BOOK</span>
       </div>
       {masala && (
         <>
           <div class="masala-quote">
-            <img src="/assets/desi-swag.png" alt="Desi swag" />
-            <div class="masala-quote__text">"Jo jeeta wahi asli scene." — a regular</div>
+            <img data-india-i18n-attr="alt:web-common.cc02a5749eb5704d" src={publicImage('/assets/desi-swag.png', { width: 900, fit: 'scale-down' })} alt="Desi swag" />
+            <div data-i18n="web-common.44a39c72de60c103" class="masala-quote__text">"Jo jeeta wahi asli scene." — a regular</div>
           </div>
           <div class="masala-stickers">
-            <img src="/assets/vadapav-uncle.png" alt="Baccha hai tu mera, ye le vada pav kha" class="masala-stickers__a" />
-            <img src="/assets/dekho-pyar-se.png" alt="Dekho magar pyar se" class="masala-stickers__b" />
+            <img data-india-i18n-attr="alt:web-common.9bfbfece25ac0ea5" src={publicImage('/assets/vadapav-uncle.png', { width: 900, fit: 'scale-down' })} alt="Baccha hai tu mera, ye le vada pav kha" class="masala-stickers__a" />
+            <img data-india-i18n-attr="alt:web-common.9eac0cf0199ac810" src={publicImage('/assets/dekho-pyar-se.png', { width: 900, fit: 'scale-down' })} alt="Dekho magar pyar se" class="masala-stickers__b" />
           </div>
         </>
       )}
@@ -793,8 +793,8 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
         {isLive && (
           <div class="booking-card__live-strip">
             <span class="ticker__dot ticker__dot--pulse" style="background:#fdf1d3;"></span>
-            <span>LIVE NOW · <span id="live-strip-watching">{watchStat}</span> WATCHING</span>
-            <span class="booking-card__live-note">BOOK &amp; JOIN INSTANTLY</span>
+            <span><ui-copy style="display:contents" data-i18n="web-common.99f670c9c9cb81e7">LIVE NOW ·</ui-copy> <span id="live-strip-watching">{watchStat}</span> <ui-copy style="display:contents" data-i18n="web-common.9dd11708e29aa738">WATCHING</ui-copy></span>
+            <span data-i18n="web-common.6429c00d42dea562" class="booking-card__live-note">BOOK &amp; JOIN INSTANTLY</span>
           </div>
         )}
         <div class="booking-card__body">
@@ -818,8 +818,8 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
                 <div class="show-closed" role="status">
                   <p class="show-closed__title">{closedTitle}</p>
                   <p class="show-closed__line">{closedLine}</p>
-                  {hostHref && <a class="btn btn--cta btn--block show-closed__cta" href={hostHref} style={`background:${ctaColor}`}>More from {hostName}</a>}
-                  <a class="link-btn show-closed__browse" href="/marketplace">Browse shows on avaTOK →</a>
+                  {hostHref && <a class="btn btn--cta btn--block show-closed__cta" href={hostHref} style={`background:${ctaColor}`}><ui-copy style="display:contents" data-i18n="web-common.41e584f0d92dbd75">More from</ui-copy> {hostName}</a>}
+                  <a data-i18n="web-common.dde8dc149bac7e5b" class="link-btn show-closed__browse" href="/marketplace">Browse shows on avaTOK →</a>
                 </div>
               )}
               <div class="booking-controls" style={bookingOpen ? undefined : 'display:none'}>
@@ -830,10 +830,10 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
                   <button type="button" id="cal-next" class="round-btn">›</button>
                 </div>
                 <div class="calendar__dow">
-                  <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+                  <span data-i18n="web-common.8de0b3c47f112c59">S</span><span data-i18n="web-common.08f271887ce94707">M</span><span data-i18n="web-common.e632b7095b0bf32c">T</span><span data-i18n="web-common.fcb5f40df9be6bae">W</span><span data-i18n="web-common.e632b7095b0bf32c">T</span><span data-i18n="web-common.f67ab10ad4e4c531">F</span><span data-i18n="web-common.8de0b3c47f112c59">S</span>
                 </div>
                 <div id="cal-grid" class="calendar__grid"></div>
-                <div class="calendar__legend">● = SHOW DAY</div>
+                <div data-i18n="web-common.8621061b301d8dda" class="calendar__legend">● = SHOW DAY</div>
               </div>
 
               <div class="slots">
@@ -842,7 +842,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
               </div>
 
               <div id="qty-section" class="qty-row">
-                <span class="qty-row__label">HOW MANY SEATS?</span>
+                <span data-i18n="web-common.ac2c490e447208d0" class="qty-row__label">HOW MANY SEATS?</span>
                 <div class="qty-row__controls">
                   <button type="button" id="qty-minus" class="round-btn">−</button>
                   <span id="qty-value" class="qty-row__value">1</span>
@@ -852,42 +852,42 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
 
               <div id="price-summary" class="price-box">
                 <div id="price-rows"></div>
-                <span class="price-box__footnote">THAT'S IT. NO SURPRISES AT CHECKOUT.</span>
+                <span data-i18n="web-common.32e07fb5e77bbb90" class="price-box__footnote">THAT'S IT. NO SURPRISES AT CHECKOUT.</span>
               </div>
 
               <div id="book-cta-area">
                 <button type="button" id="book-btn" class="btn btn--cta btn--block"></button>
-                <div class="book-cta-area__footnote">FREE CANCEL UP TO 24 HRS BEFORE THE SHOW<br />NO AUTO-RENEW · NO HIDDEN FEES</div>
+                <div class="book-cta-area__footnote"><ui-copy style="display:contents" data-i18n="web-common.562d8b810ec82e55">FREE CANCEL UP TO 24 HRS BEFORE THE SHOW</ui-copy><br /><ui-copy style="display:contents" data-i18n="web-common.859bf0c832e10221">NO AUTO-RENEW · NO HIDDEN FEES</ui-copy></div>
               </div>
               </div>
 
               <div id="booked-panel" class="booked-panel">
-                <div class="booked-panel__title">Seat locked! ✓</div>
+                <div data-i18n="web-common.5b474d90d33271d5" class="booked-panel__title">Seat locked! ✓</div>
                 <p id="booked-line" class="booked-panel__line"></p>
                 {isLive && (
-                  <button type="button" class="btn btn--cta js-join-btn booked-panel__join">▸ Join the show now</button>
+                  <button data-i18n="web-common.96f650cf44bedc5d" type="button" class="btn btn--cta js-join-btn booked-panel__join">▸ Join the show now</button>
                 )}
                 <p id="booked-note" class="booked-panel__note"></p>
-                <button type="button" id="unbook-btn" class="link-btn link-btn--light">CHANGE / CANCEL BOOKING</button>
+                <button data-i18n="web-common.8743fd84b396d278" type="button" id="unbook-btn" class="link-btn link-btn--light">CHANGE / CANCEL BOOKING</button>
               </div>
             </>
           )}
         </div>
       </div>
       {masala && (
-        <div class="handwritten handwritten--aside">Seat gayi toh scene bhi gaya.<br />— Bazaar rule #7</div>
+        <div class="handwritten handwritten--aside"><ui-copy style="display:contents" data-i18n="web-common.8d610ea4d6ce9375">Seat gayi toh scene bhi gaya.</ui-copy><br /><ui-copy style="display:contents" data-i18n="web-common.cfc47b7e9a64ff77">— Bazaar rule #7</ui-copy></div>
       )}
     </aside>
 
     <main class="main-col">
       {howItWorks.length > 0 && (
         <section>
-          <h2 class="section-title">How the show <span class="section-title__accent">works.</span></h2>
+          <h2 class="section-title"><ui-copy style="display:contents" data-i18n="web-common.f9dd6c4767902cfb">How the show</ui-copy> <span data-i18n="web-common.f2d96d2b41bd401a" class="section-title__accent">works.</span></h2>
           <div class="divider"><TruckBorder kind={cat.kind} /></div>
           <div class="step-grid">
             {howItWorks.map((step, i) => (
               <div class="step-card">
-                <div class="step-card__label">STEP {i + 1} · {step.label}</div>
+                <div class="step-card__label"><ui-copy style="display:contents" data-i18n="web-common.78e75a25d80993a5">STEP</ui-copy> {i + 1} · {step.label}</div>
                 <p>{step.body}</p>
               </div>
             ))}
@@ -897,8 +897,8 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
 
       <section>
         <div class="section-head">
-          <h2 class="section-title">Meet the <span class="section-title__accent">host.</span></h2>
-          <span class="section-head__note">{idVerified ? 'ID VERIFIED · ' : ''}PAST SESSIONS SHOWN UNEDITED</span>
+          <h2 class="section-title"><ui-copy style="display:contents" data-i18n="web-common.0f13af84d1e19999">Meet the</ui-copy> <span data-i18n="web-common.c4f4b2517d599afa" class="section-title__accent">host.</span></h2>
+          <span class="section-head__note">{idVerified ? 'ID VERIFIED · ' : ''}<ui-copy style="display:contents" data-i18n="web-common.494d8f81c1406e20">PAST SESSIONS SHOWN UNEDITED</ui-copy></span>
         </div>
         <div class="divider"><TruckBorder kind="tassels" /></div>
         <div class="host-card">
@@ -907,21 +907,21 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
               ? `background-image:url(${cfImage(hostAvatar, { width: 480 })});background-size:cover;background-position:center;`
               : `background:${cat.photo}`}>
               {!hostAvatar && <span class="host-card__photo-label">{hostInitials}</span>}
-              {idVerified && <span class="host-card__verified">✓ ID VERIFIED</span>}
+              {idVerified && <span data-i18n="web-common.1d7a10662e0a2a44" class="host-card__verified">✓ ID VERIFIED</span>}
             </div>
             <div>
               <div class="host-card__name">
                 {hostHref ? <a class="host-card__namelink" href={hostHref}>{hostName}</a> : hostName}
               </div>
-              {hostSinceYear && <div class="host-card__meta">HOST SINCE {hostSinceYear}</div>}
+              {hostSinceYear && <div class="host-card__meta"><ui-copy style="display:contents" data-i18n="web-common.15b96cad7066c479">HOST SINCE</ui-copy> {hostSinceYear}</div>}
             </div>
             <div class="host-card__chips">
               <span class="chip">{hostChip1}</span>
               <span class="chip">{hostChip2}</span>
-              <span class="chip">~{repliesIn} REPLY</span>
+              <span class="chip">~{repliesIn} <ui-copy style="display:contents" data-i18n="web-common.62302617f488f75a">REPLY</ui-copy></span>
             </div>
-            <button type="button" id="msg-host-btn" class="btn btn--cta" style={`background:${ctaColor}`}>✉ Message {hostName.split(' ')[0]}</button>
-            <span class="host-card__privacy">MESSAGES HAPPEN IN THE AVATOK APP · NO PHONE NUMBERS SHARED</span>
+            <button type="button" id="msg-host-btn" class="btn btn--cta" style={`background:${ctaColor}`}><ui-copy style="display:contents" data-i18n="web-common.1e1fc50ea76d2183">✉ Message</ui-copy> {hostName.split(' ')[0]}</button>
+            <span data-i18n="web-common.67d8fb3c6748ce6f" class="host-card__privacy">MESSAGES HAPPEN IN THE AVATOK APP · NO PHONE NUMBERS SHARED</span>
             <div id="ask-host-panel" style="display:none;">
               <MessageHostIsland client:visible listingId={listing.id} hostName={hostName} hostNumber={hostNumber} />
             </div>
@@ -929,30 +929,30 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
           <div class="host-card__details">
             {aboutBio && (
               <div>
-                <div class="label-heading">ABOUT {hostName.split(' ')[0].toUpperCase()}</div>
+                <div class="label-heading"><ui-copy style="display:contents" data-i18n="web-common.72b70ae3032dfe31">ABOUT</ui-copy> {hostName.split(' ')[0].toUpperCase()}</div>
                 <p class="body-text">{aboutBio}</p>
               </div>
             )}
             {newHost ? (
               <div class="newhost-box">
                 <div class="newhost-box__head">
-                  <span class="newhost-box__tag">NAYA HOST</span>
-                  <span class="newhost-box__title">No shows hosted yet — you'd be among the first.</span>
+                  <span data-i18n="web-common.7d84613ec04cd2e0" class="newhost-box__tag">NAYA HOST</span>
+                  <span data-i18n="web-common.b817d19e4de3f60b" class="newhost-box__title">No shows hosted yet — you'd be among the first.</span>
                 </div>
-                <p class="body-text">We show real history only, so this space stays empty until the first show happens. Here's what avaTOK has checked instead:</p>
+                <p data-i18n="web-common.9dc1a9080e2ed73e" class="body-text">We show real history only, so this space stays empty until the first show happens. Here's what avaTOK has checked instead:</p>
                 <div class="newhost-box__grid">
-                  <div class="newhost-box__item"><span>{idVerified ? '✓' : '○'} ID VERIFIED</span><p>Government ID matched to the payout account.</p></div>
-                  <div class="newhost-box__item"><span>✓ INTRO CALL DONE</span><p>A live onboarding call with the avaTOK team.</p></div>
-                  <div class="newhost-box__item"><span>✓ RULES TRAINING</span><p>Completed conduct and safety training.</p></div>
+                  <div class="newhost-box__item"><span>{idVerified ? '✓' : '○'} <ui-copy style="display:contents" data-i18n="web-common.73db772917e59e19">ID VERIFIED</ui-copy></span><p data-i18n="web-common.c01b879972f0d561">Government ID matched to the payout account.</p></div>
+                  <div class="newhost-box__item"><span data-i18n="web-common.3bfd30fd24ad95fe">✓ INTRO CALL DONE</span><p data-i18n="web-common.2a68a53615bf6fc3">A live onboarding call with the avaTOK team.</p></div>
+                  <div class="newhost-box__item"><span data-i18n="web-common.90216d4770f413b9">✓ RULES TRAINING</span><p data-i18n="web-common.86a323d2974519af">Completed conduct and safety training.</p></div>
                 </div>
                 <div class="newhost-box__promise">
-                  <span>FIRST-SHOW PROMISE</span>
-                  <span>If a first show is cancelled or falls flat, your refund is automatic — no questions, no forms.</span>
+                  <span data-i18n="web-common.98ab10a09788a465">FIRST-SHOW PROMISE</span>
+                  <span data-i18n="web-common.65f7b6bd6ed470e1">If a first show is cancelled or falls flat, your refund is automatic — no questions, no forms.</span>
                 </div>
               </div>
             ) : hostSessions.length > 0 ? (
               <div>
-                <div class="label-heading">PAST SESSIONS</div>
+                <div data-i18n="web-common.d21dfd6d9799ac3e" class="label-heading">PAST SESSIONS</div>
                 <div class="session-list">
                   {hostSessions.map((hs) => (
                     <div class="session-row">
@@ -968,7 +968,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
             {hostListings.length > 0 && (
               <div>
                 <div class="section-head section-head--tight">
-                  <span class="label-heading">ALSO LISTED BY {hostName.toUpperCase()}</span>
+                  <span class="label-heading"><ui-copy style="display:contents" data-i18n="web-common.3b14bdc5c3978383">ALSO LISTED BY</ui-copy> {hostName.toUpperCase()}</span>
                   <span class="label-heading label-heading--muted">{listingCount}</span>
                 </div>
                 <div class="listing-grid">
@@ -989,9 +989,9 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
       {rules.length > 0 && (
         <section>
           <div class="section-head">
-            <h2 class="section-title">{hostPoss} house <span class="section-title__accent">rules.</span></h2>
-            <img src="/assets/jatt-sticker.png" alt="Caution: on board — proceed with respect" class="rules-sticker" />
-            <span class="section-head__note">SET BY THE HOST · SHOWN BEFORE EVERY BOOKING</span>
+            <h2 class="section-title">{hostPoss} <ui-copy style="display:contents" data-i18n="web-common.d6e21286621a8586">house</ui-copy> <span data-i18n="web-common.fe4d7b920447bdc2" class="section-title__accent">rules.</span></h2>
+            <img data-india-i18n-attr="alt:web-common.0bb1b667ae2b58b3" src={publicImage('/assets/jatt-sticker.png', { width: 900, fit: 'scale-down' })} alt="Caution: on board — proceed with respect" class="rules-sticker" />
+            <span data-i18n="web-common.ead43b00684c9888" class="section-head__note">SET BY THE HOST · SHOWN BEFORE EVERY BOOKING</span>
           </div>
           <div class="divider"><TruckBorder kind="eyes" /></div>
           <div class="rules-card">
@@ -1021,8 +1021,8 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
               ))}
             </div>
             <div class="rules-card__footer">
-              <span>AVATOK BASELINE RULES ALWAYS APPLY ON TOP — HARASSMENT, HATE OR RECORDING WITHOUT CONSENT = INSTANT BAN.</span>
-              <a href="/community-guidelines" class="rules-card__footer-link">READ PLATFORM RULES</a>
+              <span data-i18n="web-common.8963edc36a16271e">AVATOK BASELINE RULES ALWAYS APPLY ON TOP — HARASSMENT, HATE OR RECORDING WITHOUT CONSENT = INSTANT BAN.</span>
+              <a data-i18n="web-common.4160a94d053eff1a" href="/community-guidelines" class="rules-card__footer-link">READ PLATFORM RULES</a>
             </div>
           </div>
         </section>
@@ -1030,15 +1030,15 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
 
       <section>
         <div class="section-head">
-          <h2 class="section-title">Public ki <span class="section-title__accent">Rai.</span></h2>
-          <span class="section-head__note">ALL FROM VERIFIED BOOKINGS · WE DELETE NOTHING</span>
+          <h2 class="section-title"><ui-copy style="display:contents" data-i18n="web-common.970aedbbe6b1e180">Public ki</ui-copy> <span data-i18n="web-common.00e2d45ff7f2662c" class="section-title__accent">Rai.</span></h2>
+          <span data-i18n="web-common.4742c883453d6588" class="section-head__note">ALL FROM VERIFIED BOOKINGS · WE DELETE NOTHING</span>
         </div>
         <div class="divider"><TruckBorder kind="chai" /></div>
         <div class="reviews-layout">
           <div class="reviews-summary">
             <div class="reviews-summary__card">
               <div class="reviews-summary__score">{listing.rating_avg != null ? listing.rating_avg.toFixed(1) : '—'}</div>
-              <div class="reviews-summary__meta">{reviews?.total ?? listing.rating_count ?? 0} RATINGS · {showsHosted} SHOWS</div>
+              <div class="reviews-summary__meta">{reviews?.total ?? listing.rating_count ?? 0} <ui-copy style="display:contents" data-i18n="web-common.100e85262b50e5b8">RATINGS ·</ui-copy> {showsHosted} <ui-copy style="display:contents" data-i18n="web-common.f635846943615a4d">SHOWS</ui-copy></div>
               <div class="reviews-summary__bars">
                 {bars.map((b) => (
                   <div class="rating-bar">
@@ -1049,7 +1049,7 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
                 ))}
               </div>
             </div>
-            {masala && <img src="/assets/baccha-uncle.png" alt="Baccha hai tu mera, tension kyu leta hai" class="reviews-summary__sticker" />}
+            {masala && <img data-india-i18n-attr="alt:web-common.17390c00587887c1" src={publicImage('/assets/baccha-uncle.png', { width: 900, fit: 'scale-down' })} alt="Baccha hai tu mera, tension kyu leta hai" class="reviews-summary__sticker" />}
           </div>
           <div class="reviews-list-wrap">
             {/* [REVIEW-MOD-1 2026-09-06] The empty middle the owner pointed at.
@@ -1062,9 +1062,9 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
             <LeaveReviewIsland client:load listingId={listing.id} hostName={hostName} />
             <div id="reviews-list" class="reviews-list"></div>
             <div class="pager">
-              <button type="button" id="reviews-prev" class="pager__btn">‹ PREV</button>
+              <button data-i18n="web-common.8c5851b438788700" type="button" id="reviews-prev" class="pager__btn">‹ PREV</button>
               <span id="reviews-page-label" class="pager__label"></span>
-              <button type="button" id="reviews-next" class="pager__btn">NEXT ›</button>
+              <button data-i18n="web-common.13149c749e8cf093" type="button" id="reviews-next" class="pager__btn">NEXT ›</button>
             </div>
           </div>
         </div>
@@ -1075,16 +1075,16 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
           <div class="trust-block__ribbon"><TruckBorder kind="lotus" /></div>
           <div class="trust-block__body">
             <div class="trust-block__head">
-              <h2 class="section-title section-title--onteal">Seedhi baat, no chakkar.</h2>
-              <span>THESE PROMISES APPLY TO EVERY LISTING</span>
+              <h2 data-i18n="web-common.cf4dec8f5f1fec58" class="section-title section-title--onteal">Seedhi baat, no chakkar.</h2>
+              <span data-i18n="web-common.4435de7ad4572e25">THESE PROMISES APPLY TO EVERY LISTING</span>
             </div>
             <div class="trust-grid">
-              <div class="trust-item"><div>FULL PRICE UPFRONT</div><p>Ticket + fees + GST — all visible before you book. No new numbers at checkout, ever.</p></div>
-              <div class="trust-item"><div>CANCEL = FULL REFUND</div><p>Free cancellation up to 24 hours before the show. If the host cancels, your refund is automatic.</p></div>
-              <div class="trust-item"><div>REAL SEATS, REAL COUNTS</div><p>Seat and viewer counters come from live inventory. No fake "only 2 left!" drama here.</p></div>
-              <div class="trust-item"><div>HUMAN OR AI — CLEARLY LABELLED</div><p>This show is 100% live human. AI agents live in their own section with their own label. Never mixed.</p></div>
-              <div class="trust-item"><div>RECORDING OFF BY DEFAULT</div><p>The recap reel only includes people who said yes during the show. Everyone else is out, permanently.</p></div>
-              <div class="trust-item"><div>MODERATED ROOM</div><p>Report button on every screen. Bad behaviour means instant exit — and your refund stays yours.</p></div>
+              <div class="trust-item"><div data-i18n="web-common.d494030c23c9a3c7">FULL PRICE UPFRONT</div><p data-i18n="web-common.6bb40e5d5e38daf2">Ticket + fees + GST — all visible before you book. No new numbers at checkout, ever.</p></div>
+              <div class="trust-item"><div data-i18n="web-common.58c85d51c130f513">CANCEL = FULL REFUND</div><p data-i18n="web-common.b569bde494e2184a">Free cancellation up to 24 hours before the show. If the host cancels, your refund is automatic.</p></div>
+              <div class="trust-item"><div data-i18n="web-common.b506c87ee3640286">REAL SEATS, REAL COUNTS</div><p data-i18n="web-common.6eb44be111561b15">Seat and viewer counters come from live inventory. No fake "only 2 left!" drama here.</p></div>
+              <div class="trust-item"><div data-i18n="web-common.181634a366708982">HUMAN OR AI — CLEARLY LABELLED</div><p data-i18n="web-common.1882c67e85f05bdb">This show is 100% live human. AI agents live in their own section with their own label. Never mixed.</p></div>
+              <div class="trust-item"><div data-i18n="web-common.5d3da5398afabb29">RECORDING OFF BY DEFAULT</div><p data-i18n="web-common.8280de5fd88e1ef4">The recap reel only includes people who said yes during the show. Everyone else is out, permanently.</p></div>
+              <div class="trust-item"><div data-i18n="web-common.ea46780201e34bf8">MODERATED ROOM</div><p data-i18n="web-common.75361e0beb1a3230">Report button on every screen. Bad behaviour means instant exit — and your refund stays yours.</p></div>
             </div>
           </div>
         </div>
@@ -1094,11 +1094,11 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
 
   <div class="browse">
     <div class="section-head">
-      <h2 class="section-title">Browse more <span class="section-title__accent">events.</span></h2>
+      <h2 class="section-title"><ui-copy style="display:contents" data-i18n="web-common.be3398565992e357">Browse more</ui-copy> <span data-i18n="web-common.9faa09a3e4bdccca" class="section-title__accent">events.</span></h2>
       {masala && (
         <div class="browse__quote">
-          <div class="handwritten">Ek show se kya hoga?<br />Scroll karte raho…</div>
-          <img src="/assets/chill-uncle.png" alt="Chill uncle with coconut" />
+          <div class="handwritten"><ui-copy style="display:contents" data-i18n="web-common.3ea0128b940e8a62">Ek show se kya hoga?</ui-copy><br /><ui-copy style="display:contents" data-i18n="web-common.f29893658450dd0d">Scroll karte raho…</ui-copy></div>
+          <img data-india-i18n-attr="alt:web-common.7140148ccc44276e" src={publicImage('/assets/chill-uncle.png', { width: 900, fit: 'scale-down' })} alt="Chill uncle with coconut" />
         </div>
       )}
       <span id="browse-meta" class="section-head__note"></span>
@@ -1106,9 +1106,9 @@ const listingMeta = { id: listing.id, creatorUid: listing.creator?.uid ?? null }
     <div class="divider"><TruckBorder kind="jhalar" /></div>
     <div id="browse-grid" class="browse-grid"></div>
     <div class="pager">
-      <button type="button" id="browse-prev" class="pager__btn">‹ PREV</button>
+      <button data-i18n="web-common.8c5851b438788700" type="button" id="browse-prev" class="pager__btn">‹ PREV</button>
       <div id="browse-dots" class="pager__dots"></div>
-      <button type="button" id="browse-next" class="pager__btn">NEXT ›</button>
+      <button data-i18n="web-common.13149c749e8cf093" type="button" id="browse-next" class="pager__btn">NEXT ›</button>
     </div>
   </div>
 </div>

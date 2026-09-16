@@ -1,0 +1,115 @@
+name: UI catalog generation and optional publication
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        description: Target environment (publication remains opt-in)
+        options: [staging, prod]
+        default: staging
+        required: true
+      allow_paid:
+        type: boolean
+        description: Explicitly authorize Google translation within character cap
+        default: false
+      max_characters:
+        type: string
+        description: Maximum attempted Google characters, including retries (0 forbids paid work)
+        default: '0'
+      publish:
+        type: boolean
+        description: Publish generated public UI catalogs to the selected R2 environment
+        default: false
+      acknowledge_partial:
+        type: boolean
+        description: Explicitly accept missing language namespaces (may reduce currently published coverage)
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: ui-catalogs-${{ inputs.environment }}
+  cancel-in-progress: false
+jobs:
+  catalogs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: ${{ inputs.environment == 'prod' && 'production' || 'staging' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Guard branch, environment and finite spending cap
+        env:
+          TARGET: ${{ inputs.environment }}
+          CAP: ${{ inputs.max_characters }}
+          PAID: ${{ inputs.allow_paid }}
+          PUBLISH: ${{ inputs.publish }}
+        run: |
+          [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]] || exit 1
+          [[ "$TARGET" == prod || "$TARGET" == staging ]] || exit 1
+          [[ "$CAP" =~ ^[0-9]+$ ]] && [[ "$CAP" -le 1000000 ]] || exit 1
+          # Review branches may only validate: no paid calls, no publication,
+          # and an exact zero cap. Paid/publishing runs retain environment gates.
+          if [[ "$GITHUB_REF" == refs/heads/codex/* && "$PAID" == false && "$PUBLISH" == false && "$CAP" == 0 ]]; then
+            exit 0
+          fi
+          if [[ "$TARGET" == prod && "$GITHUB_REF" != refs/heads/main ]]; then exit 1; fi
+          if [[ "$TARGET" == staging && "$GITHUB_REF" != refs/heads/staging ]]; then exit 1; fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Generator regression tests (no paid requests)
+        run: node --test scripts/i18n/generate_catalogs.test.mjs
+      - name: Worker catalog regression tests
+        working-directory: worker
+        run: |
+          npm ci
+          npx vitest run src/lib/ui_catalogs.test.ts src/routes/ui_localization.test.ts
+      - uses: actions/cache/restore@v4
+        with:
+          path: artifacts/ui-catalog-cache
+          key: ui-catalog-cache-auto-v2-${{ inputs.environment }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ui-catalog-cache-auto-v2-${{ inputs.environment }}-
+      - name: Authenticate dedicated Google translation principal
+        if: inputs.allow_paid
+        id: google
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.UI_TRANSLATION_GOOGLE_SA_JSON }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/cloud-translation
+          create_credentials_file: false
+      - name: Generate immutable catalogs and honest coverage report
+        env:
+          PAID: ${{ inputs.allow_paid }}
+          GOOGLE_TRANSLATION_PROJECT: ${{ vars.UI_TRANSLATION_GOOGLE_PROJECT }}
+          GOOGLE_TRANSLATION_ACCESS_TOKEN: ${{ steps.google.outputs.access_token }}
+          UI_CATALOG_MAX_CHARACTERS: ${{ inputs.max_characters }}
+        run: |
+          if [[ "$PAID" == true ]]; then
+            node scripts/i18n/generate_catalogs.mjs --allow-paid
+          else
+            node scripts/i18n/generate_catalogs.mjs
+          fi
+      - uses: actions/cache/save@v4
+        if: always() && hashFiles('artifacts/ui-catalog-cache/**/*.json') != ''
+        with:
+          path: artifacts/ui-catalog-cache
+          key: ui-catalog-cache-auto-v2-${{ inputs.environment }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-catalogs-${{ inputs.environment }}-${{ github.run_id }}
+          path: artifacts/ui-catalogs
+          retention-days: 30
+      - name: Set up explicit publisher
+        if: inputs.publish
+        run: python3 -m pip install boto3
+      - name: Publish immutable objects, then release pointer
+        if: inputs.publish
+        env:
+          AVATOK_TARGET: ${{ inputs.environment }}
+          ACKNOWLEDGE_PARTIAL: ${{ inputs.acknowledge_partial && '1' || '0' }}
+          ALLOW_PROD: ${{ inputs.environment == 'prod' && '1' || '0' }}
+          R2_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.UI_CATALOG_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.UI_CATALOG_R2_SECRET_ACCESS_KEY }}
+        run: bash scripts/cf.sh catalogs publish

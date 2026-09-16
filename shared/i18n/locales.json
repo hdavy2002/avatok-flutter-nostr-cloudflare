@@ -1,0 +1,184 @@
+[
+  {
+    "code": "en",
+    "nativeName": "English",
+    "dir": "ltr",
+    "script": "Latn",
+    "googleTarget": null
+  },
+  {
+    "code": "hi-Latn",
+    "nativeName": "Hinglish",
+    "dir": "ltr",
+    "script": "Latn",
+    "googleTarget": null
+  },
+  {
+    "code": "as",
+    "nativeName": "অসমীয়া",
+    "dir": "ltr",
+    "script": "Beng",
+    "googleTarget": "as"
+  },
+  {
+    "code": "bn",
+    "nativeName": "বাংলা",
+    "dir": "ltr",
+    "script": "Beng",
+    "googleTarget": "bn"
+  },
+  {
+    "code": "brx",
+    "nativeName": "बड़ो",
+    "dir": "ltr",
+    "script": "Deva",
+    "googleTarget": null
+  },
+  {
+    "code": "doi",
+    "nativeName": "डोगरी",
+    "dir": "ltr",
+    "script": "Deva",
+    "googleTarget": "doi"
+  },
+  {
+    "code": "gu",
+    "nativeName": "ગુજરાતી",
+    "dir": "ltr",
+    "script": "Gujr",
+    "googleTarget": "gu"
+  },
+  {
+    "code": "hi",
+    "nativeName": "हिन्दी",
+    "dir": "ltr",
+    "script": "Deva",
+    "googleTarget": "hi"
+  },
+  {
+    "code": "kn",
+    "nativeName": "ಕನ್ನಡ",
+    "dir": "ltr",
+    "script": "Knda",
+    "googleTarget": "kn"
+  },
+  {
+    "code": "ks",
+    "nativeName": "کٲشُر",
+    "dir": "rtl",
+    "script": "Arab",
+    "googleTarget": null
+  },
+  {
+    "code": "kok",
+    "nativeName": "कोंकणी",
+    "dir": "ltr",
+    "script": "Deva",
+    "googleTarget": "gom"
+  },
+  {
+    "code": "mai",
+    "nativeName": "मैथिली",
+    "dir": "ltr",
+    "script": "Deva",
+    "googleTarget": "mai"
+  },
+  {
+    "code": "ml",
+    "nativeName": "മലയാളം",
+    "dir": "ltr",
+    "script": "Mlym",
+    "googleTarget": "ml"
+  },
+  {
+    "code": "mni",
+    "nativeName": "ꯃꯤꯇꯩ ꯂꯣꯟ",
+    "dir": "ltr",
+    "script": "Mtei",
+    "googleTarget": "mni-Mtei"
+  },
+  {
+    "code": "mr",
+    "nativeName": "मराठी",
+    "dir": "ltr",
+    "script": "Deva",
+    "googleTarget": "mr"
+  },
+  {
+    "code": "ne",
+    "nativeName": "नेपाली",
+    "dir": "ltr",
+    "script": "Deva",
+    "googleTarget": "ne"
+  },
+  {
+    "code": "or",
+    "nativeName": "ଓଡ଼ିଆ",
+    "dir": "ltr",
+    "script": "Orya",
+    "googleTarget": "or"
+  },
+  {
+    "code": "pa",
+    "nativeName": "ਪੰਜਾਬੀ",
+    "dir": "ltr",
+    "script": "Guru",
+    "googleTarget": "pa"
+  },
+  {
+    "code": "sa",
+    "nativeName": "संस्कृतम्",
+    "dir": "ltr",
+    "script": "Deva",
+    "googleTarget": "sa"
+  },
+  {
+    "code": "sat",
+    "nativeName": "ᱥᱟᱱᱛᱟᱲᱤ",
+    "dir": "ltr",
+    "script": "Olck",
+    "googleTarget": null
+  },
+  {
+    "code": "sd",
+    "nativeName": "سنڌي",
+    "dir": "rtl",
+    "script": "Arab",
+    "googleTarget": "sd"
+  },
+  {
+    "code": "ta",
+    "nativeName": "தமிழ்",
+    "dir": "ltr",
+    "script": "Taml",
+    "googleTarget": "ta"
+  },
+  {
+    "code": "te",
+    "nativeName": "తెలుగు",
+    "dir": "ltr",
+    "script": "Telu",
+    "googleTarget": "te"
+  },
+  {
+    "code": "ur",
+    "nativeName": "اُردُو",
+    "dir": "rtl",
+    "script": "Arab",
+    "googleTarget": "ur"
+  },
+  {
+    "code": "bho",
+    "nativeName": "भोजपुरी",
+    "dir": "ltr",
+    "script": "Deva",
+    "googleTarget": "bho"
+  },
+  {
+    "code": "awa",
+    "nativeName": "अवधी",
+    "dir": "ltr",
+    "script": "Deva",
+    "googleTarget": "awa"
+  }
+]

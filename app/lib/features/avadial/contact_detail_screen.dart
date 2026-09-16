@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -111,16 +114,15 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
           side: const BorderSide(color: AvaDialTheme.border, width: 1),
           borderRadius: BorderRadius.circular(AD.rListCard),
         ),
-        title: Text('Not on AvaTOK', style: AvaDialTheme.title(size: 17, color: AvaDialTheme.text)),
-        content: Text(
-          '${widget.number} isn\'t an AvaTOK number yet. AvaTOK only calls other '
-          'AvaTOK users — invite them to join.',
+        title: UiText(UiMessage.m_not_on_avatok_25f9ca82b1, style: AvaDialTheme.title(size: 17, color: AvaDialTheme.text)),
+        content: UiText(
+          UiMessage.m_value1_isn_t_an_avatok_1ffb58c7c9, params: {'value1': (widget.number).toString()},
           style: AvaDialTheme.sub(size: 13, color: AvaDialTheme.textSoft),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogCtx),
-            child: Text('Cancel', style: AvaDialTheme.value(size: 14, color: AvaDialTheme.textSoft)),
+            child: UiText(UiMessage.m_cancel_19766ed6cc, style: AvaDialTheme.value(size: 14, color: AvaDialTheme.textSoft)),
           ),
           TextButton(
             onPressed: () {
@@ -128,7 +130,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
               Navigator.of(context, rootNavigator: true).push(
                   MaterialPageRoute<void>(builder: (_) => const InviteScreen()));
             },
-            child: Text('Invite', style: AvaDialTheme.value(size: 14, color: AD.online)),
+            child: UiText(UiMessage.m_invite_1fd9ae1607, style: AvaDialTheme.value(size: 14, color: AD.online)),
           ),
         ],
       ),
@@ -172,6 +174,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final hasAvatok = _o?.avatokNumber?.isNotEmpty ?? false;
     return Scaffold(
       backgroundColor: AvaDialTheme.bg,
@@ -180,7 +183,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         shape: const Border(bottom: BorderSide(color: AvaDialTheme.border, width: 1)),
-        title: Text('Contact', style: AvaDialTheme.title(size: 22, color: AvaDialTheme.text)),
+        title: UiText(UiMessage.m_contact_2b5c3d2672, style: AvaDialTheme.title(size: 22, color: AvaDialTheme.text)),
         actions: [
           IconButton(
             icon: Icon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.regular), color: AvaDialTheme.text),
@@ -246,7 +249,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                   _fieldTile(
                     icon: PhosphorIcons.chatCircleDots(PhosphorIconsStyle.fill),
                     color: AD.primaryBadge,
-                    label: 'AvaTOK',
+                    label: uiCopy(UiMessage.m_avatok_b692b5d2b4),
                     value: _o!.avatokNumber!,
                     onTap: _avatok,
                     trailing: 'Open chat',
@@ -254,7 +257,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                 _fieldTile(
                   icon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
                   color: AD.incomingCall,
-                  label: 'Phone',
+                  label: uiCopy(UiMessage.m_phone_63dceb8800),
                   value: widget.number,
                   // [PIVOT-MSGR-CALL-OFF-1] Keep the tile (it's the only place the
                   // number is shown/copyable), but drop the tap-to-call affordance
@@ -266,28 +269,28 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                   _fieldTile(
                     icon: PhosphorIcons.envelopeSimple(PhosphorIconsStyle.bold),
                     color: AD.iconSearch,
-                    label: 'Personal email',
+                    label: uiCopy(UiMessage.m_personal_email_2a1ab4d937),
                     value: _o!.personalEmail!,
                   ),
                 if (_o?.businessEmail?.isNotEmpty ?? false)
                   _fieldTile(
                     icon: PhosphorIcons.briefcase(PhosphorIconsStyle.bold),
                     color: AD.iconSearch,
-                    label: 'Business email',
+                    label: uiCopy(UiMessage.m_business_email_e9afc27f82),
                     value: _o!.businessEmail!,
                   ),
                 if (_o?.linkedin?.isNotEmpty ?? false)
                   _fieldTile(
                     icon: PhosphorIcons.linkedinLogo(PhosphorIconsStyle.bold),
                     color: AD.iconSearch,
-                    label: 'LinkedIn',
+                    label: uiCopy(UiMessage.m_linkedin_dd84425b72),
                     value: _o!.linkedin!,
                   ),
                 if (_o?.address?.isNotEmpty ?? false)
                   _fieldTile(
                     icon: PhosphorIcons.mapPin(PhosphorIconsStyle.bold),
                     color: AD.iconSearch,
-                    label: 'Address',
+                    label: uiCopy(UiMessage.m_address_56ef8f2095),
                     value: _o!.address!,
                   ),
                 for (final f in _o?.customFields ?? const <ContactField>[])
@@ -295,7 +298,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                     _fieldTile(
                       icon: PhosphorIcons.tag(PhosphorIconsStyle.bold),
                       color: AvaDialTheme.textSoft,
-                      label: f.label.isEmpty ? 'Field' : f.label,
+                      label: f.label.isEmpty ? uiCopy(UiMessage.m_field_f45fc1dfdc) : f.label,
                       value: f.value,
                     ),
                 // [PLAY-SCOPE-1 2026-08-05] The "Call history" tile is REMOVED — it
@@ -342,7 +345,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
           await Clipboard.setData(ClipboardData(text: value));
           if (mounted) {
             ScaffoldMessenger.of(context)
-                .showSnackBar(SnackBar(content: Text('$label copied')));
+                .showSnackBar(SnackBar(content: UiText(UiMessage.m_label_copied_135b808fb4, params: {'label': (label).toString()})));
           }
         },
         child: AdCard(

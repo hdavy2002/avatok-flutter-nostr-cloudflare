@@ -1,3 +1,4 @@
+import { UiText } from "../../lib/i18n/react";
 /* AuthPanelSkeleton — shown by <ClerkLoading> while Clerk's clerk-js bundle is
  * still downloading/initialising from clerk.avatok.ai. Without this the panel
  * area is blank for the ~second or two the SDK takes to boot, which reads as a
@@ -14,9 +15,7 @@ export function AuthPanelSkeleton() {
           className="inline-block h-7 w-7 animate-spin rounded-full border-[3px] border-ink border-t-transparent"
           aria-hidden="true"
         />
-        <p className="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-inkSoft">
-          Loading secure sign-in…
-        </p>
+        <p className="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-inkSoft"><UiText id="web-auth.21c40328c665d9f4" source="Loading secure sign-in…" />{" "}</p>
       </div>
     </Card>
   );

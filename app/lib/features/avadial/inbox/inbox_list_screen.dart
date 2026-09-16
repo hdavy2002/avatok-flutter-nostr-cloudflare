@@ -1,3 +1,6 @@
+
+import '../../../core/localization/ui_text.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -409,7 +412,7 @@ class _InboxListScreenState extends State<InboxListScreen> {
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: AdChip(
-              label: 'All',
+              label: uiCopy(UiMessage.m_all_a52ace420f),
               active: _campaignFilter == null,
               onTap: () {
                 setState(() => _campaignFilter = null);
@@ -420,7 +423,7 @@ class _InboxListScreenState extends State<InboxListScreen> {
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: AdChip(
-              label: 'Campaigns',
+              label: uiCopy(UiMessage.m_campaigns_30e9a08939),
               icon: PhosphorIcons.megaphone(PhosphorIconsStyle.bold),
               active: _campaignFilter == _kCampaignsAll,
               onTap: () {
@@ -461,6 +464,7 @@ class _InboxListScreenState extends State<InboxListScreen> {
   // screen is the top-level route and owns its own Scaffold + AppBar below.
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final content = Column(children: [
       // [UI-CALLS-2026] Top inset is 0 here ON PURPOSE: `AdSearchDock` applies
       // `AD.searchDockTopGap` itself, which is the shared "below the tip of the
@@ -473,7 +477,7 @@ class _InboxListScreenState extends State<InboxListScreen> {
           // [CALLREC-UX-1] "titles" is now a real promise — `_filtered` matches
           // a recording's user-typed title/description (recordings have no
           // transcript; the owner removed all AI from that feature).
-          hint: 'Search calls, numbers, titles',
+          hint: uiCopy(UiMessage.m_search_calls_numbers_titles_9cc7fd9c66),
           onChanged: (v) => setState(() => _query = v),
         ),
       ),
@@ -493,7 +497,7 @@ class _InboxListScreenState extends State<InboxListScreen> {
         // is unchanged there; on the 590dp-tall QWERTY handset it gives ~11dp
         // of the 76dp header back to the list.
         appBar: ZineAppBar(
-            title: 'Inbox',
+            title: uiCopy(UiMessage.m_inbox_94835ea2fc),
             heightScale: ZineBreakpoints.chromeScaleHV(context)),
         body: SeamOverlay(
           seam: const DoubleWaveSeam(bandColor: AD.bandJodhpur),
@@ -533,9 +537,8 @@ class _InboxListScreenState extends State<InboxListScreen> {
             // [CALLREC-UI-1], but this copy still only described voicemails —
             // so the one screen that tells a new user what the Inbox is for
             // never mentioned half of what lands in it.
-            title: 'No messages or recordings yet',
-            subtitle: 'Missed calls Ava answers for you, and calls you record, '
-                'will show up here.',
+            title: uiCopy(UiMessage.m_no_messages_or_recordings_yet_8ffadcf418),
+            subtitle: uiCopy(UiMessage.m_missed_calls_ava_answers_for_225ad78adc),
             color: AD.iconShield,
           ),
         ]),
@@ -548,8 +551,8 @@ class _InboxListScreenState extends State<InboxListScreen> {
           const SizedBox(height: 100),
           ShellEmptyState(
             icon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.regular),
-            title: 'No matches',
-            subtitle: 'No calls match your search.',
+            title: uiCopy(UiMessage.m_no_matches_2df01a03ff),
+            subtitle: uiCopy(UiMessage.m_no_calls_match_your_search_d0405e59c4),
             color: AD.iconSearch,
           ),
         ]),
@@ -574,8 +577,8 @@ class _InboxListScreenState extends State<InboxListScreen> {
           const SizedBox(height: 100),
           ShellEmptyState(
             icon: PhosphorIcons.warningCircle(PhosphorIconsStyle.regular),
-            title: 'Couldn’t load your Inbox',
-            subtitle: 'Pull down to try again.',
+            title: uiCopy(UiMessage.m_couldn_t_load_your_inbox_ab5552db9e),
+            subtitle: uiCopy(UiMessage.m_pull_down_to_try_again_e397693901),
             color: AD.danger,
           ),
         ]),
@@ -596,7 +599,7 @@ class _InboxListScreenState extends State<InboxListScreen> {
     if (t.isCampaignThread) {
       final id = t.campaignId;
       final name = t.campaignEnvelopeName ?? (id != null ? _campaignNames[id] : null) ?? id;
-      return (title: name ?? 'Campaign', subtitleNumber: null);
+      return (title: name ?? uiCopy(UiMessage.m_campaign_268286d2ef), subtitleNumber: null);
     }
     // [CALLREC-UI-1] A recording thread's "who" is the PEER on the call, which
     // the envelope names outright — going through the phone/uid resolver would
@@ -605,9 +608,9 @@ class _InboxListScreenState extends State<InboxListScreen> {
       final peer = t.latest.recPeerName.trim();
       final fallback = (t.latest.callerName ?? '').trim();
       final who = peer.isNotEmpty ? peer : fallback;
-      return (title: who.isEmpty ? 'Call recording' : who, subtitleNumber: null);
+      return (title: who.isEmpty ? uiCopy(UiMessage.m_call_recording_bb8d55c975) : who, subtitleNumber: null);
     }
-    if (t.isAnonymous) return (title: 'Hidden number', subtitleNumber: null);
+    if (t.isAnonymous) return (title: uiCopy(UiMessage.m_hidden_number_c3929eb30d), subtitleNumber: null);
     final resolved = _resolvedNames[t.conv];
     final phone = t.telPhone ?? t.latest.callerPhone;
     if (resolved == null) {
@@ -616,7 +619,7 @@ class _InboxListScreenState extends State<InboxListScreen> {
       // flashes empty; _reload()'s setState repaints with the real result.
       final name = t.latest.callerName;
       return (
-        title: (name != null && name.isNotEmpty) ? name : (phone ?? 'Unknown caller'),
+        title: (name != null && name.isNotEmpty) ? name : (phone ?? uiCopy(UiMessage.m_unknown_caller_0f6218c0c5)),
         subtitleNumber: null,
       );
     }
@@ -754,7 +757,7 @@ class _InboxListScreenState extends State<InboxListScreen> {
     // recording: the call happened and was answered, by definition.
     final titleText = (isCampaign || isCallRec)
         ? label.title
-        : 'Missed call from ${label.title}';
+        : uiCopy(UiMessage.m_missed_call_from_value1_f8d51f0b32, {'value1': (label.title).toString()});
     return GestureDetector(
       onTap: () => _open(t),
       onLongPress: () => _showThreadMenu(t),
@@ -849,26 +852,26 @@ class _InboxListScreenState extends State<InboxListScreen> {
             _ThreadMenuRow(
               icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold),
               color: AD.iconSearch,
-              label: 'Rename caller',
+              label: uiCopy(UiMessage.m_rename_caller_85db651e82),
               onTap: () { Navigator.pop(sheetCtx); _renameThreadCaller(t, phone); },
             ),
           if (phone != null)
             _ThreadMenuRow(
               icon: PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
               color: AD.danger,
-              label: 'Block caller',
+              label: uiCopy(UiMessage.m_block_caller_d0e4cd307b),
               onTap: () { Navigator.pop(sheetCtx); _blockThreadCaller(t, phone); },
             ),
           _ThreadMenuRow(
             icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.bold),
             color: AD.iconShield,
-            label: 'Mark all as heard',
+            label: uiCopy(UiMessage.m_mark_all_as_heard_34e3e3d6dd),
             onTap: () { Navigator.pop(sheetCtx); _markThreadHeard(t); },
           ),
           _ThreadMenuRow(
             icon: PhosphorIcons.trash(PhosphorIconsStyle.bold),
             color: AD.danger,
-            label: 'Delete thread',
+            label: uiCopy(UiMessage.m_delete_thread_009afc8315),
             danger: true,
             onTap: () { Navigator.pop(sheetCtx); _deleteThread(t); },
           ),
@@ -896,7 +899,7 @@ class _InboxListScreenState extends State<InboxListScreen> {
     Analytics.capture('inbox_block_tapped', {'report_spam': false, 'via': 'list'});
     if (!mounted) return;
     ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Number blocked.')));
+        .showSnackBar(const SnackBar(content: UiText(UiMessage.m_number_blocked_af09a3ed7a)));
   }
 
   /// Deletes EVERY card in [t] — `InboxApi.hideCard` per card (the same
@@ -912,19 +915,19 @@ class _InboxListScreenState extends State<InboxListScreen> {
           side: const BorderSide(color: AvaDialTheme.border, width: 1),
           borderRadius: BorderRadius.circular(AD.rListCard),
         ),
-        title: Text('Delete all voicemails from $label?', style: ADText.threadName(c: AvaDialTheme.text)),
-        content: Text(
-          'Every recording in this thread will be removed from your inbox.',
+        title: UiText(UiMessage.m_delete_all_voicemails_from_label_c58fe131e8, params: {'label': (label).toString()}, style: ADText.threadName(c: AvaDialTheme.text)),
+        content: UiText(
+          UiMessage.m_every_recording_in_this_thread_a23e72ca56,
           style: ADText.preview(c: AvaDialTheme.textSoft),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: ADText.preview(c: AvaDialTheme.textSoft)),
+            child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.preview(c: AvaDialTheme.textSoft)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Delete', style: ADText.preview(c: AD.danger)),
+            child: UiText(UiMessage.m_delete_e2d0a54968, style: ADText.preview(c: AD.danger)),
           ),
         ],
       ),
@@ -943,7 +946,7 @@ class _InboxListScreenState extends State<InboxListScreen> {
       unawaited(InboxThreadCache.I.save(next)); // keep the cache in step
     } else {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Some voicemails couldn’t be deleted — try again.')));
+          .showSnackBar(const SnackBar(content: UiText(UiMessage.m_some_voicemails_couldn_t_be_5137e4e5e8)));
       await _reload();
     }
   }
@@ -992,6 +995,7 @@ class _ThreadMenuRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return ListTile(
       leading: PhosphorIcon(icon, color: color),
       title: Text(label,

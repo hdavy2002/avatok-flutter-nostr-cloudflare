@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -96,7 +99,7 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
     setState(() => _togglingPause = false);
     if (s == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not update the link — try again.')));
+          const SnackBar(content: UiText(UiMessage.m_could_not_update_the_link_16378b9357)));
       return;
     }
     setState(() => _status = s);
@@ -115,6 +118,7 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: ZineAppBar(
@@ -143,7 +147,7 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
             text: 'Could not load analytics.',
           ),
           const SizedBox(height: Msg.s4),
-          ZineButton(label: 'Retry', variant: ZineButtonVariant.ghost,
+          ZineButton(label: uiCopy(UiMessage.m_retry_942087cc2d), variant: ZineButtonVariant.ghost,
               fontSize: 16, onPressed: _load),
         ]),
       );
@@ -184,7 +188,7 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
         if (s.recent.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: Msg.s4),
-            child: Text('No conversions yet — share your link to get started!',
+            child: UiText(UiMessage.m_no_conversions_yet_share_your_5be05500d7,
                 style: ADText.preview()),
           )
         else
@@ -193,9 +197,8 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
           const SizedBox(height: Msg.s5),
           _kicker('Marketing kit'),
           const SizedBox(height: Msg.s2),
-          Text(
-            'AI-generated promo images for this listing — story, post and banner. '
-            'Tap one to add your QR code and share it.',
+          UiText(
+            UiMessage.m_ai_generated_promo_images_for_2329e58339,
             style: ADText.preview(),
           ),
           const SizedBox(height: Msg.s3),
@@ -203,7 +206,7 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
         ],
         const SizedBox(height: Msg.s5),
         ZineButton(
-          label: 'View subscribers',
+          label: uiCopy(UiMessage.m_view_subscribers_48fc03e511),
           variant: ZineButtonVariant.blue,
           fullWidth: true,
           fontSize: 17,
@@ -214,7 +217,7 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
         ),
         const SizedBox(height: Msg.s3),
         ZineButton(
-          label: _paused ? 'Resume link' : 'Pause link',
+          label: _paused ? uiCopy(UiMessage.m_resume_link_73fbb93294) : uiCopy(UiMessage.m_pause_link_69c60385cd),
           variant: _paused ? ZineButtonVariant.ghost : ZineButtonVariant.coral,
           fullWidth: true,
           fontSize: 17,
@@ -228,8 +231,8 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
         if (_paused)
           Padding(
             padding: const EdgeInsets.only(top: Msg.s3),
-            child: Text(
-              'Paused links stop binding NEW users. Existing referrals keep earning you commission.',
+            child: UiText(
+              UiMessage.m_paused_links_stop_binding_new_a032945327,
               textAlign: TextAlign.center,
               style: ADText.preview(),
             ),
@@ -335,7 +338,7 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
             Flexible(
-              child: Text('${c.maskedUser} purchased',
+              child: UiText(UiMessage.m_value1_purchased_939b6d1704, params: {'value1': (c.maskedUser).toString()},
                   maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: ADText.rowName().copyWith(fontWeight: FontWeight.w600)),
             ),
@@ -371,8 +374,8 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
       ],
       ZineButton(
         label: _generating
-            ? 'Generating your kit… (~30 s)'
-            : _assets.isEmpty ? 'Generate marketing kit' : 'Generate a new kit',
+            ? uiCopy(UiMessage.m_generating_your_kit_30_s_ed7ec010b7)
+            : _assets.isEmpty ? uiCopy(UiMessage.m_generate_marketing_kit_f1e692bbf6) : uiCopy(UiMessage.m_generate_a_new_kit_16579b49d0),
         fullWidth: true,
         fontSize: 17,
         loading: _generating,
@@ -473,7 +476,7 @@ class _AssetShareScreenState extends State<AssetShareScreen> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not share the image — try again.')));
+            const SnackBar(content: UiText(UiMessage.m_could_not_share_the_image_38b7d9c363)));
       }
     } finally {
       if (mounted) setState(() => _sharing = false);
@@ -482,11 +485,12 @@ class _AssetShareScreenState extends State<AssetShareScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final aspect = _LinkDetailScreenState._assetAspect(widget.asset.format);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: ZineAppBar(
-        title: 'Share ${widget.asset.format}',
+        title: uiCopy(UiMessage.m_share_value1_6dc3b9a960, {'value1': (widget.asset.format).toString()}),
         tag: 'qr included',
       ),
       body: Column(children: [
@@ -536,7 +540,7 @@ class _AssetShareScreenState extends State<AssetShareScreen> {
           child: Padding(
             padding: const EdgeInsets.fromLTRB(Msg.s4, 0, Msg.s4, Msg.s3),
             child: ZineButton(
-              label: 'Share with QR',
+              label: uiCopy(UiMessage.m_share_with_qr_3b5a1cbc35),
               fullWidth: true,
               loading: _sharing,
               trailingIcon: false,
@@ -558,13 +562,14 @@ class _TimeseriesChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (points.isEmpty) {
       return Container(
         height: 120, alignment: Alignment.center,
         decoration: BoxDecoration(
             border: Border.all(color: AD.textTertiary, width: 2),
             borderRadius: BorderRadius.circular(Msg.rLg)),
-        child: Text('No activity in this period yet', style: ADText.preview()),
+        child: UiText(UiMessage.m_no_activity_in_this_period_d643152007, style: ADText.preview()),
       );
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

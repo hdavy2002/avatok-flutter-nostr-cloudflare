@@ -1,3 +1,4 @@
+import { UiText } from "../../lib/i18n/react";
 /* ListingPublish — mounts the 8-step listing wizard, opened straight at
  * step 8 (Preview & publish) for an existing draft.
  *
@@ -30,7 +31,7 @@ export function ListingPublish() {
   }, []);
   return (
     <IslandBoundary island="dashboard-listing-publish">
-      {hasId === null ? null : !hasId ? <p className="font-body font-bold text-inkSoft">No listing selected.</p> : <ListingWizard startAtPublish />}
+      {hasId === null ? null : !hasId ? <p className="font-body font-bold text-inkSoft"><UiText id="web-dashboard.9f0cbab563c9ed32" source="No listing selected." /></p> : <ListingWizard startAtPublish />}
     </IslandBoundary>
   );
 }

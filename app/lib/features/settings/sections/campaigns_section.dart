@@ -1,3 +1,6 @@
+
+import '../../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -25,7 +28,7 @@ void registerCampaignsSection() {
   SettingsSectionRegistry.register(
     SettingsSection(
       id: 'ava_campaigns',
-      title: 'Campaigns',
+      title: uiCopy(UiMessage.m_campaigns_30e9a08939),
       order: 26, // just below Ava Receptionist (24) / Business Agent (25)
       visible: () => RemoteConfig.campaignsEnabled,
       builder: (context) => const _CampaignsCard(),
@@ -38,6 +41,7 @@ class _CampaignsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return AdCard(
       padding: const EdgeInsets.all(4),
       child: Column(children: [
@@ -45,8 +49,8 @@ class _CampaignsCard extends StatelessWidget {
           context,
           icon: PhosphorIcons.megaphone(PhosphorIconsStyle.fill),
           iconColor: AD.iconVideo,
-          title: 'Campaigns',
-          subtitle: 'Launch and manage outbound AI-calling campaigns.',
+          title: uiCopy(UiMessage.m_campaigns_30e9a08939),
+          subtitle: uiCopy(UiMessage.m_launch_and_manage_outbound_ai_2e0b2b6765),
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const CampaignsHomeScreen()),
           ),
@@ -56,8 +60,8 @@ class _CampaignsCard extends StatelessWidget {
           context,
           icon: PhosphorIcons.chartBar(PhosphorIconsStyle.fill),
           iconColor: AD.iconSearch,
-          title: 'Analytics',
-          subtitle: 'Account-wide campaign performance and spend.',
+          title: uiCopy(UiMessage.m_analytics_94c116ee11),
+          subtitle: uiCopy(UiMessage.m_account_wide_campaign_performance_and_451d7955b9),
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const CampaignAnalyticsScreen()),
           ),

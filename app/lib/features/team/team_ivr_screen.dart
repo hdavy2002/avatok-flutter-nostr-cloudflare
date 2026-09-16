@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -85,7 +87,7 @@ class _TeamIvrScreenState extends State<TeamIvrScreen> {
     if (!mounted) return;
     if (r == null) {
       setState(() => _routing = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not connect')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: UiText(UiMessage.m_could_not_connect_8630b4dd33)));
       return;
     }
     final fallback = r['fallback'] == true;
@@ -100,7 +102,7 @@ class _TeamIvrScreenState extends State<TeamIvrScreen> {
     }
     if (widget.preview) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Would transfer to $name', style: ADText.preview(c: AD.textPrimary)),
+          content: UiText(UiMessage.m_would_transfer_to_name_89a05afaf6, params: {'name': (name).toString()}, style: ADText.preview(c: AD.textPrimary)),
           backgroundColor: AD.card));
       setState(() { _routing = false; _status = '${_menu?['team_name'] ?? 'Team'} — listen and choose'; });
       return;
@@ -153,11 +155,12 @@ class _TeamIvrScreenState extends State<TeamIvrScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final entries = ((_menu?['entries'] ?? []) as List).cast<Map<String, dynamic>>();
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: ZineAppBar(
-        title: widget.preview ? 'Menu preview' : 'Auto-attendant',
+        title: widget.preview ? uiCopy(UiMessage.m_menu_preview_8fadd48966) : uiCopy(UiMessage.m_auto_attendant_d280edc85b),
         markWord: widget.preview ? 'preview' : 'attendant',
         tag: widget.teamNumber.isEmpty ? '' : '+${widget.teamNumber}'),
       body: _loading
@@ -190,7 +193,7 @@ class _TeamIvrScreenState extends State<TeamIvrScreen> {
                                 const SizedBox(width: Msg.s3),
                                 Expanded(child: Text((e['role_label'] ?? '').toString(), style: ADText.rowName())),
                                 if (e['available'] != true)
-                                  Text('Voicemail', style: ADText.statCaption()),
+                                  UiText(UiMessage.m_voicemail_9c1a51d97b, style: ADText.statCaption()),
                               ]),
                             ),
                         ],

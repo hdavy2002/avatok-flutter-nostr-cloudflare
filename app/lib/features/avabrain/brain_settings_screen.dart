@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -103,7 +105,7 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
     });
     if (!v && consentKey != 'master' && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Stopped — anything already remembered from this source is being deleted')));
+          content: UiText(UiMessage.m_stopped_anything_already_remembered_from_e5d0ba1210)));
     }
   }
 
@@ -114,18 +116,18 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AD.popover,
-        title: Text('Delete my AvaBrain data?',
+        title: UiText(UiMessage.m_delete_my_avabrain_data_81a8921efa,
             style: ADText.threadName().copyWith(fontSize: 19)),
-        content: Text(
-            'This wipes everything AvaBrain has remembered about you — search vectors, voice-note transcripts and the knowledge graph. Your actual messages and files are NOT touched. This cannot be undone.',
+        content: UiText(
+            UiMessage.m_this_wipes_everything_avabrain_has_e7bb2ce174,
             style: _body(14)),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Keep it', style: ADText.rowName(c: AD.textSecondary).copyWith(fontSize: 13))),
+              child: UiText(UiMessage.m_keep_it_fdce5da2ce, style: ADText.rowName(c: AD.textSecondary).copyWith(fontSize: 13))),
           TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: Text('Delete', style: ADText.rowName(c: AD.danger).copyWith(fontSize: 13))),
+              child: UiText(UiMessage.m_delete_e2d0a54968, style: ADText.rowName(c: AD.danger).copyWith(fontSize: 13))),
         ],
       ),
     );
@@ -217,10 +219,11 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final masterOn = _state['master'] ?? true;
     return Scaffold(
       appBar: ZineAppBar(
-        title: 'AvaBrain',
+        title: uiCopy(UiMessage.m_avabrain_7012aa07e1),
         markWord: 'Brain',
         tag: 'What your agent may remember',
         showBack: Navigator.of(context).canPop(),
@@ -238,8 +241,8 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
               ZineIconBadge(icon: PhosphorIcons.brain(PhosphorIconsStyle.fill), color: AD.tabCalls),
               const SizedBox(width: Msg.s3),
               Expanded(
-                child: Text(
-                  'AvaBrain powers AvaChat. It only ever reads YOUR content, and you control exactly what it may remember.',
+                child: UiText(
+                  UiMessage.m_avabrain_powers_avachat_it_only_88578bcf30,
                   style: _body(13, AD.textPrimary),
                 ),
               ),
@@ -250,9 +253,8 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
           _sourcesCard(masterOn),
           Padding(
             padding: const EdgeInsets.only(top: Msg.s3, left: Msg.s1, right: Msg.s1),
-            child: Text(
-                'Private and end-to-end-encrypted content is only ever read on your device — '
-                'AvaBrain never sees your message keys or plaintext on our servers.',
+            child: UiText(
+                UiMessage.m_private_and_end_to_end_7c5308958d,
                 style: _body(12, AD.textTertiary)),
           ),
           const SizedBox(height: Msg.s5),
@@ -319,12 +321,10 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
           child: Row(children: [
             Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Local-only answers', style: ADText.rowName()),
+              UiText(UiMessage.m_local_only_answers_6218eef2dc, style: ADText.rowName()),
               const SizedBox(height: 2),
-              Text(
-                  'When on, Ava never sends excerpts of on-device content (your '
-                  'messages, notes and files) to the cloud to answer. Local search '
-                  'still works; some answers may need cloud reasoning it can’t use.',
+              UiText(
+                  UiMessage.m_when_on_ava_never_sends_d11848ada1,
                   style: _body(12)),
             ])),
             const SizedBox(width: Msg.s3),
@@ -398,8 +398,8 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
               onTap: () => _showDisclosure(d),
               behavior: HitTestBehavior.opaque,
               child: Text.rich(TextSpan(style: _body(12), children: [
-                const TextSpan(text: 'Kept for platform safety; not deletable. '),
-                TextSpan(text: 'Learn more', style: _body(12, Msg.accent)),
+                 TextSpan(text: uiCopy(UiMessage.m_kept_for_platform_safety_not_11590a1d61)),
+                TextSpan(text: uiCopy(UiMessage.m_learn_more_1445799c03), style: _body(12, Msg.accent)),
               ])),
             ),
           ]),
@@ -419,18 +419,13 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: AD.popover,
         title: Text(label, style: ADText.threadName().copyWith(fontSize: 19)),
-        content: Text(
-            'To keep everyone safe, Ava keeps a minimal record of safety events — for '
-            'example when a message is flagged or someone is blocked for unsafe behaviour. '
-            'These records are kept under our legitimate interest in platform safety, not '
-            'as something you switch on or off, so there is no toggle. They are not removed '
-            'when you delete your other AvaBrain data, and they never include the content '
-            'of your messages.',
+        content: UiText(
+            UiMessage.m_to_keep_everyone_safe_ava_02d93f221a,
             style: _body(14)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text('Got it', style: ADText.rowName(c: AD.textSecondary).copyWith(fontSize: 13)),
+            child: UiText(UiMessage.m_got_it_5ad3dbd124, style: ADText.rowName(c: AD.textSecondary).copyWith(fontSize: 13)),
           ),
         ],
       ),
@@ -459,9 +454,9 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
           const SizedBox(width: Msg.s3),
           Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Delete my AvaBrain data', style: ADText.rowName(c: AD.danger)),
+            UiText(UiMessage.m_delete_my_avabrain_data_7a7aecfaa4, style: ADText.rowName(c: AD.danger)),
             const SizedBox(height: 2),
-            Text('Wipes vectors, transcripts and the knowledge graph — not your real files',
+            UiText(UiMessage.m_wipes_vectors_transcripts_and_the_060fcd89f6,
                 style: _body(12)),
           ])),
         ]),
@@ -474,7 +469,7 @@ class _BrainSettingsScreenState extends State<BrainSettingsScreen> {
       else if (_deletedAt != null)
         Padding(
           padding: const EdgeInsets.only(top: Msg.s3, left: Msg.s1, right: Msg.s1),
-          child: Text('Your data was deleted on ${_fmtDate(_deletedAt!)}',
+          child: UiText(UiMessage.m_your_data_was_deleted_on_7e553ed426, params: {'value1': (_fmtDate(_deletedAt!)).toString()},
               style: _body(12)),
         ),
     ]);

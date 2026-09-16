@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* Overview — the /dashboard cockpit. Aggregates the creator's whole world into
  * one live view: identity status, wallet + earnings, listing performance (bars +
  * table over /api/listings/mine), upcoming bookings, top inbox messages, and an
@@ -52,6 +54,8 @@ function Bars({ data, fmt }: { data: { label: string; value: number; tone: strin
 }
 
 function Inner() {
+  const {t:uiT}=useUiTranslation("web-dashboard");
+
   const [token, setToken] = useState<string | null>(null);
   const [checked, setChecked] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -97,7 +101,7 @@ function Inner() {
     return () => clearInterval(iv);
   }, [checked, token, load]);
 
-  if (!checked || (token && loading)) return <div className="flex items-center gap-3 p-10"><Spinner size={24} /> <span className="font-body font-bold text-inkSoft">Building your cockpit…</span></div>;
+  if (!checked || (token && loading)) return <div className="flex items-center gap-3 p-10"><Spinner size={24} /> <span className="font-body font-bold text-inkSoft"><UiText id="web-dashboard.b7591dbae332d58b" source="Building your cockpit…" /></span></div>;
 
   const published = rows.filter((r) => (r.status ?? 'draft') === 'published' || r.status === 'live');
   const drafts = rows.filter((r) => (r.status ?? 'draft') === 'draft');
@@ -115,31 +119,31 @@ function Inner() {
       {/* Identity / status banner */}
       <div className="flex flex-wrap items-center gap-3 rounded-zine border-zine border-ink bg-paper2 p-4 shadow-zine-sm">
         <div className="flex items-center gap-3">
-          <span className={`flex h-10 w-10 items-center justify-center rounded-zine border-zine border-ink ${verified ? 'bg-mint' : 'bg-card'} font-display text-[16px] font-semibold text-ink shadow-zine-xs`}>L{level}</span>
+          <span className={`flex h-10 w-10 items-center justify-center rounded-zine border-zine border-ink ${verified ? 'bg-mint' : 'bg-card'} font-display text-[16px] font-semibold text-ink shadow-zine-xs`}><UiText id="web-dashboard.72dfcfb0c470ac25" source="L" />{level}</span>
           <div>
             <div className="flex items-center gap-2 font-display font-semibold text-[17px] text-ink">
-              {ident?.handle ? `@${ident.handle}` : 'Your studio'}
+              {ident?.handle ? `@${ident.handle}` : uiT("web-dashboard.90e7dc84cf4852a2","Your studio")}
               {verified
-                ? <span className="inline-flex items-center gap-1 rounded-full border-zine border-ink bg-mint px-2 py-0.5 font-mono text-[12px] font-bold uppercase text-ink shadow-zine-xs">● Verified</span>
-                : <a href="/dashboard/identity" className="inline-flex items-center gap-1 rounded-full border-zine border-ink bg-lime px-2 py-0.5 font-mono text-[12px] font-bold uppercase text-ink no-underline shadow-zine-xs">Verify →</a>}
+                ? <span className="inline-flex items-center gap-1 rounded-full border-zine border-ink bg-mint px-2 py-0.5 font-mono text-[12px] font-bold uppercase text-ink shadow-zine-xs"><UiText id="web-dashboard.71ebea29aec1464a" source="● Verified" /></span>
+                : <a href="/dashboard/identity" className="inline-flex items-center gap-1 rounded-full border-zine border-ink bg-lime px-2 py-0.5 font-mono text-[12px] font-bold uppercase text-ink no-underline shadow-zine-xs"><UiText id="web-dashboard.4cc7ee1d06031129" source="Verify →" /></a>}
             </div>
-            <div className="font-body font-bold text-[12px] text-inkSoft">{verified ? 'Identity verified — payouts unlocked.' : 'Verify your identity to unlock creator payouts.'}</div>
+            <div className="font-body font-bold text-[12px] text-inkSoft">{verified ? uiT("web-dashboard.dd4f2fdee94bf8db","Identity verified — payouts unlocked.") : uiT("web-dashboard.6b6eb304c12169ad","Verify your identity to unlock creator payouts.")}</div>
           </div>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <span className="flex items-center gap-1.5 rounded-full border-zine border-ink bg-card px-3 py-1.5 font-mono text-[12px] font-bold uppercase text-inkSoft shadow-zine-xs"><span className="h-2 w-2 animate-pulse rounded-full bg-coral"></span>Live · {last ? ago(last) : '—'}</span>
-          <a href="/dashboard/listings/new" className="rounded-full border-zine border-ink bg-lime px-4 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">+ New listing</a>
+          <span className="flex items-center gap-1.5 rounded-full border-zine border-ink bg-card px-3 py-1.5 font-mono text-[12px] font-bold uppercase text-inkSoft shadow-zine-xs"><span className="h-2 w-2 animate-pulse rounded-full bg-coral"></span><UiText id="web-dashboard.5a125d520e02b00e" source="Live ·" />{" "}{last ? ago(last) : '—'}</span>
+          <a href="/dashboard/listings/new" className="rounded-full border-zine border-ink bg-lime px-4 py-1.5 font-mono font-bold uppercase text-[13px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine"><UiText id="web-dashboard.34ba96e4dc658560" source="+ New listing" /></a>
         </div>
       </div>
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-        <Stat label="Wallet" value={usd(balance)} sub="Tokens balance" tone="bg-lime" href="/dashboard/wallet" />
-        <Stat label="Available" value={usd(earn?.released_total)} sub="to withdraw" tone="bg-mint" href="/dashboard/payout" />
-        <Stat label="Clearing" value={usd(earn?.held)} sub="7-day hold" tone="bg-card" />
-        <Stat label="Listings" value={String(rows.length)} sub={`${published.length} live · ${drafts.length} draft`} tone="bg-blue" href="/dashboard/listings" />
-        <Stat label="Bookings" value={String(totalJoins)} sub="all-time joins" tone="bg-lilac" href="/dashboard/bookings" />
-        <Stat label="Inbox" value={String(unread)} sub="unread" tone="bg-coral" href="/dashboard/inbox" />
+        <Stat label={uiT("web-dashboard.d1c9a01d57e90086","Wallet")} value={usd(balance)} sub="Tokens balance" tone="bg-lime" href="/dashboard/wallet" />
+        <Stat label={uiT("web-dashboard.e674447337e83c13","Available")} value={usd(earn?.released_total)} sub="to withdraw" tone="bg-mint" href="/dashboard/payout" />
+        <Stat label={uiT("web-dashboard.06648760a765043c","Clearing")} value={usd(earn?.held)} sub="7-day hold" tone="bg-card" />
+        <Stat label={uiT("web-dashboard.5009238dba6b31d6","Listings")} value={String(rows.length)} sub={`${published.length} live · ${drafts.length} draft`} tone="bg-blue" href="/dashboard/listings" />
+        <Stat label={uiT("web-dashboard.4e5f81ada70c344e","Bookings")} value={String(totalJoins)} sub="all-time joins" tone="bg-lilac" href="/dashboard/bookings" />
+        <Stat label={uiT("web-dashboard.94835ea2fcf775cd","Inbox")} value={String(unread)} sub="unread" tone="bg-coral" href="/dashboard/inbox" />
       </div>
 
       {/* Main grid */}
@@ -147,11 +151,11 @@ function Inner() {
         <div className="lg:col-span-2 flex flex-col gap-4">
           <div className="rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm">
             <div className="mb-4 flex items-center gap-2">
-              <h2 className="font-display font-semibold text-[18px] text-ink">Listing performance</h2>
-              <span className="ml-auto font-mono text-[13px] text-inkSoft font-bold">{usd(grossEst)} est. gross · {avgRating ? `★ ${avgRating.toFixed(1)}` : 'no ratings yet'}</span>
+              <h2 className="font-display font-semibold text-[18px] text-ink"><UiText id="web-dashboard.d3e010de1597ac44" source="Listing performance" /></h2>
+              <span className="ml-auto font-mono text-[13px] text-inkSoft font-bold">{usd(grossEst)}{" "}<UiText id="web-dashboard.4960298c76bb1def" source="est. gross ·" />{" "}{avgRating ? `★ ${avgRating.toFixed(1)}` : uiT("web-dashboard.812e79880892e523","no ratings yet")}</span>
             </div>
             {topListings.length === 0 ? (
-              <div className="rounded-zineField bg-paper2 p-6 font-body font-bold text-[14px] text-inkSoft">No listings yet. <a href="/dashboard/listings/new" className="text-blueInk underline">Create your first →</a></div>
+              <div className="rounded-zineField bg-paper2 p-6 font-body font-bold text-[14px] text-inkSoft"><UiText id="web-dashboard.1b2c6db069a2f111" source="No listings yet." />{" "}<a href="/dashboard/listings/new" className="text-blueInk underline"><UiText id="web-dashboard.2ab638cd9a29fbca" source="Create your first →" /></a></div>
             ) : (
               <Bars data={topListings.map((l, i) => ({ label: l.title || 'Untitled', value: l.joined_count ?? 0, tone: TONES[i % TONES.length] }))} />
             )}
@@ -160,14 +164,14 @@ function Inner() {
           {rows.length > 0 && (
             <div className="overflow-hidden rounded-zine border-zine border-ink bg-card shadow-zine-sm">
               <div className="grid grid-cols-[1fr_auto_auto_auto] gap-3 border-b-zine border-ink bg-paper2 px-4 py-2.5 font-mono text-[12px] font-bold uppercase tracking-[0.06em] text-inkSoft">
-                <span>Listing</span><span className="text-right">Joins</span><span className="text-right">Rating</span><span className="text-right">Gross</span>
+                <span><UiText id="web-dashboard.fc7f1aa2054c2283" source="Listing" /></span><span className="text-right"><UiText id="web-dashboard.49da3b2728bcb9ba" source="Joins" /></span><span className="text-right"><UiText id="web-dashboard.9f29530464f730bd" source="Rating" /></span><span className="text-right"><UiText id="web-dashboard.0589b626717ccca8" source="Gross" /></span>
               </div>
               {/* [SPEC-2026-09-01-LISTING-CONTENT-AND-BOOKING A1.3] /dashboard/l/:id
                   301s to /l/:id now — link straight to the real (public,
                   chrome-free) page instead of round-tripping a redirect. */}
               {rows.slice(0, 8).map((l) => (
                 <a key={l.id} href={`/l/${encodeURIComponent(l.id)}`} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-3 border-t-zine border-ink px-4 py-2.5 no-underline first:border-t-0 hover:bg-paper2">
-                  <span className="min-w-0 truncate font-body font-extrabold text-[14px] text-ink">{l.title || 'Untitled'} <span className="ml-1 font-mono text-[12px] uppercase text-inkMute font-bold">{l.status ?? 'draft'}</span></span>
+                  <span className="min-w-0 truncate font-body font-extrabold text-[14px] text-ink">{l.title || uiT("web-dashboard.f59ab8d1331b7b16","Untitled")} <span className="ml-1 font-mono text-[12px] uppercase text-inkMute font-bold">{l.status ?? uiT("web-dashboard.7743ce348d9284d6","draft")}</span></span>
                   <span className="text-right font-display font-semibold text-[14px] text-ink">{l.joined_count ?? 0}</span>
                   <span className="text-right font-mono text-[14px] text-inkSoft font-bold">{l.rating ? `★${Number(l.rating).toFixed(1)}` : '—'}</span>
                   <span className="text-right font-display font-semibold text-[13px] text-blueInk">{usd((l.joined_count ?? 0) * (l.price ?? 0))}</span>
@@ -177,7 +181,7 @@ function Inner() {
           )}
 
           <div className="rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm">
-            <h2 className="mb-4 font-display font-semibold text-[18px] text-ink">Earnings</h2>
+            <h2 className="mb-4 font-display font-semibold text-[18px] text-ink"><UiText id="web-dashboard.81920761dd55a077" source="Earnings" /></h2>
             <Bars fmt={usd} data={[
               { label: 'Available', value: Number(earn?.released_total ?? 0), tone: 'bg-mint' },
               { label: 'Clearing', value: Number(earn?.held ?? 0), tone: 'bg-blue' },
@@ -190,16 +194,16 @@ function Inner() {
         <div className="flex flex-col gap-4">
           <div className="rounded-zine border-zine border-ink bg-card p-4 shadow-zine-sm">
             <div className="mb-3 flex items-center gap-2">
-              <h2 className="font-display font-semibold text-[16px] text-ink">Inbox</h2>
-              <a href="/dashboard/inbox" className="ml-auto font-mono text-[13px] font-bold uppercase text-blueInk no-underline">All →</a>
+              <h2 className="font-display font-semibold text-[16px] text-ink"><UiText id="web-dashboard.94835ea2fcf775cd" source="Inbox" /></h2>
+              <a href="/dashboard/inbox" className="ml-auto font-mono text-[13px] font-bold uppercase text-blueInk no-underline"><UiText id="web-dashboard.c846622a20b9c16e" source="All →" /></a>
             </div>
-            {notes.length === 0 ? <p className="font-body font-bold text-[13px] text-inkSoft">No messages yet.</p> : (
+            {notes.length === 0 ? <p className="font-body font-bold text-[13px] text-inkSoft"><UiText id="web-dashboard.f0d5968f615ed7ab" source="No messages yet." /></p> : (
               <div className="flex flex-col gap-2">
                 {notes.slice(0, 5).map((n) => (
                   <div key={n.id} className="flex items-start gap-2">
                     <span className={`mt-1 h-2 w-2 shrink-0 rounded-full border border-ink ${n.read ? 'bg-paper' : 'bg-coral'}`} />
                     <div className="min-w-0 flex-1">
-                      <div className="truncate font-body font-extrabold text-[13px] text-ink">{n.title ?? n.type ?? 'Notification'}</div>
+                      <div className="truncate font-body font-extrabold text-[13px] text-ink">{n.title ?? n.type ?? uiT("web-dashboard.7d31b83313991d4c","Notification")}</div>
                       {n.body && <div className="truncate font-body font-bold text-[12px] text-inkSoft">{n.body}</div>}
                     </div>
                     <span className="shrink-0 font-mono text-[12px] text-inkMute font-bold">{ago(n.created_at)}</span>
@@ -211,15 +215,15 @@ function Inner() {
 
           <div className="rounded-zine border-zine border-ink bg-card p-4 shadow-zine-sm">
             <div className="mb-3 flex items-center gap-2">
-              <h2 className="font-display font-semibold text-[16px] text-ink">Upcoming</h2>
-              <a href="/dashboard/calendar" className="ml-auto font-mono text-[13px] font-bold uppercase text-blueInk no-underline">Calendar →</a>
+              <h2 className="font-display font-semibold text-[16px] text-ink"><UiText id="web-dashboard.5f1a2542e4e4ca5e" source="Upcoming" /></h2>
+              <a href="/dashboard/calendar" className="ml-auto font-mono text-[13px] font-bold uppercase text-blueInk no-underline"><UiText id="web-dashboard.b93a2d1a5851386a" source="Calendar →" /></a>
             </div>
-            {bookings.length === 0 ? <p className="font-body font-bold text-[13px] text-inkSoft">Nothing booked yet.</p> : (
+            {bookings.length === 0 ? <p className="font-body font-bold text-[13px] text-inkSoft"><UiText id="web-dashboard.29e6fa748a1a1446" source="Nothing booked yet." /></p> : (
               <div className="flex flex-col gap-2.5">
                 {bookings.slice(0, 5).map((b) => (
                   <div key={b.id} className="flex items-center gap-2">
-                    <span className="rounded-full border-zine border-ink bg-lime px-2 py-0.5 font-mono text-[12px] font-bold uppercase text-ink">{b.kind ?? 'event'}</span>
-                    <span className="min-w-0 flex-1 truncate font-body font-extrabold text-[13px] text-ink">{b.title || 'Session'}</span>
+                    <span className="rounded-full border-zine border-ink bg-lime px-2 py-0.5 font-mono text-[12px] font-bold uppercase text-ink">{b.kind ?? uiT("web-dashboard.b8e1f80bd70ae078","event")}</span>
+                    <span className="min-w-0 flex-1 truncate font-body font-extrabold text-[13px] text-ink">{b.title || uiT("web-dashboard.6959b4159575d8dd","Session")}</span>
                     <span className="shrink-0 font-mono text-[12px] text-inkMute font-bold">{dt(b.starts_at)}</span>
                   </div>
                 ))}
@@ -229,16 +233,16 @@ function Inner() {
 
           <div className="rounded-zine border-zine border-ink bg-paper2 p-4 shadow-zine-sm">
             <div className="mb-1 flex items-center gap-2">
-              <h2 className="font-display font-semibold text-[16px] text-ink">Affiliate</h2>
-              <a href="/dashboard/affiliate" className="ml-auto font-mono text-[13px] font-bold uppercase text-blueInk no-underline">Open →</a>
+              <h2 className="font-display font-semibold text-[16px] text-ink"><UiText id="web-dashboard.c58cc9af3a3107c7" source="Affiliate" /></h2>
+              <a href="/dashboard/affiliate" className="ml-auto font-mono text-[13px] font-bold uppercase text-blueInk no-underline"><UiText id="web-dashboard.1d2902ca81b6d2db" source="Open →" /></a>
             </div>
             {aff?.registered ? (
               <div className="flex items-baseline gap-3">
                 <span className="font-display font-semibold text-[24px] text-ink">{usd(aff?.totals?.lifetime_coins)}</span>
-                <span className="font-body font-bold text-[12px] text-inkSoft">{aff?.totals?.referred_users ?? 0} referred</span>
+                <span className="font-body font-bold text-[12px] text-inkSoft">{aff?.totals?.referred_users ?? 0}{" "}<UiText id="web-dashboard.424f14bc9c9ca707" source="referred" /></span>
               </div>
             ) : (
-              <p className="font-body font-bold text-[13px] text-inkSoft">Earn 10% for life — <a href="/dashboard/affiliate" className="text-blueInk underline">become an affiliate →</a></p>
+              <p className="font-body font-bold text-[13px] text-inkSoft"><UiText id="web-dashboard.50c154978234ce58" source="Earn 10% for life —" />{" "}<a href="/dashboard/affiliate" className="text-blueInk underline"><UiText id="web-dashboard.f0e2893916938322" source="become an affiliate →" /></a></p>
             )}
           </div>
         </div>

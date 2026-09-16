@@ -1,3 +1,6 @@
+
+import '../../../core/localization/ui_text.dart';
+
 // [PA-UI-2] "AvaTOK calls" — Ava as your receptionist on AvaTOK↔AvaTOK calls.
 //
 // The in-app lane screen of the approved receptionist redesign. The hub
@@ -168,8 +171,8 @@ class _PaInAppScreenState extends State<PaInAppScreen> {
     AvaLog.I.log('receptionist', 'pa_inapp toggle $field save FAILED (want=$value)');
     Analytics.capture('pa_inapp_toggle_failed', {'toggle': field, 'value': value});
     _toast(res.blocked
-        ? 'That needs a premium plan.'
-        : 'Couldn’t save — check your connection and try again.');
+        ? uiCopy(UiMessage.m_that_needs_a_premium_plan_4a67a0bfe9)
+        : uiCopy(UiMessage.m_couldn_t_save_check_your_da12340aa9));
   }
 
   void _toast(String m) {
@@ -181,9 +184,10 @@ class _PaInAppScreenState extends State<PaInAppScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
-      appBar: _paHeader(title: 'AvaTOK calls', tag: 'Ava PA'),
+      appBar: _paHeader(title: uiCopy(UiMessage.m_avatok_calls_a718c99500), tag: 'Ava PA'),
       body: _loading
           ? const Center(
               child: SizedBox(
@@ -197,28 +201,28 @@ class _PaInAppScreenState extends State<PaInAppScreen> {
                   _loadFailedCard(),
                 ],
                 const SizedBox(height: 16),
-                Text('WHEN SHOULD AVA ANSWER?', style: ADText.sectionLabel()),
+                UiText(UiMessage.m_when_should_ava_answer_5ac80bdb4f, style: ADText.sectionLabel()),
                 const SizedBox(height: Msg.s2),
                 AdCard(
                   padding: const EdgeInsets.symmetric(
                       horizontal: Msg.s4, vertical: Msg.s2),
                   child: Column(children: [
                     _toggleRow(
-                      title: 'I decline a call',
+                      title: uiCopy(UiMessage.m_i_decline_a_call_47c497f499),
                       field: 'recept_avatok_rejected',
                       value: _rejected,
                       apply: (v) => _rejected = v,
                     ),
                     const Divider(height: 1, color: AD.borderHairline),
                     _toggleRow(
-                      title: 'I miss a call',
+                      title: uiCopy(UiMessage.m_i_miss_a_call_c6ed31770c),
                       field: 'recept_avatok_not_picked_up',
                       value: _notPickedUp,
                       apply: (v) => _notPickedUp = v,
                     ),
                     const Divider(height: 1, color: AD.borderHairline),
                     _toggleRow(
-                      title: 'I’m offline',
+                      title: uiCopy(UiMessage.m_i_m_offline_f97ea10327),
                       field: 'recept_avatok_unreachable',
                       value: _unreachable,
                       apply: (v) => _unreachable = v,
@@ -226,13 +230,13 @@ class _PaInAppScreenState extends State<PaInAppScreen> {
                   ]),
                 ),
                 const SizedBox(height: 16),
-                Text('ADVANCED', style: ADText.sectionLabel()),
+                UiText(UiMessage.m_advanced_573e3dce59, style: ADText.sectionLabel()),
                 const SizedBox(height: Msg.s2),
                 AdCard(
                   padding: const EdgeInsets.symmetric(
                       horizontal: Msg.s4, vertical: Msg.s2),
                   child: _toggleRow(
-                    title: 'Send every call to Ava',
+                    title: uiCopy(UiMessage.m_send_every_call_to_ava_59c4de9a44),
                     sub: 'She always answers first',
                     field: 'recept_avatok_redirect_all',
                     value: _redirectAll,
@@ -255,9 +259,8 @@ class _PaInAppScreenState extends State<PaInAppScreen> {
               size: 36),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              'When you can’t take an AvaTOK call, Ava receives it for you and '
-              'leaves the message in your chat.',
+            child: UiText(
+              UiMessage.m_when_you_can_t_take_5dcba9db67,
               style: ADText.preview(),
             ),
           ),
@@ -272,18 +275,17 @@ class _PaInAppScreenState extends State<PaInAppScreen> {
                 size: 18, color: AD.primaryBadge),
             const SizedBox(width: 8),
             Expanded(
-                child: Text('Couldn’t load your settings',
+                child: UiText(UiMessage.m_couldn_t_load_your_settings_a099ff88e5,
                     style: ADText.rowName())),
           ]),
           const SizedBox(height: Msg.s1),
-          Text(
-            'These switches are showing defaults and can’t be changed until '
-            'AvaTOK reaches the server.',
+          UiText(
+            UiMessage.m_these_switches_are_showing_defaults_65711872b8,
             style: ADText.preview(),
           ),
           const SizedBox(height: 12),
           AdButton(
-            label: 'Try again',
+            label: uiCopy(UiMessage.m_try_again_d8b8392e2c),
             variant: AdButtonVariant.ghost,
             fullWidth: true,
             fontSize: 14,
@@ -311,7 +313,7 @@ class _PaInAppScreenState extends State<PaInAppScreen> {
               size: 18, color: AD.textSecondary),
           const SizedBox(width: Msg.s2),
           Expanded(
-              child: Text('Call rules — tell Ava what to say',
+              child: UiText(UiMessage.m_call_rules_tell_ava_what_cc9d6a8756,
                   style: ADText.rowName())),
           Icon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
               size: 16, color: AD.textTertiary),
@@ -364,6 +366,7 @@ class _PaToggle extends StatelessWidget {
   const _PaToggle({required this.value, this.onChanged});
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final reduce = MediaQuery.of(context).disableAnimations;
     return GestureDetector(
       onTap: onChanged == null ? null : () => onChanged!(!value),

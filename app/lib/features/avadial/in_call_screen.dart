@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -138,11 +141,11 @@ class _InCallScreenState extends State<InCallScreen> {
     switch (_state) {
       case 'dialing':
       case 'connecting':
-        return 'Dialing…';
+        return uiCopy(UiMessage.m_dialing_d3fee88fc6);
       case 'ringing':
-        return 'Ringing…';
+        return uiCopy(UiMessage.m_ringing_7398751e32);
       case 'holding':
-        return 'On hold';
+        return uiCopy(UiMessage.m_on_hold_ebe7db36e4);
       case 'active':
         return _fmt(_elapsed);
       default:
@@ -159,6 +162,7 @@ class _InCallScreenState extends State<InCallScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final name = _contact?.name;
     return Scaffold(
       // Dark PSTN active-call screen (owner request 2026-07-12), shared by both
@@ -211,19 +215,19 @@ class _InCallScreenState extends State<InCallScreen> {
     return Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
       _circleToggle(
         icon: _muted ? PhosphorIcons.microphoneSlash(PhosphorIconsStyle.fill) : PhosphorIcons.microphone(PhosphorIconsStyle.bold),
-        label: 'Mute',
+        label: uiCopy(UiMessage.m_mute_8dd6857baf),
         active: _muted,
         onTap: _toggleMute,
       ),
       _circleToggle(
         icon: PhosphorIcons.gridFour(PhosphorIconsStyle.bold),
-        label: 'Keypad',
+        label: uiCopy(UiMessage.m_keypad_d8bd2790e9),
         active: false,
         onTap: () => setState(() => _keypad = true),
       ),
       _circleToggle(
         icon: PhosphorIcons.speakerHigh(_speaker ? PhosphorIconsStyle.fill : PhosphorIconsStyle.bold),
-        label: 'Speaker',
+        label: uiCopy(UiMessage.m_speaker_a9e0c70585),
         active: _speaker,
         onTap: _toggleSpeaker,
       ),
@@ -274,7 +278,7 @@ class _InCallScreenState extends State<InCallScreen> {
       ),
       const SizedBox(height: Msg.s2),
       AdButton(
-        label: 'Hide keypad',
+        label: uiCopy(UiMessage.m_hide_keypad_9a4ac96b30),
         variant: AdButtonVariant.ghost,
         trailingIcon: false,
         onPressed: () => setState(() => _keypad = false),
@@ -283,7 +287,7 @@ class _InCallScreenState extends State<InCallScreen> {
   }
 
   Widget _endButton() => AdButton(
-        label: 'End',
+        label: uiCopy(UiMessage.m_end_f4db1e4847),
         variant: AdButtonVariant.danger,
         fullWidth: true,
         icon: PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.bold),

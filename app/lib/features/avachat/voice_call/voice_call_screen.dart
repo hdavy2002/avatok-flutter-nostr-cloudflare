@@ -7,6 +7,9 @@
 /// Every 5 minutes it pauses and asks "Keep going?" — a spend guardrail for the
 /// online Live session (which also runs sliding-window context compression).
 library;
+import '../../../core/localization/ui_text.dart';
+
+
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -82,16 +85,16 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Out of AvaBrain voice balance'),
-        content: const Text('Top up to keep talking to Ava.'),
+        title: const UiText(UiMessage.m_out_of_avabrain_voice_balance_e08d819113),
+        content: const UiText(UiMessage.m_top_up_to_keep_talking_bf0bf26c9a),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Not now')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const UiText(UiMessage.m_not_now_a0e63d7c71)),
           TextButton(
             onPressed: () {
               Navigator.of(ctx).pop();
               Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WalletScreen()));
             },
-            child: const Text('Top up'),
+            child: const UiText(UiMessage.m_top_up_79f52e0ce6),
           ),
         ],
       ),
@@ -220,6 +223,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return PopScope(
       // Back = minimize (pill/FGS keep the call alive), not hang up.
       canPop: false,
@@ -270,18 +274,18 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
                 PhosphorIcon(PhosphorIcons.pauseCircle(PhosphorIconsStyle.fill),
                     size: 40, color: Msg.accent),
                 const SizedBox(height: Msg.s3),
-                Text('Still there?',
+                UiText(UiMessage.m_still_there_99deb8c91e,
                     style: ADText.threadName().copyWith(fontSize: 18)),
                 const SizedBox(height: Msg.s1),
-                Text(
-                  "You've been talking with Ava for 5 minutes. Keep going?",
+                UiText(
+                  UiMessage.m_you_ve_been_talking_with_59cb01d20a,
                   textAlign: TextAlign.center,
                   style: ADText.preview(c: AD.textSecondary)
                       .copyWith(fontSize: 13),
                 ),
                 const SizedBox(height: Msg.s2),
-                Text(
-                  'Ending in ${_autoEnd}s…',
+                UiText(
+                  UiMessage.m_ending_in_autoend_s_30fbb9bb58, params: {'autoEnd': (_autoEnd).toString()},
                   textAlign: TextAlign.center,
                   style: ADText.sectionLabel(c: Msg.error),
                 ),
@@ -289,7 +293,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
                 Row(children: [
                   Expanded(
                     child: ZineButton(
-                      label: 'End call',
+                      label: uiCopy(UiMessage.m_end_call_2fe13d93a1),
                       variant: ZineButtonVariant.coral,
                       fontSize: 15,
                       onPressed: _end,
@@ -298,7 +302,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
                   const SizedBox(width: Msg.s3),
                   Expanded(
                     child: ZineButton(
-                      label: 'Continue',
+                      label: uiCopy(UiMessage.m_continue_31fbef1625),
                       fontSize: 15,
                       onPressed: _continue,
                     ),
@@ -325,8 +329,8 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
           ),
           const SizedBox(width: Msg.s3),
           ZineMarkTitle(
-            pre: 'Talking to ',
-            mark: 'Ava',
+            pre: uiCopy(UiMessage.m_talking_to_2c4458dc6e),
+            mark: uiCopy(UiMessage.m_ava_149f7514de),
             post: '',
             fontSize: 20,
             textAlign: TextAlign.left,
@@ -416,7 +420,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
   Widget _statusLine() => ValueListenableBuilder<String>(
         valueListenable: _call.status,
         builder: (context, s, _) => Text(
-          s.isEmpty ? 'Listening…' : s,
+          s.isEmpty ? uiCopy(UiMessage.m_listening_bbb4106e81) : s,
           style: ADText.rowName().copyWith(fontSize: 16),
           textAlign: TextAlign.center,
         ),
@@ -460,7 +464,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
           PhosphorIcon(PhosphorIcons.phoneX(PhosphorIconsStyle.fill),
               color: Colors.white, size: 22),
           const SizedBox(width: Msg.s3),
-          Text('End call',
+          UiText(UiMessage.m_end_call_2fe13d93a1,
               style: ADText.rowName(c: Colors.white)
                   .copyWith(fontSize: 16, height: 1.0)),
         ]),

@@ -199,7 +199,7 @@ extension _ChatThreadSearch on _ChatThreadScreenState {
           const SizedBox(width: 8),
           PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), size: 13, color: AD.iconSearch),
           const SizedBox(width: 5),
-          Text('AI RESULTS', style: ADText.statCaption(c: AD.iconSearch)),
+          UiText(UiMessage.m_ai_results_17bf9c9f66, style: ADText.statCaption(c: AD.iconSearch)),
           const SizedBox(width: 8),
           Expanded(child: Container(height: 1, color: _canvasTertiary.withValues(alpha: 0.4))),
         ]),
@@ -209,7 +209,7 @@ extension _ChatThreadSearch on _ChatThreadScreenState {
     if (_aiBrainOff) {
       children.add(Padding(
         padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
-        child: Text('Enable AvaBrain for your messages in Settings to search by meaning.',
+        child: UiText(UiMessage.m_enable_avabrain_for_your_messages_b1c761a0fc,
             textAlign: TextAlign.center, style: ADText.preview(c: _canvasMeta)),
       ));
       return Column(mainAxisSize: MainAxisSize.min, children: children);
@@ -225,10 +225,10 @@ extension _ChatThreadSearch on _ChatThreadScreenState {
     if (_aiSearchError) {
       children.add(Padding(
         padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
-        child: Text("Couldn't reach smart search. Tap to retry.",
+        child: UiText(UiMessage.m_couldn_t_reach_smart_search_503f75a3cf,
             textAlign: TextAlign.center, style: ADText.preview(c: AD.danger)),
       ));
-      children.add(_aiSearchButton(label: 'Retry smart search'));
+      children.add(_aiSearchButton(label: uiCopy(UiMessage.m_retry_smart_search_fd9daf4eda)));
       return Column(mainAxisSize: MainAxisSize.min, children: children);
     }
 
@@ -237,7 +237,7 @@ extension _ChatThreadSearch on _ChatThreadScreenState {
     if (inThread.isEmpty && other.isEmpty) {
       children.add(Padding(
         padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
-        child: Text('No meaning-based matches in this chat.',
+        child: UiText(UiMessage.m_no_meaning_based_matches_in_0daf4ae59a,
             textAlign: TextAlign.center, style: ADText.preview(c: _canvasMeta)),
       ));
       return Column(mainAxisSize: MainAxisSize.min, children: children);
@@ -254,7 +254,7 @@ extension _ChatThreadSearch on _ChatThreadScreenState {
                     : PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
                 size: 12, color: _canvasTertiary),
             const SizedBox(width: 4),
-            Text('${other.length} from your other chats',
+            UiText(UiMessage.m_value1_from_your_other_chats_75b54ab87f, params: {'value1': (other.length).toString()},
                 style: ADText.statCaption(c: _canvasTertiary)),
           ]),
         ),
@@ -347,11 +347,11 @@ extension _ChatThreadSearch on _ChatThreadScreenState {
             PhosphorIcon(PhosphorIcons.handWaving(PhosphorIconsStyle.regular),
                 size: 18, color: _canvasInk),
             const SizedBox(width: Msg.s2),
-            Text('Say hi', style: ADText.threadName(c: _canvasInk)),
+            UiText(UiMessage.m_say_hi_71d5b298ee, style: ADText.threadName(c: _canvasInk)),
           ]),
           const SizedBox(height: 8),
-          Text(
-            'Messages here are end-to-end encrypted. Nobody outside this chat — not even AvaTOK — can read them.',
+          UiText(
+            UiMessage.m_messages_here_are_end_to_c2dbafa5cf,
             textAlign: TextAlign.center,
             style: ADText.preview(c: _canvasMeta),
           ),
@@ -370,10 +370,10 @@ extension _ChatThreadSearch on _ChatThreadScreenState {
         PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
             size: 30, color: _canvasTertiary),
         const SizedBox(height: 10),
-        Text('No messages match “$query”.',
+        UiText(UiMessage.m_no_messages_match_query_e9ccba9167, params: {'query': (query).toString()},
             textAlign: TextAlign.center, style: ADText.rowName(c: _canvasInk)),
         const SizedBox(height: 4),
-        Text('Search this chat by meaning, not just exact words.',
+        UiText(UiMessage.m_search_this_chat_by_meaning_2a803a1cfc,
             textAlign: TextAlign.center, style: ADText.preview(c: _canvasMeta)),
         const SizedBox(height: 14),
         // Server-side smart (semantic) search over the user's own consented
@@ -402,7 +402,7 @@ extension _ChatThreadSearch on _ChatThreadScreenState {
               PhosphorIcon(PhosphorIcons.chatCircleText(PhosphorIconsStyle.bold),
                   size: 15, color: _canvasInk),
               const SizedBox(width: 6),
-              Text('Discuss with Ava',
+              UiText(UiMessage.m_discuss_with_ava_5c223a8686,
                   style: ADText.rowName(c: _canvasInk)),
             ]),
           ),
@@ -428,7 +428,7 @@ extension _ChatThreadSearch on _ChatThreadScreenState {
           style: ADText.rowName(c: onBand),
           cursorColor: onBand,
           decoration: InputDecoration(
-              hintText: 'Search messages',
+              hintText: uiCopy(UiMessage.m_search_messages_ddf0602b21),
               hintStyle: ADText.rowName().copyWith(
                   color: onBand.withValues(alpha: 0.6), fontWeight: FontWeight.w700),
               border: InputBorder.none),

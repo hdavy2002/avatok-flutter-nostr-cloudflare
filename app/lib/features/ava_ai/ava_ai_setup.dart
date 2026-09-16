@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -65,7 +67,7 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
         mode: LaunchMode.externalApplication);
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Could not open the browser — visit aistudio.google.com/app/api-keys')));
+          content: UiText(UiMessage.m_could_not_open_the_browser_36d55c37ab)));
     }
   }
 
@@ -88,6 +90,7 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     // RESPUI (onboarding pass): hardcoded 24px gutter/hero-size → ZineBreakpoints,
     // matching the pattern used by sign_in_screen.dart / onboarding_flow.dart
     // (tighter gutter + smaller hero on <360dp phones).
@@ -102,14 +105,12 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
                 color: AD.tabCalls, size: 44),
             const SizedBox(height: 16),
             ZineMarkTitle(
-                pre: 'Add ', mark: 'Ava', post: ', your AI',
+                pre: uiCopy(UiMessage.m_add_8d89e4a829), mark: uiCopy(UiMessage.m_ava_149f7514de), post: ', your AI',
                 fontSize: ZineBreakpoints.heroTextSize(context, regular: 28),
                 textAlign: TextAlign.left),
             const SizedBox(height: 8),
-            Text(
-                'Ava can find files, summarize chats, translate, generate images and '
-                'more — right inside your conversations. She runs on your own free '
-                'Google Gemini key, so it stays free for you.',
+            UiText(
+                UiMessage.m_ava_can_find_files_summarize_de20f3c49e,
                 style: ADText.preview()),
             const SizedBox(height: Msg.s4),
 
@@ -126,7 +127,7 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
             const SizedBox(height: Msg.s4),
 
             ZineButton(
-              label: _opened ? 'Open AI Studio again' : 'Open Google AI Studio',
+              label: _opened ? uiCopy(UiMessage.m_open_ai_studio_again_8124bc3856) : uiCopy(UiMessage.m_open_google_ai_studio_9283e26695),
               onPressed: _openStudio,
               fullWidth: true,
               fontSize: 17,
@@ -136,11 +137,11 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
             ),
             const SizedBox(height: Msg.s5),
 
-            Text('Paste your key', style: ADText.sectionLabel()),
+            UiText(UiMessage.m_paste_your_key_e3c28a4d42, style: ADText.sectionLabel()),
             const SizedBox(height: Msg.s2),
             _field(
               controller: _keyCtrl,
-              hint: 'AQ.… or AIza…',
+              hint: uiCopy(UiMessage.m_aq_or_aiza_dbef779c37),
               leadIcon: PhosphorIcons.key(PhosphorIconsStyle.bold),
               onChanged: (_) => setState(() => _error = null),
               error: _error != null,
@@ -156,7 +157,7 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
                   icon: PhosphorIcons.lockKey(PhosphorIconsStyle.fill)),
             const SizedBox(height: Msg.s4),
 
-            Text('Google account (optional)', style: ADText.sectionLabel()),
+            UiText(UiMessage.m_google_account_optional_fa64358f18, style: ADText.sectionLabel()),
             const SizedBox(height: Msg.s2),
             _field(
               controller: _emailCtrl,
@@ -166,13 +167,10 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
               keyboardType: TextInputType.emailAddress,
             ),
             const SizedBox(height: Msg.s1),
-            Text('So you remember which account this key belongs to. You can remove '
-                'it and connect another account anytime in Settings.',
+            UiText(UiMessage.m_so_you_remember_which_account_ca6254c04a,
                 style: ADText.statCaption()),
             const SizedBox(height: Msg.s3),
-            Text('Heads up: Google may use free-tier requests to improve their '
-                'products, and the free tier is rate-limited. Keep sensitive chats '
-                'in a private chat.',
+            UiText(UiMessage.m_heads_up_google_may_use_fca2612a97,
                 style: ADText.statCaption()),
           ]),
         ),
@@ -181,7 +179,7 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
         padding: EdgeInsets.fromLTRB(hPad, Msg.s2, hPad, Msg.s5),
         child: Column(children: [
           ZineButton(
-            label: 'Save & turn on Ava',
+            label: uiCopy(UiMessage.m_save_turn_on_ava_bedd8ded61),
             onPressed: _ready ? _save : null,
             fullWidth: true,
             fontSize: 20,
@@ -293,14 +291,15 @@ class AvaAiSetupScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
-      appBar: const ZineAppBar(title: 'Ava AI', markWord: 'Ava'),
+      appBar:  ZineAppBar(title: uiCopy(UiMessage.m_ava_ai_cb953cfc66), markWord: 'Ava'),
       body: SafeArea(
         child: AvaAiSetupBody(
           onSaved: () {
             ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Ava AI is on — your Gemini key is connected')));
+                const SnackBar(content: UiText(UiMessage.m_ava_ai_is_on_your_8a5da0cdc5)));
             Navigator.of(context).pop(true);
           },
         ),

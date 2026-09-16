@@ -39,8 +39,8 @@ extension _ChatThreadMenus on _ChatThreadScreenState {
       setState(() => _avaInChatOn = !on);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(_isGroup
-            ? 'Only group admins can change Ava for this group.'
-            : "Couldn't update Ava for this chat — try again."),
+            ? uiCopy(UiMessage.m_only_group_admins_can_change_faa3ff0ff5)
+            : uiCopy(UiMessage.m_couldn_t_update_ava_for_a339e555f7)),
         duration: const Duration(seconds: 2),
       ));
     }
@@ -101,9 +101,9 @@ extension _ChatThreadMenus on _ChatThreadScreenState {
             StatefulBuilder(builder: (sctx, setSheet) => SwitchListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 20),
                   secondary: Icon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: AD.textPrimary),
-                  title: Text('Ava in this chat', style: ADText.rowName(c: AD.textPrimary)),
+                  title: UiText(UiMessage.m_ava_in_this_chat_e13039ac4a, style: ADText.rowName(c: AD.textPrimary)),
                   subtitle: Text(
-                      _avaInChatOn ? 'Ava can help in this chat' : 'Ava is off for this chat',
+                      _avaInChatOn ? uiCopy(UiMessage.m_ava_can_help_in_this_ab81148e02) : uiCopy(UiMessage.m_ava_is_off_for_this_72d440d1fe),
                       style: ADText.preview(c: AD.textTertiary)),
                   value: _avaInChatOn,
                   activeColor: AD.textPrimary,
@@ -179,17 +179,16 @@ extension _ChatThreadMenus on _ChatThreadScreenState {
               context: context,
               builder: (dctx) => AlertDialog(
                 backgroundColor: AD.overlaySheet,
-                title: Text('Delete this chat?', style: ADText.rowName()),
-                content: Text(
-                  'Messages in this chat will be removed from all your devices. '
-                  'This does not delete them for the other person.',
+                title: UiText(UiMessage.m_delete_this_chat_848dad9ba0, style: ADText.rowName()),
+                content: UiText(
+                  UiMessage.m_messages_in_this_chat_will_157896a7cf,
                   style: ADText.preview(),
                 ),
                 actions: [
                   TextButton(onPressed: () => Navigator.pop(dctx, false),
-                      child: Text('Cancel', style: ADText.rowName())),
+                      child: UiText(UiMessage.m_cancel_19766ed6cc, style: ADText.rowName())),
                   TextButton(onPressed: () => Navigator.pop(dctx, true),
-                      child: Text('Delete', style: ADText.rowName(c: AD.danger))),
+                      child: UiText(UiMessage.m_delete_e2d0a54968, style: ADText.rowName(c: AD.danger))),
                 ],
               ),
             );
@@ -268,7 +267,7 @@ extension _ChatThreadMenus on _ChatThreadScreenState {
     Analytics.capture('chat_hide_deleted_toggled', {'on': next});
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(next ? 'Deleted messages hidden' : 'Deleted messages shown'),
+        content: Text(next ? uiCopy(UiMessage.m_deleted_messages_hidden_b8fe543722) : uiCopy(UiMessage.m_deleted_messages_shown_1221f5f503)),
         duration: const Duration(seconds: 2),
       ));
     }
@@ -286,8 +285,7 @@ extension _ChatThreadMenus on _ChatThreadScreenState {
     if (!mounted) return;
     if (!allowed) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Turn on AvaBrain for your messages in Settings to discuss '
-            'a chat with Ava. Your messages stay on this device.'),
+        content: UiText(UiMessage.m_turn_on_avabrain_for_your_1856052039),
       ));
       return;
     }
@@ -305,7 +303,7 @@ extension _ChatThreadMenus on _ChatThreadScreenState {
     if (turns.length > ThreadContext.kRawTailTurns * 4) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         duration: Duration(seconds: 2),
-        content: Text('Reading your chat for Ava…'),
+        content: UiText(UiMessage.m_reading_your_chat_for_ava_8212743010),
       ));
     }
     // Assemble the grounding block on-device. Short threads come back verbatim;
@@ -325,7 +323,7 @@ extension _ChatThreadMenus on _ChatThreadScreenState {
     if (!mounted) return;
     if (transcript.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Not enough messages here yet for Ava to weigh in.'),
+        content: UiText(UiMessage.m_not_enough_messages_here_yet_daa99cb519),
       ));
       return;
     }
@@ -387,7 +385,7 @@ extension _ChatThreadMenus on _ChatThreadScreenState {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
       builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
         Padding(padding: const EdgeInsets.all(14),
-            child: Text('Disappearing messages', style: ADText.threadName())),
+            child: UiText(UiMessage.m_disappearing_messages_b82ab520b0, style: ADText.threadName())),
         for (final opt in [['Off', 0], ['1 hour', 3600], ['1 day', 86400], ['1 week', 604800]])
           ListTile(
             title: Text(opt[0] as String),

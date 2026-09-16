@@ -1,3 +1,6 @@
+import { UiMessage } from "../../lib/i18n/react";
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /* /sign-up — avaTOK create account.
  *
  * [WEB-AUTH-DESIGN-1 2026-08-26] Custom Clerk flow via `useSignUp()`.
@@ -122,6 +125,8 @@ function CodeReveal({
   resendIn: number;
   codeLength: number;
 }) {
+  const {t:uiT}=useUiTranslation("web-auth");
+
   const inputRef = useRef<HTMLInputElement | null>(null);
   const errId = `${label.replace(/\W+/g, '-').toLowerCase()}-err`;
   useEffect(() => {
@@ -133,7 +138,7 @@ function CodeReveal({
       <div className="auth-reveal-inner">
         <div className="auth-otp">
           <label className="auth-label" htmlFor={errId + '-input'}>{label}</label>
-          <p className="auth-otp-sent">Sent to <strong>{sentTo}</strong></p>
+          <p className="auth-otp-sent"><UiText id="web-auth.4e7201c7b8985a98" source="Sent to" />{" "}<strong>{sentTo}</strong></p>
           <input
             ref={inputRef}
             id={errId + '-input'}
@@ -158,12 +163,10 @@ function CodeReveal({
               if (value.length >= 4) onSubmit(value);
             }}
           />
-          {error && <p className="auth-err" id={errId} role="alert">{error}</p>}
+          {error && <p className="auth-err" id={errId} role="alert"><UiMessage namespace="web-auth" value={error} /></p>}
           <p className="auth-otp-foot">
-            {busy ? 'Checking…' : resendIn > 0 ? `Resend in ${resendIn}s` : (
-              <button type="button" className="auth-linkbtn" onClick={onResend} tabIndex={open ? 0 : -1}>
-                Resend code
-              </button>
+            {busy ? uiT("web-auth.ec963ffc911b8401","Checking…") : resendIn > 0 ? uiT("web-auth.082dca1907be9505","Resend in {value0}s",{value0:String(resendIn)}) : (
+              <button type="button" className="auth-linkbtn" onClick={onResend} tabIndex={open ? 0 : -1}><UiText id="web-auth.b97457409ab5b375" source="Resend code" />{" "}</button>
             )}
           </p>
         </div>
@@ -184,22 +187,26 @@ function VerifyField({
   error?: string;
   hint?: ReactNode;
 }) {
+  const {t:uiT}=useUiTranslation("web-auth");
+
   return (
     <div className={`auth-field${verified ? ' is-verified' : ''}`}>
       <label className="auth-label" htmlFor={id}>{label}</label>
       <div className="auth-boxwrap">
         {children}
         {verified
-          ? <span className="auth-verified" aria-label="Verified">✓ Verified</span>
+          ? <span className="auth-verified" aria-label={uiT("web-auth.4f7838402f37674e","Verified")}><UiText id="web-auth.79b46a980fb01f24" source="✓ Verified" /></span>
           : action}
       </div>
-      {error && <p className="auth-err" id={`${id}-err`} role="alert">{error}</p>}
+      {error && <p className="auth-err" id={`${id}-err`} role="alert"><UiMessage namespace="web-auth" value={error} /></p>}
       {hint}
     </div>
   );
 }
 
 function Inner() {
+  const {t:uiT}=useUiTranslation("web-auth");
+
   const { isLoaded, signUp, setActive } = useSignUp();
   // Google lives on the sign-in resource even when the person has no account —
   // Clerk creates one from the OAuth identity on the way through.
@@ -498,7 +505,7 @@ function Inner() {
   }
 
   if (boot === 'checking' || boot === 'leaving') {
-    return <p className="auth-footline">{boot === 'leaving' ? 'You’re signed in — taking you through…' : 'One sec…'}</p>;
+    return <p className="auth-footline">{boot === 'leaving' ? uiT("web-auth.02d310528cc61f61","You’re signed in — taking you through…") : uiT("web-auth.4152c1296fa27021","One sec…")}</p>;
   }
 
   const emailLocked = emailStep !== 'idle';
@@ -509,59 +516,57 @@ function Inner() {
   return (
     <form className="auth-form auth-form--signup" onSubmit={onSubmit} noValidate>
       <div className="auth-desktop-head">
-        <p className="auth-eyebrow">{resume ? 'One last step' : 'Two minutes, that’s all'}</p>
-        <h1 className="auth-h2">{resume ? 'Verify your phone' : 'Create my account'}</h1>
+        <p className="auth-eyebrow">{resume ? uiT("web-auth.be98b10d2db32b3f","One last step") : uiT("web-auth.6b6ad3ba72651b98","Two minutes, that’s all")}</p>
+        <h1 className="auth-h2">{resume ? uiT("web-auth.94a5c55cacd8f799","Verify your phone") : uiT("web-auth.862d3b2696cfbc19","Create my account")}</h1>
       </div>
 
       {(formError || stalled) && (
-        <p className="auth-formerr" role="alert">{formError ?? STALLED_MESSAGE}</p>
+        <p className="auth-formerr" role="alert"><UiMessage namespace="web-auth" value={formError ?? STALLED_MESSAGE} /></p>
       )}
 
       <RolePicker value={role} onChange={setRole} />
 
       <div className="auth-namepair">
         <Field
-          label="First name" name="firstName" autoComplete="given-name"
-          placeholder="What should we call you?"
+          label={uiT("web-auth.702ef921ed1d89bf","First name")} name="firstName" autoComplete="given-name"
+          placeholder={uiT("web-auth.d82e5fe24eed3db4","What should we call you?")}
           value={firstName} onChange={(v) => { setFirstName(v); clearErr('firstName'); }} error={errors.firstName}
         />
         <Field
-          label="Last name" name="lastName" autoComplete="family-name"
-          placeholder="Your surname"
+          label={uiT("web-auth.7b4888049459f04a","Last name")} name="lastName" autoComplete="family-name"
+          placeholder={uiT("web-auth.f4ee67a024684a6b","Your surname")}
           value={lastName} onChange={(v) => { setLastName(v); clearErr('lastName'); }} error={errors.lastName}
         />
       </div>
 
       {/* ── Email + slide-out code ── */}
       <VerifyField
-        id="su-email" label="Email" verified={emailStep === 'verified'} error={errors.email}
+        id="su-email" label={uiT("web-auth.969ccbd3cf6300ec","Email")} verified={emailStep === 'verified'} error={errors.email}
         action={
           emailStep === 'idle' || emailStep === 'sending' ? (
             <button
               type="button" className="auth-inline-btn"
               onClick={() => void sendEmail()} disabled={!isLoaded || emailBusy}
             >
-              {emailStep === 'sending' ? 'Sending…' : 'Verify'}
+              {emailStep === 'sending' ? uiT("web-auth.b8ed5279e897be5d","Sending…") : uiT("web-auth.eea2745e2867a677","Verify")}
             </button>
           ) : (
             <button
               type="button" className="auth-inline-btn auth-inline-btn--ghost"
               onClick={() => { setEmailStep('idle'); setEmailCode(''); clearErr('emailCode'); }}
               disabled={emailBusy}
-            >
-              Change
-            </button>
+            ><UiText id="web-auth.c0bf75bd78bf9572" source="Change" />{" "}</button>
           )
         }
       >
         <input
           id="su-email" name="email" type="email" inputMode="email" autoComplete="email"
-          placeholder="you@email.com"
+          placeholder={uiT("web-auth.8d12b7f58c0d3fc8","you@email.com")}
           className={`auth-box auth-box--action${emailStep === 'verified' ? ' is-verified' : ''}`}
           value={email}
           readOnly={emailLocked}
           aria-invalid={errors.email ? true : undefined}
-          aria-describedby={errors.email ? 'su-email-err' : undefined}
+          aria-describedby={errors.email ? uiT("web-auth.fabb6582786a7c93","su-email-err") : undefined}
           onChange={(e) => { setEmail(e.target.value); clearErr('email'); }}
           onKeyDown={(e) => {
             if (e.key !== 'Enter') return;
@@ -572,7 +577,7 @@ function Inner() {
       </VerifyField>
       <CodeReveal
         open={emailStep === 'code' || emailStep === 'verifying'}
-        label="Email code"
+        label={uiT("web-auth.0adcdb5d55ecf545","Email code")}
         sentTo={email.trim()}
         value={emailCode}
         onChange={(v) => { setEmailCode(v); clearErr('emailCode'); }}
@@ -589,21 +594,21 @@ function Inner() {
 
       {/* ── Phone + slide-out code ── */}
       <VerifyField
-        id="su-phone" label="Mobile number · India" verified={phoneStep === 'verified'} error={errors.phone}
+        id="su-phone" label={uiT("web-auth.815abc2ef7daf8ed","Mobile number · India")} verified={phoneStep === 'verified'} error={errors.phone}
         action={
           <button
             type="button" className="auth-inline-btn"
             onClick={() => void sendPhone()}
             disabled={!phoneUnlocked || phoneBusy || phone.length !== 10 || phoneStep === 'code' && phoneResendIn > 0}
           >
-            {phoneStep === 'sending' ? 'Sending…' : phoneStep === 'code' || phoneStep === 'verifying' ? 'Sent' : 'Send OTP'}
+            {phoneStep === 'sending' ? uiT("web-auth.b8ed5279e897be5d","Sending…") : phoneStep === 'code' || phoneStep === 'verifying' ? uiT("web-auth.c16bc82bf1f04ede","Sent") : uiT("web-auth.9c45665a6ee4c7d0","Send OTP")}
           </button>
         }
         hint={
           <p className="auth-hint">
             {phoneUnlocked
-              ? 'We text you a code to confirm it. Your AvaTOK number is what other people see, so your real number stays private.'
-              : 'Verify your email first, then we’ll text a code to your phone.'}
+              ? uiT("web-auth.f2ffacf43c1c9d32","We text you a code to confirm it. Your AvaTOK number is what other people see, so your real number stays private.")
+              : uiT("web-auth.b5d48574bfa7ab27","Verify your email first, then we’ll text a code to your phone.")}
           </p>
         }
       >
@@ -618,7 +623,7 @@ function Inner() {
           disabled={!phoneUnlocked}
           readOnly={phoneBusy}
           aria-invalid={errors.phone ? true : undefined}
-          aria-describedby={errors.phone ? 'su-phone-err' : undefined}
+          aria-describedby={errors.phone ? uiT("web-auth.52da322279034269","su-phone-err") : undefined}
           onChange={(e) => onPhoneChange(e.target.value)}
           onKeyDown={(e) => {
             if (e.key !== 'Enter') return;
@@ -629,7 +634,7 @@ function Inner() {
       </VerifyField>
       <CodeReveal
         open={phoneStep === 'code' || phoneStep === 'verifying'}
-        label="SMS code"
+        label={uiT("web-auth.086206876a33de3f","SMS code")}
         sentTo={`+91 ${phone.slice(0, 5)} ${phone.slice(5)}`}
         value={phoneCode}
         onChange={(v) => { setPhoneCode(v); clearErr('phoneCode'); }}
@@ -645,27 +650,25 @@ function Inner() {
         className="auth-terms" large checked={agreed}
         onChange={(v) => { setAgreed(v); clearErr('terms'); }}
         error={errors.terms}
-      >
-        I&rsquo;m 18 or over and I agree to the <a href="/terms">terms</a> and{' '}
-        <a href="/community-guidelines">safety rules</a>.
+      ><UiText id="web-auth.4dca6ceb76d0fbcf" source="I’m 18 or over and I agree to the" />{" "}<a href="/terms"><UiText id="web-auth.51d2361f4faea3bc" source="terms" /></a>{" "}<UiText id="web-auth.6201111b83a0cb5b" source="and" />{' '}
+        <a href="/community-guidelines"><UiText id="web-auth.1ce806cb5268307a" source="safety rules" /></a>.
       </CheckRow>
 
       {!bothVerified && (
-        <p className="auth-gatehint">Verify your email and phone to continue.</p>
+        <p className="auth-gatehint"><UiText id="web-auth.61c3994b124f046c" source="Verify your email and phone to continue." /></p>
       )}
 
       {/* See LoginIsland: never clickable-but-dead while Clerk is loading. */}
       <Button type="submit" loading={submitting || (!isLoaded && !stalled)} disabled={stalled || !bothVerified}>
-        {resume ? 'Finish and continue' : 'Create my account'}
+        {resume ? uiT("web-auth.a6d61c794e59fb7c","Finish and continue") : uiT("web-auth.862d3b2696cfbc19","Create my account")}
       </Button>
 
       {!resume && (
         <>
-          <Divider label="Ya phir" />
+          <Divider label={uiT("web-auth.4aec6108de24a9f0","Ya phir")} />
           <GoogleButton onClick={() => void google()} disabled={stalled || submitting || emailLocked} />
           <div className="auth-foot">
-            <p className="auth-footline">
-              Already with us?<a href="/sign-in">Log in</a>
+            <p className="auth-footline"><UiText id="web-auth.7016769c24191247" source="Already with us?" /><a href="/sign-in"><UiText id="web-auth.c189840cf7e2d6f6" source="Log in" /></a>
             </p>
           </div>
         </>
@@ -678,9 +681,7 @@ export function SignUpIsland() {
   if (!CLERK_PUBLISHABLE_KEY) {
     return (
       <div className="auth-form">
-        <p className="auth-formerr">
-          Sign-up isn’t configured on this build. Set PUBLIC_CLERK_PUBLISHABLE_KEY.
-        </p>
+        <p className="auth-formerr"><UiText id="web-auth.84f1a2e898fba3ac" source="Sign-up isn’t configured on this build. Set PUBLIC_CLERK_PUBLISHABLE_KEY." />{" "}</p>
       </div>
     );
   }

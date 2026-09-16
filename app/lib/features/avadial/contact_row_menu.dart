@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -83,7 +86,7 @@ Future<void> showAvaDialRowMenu(
         _row(
           icon: PhosphorIcons.identificationCard(PhosphorIconsStyle.bold),
           color: AD.iconSearch,
-          label: 'Open contact',
+          label: uiCopy(UiMessage.m_open_contact_7f5cc2c2e1),
           onTap: () async {
             Navigator.pop(sheetCtx);
             await Navigator.push<void>(navContext,
@@ -98,7 +101,7 @@ Future<void> showAvaDialRowMenu(
           _row(
             icon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
             color: AD.incomingCall,
-            label: 'Call',
+            label: uiCopy(UiMessage.m_call_d6e645b7d2),
             onTap: () async {
               Navigator.pop(sheetCtx);
               // [AVADIAL-AVATOK-ONLY-1] AvaTOK-only (owner pivot 2026-07-16): resolve
@@ -129,7 +132,7 @@ Future<void> showAvaDialRowMenu(
         _row(
           icon: PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
           color: AD.iconVideo,
-          label: 'Send SMS',
+          label: uiCopy(UiMessage.m_send_sms_eaa2090d67),
           onTap: () {
             Navigator.pop(sheetCtx);
             Navigator.push(navContext,
@@ -139,7 +142,7 @@ Future<void> showAvaDialRowMenu(
         _row(
           icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold),
           color: AD.iconSearch,
-          label: 'Save contact',
+          label: uiCopy(UiMessage.m_save_contact_d24f121f4a),
           onTap: () async {
             Navigator.pop(sheetCtx);
             await Navigator.push<bool>(navContext, MaterialPageRoute<bool>(
@@ -151,7 +154,7 @@ Future<void> showAvaDialRowMenu(
         _row(
           icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold),
           color: AD.iconSearch,
-          label: 'Edit contact',
+          label: uiCopy(UiMessage.m_edit_contact_81cd065a45),
           onTap: () async {
             Navigator.pop(sheetCtx);
             await Navigator.push<bool>(navContext, MaterialPageRoute<bool>(
@@ -162,7 +165,7 @@ Future<void> showAvaDialRowMenu(
         _row(
           icon: PhosphorIcons.tag(PhosphorIconsStyle.bold),
           color: AD.iconVideo,
-          label: 'Add to color group',
+          label: uiCopy(UiMessage.m_add_to_color_group_f416d82cc7),
           onTap: () async {
             Navigator.pop(sheetCtx);
             await _pickGroup(navContext, number);
@@ -175,7 +178,7 @@ Future<void> showAvaDialRowMenu(
           _row(
             icon: PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
             color: AD.danger,
-            label: 'Remove from color group',
+            label: uiCopy(UiMessage.m_remove_from_color_group_f9ea9541a9),
             onTap: () async {
               Navigator.pop(sheetCtx);
               await ContactOverrides.I.setGroup(number, null);
@@ -187,7 +190,7 @@ Future<void> showAvaDialRowMenu(
         _row(
           icon: PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold),
           color: AD.iconVideo,
-          label: 'Forward to messenger',
+          label: uiCopy(UiMessage.m_forward_to_messenger_50efd72058),
           onTap: () {
             Navigator.pop(sheetCtx);
             ContactActions.forward(navContext, Contact(uid: '', name: name ?? '', phone: number));
@@ -196,7 +199,7 @@ Future<void> showAvaDialRowMenu(
         _row(
           icon: PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
           color: AD.danger,
-          label: alreadyBlocked ? 'Unblock' : 'Block this number',
+          label: alreadyBlocked ? uiCopy(UiMessage.m_unblock_712da63171) : uiCopy(UiMessage.m_block_this_number_f027482dba),
           onTap: () async {
             Navigator.pop(sheetCtx);
             if (alreadyBlocked) {
@@ -210,7 +213,7 @@ Future<void> showAvaDialRowMenu(
         _row(
           icon: PhosphorIcons.shieldWarning(PhosphorIconsStyle.bold),
           color: AD.danger,
-          label: 'Report spam',
+          label: uiCopy(UiMessage.m_report_spam_147b4a0af8),
           onTap: () async {
             Navigator.pop(sheetCtx);
             await BlockList.I.reportSpam(number, label: name);
@@ -220,7 +223,7 @@ Future<void> showAvaDialRowMenu(
         _row(
           icon: PhosphorIcons.user(PhosphorIconsStyle.bold),
           color: AD.danger,
-          label: 'Remove contact',
+          label: uiCopy(UiMessage.m_remove_contact_39a33502c9),
           onTap: () async {
             Navigator.pop(sheetCtx);
             await ContactOverrides.I.hide(number);
@@ -231,7 +234,7 @@ Future<void> showAvaDialRowMenu(
         _row(
           icon: PhosphorIcons.trash(PhosphorIconsStyle.bold),
           color: AD.danger,
-          label: 'Delete this contact',
+          label: uiCopy(UiMessage.m_delete_this_contact_6e5313f753),
           danger: true,
           onTap: () async {
             Navigator.pop(sheetCtx);
@@ -268,16 +271,15 @@ Future<void> _showNotOnAvaTok(BuildContext context, String number) => showDialog
           side: const BorderSide(color: AvaDialTheme.border, width: 1),
           borderRadius: BorderRadius.circular(AD.rListCard),
         ),
-        title: Text('Not on AvaTOK', style: AvaDialTheme.title(size: 17, color: AvaDialTheme.text)),
-        content: Text(
-          '$number isn\'t an AvaTOK number yet. AvaTOK only calls other AvaTOK '
-          'users — invite them to join.',
+        title: UiText(UiMessage.m_not_on_avatok_25f9ca82b1, style: AvaDialTheme.title(size: 17, color: AvaDialTheme.text)),
+        content: UiText(
+          UiMessage.m_number_isn_t_an_avatok_79cbb70d7c, params: {'number': (number).toString()},
           style: AvaDialTheme.sub(size: 13, color: AvaDialTheme.textSoft),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogCtx),
-            child: Text('Cancel', style: AvaDialTheme.value(size: 14, color: AvaDialTheme.textSoft)),
+            child: UiText(UiMessage.m_cancel_19766ed6cc, style: AvaDialTheme.value(size: 14, color: AvaDialTheme.textSoft)),
           ),
           TextButton(
             onPressed: () {
@@ -285,7 +287,7 @@ Future<void> _showNotOnAvaTok(BuildContext context, String number) => showDialog
               Navigator.of(context, rootNavigator: true).push(
                   MaterialPageRoute<void>(builder: (_) => const InviteScreen()));
             },
-            child: Text('Invite', style: AvaDialTheme.value(size: 14, color: AD.online)),
+            child: UiText(UiMessage.m_invite_1fd9ae1607, style: AvaDialTheme.value(size: 14, color: AD.online)),
           ),
         ],
       ),
@@ -299,20 +301,19 @@ Future<bool?> _confirmDelete(BuildContext context, String label) => showDialog<b
           side: const BorderSide(color: AvaDialTheme.border, width: 1),
           borderRadius: BorderRadius.circular(AD.rListCard),
         ),
-        title: Text('Delete $label?', style: AvaDialTheme.title(size: 17, color: AvaDialTheme.text)),
-        content: Text(
-          'This deletes the contact from your phone\'s address book. This can\'t be '
-          'undone.',
+        title: UiText(UiMessage.m_delete_label_538d4a6655, params: {'label': (label).toString()}, style: AvaDialTheme.title(size: 17, color: AvaDialTheme.text)),
+        content: UiText(
+          UiMessage.m_this_deletes_the_contact_from_368b0b1fb6,
           style: AvaDialTheme.sub(size: 13, color: AvaDialTheme.textSoft),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: AvaDialTheme.value(size: 14, color: AvaDialTheme.textSoft)),
+            child: UiText(UiMessage.m_cancel_19766ed6cc, style: AvaDialTheme.value(size: 14, color: AvaDialTheme.textSoft)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Delete', style: AvaDialTheme.value(size: 14, color: AD.danger)),
+            child: UiText(UiMessage.m_delete_e2d0a54968, style: AvaDialTheme.value(size: 14, color: AD.danger)),
           ),
         ],
       ),
@@ -340,7 +341,7 @@ Future<void> _pickGroup(BuildContext context, String number) async {
           decoration: BoxDecoration(color: AvaDialTheme.textMute, borderRadius: Msg.brPill),
         ),
         ListTile(
-          title: Text('Add to color group',
+          title: UiText(UiMessage.m_add_to_color_group_f416d82cc7,
               style: AvaDialTheme.title(size: 15, color: AvaDialTheme.text)),
         ),
         const Divider(color: AvaDialTheme.border, height: 1),
@@ -368,7 +369,7 @@ Future<void> _pickGroup(BuildContext context, String number) async {
                 ListTile(
                   leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
                       color: AvaDialTheme.textSoft),
-                  title: Text('Remove from color group',
+                  title: UiText(UiMessage.m_remove_from_color_group_f9ea9541a9,
                       style: AvaDialTheme.value(size: 15, color: AvaDialTheme.textSoft)),
                   // [AVADIAL-GROUPS-1] Write before popping — see note above.
                   onTap: () async {

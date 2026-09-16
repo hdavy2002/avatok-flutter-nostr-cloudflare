@@ -1,0 +1,1203 @@
+{
+  "status": "source-inventory-unverified-runtime",
+  "namespaces": 199,
+  "sourceMessages": 10248,
+  "sourceCharacters": 504184,
+  "sourceHashAlgorithm": "SHA-256 of compact UTF-8 JSON with lexically sorted flat message keys and no trailing newline",
+  "catalogs": [
+    {
+      "namespace": "app",
+      "sourceMessages": 3626,
+      "sourceCharacters": 115751,
+      "sourceHash": "81bd6f7e2ea6f80b59b55c039153d1d8a054af86592721ff58c729e66b30b97c"
+    },
+    {
+      "namespace": "common",
+      "sourceMessages": 49,
+      "sourceCharacters": 618,
+      "sourceHash": "925a11d90c08dbeb6b59746a0719b2b8125e7029537db18e05394dcb1ac4287d"
+    },
+    {
+      "namespace": "landing",
+      "sourceMessages": 84,
+      "sourceCharacters": 2819,
+      "sourceHash": "92f8e7cc423d959f1d1fb2e2fcacf199c942ef98265b06c1d36cccdb982aa1fa"
+    },
+    {
+      "namespace": "web--username-",
+      "sourceMessages": 2,
+      "sourceCharacters": 34,
+      "sourceHash": "3416a9a3bda4e346581b91b16abd37f0e12a4afa7cbd56c04edfd27c4e212b20"
+    },
+    {
+      "namespace": "web-about",
+      "sourceMessages": 55,
+      "sourceCharacters": 3833,
+      "sourceHash": "9da0eb19897e35c66cdd36873a6e36757ae25f4a0fa25416b262d331d0513e5b"
+    },
+    {
+      "namespace": "web-acceptable-use",
+      "sourceMessages": 101,
+      "sourceCharacters": 7671,
+      "sourceHash": "cce226c2d215f2289b33eeb57d272803ebad9681569b4eb9c5a9d93cb5a5424c"
+    },
+    {
+      "namespace": "web-add",
+      "sourceMessages": 5,
+      "sourceCharacters": 57,
+      "sourceHash": "f6686430211e81d557a6ec2a4507dec872c91af2c88db4ad2f67bd784aac4600"
+    },
+    {
+      "namespace": "web-agent-live",
+      "sourceMessages": 31,
+      "sourceCharacters": 528,
+      "sourceHash": "48c56e5f9cffbe13d801b852964cf7c7e82576f6c411bf254c4e7613642d4a9c"
+    },
+    {
+      "namespace": "web-agent",
+      "sourceMessages": 18,
+      "sourceCharacters": 436,
+      "sourceHash": "6e74129c0061485648e5561611ccfe514b4be896aaed3fe370ae7087e457d731"
+    },
+    {
+      "namespace": "web-auth",
+      "sourceMessages": 157,
+      "sourceCharacters": 4768,
+      "sourceHash": "b32ae40c5e1f29e904763efcceee58b744d7d79bdaa8b971fd6251a8cccaae4c"
+    },
+    {
+      "namespace": "web-authored",
+      "sourceMessages": 700,
+      "sourceCharacters": 33278,
+      "sourceHash": "54e21dca828170b17bc26d26d6676422dc04902a6720ab7b5e308a819117bbe6"
+    },
+    {
+      "namespace": "web-biometric-retention",
+      "sourceMessages": 71,
+      "sourceCharacters": 4788,
+      "sourceHash": "0db481e9a22209d1782054b58de86a0233e9012d22208db5fb381ee3b569941e"
+    },
+    {
+      "namespace": "web-blog",
+      "sourceMessages": 169,
+      "sourceCharacters": 11954,
+      "sourceHash": "b6c8750fc94d8ebdd17bc712b70b0fa543c103c254a41f256f29158575df21a7"
+    },
+    {
+      "namespace": "web-book",
+      "sourceMessages": 2,
+      "sourceCharacters": 77,
+      "sourceHash": "20bde0814819b01b1cfa3246da88f5c0c3f7c2ba64d8f42819b8267bb0ed595a"
+    },
+    {
+      "namespace": "web-c",
+      "sourceMessages": 2,
+      "sourceCharacters": 31,
+      "sourceHash": "95c5d3b922050fdf44a0dec3f92ad00af562c9d7d89323ec008cc677a9d7935b"
+    },
+    {
+      "namespace": "web-careers",
+      "sourceMessages": 21,
+      "sourceCharacters": 893,
+      "sourceHash": "b6f18c763a0c0e275e5c59bc2ae18d3041277693abae2a1f71732997672dfdc5"
+    },
+    {
+      "namespace": "web-checkout",
+      "sourceMessages": 107,
+      "sourceCharacters": 3554,
+      "sourceHash": "63ef085878cd26a86d8296cdc28e8246ada254587e413f323fb13cd06d1d6bfb"
+    },
+    {
+      "namespace": "web-child-safety",
+      "sourceMessages": 40,
+      "sourceCharacters": 3086,
+      "sourceHash": "ffb4e3f622b3761187fb4f6aadb18b4b155e457f2905c19d93095f78c76e7fa6"
+    },
+    {
+      "namespace": "web-common",
+      "sourceMessages": 353,
+      "sourceCharacters": 9178,
+      "sourceHash": "ccbf9727bd1dea3170a37b8d48500ba1e1248911bc71f7747115e0446eb77887"
+    },
+    {
+      "namespace": "web-community-guidelines",
+      "sourceMessages": 25,
+      "sourceCharacters": 1999,
+      "sourceHash": "03ff43a5f2316563bdb31d0b9a53bfc92349104d8087eb01973ae6655096ff29"
+    },
+    {
+      "namespace": "web-consult-gs",
+      "sourceMessages": 91,
+      "sourceCharacters": 2114,
+      "sourceHash": "68b1887f25980b4af98e407ad6047a82c6a85523991e31b49519898e84b935a6"
+    },
+    {
+      "namespace": "web-consult",
+      "sourceMessages": 50,
+      "sourceCharacters": 800,
+      "sourceHash": "a50b5c90aefed449efd09b8c7fc8e46ad036da8b7638194229d0baeca74b1389"
+    },
+    {
+      "namespace": "web-consultation-terms",
+      "sourceMessages": 86,
+      "sourceCharacters": 7827,
+      "sourceHash": "5d82823599b89e28a7ac36c57a0e55f30cfacebcc985d1505d98b72e0579f144"
+    },
+    {
+      "namespace": "web-contact",
+      "sourceMessages": 25,
+      "sourceCharacters": 530,
+      "sourceHash": "1ee524ee47a049d1d7da9bdeef871e22806fc760a7e2b5f156800cec8aa8d36f"
+    },
+    {
+      "namespace": "web-content-0a5f9bbe6df0",
+      "sourceMessages": 25,
+      "sourceCharacters": 2323,
+      "sourceHash": "974c4a7e54dc29bced7a4f386ef61b738b791380030c71ef54044798917b9155"
+    },
+    {
+      "namespace": "web-content-0d79ef9997d8",
+      "sourceMessages": 21,
+      "sourceCharacters": 2386,
+      "sourceHash": "90fa2f3378daad122863c72f4defbdd97612b6f6389fb2d9604e1631ac071197"
+    },
+    {
+      "namespace": "web-content-0df93a4e0f46",
+      "sourceMessages": 36,
+      "sourceCharacters": 3066,
+      "sourceHash": "4cca07ba584f1a4ae4f0bcd8fa524d416a84be506f7f55807841ece9e4734ce7"
+    },
+    {
+      "namespace": "web-content-1109e302f501",
+      "sourceMessages": 33,
+      "sourceCharacters": 2241,
+      "sourceHash": "8c36c83da703b40a7957f122140e39fe6b3a07c5df46cf7bd1d9d3e216b16125"
+    },
+    {
+      "namespace": "web-content-27f806dfa45e",
+      "sourceMessages": 26,
+      "sourceCharacters": 2267,
+      "sourceHash": "b6b3c9b28e5139b5134933ecf2a17a3e1ec9cc2b26ddf4efd223bee4ca433161"
+    },
+    {
+      "namespace": "web-content-2bfdb6547ffd",
+      "sourceMessages": 28,
+      "sourceCharacters": 3267,
+      "sourceHash": "30cc5fb1dd95ab79cabafbdecfc6c48821fe3bdac917acf1056c16a26e330eca"
+    },
+    {
+      "namespace": "web-content-316ef9f30757",
+      "sourceMessages": 50,
+      "sourceCharacters": 2419,
+      "sourceHash": "b672367d66b0e0b10f86a3e08231b86077adf52cf97221612c78417a498ca5ea"
+    },
+    {
+      "namespace": "web-content-3328de7a2f28",
+      "sourceMessages": 39,
+      "sourceCharacters": 2332,
+      "sourceHash": "cedf1948ef11cc2329ea3b50c20d4dbd88a10e50548d3dee01750a60c1cb7a56"
+    },
+    {
+      "namespace": "web-content-372f7d9f81e0",
+      "sourceMessages": 20,
+      "sourceCharacters": 1970,
+      "sourceHash": "2812c5b4d53b2624a9b405d6ac1b24efb64c9f076162a424ab890b30fdea8a55"
+    },
+    {
+      "namespace": "web-content-43a911a5f8c6",
+      "sourceMessages": 63,
+      "sourceCharacters": 4657,
+      "sourceHash": "2f73d26e1a0d819e47d96a0d23e60736d1535a55702b37f51eed189c700e779c"
+    },
+    {
+      "namespace": "web-content-4a1b04cb9de2",
+      "sourceMessages": 49,
+      "sourceCharacters": 2709,
+      "sourceHash": "66a38467d1338127bc33dfa181d18d12987a84606e17b6c6db8c6173d111f7d1"
+    },
+    {
+      "namespace": "web-content-4bba5a02ab26",
+      "sourceMessages": 14,
+      "sourceCharacters": 1782,
+      "sourceHash": "89747b0c9000a7e34e09420666d4d0e9e0c7fd002837fe3848104c31637a453c"
+    },
+    {
+      "namespace": "web-content-58a7f11bffa5",
+      "sourceMessages": 29,
+      "sourceCharacters": 2517,
+      "sourceHash": "4624253183cc23f1f0e50dad91d0faeebdc330f8d533eb4fdf0e604f9e79ab67"
+    },
+    {
+      "namespace": "web-content-674f3e2c614c",
+      "sourceMessages": 41,
+      "sourceCharacters": 2013,
+      "sourceHash": "f98f0561fc40cb336709967a2f812d6318285220d0725494263a6d53f0dab850"
+    },
+    {
+      "namespace": "web-content-89ba676ad0a2",
+      "sourceMessages": 28,
+      "sourceCharacters": 3340,
+      "sourceHash": "57ebdb8cd9dcb595004b93a5de8f609948a05e616306cdbfc6f171770d6e7274"
+    },
+    {
+      "namespace": "web-content-a7eb34ea13d6",
+      "sourceMessages": 26,
+      "sourceCharacters": 2357,
+      "sourceHash": "4ae05a0bb330ed72c723d82d02dac05ee7823d48dc943425536bfead3b182608"
+    },
+    {
+      "namespace": "web-content-aab91ac9aa0e",
+      "sourceMessages": 18,
+      "sourceCharacters": 1557,
+      "sourceHash": "777f4fb5116ab47a8a4ff4b732e00ed1684d1acbb2cde6e9cd3f0c0a0fa0827e"
+    },
+    {
+      "namespace": "web-content-b24c3952cbe6",
+      "sourceMessages": 23,
+      "sourceCharacters": 1824,
+      "sourceHash": "ee17fe7d7502a57bb4f2dd1bd066eed877de781d0e75b58c4d78c6dd94e3b613"
+    },
+    {
+      "namespace": "web-content-f99663f48df5",
+      "sourceMessages": 37,
+      "sourceCharacters": 1993,
+      "sourceHash": "19ce2127b9a59f91f0fdcbf6a98971b18a981b1f2e54bf2b6564a1b56f8a442d"
+    },
+    {
+      "namespace": "web-content-fb16b19b0ae4",
+      "sourceMessages": 21,
+      "sourceCharacters": 1749,
+      "sourceHash": "c124fc27e088d3b140fb1edd13d0a746177ba7a4596c486d6e9146d6b0afac86"
+    },
+    {
+      "namespace": "web-cookies",
+      "sourceMessages": 26,
+      "sourceCharacters": 1521,
+      "sourceHash": "e8bd47f44b83a195dfd0c724a53d12e340026788e7c12f1a3a95b17588cbf591"
+    },
+    {
+      "namespace": "web-dashboard",
+      "sourceMessages": 619,
+      "sourceCharacters": 18547,
+      "sourceHash": "9a8327a1f7745513339436d5b347fccc09440bfac3b95d97f1b8cebd0f584300"
+    },
+    {
+      "namespace": "web-disco",
+      "sourceMessages": 140,
+      "sourceCharacters": 5316,
+      "sourceHash": "d8b30c94f7db153faaa2ee2431218b696e6ef2c75198c150144417e6933ba4d2"
+    },
+    {
+      "namespace": "web-dmca",
+      "sourceMessages": 19,
+      "sourceCharacters": 2112,
+      "sourceHash": "2bd5a456611b2666f0d918e8606ed4a4aed9b9ab5bab1685a13797c5e19cd52e"
+    },
+    {
+      "namespace": "web-e",
+      "sourceMessages": 2,
+      "sourceCharacters": 34,
+      "sourceHash": "fcd9e5550199304e64ef38b6d9c1843c3ed4f078a95a1459dcb3597e40881649"
+    },
+    {
+      "namespace": "web-global-guide-ask-me-anything-1-1",
+      "sourceMessages": 25,
+      "sourceCharacters": 2000,
+      "sourceHash": "c6934ea69348b946eee7f7119e26b64a62f6f06b9e109f4aaf0f87e11929443c"
+    },
+    {
+      "namespace": "web-global-guide-channel-coaching",
+      "sourceMessages": 25,
+      "sourceCharacters": 1998,
+      "sourceHash": "73c56749c8ae0bcec5344a553c5c962e18307ca570d4b6f14433b73c37e189c3"
+    },
+    {
+      "namespace": "web-global-guide-close-friends-studio",
+      "sourceMessages": 25,
+      "sourceCharacters": 1995,
+      "sourceHash": "cde4d063476de86dd82a1814be1cf22bacf7c96ea20e656a45b0ae809acc9670"
+    },
+    {
+      "namespace": "web-global-guide-creator-watch-party",
+      "sourceMessages": 25,
+      "sourceCharacters": 2088,
+      "sourceHash": "e6e6b438c5ad726c4c2d37be598c6cffa51428e37ca7d07a66aaa193c260bb94"
+    },
+    {
+      "namespace": "web-global-guide-launch-night-live",
+      "sourceMessages": 25,
+      "sourceCharacters": 2015,
+      "sourceHash": "3a894699542db614b86e046fc124c7c095ce7d43a53f647b860cb70ff862426d"
+    },
+    {
+      "namespace": "web-global-guide-learn-the-move",
+      "sourceMessages": 25,
+      "sourceCharacters": 2048,
+      "sourceHash": "7b7d95dc1f93c42d7a249ac076bd2275d1e24f1cc770c5a1e8c197d03009efdd"
+    },
+    {
+      "namespace": "web-global-guide-taste-of-your-world",
+      "sourceMessages": 25,
+      "sourceCharacters": 2179,
+      "sourceHash": "81a50ba2b7ad2686468fea99c7e01a2d33f1c502892d15fe78f0bc5de415f2cc"
+    },
+    {
+      "namespace": "web-global-guide-trend-breakdown-live",
+      "sourceMessages": 25,
+      "sourceCharacters": 2024,
+      "sourceHash": "5afb3d6aed3cc802243ca7d61104e60e8fa061c86cf213a2642ca2b1ccc9be43"
+    },
+    {
+      "namespace": "web-global-ideas",
+      "sourceMessages": 39,
+      "sourceCharacters": 1449,
+      "sourceHash": "b55ccccb75dfa9a816983cdb097bf33f9a1ee8966655133e587c7fef3186eab2"
+    },
+    {
+      "namespace": "web-grievance",
+      "sourceMessages": 97,
+      "sourceCharacters": 4984,
+      "sourceHash": "a901c00595ca467995f923c8f16596d58655e2f58d75458ce61ef0cf9aa7d8d8"
+    },
+    {
+      "namespace": "web-guide-idea-1",
+      "sourceMessages": 11,
+      "sourceCharacters": 1271,
+      "sourceHash": "2b710a99fdb6564e42a32a8d1a72a964925b9df84a9f21e24483f1f789148087"
+    },
+    {
+      "namespace": "web-guide-idea-10",
+      "sourceMessages": 11,
+      "sourceCharacters": 988,
+      "sourceHash": "4169bf1de1614d6c3f1f247f5a97d7649b19bdc5aabcb29bc8949a5cda0a4155"
+    },
+    {
+      "namespace": "web-guide-idea-100",
+      "sourceMessages": 11,
+      "sourceCharacters": 900,
+      "sourceHash": "3e0377cadeea67bb700b799a9c9605599fda2e933f9489e1d59d7a087f1722a8"
+    },
+    {
+      "namespace": "web-guide-idea-101",
+      "sourceMessages": 11,
+      "sourceCharacters": 966,
+      "sourceHash": "f0e9d30e254b28a0d14635092b98f3716dfaa60dbd9d014b153c239051664460"
+    },
+    {
+      "namespace": "web-guide-idea-102",
+      "sourceMessages": 11,
+      "sourceCharacters": 936,
+      "sourceHash": "b9015805a8a3629d14234985d2a85dbaea0add349d1db23e961b2067d8c27fca"
+    },
+    {
+      "namespace": "web-guide-idea-103",
+      "sourceMessages": 11,
+      "sourceCharacters": 833,
+      "sourceHash": "a0bda8f3b0d98bcb34bd90eb89e699c07d4167bc2be32cd91fecc9dcbb260cc5"
+    },
+    {
+      "namespace": "web-guide-idea-104",
+      "sourceMessages": 11,
+      "sourceCharacters": 892,
+      "sourceHash": "9528941c42cb86e478d122bd6a2e50aede6959e31563fad630b8c10ec48930bb"
+    },
+    {
+      "namespace": "web-guide-idea-105",
+      "sourceMessages": 11,
+      "sourceCharacters": 906,
+      "sourceHash": "68d5891de269e4fd2334b0398cd46f94a7e5f28e591eca052cbe7676340d0bb6"
+    },
+    {
+      "namespace": "web-guide-idea-106",
+      "sourceMessages": 11,
+      "sourceCharacters": 859,
+      "sourceHash": "7cfb317c3c68b92815b40747ec31a668643af3ef09e85b4f612bb31e0c69cf65"
+    },
+    {
+      "namespace": "web-guide-idea-107",
+      "sourceMessages": 11,
+      "sourceCharacters": 897,
+      "sourceHash": "fb9444108651732cabe4ad753d55b755d6572e87c31867b5a3d2143a23647bb5"
+    },
+    {
+      "namespace": "web-guide-idea-108",
+      "sourceMessages": 11,
+      "sourceCharacters": 956,
+      "sourceHash": "323b59d04e588b5b524a9105d74a39e8e370d42ec3118e0bbab11c7ddb594a99"
+    },
+    {
+      "namespace": "web-guide-idea-109",
+      "sourceMessages": 11,
+      "sourceCharacters": 914,
+      "sourceHash": "85230edbf50d9b6680d59219a873becadd07ea834e79d159c1b29ad92b9558ea"
+    },
+    {
+      "namespace": "web-guide-idea-11",
+      "sourceMessages": 11,
+      "sourceCharacters": 1073,
+      "sourceHash": "cecd62380fa8a114de0d60bea44b8425cf5d02f60c562d9cf3dccf988ee3ee4a"
+    },
+    {
+      "namespace": "web-guide-idea-110",
+      "sourceMessages": 11,
+      "sourceCharacters": 902,
+      "sourceHash": "7d83c07920aad34b39218190c63633473fbb34fc6ef450072a4433e357dd3bc5"
+    },
+    {
+      "namespace": "web-guide-idea-111",
+      "sourceMessages": 11,
+      "sourceCharacters": 888,
+      "sourceHash": "5d354e9ddfe16bbbdc7a00b2f61671ecd8afbfcba36d0cf78ad57b62c30ff90b"
+    },
+    {
+      "namespace": "web-guide-idea-112",
+      "sourceMessages": 11,
+      "sourceCharacters": 831,
+      "sourceHash": "f2bd56f92e95553c942b63dbc53e71dfcb173f65d86c03ed2cc2cc79fccd61f4"
+    },
+    {
+      "namespace": "web-guide-idea-113",
+      "sourceMessages": 11,
+      "sourceCharacters": 951,
+      "sourceHash": "d7bface73597f56ba4743af7467ea08200e7d1b4fc0fd1f3f37398ef684d8841"
+    },
+    {
+      "namespace": "web-guide-idea-114",
+      "sourceMessages": 11,
+      "sourceCharacters": 907,
+      "sourceHash": "a2103ad89d863e96250ae135ebb2bbf57f345fb838f1a69feb8e8759e2488e08"
+    },
+    {
+      "namespace": "web-guide-idea-115",
+      "sourceMessages": 11,
+      "sourceCharacters": 1048,
+      "sourceHash": "3dcd13156b573f12f963c9303e09e98ff577b20e83c2d91181c372cb9def106f"
+    },
+    {
+      "namespace": "web-guide-idea-12",
+      "sourceMessages": 11,
+      "sourceCharacters": 1055,
+      "sourceHash": "bac1a851a24f07318cf95dbe7a6681c719701e52802e428e2abf23d69a8d5d83"
+    },
+    {
+      "namespace": "web-guide-idea-13",
+      "sourceMessages": 11,
+      "sourceCharacters": 1088,
+      "sourceHash": "58492462a627145411082957094f10cfd59ae37cc126b18db1ed00a3ff0256ea"
+    },
+    {
+      "namespace": "web-guide-idea-14",
+      "sourceMessages": 11,
+      "sourceCharacters": 991,
+      "sourceHash": "0dfbfa7b9b64f14e356150cc2449890abacf253f65cea478e683e61c362110c9"
+    },
+    {
+      "namespace": "web-guide-idea-15",
+      "sourceMessages": 11,
+      "sourceCharacters": 1115,
+      "sourceHash": "caf7989626b61bc34f407e53b20667be91ae328e73dfdae1ff71bdf5f30b0dc1"
+    },
+    {
+      "namespace": "web-guide-idea-16",
+      "sourceMessages": 11,
+      "sourceCharacters": 1018,
+      "sourceHash": "319180ac505f9c1ed139667a3a561deb35cd0e97595c9345c8456e74751fea48"
+    },
+    {
+      "namespace": "web-guide-idea-17",
+      "sourceMessages": 11,
+      "sourceCharacters": 968,
+      "sourceHash": "9cb1799b1800744ea8f537310bcfa888e1f311c7d784007068a43c532661f8f4"
+    },
+    {
+      "namespace": "web-guide-idea-18",
+      "sourceMessages": 11,
+      "sourceCharacters": 997,
+      "sourceHash": "0dac63dfa80d6764158c4122a6a4667be86453f647fc22ffb6ad8bb321936d7a"
+    },
+    {
+      "namespace": "web-guide-idea-19",
+      "sourceMessages": 11,
+      "sourceCharacters": 985,
+      "sourceHash": "5ae7d142bb874d780f54cbf1ced8a23853495de7a78f1db684708c98652e1204"
+    },
+    {
+      "namespace": "web-guide-idea-2",
+      "sourceMessages": 11,
+      "sourceCharacters": 1128,
+      "sourceHash": "60ee30c7c5b6624bd8466a27dc06b0ee11ffee3d855468fb6d694548919ffb40"
+    },
+    {
+      "namespace": "web-guide-idea-20",
+      "sourceMessages": 11,
+      "sourceCharacters": 1086,
+      "sourceHash": "f7f11f0cc241f41a3f05367430d38cc3652c3bc7474d99362c0251c35e43fede"
+    },
+    {
+      "namespace": "web-guide-idea-21",
+      "sourceMessages": 11,
+      "sourceCharacters": 944,
+      "sourceHash": "71a59381f7ff69c67e294c9b56c7a6c7c638bf94bcc9d114e186fba0fd368060"
+    },
+    {
+      "namespace": "web-guide-idea-22",
+      "sourceMessages": 11,
+      "sourceCharacters": 992,
+      "sourceHash": "6e8e731228237c024bdec80bdcec4431b507fe069ded38ecda1f8114653336e0"
+    },
+    {
+      "namespace": "web-guide-idea-23",
+      "sourceMessages": 11,
+      "sourceCharacters": 986,
+      "sourceHash": "d717a2ca53ef8102816fd48e413981e869ad7fc5aeb5bca9af397a1910499a0f"
+    },
+    {
+      "namespace": "web-guide-idea-24",
+      "sourceMessages": 11,
+      "sourceCharacters": 1026,
+      "sourceHash": "a0f336481931cf3c71a178f25c6ef8b12280c4560c092ace77551ebf868394d5"
+    },
+    {
+      "namespace": "web-guide-idea-25",
+      "sourceMessages": 11,
+      "sourceCharacters": 980,
+      "sourceHash": "e8d7939d4be1926c5d6ad961a171e323c503f4eb4963e41a254449532be65bec"
+    },
+    {
+      "namespace": "web-guide-idea-26",
+      "sourceMessages": 11,
+      "sourceCharacters": 1036,
+      "sourceHash": "25a890efcbf65553758553f1cae382bcfe2943ef6cff12f0a5ebfdf0def5935e"
+    },
+    {
+      "namespace": "web-guide-idea-27",
+      "sourceMessages": 11,
+      "sourceCharacters": 1093,
+      "sourceHash": "8dfe0f1e45add7795873f79ea9c881c842c4956337c6c1d3addb38ad89367cfc"
+    },
+    {
+      "namespace": "web-guide-idea-28",
+      "sourceMessages": 11,
+      "sourceCharacters": 1061,
+      "sourceHash": "b182dc72ab380f40a3d80b2ae5a83965bf7c4208a772e642b0c2bba3d72298ad"
+    },
+    {
+      "namespace": "web-guide-idea-29",
+      "sourceMessages": 11,
+      "sourceCharacters": 1219,
+      "sourceHash": "37a1071885b2fafbd38fa5c7b02d4ed81de4e2244885457c48deeb2095f03ee9"
+    },
+    {
+      "namespace": "web-guide-idea-3",
+      "sourceMessages": 11,
+      "sourceCharacters": 1147,
+      "sourceHash": "43b4da6a4cdd2788b5bb35089bb4d812f3aebc96f7651d86b64741234432bb59"
+    },
+    {
+      "namespace": "web-guide-idea-30",
+      "sourceMessages": 11,
+      "sourceCharacters": 1050,
+      "sourceHash": "3b5e28b922adba1a6255e7795e892f10b708ca25cf632155c111916e72fc0f2c"
+    },
+    {
+      "namespace": "web-guide-idea-31",
+      "sourceMessages": 11,
+      "sourceCharacters": 1126,
+      "sourceHash": "33264ff1881e29b59c45bf9d2a37f4620f9f213368d9b0403b8396a0f8adfc05"
+    },
+    {
+      "namespace": "web-guide-idea-32",
+      "sourceMessages": 11,
+      "sourceCharacters": 986,
+      "sourceHash": "13f3b90cc485ae76528793fc62003697f677f24c045ce6acf6d757d4dd38a0fa"
+    },
+    {
+      "namespace": "web-guide-idea-33",
+      "sourceMessages": 11,
+      "sourceCharacters": 928,
+      "sourceHash": "640190b452a308ba3b0d0121e8d1f73f39457ece8d89dedf3a976fbae55db697"
+    },
+    {
+      "namespace": "web-guide-idea-34",
+      "sourceMessages": 11,
+      "sourceCharacters": 994,
+      "sourceHash": "fd132e2d4d1dfa488e8ca1c6484a1a648ab468144da54de9249145f1125af286"
+    },
+    {
+      "namespace": "web-guide-idea-35",
+      "sourceMessages": 11,
+      "sourceCharacters": 992,
+      "sourceHash": "e65bf8ad5f3ea29dabce3644b16cdd00687164f55d2ddf71ff73493619c2a269"
+    },
+    {
+      "namespace": "web-guide-idea-36",
+      "sourceMessages": 11,
+      "sourceCharacters": 1018,
+      "sourceHash": "fbb8b2859a3f8602f166171345416d9a04650d7ab30dfa4a78e6fb5a7bfa4531"
+    },
+    {
+      "namespace": "web-guide-idea-37",
+      "sourceMessages": 11,
+      "sourceCharacters": 948,
+      "sourceHash": "125179d9ef1fc34c10dee73b500e3ade0752983248baf27fa1b0897f5f13bfdc"
+    },
+    {
+      "namespace": "web-guide-idea-38",
+      "sourceMessages": 11,
+      "sourceCharacters": 1029,
+      "sourceHash": "c8ca7efc79e8888912320354872f10f4270530c305e19aa0d0f6014fb12bd128"
+    },
+    {
+      "namespace": "web-guide-idea-39",
+      "sourceMessages": 11,
+      "sourceCharacters": 1023,
+      "sourceHash": "5fc83eeac325e1b59d70ed69133c8ed6686eece6f7f162bcabe50b914493f41f"
+    },
+    {
+      "namespace": "web-guide-idea-4",
+      "sourceMessages": 11,
+      "sourceCharacters": 1318,
+      "sourceHash": "3f29f2c82411bf02f19465fe0cb235a16db61efd07165b2dc9283a254b53ba47"
+    },
+    {
+      "namespace": "web-guide-idea-40",
+      "sourceMessages": 11,
+      "sourceCharacters": 1002,
+      "sourceHash": "b88e6c9f06b4a17ff6fdde95332b27c2a386ccaec9529574b85e7e7758f122d9"
+    },
+    {
+      "namespace": "web-guide-idea-41",
+      "sourceMessages": 11,
+      "sourceCharacters": 1021,
+      "sourceHash": "03791220d10c9d0f11c338ff88fd82f8e6811168c0ae7e7c354b91e001749b4b"
+    },
+    {
+      "namespace": "web-guide-idea-42",
+      "sourceMessages": 11,
+      "sourceCharacters": 959,
+      "sourceHash": "e99d10436e4a614f69904235342788502adf7b4cec0ad8ebe3403cde964f7e9a"
+    },
+    {
+      "namespace": "web-guide-idea-43",
+      "sourceMessages": 11,
+      "sourceCharacters": 1033,
+      "sourceHash": "0ae38657265464c008864307532c016cfbb11412a8e28560905f09fcb4293ca2"
+    },
+    {
+      "namespace": "web-guide-idea-44",
+      "sourceMessages": 11,
+      "sourceCharacters": 980,
+      "sourceHash": "19252c7ba5050434c697ceab6ac12ee5eb735045693c5b8ef449f7e778e68db7"
+    },
+    {
+      "namespace": "web-guide-idea-45",
+      "sourceMessages": 11,
+      "sourceCharacters": 910,
+      "sourceHash": "c5d3cd2aa1de0e78ead77d4d86f6e1a5e58bbec974bc95b5d44f7c232844f2b5"
+    },
+    {
+      "namespace": "web-guide-idea-46",
+      "sourceMessages": 11,
+      "sourceCharacters": 1006,
+      "sourceHash": "37c1e466f7ab6f4d07c734fc04e2aba6d5230e29e016a15af7f1c4378ebeac1b"
+    },
+    {
+      "namespace": "web-guide-idea-47",
+      "sourceMessages": 11,
+      "sourceCharacters": 991,
+      "sourceHash": "3432a628d23ef69259f1823dd48813eb27f9f3e41bbe25a2642359e946c44acc"
+    },
+    {
+      "namespace": "web-guide-idea-48",
+      "sourceMessages": 11,
+      "sourceCharacters": 952,
+      "sourceHash": "cdb371b9cbd063f05aa17eee7a4fdd07084c9815b4816367b98ede51372a789e"
+    },
+    {
+      "namespace": "web-guide-idea-49",
+      "sourceMessages": 11,
+      "sourceCharacters": 988,
+      "sourceHash": "9d4650600eb07fe2d16bd026b720c46a6b958f66c8dc0f91293f7c0dfdf5c5ad"
+    },
+    {
+      "namespace": "web-guide-idea-5",
+      "sourceMessages": 11,
+      "sourceCharacters": 1104,
+      "sourceHash": "41191a3ddb8f5e7f82fe1650231632f54828044f5c1ad65e0a1b2e69f07f7809"
+    },
+    {
+      "namespace": "web-guide-idea-50",
+      "sourceMessages": 11,
+      "sourceCharacters": 974,
+      "sourceHash": "343fae11cc912c203b1d7f00f189691555c34090ffd0de9486b0760c5cecec92"
+    },
+    {
+      "namespace": "web-guide-idea-51",
+      "sourceMessages": 11,
+      "sourceCharacters": 934,
+      "sourceHash": "084af4930725b6a89095b8504b1814e482695d10db7866554f5563986589e07f"
+    },
+    {
+      "namespace": "web-guide-idea-52",
+      "sourceMessages": 11,
+      "sourceCharacters": 901,
+      "sourceHash": "e6ea424c36165440a123a4940ad4f2b27b618db4e823280f99c26bc1f03eaa38"
+    },
+    {
+      "namespace": "web-guide-idea-53",
+      "sourceMessages": 11,
+      "sourceCharacters": 1006,
+      "sourceHash": "a472f1f650537edbc1b340556394dd6a6677443fd803d48b4a7561002e131782"
+    },
+    {
+      "namespace": "web-guide-idea-54",
+      "sourceMessages": 11,
+      "sourceCharacters": 954,
+      "sourceHash": "f719cce226e6edbf48e675a4c3f197ab46b2ac74822dd7dfba4863f2e76f001f"
+    },
+    {
+      "namespace": "web-guide-idea-55",
+      "sourceMessages": 11,
+      "sourceCharacters": 943,
+      "sourceHash": "d98a269c3ab77da0619d43d6ea3f9ea7cf6619aacff9f5f005b9cf97d1ceb51a"
+    },
+    {
+      "namespace": "web-guide-idea-56",
+      "sourceMessages": 11,
+      "sourceCharacters": 1059,
+      "sourceHash": "1b9fb91dba4522f3eaa7c151c01c68d06241a20ee9d3ea0df99cdbf99ab03eaa"
+    },
+    {
+      "namespace": "web-guide-idea-57",
+      "sourceMessages": 11,
+      "sourceCharacters": 991,
+      "sourceHash": "d51ec1b6347c4cd9fa3f1fb07601a9b85c607872ffc450882b0eca5ac591950d"
+    },
+    {
+      "namespace": "web-guide-idea-58",
+      "sourceMessages": 11,
+      "sourceCharacters": 1039,
+      "sourceHash": "d19e62156820c0782095047c0d2ad4545d6a52581ff6ffe6cbffab22130726ab"
+    },
+    {
+      "namespace": "web-guide-idea-59",
+      "sourceMessages": 11,
+      "sourceCharacters": 1022,
+      "sourceHash": "2cd608fbe80cbc08a9b36d7621288b262522149c6adbc7b3964897eb2c7def35"
+    },
+    {
+      "namespace": "web-guide-idea-6",
+      "sourceMessages": 11,
+      "sourceCharacters": 1080,
+      "sourceHash": "c61cc389d10ba548966f8cf865ba7df014e5cf37cc2b0e5de571c61c123e16c5"
+    },
+    {
+      "namespace": "web-guide-idea-60",
+      "sourceMessages": 11,
+      "sourceCharacters": 986,
+      "sourceHash": "e12c5593bdc20cc963ee2734dfb8ea9ebf42d885d8764841129498a7303af3bb"
+    },
+    {
+      "namespace": "web-guide-idea-61",
+      "sourceMessages": 11,
+      "sourceCharacters": 903,
+      "sourceHash": "bf3544a4dca598493874191240174daee731724cc3e038acebe0569d97730879"
+    },
+    {
+      "namespace": "web-guide-idea-62",
+      "sourceMessages": 11,
+      "sourceCharacters": 997,
+      "sourceHash": "eb3dc3be323d6461e7e23ff9985596651cd9d4fd0f298f35e36fa3b2f098a18b"
+    },
+    {
+      "namespace": "web-guide-idea-63",
+      "sourceMessages": 11,
+      "sourceCharacters": 885,
+      "sourceHash": "eaca84058a24089a1143a2277cd0c4b55a875c7f1a420e5e847dd955aa665d7a"
+    },
+    {
+      "namespace": "web-guide-idea-64",
+      "sourceMessages": 11,
+      "sourceCharacters": 876,
+      "sourceHash": "f8b1eaff1d841793599ccc203b183a2aab41cbd52aaf6cff08f066ce42c1e94e"
+    },
+    {
+      "namespace": "web-guide-idea-65",
+      "sourceMessages": 11,
+      "sourceCharacters": 948,
+      "sourceHash": "f2c0d36dbdc4d4cb0ed4b317633fff20eadda2df6a7730fced8e3de7d83375c4"
+    },
+    {
+      "namespace": "web-guide-idea-66",
+      "sourceMessages": 11,
+      "sourceCharacters": 832,
+      "sourceHash": "3c117e8eb54b515630601878619adf9cee46d57dc99ed12998dafb8dce7730a8"
+    },
+    {
+      "namespace": "web-guide-idea-67",
+      "sourceMessages": 11,
+      "sourceCharacters": 917,
+      "sourceHash": "3b5fcfdc0b650c2bc722f14f2deb90ece685ebb054a25d202ae75909ccc09631"
+    },
+    {
+      "namespace": "web-guide-idea-68",
+      "sourceMessages": 11,
+      "sourceCharacters": 936,
+      "sourceHash": "6a9e7b124a9c8401f862e861a5e8fc4af7879eae579ae15871b21946562256ac"
+    },
+    {
+      "namespace": "web-guide-idea-69",
+      "sourceMessages": 11,
+      "sourceCharacters": 941,
+      "sourceHash": "4a75a7ecbf049a98db71e65ef767278520d202f891dbec91f00f03134a2e30de"
+    },
+    {
+      "namespace": "web-guide-idea-7",
+      "sourceMessages": 11,
+      "sourceCharacters": 1163,
+      "sourceHash": "f7a97544b915c54e267f1bc035cdff3b19695f2a0fb7418f6e4fbca0714e0770"
+    },
+    {
+      "namespace": "web-guide-idea-70",
+      "sourceMessages": 11,
+      "sourceCharacters": 862,
+      "sourceHash": "a0b276217d3d361e5d1ffcc51208983a2ddf7b144a75730a60e6117b1196b157"
+    },
+    {
+      "namespace": "web-guide-idea-71",
+      "sourceMessages": 11,
+      "sourceCharacters": 950,
+      "sourceHash": "95801fc1a6e9587c9ea32153fe7a1ff78dfbc165f4e929a9e1614c8988ae90f6"
+    },
+    {
+      "namespace": "web-guide-idea-72",
+      "sourceMessages": 11,
+      "sourceCharacters": 883,
+      "sourceHash": "a732cd85682962fc7ee0bf952e877b9905926586d74f96be2c344cf3ee938e28"
+    },
+    {
+      "namespace": "web-guide-idea-73",
+      "sourceMessages": 11,
+      "sourceCharacters": 896,
+      "sourceHash": "ec24c8881831e604a86c8765c96b5b886b057498f5c7529f10c884681a946e86"
+    },
+    {
+      "namespace": "web-guide-idea-74",
+      "sourceMessages": 11,
+      "sourceCharacters": 915,
+      "sourceHash": "f67c33e8ac9de8b5c59d16861115118745985a3705f18b02e9037008afab395a"
+    },
+    {
+      "namespace": "web-guide-idea-75",
+      "sourceMessages": 11,
+      "sourceCharacters": 914,
+      "sourceHash": "7701b8cb64fbfbf63543bf542f2b65bec07cc7cd99b914b4319fba5d04b4e2a5"
+    },
+    {
+      "namespace": "web-guide-idea-76",
+      "sourceMessages": 11,
+      "sourceCharacters": 907,
+      "sourceHash": "571e4bc13b0422ac570fc1a669a404eb5ac16253dec00a4e5a0069375d3c52c9"
+    },
+    {
+      "namespace": "web-guide-idea-77",
+      "sourceMessages": 11,
+      "sourceCharacters": 885,
+      "sourceHash": "305dc4074b0ddedf795ef18798fd2a4f276fc45c1360843dfab9264edf36f431"
+    },
+    {
+      "namespace": "web-guide-idea-78",
+      "sourceMessages": 11,
+      "sourceCharacters": 770,
+      "sourceHash": "8818ce08947394f8592fca4bdec4f6b983169f429d99a4f8c2340928406b2c3d"
+    },
+    {
+      "namespace": "web-guide-idea-79",
+      "sourceMessages": 11,
+      "sourceCharacters": 910,
+      "sourceHash": "b03e332fb6c5d125af2f7783521c116b392080eec4c016d3572321e6ef9c141e"
+    },
+    {
+      "namespace": "web-guide-idea-8",
+      "sourceMessages": 11,
+      "sourceCharacters": 1208,
+      "sourceHash": "9850c2a1b70a1a9019b12b049a6d6431a30ffcedabb9af8738dc42731b6ca051"
+    },
+    {
+      "namespace": "web-guide-idea-80",
+      "sourceMessages": 11,
+      "sourceCharacters": 981,
+      "sourceHash": "4273b29c780ee7f25262cdba0aaef65b05b04dcda84ad73a26853f6539e5e918"
+    },
+    {
+      "namespace": "web-guide-idea-81",
+      "sourceMessages": 11,
+      "sourceCharacters": 927,
+      "sourceHash": "6b5d464e0046c4079984eb6b2e9425470cd8882353f1287c9e57cb7d8bfb956c"
+    },
+    {
+      "namespace": "web-guide-idea-82",
+      "sourceMessages": 11,
+      "sourceCharacters": 840,
+      "sourceHash": "eb1dcf6f6c7a11b61619d3aa3fcd0c3aa127eafe3ca054cefef1fa406c3dc841"
+    },
+    {
+      "namespace": "web-guide-idea-83",
+      "sourceMessages": 11,
+      "sourceCharacters": 889,
+      "sourceHash": "6e097f3adaa07a552170db5a1d9f4c2cabcbd3c7adc74835f5136a8138cf7ae9"
+    },
+    {
+      "namespace": "web-guide-idea-84",
+      "sourceMessages": 11,
+      "sourceCharacters": 828,
+      "sourceHash": "4b47fd17217c9c214303aa9a32433b3f1c48b99d339626f4df7012f85bbee33d"
+    },
+    {
+      "namespace": "web-guide-idea-85",
+      "sourceMessages": 11,
+      "sourceCharacters": 850,
+      "sourceHash": "1a3f2f031c288dee4bc4e7762ba0dfdfc08d85034ff00c5499255bf83cdfeb1a"
+    },
+    {
+      "namespace": "web-guide-idea-86",
+      "sourceMessages": 11,
+      "sourceCharacters": 933,
+      "sourceHash": "0948ddf993002c471a6f61feb4f58a0b67835fb1dc965f19364a5a4e48d892ce"
+    },
+    {
+      "namespace": "web-guide-idea-87",
+      "sourceMessages": 11,
+      "sourceCharacters": 863,
+      "sourceHash": "ca837553ac135951d4fef6f0aa4646ff33b47b546535b22a50212c81464ea182"
+    },
+    {
+      "namespace": "web-guide-idea-88",
+      "sourceMessages": 11,
+      "sourceCharacters": 961,
+      "sourceHash": "f2c5736210f44e46c832e2ca217f542595b106550b401e7c4f108ed065a9dc6e"
+    },
+    {
+      "namespace": "web-guide-idea-89",
+      "sourceMessages": 11,
+      "sourceCharacters": 908,
+      "sourceHash": "528c1314e8b78c9f3f02f52b4373222229ff22ab12d555392cf8ae83e02c0a17"
+    },
+    {
+      "namespace": "web-guide-idea-9",
+      "sourceMessages": 11,
+      "sourceCharacters": 1043,
+      "sourceHash": "938ef8244648fca9d1b3e5823e109654b0acc0dfedd4f9c7775637a92b660ade"
+    },
+    {
+      "namespace": "web-guide-idea-90",
+      "sourceMessages": 11,
+      "sourceCharacters": 950,
+      "sourceHash": "cbc55e527ad9dc810fe5f92c8ca8e6229fffcf0fedd5cb0e8391424b2a4c78c4"
+    },
+    {
+      "namespace": "web-guide-idea-91",
+      "sourceMessages": 11,
+      "sourceCharacters": 864,
+      "sourceHash": "8c5e9a098703896c60efaec80918667264c7938a4674ad778b94647cfb436ad9"
+    },
+    {
+      "namespace": "web-guide-idea-92",
+      "sourceMessages": 11,
+      "sourceCharacters": 848,
+      "sourceHash": "e74f0a070c4dfd8e81b8b2282a983ffe668ddc7c94b6f3754eba4d940a047f5b"
+    },
+    {
+      "namespace": "web-guide-idea-93",
+      "sourceMessages": 11,
+      "sourceCharacters": 790,
+      "sourceHash": "4c82cb3208aefd9e3190e6176823379e2f854470acd13d460d1e7680a73566c4"
+    },
+    {
+      "namespace": "web-guide-idea-94",
+      "sourceMessages": 11,
+      "sourceCharacters": 890,
+      "sourceHash": "bf26ac0bbc56b81db68cf457cd0a4a5a8ae594cfc1f2d44dc4d705edf9a28ff8"
+    },
+    {
+      "namespace": "web-guide-idea-95",
+      "sourceMessages": 11,
+      "sourceCharacters": 896,
+      "sourceHash": "644cb675aeb04a45d3a4473a5c42921ba75933ca8b69404e239a65ee5de82561"
+    },
+    {
+      "namespace": "web-guide-idea-96",
+      "sourceMessages": 11,
+      "sourceCharacters": 868,
+      "sourceHash": "40e89fc497e11d69f24f7356d1e24f533882f5bc5e6d8a78ab30b399abb7819b"
+    },
+    {
+      "namespace": "web-guide-idea-97",
+      "sourceMessages": 11,
+      "sourceCharacters": 951,
+      "sourceHash": "476e0389aa1a8afcf06ad43b81e398267a81d97caab5d233bf6ba43504960af3"
+    },
+    {
+      "namespace": "web-guide-idea-98",
+      "sourceMessages": 11,
+      "sourceCharacters": 906,
+      "sourceHash": "d99178636ccac36d156b5c07fa4fc3c7b1f21961a108c4bd2a91e2f89bb6c995"
+    },
+    {
+      "namespace": "web-guide-idea-99",
+      "sourceMessages": 11,
+      "sourceCharacters": 910,
+      "sourceHash": "88e68acd7035a355949a7d6e7ebf866e7ca9d80af15234e67ea0653a8b80679a"
+    },
+    {
+      "namespace": "web-guide-shared",
+      "sourceMessages": 12,
+      "sourceCharacters": 1171,
+      "sourceHash": "3487742429024b51bf8552b8a185f96b45f66a8a5b55fb72d9fe7a7e593eae2e"
+    },
+    {
+      "namespace": "web-help",
+      "sourceMessages": 5,
+      "sourceCharacters": 81,
+      "sourceHash": "93beca56e99171ef2fb43645afcdb41a7e87a7292f38cf7ccbff6045b2264795"
+    },
+    {
+      "namespace": "web-ideas",
+      "sourceMessages": 292,
+      "sourceCharacters": 14709,
+      "sourceHash": "806eb89d5bef8ae2140e4f9733b358e1beda3dfb0590f9fe25792f95394b64dc"
+    },
+    {
+      "namespace": "web-join",
+      "sourceMessages": 3,
+      "sourceCharacters": 61,
+      "sourceHash": "dd7cd45e52b223c368a755cb3cbecbe4b90afb9477f3130eca2b7118f9cd44aa"
+    },
+    {
+      "namespace": "web-l",
+      "sourceMessages": 4,
+      "sourceCharacters": 159,
+      "sourceHash": "3e976500b8bcf597515d7575ff33a25d9fa9a0a296705275950143399390777a"
+    },
+    {
+      "namespace": "web-landing",
+      "sourceMessages": 36,
+      "sourceCharacters": 929,
+      "sourceHash": "7c8d8d9d782801458f2312f0d00c2786cb3408ab6084081b73289e189e2d7e1c"
+    },
+    {
+      "namespace": "web-listing",
+      "sourceMessages": 66,
+      "sourceCharacters": 1494,
+      "sourceHash": "c39da04bea1e75e76da883027bca711d4c4e463d3568460d01be1a4e6594b6a6"
+    },
+    {
+      "namespace": "web-live-gs",
+      "sourceMessages": 119,
+      "sourceCharacters": 2920,
+      "sourceHash": "2a1e969b1d96b4832e76422c50f57666283288bfabb3276fdb4fbf75d32b4ff6"
+    },
+    {
+      "namespace": "web-live",
+      "sourceMessages": 45,
+      "sourceCharacters": 884,
+      "sourceHash": "943587ac6cefef13e581710a66e61f0c6c49a7278ad40ec27c8c9625014f64be"
+    },
+    {
+      "namespace": "web-marketplace-terms",
+      "sourceMessages": 92,
+      "sourceCharacters": 8544,
+      "sourceHash": "f2908dfe7cca1beb5ee4bb8b0e2dc948a4fd1899e83345a1281243152a678192"
+    },
+    {
+      "namespace": "web-marketplace",
+      "sourceMessages": 44,
+      "sourceCharacters": 609,
+      "sourceHash": "bab6fa38960fe71b71d9fe0ca97deb52308bc1393e1d6672cecacfe75d5d9d86"
+    },
+    {
+      "namespace": "web-original",
+      "sourceMessages": 19,
+      "sourceCharacters": 607,
+      "sourceHash": "c0a680633e45f168b5ea04e871d172eaa859bf496b1d153d99da7a48c7205044"
+    },
+    {
+      "namespace": "web-pay",
+      "sourceMessages": 2,
+      "sourceCharacters": 30,
+      "sourceHash": "69bfade0cf6f33e64d526c1d996404251cd085fdd48d148ffe32a43b6f426e8b"
+    },
+    {
+      "namespace": "web-payouts",
+      "sourceMessages": 77,
+      "sourceCharacters": 7051,
+      "sourceHash": "0793e43beb93192cbaf6a1b05a06651adc31cc9a5943aff78c9aaefc4944d3b9"
+    },
+    {
+      "namespace": "web-pricing-fees",
+      "sourceMessages": 49,
+      "sourceCharacters": 1507,
+      "sourceHash": "8cf15ef1a34272b453ef781d490f396f680d8736df508d792b2324200d40fec7"
+    },
+    {
+      "namespace": "web-privacy",
+      "sourceMessages": 63,
+      "sourceCharacters": 6799,
+      "sourceHash": "3d41b0946b0c3d1a1627359a1f7f26e39d0749c4b85c4db1293a88b064baedb8"
+    },
+    {
+      "namespace": "web-recording",
+      "sourceMessages": 72,
+      "sourceCharacters": 7103,
+      "sourceHash": "9f49d3d2059649ae6a6f7c1a070331413826a7e019deb4b9057c3a9e23e1f7d4"
+    },
+    {
+      "namespace": "web-refunds",
+      "sourceMessages": 97,
+      "sourceCharacters": 7866,
+      "sourceHash": "463143ae04086552f52331e6b34587568239e6c8da19490b021278362d15d30c"
+    },
+    {
+      "namespace": "web-sign-out",
+      "sourceMessages": 1,
+      "sourceCharacters": 16,
+      "sourceHash": "5ed29155ad8e4279a06ad925a4e6c2d8649af79a50b2093b336cbb260e19b27b"
+    },
+    {
+      "namespace": "web-site",
+      "sourceMessages": 7,
+      "sourceCharacters": 61,
+      "sourceHash": "b252ffcea0a1e265a2dd55b61dffa026d17af2d3db149e5485aa4e8fe7d762fb"
+    },
+    {
+      "namespace": "web-sso-callback",
+      "sourceMessages": 1,
+      "sourceCharacters": 11,
+      "sourceHash": "7b819fbda194630dc26259e66ec1a8ce1483c53480fc57fa529eb79a8f8ec934"
+    },
+    {
+      "namespace": "web-terms",
+      "sourceMessages": 47,
+      "sourceCharacters": 4884,
+      "sourceHash": "ef7547face2be7bef68ee709189238d76b1a57104e413609f425bcd815d61293"
+    },
+    {
+      "namespace": "web-tokens",
+      "sourceMessages": 67,
+      "sourceCharacters": 6308,
+      "sourceHash": "6ea55c88e9a8bd301ef88cfbccb7b95786f1fd6a660c3eb98274b5f2ab5e0e98"
+    },
+    {
+      "namespace": "web-vision",
+      "sourceMessages": 122,
+      "sourceCharacters": 3185,
+      "sourceHash": "762cfc1736ad15750950527b41712c24ce96f48551187c66606d130368ae6899"
+    },
+    {
+      "namespace": "web-watch",
+      "sourceMessages": 2,
+      "sourceCharacters": 18,
+      "sourceHash": "f257bd4ccb40b6395c9bf28d100ee4bbedd7da3828789f7a44ca139d1d2af5d8"
+    }
+  ]
+}

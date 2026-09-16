@@ -1,3 +1,5 @@
+
+import '../../../core/localization/ui_text.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -304,6 +306,7 @@ class _AutoAspectImageState extends State<_AutoAspectImage> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return AspectRatio(
       aspectRatio: _aspect,
       child: Stack(fit: StackFit.expand, children: [
@@ -367,6 +370,7 @@ class _PlayBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (size != null) return _disc(size!);
     return LayoutBuilder(builder: (ctx, cons) {
       final short = (cons.maxWidth.isFinite && cons.maxHeight.isFinite)
@@ -395,7 +399,7 @@ class _DurationPill extends StatelessWidget {
   final int seconds;
 
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Container(
         padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 2),
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.65),
@@ -408,7 +412,7 @@ class _DurationPill extends StatelessWidget {
           Text(_fmtDuration(seconds),
               style: ADText.statCaption(c: Colors.white)),
         ]),
-      );
+      ); }
 }
 
 /// Footer: favicon + lowercase domain (WhatsApp parity).
@@ -421,6 +425,7 @@ class _DomainFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final d = preview.displayDomain;
     if (d.isEmpty) return const SizedBox.shrink();
     final fav = preview.faviconUrl;
@@ -499,6 +504,7 @@ class LinkPreviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final img = preview.displayImage;
     final t = theme;
     // Two tap targets (owner decision 2026-07-10):
@@ -604,6 +610,7 @@ class ComposeLinkPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final p = preview;
     final t = theme;
     return Container(
@@ -654,8 +661,8 @@ class ComposeLinkPreview extends StatelessWidget {
               children: [
                 Text(
                   loading
-                      ? 'Fetching preview…'
-                      : (p?.title ?? p?.displayDomain ?? 'Link'),
+                      ? uiCopy(UiMessage.m_fetching_preview_2d716d2e34)
+                      : (p?.title ?? p?.displayDomain ?? uiCopy(UiMessage.m_link_a6a32dbc56)),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: t != null ? ADText.rowName(c: t.ink) : ADText.rowName(),
@@ -676,7 +683,7 @@ class ComposeLinkPreview extends StatelessWidget {
           icon: Icon(PhosphorIcons.x(PhosphorIconsStyle.regular), size: 18),
           color: t?.meta ?? AD.textTertiary,
           onPressed: onDismiss,
-          tooltip: 'Remove preview',
+          tooltip: uiCopy(UiMessage.m_remove_preview_703d35fbba),
         ),
       ]),
     );

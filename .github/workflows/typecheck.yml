@@ -20,6 +20,29 @@ on:
   workflow_dispatch:
 
 jobs:
+  ui-catalogs:
+    name: Public UI catalog regressions (no paid calls or publication)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Generator regression tests with mocked provider
+        run: node --test scripts/i18n/generate_catalogs.test.mjs
+      - name: Validate actual source catalogs without provider requests
+        env:
+          UI_CATALOG_MAX_CHARACTERS: '0'
+        run: node scripts/i18n/generate_catalogs.mjs
+      - name: Install worker dependencies
+        working-directory: worker
+        run: npm ci --no-audit --no-fund --silent
+      - name: Worker catalog contract regressions
+        working-directory: worker
+        run: npx vitest run src/lib/ui_catalogs.test.ts src/routes/ui_localization.test.ts
+
   worker:
     runs-on: ubuntu-latest
     steps:

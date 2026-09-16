@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -178,6 +180,7 @@ class _SavePhoneContactSheetState extends State<_SavePhoneContactSheet> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final mq = MediaQuery.of(context);
     final bottom = mq.viewInsets.bottom + mq.padding.bottom + 16;
     final pretty = formatTelDisplay(DeviceContactsService.normPhone(widget.phone));
@@ -195,9 +198,9 @@ class _SavePhoneContactSheetState extends State<_SavePhoneContactSheet> {
                 decoration: BoxDecoration(color: AD.textFaint, borderRadius: Msg.brPill),
               ),
             ),
-            Text('Save to contacts', style: ADText.appTitle()),
+            UiText(UiMessage.m_save_to_contacts_e0869599d7, style: ADText.appTitle()),
             const SizedBox(height: 4),
-            Text('Add this caller to your AvaTOK contacts so the thread shows their name.',
+            UiText(UiMessage.m_add_this_caller_to_your_5530e5bc9f,
                 style: ADText.preview()),
             const SizedBox(height: 16),
             Row(children: [
@@ -210,14 +213,14 @@ class _SavePhoneContactSheetState extends State<_SavePhoneContactSheet> {
                     const SizedBox(width: Msg.s1),
                     Flexible(child: Text(pretty, style: ADText.threadName())),
                   ]),
-                  Text('Not on AvaTOK', style: ADText.statCaption()),
+                  UiText(UiMessage.m_not_on_avatok_25f9ca82b1, style: ADText.statCaption()),
                 ]),
               ),
             ]),
             const SizedBox(height: Msg.s3),
             AdField(
               controller: _name,
-              hint: 'Name (optional)',
+              hint: uiCopy(UiMessage.m_name_optional_e09b37bcc4),
               leadIcon: PhosphorIcons.user(PhosphorIconsStyle.bold),
               onSubmitted: (_) => _save(),
             ),
@@ -229,12 +232,12 @@ class _SavePhoneContactSheetState extends State<_SavePhoneContactSheet> {
                 Icon(_alsoDevice ? PhosphorIcons.checkSquare(PhosphorIconsStyle.fill) : PhosphorIcons.square(PhosphorIconsStyle.regular),
                     size: 20, color: _alsoDevice ? AD.online : AD.textTertiary),
                 const SizedBox(width: 8),
-                Text('Also save to my phone contacts', style: ADText.preview()),
+                UiText(UiMessage.m_also_save_to_my_phone_5711e3c844, style: ADText.preview()),
               ]),
             ),
             const SizedBox(height: 16),
             AdButton(
-              label: _saving ? 'Saving…' : 'Save contact',
+              label: _saving ? uiCopy(UiMessage.m_saving_23e39291d6) : uiCopy(UiMessage.m_save_contact_d24f121f4a),
               onPressed: _saving ? null : _save,
               loading: _saving,
               fullWidth: true,

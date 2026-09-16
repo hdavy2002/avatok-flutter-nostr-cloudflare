@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/avatar.dart';
@@ -34,6 +36,7 @@ class NoAnswerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final displayName = name.trim().isEmpty ? 'They' : name.trim();
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 380),
@@ -57,22 +60,22 @@ class NoAnswerCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: Msg.s3),
-            Text('$displayName didn’t answer',
+            UiText(UiMessage.m_displayname_didn_t_answer_8dbffed715, params: {'displayName': (displayName).toString()},
                 textAlign: TextAlign.center, style: ADText.appTitle()),
             const SizedBox(height: Msg.s1),
-            Text('No answer',
+            UiText(UiMessage.m_no_answer_7e49c68db3,
                 textAlign: TextAlign.center,
                 style: ADText.preview(c: AD.textSecondary)),
             const SizedBox(height: Msg.s5),
             _adPillButton(
-              label: 'Call again',
+              label: uiCopy(UiMessage.m_call_again_1635919253),
               fill: AD.primaryBadge,
               fontSize: 16,
               onPressed: onCallAgain,
             ),
             const SizedBox(height: Msg.s2),
             _adPillButton(
-              label: 'Save contact',
+              label: uiCopy(UiMessage.m_save_contact_d24f121f4a),
               fill: AD.card,
               border: AD.borderControl,
               textColor: AD.textPrimary,
@@ -81,7 +84,7 @@ class NoAnswerCard extends StatelessWidget {
             ),
             const SizedBox(height: Msg.s2),
             _adPillButton(
-              label: 'Close',
+              label: uiCopy(UiMessage.m_close_7d9eb7acb1),
               fill: AD.card,
               border: AD.borderControl,
               textColor: AD.textPrimary,

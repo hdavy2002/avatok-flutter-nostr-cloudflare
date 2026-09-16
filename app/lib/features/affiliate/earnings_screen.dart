@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -74,10 +76,11 @@ class _AffiliateEarningsScreenState extends State<AffiliateEarningsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final t = widget.totals;
     return Scaffold(
       backgroundColor: AD.bg,
-      appBar: const ZineAppBar(title: 'Earnings', markWord: 'Earnings', tag: 'your 10%, for life'),
+      appBar:  ZineAppBar(title: uiCopy(UiMessage.m_earnings_81920761dd), markWord: 'Earnings', tag: 'your 10%, for life'),
       body: RefreshIndicator(
         onRefresh: _load,
         color: AD.primaryBadge,
@@ -85,19 +88,19 @@ class _AffiliateEarningsScreenState extends State<AffiliateEarningsScreen> {
           padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s6),
           children: [
             Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Expanded(child: StatCard(label: 'Available',
+              Expanded(child: StatCard(label: uiCopy(UiMessage.m_available_e674447337),
                   icon: PhosphorIcons.wallet(PhosphorIconsStyle.bold),
                   color: AD.online, value: affTokensLabel(t.availableTokens),
                   sub: '${t.availableTokens} coins')),
               const SizedBox(width: Msg.s3),
-              Expanded(child: StatCard(label: 'Held (refund window)',
+              Expanded(child: StatCard(label: uiCopy(UiMessage.m_held_refund_window_c402191730),
                   icon: PhosphorIcons.hourglass(PhosphorIconsStyle.bold),
                   color: AD.micIdleBg, value: affTokensLabel(t.heldTokens),
                   sub: 'releases after 7 days')),
             ]),
             const SizedBox(height: Msg.s4),
             ZineButton(
-              label: 'Withdraw with AvaPayout',
+              label: uiCopy(UiMessage.m_withdraw_with_avapayout_e34c4f1572),
               fullWidth: true,
               fontSize: 18,
               icon: PhosphorIcons.coins(PhosphorIconsStyle.bold),
@@ -105,13 +108,13 @@ class _AffiliateEarningsScreenState extends State<AffiliateEarningsScreen> {
               onPressed: _withdraw,
             ),
             const SizedBox(height: Msg.s3),
-            Text(
-              'Commissions land in your AvaWallet instantly at settlement and become withdrawable after the 7-day refund window.',
+            UiText(
+              UiMessage.m_commissions_land_in_your_avawallet_7e461b2030,
               textAlign: TextAlign.center,
               style: ADText.preview(),
             ),
             const SizedBox(height: Msg.s5),
-            Text('Commission history', style: ADText.sectionLabel()),
+            UiText(UiMessage.m_commission_history_4ce6743b8a, style: ADText.sectionLabel()),
             const SizedBox(height: Msg.s2),
             if (_failed)
               Padding(
@@ -122,7 +125,7 @@ class _AffiliateEarningsScreenState extends State<AffiliateEarningsScreen> {
                     text: 'Could not load your history.',
                   ),
                   const SizedBox(height: Msg.s4),
-                  ZineButton(label: 'Retry', variant: ZineButtonVariant.ghost,
+                  ZineButton(label: uiCopy(UiMessage.m_retry_942087cc2d), variant: ZineButtonVariant.ghost,
                       fontSize: 16, onPressed: _load),
                 ]),
               )

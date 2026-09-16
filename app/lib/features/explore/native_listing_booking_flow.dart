@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -416,10 +419,10 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) { UiLocaleScope.watch(context); return Scaffold(
         backgroundColor: AD.bg,
         appBar: AppBar(
-            title: const Text('Book your spot'),
+            title: const UiText(UiMessage.m_book_your_spot_e8e9449fca),
             backgroundColor: AD.bg),
         body: SafeArea(child: LayoutBuilder(builder: (context, constraints) {
           final content = ListView(
@@ -434,7 +437,7 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
                   constraints: const BoxConstraints(maxWidth: 620),
                   child: content));
         })),
-      );
+      ); }
 
   Widget _header() =>
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -477,11 +480,11 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
 
   Widget _choose() =>
       _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(_isConsult ? 'Choose a date and time' : 'Your ticket',
+        Text(_isConsult ? uiCopy(UiMessage.m_choose_a_date_and_time_d8eb988ee1) : uiCopy(UiMessage.m_your_ticket_f84711bd56),
             style: const TextStyle(fontFamily: ADText.display, fontSize: 20, fontWeight: FontWeight.w700)),
         if (_isConsult) ...[
           const SizedBox(height: 14),
-          Text('Times shown in $_viewerTimezone',
+          UiText(UiMessage.m_times_shown_in_viewertimezone_84fd9b06a2, params: {'viewerTimezone': (_viewerTimezone).toString()},
               style: const TextStyle(color: AD.textSecondary)),
           const SizedBox(height: 10),
           OutlinedButton.icon(
@@ -519,21 +522,21 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
                 onPressed: _loadingAvailability ? null : _loadAvailability,
                 icon: PhosphorIcon(
                     PhosphorIcons.arrowClockwise(PhosphorIconsStyle.bold)),
-                label: const Text('Retry')),
+                label: const UiText(UiMessage.m_retry_942087cc2d)),
           ]
           else if (_availabilityStale) ...[
-            const Text(
-                'Availability is out of date. Refresh before choosing a time.',
+            const UiText(
+                UiMessage.m_availability_is_out_of_date_06758db35c,
                 style: TextStyle(color: AD.terracotta)),
             const SizedBox(height: 8),
             OutlinedButton.icon(
                 onPressed: _loadingAvailability ? null : _loadAvailability,
                 icon: PhosphorIcon(
                     PhosphorIcons.arrowClockwise(PhosphorIconsStyle.bold)),
-                label: const Text('Refresh availability')),
+                label: const UiText(UiMessage.m_refresh_availability_edb63f99a2)),
           ]
           else if (_daySlots.isEmpty)
-            const Text('No available times were returned for this date.',
+            const UiText(UiMessage.m_no_available_times_were_returned_804bd18607,
                 style: TextStyle(color: AD.textSecondary))
           else
             Wrap(spacing: 8, runSpacing: 8, children: [
@@ -545,8 +548,8 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
                         setState(() => _selectedSlot = slot))
             ]),
         ] else
-          Text(
-              'Live event ticket · ${widget.listing.startsAt == null ? 'Schedule shown after confirmation' : 'Event access included'}'),
+          UiText(
+              UiMessage.m_live_event_ticket_value1_e80c57a2cb, params: {'value1': (widget.listing.startsAt == null ? 'Schedule shown after confirmation' : 'Event access included').toString()}),
         if (_error != null) _errorText(),
         const SizedBox(height: 22),
         _primary('Continue', _continueFromChoose),
@@ -554,10 +557,10 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
 
   Widget _you() =>
       _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('You',
+        const UiText(UiMessage.m_you_08b0419357,
             style: TextStyle(fontFamily: ADText.display, fontSize: 20, fontWeight: FontWeight.w700)),
         const SizedBox(height: 8),
-        const Text('Your account protects the booking and receives reminders.'),
+        const UiText(UiMessage.m_your_account_protects_the_booking_6f58b4f995),
         const SizedBox(height: 18),
         _primary('Continue to payment', () {
           setState(() => _step = _BookingStep.pay);
@@ -567,14 +570,14 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
 
   Widget _pay() =>
       _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(_free ? 'Confirm free booking' : 'Review and pay',
+        Text(_free ? uiCopy(UiMessage.m_confirm_free_booking_bf7dcf2cbf) : uiCopy(UiMessage.m_review_and_pay_25aa0f37b4),
             style: const TextStyle(fontFamily: ADText.display, fontSize: 20, fontWeight: FontWeight.w700)),
         const SizedBox(height: 12),
         Text(_free
-            ? '₹0 · Free entry'
-            : 'Wallet price · $_price ${widget.listing.currency}'),
+            ? uiCopy(UiMessage.m_0_free_entry_340eb3f79d)
+            : uiCopy(UiMessage.m_wallet_price_price_value2_3915dd28e0, {'price': (_price).toString(), 'value2': (widget.listing.currency).toString()})),
         if (_balance != null)
-          Text('Wallet balance: $_balance ${widget.listing.currency}',
+          UiText(UiMessage.m_wallet_balance_balance_value2_6feafe4fc0, params: {'balance': (_balance).toString(), 'value2': (widget.listing.currency).toString()},
               style: const TextStyle(color: AD.textSecondary)),
         const SizedBox(height: 14),
         if (!_free && RemoteConfig.listingPromotionsEnabled) ...[
@@ -584,8 +587,8 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
             textCapitalization: TextCapitalization.characters,
             enabled: !_busy,
             decoration: InputDecoration(
-              labelText: 'Promo code (optional)',
-              hintText: 'MONSOON20',
+              labelText: uiCopy(UiMessage.m_promo_code_optional_c620196dff),
+              hintText: uiCopy(UiMessage.m_monsoon20_dca9a1e1b5),
               errorText: _promoError,
               filled: true,
               fillColor: AD.inputField,
@@ -595,21 +598,21 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
             },
           ),
           const SizedBox(height: 4),
-          const Text(
-              'The discount is worked out and applied by the server when you pay.',
+          const UiText(
+              UiMessage.m_the_discount_is_worked_out_39316fac1e,
               style: TextStyle(color: AD.textSecondary, fontSize: 12)),
         ],
         const SizedBox(height: 14),
         Text(_isConsult
-            ? 'Cancel according to the creator policy before your selected time. No-shows may not be refunded.'
-            : 'Ticket refund terms follow the event policy.'),
+            ? uiCopy(UiMessage.m_cancel_according_to_the_creator_17c0ab3792)
+            : uiCopy(UiMessage.m_ticket_refund_terms_follow_the_6a921ae411)),
         CheckboxListTile(
             contentPadding: EdgeInsets.zero,
             value: _accepted,
             onChanged: (v) => setState(() => _accepted = v ?? false),
-            title: const Text('I accept the cancellation policy')),
+            title: const UiText(UiMessage.m_i_accept_the_cancellation_policy_90a8511bca)),
         if (!_free && _balance != null && _balance! < _price) ...[
-          const Text('Your wallet is short for this booking.',
+          const UiText(UiMessage.m_your_wallet_is_short_for_6b43b7f55b,
               style: const TextStyle(color: AD.terracotta)),
           const SizedBox(height: 8),
           OutlinedButton.icon(
@@ -623,7 +626,7 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
                       if (mounted) _loadBalance();
                     },
               icon: PhosphorIcon(PhosphorIcons.plusCircle(PhosphorIconsStyle.bold)),
-              label: const Text('Add Tokens')),
+              label: const UiText(UiMessage.m_add_tokens_73cf1d56f0)),
         ],
         if (_error != null) _errorText(),
         _primary(
@@ -637,12 +640,12 @@ class _NativeListingBookingFlowState extends State<NativeListingBookingFlow> {
       _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const AdSuccessCheck(size: 52, color: AD.online),
         const SizedBox(height: 10),
-        const Text('You’re booked',
+        const UiText(UiMessage.m_you_re_booked_f77061ba12,
             style: TextStyle(fontFamily: ADText.display, fontSize: 24, fontWeight: FontWeight.w700)),
         const SizedBox(height: 8),
         Text(_receipt?.bookingId == null
-            ? 'Your access is ready.'
-            : 'Confirmation ${_receipt!.bookingId}'),
+            ? uiCopy(UiMessage.m_your_access_is_ready_d39d021d87)
+            : uiCopy(UiMessage.m_confirmation_value1_e68e96d244, {'value1': (_receipt!.bookingId).toString()})),
         const SizedBox(height: 18),
         _primary('Done', () => Navigator.of(context).pop(true))
       ]));

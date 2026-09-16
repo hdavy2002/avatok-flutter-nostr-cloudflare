@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 // Free-tier P2P MESH group call (≤5 participants). Each device holds a direct
 // WebRTC PeerConnection to every other participant (full mesh); media never
 // touches our servers (ICE via Cloudflare STUN/TURN). Signaling rides the
@@ -325,6 +327,7 @@ class _MeshCallScreenState extends State<MeshCallScreen> {
   // ── UI ───────────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (_error != null) {
       return Scaffold(
         backgroundColor: AD.bg,
@@ -333,7 +336,7 @@ class _MeshCallScreenState extends State<MeshCallScreen> {
             child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
               ZineEmptyState(icon: PhosphorIcons.warning(PhosphorIconsStyle.regular), text: _error!),
               const SizedBox(height: Msg.s4),
-              ZineButton(label: 'Close', variant: ZineButtonVariant.ghost, fontSize: 16,
+              ZineButton(label: uiCopy(UiMessage.m_close_7d9eb7acb1), variant: ZineButtonVariant.ghost, fontSize: 16,
                   onPressed: () => Navigator.of(context).maybePop()),
             ])),
           ),
@@ -363,7 +366,7 @@ class _MeshCallScreenState extends State<MeshCallScreen> {
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis,
                         style: ADText.threadName()),
-                    Text('$n in call · Free · max ${MeshApi.maxMesh}',
+                    UiText(UiMessage.m_n_in_call_free_max_77c739d591, params: {'n': (n).toString(), 'value2': (MeshApi.maxMesh).toString()},
                         style: ADText.sectionLabel()),
                   ])),
                 ]),

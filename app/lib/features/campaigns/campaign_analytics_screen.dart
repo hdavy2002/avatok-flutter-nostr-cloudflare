@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -77,9 +80,10 @@ class _CampaignAnalyticsScreenState extends State<CampaignAnalyticsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
-      appBar: _header(title: 'Analytics'),
+      appBar: _header(title: uiCopy(UiMessage.m_analytics_94c116ee11)),
       body: SafeArea(
         child: RefreshIndicator(
           color: AD.iconSearch,
@@ -93,7 +97,7 @@ class _CampaignAnalyticsScreenState extends State<CampaignAnalyticsScreen> {
               _AnalyticsCard(
                 icon: PhosphorIcons.trendUp(PhosphorIconsStyle.bold),
                 iconColor: AD.iconSearch,
-                title: 'Spend over time',
+                title: uiCopy(UiMessage.m_spend_over_time_d44c66e04b),
                 future: _spend,
                 builder: (data) => _spendBody(data),
               ),
@@ -101,7 +105,7 @@ class _CampaignAnalyticsScreenState extends State<CampaignAnalyticsScreen> {
               _AnalyticsCard(
                 icon: PhosphorIcons.trophy(PhosphorIconsStyle.bold),
                 iconColor: AD.outgoingCall,
-                title: 'Campaign leaderboard',
+                title: uiCopy(UiMessage.m_campaign_leaderboard_a583cea96a),
                 future: _leaderboard,
                 builder: (data) => _leaderboardBody(data),
               ),
@@ -109,7 +113,7 @@ class _CampaignAnalyticsScreenState extends State<CampaignAnalyticsScreen> {
               _AnalyticsCard(
                 icon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
                 iconColor: AD.iconPhone,
-                title: 'Dial volume',
+                title: uiCopy(UiMessage.m_dial_volume_02b8a89374),
                 future: _volume,
                 builder: (data) => _volumeBody(data),
               ),
@@ -117,7 +121,7 @@ class _CampaignAnalyticsScreenState extends State<CampaignAnalyticsScreen> {
               _AnalyticsCard(
                 icon: PhosphorIcons.chartPieSlice(PhosphorIconsStyle.bold),
                 iconColor: AD.iconShield,
-                title: 'Outcome distribution',
+                title: uiCopy(UiMessage.m_outcome_distribution_6c89578485),
                 future: _outcomeDist,
                 builder: (data) => _outcomeDistBody(data),
               ),
@@ -266,6 +270,7 @@ class _CampaignAnalyticsCardsState extends State<CampaignAnalyticsCards> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (widget.campaignId.isEmpty) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -273,7 +278,7 @@ class _CampaignAnalyticsCardsState extends State<CampaignAnalyticsCards> {
         _AnalyticsCard(
           icon: PhosphorIcons.chartBar(PhosphorIconsStyle.bold),
           iconColor: AD.iconSearch,
-          title: 'Funnel',
+          title: uiCopy(UiMessage.m_funnel_fc063af055),
           future: _funnel,
           builder: (data) => _funnelBody(data),
         ),
@@ -281,7 +286,7 @@ class _CampaignAnalyticsCardsState extends State<CampaignAnalyticsCards> {
         _AnalyticsCard(
           icon: PhosphorIcons.chartPieSlice(PhosphorIconsStyle.bold),
           iconColor: AD.iconShield,
-          title: 'Outcomes',
+          title: uiCopy(UiMessage.m_outcomes_912d8e962a),
           future: _outcomes,
           builder: (data) => _outcomesBody(data),
         ),
@@ -289,7 +294,7 @@ class _CampaignAnalyticsCardsState extends State<CampaignAnalyticsCards> {
         _AnalyticsCard(
           icon: PhosphorIcons.trendUp(PhosphorIconsStyle.bold),
           iconColor: AD.iconBell,
-          title: 'Answer rate by hour of day',
+          title: uiCopy(UiMessage.m_answer_rate_by_hour_of_afcffb2cb3),
           future: _hourOfDay,
           builder: (data) => _hourOfDayBody(data),
         ),
@@ -297,7 +302,7 @@ class _CampaignAnalyticsCardsState extends State<CampaignAnalyticsCards> {
         _AnalyticsCard(
           icon: PhosphorIcons.coins(PhosphorIconsStyle.bold),
           iconColor: AD.outgoingCall,
-          title: 'Cost',
+          title: uiCopy(UiMessage.m_cost_204a5eb2cd),
           future: _cost,
           builder: (data) => _costBody(data),
         ),
@@ -305,7 +310,7 @@ class _CampaignAnalyticsCardsState extends State<CampaignAnalyticsCards> {
         _AnalyticsCard(
           icon: PhosphorIcons.robot(PhosphorIconsStyle.bold),
           iconColor: AD.iconVideo,
-          title: 'Machine (voicemail/IVR) rate',
+          title: uiCopy(UiMessage.m_machine_voicemail_ivr_rate_91ed73e96c),
           future: _machineRate,
           builder: (data) => _singleRateBody(data, key: 'rate'),
         ),
@@ -313,7 +318,7 @@ class _CampaignAnalyticsCardsState extends State<CampaignAnalyticsCards> {
         _AnalyticsCard(
           icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
           iconColor: AD.iconCamera,
-          title: 'Handover',
+          title: uiCopy(UiMessage.m_handover_c012b47252),
           future: _handover,
           builder: (data) => _singleRateBody(data, key: 'rate'),
         ),
@@ -363,10 +368,10 @@ class _CampaignAnalyticsCardsState extends State<CampaignAnalyticsCards> {
         const SizedBox(height: Msg.s3),
         Row(children: [
           if (perAnswer != null)
-            Expanded(child: _StatChip(label: 'Per answer', value: _fmtNum(_asNum(perAnswer)))),
+            Expanded(child: _StatChip(label: uiCopy(UiMessage.m_per_answer_bca44ab9c3), value: _fmtNum(_asNum(perAnswer)))),
           if (perAnswer != null && perBooking != null) const SizedBox(width: Msg.s3),
           if (perBooking != null)
-            Expanded(child: _StatChip(label: 'Per booking', value: _fmtNum(_asNum(perBooking)))),
+            Expanded(child: _StatChip(label: uiCopy(UiMessage.m_per_booking_8c5e0f5e8f), value: _fmtNum(_asNum(perBooking)))),
         ]),
       ],
     ]);
@@ -392,6 +397,7 @@ class _PeriodToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       padding: const EdgeInsets.all(Msg.s1),
       decoration: BoxDecoration(
@@ -446,6 +452,7 @@ class _AnalyticsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       padding: const EdgeInsets.all(Msg.s4),
       decoration: BoxDecoration(
@@ -508,6 +515,7 @@ class _UnavailableBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: Msg.s3),
       child: Text(
@@ -530,6 +538,7 @@ class _BarList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final n = labels.length < values.length ? labels.length : values.length;
     if (n == 0) return const _UnavailableBody();
     final maxV = values.take(n).fold<num>(0, (a, b) => a > b ? a : b);
@@ -597,6 +606,7 @@ class _TimeSeriesBars extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final n = labels.length < values.length ? labels.length : values.length;
     if (n == 0) return const _UnavailableBody();
     final maxV = values.take(n).fold<num>(0, (a, b) => a > b ? a : b);
@@ -649,6 +659,7 @@ class _FunnelSteps extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (steps.isEmpty) return const _UnavailableBody();
     final maxV = steps.fold<num>(0, (a, s) => a > s.count ? a : s.count);
     return Column(
@@ -704,6 +715,7 @@ class _LeaderboardRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       padding: const EdgeInsets.all(Msg.s3),
       decoration: BoxDecoration(
@@ -713,7 +725,7 @@ class _LeaderboardRow extends StatelessWidget {
       ),
       child: Row(children: [
         Expanded(
-          child: Text(name.isEmpty ? 'Untitled campaign' : name,
+          child: Text(name.isEmpty ? uiCopy(UiMessage.m_untitled_campaign_ed0fd179f1) : name,
               style: ADText.rowName().copyWith(fontSize: 14),
               maxLines: 1,
               overflow: TextOverflow.ellipsis),
@@ -743,6 +755,7 @@ class _RateBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final frac = (pct / 100).clamp(0.0, 1.0).toDouble();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('${_fmtNum(pct)}%', style: ADText.rowName().copyWith(fontSize: 20)),
@@ -769,6 +782,7 @@ class _StatChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
       decoration: BoxDecoration(

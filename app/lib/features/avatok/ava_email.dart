@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 // ava_email.dart — the in-chat email surface (AvaTOK "Ava inbox"). When Ava
 // answers an "what's in my inbox" turn, the server embeds an `emails` array in
 // her bubble envelope; chat_thread.dart renders [EmailInboxCards] from it. Each
@@ -158,10 +160,10 @@ class _EmailInboxCardsState extends State<EmailInboxCards> {
       final ok = await AvaEmailApi.spam(e.id);
       Analytics.capture('ava_email_card_action',
           {'action': 'spam', 'ok': ok, 'ms': DateTime.now().millisecondsSinceEpoch - t0});
-      if (!ok && mounted) { setState(() => _gone.remove(e.id)); _toast('Could not report spam'); }
+      if (!ok && mounted) { setState(() => _gone.remove(e.id)); _toast(uiCopy(UiMessage.m_could_not_report_spam_c373e93056)); }
     } catch (err) {
       Analytics.capture('ava_email_card_action', {'action': 'spam', 'ok': false});
-      if (mounted) { setState(() => _gone.remove(e.id)); _toast('Could not report spam'); }
+      if (mounted) { setState(() => _gone.remove(e.id)); _toast(uiCopy(UiMessage.m_could_not_report_spam_c373e93056)); }
     }
   }
 
@@ -172,10 +174,10 @@ class _EmailInboxCardsState extends State<EmailInboxCards> {
       final ok = await AvaEmailApi.trash(e.id);
       Analytics.capture('ava_email_card_action',
           {'action': 'trash', 'ok': ok, 'ms': DateTime.now().millisecondsSinceEpoch - t0});
-      if (!ok && mounted) { setState(() => _gone.remove(e.id)); _toast('Could not delete'); }
+      if (!ok && mounted) { setState(() => _gone.remove(e.id)); _toast(uiCopy(UiMessage.m_could_not_delete_00035f6765)); }
     } catch (err) {
       Analytics.capture('ava_email_card_action', {'action': 'trash', 'ok': false});
-      if (mounted) { setState(() => _gone.remove(e.id)); _toast('Could not delete'); }
+      if (mounted) { setState(() => _gone.remove(e.id)); _toast(uiCopy(UiMessage.m_could_not_delete_00035f6765)); }
     }
   }
 
@@ -193,6 +195,7 @@ class _EmailInboxCardsState extends State<EmailInboxCards> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final visible = _visible;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -209,7 +212,7 @@ class _EmailInboxCardsState extends State<EmailInboxCards> {
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             PhosphorIcon(PhosphorIcons.tray(PhosphorIconsStyle.fill), size: 13, color: _bubbleInk),
             const SizedBox(width: Msg.s2),
-            Text('Inbox · ${visible.length} ${visible.length == 1 ? 'email' : 'emails'}',
+            UiText(UiMessage.m_inbox_value1_value2_520c493f7b, params: {'value1': (visible.length).toString(), 'value2': (visible.length == 1 ? 'email' : 'emails').toString()},
                 style: _mono.copyWith(fontSize: 9, color: _bubbleInk)),
           ]),
         ),
@@ -220,7 +223,7 @@ class _EmailInboxCardsState extends State<EmailInboxCards> {
             child: Row(children: [
               PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 18, color: AD.online),
               const SizedBox(width: 8),
-              Flexible(child: Text('Inbox zero — all caught up.',
+              Flexible(child: UiText(UiMessage.m_inbox_zero_all_caught_up_cc6e7c6293,
                   style: _mono.copyWith(fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 0, color: _bubbleMuted))),
             ]),
           )
@@ -242,6 +245,7 @@ class _EmailCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final accent = avaEmailAccent(e.accentToken);
     final initial = (e.from.trim().isEmpty ? '?' : e.from.trim()[0]).toUpperCase();
     return Container(
@@ -385,7 +389,7 @@ class _EmailViewerScreenState extends State<EmailViewerScreen> {
     if (!mounted) return;
     setState(() => _sending = false);
     if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reply failed — try again')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: UiText(UiMessage.m_reply_failed_try_again_78567ed1ba)));
       return;
     }
     setState(() => _mode = 'sent');
@@ -406,6 +410,7 @@ class _EmailViewerScreenState extends State<EmailViewerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final e = widget.email;
     final title = _mode == 'reply' ? 'Reply' : _mode == 'sent' ? 'Sent' : 'Email';
     return Scaffold(
@@ -450,10 +455,10 @@ class _EmailViewerScreenState extends State<EmailViewerScreen> {
                     size: 40, color: Colors.white)),
           ),
           const SizedBox(height: 16),
-          Text('Message sent', style: ADText.appTitle().copyWith(fontSize: 26)),
+          UiText(UiMessage.m_message_sent_0a1f2fbcba, style: ADText.appTitle().copyWith(fontSize: 26)),
           const SizedBox(height: 8),
           Padding(padding: const EdgeInsets.symmetric(horizontal: 40),
-              child: Text('Your reply to ${e.from} is on its way. Returning to chat…',
+              child: UiText(UiMessage.m_your_reply_to_value1_is_5e24ff61f2, params: {'value1': (e.from).toString()},
                   textAlign: TextAlign.center, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14))),
         ]),
       );
@@ -480,7 +485,7 @@ class _EmailViewerScreenState extends State<EmailViewerScreen> {
               decoration: InputDecoration(
                 isCollapsed: true,
                 border: InputBorder.none,
-                hintText: 'Write your reply…',
+                hintText: uiCopy(UiMessage.m_write_your_reply_cd617a801e),
                 hintStyle: ADText.preview(c: AD.textTertiary).copyWith(fontSize: 15),
               ),
             ),
@@ -506,7 +511,7 @@ class _EmailViewerScreenState extends State<EmailViewerScreen> {
             Text(e.from, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName().copyWith(fontSize: 16)),
             Text(e.addr, maxLines: 1, overflow: TextOverflow.ellipsis, style: _mono.copyWith(fontSize: 11, color: AD.textTertiary)),
             Padding(padding: const EdgeInsets.only(top: 2),
-                child: Text('to me · ${e.time}', style: _mono.copyWith(fontSize: 10, color: AD.textTertiary))),
+                child: UiText(UiMessage.m_to_me_value1_2d1eb6dea3, params: {'value1': (e.time).toString()}, style: _mono.copyWith(fontSize: 10, color: AD.textTertiary))),
           ])),
         ]),
         const SizedBox(height: Msg.s3),

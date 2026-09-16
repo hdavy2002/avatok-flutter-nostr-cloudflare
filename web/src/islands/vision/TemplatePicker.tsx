@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 // TemplatePicker — step 1 of the studio: Category grid → Use-Case cards.
 //
 // Template-first flow, identical to the app (MASTER §6 / Phase 2): the creator
@@ -15,6 +17,8 @@ export interface TemplatePickerProps {
 }
 
 export function TemplatePicker({ onPick }: TemplatePickerProps) {
+ const {t:uiT}=useUiTranslation("web-vision");
+
   const [cats, setCats] = useState<VisionCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +46,7 @@ export function TemplatePicker({ onPick }: TemplatePickerProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center gap-2 py-12 text-inkSoft">
-        <Spinner size={22} /> <span className="font-body font-bold text-[15px]">Loading templates…</span>
+        <Spinner size={22} /> <span className="font-body font-bold text-[15px]"><UiText id="web-vision.3800ee7191b1cd15" source="Loading templates…" /></span>
       </div>
     );
   }
@@ -60,9 +64,7 @@ export function TemplatePicker({ onPick }: TemplatePickerProps) {
     <div className="flex flex-col gap-6">
       {/* Category chips */}
       <div>
-        <p className="mb-2 font-mono font-bold uppercase text-[13px] tracking-[0.1em] text-blueInk">
-          1 · Pick a category
-        </p>
+        <p className="mb-2 font-mono font-bold uppercase text-[13px] tracking-[0.1em] text-blueInk"><UiText id="web-vision.fe8793a9462e84df" source="1 · Pick a category" />{" "}</p>
         <div className="flex flex-wrap gap-2">
           {cats.map((c) => (
             <button
@@ -86,9 +88,7 @@ export function TemplatePicker({ onPick }: TemplatePickerProps) {
 
       {/* Use-case cards */}
       <div>
-        <p className="mb-2 font-mono font-bold uppercase text-[13px] tracking-[0.1em] text-blueInk">
-          2 · Pick a use-case
-        </p>
+        <p className="mb-2 font-mono font-bold uppercase text-[13px] tracking-[0.1em] text-blueInk"><UiText id="web-vision.0c81bbc135fdc34a" source="2 · Pick a use-case" />{" "}</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {current?.templates.map((t) => (
             <button
@@ -103,12 +103,12 @@ export function TemplatePicker({ onPick }: TemplatePickerProps) {
             >
               <h3 className="font-display font-semibold text-[18px] leading-tight text-ink">{t.name}</h3>
               <p className="mt-1 font-body font-bold text-[13px] text-inkSoft line-clamp-2">
-                {t.trackedSubject ? `Tracks ${t.trackedSubject}.` : t.starterPrompt}
+                {t.trackedSubject ? uiT("web-vision.21cfd1993f444c85","Tracks {value0}.",{value0:String(t.trackedSubject)}) : t.starterPrompt}
               </p>
               <div className="mt-2.5 flex flex-wrap gap-1.5">
-                {t.overlayEnabled && <Pill kind="hint">Overlay</Pill>}
+                {t.overlayEnabled && <Pill kind="hint"><UiText id="web-vision.2af93aeb435dff63" source="Overlay" /></Pill>}
                 {t.scoreLabel && <Pill kind="hint">{t.scoreLabel}</Pill>}
-                {t.freeSnapshotsPerSession ? <Pill kind="hint">Snapshot</Pill> : null}
+                {t.freeSnapshotsPerSession ? <Pill kind="hint"><UiText id="web-vision.6ad27bd4ec33b079" source="Snapshot" /></Pill> : null}
               </div>
             </button>
           ))}

@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -136,6 +138,7 @@ class _RememberChoiceSheetState extends State<_RememberChoiceSheet> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final defaultLabel = _accountDefault == null
         ? 'not set yet — defaults to local only'
         : (_accountDefault == true ? 'Remember' : 'Keep local only');
@@ -147,7 +150,7 @@ class _RememberChoiceSheetState extends State<_RememberChoiceSheet> {
             ZineIconBadge(icon: PhosphorIcons.brain(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 40),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Remember this in AvaBrain?', style: ADText.threadName(c: AD.textPrimary)),
+              UiText(UiMessage.m_remember_this_in_avabrain_5eb5b57b9c, style: ADText.threadName(c: AD.textPrimary)),
               Text(widget.subtitle, style: ADText.preview()),
             ])),
           ]),
@@ -159,8 +162,8 @@ class _RememberChoiceSheetState extends State<_RememberChoiceSheet> {
               PhosphorIcon(PhosphorIcons.brain(PhosphorIconsStyle.bold), size: 20, color: AD.textPrimary),
               const SizedBox(width: 12),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Remember this in AvaBrain', style: ADText.rowName(c: AD.textPrimary)),
-                Text('Ava can recall what was said in this clip later.', style: ADText.preview()),
+                UiText(UiMessage.m_remember_this_in_avabrain_17ba74912e, style: ADText.rowName(c: AD.textPrimary)),
+                UiText(UiMessage.m_ava_can_recall_what_was_ebf2a5a16f, style: ADText.preview()),
               ])),
             ]),
           ),
@@ -172,8 +175,8 @@ class _RememberChoiceSheetState extends State<_RememberChoiceSheet> {
               PhosphorIcon(PhosphorIcons.lockKey(PhosphorIconsStyle.bold), size: 20, color: AD.textPrimary),
               const SizedBox(width: 12),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Keep local only', style: ADText.rowName(c: AD.textPrimary)),
-                Text('This clip is sent as usual; AvaBrain never sees it.', style: ADText.preview()),
+                UiText(UiMessage.m_keep_local_only_4af8998151, style: ADText.rowName(c: AD.textPrimary)),
+                UiText(UiMessage.m_this_clip_is_sent_as_09652e72b8, style: ADText.preview()),
               ])),
             ]),
           ),
@@ -185,8 +188,8 @@ class _RememberChoiceSheetState extends State<_RememberChoiceSheet> {
               PhosphorIcon(PhosphorIcons.gearSix(PhosphorIconsStyle.bold), size: 20, color: AD.textSecondary),
               const SizedBox(width: 12),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Use my account default', style: ADText.rowName(c: AD.textPrimary)),
-                Text('Currently: $defaultLabel', style: ADText.preview()),
+                UiText(UiMessage.m_use_my_account_default_9959e3e81b, style: ADText.rowName(c: AD.textPrimary)),
+                UiText(UiMessage.m_currently_defaultlabel_daa3e68c6f, params: {'defaultLabel': (defaultLabel).toString()}, style: ADText.preview()),
               ])),
             ]),
           ),
@@ -203,8 +206,8 @@ class _RememberChoiceSheetState extends State<_RememberChoiceSheet> {
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(
-                'Always do this — stop asking (Remember/Keep local only above becomes my account default)',
+              child: UiText(
+                UiMessage.m_always_do_this_stop_asking_84872467a9,
                 style: ADText.preview(c: AD.textSecondary),
               ),
             ),

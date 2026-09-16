@@ -1,3 +1,5 @@
+
+import '../../../core/localization/ui_text.dart';
 // The keyboard-height picker panel that slides under the input bar (STREAM E).
 //
 // Segmented top control: Emoji | GIF | Sticker, with a search icon on the left
@@ -85,6 +87,7 @@ class _RichPickerPanelState extends State<RichPickerPanel> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Container(
       height: widget.height,
       decoration: const BoxDecoration(
@@ -145,7 +148,7 @@ class _RichPickerPanelState extends State<RichPickerPanel> {
             fontSize: 14, color: AD.textPrimary),
         decoration: InputDecoration(
           isDense: true,
-          hintText: _tab == PickerTab.gif ? 'Search GIFs' : 'Search emoji',
+          hintText: _tab == PickerTab.gif ? uiCopy(UiMessage.m_search_gifs_1442b88614) : uiCopy(UiMessage.m_search_emoji_87fafa7206),
           hintStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
               fontSize: 14, color: AD.textTertiary),
           border: InputBorder.none,
@@ -211,10 +214,11 @@ class _EmojiTabState extends State<_EmojiTab> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     if (widget.query.trim().isNotEmpty) {
       final hits = searchEmoji(widget.query);
       return hits.isEmpty
-          ? Center(child: Text('No emoji', style: ADText.preview()))
+          ? Center(child: UiText(UiMessage.m_no_emoji_9130ed0c52, style: ADText.preview()))
           : _grid(hits);
     }
     final recents = PickerRecentsStore.I.emoji;
@@ -409,6 +413,7 @@ class _GifTabState extends State<_GifTab> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final recents =
         PickerRecentsStore.I.gif.map((m) => GifResult.fromRecent(m)).toList();
     return Column(children: [
@@ -425,7 +430,7 @@ class _GifTabState extends State<_GifTab> {
           onTap: _openGiphy,
           behavior: HitTestBehavior.opaque,
           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Text('Open full GIPHY',
+            UiText(UiMessage.m_open_full_giphy_bc56d80399,
                 style: ADText.preview(c: AD.textTertiary).copyWith(fontWeight: FontWeight.w600)),
             const SizedBox(width: Msg.s1),
             PhosphorIcon(PhosphorIcons.arrowSquareOut(PhosphorIconsStyle.regular),
@@ -573,6 +578,7 @@ class _StickerTabState extends State<_StickerTab> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final recents = PickerRecentsStore.I.sticker;
     return CustomScrollView(slivers: [
       if (recents.isNotEmpty) ...[

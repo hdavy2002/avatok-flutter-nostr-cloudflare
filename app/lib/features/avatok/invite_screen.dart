@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -141,7 +143,7 @@ class _InviteScreenState extends State<InviteScreen> {
 
   Future<void> _whatsapp(ContactRef c) async {
     final dc = await _resolve(c);
-    if (dc == null) { _snack('No phone number saved for ${c.name}.'); return; }
+    if (dc == null) { _snack(uiCopy(UiMessage.m_no_phone_number_saved_for_2f75608636, {'value1': (c.name).toString()})); return; }
     final text = DeviceContactsService.inviteText(dc, myName: _myName, myHandle: _myHandle);
     final ok = await _launch(DeviceContactsService.whatsappUri(dc, text));
     if (ok) await _recordSent(c, 'whatsapp');
@@ -150,7 +152,7 @@ class _InviteScreenState extends State<InviteScreen> {
 
   Future<void> _sms(ContactRef c) async {
     final dc = await _resolve(c);
-    if (dc == null) { _snack('No phone number saved for ${c.name}.'); return; }
+    if (dc == null) { _snack(uiCopy(UiMessage.m_no_phone_number_saved_for_2f75608636, {'value1': (c.name).toString()})); return; }
     final text = DeviceContactsService.inviteText(dc, myName: _myName, myHandle: _myHandle);
     final ok = await _launch(DeviceContactsService.smsUri(dc, text));
     if (ok) await _recordSent(c, 'sms');
@@ -164,7 +166,7 @@ class _InviteScreenState extends State<InviteScreen> {
     final dc = await _resolve(c, needEmail: true);
     if (dc == null) {
       if (mounted) setState(() => _sending.remove(key));
-      _snack('No email saved for ${c.name}.');
+      _snack(uiCopy(UiMessage.m_no_email_saved_for_value1_1657729cce, {'value1': (c.name).toString()}));
       return;
     }
     final ok = await DeviceContactsService.sendInviteEmail(dc, myName: _myName);
@@ -173,7 +175,7 @@ class _InviteScreenState extends State<InviteScreen> {
       await _recordSent(c, 'email');
     } else {
       Analytics.capture('invite_send_failed', {'channel': 'email', 'reason': 'server'});
-      _snack("Couldn't send the email — please try again");
+      _snack(uiCopy(UiMessage.m_couldn_t_send_the_email_9117fc9157));
     }
     _track(c, 'email', ok);
   }
@@ -201,6 +203,7 @@ class _InviteScreenState extends State<InviteScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     return Scaffold(
       backgroundColor: AD.bg,
       body: SafeArea(
@@ -216,7 +219,7 @@ class _InviteScreenState extends State<InviteScreen> {
               Row(children: [
                 _backButton(context),
                 const SizedBox(width: Msg.s1),
-                Expanded(child: Text('Invite friends', style: ADText.appTitle())),
+                Expanded(child: UiText(UiMessage.m_invite_friends_2614b42d84, style: ADText.appTitle())),
                 if (_refreshing)
                   const SizedBox(width: 16, height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch)),
@@ -224,7 +227,7 @@ class _InviteScreenState extends State<InviteScreen> {
               const SizedBox(height: 12),
               _searchDock(
                 controller: _searchCtrl,
-                hint: 'Search by name',
+                hint: uiCopy(UiMessage.m_search_by_name_4ae2b33364),
                 onChanged: (v) => setState(() => _query = v),
               ),
             ]),
@@ -287,7 +290,7 @@ class _InviteScreenState extends State<InviteScreen> {
   Widget _body() {
     if (_softAsk && _all.isEmpty) {
       return _permissionPanel(
-        title: 'Invite people you know',
+        title: uiCopy(UiMessage.m_invite_people_you_know_502dc2a356),
         body: 'AvaTOK can check your contacts so you can invite friends by WhatsApp, '
             'text or email. Your contacts stay on your device — only the person you '
             'tap to invite is ever used.',
@@ -296,7 +299,7 @@ class _InviteScreenState extends State<InviteScreen> {
     }
     if (_permDenied && _all.isEmpty) {
       return _permissionPanel(
-        title: 'Contacts access is off',
+        title: uiCopy(UiMessage.m_contacts_access_is_off_a6e8856640),
         body: 'Allow AvaTOK to read your contacts so you can invite friends.',
         cta: 'Allow access',
       );
@@ -309,8 +312,8 @@ class _InviteScreenState extends State<InviteScreen> {
     if (items.isEmpty) {
       return Center(child: Text(
           _query.trim().isEmpty
-              ? (_refreshing ? 'Loading your contacts…' : 'No contacts found on your phone')
-              : 'No matches',
+              ? (_refreshing ? uiCopy(UiMessage.m_loading_your_contacts_795da0a580) : uiCopy(UiMessage.m_no_contacts_found_on_your_4457b1c35f))
+              : uiCopy(UiMessage.m_no_matches_2df01a03ff),
           style: ADText.preview(c: AD.textSecondary)));
     }
     return ListView.separated(

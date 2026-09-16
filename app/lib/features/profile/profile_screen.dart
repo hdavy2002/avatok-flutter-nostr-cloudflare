@@ -1,3 +1,6 @@
+
+import '../../core/localization/ui_text.dart';
+
 import 'dart:async';
 import 'dart:convert';
 
@@ -176,7 +179,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (id == null) {
       if (mounted) {
         setState(() => _saving = false);
-        showAdToast(context, message: 'Still getting your account ready — try once more in a second.');
+        showAdToast(context, message: uiCopy(UiMessage.m_still_getting_your_account_ready_46e7cb7b8c));
       }
       return;
     }
@@ -233,7 +236,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     unawaited(_initShare());
     if (mounted) setState(() { _saving = false; _listed = true; });
     if (mounted) {
-      showAdToast(context, message: 'Profile saved');
+      showAdToast(context, message: uiCopy(UiMessage.m_profile_saved_ea278dbc06));
     }
     // Background directory publish. STILL fire-and-forget for LATENCY (owner report
     // 2026-06-27 "saving takes forever" — server vetting runs AI name plausibility
@@ -283,7 +286,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         setState(() { _listed = false; });
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           duration: const Duration(seconds: 8),
-          content: Text("Not saved to your public profile — ${r.message!}"),
+          content: UiText(UiMessage.m_not_saved_to_your_public_955952675a, params: {'value1': (r.message!).toString()}),
         ));
       }());
     }
@@ -354,7 +357,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (cropped == null || !mounted) return;
       await _uploadAvatar(cropped);
     } catch (_) {
-      if (mounted) showAdToast(context, message: "Couldn't open that image — try another.");
+      if (mounted) showAdToast(context, message: uiCopy(UiMessage.m_couldn_t_open_that_image_bac25c078e));
     }
   }
 
@@ -368,7 +371,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (url == null) {
       if (mounted) {
         setState(() => _photoBusy = false);
-        showAdToast(context, message: 'Upload failed — please try again.');
+        showAdToast(context, message: uiCopy(UiMessage.m_upload_failed_please_try_again_3802cacfbf));
       }
       return;
     }
@@ -378,7 +381,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await Directory.registerProfile(uid: id.uid, name: _fullName, firstName: _name.text.trim(), lastName: _last.text.trim(), avatarUrl: url);
     if (!mounted) return;
     setState(() { _avatarUrl = url; _photoBusy = false; });
-    showAdToast(context, message: 'Photo updated');
+    showAdToast(context, message: uiCopy(UiMessage.m_photo_updated_30844cafe5));
   }
 
   Future<void> _removePhoto() async {
@@ -390,7 +393,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await Directory.registerProfile(uid: id.uid, name: _fullName, firstName: _name.text.trim(), lastName: _last.text.trim(), avatarUrl: '');
     if (!mounted) return;
     setState(() { _avatarUrl = ''; _photoBusy = false; });
-    showAdToast(context, message: 'Photo removed');
+    showAdToast(context, message: uiCopy(UiMessage.m_photo_removed_93c823cf62));
   }
 
   /// Change the sign-in email — sends a 6-digit OTP to the NEW address and only
@@ -417,7 +420,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           if (r.statusCode == 200) {
             if (ctx.mounted) Navigator.of(ctx).pop();
             if (mounted) {
-              showAdToast(context, message: 'Email updated');
+              showAdToast(context, message: uiCopy(UiMessage.m_email_updated_208e27084a));
             }
           } else {
             setS(() => err = 'Incorrect or expired code.');
@@ -430,19 +433,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
             borderRadius: BorderRadius.circular(AD.rDialog),
             side: const BorderSide(color: AD.borderControl, width: 1),
           ),
-          title: Text('Change email', style: ADText.appTitle().copyWith(fontSize: 19)),
+          title: UiText(UiMessage.m_change_email_ff2ec2618b, style: ADText.appTitle().copyWith(fontSize: 19)),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
             AdField(
               controller: emailCtrl,
               enabled: !sent,
-              label: 'New email address',
+              label: uiCopy(UiMessage.m_new_email_address_bb0d06f567),
               keyboardType: TextInputType.emailAddress,
             ),
             if (sent) ...[
               const SizedBox(height: Msg.s3),
               AdField(
                 controller: codeCtrl,
-                label: '6-digit code from your inbox',
+                label: uiCopy(UiMessage.m_6_digit_code_from_your_b449ffd029),
                 keyboardType: TextInputType.number,
               ),
             ],
@@ -450,8 +453,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ]),
           actions: [
             TextButton(onPressed: () => Navigator.of(ctx).pop(),
-                child: Text('Not now', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14))),
-            AdButton(label: sent ? 'Verify' : 'Send code', variant: AdButtonVariant.teal,
+                child: UiText(UiMessage.m_not_now_a0e63d7c71, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14))),
+            AdButton(label: sent ? uiCopy(UiMessage.m_verify_eea2745e28) : uiCopy(UiMessage.m_send_code_66a5b4090d), variant: AdButtonVariant.teal,
                 fontSize: 15, onPressed: sent ? verify : send),
           ],
         );
@@ -493,7 +496,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           if (r.statusCode == 200) {
             if (ctx.mounted) Navigator.of(ctx).pop();
             if (mounted) {
-              showAdToast(context, message: 'Password updated');
+              showAdToast(context, message: uiCopy(UiMessage.m_password_updated_836b6b9bf4));
             }
           } else {
             String msg = 'Incorrect or expired code.';
@@ -508,24 +511,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
             borderRadius: BorderRadius.circular(AD.rDialog),
             side: const BorderSide(color: AD.borderControl, width: 1),
           ),
-          title: Text(sent ? 'Set password' : 'Set or change password', style: ADText.appTitle().copyWith(fontSize: 19)),
+          title: Text(sent ? uiCopy(UiMessage.m_set_password_4e4116871b) : uiCopy(UiMessage.m_set_or_change_password_d728f05c68), style: ADText.appTitle().copyWith(fontSize: 19)),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
             if (!sent)
-              Text('We\'ll email a 6-digit code to confirm it\'s you.', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),
+              UiText(UiMessage.m_we_ll_email_a_6_5977395db6, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),
             if (sent) ...[
-              Text('Code sent${hint != null && hint!.isNotEmpty ? ' to $hint' : ''}.',
+              UiText(UiMessage.m_code_sent_value1_436dbe7019, params: {'value1': (hint != null && hint!.isNotEmpty ? ' to $hint' : '').toString()},
                   style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),
               const SizedBox(height: 12),
-              AdField(controller: codeCtrl, label: '6-digit code', keyboardType: TextInputType.number),
+              AdField(controller: codeCtrl, label: uiCopy(UiMessage.m_6_digit_code_0d1fa0dfcc), keyboardType: TextInputType.number),
               const SizedBox(height: 12),
-              AdField(controller: pwCtrl, label: 'New password', obscureText: true),
+              AdField(controller: pwCtrl, label: uiCopy(UiMessage.m_new_password_3dd9df4441), obscureText: true),
             ],
             if (err != null) AdErrorMsg(err!),
           ]),
           actions: [
             TextButton(onPressed: () => Navigator.of(ctx).pop(),
-                child: Text('Not now', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14))),
-            AdButton(label: sent ? 'Set password' : 'Send code', variant: AdButtonVariant.teal,
+                child: UiText(UiMessage.m_not_now_a0e63d7c71, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14))),
+            AdButton(label: sent ? uiCopy(UiMessage.m_set_password_4e4116871b) : uiCopy(UiMessage.m_send_code_66a5b4090d), variant: AdButtonVariant.teal,
                 fontSize: 15, loading: busy, onPressed: busy ? null : (sent ? set : send)),
           ],
         );
@@ -558,6 +561,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final id = _id;
     return Scaffold(
       backgroundColor: AD.bg,
@@ -597,9 +601,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text('Profile', style: ADText.appTitle(c: onBand), maxLines: 1, overflow: TextOverflow.ellipsis),
+                            UiText(UiMessage.m_profile_d696a35bdd, style: ADText.appTitle(c: onBand), maxLines: 1, overflow: TextOverflow.ellipsis),
                             const SizedBox(height: 2),
-                            Text('Your public card', style: ADText.sectionLabel(c: onBand)),
+                            UiText(UiMessage.m_your_public_card_d9ed8f29e5, style: ADText.sectionLabel(c: onBand)),
                           ],
                         ),
                       ),
@@ -687,44 +691,42 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        Center(child: Text(_fullName.isEmpty ? 'You' : _fullName,
+        Center(child: Text(_fullName.isEmpty ? uiCopy(UiMessage.m_you_08b0419357) : _fullName,
             style: ADText.appTitle())),
         const SizedBox(height: Msg.s5),
         AdField(
           controller: _name,
-          label: 'First name',
-          hint: 'Your first name',
+          label: uiCopy(UiMessage.m_first_name_702ef921ed),
+          hint: uiCopy(UiMessage.m_your_first_name_6d38a850e5),
           textCapitalization: TextCapitalization.words,
           onChanged: (_) => setState(() {}),
         ),
         const SizedBox(height: 16),
         AdField(
           controller: _last,
-          label: 'Last name',
-          hint: 'Your last name',
+          label: uiCopy(UiMessage.m_last_name_7b48880494),
+          hint: uiCopy(UiMessage.m_your_last_name_4fda057f4c),
           textCapitalization: TextCapitalization.words,
           onChanged: (_) => setState(() {}),
         ),
         const SizedBox(height: Msg.s2),
-        Text('People find you by your AvaTOK number, phone, or email — set your number in Settings → Your number.',
+        UiText(UiMessage.m_people_find_you_by_your_31849a8721,
             style: ADText.preview()),
         const SizedBox(height: 16),
         AdField(
           controller: _birthYear,
-          label: 'Birth year (Private)',
-          hint: 'e.g. 1990',
+          label: uiCopy(UiMessage.m_birth_year_private_91a64d6812),
+          hint: uiCopy(UiMessage.m_e_g_1990_7d525dd1be),
           keyboardType: TextInputType.number,
           maxLength: 4,
           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
           onChanged: (_) => setState(() {}),
         ),
         const SizedBox(height: Msg.s2),
-        Text('Private — never shown to anyone. Required. Used to confirm your age '
-            '(under-18 accounts get extra safety protections) and for anonymous '
-            'age-group stats (e.g. "25-34").',
+        UiText(UiMessage.m_private_never_shown_to_anyone_12820dc67a,
             style: ADText.preview()),
         const SizedBox(height: 16),
-        Text('Gender', style: ADText.rowName().copyWith(fontSize: 13)),
+        UiText(UiMessage.m_gender_a04630ef8b, style: ADText.rowName().copyWith(fontSize: 13)),
         const SizedBox(height: Msg.s2),
         Wrap(spacing: 8, runSpacing: 8, children: [
           for (final opt in const [
@@ -744,29 +746,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
         ]),
         const SizedBox(height: Msg.s2),
-        Text('Ava uses this when she answers your missed calls — '
-            '"can I take a message for him/her/them?"', style: ADText.preview()),
+        UiText(UiMessage.m_ava_uses_this_when_she_5e3cbddb63, style: ADText.preview()),
         const SizedBox(height: 16),
         AdField(
           controller: _bio,
-          label: 'About you',
-          hint: 'Tell Ava a little about yourself…',
+          label: uiCopy(UiMessage.m_about_you_428f4d00b7),
+          hint: uiCopy(UiMessage.m_tell_ava_a_little_about_8eb41dcfe3),
           maxLines: 4,
           maxLength: 600,
           textCapitalization: TextCapitalization.sentences,
           onChanged: (_) => setState(() {}),
         ),
         const SizedBox(height: Msg.s2),
-        Text('Private to you. Ava reads this to personalise its help — manage what Ava '
-            'learns from in Settings → AvaBrain.', style: ADText.preview()),
+        UiText(UiMessage.m_private_to_you_ava_reads_f081cf1d64, style: ADText.preview()),
         const SizedBox(height: 16),
         AdCard(
           padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
           child: Row(children: [
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Share last seen / online', style: ADText.rowName().copyWith(fontSize: 14)),
+              UiText(UiMessage.m_share_last_seen_online_9458584579, style: ADText.rowName().copyWith(fontSize: 14)),
               const SizedBox(height: 2),
-              Text('Let contacts see when you are online', style: ADText.preview().copyWith(fontSize: 12)),
+              UiText(UiMessage.m_let_contacts_see_when_you_20ea06e2cf, style: ADText.preview().copyWith(fontSize: 12)),
             ])),
             const SizedBox(width: Msg.s2),
             ZineToggle(value: _sharePresence, onChanged: (v) => setState(() => _sharePresence = v)),
@@ -777,28 +777,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
         // request 2026-06-29). Off by default; not verified yet (VERIFICATION STUB
         // — Profile.privatePhoneVerified). When the switch is on, this number
         // replaces the AvaTOK number on the QR card and contact areas.
-        Text('PRIVATE PHONE NUMBER (OPTIONAL)', style: ADText.sectionLabel()),
+        UiText(UiMessage.m_private_phone_number_optional_05a5a67444, style: ADText.sectionLabel()),
         const SizedBox(height: Msg.s2),
         AdField(
           controller: _privatePhone,
-          label: 'Private phone number',
-          hint: 'e.g. +1 302 555 0148',
+          label: uiCopy(UiMessage.m_private_phone_number_873310b623),
+          hint: uiCopy(UiMessage.m_e_g_1_302_555_68d357ea2f),
           keyboardType: TextInputType.phone,
           onChanged: (_) => setState(() {}),
         ),
         const SizedBox(height: Msg.s2),
-        Text('Optional and private by default. Not verified yet — verification is '
-            'coming later. Only shown to others if you turn on the switch below.',
+        UiText(UiMessage.m_optional_and_private_by_default_29e2158247,
             style: ADText.preview()),
         const SizedBox(height: 12),
         AdCard(
           padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
           child: Row(children: [
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Show my private number instead of my AvaTOK number', style: ADText.rowName().copyWith(fontSize: 14)),
+              UiText(UiMessage.m_show_my_private_number_instead_103f63ef21, style: ADText.rowName().copyWith(fontSize: 14)),
               const SizedBox(height: 2),
-              Text('People see this number on your card and can call it on AvaTOK. '
-                  'Your AvaTOK number is hidden while this is on.', style: ADText.preview().copyWith(fontSize: 12)),
+              UiText(UiMessage.m_people_see_this_number_on_52453c30e4, style: ADText.preview().copyWith(fontSize: 12)),
             ])),
             const SizedBox(width: Msg.s2),
             ZineToggle(
@@ -810,7 +808,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ]),
         ),
         const SizedBox(height: 16),
-        Text('Account & security', style: ADText.sectionLabel()),
+        UiText(UiMessage.m_account_security_f521e4248c, style: ADText.sectionLabel()),
         const SizedBox(height: Msg.s2),
         _securityRow(PhosphorIcons.envelope(PhosphorIconsStyle.bold), AD.iconSearch,
             'Change email', 'Verify the new address with a 6-digit code', _changeEmail),
@@ -823,7 +821,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Row(children: [
               ZineIconBadge(icon: PhosphorIcons.qrCode(PhosphorIconsStyle.bold), color: AD.iconSearch, size: 28),
               const SizedBox(width: Msg.s2),
-              Expanded(child: Text('Add me on AvaTOK', style: ADText.sectionLabel())),
+              Expanded(child: UiText(UiMessage.m_add_me_on_avatok_2261b8d0d1, style: ADText.sectionLabel())),
             ]),
             const SizedBox(height: 12),
             if (_shareLink.isNotEmpty)
@@ -837,7 +835,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const Center(child: Padding(padding: EdgeInsets.all(Msg.s6), child: CircularProgressIndicator(color: AD.primaryBadge))),
             const SizedBox(height: Msg.s2),
             Center(child: Text(
-              _cardNumber.isNotEmpty ? _cardNumber : 'Scan to add me on AvaTOK',
+              _cardNumber.isNotEmpty ? _cardNumber : uiCopy(UiMessage.m_scan_to_add_me_on_b77fcd9cbe),
               style: ADText.rowName(c: AD.iconSearch).copyWith(fontSize: 15))),
             // Email under the number — the other identifier people use to add you.
             // Restored 2026-07-23 [PROFILE-DISPLAY-2] after it went missing from the card.
@@ -850,29 +848,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             if (_cardNumber.isEmpty && _myNum != null && !_myNum!.hasNumber)
               Padding(padding: const EdgeInsets.only(top: 4), child: Center(child:
-                Text('Generate your AvaTOK number in Settings → Your number to share it, '
-                    'or add a private number above and choose to show it.',
+                UiText(UiMessage.m_generate_your_avatok_number_in_a1e218d8e2,
                     textAlign: TextAlign.center, style: ADText.preview().copyWith(fontSize: 11)))),
             const SizedBox(height: Msg.s3),
             Row(children: [
               Expanded(child: AdButton(
-                label: 'Share', icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), trailingIcon: false,
+                label: uiCopy(UiMessage.m_share_29887a5ff9), icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), trailingIcon: false,
                 fullWidth: true, fontSize: 15,
                 onPressed: _shareLink.isEmpty ? null : () async {
                   try {
                     await QrShare.share(link: _shareLink, name: _fullName, number: _cardNumber);
                   } catch (_) {
-                    if (mounted) showAdToast(context, message: "Couldn't prepare the QR image — try again.");
+                    if (mounted) showAdToast(context, message: uiCopy(UiMessage.m_couldn_t_prepare_the_qr_412816ad88));
                   }
                 })),
               const SizedBox(width: Msg.s2),
               Expanded(child: AdButton(
-                label: 'Copy', variant: AdButtonVariant.ghost, icon: PhosphorIcons.copy(PhosphorIconsStyle.bold), trailingIcon: false,
+                label: uiCopy(UiMessage.m_copy_e21f935f11), variant: AdButtonVariant.ghost, icon: PhosphorIcons.copy(PhosphorIconsStyle.bold), trailingIcon: false,
                 fullWidth: true, fontSize: 15,
                 onPressed: _shareLink.isEmpty ? null : () {
                   Analytics.capture('qr_card_action', {'action': 'copy'});
                   Clipboard.setData(ClipboardData(text: _shareLink));
-                  showAdToast(context, message: 'Link copied');
+                  showAdToast(context, message: uiCopy(UiMessage.m_link_copied_d12860c21e));
                 })),
             ]),
             const SizedBox(height: Msg.s2),
@@ -880,25 +877,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
             // post at a business — both use the identical QrShare layout.
             Row(children: [
               Expanded(child: AdButton(
-                label: 'Download', variant: AdButtonVariant.ghost, icon: PhosphorIcons.downloadSimple(PhosphorIconsStyle.bold), trailingIcon: false,
+                label: uiCopy(UiMessage.m_download_d6eafe8235), variant: AdButtonVariant.ghost, icon: PhosphorIcons.downloadSimple(PhosphorIconsStyle.bold), trailingIcon: false,
                 fullWidth: true, fontSize: 15,
                 onPressed: _shareLink.isEmpty ? null : () async {
                   try {
                     final path = await QrShare.download(link: _shareLink, name: _fullName, number: _cardNumber);
-                    if (mounted) showAdToast(context, message: 'Saved QR card to $path');
+                    if (mounted) showAdToast(context, message: uiCopy(UiMessage.m_saved_qr_card_to_path_a4fe4f0c81, {'path': (path).toString()}));
                   } catch (_) {
-                    if (mounted) showAdToast(context, message: "Couldn't save the image.");
+                    if (mounted) showAdToast(context, message: uiCopy(UiMessage.m_couldn_t_save_the_image_bcdcc4e0fe));
                   }
                 })),
               const SizedBox(width: Msg.s2),
               Expanded(child: AdButton(
-                label: 'Print', variant: AdButtonVariant.ghost, icon: PhosphorIcons.printer(PhosphorIconsStyle.bold), trailingIcon: false,
+                label: uiCopy(UiMessage.m_print_df0fe79898), variant: AdButtonVariant.ghost, icon: PhosphorIcons.printer(PhosphorIconsStyle.bold), trailingIcon: false,
                 fullWidth: true, fontSize: 15,
                 onPressed: _shareLink.isEmpty ? null : () async {
                   try {
                     await QrShare.printCard(link: _shareLink, name: _fullName, number: _cardNumber);
                   } catch (_) {
-                    if (mounted) showAdToast(context, message: "Couldn't open the print dialog.");
+                    if (mounted) showAdToast(context, message: uiCopy(UiMessage.m_couldn_t_open_the_print_df029f3661));
                   }
                 })),
             ]),
@@ -906,7 +903,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         const SizedBox(height: Msg.s5),
         AdButton(
-          label: _listed ? 'Update profile' : 'Save & get discoverable',
+          label: _listed ? uiCopy(UiMessage.m_update_profile_34540d1107) : uiCopy(UiMessage.m_save_get_discoverable_6f57d86f18),
           fullWidth: true,
           fontSize: 19,
           loading: _saving,
@@ -916,7 +913,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         if (!_canSave) ...[
           const SizedBox(height: 8),
-          Center(child: Text('First name, last name, birth year and "about you" are all required.',
+          Center(child: UiText(UiMessage.m_first_name_last_name_birth_e8bdc3a009,
               style: ADText.preview(c: AD.danger).copyWith(fontSize: 12))),
         ],
       ]),

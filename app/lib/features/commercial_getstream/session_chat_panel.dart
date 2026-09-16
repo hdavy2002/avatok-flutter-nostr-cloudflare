@@ -1,3 +1,5 @@
+
+import '../../core/localization/ui_text.dart';
 // [APP-ONLY-TX-APP-2] ONE reusable chat surface — list + composer + paperclip
 // attach — shared by the waiting-room screen (inline) and the in-call chat
 // sheet/panel (commercial_consult_screens.dart). Both wrap the SAME live
@@ -132,7 +134,7 @@ class SessionChatController extends ChangeNotifier {
     if (f == null || f.bytes == null) return null;
     final Uint8List bytes = f.bytes!;
     if (bytes.length > CommercialWaitingRoomApi.maxAttachmentBytes) {
-      return 'File is too large (25 MB max).';
+      return uiCopy(UiMessage.m_file_is_too_large_25_5bae3fdeda);
     }
     final mime = mimeFromName(f.name);
     uploading = true;
@@ -143,7 +145,7 @@ class SessionChatController extends ChangeNotifier {
       _channel.sendChat('', attachment: attachment);
       Analytics.capture('session_chat_attachment_sent', {
         'booking_id': sessionId,
-        'role': isCreator ? 'creator' : 'buyer',
+        'role': isCreator ? uiCopy(UiMessage.m_creator_bc6bfd848e) : uiCopy(UiMessage.m_buyer_6dbd0f28d0),
         'mime': mime,
         'bytes': bytes.length,
       });
@@ -151,7 +153,7 @@ class SessionChatController extends ChangeNotifier {
     } catch (_) {
       // Covers a 404 (worker route not deployed yet) and any other upload
       // failure alike — the guard the shared contract requires.
-      return 'Attachments not available yet';
+      return uiCopy(UiMessage.m_attachments_not_available_yet_812a50bb9f);
     } finally {
       uploading = false;
       notifyListeners();
@@ -241,7 +243,7 @@ class _SessionChatPanelState extends State<SessionChatPanel> {
               child: Image.network(url,
                   errorBuilder: (_, __, ___) => const Padding(
                       padding: EdgeInsets.all(24),
-                      child: Text('Image unavailable', style: TextStyle(color: Colors.white)))),
+                      child: UiText(UiMessage.m_image_unavailable_7817cd0656, style: TextStyle(color: Colors.white)))),
             ),
           ),
           Positioned(
@@ -260,11 +262,11 @@ class _SessionChatPanelState extends State<SessionChatPanel> {
     try {
       final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
       if (!ok && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open file')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: UiText(UiMessage.m_could_not_open_file_082ec35ee8)));
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open file')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: UiText(UiMessage.m_could_not_open_file_082ec35ee8)));
       }
     }
   }
@@ -325,6 +327,7 @@ class _SessionChatPanelState extends State<SessionChatPanel> {
 
   @override
   Widget build(BuildContext context) {
+    UiLocaleScope.watch(context);
     final messages = widget.controller.messages;
     final uploading = widget.controller.uploading;
     return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -333,7 +336,7 @@ class _SessionChatPanelState extends State<SessionChatPanel> {
         padding: const EdgeInsets.all(Msg.s3),
         decoration: BoxDecoration(color: AD.card, borderRadius: Msg.brMd, border: Border.all(color: AD.borderControl, width: 1)),
         child: messages.isEmpty
-            ? Center(child: Text('No messages yet', style: ADText.preview(c: AD.textTertiary)))
+            ? Center(child: UiText(UiMessage.m_no_messages_yet_f42e0f6601, style: ADText.preview(c: AD.textTertiary)))
             : ListView.builder(
                 controller: _scroll,
                 itemCount: messages.length,
@@ -366,7 +369,7 @@ class _SessionChatPanelState extends State<SessionChatPanel> {
           child: TextField(
             controller: _textController,
             maxLength: 500,
-            decoration: const InputDecoration(hintText: 'Message…', counterText: '', filled: true),
+            decoration:  InputDecoration(hintText: uiCopy(UiMessage.m_message_fc71507e47), counterText: '', filled: true),
             onSubmitted: (_) => _send(),
           ),
         ),

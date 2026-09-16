@@ -1,3 +1,5 @@
+import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
+import { UiText } from "../../lib/i18n/react";
 /*
  * WaitingRoom — the paid-consult lobby, [WAITROOM-WEB-1 2026-09-11]
  * (Specs/PLAN-2026-09-11-WAITING-ROOM-BUILD.md WP4, RULEBOOK-PAID-SESSIONS
@@ -109,6 +111,8 @@ export function WaitingRoom({
   autoJoinPaused,
   onRejoin,
 }: WaitingRoomProps) {
+  const {t:uiT}=useUiTranslation("web-consult-gs");
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
   // [WAITROOM-WEB-2 fix 7] see the `checkedInAt` comment below.
   const localCheckedInAtRef = useRef<number | null>(null);
@@ -167,16 +171,15 @@ export function WaitingRoom({
       <div className="flex flex-col items-center gap-3 text-center">
         <Avatar src={counterpartyAvatar} name={counterpartyName} size={64} />
         <div>
-          <h1 className="font-display font-semibold text-[24px] leading-tight text-ink">
-            Waiting for {peerLabel}…
+          <h1 className="font-display font-semibold text-[24px] leading-tight text-ink"><UiText id="web-consult-gs.68a86b7bebd2e858" source="Waiting for" />{" "}{peerLabel}…
           </h1>
           <p className="mt-1 font-body font-bold text-[13px] text-inkMute">
             {roster && (role === 'creator' ? roster.attendee : roster.host) ? (
-              <span className="text-mintInk">{peerLabel} is here — connecting you both…</span>
+              <span className="text-mintInk">{peerLabel}{" "}<UiText id="web-consult-gs.136c868f70e20819" source="is here — connecting you both…" /></span>
             ) : wsStatus === 'reconnecting' ? (
-              'Reconnecting to the waiting room…'
+              uiT("web-consult-gs.09794b2bcc8a05c1","Reconnecting to the waiting room…")
             ) : (
-              "We'll connect you both automatically the moment you're both here."
+              uiT("web-consult-gs.fbea7ead5441169d","We'll connect you both automatically the moment you're both here.")
             )}
           </p>
         </div>
@@ -194,13 +197,11 @@ export function WaitingRoom({
         {previewStream && (!camOn || !hasVideoTrack) && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-ink/80 px-3 text-center font-display font-semibold text-[14px] text-paper">
             <span aria-hidden className="text-[22px] leading-none">{hasVideoTrack ? '🚫' : '🎙️'}</span>
-            {hasVideoTrack ? 'Camera off' : 'No camera — audio only'}
+            {hasVideoTrack ? uiT("web-consult-gs.ce3ef7450f8e26f1","Camera off") : uiT("web-consult-gs.cdd907b920690158","No camera — audio only")}
           </div>
         )}
         {previewStream && !micOn && (
-          <span className="absolute bottom-2 left-2 rounded-zineBadge border-zine border-ink bg-coral px-2 py-1 font-mono font-bold text-[11px] text-white">
-            Muted
-          </span>
+          <span className="absolute bottom-2 left-2 rounded-zineBadge border-zine border-ink bg-coral px-2 py-1 font-mono font-bold text-[11px] text-white"><UiText id="web-consult-gs.2346f214ad56b180" source="Muted" />{" "}</span>
         )}
       </div>
 
@@ -220,35 +221,32 @@ export function WaitingRoom({
           ].join(' ')}
         >
           {checkedInOnTime ? (
-            "You're checked in ✓ — you'll be paid for this slot"
+            uiT("web-consult-gs.8a519f35d149bab5","You're checked in ✓ — you'll be paid for this slot")
           ) : checkInWindowClosed ? (
-            'Check-in window closed'
+            uiT("web-consult-gs.0b013d5002f268c4","Check-in window closed")
           ) : checkInBy ? (
-            `Check in by ${fmtHM(checkInBy)}`
+            uiT("web-consult-gs.60fed5a0a64db698","Check in by {value0}",{value0:String(fmtHM(checkInBy))})
           ) : (
-            'Connecting…'
+            uiT("web-consult-gs.72021eb70e91b4d5","Connecting…")
           )}
         </div>
       ) : (
         hostIsNoShow && (
           <div className="mx-auto rounded-zine border-zine border-coral bg-card px-4 py-2 text-center font-body font-bold text-[13px] text-coral shadow-zine-error">
-            {peerLabel} didn't show up — your payment is being refunded
-          </div>
+            {peerLabel}{" "}<UiText id="web-consult-gs.cb519d989d14f3d3" source="didn't show up — your payment is being refunded" />{" "}</div>
         )
       )}
 
       {/* [WAITROOM-WEB-2 fix 1] manual escape hatch after a deliberate Leave */}
       {autoJoinPaused && onRejoin && (
         <div className="mx-auto flex flex-col items-center gap-2 rounded-zine border-zine border-ink bg-paper2 px-4 py-3 text-center shadow-zine-xs">
-          <p className="font-body font-bold text-[13px] text-inkSoft">
-            You left the call. We won't rejoin you automatically.
-          </p>
-          <Button variant="lime" label="Rejoin call" onClick={onRejoin} />
+          <p className="font-body font-bold text-[13px] text-inkSoft"><UiText id="web-consult-gs.5bc61fc66abb50df" source="You left the call. We won't rejoin you automatically." />{" "}</p>
+          <Button variant="lime" label={uiT("web-consult-gs.fb96dba67ce2f478","Rejoin call")} onClick={onRejoin} />
         </div>
       )}
 
       <div className="flex justify-center pt-1">
-        <Button variant="ghost" label="Leave" onClick={onLeave} />
+        <Button variant="ghost" label={uiT("web-consult-gs.fc6e4a408d56be96","Leave")} onClick={onLeave} />
       </div>
       </div>
 

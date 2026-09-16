@@ -193,3 +193,12 @@ a {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* Authored translated copy uses script-capable fallbacks; brands keep their faces. */
+html:not([lang="en"]):not([lang="hi-Latn"]) [data-i18n],
+html:not([lang="en"]):not([lang="hi-Latn"]) [data-india-i18n] { font-family: var(--india-script-font), sans-serif; }
+
+/* Native-script fallbacks also cover React text fragments and form controls. */
+html:not([lang="en"]):not([lang="hi-Latn"]) astro-island :is(p,span,button,input,select,option,textarea,label,h1,h2,h3,h4,h5,h6,a,li,dt,dd,th,td):not(.wm-ava):not(.wm-tok):not(.auth-wordmark) {
+  font-family: var(--india-script-font), sans-serif;
+}
