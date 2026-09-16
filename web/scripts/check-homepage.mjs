@@ -8,7 +8,8 @@ import { normalizeBuiltImages, validateBuiltImageSources } from './built-image-s
 
 const root = resolve('dist');
 validateBuiltImageSources(root);
-const html = normalizeBuiltImages(readFileSync(resolve(root, 'index.html'), 'utf8'), { root });
+const rawHtml = readFileSync(resolve(root, 'index.html'), 'utf8');
+const html = normalizeBuiltImages(rawHtml, { root });
 assert.match(html, /data-design="creator-marketplace-2026-09"/, 'Expected approved creator marketplace homepage');
 assert.match(html, /Apna hunar\./, 'Approved hero headline remains');
 assert.match(html, /Apni kamaai\./, 'Approved hero accent remains');
@@ -207,6 +208,10 @@ assert(meta(ideas,'og:title') && meta(ideas,'og:description'));
 console.log('Sharing metadata and discovery checks passed for ideas and all 115 articles.');
 
 // The promoted homepage has one accurate share preview and canonical URL.
+const rawShareImage = meta(rawHtml, 'og:image');
+assert.match(rawShareImage, /^https:\/\/avatok\.ai\/cdn-cgi\/image\/format=jpeg,quality=75,width=1280,fit=scale-down\/_images\/[a-f0-9]+\.jpg$/, 'Homepage share image explicitly requests Cloudflare JPEG delivery');
+assert.equal(meta(rawHtml, 'og:image:secure_url'), rawShareImage, 'Secure share image uses the same JPEG transformation');
+assert.equal(meta(rawHtml, 'twitter:image'), rawShareImage, 'Twitter share image uses the same JPEG transformation');
 const campaignImages = [...html.matchAll(/<meta property="og:image" content="([^"]+)"/g)].map(m => m[1]);
 assert.deepEqual(campaignImages, [
  'https://avatok.ai/og/avatok-creator-marketplace-share.jpg',
@@ -219,6 +224,7 @@ assert.equal(meta(html, 'description'), meta(html, 'og:description'));
 assert.equal(meta(html, 'og:image:width'), '1200');
 assert.equal(meta(html, 'og:image:height'), '626');
 assert.equal(meta(html, 'og:image:type'), 'image/jpeg');
+// These checks inspect the original source; delivery format is enforced above.
 for (const image of campaignImages) {
  const imagePath = resolve(root, new URL(image).pathname.slice(1));
  assert(existsSync(imagePath), 'Published creator preview image exists');
