@@ -17,10 +17,18 @@ import catalogueRaw from '../../landing/archive/2026-09-09-before-railway/avatok
 // mirrors the FAQPage + HowTo JSON-LD in the landing document's <head>.
 import seoBandRaw from '../../landing/archive/2026-09-09-before-railway/avatok-seo-explainer.html?raw';
 import Fonts from '../../components/Fonts.astro';
+import { publicImage } from '../../lib/config';
+
+// Raw archived HTML bypasses Astro/Vite CSS transforms, including its JS sprite URLs.
+// Version queries here name bundled public artwork, not signed user media.
+function optimizeArchive(html: string): string {
+  return html.replace(/(["'(])(\/[^"'()\s]+\.(?:png|jpe?g|webp|avif))(?:\?v=[^"'()\s]+)?(?=["')])/gi,
+    (_match, prefix, path) => prefix + publicImage(path, { width: 1280, fit: 'scale-down' }));
+}
 import SiteHeader from '../../components/SiteHeader.astro';
 import SiteFooter from '../../components/SiteFooter.astro';
 
-const archivedRaw = landingRaw.replace(/<meta name="robots"[^>]*>/, '<meta name="robots" content="noindex, nofollow" />').replace('<title>', '<title>Archived homepage — ');
+const archivedRaw = optimizeArchive(landingRaw).replace(/<meta name="robots"[^>]*>/, '<meta name="robots" content="noindex, nofollow" />').replace('<title>', '<title>Archived homepage — ');
 const landingHtml = archivedRaw.replace(/^﻿?\s*<!doctype html>/i, '');
 const LEGACY_LOWER_MARK = '<!--\n  AvaTOK lower-page draft';
 const [heroHtml, legacyLower = ''] = landingHtml.split(LEGACY_LOWER_MARK);
@@ -45,7 +53,7 @@ const restHtml = heroHtml.slice(bodyAt + BODY_MARK.length);
 // [WEB-FOOTER-3] The closing tags are split out so <SiteFooter /> can render
 // INSIDE the document. The home page emits its own raw markup, so appending the
 // component after the fragment would have put the footer past </html>.
-const pageHtml = `${restHtml}${catalogueRaw}${seoBandRaw}`;
+const pageHtml = `${restHtml}${optimizeArchive(catalogueRaw)}${optimizeArchive(seoBandRaw)}`;
 const closeHtml = '\n</main>\n</body>\n</html>';
 
 ---
