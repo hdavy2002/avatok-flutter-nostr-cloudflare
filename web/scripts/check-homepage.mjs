@@ -49,7 +49,7 @@ assert(!existsSync(resolve(root, 'india/index.html')), 'Retired India URL has no
 const redirects = readFileSync(resolve(root, '_redirects'), 'utf8');
 assert.match(redirects, /^\/india\s+\/\s+301\s*$/m, 'India URL permanently redirects home');
 assert.match(redirects, /^\/india\/\s+\/\s+301\s*$/m, 'Trailing-slash India URL permanently redirects home');
-const archive = readFileSync(resolve(root, 'archive/home-2026-09-09/index.html'), 'utf8');
+const archive = normalizeBuiltImages(readFileSync(resolve(root, 'archive/home-2026-09-09/index.html'), 'utf8'), { root });
 assert.match(archive, /noindex, nofollow/, 'Existing archive must not compete in search');
 assert.match(archive, /hero-poster-nonav.png/, 'Previous hero remains archived');
 console.log('Homepage checks passed: approved hero, retained sections, no rendered language selectors, calculator, anchors and India redirects.');
