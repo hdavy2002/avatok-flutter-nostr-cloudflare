@@ -1,5 +1,5 @@
 // Generated from shared/i18n/source/app.json; preserve typed IDs when updating.
-const uiSourceHash = "81bd6f7e2ea6f80b59b55c039153d1d8a054af86592721ff58c729e66b30b97c";
+const uiSourceHash = "07e57df8b199862af71958247e4d0cfb71092997e1002b8ea0ba10b881394ddd";
 enum UiMessage {
   m_0_bytes_exported_media_excluded_82f7c571a7,
   m_0_free_entry_340eb3f79d,
@@ -784,7 +784,6 @@ enum UiMessage {
   m_copied_8d525e5f15,
   m_copied_paste_it_into_your_a69ab4cf32,
   m_copied_shortcut_counted_once_9af033e809,
-  m_copy_36a9e7f1c9,
   m_copy_contact_401debc8da,
   m_copy_diagnostics_46fa69e51b,
   m_copy_e21f935f11,
@@ -4412,7 +4411,6 @@ const uiSourceMessages = <String, String>{
   "m_copied_8d525e5f15": "Copied",
   "m_copied_paste_it_into_your_a69ab4cf32": "Copied — paste it into your chat.",
   "m_copied_shortcut_counted_once_9af033e809": "Copied (shortcut — counted once)",
-  "m_copy_36a9e7f1c9": " ",
   "m_copy_contact_401debc8da": "Copy contact",
   "m_copy_diagnostics_46fa69e51b": "Copy diagnostics",
   "m_copy_e21f935f11": "Copy",

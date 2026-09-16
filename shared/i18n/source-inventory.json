@@ -1,15 +1,15 @@
 {
   "status": "source-inventory-unverified-runtime",
   "namespaces": 199,
-  "sourceMessages": 10248,
-  "sourceCharacters": 504184,
+  "sourceMessages": 10247,
+  "sourceCharacters": 504183,
   "sourceHashAlgorithm": "SHA-256 of compact UTF-8 JSON with lexically sorted flat message keys and no trailing newline",
   "catalogs": [
     {
       "namespace": "app",
-      "sourceMessages": 3626,
-      "sourceCharacters": 115751,
-      "sourceHash": "81bd6f7e2ea6f80b59b55c039153d1d8a054af86592721ff58c729e66b30b97c"
+      "sourceMessages": 3625,
+      "sourceCharacters": 115750,
+      "sourceHash": "07e57df8b199862af71958247e4d0cfb71092997e1002b8ea0ba10b881394ddd"
     },
     {
       "namespace": "common",

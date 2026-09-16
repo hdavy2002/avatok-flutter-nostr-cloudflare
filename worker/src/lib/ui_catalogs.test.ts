@@ -1,11 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { describe, it, expect, vi } from 'vitest';
 import { catalogObjectKey, validManifest, validCatalog, LOCALES } from './ui_catalogs';
 const release = 'a'.repeat(64);
 describe('UI catalog public boundary', () => {
-  it('keeps the public route and catalog schema aligned with the shared Indian registry', () => {
-    const registry = JSON.parse(readFileSync(new URL('../../../shared/i18n/locales.json', import.meta.url), 'utf8')) as Array<{ code: string }>;
-    const schema = JSON.parse(readFileSync(new URL('../../../shared/i18n/catalog.schema.json', import.meta.url), 'utf8'));
+  it('keeps the public route and catalog schema aligned with the shared Indian registry', async () => {
+    // Let Vitest load the actual JSON; keep Node-only APIs out of Worker types.
+    const { default: registry } = await vi.importActual<{ default: Array<{ code: string }> }>('../../../shared/i18n/locales.json');
+    const { default: schema } = await vi.importActual<{ default: { properties: { locale: { enum: string[] } } } }>('../../../shared/i18n/catalog.schema.json');
     const codes = registry.map(item => item.code).sort();
     expect([...LOCALES].sort()).toEqual(codes);
     expect([...schema.properties.locale.enum].sort()).toEqual(codes);

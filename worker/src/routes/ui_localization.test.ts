@@ -2,6 +2,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { uiLocalization } from './ui_localization';
 import type { Env } from '../types';
 const release = 'a'.repeat(64);
+function executionContext(pending: Promise<unknown>[] = []): ExecutionContext {
+  return {
+    waitUntil(promise: Promise<unknown>): void { pending.push(promise); },
+    passThroughOnException(): void {},
+    props: {},
+  };
+}
 const envelope = { schemaVersion: 1, release, locale: 'hi', namespace: 'common', sourceHash: release, messages: { title: 'नमस्ते' } };
 afterEach(() => vi.unstubAllGlobals());
 describe('catalog HTTP caching', () => {
@@ -11,7 +18,7 @@ describe('catalog HTTP caching', () => {
     const get = vi.fn(async () => ({ size: 400, text: async () => JSON.stringify(envelope), httpEtag: '"catalog"' }));
     const env = { ENVIRONMENT_NAME: 'prod', BLOBS: { get } } as unknown as Env;
     const pending: Promise<unknown>[] = [];
-    const ctx = { waitUntil: (p: Promise<unknown>) => pending.push(p) } as ExecutionContext;
+    const ctx = executionContext(pending);
     const url = `https://api.avatok.ai/i18n/v1/${release}/hi/common.json`;
     const first = await uiLocalization(new Request(url, { headers: { Cookie: 'private=secret', Authorization: 'Bearer private' } }), env, ctx);
     expect(first.headers.get('Cache-Control')).toContain('immutable');
@@ -25,7 +32,7 @@ describe('catalog HTTP caching', () => {
   it('missing catalog is no-store and cannot invoke paid generation', async () => {
     vi.stubGlobal('caches', { default: { match: async () => undefined } });
     const env = { ENVIRONMENT_NAME: 'prod', BLOBS: { get: async () => null } } as unknown as Env;
-    const ctx = { waitUntil: vi.fn() } as unknown as ExecutionContext;
+    const ctx = executionContext();
     const response = await uiLocalization(new Request('https://api.avatok.ai/i18n/v1/manifest.json'), env, ctx);
     expect(response.status).toBe(404); expect(response.headers.get('Cache-Control')).toBe('no-store');
   });
@@ -34,7 +41,7 @@ describe('catalog HTTP caching', () => {
     const source = 'b'.repeat(64);
     const manifest = { schemaVersion: 1, release, namespaces: ['app'], sourceHashes: { app: source }, locales: { en: { namespaces: ['app'], status: 'source' } } };
     const env = { ENVIRONMENT_NAME: 'prod', BLOBS: { get: async () => ({ size: 500, httpEtag: '"pointer"', text: async () => JSON.stringify(manifest) }) } } as unknown as Env;
-    const ctx = { waitUntil: vi.fn() } as unknown as ExecutionContext;
+    const ctx = executionContext();
     const response = await uiLocalization(new Request(`https://api.avatok.ai/i18n/v1/sources/${source}/manifest.json`), env, ctx);
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('public, max-age=60, must-revalidate');
