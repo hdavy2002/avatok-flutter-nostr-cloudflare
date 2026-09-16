@@ -170,7 +170,6 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
     </svg>
   </button>
   </div>
-</header>
 
 {/* [UI-MOTION-1 2026-09-10] "menu-dropdown" (transitions.dev, `.t-dropdown` in
     styles/motion.css) — fade + scale instead of an instant show/hide. The
@@ -195,6 +194,7 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
   </Fragment>
   {variant === 'global' && <a class="avh-mobile-auth" href="/india">🌍 India</a>}
 </nav>
+</header>
 
 {indiaLandingLanguage && <script>
   if (document.querySelector('[data-india-page]')) {
@@ -212,11 +212,22 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
   const burger = document.querySelector<HTMLButtonElement>('.avh-burger');
   const panel = document.getElementById('avh-mobile');
   let avhCloseTimer: ReturnType<typeof setTimeout> | undefined;
+  const header = burger?.closest('header');
+  // Keep the overlay within the visible viewport, including tablet rotation.
+  function sizeMobilePanel() {
+    if (panel && header) panel.style.maxHeight = `${Math.max(0, window.innerHeight - header.getBoundingClientRect().bottom)}px`;
+  }
+  if (header) new ResizeObserver(sizeMobilePanel).observe(header);
+  window.addEventListener('resize', sizeMobilePanel);
+  panel?.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') { closeMobilePanel(); burger?.focus(); }
+  });
 
   function openMobilePanel() {
     if (!panel) return;
     clearTimeout(avhCloseTimer);
     panel.classList.remove('is-closing');
+    sizeMobilePanel();
     panel.hidden = false;
     // Two rAFs: lets the browser paint the just-unhidden "closed" frame
     // (`.t-dropdown`'s base scale/opacity) before `.is-open` lands — one rAF
@@ -360,7 +371,12 @@ const chromeNavKey = (label: string) => ({ Marketplace: 'chrome.marketplace', Wi
 
   .avh-burger { display: none; margin-left: auto; border: 2px solid var(--avh-ink); border-radius: 100px; background: none; padding: 8px 11px; cursor: pointer; color: var(--avh-ink); }
 
-  .avh-mobile { display: none; }
+  /* [WEB-MOBILE-MENU-2] The menu belongs to the sticky header, not page flow.
+     Absolute positioning avoids moving the page when opened near its footer. */
+  .avh:not(.avh--sticky) { position: relative; }
+  .avh-mobile { display: none; position: absolute; inset: 100% 0 auto; z-index: 1;
+    overflow-y: auto; overscroll-behavior: contain; max-height: calc(100dvh - 120px);
+    box-shadow: 0 8px 12px #16161418; }
 
   @media (max-width: 1100px) {
     /* .avh-right holds Log in / Sign up; both are in the panel below now. */

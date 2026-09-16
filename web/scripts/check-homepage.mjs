@@ -41,6 +41,7 @@ assert.match(html, /aria-controls="avh-mobile"/, 'Mobile menu is accessible');
 assert.doesNotMatch(html, /data-motion-toggle|data-rail-train|start-dialog|This design preview|noindex/, 'Production page has no retired animation, placeholder or search exclusion');
 assert.doesNotMatch(html, /href="\/india(?:[/?#"]|$)|data-site-experience="global"|data-artwork="global-retro-decades"/, 'Single homepage has no retired country switch or global landing');
 assert.equal((html.match(/<header\b/g) || []).length, 1, 'Exactly one homepage header');
+assert.match(html.match(/<header\b[\s\S]*?<\/header>/)?.[0] || '', /id="avh-mobile"/, 'Mobile menu stays inside the sticky header when scrolled');
 assert.equal((html.match(/<footer\b/g) || []).length, 1, 'Exactly one homepage footer');
 assert.match(html, /class="[^"]*bazaar-footer/, 'Shared footer remains');
 assert(!existsSync(resolve(root, 'india/index.html')), 'Retired India URL has no duplicate static landing');
