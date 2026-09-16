@@ -1,8 +1,6 @@
 # Build the avatok.ai web client (web/) and deploy it to the Cloudflare Pages
 # project `avatok-app`. This repo's Pages project is NOT wired to Cloudflare's
-# git integration, so a plain `git push` never updates the live site — this
-# workflow is what makes a push to `main` actually deploy the website (the
-# android.yml / macos.yml workflows only build the mobile apps).
+# git integration. Only an explicit manual dispatch from main publishes it.
 #
 # Requires two repo secrets:
 #   CLOUDFLARE_API_TOKEN  — token with "Cloudflare Pages: Edit" on the account
@@ -10,36 +8,8 @@
 name: Deploy web (Cloudflare Pages)
 
 on:
-  # [WEB-AUTODEPLOY-1 2026-08-26, owner decision] Auto-deploy RE-ENABLED.
-  #
-  # It was disabled 2026-06-24 ("no web, just apk") — a statement of focus, not
-  # of safety — and the result was that web/ commits landed in git and never
-  # reached avatok.ai until someone remembered to run this by hand. The live
-  # site silently drifted behind the repo.
-  #
-  # This is NOT a breach of the 2026-07-04 no-auto-build rule. That rule is
-  # about APK/AAB builds: 30-80 minutes of CI that can reach real users on Play.
-  # This workflow builds no app, touches no store, and finishes in ~2 minutes.
-  # android.yml / avaconsult.yml / macos.yml stay workflow_dispatch-only.
-  #
-  # `scripts/git_safe_push.py` blocks a push when ANY workflow has a live
-  # `push:` trigger, so this file is named in that script's
-  # PUSH_TRIGGER_ALLOWED. The two MUST stay in sync: re-enabling a trigger here
-  # without the allowlist entry makes the repo unpushable for every agent.
-  push:
-    branches: [main]
-    paths:
-      - 'web/**'
-      - 'app/lib/core/ui/**'        # prebuild reads zine tokens from here
-      # [DESIGN-FLUID-1 2026-08-26] The bazaar comps are now SITE SOURCE, not
-      # just preview material: prebuild stages them into web/src/generated/ and
-      # /marketplace and /<creator>/<listing> inline them at build time. Without
-      # this path a design edit deployed to avatok-design.pages.dev while
-      # avatok.ai quietly kept serving the previous build's copy — the two
-      # disagreeing with nothing failing and no run to point at.
-      - 'design/live-streaming/**'
-      - '.github/workflows/web-deploy.yml'
-  workflow_dispatch:                  # allow manual "Run workflow"
+  # Builds and deployments require an explicit owner-requested dispatch.
+  workflow_dispatch:
 
 concurrency:
   group: web-deploy-${{ github.ref }}
@@ -48,7 +18,15 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: production
     steps:
+      - name: Guard explicit production dispatch from main
+        run: |
+          [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_REF" == refs/heads/main ]] || {
+            echo "Production web deployment requires a manual dispatch from main." >&2
+            exit 1
+          }
+
       - name: Checkout
         uses: actions/checkout@v4
 
