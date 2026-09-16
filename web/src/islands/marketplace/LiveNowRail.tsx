@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
+import { withDeadline } from '../../lib/requestDeadline';
 import { getLiveNow } from '../../lib/apiClient';
 import type { Card } from '../../lib/types';
-import { ListingTile, Pill, Spinner } from '../../components';
+import { ListingTile } from '../../components/ListingTile';
+import { Pill } from '../../components/Pill';
+import { Spinner } from '../../components/Spinner';
 // [WEB-POSTHOG-1] §2.3 market_live_rail_loaded.
 import { capture } from '../../lib/analytics';
 
@@ -23,9 +26,11 @@ export function LiveNowRail({ title = 'Live now', hideWhenEmpty = true }: LiveNo
   const ac = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    ac.current = new AbortController();
-    getLiveNow(ac.current.signal)
+    const controller = new AbortController();
+    ac.current = controller;
+    withDeadline((signal) => getLiveNow(signal), 10000, controller.signal)
       .then((r) => {
+        if (controller.signal.aborted) return;
         const listings = r.listings ?? [];
         setItems(listings);
         capture('market_live_rail_loaded', { count: listings.length });
@@ -33,7 +38,7 @@ export function LiveNowRail({ title = 'Live now', hideWhenEmpty = true }: LiveNo
       .catch((e) => {
         if ((e as Error)?.name !== 'AbortError') setFailed(true);
       });
-    return () => ac.current?.abort();
+    return () => controller.abort();
   }, []);
 
   if (failed) return null;

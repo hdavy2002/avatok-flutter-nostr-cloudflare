@@ -13,6 +13,7 @@
 // from /api/explore, and where the API has nothing, the slot renders empty
 // rather than inventing a plausible figure.
 import LiveNowRail from '../islands/marketplace/LiveNowRail.tsx';
+import { getMarketplaceSeed } from '../lib/marketplaceSeed';
 import ExploreGrid from '../islands/marketplace/ExploreGrid.tsx';
 import BazaarHero from './BazaarHero.astro';
 import BazaarSearchStrip from './BazaarSearchStrip.astro';
@@ -32,6 +33,9 @@ interface Props {
   showHero?: boolean;
 }
 const { hrefBase = '', group, q, showSplit = false, showHero = false } = Astro.props;
+// Public, anonymous data only, including when embedded in the private dashboard.
+const initialSeed = await getMarketplaceSeed(q);
+if (initialSeed.error) Astro.response.headers.set('Cache-Control', 'no-store');
 const mpBase = `${hrefBase}/marketplace`;
 
 // [MKT-3GROUP-WEB-1 2026-09-05] The tiles are the THREE marketplace GROUPS
@@ -119,7 +123,7 @@ const gutters = showHero ? 'mx-auto max-w-[1760px] px-4 sm:px-10' : '';
       of dead paper above the results on every normal day — part of what made
       the page read as boxed in. The rail brings its own bottom margin when it
       actually has something to show. */}
-  <div class="pt-8"><LiveNowRail client:visible /></div>
+  <div class="pt-8"><LiveNowRail client:load /></div>
 
   {/* [MARKET-BAZAAR-2] No heading above the results any more. Each vertical
       section brings its own numbered eyebrow and Anton heading, so a single
@@ -131,7 +135,8 @@ const gutters = showHero ? 'mx-auto max-w-[1760px] px-4 sm:px-10' : '';
         do not agree with each other. The dashboard has no strip, so the grid
         keeps its own. */}
     <ExploreGrid
-      client:visible
+      client:load
+      initialSeed={initialSeed}
       initialQ={q}
       initialGroup={group}
       hrefBase={hrefBase}
@@ -170,8 +175,8 @@ const gutters = showHero ? 'mx-auto max-w-[1760px] px-4 sm:px-10' : '';
 
 <script>
   // [WEB-POSTHOG-1] island_visible_never — both ExploreGrid and LiveNowRail
-  // hydrate with client:visible, so they only ever mount once their
-  // astro-island element scrolls into view. If that never actually happens
+  // hydrate with client:load. This observer is a fallback diagnostic for
+  // visible islands that failed to finish hydration. If that never actually happens
   // (the observer never fires, the component chunk 404s, a hydration error
   // throws before Astro clears the `ssr` marker) the section stays a dead
   // server-rendered husk forever with nothing telling us so. This watches

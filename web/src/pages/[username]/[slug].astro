@@ -9,11 +9,12 @@
 export const prerender = false;
 
 import Base from '../../layouts/Base.astro';
+import { getListingCompanions } from '../../lib/listingCompanions';
 import { scheduleStateOf } from '../../lib/card';
 import ListingDetailsComp from '../../components/ListingDetailsComp.astro';
-import { getListingBySlug, getListingReviews, getListingSlots, getExplore, getCreator, ApiError } from '../../lib/apiClient';
+import { getListingBySlug, ApiError } from '../../lib/apiClient';
 import { listingOg, listingJsonLd, listingBreadcrumbLd } from '../../lib/og';
-import type { Listing, ReviewList, ListingSlot, Card, Creator } from '../../lib/types';
+import type { Listing } from '../../lib/types';
 
 const { username, slug } = Astro.params;
 
@@ -48,23 +49,7 @@ const pageUrl = new URL(Astro.url.pathname, Astro.site ?? 'https://avatok.ai').t
 const eventLd = listingJsonLd(listing, pageUrl);
 const crumbLd = listingBreadcrumbLd(listing, pageUrl);
 
-let reviewList: ReviewList | null = null;
-try { reviewList = await getListingReviews(listing.id, {}); } catch { reviewList = null; }
-
-let slots: ListingSlot[] | null = null;
-try { slots = await getListingSlots(listing.id); } catch { slots = null; }
-
-let browseMore: Card[] = [];
-try {
-  const page = await getExplore({ section: listing.section ?? undefined, category: listing.category ?? undefined, limit: 9 });
-  browseMore = page.listings ?? [];
-} catch { browseMore = []; }
-
-let creatorProfile: Creator | null = null;
-if (listing.creator?.uid) {
-  try { creatorProfile = await getCreator(listing.creator.uid); } catch { creatorProfile = null; }
-}
-const creatorListings: Card[] = creatorProfile?.listings ?? [];
+const { reviewList, slots, browseMore, creatorProfile, creatorListings } = await getListingCompanions(listing);
 const isOwner = Boolean(listing.viewer?.is_owner);
 ---
 

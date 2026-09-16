@@ -7,6 +7,7 @@
 // Do NOT add a helper for an endpoint that isn't in §4.
 
 import { API_BASE } from './config';
+import { withDeadline } from './requestDeadline';
 import type { Card, CardPage, Creator, CreatorStats, CreatorTrustStats, Listing, ListingSlot, Review, ReviewEligibility, ReviewList } from './types';
 import { apiError, captureException } from './analytics';
 
@@ -59,6 +60,8 @@ export interface RequestOptions {
   /** Extra headers. */
   headers?: Record<string, string>;
   signal?: AbortSignal;
+  /** Opt-in bound for finite reads, including response-body delivery. */
+  timeoutMs?: number;
 }
 
 function buildUrl(path: string, query?: RequestOptions['query']): string {
@@ -82,8 +85,11 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
  * listings/bookings roll up into one queryable row instead of one per id.
  */
 export async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+  if (opts.timeoutMs != null) {
+    return withDeadline((signal) => request<T>(path, { ...opts, timeoutMs: undefined, signal }), opts.timeoutMs, opts.signal);
+  }
   const { method = 'GET', body, auth, query, headers = {}, signal } = opts;
-  const init: RequestInit = { method, headers: { ...headers }, signal };
+  const init: RequestInit = { method, headers: { ...headers }, signal, ...(auth ? { cache: 'no-store' as const } : {}) };
   if (auth) (init.headers as Record<string, string>)['Authorization'] = `Bearer ${auth}`;
   if (body !== undefined) {
     (init.headers as Record<string, string>)['Content-Type'] = 'application/json';

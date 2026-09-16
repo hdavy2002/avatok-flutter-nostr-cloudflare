@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ListingTile } from '../../components';
+import { ListingTile } from '../../components/ListingTile';
 import type { Card } from '../../lib/types';
 import { blipsForGroup, type GroupDisplay } from '../../lib/marketGroups';
 import type { MarketCategory } from './api';
@@ -148,7 +148,7 @@ export function VerticalSection({
             href={hrefBase ? `${hrefBase}/l/${encodeURIComponent(l.id)}` : undefined}
             position={i}
             section={group.id}
-            enableSkeleton
+           
           />
         ))}
       </div>

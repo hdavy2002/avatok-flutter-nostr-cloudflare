@@ -9,12 +9,13 @@
 export const prerender = false;
 
 import Base from '../../layouts/Base.astro';
+import { getListingCompanions } from '../../lib/listingCompanions';
 import { scheduleStateOf } from '../../lib/card';
 import ListingDetailsComp from '../../components/ListingDetailsComp.astro';
-import { getListing, getListingReviews, getListingSlots, getExplore, getCreator, ApiError } from '../../lib/apiClient';
+import { getListing, ApiError } from '../../lib/apiClient';
 import { listingOg, listingJsonLd, listingBreadcrumbLd } from '../../lib/og';
 import { listingPath } from '../../lib/urls';
-import type { Listing, ReviewList, ListingSlot, Card, Creator } from '../../lib/types';
+import type { Listing } from '../../lib/types';
 
 const { id } = Astro.params;
 
@@ -60,23 +61,7 @@ const crumbLd = listingBreadcrumbLd(listing, pageUrl);
 // [LISTING-DETAILS-COMP-1] Same fail-soft companion fetches ListingDetailView
 // already used — a 404/503/network error on any of these hides its section
 // rather than breaking a public page for a real listing.
-let reviewList: ReviewList | null = null;
-try { reviewList = await getListingReviews(listing.id, {}); } catch { reviewList = null; }
-
-let slots: ListingSlot[] | null = null;
-try { slots = await getListingSlots(listing.id); } catch { slots = null; }
-
-let browseMore: Card[] = [];
-try {
-  const page = await getExplore({ section: listing.section ?? undefined, category: listing.category ?? undefined, limit: 9 });
-  browseMore = page.listings ?? [];
-} catch { browseMore = []; }
-
-let creatorProfile: Creator | null = null;
-if (listing.creator?.uid) {
-  try { creatorProfile = await getCreator(listing.creator.uid); } catch { creatorProfile = null; }
-}
-const creatorListings: Card[] = creatorProfile?.listings ?? [];
+const { reviewList, slots, browseMore, creatorProfile, creatorListings } = await getListingCompanions(listing);
 const isOwner = Boolean(listing.viewer?.is_owner);
 ---
 

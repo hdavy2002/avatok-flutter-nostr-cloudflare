@@ -4,10 +4,12 @@
  * affiliate snapshot. Everything is real data from the worker (listing engagement
  * is server-tracked via PostHog); it auto-refreshes every 45s so it reads live.
  */
-import { useCallback, useEffect, useState } from 'react';
-import { getActiveTokenWaited as getActiveToken } from '../../lib/clerk';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { getActiveToken, getAuthState, subscribeAuthState } from '../../lib/clerk';
 import { request } from '../../lib/apiClient';
 import { Spinner } from '../../components/Spinner';
+import { withDeadline } from '../../lib/requestDeadline';
+import { markReady } from '../../lib/performance';
 import { inr } from '../../lib/money';
 
 // [TOKENS-INR-RAIL-1] Token counts, 1 token = ₹1. Was $((c)/100).
@@ -51,53 +53,82 @@ function Bars({ data, fmt }: { data: { label: string; value: number; tone: strin
   );
 }
 
-function Inner() {
-  const [token, setToken] = useState<string | null>(null);
-  const [checked, setChecked] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [last, setLast] = useState<number>(0);
-  const [ident, setIdent] = useState<any>(null);
-  const [balance, setBalance] = useState<number | null>(null);
-  const [earn, setEarn] = useState<any>(null);
-  const [rows, setRows] = useState<Row[]>([]);
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [unread, setUnread] = useState(0);
-  const [aff, setAff] = useState<any>(null);
-
-  useEffect(() => { void (async () => { setToken(await getActiveToken()); setChecked(true); })(); }, []);
-
-  const load = useCallback(async (t: string) => {
-    const pull = async <T,>(p: string, q?: Record<string, any>) => { try { return await request<T>(p, { auth: t, query: q }); } catch { return null as any; } };
-    const [id, bal, er, mine, bk, nt, un, af] = await Promise.all([
-      pull<any>('/api/identity/level'),
-      pull<any>('/api/wallet/balance'),
-      pull<any>('/api/wallet/earnings'),
-      pull<{ listings: Row[] }>('/api/listings/mine'),
-      pull<{ bookings?: Booking[] }>('/api/booking/list', { role: 'creator', when: 'upcoming' }),
-      pull<{ items?: Note[] }>('/api/notifications', { limit: 6 }),
-      pull<{ unread?: number }>('/api/notifications/unread'),
-      pull<any>('/api/affiliate/me'),
-    ]);
-    if (id) setIdent(id);
-    if (bal) setBalance(Number(bal.balance ?? 0));
-    if (er) setEarn(er);
-    if (mine) setRows(mine.listings ?? []);
-    if (bk) setBookings((bk.bookings ?? (Array.isArray(bk) ? bk : [])) as Booking[]);
-    if (nt) setNotes(nt.items ?? []);
-    if (un) setUnread(Number(un.unread ?? 0));
-    if (af) setAff(af);
-    setLast(Date.now()); setLoading(false);
-  }, []);
-
+type ReadState<T> = { data: T | null; pending: boolean; error: boolean; retry: () => void; updated: number };
+const CARD_NAMES = ['identity', 'balance', 'earnings', 'listings', 'bookings', 'notifications', 'unread', 'affiliate'];
+function useCardRead<T>(accountId: string | null, name: string, path: string, query?: Record<string, string | number>): ReadState<T> {
+  const [state, setState] = useState({ data: null as T | null, pending: true, error: false, updated: 0 });
+  const [attempt, setAttempt] = useState(0);
+  const queryKey = JSON.stringify(query ?? {});
   useEffect(() => {
-    if (!checked || !token) { if (checked) setLoading(false); return; }
-    void load(token);
-    const iv = setInterval(() => { if (!document.hidden) void load(token); }, 45000);
-    return () => clearInterval(iv);
-  }, [checked, token, load]);
-
-  if (!checked || (token && loading)) return <div className="flex items-center gap-3 p-10"><Spinner size={24} /> <span className="font-body font-bold text-inkSoft">Building your cockpit…</span></div>;
+    if (!accountId) return;
+    let active = true;
+    let controller: AbortController | undefined;
+    const load = async () => {
+      controller?.abort();
+      const mine = new AbortController();
+      controller = mine;
+      setState((previous) => ({ ...previous, pending: true, error: false }));
+      const started = performance.now();
+      try {
+        const data = await withDeadline(async (signal) => {
+          const token = await getActiveToken();
+          if (!token || getAuthState().accountId !== accountId || signal.aborted) throw new Error('Session changed');
+          return request<T>(path, { auth: token, query: JSON.parse(queryKey), signal });
+        }, 10000, mine.signal);
+        if (!active || mine.signal.aborted || getAuthState().accountId !== accountId) return;
+        setState({ data, pending: false, error: false, updated: Date.now() });
+        markReady('dashboard_card_ready', { card: name }, started);
+      } catch {
+        if (!active || mine.signal.aborted || getAuthState().accountId !== accountId) return;
+        setState((previous) => ({ ...previous, pending: false, error: true }));
+      }
+    };
+    void load();
+    const timer = setInterval(() => { if (!document.hidden) void load(); }, 45000);
+    return () => { active = false; controller?.abort(); clearInterval(timer); };
+  }, [accountId, name, path, queryKey, attempt]);
+  const retry = useCallback(() => setAttempt((value) => value + 1), []);
+  return { ...state, retry };
+}
+function CardRead({ state, label, children }: { state: ReadState<unknown>; label: string; children: ReactNode }) {
+  return <div className="min-w-0" aria-busy={state.pending}>
+    {state.error && <div role="alert" className="mb-2 rounded-zine border-zine border-coral bg-card p-3 font-body text-sm">Could not update {label}. <button type="button" className="underline" onClick={state.retry}>Retry</button></div>}
+    {state.data == null
+      ? <div role="status" className="min-h-24 rounded-zine border-zine border-ink bg-paper2 p-4 font-body font-bold text-inkSoft">{state.pending ? <><Spinner size={16} /> Loading {label}…</> : `${label} unavailable`}</div>
+      : children}
+  </div>;
+}
+function Inner({ accountId }: { accountId: string | null }) {
+  const identity = useCardRead<any>(accountId, 'identity', '/api/identity/level');
+  const wallet = useCardRead<any>(accountId, 'balance', '/api/wallet/balance');
+  const earnings = useCardRead<any>(accountId, 'earnings', '/api/wallet/earnings');
+  const listings = useCardRead<{ listings: Row[] }>(accountId, 'listings', '/api/listings/mine');
+  const upcoming = useCardRead<{ bookings?: Booking[] }>(accountId, 'bookings', '/api/booking/list', { role: 'creator', when: 'upcoming' });
+  const notifications = useCardRead<{ items?: Note[] }>(accountId, 'notifications', '/api/notifications', { limit: 6 });
+  const unreadCard = useCardRead<{ unread?: number }>(accountId, 'unread', '/api/notifications/unread');
+  const affiliate = useCardRead<any>(accountId, 'affiliate', '/api/affiliate/me');
+  const cards = [identity, wallet, earnings, listings, upcoming, notifications, unreadCard, affiliate];
+  const firstReady = useRef(false);
+  const allReady = useRef(false);
+  useEffect(() => {
+    if (!firstReady.current && cards.some((card) => card.data != null)) {
+      firstReady.current = true;
+      markReady('dashboard_first_card_ready');
+    }
+    if (!allReady.current && cards.every((card) => card.data != null)) {
+      allReady.current = true;
+      markReady('dashboard_ready', { cards: CARD_NAMES.length });
+    }
+  });
+  const ident = identity.data;
+  const balance = wallet.data?.balance ?? null;
+  const earn = earnings.data;
+  const rows = listings.data?.listings ?? [];
+  const bookings = (Array.isArray(upcoming.data) ? upcoming.data : upcoming.data?.bookings ?? []) as Booking[];
+  const notes = notifications.data?.items ?? [];
+  const unread = Number(unreadCard.data?.unread ?? 0);
+  const aff = affiliate.data;
+  const last = Math.max(...cards.map((card) => card.updated));
 
   const published = rows.filter((r) => (r.status ?? 'draft') === 'published' || r.status === 'live');
   const drafts = rows.filter((r) => (r.status ?? 'draft') === 'draft');
@@ -113,6 +144,7 @@ function Inner() {
   return (
     <div className="flex flex-col gap-6">
       {/* Identity / status banner */}
+      <CardRead state={identity} label="identity">
       <div className="flex flex-wrap items-center gap-3 rounded-zine border-zine border-ink bg-paper2 p-4 shadow-zine-sm">
         <div className="flex items-center gap-3">
           <span className={`flex h-10 w-10 items-center justify-center rounded-zine border-zine border-ink ${verified ? 'bg-mint' : 'bg-card'} font-display text-[16px] font-semibold text-ink shadow-zine-xs`}>L{level}</span>
@@ -132,19 +164,22 @@ function Inner() {
         </div>
       </div>
 
+      </CardRead>
+
       {/* KPI cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-        <Stat label="Wallet" value={usd(balance)} sub="Tokens balance" tone="bg-lime" href="/dashboard/wallet" />
-        <Stat label="Available" value={usd(earn?.released_total)} sub="to withdraw" tone="bg-mint" href="/dashboard/payout" />
-        <Stat label="Clearing" value={usd(earn?.held)} sub="7-day hold" tone="bg-card" />
-        <Stat label="Listings" value={String(rows.length)} sub={`${published.length} live · ${drafts.length} draft`} tone="bg-blue" href="/dashboard/listings" />
-        <Stat label="Bookings" value={String(totalJoins)} sub="all-time joins" tone="bg-lilac" href="/dashboard/bookings" />
-        <Stat label="Inbox" value={String(unread)} sub="unread" tone="bg-coral" href="/dashboard/inbox" />
+        <CardRead state={wallet} label="wallet"><Stat label="Wallet" value={usd(balance)} sub="Tokens balance" tone="bg-lime" href="/dashboard/wallet" /></CardRead>
+        <CardRead state={earnings} label="available"><Stat label="Available" value={usd(earn?.released_total)} sub="to withdraw" tone="bg-mint" href="/dashboard/payout" /></CardRead>
+        <CardRead state={earnings} label="clearing"><Stat label="Clearing" value={usd(earn?.held)} sub="7-day hold" tone="bg-card" /></CardRead>
+        <CardRead state={listings} label="listings"><Stat label="Listings" value={String(rows.length)} sub={`${published.length} live · ${drafts.length} draft`} tone="bg-blue" href="/dashboard/listings" /></CardRead>
+        <CardRead state={listings} label="bookings"><Stat label="Bookings" value={String(totalJoins)} sub="all-time joins" tone="bg-lilac" href="/dashboard/bookings" /></CardRead>
+        <CardRead state={unreadCard} label="inbox"><Stat label="Inbox" value={String(unread)} sub="unread" tone="bg-coral" href="/dashboard/inbox" /></CardRead>
       </div>
 
       {/* Main grid */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 flex flex-col gap-4">
+          <CardRead state={listings} label="listing performance">
           <div className="rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm">
             <div className="mb-4 flex items-center gap-2">
               <h2 className="font-display font-semibold text-[18px] text-ink">Listing performance</h2>
@@ -156,6 +191,8 @@ function Inner() {
               <Bars data={topListings.map((l, i) => ({ label: l.title || 'Untitled', value: l.joined_count ?? 0, tone: TONES[i % TONES.length] }))} />
             )}
           </div>
+
+          </CardRead>
 
           {rows.length > 0 && (
             <div className="overflow-hidden rounded-zine border-zine border-ink bg-card shadow-zine-sm">
@@ -176,18 +213,21 @@ function Inner() {
             </div>
           )}
 
+          <CardRead state={earnings} label="earnings">
           <div className="rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm">
             <h2 className="mb-4 font-display font-semibold text-[18px] text-ink">Earnings</h2>
             <Bars fmt={usd} data={[
               { label: 'Available', value: Number(earn?.released_total ?? 0), tone: 'bg-mint' },
               { label: 'Clearing', value: Number(earn?.held ?? 0), tone: 'bg-blue' },
               { label: 'Upcoming 7d', value: Number(earn?.upcoming ?? 0), tone: 'bg-lilac' },
-              { label: 'Affiliate', value: Number(aff?.totals?.lifetime_coins ?? 0), tone: 'bg-coral' },
+              ...(aff ? [{ label: 'Affiliate', value: Number(aff.totals?.lifetime_coins ?? 0), tone: 'bg-coral' }] : []),
             ]} />
           </div>
+          </CardRead>
         </div>
 
         <div className="flex flex-col gap-4">
+          <CardRead state={notifications} label="inbox">
           <div className="rounded-zine border-zine border-ink bg-card p-4 shadow-zine-sm">
             <div className="mb-3 flex items-center gap-2">
               <h2 className="font-display font-semibold text-[16px] text-ink">Inbox</h2>
@@ -209,6 +249,8 @@ function Inner() {
             )}
           </div>
 
+          </CardRead>
+          <CardRead state={upcoming} label="upcoming bookings">
           <div className="rounded-zine border-zine border-ink bg-card p-4 shadow-zine-sm">
             <div className="mb-3 flex items-center gap-2">
               <h2 className="font-display font-semibold text-[16px] text-ink">Upcoming</h2>
@@ -227,6 +269,8 @@ function Inner() {
             )}
           </div>
 
+          </CardRead>
+          <CardRead state={affiliate} label="affiliate">
           <div className="rounded-zine border-zine border-ink bg-paper2 p-4 shadow-zine-sm">
             <div className="mb-1 flex items-center gap-2">
               <h2 className="font-display font-semibold text-[16px] text-ink">Affiliate</h2>
@@ -241,11 +285,28 @@ function Inner() {
               <p className="font-body font-bold text-[13px] text-inkSoft">Earn 10% for life — <a href="/dashboard/affiliate" className="text-blueInk underline">become an affiliate →</a></p>
             )}
           </div>
+          </CardRead>
         </div>
       </div>
     </div>
   );
 }
 
-export function Overview() { return <Inner />; }
+export function Overview() {
+  const [auth, setAuth] = useState<{ ready: boolean; accountId: string | null }>({ ready: false, accountId: null });
+  const [authSlow, setAuthSlow] = useState(false);
+  useEffect(() => subscribeAuthState(setAuth), []);
+  useEffect(() => {
+    setAuthSlow(false);
+    if (auth.ready) return;
+    const timer = setTimeout(() => setAuthSlow(true), 10000);
+    return () => clearTimeout(timer);
+  }, [auth.ready]);
+  if (auth.ready && !auth.accountId) return <p className="p-6 font-body">Sign in to view your studio. <a href="/sign-in?next=%2Fdashboard" className="underline">Sign in</a></p>;
+  // Account-keyed remount discards every old card synchronously; there is no persisted personal cache.
+  return <>
+    {authSlow && <div role="alert" className="mb-4 rounded-zine border-zine border-coral bg-card p-4 font-body">Sign-in is taking longer than expected. <button type="button" className="underline" onClick={() => window.location.reload()}>Retry</button></div>}
+    <Inner key={(auth.ready && auth.accountId) || 'pending'} accountId={auth.ready ? auth.accountId : null} />
+  </>;
+}
 export default Overview;

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getExplore, request } from '../../lib/apiClient';
 import { searchListings, getCategories, type MarketCategory } from './api';
 import type { Card, CardPage } from '../../lib/types';
-import { Button, Spinner } from '../../components';
+import { Button } from '../../components/Button';
+import { Spinner } from '../../components/Spinner';
 import { SearchBox } from './SearchBox';
 import { FilterRail, PRICE_BANDS, activeFilterCount, type RailState } from './FilterRail';
 import { VerticalSection } from './VerticalSection';
@@ -10,9 +11,13 @@ import { LiveNowRail } from './LiveNowRail';
 import { groupByGroupId, groupCountsFromSectionCounts, GROUP_ORDER, type GroupId } from '../../lib/marketGroups';
 import { IslandBoundary } from '../../components/IslandBoundary';
 // [WEB-POSTHOG-1] §2.3 market_browse_loaded / market_browse_error / market_search.
+import type { MarketplaceSeed } from '../../lib/marketplaceSeed';
+import { withDeadline } from '../../lib/requestDeadline';
+import { markReady } from '../../lib/performance';
 import { capture } from '../../lib/analytics';
 
 export interface ExploreGridProps {
+  initialSeed?: MarketplaceSeed;
   /** Initial search query from the URL (?q=), set by the hero search strip. */
   initialQ?: string;
   /** Render the grid's own search field. False when the page has the hero strip. */
@@ -55,6 +60,7 @@ const EMPTY_COUNTS = Object.fromEntries(GROUP_ORDER.map((g) => [g, 0])) as Recor
  * computes over the whole catalogue rather than the current page.
  */
 function ExploreGridInner({
+  initialSeed,
   initialQ,
   initialGroup,
   pageSize = PAGE,
@@ -71,11 +77,13 @@ function ExploreGridInner({
 
   // Closed at every width — see the drawer note on the render below.
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [items, setItems] = useState<Card[]>([]);
-  const [counts, setCounts] = useState<Record<GroupId, number> | null>(null);
-  const [cursor, setCursor] = useState<string | null>(null);
+  const [items, setItems] = useState<Card[]>(initialSeed?.page?.listings ?? []);
+  const [counts, setCounts] = useState<Record<GroupId, number> | null>(groupCountsFromSectionCounts(initialSeed?.page?.section_counts));
+  const [cursor, setCursor] = useState<string | null>(initialSeed?.page?.cursor ?? null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialSeed?.error ?? null);
+  const firstEffect = useRef(true);
+  const activeRequest = useRef<AbortController | null>(null);
   const reqId = useRef(0);
 
   // [MKT-3GROUP-WEB-1] Sub-category blips, per group. The server's categories
@@ -114,7 +122,7 @@ function ExploreGridInner({
    * server shipped the empty state as static HTML, and a visitor arriving on
    * ?q=… was told "Koi nahi mila, boss." about their own search before it ran.
    */
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useState(Boolean(initialSeed));
 
   const usingSearch = q.trim().length > 0;
 
@@ -139,6 +147,9 @@ function ExploreGridInner({
 
   const fetchPage = useCallback(
     async (nextCursor: string | null, append: boolean) => {
+      activeRequest.current?.abort();
+      const controller = new AbortController();
+      activeRequest.current = controller;
       const mine = ++reqId.current;
       setLoading(true);
       setError(null);
@@ -169,12 +180,13 @@ function ExploreGridInner({
       };
 
       try {
-        const page: CardPage = usingSearch
-          ? await searchListings({ q: q.trim(), ...common })
-          : await getExplore(common);
+        const page: CardPage = await withDeadline((signal) => usingSearch
+          ? searchListings({ q: q.trim(), ...common }, signal)
+          : getExplore(common, signal), 10000, controller.signal);
         if (mine !== reqId.current) return; // a newer request superseded this one
         const ms = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
         const results = page.listings?.length ?? 0;
+        markReady('marketplace_results_ready', { count: results, source: 'client', search: usingSearch }, t0);
         if (usingSearch) {
           capture('market_search', { q_len: q.trim().length, results, ms });
         } else {
@@ -211,11 +223,20 @@ function ExploreGridInner({
   );
 
   useEffect(() => {
+    if (firstEffect.current) {
+      firstEffect.current = false;
+      if (initialSeed) {
+        markReady('marketplace_results_ready', { count: initialSeed.page?.listings?.length ?? 0, source: 'server', error: Boolean(initialSeed.error) });
+        return;
+      }
+    }
     setItems([]);
     setCursor(null);
     void fetchPage(null, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resetKey]);
+
+  useEffect(() => () => { ++reqId.current; activeRequest.current?.abort(); }, []);
 
   const allSections = useMemo(() => groupByGroupId(items), [items]);
   // [MKT-3GROUP-WEB-1] `rail.group` narrows which already-bucketed sections

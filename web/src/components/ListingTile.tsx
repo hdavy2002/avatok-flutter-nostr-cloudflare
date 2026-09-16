@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react';
-import type { MouseEvent } from 'react';
+import { Component, lazy, Suspense, useCallback, useState } from 'react';
+import type { MouseEvent, ReactNode } from 'react';
 import { cfImage } from '../lib/config';
 import {
   toCardView, languageLabel, priceLabel,
@@ -10,11 +10,21 @@ import type { Card as CardModel, CardView } from '../lib/types';
 import type { Listing } from '../lib/types';
 // [WEB-POSTHOG-1] Contract: Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md §2.3.
 import { capture } from '../lib/analytics';
-import { getActiveToken, requireGuestAuth } from '../lib/clerk';
 import { addFavorite, removeFavorite, getListing } from '../lib/apiClient';
 import { Modal } from './Modal';
-import BookingFlow from '../islands/checkout/BookingFlow';
-import QuickInfo from '../islands/listing/QuickInfo';
+const BookingFlow = lazy(() => import('../islands/checkout/BookingFlow'));
+const QuickInfo = lazy(() => import('../islands/listing/QuickInfo'));
+
+/** Chunk failures retain the card and a normal navigation path. */
+class IntentBoundary extends Component<{ href: string; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    return this.state.failed
+      ? <div role="alert" className="rounded-zine border-zine border-ink bg-card p-4">Could not open this dialog. <a className="underline" href={this.props.href}>Open listing →</a></div>
+      : this.props.children;
+  }
+}
 
 export interface ListingTileProps {
   listing: CardModel;
@@ -332,6 +342,7 @@ export function ListingTile({
     setFavBusy(true);
     void (async () => {
       try {
+        const { getActiveToken, requireGuestAuth } = await import('../lib/clerk');
         let token = await getActiveToken();
         if (!token) {
           token = await requireGuestAuth(); // opens the sign-in gate for a guest
@@ -729,6 +740,7 @@ export function ListingTile({
       )}
     </a>
     {quickOpen && (
+      <IntentBoundary href={target}><Suspense fallback={<Modal open onClose={() => setQuickOpen(false)} title="Opening details…"><a href={target}>Open listing details →</a></Modal>}>
       <QuickInfo
         card={c}
         listing={quickListing}
@@ -741,6 +753,7 @@ export function ListingTile({
           void getListing(c.id).then((full) => setBookingListing(full)).catch(() => undefined).finally(() => setBookingLoading(false));
         }}
       />
+      </Suspense></IntentBoundary>
     )}
     {(bookingLoading || bookingListing) && (
       <Modal
@@ -749,7 +762,7 @@ export function ListingTile({
         maxWidth={560}
         title={<div className="flex items-center justify-between gap-3"><span>{bookingListing?.title ?? 'Opening booking…'}</span><button type="button" aria-label="Close booking" onClick={() => { setBookingListing(null); setBookingLoading(false); }} className="text-2xl leading-none text-ink">×</button></div>}
       >
-        {bookingListing ? <BookingFlow listing={bookingListing} /> : <div className="py-8 text-center font-mono font-bold text-inkSoft">Loading booking…</div>}
+        {bookingListing ? <IntentBoundary href={target}><Suspense fallback={<div role="status">Loading booking…</div>}><BookingFlow listing={bookingListing} /></Suspense></IntentBoundary> : <div className="py-8 text-center font-mono font-bold text-inkSoft">Loading booking…</div>}
       </Modal>
     )}
     </>
