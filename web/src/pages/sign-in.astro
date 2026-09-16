@@ -6,11 +6,12 @@
 //
 // Astro page shell + ONE React island for the form. The shell is server-rendered
 // so the artwork, wordmark and layout paint immediately; only the interactive
-// form hydrates. `chrome={false}` drops the site header and footer — the auth
-// screens are a standalone surface in the handoff, with their own ornaments.
+// form hydrates. `chrome={false}` keeps Base's footer disabled; the shared
+// SiteHeader renders above the auth screen and its own ornaments.
 export const prerender = false;
 
 import Base from '../layouts/Base.astro';
+import SiteHeader from '../components/SiteHeader.astro';
 import LoginIsland from '../islands/auth/LoginIsland.tsx';
 import { clerkFapiHost } from '../lib/config';
 import '../styles/auth.css';
@@ -41,6 +42,8 @@ const clerkHost = clerkFapiHost();
       </Fragment>
     )}
   </Fragment>
+
+  <SiteHeader />
 
   <div class="auth">
     <div class="auth-shell">
