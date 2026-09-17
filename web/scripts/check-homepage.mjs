@@ -216,7 +216,7 @@ const campaignImages = [...html.matchAll(/<meta property="og:image" content="([^
 assert.equal(campaignImages.length, 1, 'Homepage advertises one creator preview image');
 assert.match(campaignImages[0], /^https:\/\/avatok\.ai\/assets\/home\/avatok-creator-constellation\.png$/, 'Homepage advertises the approved creator preview image');
 assert.equal(meta(html, 'og:title'), 'Apna hunar. Apni kamaai. · avaTOK');
-assert.equal(meta(html, 'og:description'), 'Turn your skills into live events, 1:1 sessions and small-group classes. Create your listing, set your price, and start your show on avaTOK.');
+assert.equal(meta(html, 'og:description'), 'Turn your fanbase into paid live events, private 1:1 video meetups and group sessions. Your page, your price, your people.');
 assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'twitter:image'), campaignImages[0]);
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));
