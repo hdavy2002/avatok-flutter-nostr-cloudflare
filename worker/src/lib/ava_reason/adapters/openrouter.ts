@@ -19,6 +19,11 @@ export async function run(env: ReasonEnv, ctx: AdapterCtx): Promise<AdapterOut> 
   if (!key) throw new Error("openrouter key missing");
   const body = buildChatBody(ctx.req, ctx.body);
   (body as any).model = ctx.model;
+  // Google Workspace/Drive data must never be routed to a provider that
+  // retains prompts or collects them for training. OpenRouter enforces this
+  // per request and rejects non-compliant endpoints instead of silently
+  // falling back to one.
+  (body as any).provider = { zdr: true, data_collection: "deny" };
   const res = await fetch(OPENROUTER_URL, {
     method: "POST",
     headers: orHeaders(key, ctx.title),
@@ -40,6 +45,7 @@ export async function stream(env: ReasonEnv, ctx: AdapterCtx): Promise<Response>
   const body = buildChatBody(ctx.req, ctx.body);
   (body as any).model = ctx.model;
   (body as any).stream = true;
+  (body as any).provider = { zdr: true, data_collection: "deny" };
   return fetch(OPENROUTER_URL, {
     method: "POST",
     headers: orHeaders(key, ctx.title),

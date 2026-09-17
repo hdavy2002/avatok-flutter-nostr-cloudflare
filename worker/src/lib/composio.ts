@@ -842,7 +842,10 @@ async function orStep(
   opts?: { toolChoice?: any; timeoutMs?: number },
 ): Promise<{ text: string; calls: OrCall[]; usage?: OrUsage }> {
   const key = (env as any).OPENROUTER_API_KEY ?? "";
-  const body: any = { model, messages };
+  // Connected Google-app tool results may contain Workspace data. Require
+  // OpenRouter's zero-retention and no-data-collection routing on every tool
+  // completion, including the fallback model.
+  const body: any = { model, messages, provider: { zdr: true, data_collection: "deny" } };
   // [AVA-FAST-1 2026-08-14] Owner: the chat lanes must be fast — Gemini 3.x
   // flash models THINK BY DEFAULT (dynamic thinking budget), which adds
   // seconds of dead air before the first token. OpenRouter's unified
@@ -920,7 +923,7 @@ export async function orStreamStep(
   // stream_options.include_usage asks OpenRouter to emit a final usage-only chunk
   // (empty choices, `usage` populated) so streamed steps can be metered too —
   // otherwise only non-streamed orStep() calls would report token spend.
-  const body: any = { model, messages, stream: true, stream_options: { include_usage: true } };
+  const body: any = { model, messages, stream: true, stream_options: { include_usage: true }, provider: { zdr: true, data_collection: "deny" } };
   // [AVA-FAST-1] Same thinking-off rule as orStep() above — the STREAMED lane
   // is the user-facing one, so first-token latency matters most here.
   if (/gemini/i.test(model)) body.reasoning = { enabled: false };
