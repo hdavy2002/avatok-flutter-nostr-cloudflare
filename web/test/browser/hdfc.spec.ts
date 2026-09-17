@@ -92,13 +92,21 @@ test('polling lasts beyond five minutes; expiry check stays on same payment with
 });
 
 test('replacement requires confirmation and preserves canonical earlier status link',async({page})=>{
-  const f=await smoke(page);await page.goto('/');
+  const f=await smoke(page,null);await page.goto('/');
+  await page.getByRole('button',{name:'Create ₹1 UPI QR'}).click();
+  await expect(page.getByRole('img',{name:'UPI payment QR code'})).toBeVisible();
+  const orders=()=>f.calls.filter(c=>c.path.endsWith('/order'));
+  expect(orders()).toHaveLength(1);
+  expect(orders()[0].body).not.toHaveProperty('replace_intent_id');
   await page.getByRole('button',{name:'Replace this QR explicitly'}).click();
-  expect(f.calls.some(c=>c.path.endsWith('/order'))).toBeFalsy();
+  expect(orders()).toHaveLength(1);
   await expect(page.getByRole('alert')).toContainText('does not refund');
   await page.getByRole('button',{name:'Confirm replacement'}).click();
+  // The earlier-payment link renders before the asynchronous mutation finishes.
+  await expect.poll(()=>orders().filter(c=>c.body.replace_intent_id==='intent-a').length).toBe(1);
+  expect(orders()).toHaveLength(2);
+  await expect(page).toHaveURL(/\?intent=intent-b$/);
   await expect(page.getByRole('link',{name:'View earlier payment'})).toHaveAttribute('href','?intent=intent-a');
-  expect(f.calls.find(c=>c.path.endsWith('/order'))?.body.replace_intent_id).toBe('intent-a');
 });
 
 test('server account change clears payment before queued reference mutation',async({page})=>{
