@@ -65,7 +65,7 @@ const categories = [
         <picture class="original-mobile-heading"><source type="image/webp" srcset={publicImage(`${root}formats-heading.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img src={publicImage(`${root}formats-heading.png`, { width: 1600, fit: 'scale-down' })} width="630" height="116" alt="" loading="lazy" decoding="async" /></picture>
         <p data-i18n="web-common.e073ec6e116422b9" class="original-mobile-intro">One place to go live, get booked, and get paid around the world.</p>
         <div class="original-format-stack">{formats.map(format => <a href={format.href} aria-label={format.label}><picture><source type="image/webp" srcset={publicImage(`${root}format-${format.name}.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img src={publicImage(`${root}format-${format.name}.png`, { width: 1600, fit: 'scale-down' })} width={format.width} height={format.height} alt={format.label} loading="lazy" decoding="async" /></picture></a>)}</div>
-        <img class="original-paper-divider" src={`${root}paper-divider.webp`} width="420" height="29" alt="" loading="lazy" />
+        <img class="original-paper-divider" src={publicImage(`${root}paper-divider.webp`, { width: 420, fit: 'scale-down', format: 'webp' })} width="420" height="29" alt="" loading="lazy" />
       </div>
     </section>
   </div>
@@ -79,7 +79,7 @@ const categories = [
       <p data-i18n="web-common.1f0c9072e3e50f81" class="original-mobile-intro">Fans pay in their currency. You receive in yours.</p>
       <a data-india-i18n-attr="aria-label:web-common.39cd5f980a1f88f2" class="original-payout-map" href="/payouts" aria-label="See supported payout currencies and payment methods"><picture><source type="image/webp" srcset={publicImage(`${root}payouts-map.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img data-india-i18n-attr="alt:web-common.5cb9a42df0ec3edd" src={publicImage(`${root}payouts-map.png`, { width: 1600, fit: 'scale-down' })} width="596" height="321" alt="Original world collage with USD, EUR, JPY, BRL, NGN and INR examples. Illustration, not confirmation of availability." loading="lazy" decoding="async" /></picture></a>
       <picture class="original-payout-sticker"><source type="image/webp" srcset={publicImage(`${root}payouts-sticker.webp`, { width: 1600, fit: 'scale-down', format: 'webp' })} /><img data-india-i18n-attr="alt:web-common.c27b95503bc06779" src={publicImage(`${root}payouts-sticker.png`, { width: 1600, fit: 'scale-down' })} width="324" height="74" alt="No currency scavenger hunt." loading="lazy" decoding="async" /></picture>
-      <img class="original-paper-divider" src={`${root}paper-divider.webp`} width="420" height="29" alt="" loading="lazy" />
+      <img class="original-paper-divider" src={publicImage(`${root}paper-divider.webp`, { width: 420, fit: 'scale-down', format: 'webp' })} width="420" height="29" alt="" loading="lazy" />
     </div>
   </section>
   <section class="original-categories" aria-labelledby="original-categories-title">
