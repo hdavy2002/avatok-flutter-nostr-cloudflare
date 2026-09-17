@@ -22,7 +22,6 @@ import { UiText } from "../../lib/i18n/react";
  * refuses to open the gateway sheet — never charge a number the buyer did not see.
  */
 import { useEffect, useRef, useState } from 'react';
-import QRCode from 'qrcode';
 import { request, ApiError } from '../../lib/apiClient';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
@@ -35,11 +34,10 @@ import { stashPayReturn } from './PayReturn';
 import { readReturnParam } from '../../lib/urls';
 import { capture } from '../../lib/analytics';
 import type { StripeElementsHandle, RazorpayHandoff } from './gatewaySheet';
-import type { GatewayId, GatewayOrderResponse, HdfcSmsOrderResponse, PayMethod, PayMethodsResponse, PayStatusResponse } from './types';
+import type { GatewayId, GatewayOrderResponse, PayMethod, PayMethodsResponse, PayStatusResponse } from './types';
 
 const POLL_MS = 2500;
 const POLL_ATTEMPTS = 24; // ~60s
-const HDFC_POLL_ATTEMPTS = 120; // ~5 minutes; bank SMS can be slower than a gateway webhook
 
 export interface GatewayPickerProps {
   token: string;
@@ -63,7 +61,7 @@ export interface GatewayPickerProps {
   onSlotConflict?: () => void;
 }
 
-type Phase = 'pick' | 'opening' | 'stripe-form' | 'hdfc-qr' | 'hdfc-polling' | 'polling' | 'timeout';
+type Phase = 'pick' | 'opening' | 'stripe-form' | 'polling' | 'timeout';
 
 export function GatewayPicker({
   token,
@@ -86,8 +84,6 @@ export function GatewayPicker({
   const [phase, setPhase] = useState<Phase>('pick');
   const [error, setError] = useState<string | null>(null);
   const [order, setOrder] = useState<GatewayOrderResponse | null>(null);
-  const [hdfcIntent, setHdfcIntent] = useState<HdfcSmsOrderResponse | null>(null);
-  const [hdfcQr, setHdfcQr] = useState<string | null>(null);
   const [stripeHandle, setStripeHandle] = useState<StripeElementsHandle | null>(null);
   const stripeContainerRef = useRef<HTMLDivElement | null>(null);
   // [WEB-POSTHOG-1] §2.5 — timestamp of the last `pay()` attempt, so the
@@ -99,13 +95,8 @@ export function GatewayPicker({
     void (async () => {
       try {
         const r = await request<PayMethodsResponse>('/api/pay/methods', { auth: token });
-        const next = [...(r.methods ?? [])];
-        try {
-          const h = await request<{ gateway: string; enabled?: boolean; label?: string; sub?: string; recommended?: boolean; test_mode?: boolean }>(
-            '/api/pay/hdfc-sms/method', { auth: token },
-          );
-          if (kind === 'live_event' && h.enabled !== false) next.push({ gateway: 'hdfc_sms', label: h.label ?? 'UPI QR', sub: h.sub ?? 'Scan with PhonePe or any UPI app', recommended: h.recommended ?? true, test_mode: h.test_mode });
-        } catch { /* the dedicated rail stays hidden when unavailable */ }
+        // Fail closed even if a cached/older Worker still advertises HDFC.
+        const next = (r.methods ?? []).filter((m) => String(m.gateway) !== 'hdfc_sms');
         setMethods(next);
       } catch (e) {
         setLoadError(e instanceof ApiError ? e.error : 'Could not load payment methods.');
@@ -113,13 +104,6 @@ export function GatewayPicker({
       }
     })();
   }, [token]);
-
-  useEffect(() => {
-    if (phase !== 'hdfc-qr' || !hdfcIntent?.upi_url) return;
-    void QRCode.toDataURL(hdfcIntent.upi_url, { width: 280, margin: 2, errorCorrectionLevel: 'M' })
-      .then(setHdfcQr)
-      .catch(() => setHdfcQr(null));
-  }, [phase, hdfcIntent]);
 
   // Mount the Stripe Payment Element once its container exists in the DOM.
   useEffect(() => {
@@ -244,27 +228,6 @@ export function GatewayPicker({
     return pollStatus(gateway, orderId, attempt + 1);
   }
 
-  async function pollHdfc(intentId: string, attempt = 0): Promise<void> {
-    if (attempt >= HDFC_POLL_ATTEMPTS) { setPhase('timeout'); setBusy(false); return; }
-    setPhase('hdfc-polling');
-    try {
-      const s = await request<{ status: string; intent_id: string; listing_id?: string; amount_paise?: number; order_id?: string }>(
-        '/api/pay/hdfc-sms/status', { auth: token, query: { intent_id: intentId } },
-      );
-      if (s.status === 'confirmed') {
-        onPaid({ ok: true, order_id: s.order_id ?? `hdfc_sms-order:${intentId}`, status: 'credited', listing_id: s.listing_id, total_amount: Math.round(Number(s.amount_paise ?? 0) / 100) });
-        return;
-      }
-      if (s.status === 'review_pending' || s.status === 'expired') {
-        setBusy(false); setPhase('pick');
-        setError(s.status === 'expired' ? 'This payment window expired. If you paid, please contact support before paying again.' : 'Payment received, but it needs manual confirmation. Do not pay again.');
-        return;
-      }
-    } catch { /* transient; continue */ }
-    await new Promise((r) => setTimeout(r, POLL_MS));
-    return pollHdfc(intentId, attempt + 1);
-  }
-
   async function pay() {
     if (!selected || busy || disabled) return;
     setBusy(true);
@@ -281,15 +244,6 @@ export function GatewayPicker({
       /* best-effort */
     }
     try {
-      if (selected === 'hdfc_sms') {
-        const intent = await request<HdfcSmsOrderResponse>('/api/pay/hdfc-sms/order', {
-          method: 'POST', auth: token, body: { listingId },
-        });
-        setHdfcIntent(intent);
-        setPhase('hdfc-qr');
-        setBusy(false);
-        return;
-      }
       const created = await request<GatewayOrderResponse>(`/api/pay/${selected}/order`, {
         method: 'POST',
         auth: token,
@@ -429,8 +383,6 @@ export function GatewayPicker({
     setOrder(null);
     setStripeHandle(null);
     setError(null);
-    setHdfcIntent(null);
-    setHdfcQr(null);
     setBusy(false);
   }
 
@@ -444,22 +396,6 @@ export function GatewayPicker({
   }
 
   const displayTotal = order?.total_amount ?? clientTotalCoins ?? null;
-
-  if (phase === 'hdfc-qr' || phase === 'hdfc-polling') {
-    return (
-      <div className="flex flex-col gap-4">
-        <Card>
-          <div className="flex items-center justify-between"><span className="font-display font-semibold text-[16px] text-ink">Pay by UPI</span><span className="font-mono font-bold text-[16px] text-ink">{inr(hdfcIntent?.total_amount ?? clientTotalCoins)}</span></div>
-          <p className="mt-2 font-body text-[14px] text-inkSoft">Scan this QR with PhonePe, Google Pay, Paytm, or another UPI app.</p>
-          {hdfcQr && <img className="mx-auto mt-4 h-[280px] w-[280px] rounded bg-white p-2" src={hdfcQr} alt="UPI payment QR code" />}
-          {hdfcIntent?.upi_url && <a className="mt-3 block text-center font-mono font-bold text-blueInk underline" href={hdfcIntent.upi_url}>Open in a UPI app</a>}
-        </Card>
-        <div className="flex items-center gap-3 p-2"><Spinner size={20} /><span className="font-body font-bold text-[14px] text-inkSoft">{phase === 'hdfc-qr' ? 'Waiting for your payment…' : 'Payment received — confirming your booking…'}</span></div>
-        {phase === 'hdfc-qr' && <Button variant="lime" fullWidth label="I have paid" onClick={() => hdfcIntent && void pollHdfc(hdfcIntent.intent_id)} />}
-        <button type="button" className="font-mono font-bold uppercase text-[14px] tracking-[0.06em] text-blueInk underline" onClick={backToPick}>← Choose a different payment method</button>
-      </div>
-    );
-  }
 
   if (phase === 'stripe-form') {
     return (

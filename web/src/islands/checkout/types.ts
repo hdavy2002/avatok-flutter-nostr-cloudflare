@@ -82,7 +82,7 @@ export type BookSelection =
 // ─────────────────────── [WEB-COMM-PAY-1] commercial checkout + pay ──────────
 
 /** GET /api/pay/methods — SPEC §2.4. */
-export type GatewayId = 'razorpay' | 'paytm' | 'stripe' | 'cashfree' | 'hdfc_sms';
+export type GatewayId = 'razorpay' | 'paytm' | 'stripe' | 'cashfree';
 
 export interface PayMethod {
   gateway: GatewayId;
@@ -99,18 +99,6 @@ export interface PayMethod {
 export interface PayMethodsResponse {
   currency: string;
   methods: PayMethod[];
-}
-
-export interface HdfcSmsOrderResponse {
-  ok: boolean;
-  intent_id: string;
-  listing_id: string;
-  status: string;
-  amount_paise: number;
-  total_amount: number;
-  expires_at: number;
-  upi_url: string;
-  payee_name: string;
 }
 
 /**

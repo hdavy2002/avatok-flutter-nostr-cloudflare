@@ -1,4 +1,7 @@
 ---
+export const prerender = false;
+Astro.response.headers.set('Cache-Control','private, no-store');
+Astro.response.headers.set('Referrer-Policy','no-referrer');
 import Base from '../../layouts/Base.astro';
 import UpiSmokeCheckout from '../../islands/checkout/UpiSmokeCheckout';
 ---
