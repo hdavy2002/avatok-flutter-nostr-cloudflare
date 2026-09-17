@@ -2,6 +2,7 @@
 import { publicImage, publicImageSrcSet } from '../lib/config';
 export const prerender = true;
 import Base from '../layouts/Base.astro';
+import Fonts from '../components/Fonts.astro';
 import SiteHeader from '../components/SiteHeader.astro';
 import SiteFooter from '../components/SiteFooter.astro';
 import { creatorIdeas, formats, topics } from '../lib/creatorIdeas';
@@ -26,6 +27,7 @@ const heroSrcSet = publicImageSrcSet('/assets/home/avatok-creator-constellation.
   lang="hi-Latn"
 >
   <Fragment slot="head">
+    <Fonts india />
     <meta property="og:image:type" content="image/jpeg" />
     <meta name="theme-color" content="#f7ead5" />
     <link rel="preload" as="image" href={publicImage('/assets/home/avatok-creator-constellation.png', { width: 1156, fit: 'scale-down' })} imagesrcset={heroSrcSet} />
