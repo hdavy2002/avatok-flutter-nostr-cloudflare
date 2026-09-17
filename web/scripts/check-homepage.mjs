@@ -213,9 +213,8 @@ assert.match(rawShareImage, /^https:\/\/avatok\.ai\/cdn-cgi\/image\/format=jpeg,
 assert.equal(meta(rawHtml, 'og:image:secure_url'), rawShareImage, 'Secure share image uses the same JPEG transformation');
 assert.equal(meta(rawHtml, 'twitter:image'), rawShareImage, 'Twitter share image uses the same JPEG transformation');
 const campaignImages = [...html.matchAll(/<meta property="og:image" content="([^"]+)"/g)].map(m => m[1]);
-assert.deepEqual(campaignImages, [
- 'https://avatok.ai/og/avatok-creator-marketplace-share.jpg',
-], 'Homepage advertises one creator preview image');
+assert.equal(campaignImages.length, 1, 'Homepage advertises one creator preview image');
+assert.match(campaignImages[0], /^https:\/\/avatok\.ai\/assets\/home\/avatok-creator-constellation\.png$/, 'Homepage advertises the approved creator preview image');
 assert.equal(meta(html, 'og:title'), 'avaTOK — Apna hunar. Apni kamaai.');
 assert.equal(meta(html, 'og:description'), 'Turn your skills into live events, 1:1 sessions and small-group classes. Create your listing, set your price, and start your show on avaTOK.');
 assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
