@@ -1,6 +1,6 @@
-> **2026-09-18 v2 implementation in progress.** Historical v1 details below are not
+> **2026-09-18 v2 Worker/web deployed and migration applied.** Historical v1 details below are not
 > the v2 operating contract. Current approved scope: [revised plan](PLAN-HDFC-UPI-SMS-FIX.md).
-> Deployment and CI evidence will be appended after actual runs; no success assumed.
+> See the v2 contract and release evidence at the end. Fresh ₹1 phone-to-bank test remains unverified.
 
 # HDFC UPI SMS payment gateway handover
 
@@ -210,5 +210,21 @@ test. Do not reuse a screenshot of an old QR.
 
 ### Release evidence
 
-Pending implementation and authorized CI/release execution. Record exact parent/companion
-SHAs, workflow URLs, Worker version, web deployment and seed summary here after completion.
+- Runtime source revision: `8ff312e9`; migration helper revision: `9d70eb5d`.
+- Worker production workflow: https://github.com/hdavy2002/avatok-flutter-nostr-cloudflare/actions/runs/35269013764 — passed; exact production approval applied.
+- Worker version: `6da907c2-352b-4b77-82d2-cb202343095c`.
+- Web production workflow: https://github.com/hdavy2002/avatok-flutter-nostr-cloudflare/actions/runs/35269017562 — passed; exact production approval applied.
+- Web deployment: https://b2d66bd0.avatok-app.pages.dev; https://avatok.ai/test/upi returns 200 with private/no-store headers.
+- Final safety verification: https://github.com/hdavy2002/avatok-flutter-nostr-cloudflare/actions/runs/35269653640 — passed. 22 Worker real-SQL tests, 8 seed tests, 11 controller tests and 12 React browser tests.
+- Whole-Worker TypeScript remains at 76 pre-existing diagnostics: same compiler/dependencies against approved `c06a87b2` baseline found zero new diagnostics and zero diagnostics in changed source files. This is not a clean whole-repository typecheck.
+- Production seed applied after combined Worker deployment and ingress drain. Readback: protocol 2, cutover `1789676007000`, two legacy reservations, zero claimed receipts, zero v2 intents. Original two receipts/eight intents preserved. Same-manifest rerun succeeded without mutation.
+- Seed digest: `660152c7cd774de1972c22baf6fdfaa9a858a4a75513c44e5fd0e3774f0edc47`. Private immutable manifest: `/Users/davy/.local/share/avatok/hdfc-smoke-v2/production-seed.json` (0600; never commit/upload). Original SQL sidecar preserved privately after deterministic-column-order correction; manifest/cutover unchanged.
+- Anonymous production `/api/pay/hdfc-sms/current` returns 401 missing bearer.
+- Companion revision: `5a3acf0`, version `1.0.6+6`; https://github.com/hdavy2002/upeo-sms-gateway/actions/runs/35269307182. Verification passed (37 Dart tests plus native Robolectric provider tests); signed release APK build passed. Artifact: https://github.com/hdavy2002/upeo-sms-gateway/actions/runs/35269307182/artifacts/10517978930. Local copy: `/Users/davy/.local/share/avatok/releases/hdfc-smoke-v2-1.0.6/app-release.apk`. Companion workflow has no environment approval gate; main production Worker/web gates were approved as authorized.
+- After the signed APK release passed, production `hdfcSmsEnabled` was enabled through the protected delta-only flag wrapper. Readback confirmed true. This enables only the admin smoke harness; commercial HDFC remains removed. No synthetic bank receipt or production intent was created for verification.
+
+### Acceptance and remaining real-device work
+
+A1–A9 have source review and Worker/browser CI coverage; A10–A11 have companion Dart/SQLite/native-provider CI coverage. The actual SQLCipher upgrade on the owner's phone is not proven by host SQLite tests. A12 is partial: authorized CI and production deployment/migration are verified, but one fresh ₹1 end-to-end payment remains outstanding. Install/update the companion without clearing its data, sign into `/test/upi` as admin, create one fresh QR, pay ₹1, enter that payment's 12-digit UTR, and verify the persisted receipt claim with no commercial order or wallet effect. Do not reuse historical screenshots.
+
+Graphify was refreshed. Graphiti push-hook memory writes failed; repository commits/pushes succeeded. No fabricated PostHog payment-success event was sent.
