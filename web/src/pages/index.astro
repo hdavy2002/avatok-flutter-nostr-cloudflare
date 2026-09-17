@@ -17,7 +17,7 @@ const ideas = creatorIdeas.slice(0, 6);
 <Base
   title="Apna hunar. Apni kamaai. · avaTOK"
   description="Turn your fanbase into paid live events, private 1:1 video meetups and group sessions. Your page, your price, your people."
-  image="/assets/home/avatok-creator-constellation.png"
+  image={publicImage('/assets/home/avatok-creator-constellation.png', { width: 1280, quality: 75, fit: 'scale-down', format: 'jpeg' })}
   imageAlt="Creators hosting live events, group sessions and private one-to-one video meetups."
   imageWidth={1156}
   imageHeight={1360}
@@ -25,7 +25,7 @@ const ideas = creatorIdeas.slice(0, 6);
   lang="hi-Latn"
 >
   <Fragment slot="head">
-    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:type" content="image/jpeg" />
     <meta name="theme-color" content="#f7ead5" />
     <link rel="preload" as="image" href={publicImage('/assets/home/avatok-creator-constellation.png', { width: 1156, fit: 'scale-down' })} />
   </Fragment>
@@ -111,4 +111,3 @@ const ideas = creatorIdeas.slice(0, 6);
     import '../lib/indiaCreators';
   </script>
 </Base>
-
