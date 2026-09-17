@@ -20,6 +20,8 @@ const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
 for (const id of ['consultations', 'how-avatok-works', 'ideas-catalogue', 'addon-ideas', 'addon-calculator']) {
  assert(ids.has(id), 'Approved homepage section exists: ' + id);
 }
+assert.match(html, /<section\b[^>]*class="[^"]*\bbooking-illustrated\b[^"]*"[^>]*id="consultations"/, 'Booking Express retains the approved illustrated section');
+assert.match(html, /<section\b[^>]*class="[^"]*\bcalculator-illustrated\b[^"]*"[^>]*id="addon-calculator"/, 'Earnings calculator retains the approved illustrated section');
 assert(html.indexOf('id="consultations"') < html.indexOf('id="ideas-catalogue"'), 'Booking Express precedes the original ideas');
 assert.equal((html.match(/<input\b[^>]*type="range"/g) || []).length, 5, 'Five earnings calculator controls');
 assert.equal((html.match(/data-india-language-select/g) || []).length, 2, 'Homepage renders the two approved language selectors');
