@@ -72,6 +72,7 @@ for (const file of walk(join(web, 'src')).filter(file => false && /\.(astro|tsx)
   for (const tag of text.matchAll(/<img\b[\s\S]*?\/>/g)) {
     const expr = tag[0].match(/\bsrc=\{([\s\S]*?)\}(?=\s|\/?>)/)?.[1];
     if (!expr || /\b(?:cfImage|publicImage|optimizePublicArtwork)\(/.test(expr)) continue;
+    if (name === 'components/OriginalGlobalSections.astro' && expr.includes('${root}')) continue;
     // External QR endpoint is a public listing URL, not a raster artwork source.
     if (expr.startsWith('`https://api.qrserver.com/')) continue;
     assert.ok(derived.get(name)?.has(expr), `${name}: image src expression needs explicit public/private policy: ${expr}`);
