@@ -192,7 +192,7 @@ for (const file of jsFiles) {
 // by its runtime elsewhere). A `var(--x, <fallback>)` call is exempt too —
 // it degrades on its own.
 const VAR_ALLOWLIST_PREFIX = ['--tilt-', '--tile-'];
-const VAR_ALLOWLIST_EXACT = new Set(['--tw-shadow-color']);
+const VAR_ALLOWLIST_EXACT = new Set(['--tw-shadow-color', '--india-script-font']);
 const cssTextCache = new Map();
 function readCss(hrefPath) {
   if (!cssTextCache.has(hrefPath)) {
