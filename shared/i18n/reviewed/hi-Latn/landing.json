@@ -231,8 +231,8 @@
       "text": "Inputs badlo aur dekho ticketed events ya 1:1 bookings se kitna gross ban sakta hai."
     },
     "calcLiveLabel": {
-      "source": "Live ticket price",
-      "text": "Live ticket price"
+      "source": "Live Ticket price per participant",
+      "text": "Live Ticket price per participant"
     },
     "calcAudienceLabel": {
       "source": "Audience per event",
@@ -243,8 +243,8 @@
       "text": "Events per month"
     },
     "calcOneLabel": {
-      "source": "1:1 price",
-      "text": "1:1 price"
+      "source": "1:1 or 1:many Price per participant",
+      "text": "1:1 or 1:many Price per participant"
     },
     "calcBookingsLabel": {
       "source": "Bookings per month",

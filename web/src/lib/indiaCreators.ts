@@ -12,10 +12,10 @@ function initCalculator(root: HTMLElement) {
   let telemetryTimer: number | undefined;
   const update = () => {
     const formatter = INR();
-    const livePrice = clamp(Number(input('livePrice')?.value), 0, 50000);
+    const livePrice = clamp(Number(input('livePrice')?.value), 100, 50000);
     const audience = clamp(Number(input('audience')?.value), 0, 10000);
     const events = clamp(Number(input('events')?.value), 0, 31);
-    const onePrice = clamp(Number(input('onePrice')?.value), 0, 50000);
+    const onePrice = clamp(Number(input('onePrice')?.value), 100, 50000);
     const bookings = clamp(Number(input('bookings')?.value), 0, 1000);
     output('live-price')?.replaceChildren(formatter.format(livePrice));
     output('audience')?.replaceChildren(String(audience));
