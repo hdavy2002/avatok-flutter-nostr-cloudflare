@@ -73,5 +73,5 @@ jobs:
       - name: Record paused rollout checkpoint
         run: |
           echo 'HDFC automatic processing remains DISABLED.' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Apply the durable one-shot seed with scripts/hdfc_sms_seed_v2.py; verify readiness and matching web/companion releases before enabling the controlled test.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Verify existing v2 readiness without reseeding historical data; apply any new additive schema migration and verify the matching web release before enabling the controlled test.' >> "$GITHUB_STEP_SUMMARY"
 

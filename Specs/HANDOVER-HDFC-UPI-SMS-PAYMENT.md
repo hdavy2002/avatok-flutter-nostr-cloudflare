@@ -228,3 +228,24 @@ test. Do not reuse a screenshot of an old QR.
 A1–A9 have source review and Worker/browser CI coverage; A10–A11 have companion Dart/SQLite/native-provider CI coverage. The actual SQLCipher upgrade on the owner's phone is not proven by host SQLite tests. A12 is partial: authorized CI and production deployment/migration are verified, but one fresh ₹1 end-to-end payment remains outstanding. Install/update the companion without clearing its data, sign into `/test/upi` as admin, create one fresh QR, pay ₹1, enter that payment's 12-digit UTR, and verify the persisted receipt claim with no commercial order or wallet effect. Do not reuse historical screenshots.
 
 Graphify was refreshed. Graphiti push-hook memory writes failed; repository commits/pushes succeeded. No fabricated PostHog payment-success event was sent.
+
+
+## Invited customer booking test — owner scope change, 2026-09-18
+
+The owner approved a shareable customer experience for his brother. The earlier
+administrator-only smoke harness did not meet that purpose. The customer page
+now being implemented at `/test/upi` uses an ordinary signed-in account and a
+private invitation; administrator diagnostics move to `/test/upi/admin`.
+
+The customer pays a real ₹1 for a clearly marked simulated demo consultation.
+A separate persisted test-booking reference is confirmed only by the existing
+exact-reference bank-SMS receipt claim. It creates no real appointment, commercial
+order, wallet credit, entitlement or calendar reservation. One invitation belongs
+to the first account to redeem it and creates at most one payment and test booking.
+
+Implementation contract and acceptance criteria: `PLAN-HDFC-UPI-CUSTOMER-TEST.md`.
+The additive invitation/booking migration must not rerun the historical v2 seed.
+No companion changes or Android build are needed for this extension. Companion
+1.0.6 (6) is already available on Google Play Internal testing.
+
+Rollout and fresh-payment evidence will be recorded after verification.

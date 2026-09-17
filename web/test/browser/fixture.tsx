@@ -26,4 +26,8 @@ function Fixture(){
   return mounted ? <SmokeSession identity={identity} isLoaded isSignedIn={Boolean(identity)}
     deps={deps} signIn={<button>Sign in</button>}/> : <p>Unmounted</p>;
 }
-createRoot(document.getElementById('root')!).render(<Fixture/>);
+if (location.pathname === '/test/upi' || location.pathname.startsWith('/test/upi/')) {
+  void import('./customer-fixture');
+} else {
+  createRoot(document.getElementById('root')!).render(<Fixture/>);
+}
