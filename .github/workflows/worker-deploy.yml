@@ -24,7 +24,10 @@ permissions:
   contents: read
 
 jobs:
+  hdfc-safety:
+    uses: ./.github/workflows/hdfc-sms-verify.yml
   deploy:
+    needs: hdfc-safety
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

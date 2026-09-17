@@ -1,3 +1,7 @@
+> **2026-09-18 v2 implementation in progress.** Historical v1 details below are not
+> the v2 operating contract. Current approved scope: [revised plan](PLAN-HDFC-UPI-SMS-FIX.md).
+> Deployment and CI evidence will be appended after actual runs; no success assumed.
+
 # HDFC UPI SMS payment gateway handover
 
 Last updated: 2026-09-17
@@ -174,3 +178,37 @@ test. Do not reuse a screenshot of an old QR.
 - Before enabling real commercial HDFC checkout, add stronger order-to-payment
   correlation, operational review tooling, and an official payment provider or
   bank integration where available.
+
+
+## V2 operating contract — 2026-09-18
+
+- Web-only, administrator-only ₹1 smoke test. HDFC is removed from commercial checkout;
+  existing HDFC refund identifiers are rejected for manual reconciliation, never wallet fallback.
+- One active intent, idempotent creation, explicit owner-only replacement and URL resume.
+- Signed bank evidence is stored separately from intent attribution. Both production sample
+  SMS messages use `(UPI <12 digits>)`; neither echoes QR tr/tn. Tester UTR is therefore
+  required for confirmed attribution. Reference-less/unsupported formats cannot confirm.
+- Companion timestamps currently include +03:00 and second precision. Parser respects
+  timezone and bounded quantization; receipt time is not payer or settlement proof.
+- QR expires after 30 minutes. Original-window evidence can be recovered for 24 hours
+  after expiry. GET status is read-only; explicit recheck retries the saved reference.
+- One canonical bank identity can claim one intent. Confirmed derives from the stored
+  accepted receipt claim; smoke order_id remains null and no commercial service is provisioned.
+- Two v2 tables and a readiness view. One-time migration seeds all historical receipt hashes
+  as never-claimable legacy metadata, canonicalizes duplicate references and reserves old
+  intent-only references. Original rows are preserved. No runtime legacy scan or finance console.
+- Phases 1+2 ship together. Before seed readiness, signed ingestion returns retryable 503;
+  the companion retains its queue. After readiness, flag-off still permits evidence storage,
+  but blocks creation and claim. Do not roll back to the old amount-only matcher.
+- Companion acknowledgement distinguishes transport, accepted/ignored/review evidence,
+  unmatched/awaiting_reference/confirmed. Display describes last server acknowledgement;
+  no green confirmation merely because HTTP returned 2xx.
+- Android companion is a separate repository and release from the main Flutter app. No main
+  app checkout changes or main app build are required by this work.
+- Readiness requires CI receipt/SQL/browser/companion tests plus a fresh ₹1 end-to-end test.
+  Only the phone owner can perform the bank payment and install the companion when necessary.
+
+### Release evidence
+
+Pending implementation and authorized CI/release execution. Record exact parent/companion
+SHAs, workflow URLs, Worker version, web deployment and seed summary here after completion.

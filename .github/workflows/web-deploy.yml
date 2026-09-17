@@ -22,7 +22,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  hdfc-safety:
+    uses: ./.github/workflows/hdfc-sms-verify.yml
   build:
+    needs: hdfc-safety
     runs-on: ubuntu-latest
     steps:
       - name: Guard explicit dispatch and production branch

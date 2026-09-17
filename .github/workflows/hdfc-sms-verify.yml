@@ -1,0 +1,60 @@
+name: HDFC SMS safety verification
+on:
+  workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  worker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci
+      - name: Typecheck and real-SQL receipt/recovery tests
+        working-directory: worker
+        run: |
+          npm run typecheck
+          NODE_OPTIONS=--experimental-sqlite npx vitest run --dir test hdfc_sms_payments.test.ts
+      - name: One-shot legacy seed invariants
+        run: python3 -m unittest discover -s scripts/tests -p 'test_hdfc_sms_seed_v2.py'
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+      - name: Payment controller regressions
+        working-directory: web
+        run: node --experimental-strip-types --test test/upi_smoke_controller.test.ts
+
+      - name: Install isolated browser test tooling
+        working-directory: web
+        run: |
+          npm install --no-save --package-lock=false @playwright/test@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Real React payment recovery interactions
+        working-directory: web
+        run: npx playwright test --config=test/browser/playwright.config.ts
+      - name: Save browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hdfc-browser-failure
+          path: |
+            web/test-results
+            web/playwright-report
+          if-no-files-found: ignore
+          retention-days: 7

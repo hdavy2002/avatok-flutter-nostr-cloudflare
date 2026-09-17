@@ -33,6 +33,8 @@ on:
 
 
 jobs:
+  hdfc-safety:
+    uses: ./.github/workflows/hdfc-sms-verify.yml
   worker-ts:
     if: ${{ !inputs.commercial_only && !inputs.calendar_only }}
     runs-on: ubuntu-latest

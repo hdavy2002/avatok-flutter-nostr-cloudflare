@@ -20,6 +20,8 @@ on:
   workflow_dispatch:
 
 jobs:
+  hdfc-safety:
+    uses: ./.github/workflows/hdfc-sms-verify.yml
   worker:
     runs-on: ubuntu-latest
     steps:

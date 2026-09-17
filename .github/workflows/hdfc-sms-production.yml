@@ -1,72 +1,77 @@
-name: Configure HDFC SMS payment rail (production)
-
+name: Configure HDFC SMS smoke rail (production)
 on:
   workflow_dispatch:
-
+    inputs:
+      operation:
+        description: Explicit maintenance step; never enables automatic payment matching
+        required: true
+        default: deploy-contained
+        type: choice
+        options: [deploy-contained, configure-secrets]
 permissions:
   contents: read
-
+concurrency:
+  group: hdfc-sms-production
+  cancel-in-progress: false
 jobs:
+  safety:
+    uses: ./.github/workflows/hdfc-sms-verify.yml
   configure:
+    needs: safety
     runs-on: ubuntu-latest
     environment: production
+    env:
+      AVATOK_TARGET: prod
+      ALLOW_PROD: '1'
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
+      - name: Guard exact production revision and maintenance phase
+        env:
+          OPERATION: ${{ inputs.operation }}
+        run: |
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_REF" = refs/heads/main
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          printf 'Revision: %s\nOperation: %s\n' "$GITHUB_SHA" "$OPERATION" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - name: Install Worker dependencies
         working-directory: worker
         run: npm ci
-      - name: Apply HDFC SMS schema
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          ALLOW_PROD: '1'
-          AVATOK_TARGET: prod
-        run: scripts/cf.sh worker d1 execute DB_META --remote --file=migrations/2026-09-17-hdfc-sms-payments.sql
-      - name: Seed isolated ₹1 UPI smoke event
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          ALLOW_PROD: '1'
-          AVATOK_TARGET: prod
-        run: scripts/cf.sh worker d1 execute DB_META --remote --file=migrations/2026-09-17-upi-smoke-event.sql
-      - name: Register production HDFC configuration
+      - name: Pause new intents and automatic confirmation
+        run: scripts/flags.sh set hdfcSmsEnabled=false
+      - name: Deploy combined smoke v2 Worker (creation and claim remain paused)
+        if: inputs.operation == 'deploy-contained'
+        run: scripts/cf.sh worker deploy
+      - name: Register matched production companion configuration
+        if: inputs.operation == 'configure-secrets'
         env:
           HDFC_UPI_VPA: ${{ secrets.HDFC_UPI_VPA }}
           HDFC_UPI_PAYEE_NAME: ${{ secrets.HDFC_UPI_PAYEE_NAME }}
           HDFC_SMS_DEVICE_ID: ${{ secrets.HDFC_SMS_DEVICE_ID }}
           HDFC_SMS_DEVICE_SECRET: ${{ secrets.HDFC_SMS_DEVICE_SECRET }}
           HDFC_SMS_ACCOUNT_SUFFIX: ${{ secrets.HDFC_SMS_ACCOUNT_SUFFIX }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          ALLOW_PROD: '1'
-          AVATOK_TARGET: prod
         run: |
-          for pair in \
-            "HDFC_UPI_VPA=$HDFC_UPI_VPA" \
-            "HDFC_UPI_PAYEE_NAME=$HDFC_UPI_PAYEE_NAME" \
-            "HDFC_SMS_DEVICE_ID=$HDFC_SMS_DEVICE_ID" \
-            "HDFC_SMS_DEVICE_SECRET=$HDFC_SMS_DEVICE_SECRET" \
-            "HDFC_SMS_ACCOUNT_SUFFIX=$HDFC_SMS_ACCOUNT_SUFFIX"; do
-            name="${pair%%=*}"
-            value="${pair#*=}"
-            printf '%s' "$value" | scripts/cf.sh worker secret put "$name"
+          set -euo pipefail
+          names=(HDFC_UPI_VPA HDFC_UPI_PAYEE_NAME HDFC_SMS_DEVICE_ID HDFC_SMS_DEVICE_SECRET HDFC_SMS_ACCOUNT_SUFFIX)
+          for name in "${names[@]}"; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Required configuration is missing: $name"
+              exit 1
+            fi
           done
-      - name: Deploy production Worker
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          ALLOW_PROD: '1'
-          AVATOK_TARGET: prod
-        run: scripts/cf.sh worker deploy
-      - name: Enable HDFC SMS checkout
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          ALLOW_PROD: '1'
-          AVATOK_TARGET: prod
-        run: scripts/flags.sh set hdfcSmsEnabled=true
+          [[ "$HDFC_UPI_VPA" == *@* ]]
+          [[ "$HDFC_SMS_ACCOUNT_SUFFIX" =~ ^[0-9]{4,6}$ ]]
+          for name in "${names[@]}"; do
+            printf '%s' "${!name}" | scripts/cf.sh worker secret put "$name"
+          done
+      - name: Record paused rollout checkpoint
+        run: |
+          echo 'HDFC automatic processing remains DISABLED.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Apply the durable one-shot seed with scripts/hdfc_sms_seed_v2.py; verify readiness and matching web/companion releases before enabling the controlled test.' >> "$GITHUB_STEP_SUMMARY"
+

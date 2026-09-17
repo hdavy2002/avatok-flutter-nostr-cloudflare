@@ -6733,12 +6733,59 @@
       {
         "event": "listing_native_availability_saved",
         "property": "mode",
-        "in": ["shared", "custom", "exclusive"],
+        "in": [
+          "shared",
+          "custom",
+          "exclusive"
+        ],
         "min_events": 1,
         "note": "Exactly the wire vocabulary PUT /api/calendar/schedule accepts (`modes = shared|custom|exclusive`); anything else is a 400 and never reaches the capture, so a value outside this set means the client and the server contract have drifted again."
       }
     ],
     "manual_check": "On the deployed build: (1) As a creator whose selected Google source is stale/failed, open the listing's public availability as a customer - it shows a refresh/unavailable state, not an empty grid and not '0 open'. (2) Confirm the same listing cannot be booked for a slot the preview would have offered (preview, checkout and publish all refuse for the same reason). (3) As the creator, the listing's schedule screen shows which values are inherited from the creator-wide calendar, which are overridden by the listing, and states the commercial booking notice as the effective floor when it is the larger. (4) Save a listing with a horizon other than 62 days and reopen - the horizon is preserved. (5) Change the schedule timezone and confirm preview slots are rendered in that timezone for a viewer in another one.",
     "_verified_at": "app/lib/features/marketplace/native_listing/native_listing_wizard_screen.dart: Analytics.capture('listing_native_availability_saved', {listing_id, mode, version, horizon_days}) - added by the native listing worker and NOT present in this worker's copy, so this assertion is written from that worker's report and has NOT been run, read from a device or queried in PostHog; worker/src/routes/calendar_availability.ts listingAvailability (503 calendar_refresh_pending + ready/reason/last_success_at) and effectivePolicy/scheduleShape (min_notice_min = configured calendar notice, additive effective_min_notice_min = the larger commercial floor); worker/src/lib/listing_blockers.ts:223 (publish gate calendar_not_ready); web/src/islands/dashboard/listing-form/ListingWizard.tsx:544; web/src/lib/availability.ts:152"
+  },
+  "PAY-HDFC-SMOKE-V2": {
+    "description": "Admin-only exact-reference smoke evidence claim; commercial HDFC removed and legacy refunds fail closed.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hdfcSmsEnabled"
+    ],
+    "success": [
+      {
+        "event": "hdfc_smoke_confirmed",
+        "property": "protocol_version",
+        "equals": 2,
+        "min_events": 1,
+        "note": "Browser observed a v2 confirmed response. CI SQL invariants and fresh D1 claim inspection are also required; this event alone is not independent bank verification."
+      }
+    ],
+    "_verified_at": "web/src/islands/checkout/UpiSmokeCheckout.tsx capture hdfc_smoke_+event with protocol_version2; upiSmokeController.ts accept confirmed emits confirmed only protocol2."
+  },
+  "UPI-SMOKE-WEB-V2": {
+    "description": "Resume same intent with fresh auth, explicit UTR correction and expiry-aware cancellation.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hdfcSmsEnabled"
+    ],
+    "success": [
+      {
+        "event": "hdfc_smoke_confirmed",
+        "property": "protocol_version",
+        "equals": 2,
+        "min_events": 1,
+        "note": "Browser observed a v2 confirmed response. CI SQL invariants and fresh D1 claim inspection are also required; this event alone is not independent bank verification."
+      }
+    ],
+    "_verified_at": "web/src/islands/checkout/UpiSmokeCheckout.tsx capture hdfc_smoke_+event with protocol_version2; upiSmokeController.ts accept confirmed emits confirmed only protocol2."
+  },
+  "HDFC-SMOKE-OPS-V2": {
+    "description": "Manual CI gates, frozen legacy migration helper and production rollout documentation.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "no_telemetry": "Operational workflow and evidence documentation; validate by successful CI/deploy runs and immutable seed digest, not synthetic user events."
   }
 }
