@@ -248,4 +248,17 @@ The additive invitation/booking migration must not rerun the historical v2 seed.
 No companion changes or Android build are needed for this extension. Companion
 1.0.6 (6) is already available on Google Play Internal testing.
 
-Rollout and fresh-payment evidence will be recorded after verification.
+### Customer rollout evidence
+
+- Runtime revision `34ad04f690933bdbaf66666cd79ae07a42c42657`; preserved the concurrent homepage restoration `6dfc8d21` already on main.
+- Preflight build and safety: https://github.com/hdavy2002/avatok-flutter-nostr-cloudflare/actions/runs/35283272751 — success.
+- Production Worker: https://github.com/hdavy2002/avatok-flutter-nostr-cloudflare/actions/runs/35283742081 — success; owner-authorized production gate approved. Version `57b96e67-744f-4baf-be78-0d07d5c1405c`.
+- Production web: https://github.com/hdavy2002/avatok-flutter-nostr-cloudflare/actions/runs/35283744337 — success; owner-authorized production gate approved. Pages deployment https://23c823cf.avatok-app.pages.dev.
+- Both production workflows passed 40 real-SQL Worker tests, 16 Python script tests, 18 controller tests, and 22 React browser tests. New/changed-file Worker type diagnostics: zero. Existing 76 baseline diagnostics remain; this is not a clean whole-Worker typecheck.
+- Additive migration `worker/migrations/2026-09-18-hdfc-customer-test.sql` applied through protected cf.sh and read back. The v2 cutover remains `1789676007000`; historical seed was not rerun.
+- Production `hdfcSmsEnabled=true` restored after both releases; exact flag readback returned true.
+- Live browser verified customer heading, real-charge/test-only disclosure, and ordinary email-code sign-in modal at `/test/upi`; no invitation was redeemed during operator QA. Anonymous customer API returns 401 with `private, no-store`.
+- One 24-hour brother invitation issued with hash-only remote storage and verified still unredeemed. Private output and retry journal are under `/Users/davy/.local/share/avatok/hdfc-customer-test/`, mode 0600. Never commit/share these artifacts or put the secret URL in telemetry. Share the generated URL only with the owner for the intended tester.
+- PostHog deployment annotation returned HTTP 201. A separate operational deployment event with the owner email and test counts returned HTTP 200; it explicitly records `fresh_payment_verified=false` and contains no invitation, bank reference or SMS. Prior telemetry retrieval was unavailable due connector skill-scope restrictions. Graphiti tools were unavailable and its pre-push hook reported write failure; no memory-write success is claimed. Graphify AST update completed.
+- AC1–AC8 verified by the source reviews and GitHub Actions above. AC9 link issuance and live unauthenticated UI verified. The actual brother sign-in/payment/receipt/test-booking confirmation remains pending his real ₹1 transaction and exact 12-digit reference. No synthetic production receipt, payment, booking, commercial order, entitlement or wallet credit was created.
+- Astra-only pipeline: one audit/plan agent, two isolated implementation workers, and one independent bounded backend review. No local tests/builds/compiles were run. No companion change or additional Android build was needed.
