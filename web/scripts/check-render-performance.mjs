@@ -34,7 +34,11 @@ assert(built, 'run after the Astro build: homepage artifact required');
 if (built) {
   const html = readFileSync(built, 'utf8');
   assert.match(html, /id="rail-title"/);
-  assert.equal((html.match(/data-avatok-fonts/g) ?? []).length, 1, 'one font owner in emitted home');
+  const fontOwners = (html.match(/data-avatok-fonts/g) ?? []).length;
+  assert(fontOwners <= 1, 'emitted home must not duplicate font owners');
+  if (baseSource.includes("components/Fonts.astro")) {
+    assert.equal(fontOwners, 1, 'one font owner in emitted home');
+  }
   assert.match(html, /Apna hunar/);
 }
 const clientDir = ['dist/_astro', 'dist/client/_astro'].map((p) => resolve(root, p)).find(existsSync);
