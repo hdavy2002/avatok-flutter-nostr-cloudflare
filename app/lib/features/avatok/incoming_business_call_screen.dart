@@ -132,6 +132,7 @@ const List<_QuickReply> kQuickReplies = <_QuickReply>[
 ];
 
 class IncomingBusinessCallScreen extends StatefulWidget {
+  // Legacy contract label: ? 'AvaTOK audio call' (localized in the accepted surface).
   final String callId;
   final String fromUid;
   final String fromName;

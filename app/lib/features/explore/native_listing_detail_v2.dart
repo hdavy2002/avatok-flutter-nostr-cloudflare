@@ -89,7 +89,7 @@ String? youTubeIdOf(String? url) {
 /// step with the creator-side copy in
 /// `features/marketplace/native_listing/native_listing_wizard_screen.dart`
 /// (`_kJoinRequirementLabels`), which is private to that screen.
-const Map<String, String> kJoinRequirementLabels = {
+final Map<String, String> kJoinRequirementLabels = {
   'mic': 'MIC NEEDED',
   'cam': 'CAMERA NEEDED',
   'listen_only': 'LISTENING ONLY',
