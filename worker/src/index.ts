@@ -69,7 +69,7 @@ import { adminLedger, adminRefund, adminAdjust, adminAccount, adminRecon, adminE
 import { adminCommercialClaims, adminResolveCommercialClaim } from "./routes/commercial_admin_claims";
 import { cashfreeCreateOrder, cashfreeWebhook, cashfreeStatus } from "./routes/cashfree";
 import { payMethods, payCreateOrder, payWebhook, payStatus, payVerifyHandoff } from "./routes/pay"; // [PAY-RAIL-1] [PAY-RAIL-3]
-import { hdfcSmsCreateOrder, hdfcSmsIncoming, hdfcSmsStatus, hdfcSmsHeartbeat, hdfcSmsMethod } from "./routes/hdfc_sms_payments";
+import { hdfcSmsCreateOrder, hdfcSmsIncoming, hdfcSmsStatus, hdfcSmsHeartbeat, hdfcSmsMethod, hdfcSmsCurrent, hdfcSmsClaim, hdfcSmsRecheck } from "./routes/hdfc_sms_payments";
 import { dynwAcceptance } from "./routes/dynw_test"; // [DYNW-CORE-1] Phase 0 acceptance battery (admin-only, dark behind dynamicWorkersEnabled)
 import { receptRules } from "./routes/recept_rules"; // [DYNW-RECEPT-RULES-1] owner receptionist rule scripts
 import { welcomeBackfill } from "./routes/welcome_bonus"; // [WELCOME-100-1]
@@ -1252,6 +1252,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/pay/cashfree/status" && req.method === "GET") return await cashfreeStatus(req, env);
       // [PAY-HDFC-SMS-1] Private, single-account UPI QR rail. Browser routes are
       // user-authenticated; the SMS/heartbeat routes authenticate the companion HMAC.
+      if (p === "/api/pay/hdfc-sms/current" && req.method === "GET") return await hdfcSmsCurrent(req, env);
+      if (p === "/api/pay/hdfc-sms/claim" && req.method === "POST") return await hdfcSmsClaim(req, env);
+      if (p === "/api/pay/hdfc-sms/recheck" && req.method === "POST") return await hdfcSmsRecheck(req, env);
       if (p === "/api/pay/hdfc-sms/order" && req.method === "POST") return await hdfcSmsCreateOrder(req, env);
       if (p === "/api/pay/hdfc-sms/method" && req.method === "GET") return await hdfcSmsMethod(req, env);
       if (p === "/api/pay/hdfc-sms/status" && req.method === "GET") return await hdfcSmsStatus(req, env);

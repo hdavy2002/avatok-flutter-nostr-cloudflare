@@ -6,14 +6,12 @@ import { razorpayAdapter } from "./razorpay";
 import { paytmAdapter } from "./paytm";
 import { stripeIntlAdapter } from "./stripe_intl";
 import { cashfreeAdapter } from "./cashfree_adapter";
-import { hdfcSmsAdapter } from "./hdfc_sms_adapter";
 
-const ADAPTERS: Record<GatewayId, GatewayAdapter> = {
+const ADAPTERS: Partial<Record<GatewayId, GatewayAdapter>> = {
   razorpay: razorpayAdapter,
   paytm: paytmAdapter,
   stripe: stripeIntlAdapter,
   cashfree: cashfreeAdapter,
-  hdfc_sms: hdfcSmsAdapter,
 };
 
 const VALID_IDS: ReadonlySet<string> = new Set(Object.keys(ADAPTERS));
@@ -23,7 +21,7 @@ export function isGatewayId(id: string): id is GatewayId {
 }
 
 export function resolveGateway(id: string): GatewayAdapter | null {
-  return isGatewayId(id) ? ADAPTERS[id] : null;
+  return isGatewayId(id) ? ADAPTERS[id] ?? null : null;
 }
 
 /** The platform-config flag gating each gateway. Per CLAUDE.md, a flag missing from
@@ -57,7 +55,7 @@ const LABELS: Record<GatewayId, { label: string; sub: string }> = {
 // and, per spec §2.1, only ever appears if cashfreeEnabled is separately turned on — it is
 // wired as a fourth adapter (commercial_refund_rail.ts already reverses to it) but is not
 // part of the buyer-facing picker by default.
-const PICKER_ORDER: readonly GatewayId[] = ["razorpay", "paytm", "stripe", "cashfree", "hdfc_sms"];
+const PICKER_ORDER: readonly GatewayId[] = ["razorpay", "paytm", "stripe", "cashfree"];
 
 /**
  * GET /api/pay/methods payload. `payGatewayPickerEnabled` gates the picker as a whole —
@@ -69,8 +67,9 @@ export async function listEnabledMethods(env: Env, config: PlatformConfig): Prom
   const out: GatewayMethod[] = [];
   for (const id of PICKER_ORDER) {
     if (!gatewayFlagOn(config, id)) continue;
-    if (!ADAPTERS[id].configured(env)) continue;
-    out.push({ gateway: id, ...LABELS[id], recommended: false, test_mode: ADAPTERS[id].testMode(env) === true });
+    const adapter = ADAPTERS[id];
+    if (!adapter?.configured(env)) continue;
+    out.push({ gateway: id, ...LABELS[id], recommended: false, test_mode: adapter.testMode(env) === true });
   }
   return out;
 }
@@ -80,5 +79,5 @@ export async function listEnabledMethods(env: Env, config: PlatformConfig): Prom
  *  webhook routes gate on this so a rail cannot be driven while its flag is off, even by
  *  a caller that bypasses the picker. */
 export function gatewayFlagOn(config: PlatformConfig, id: GatewayId): boolean {
-  return config[FLAG_FOR[id]] === true;
+  return id !== "hdfc_sms" && config[FLAG_FOR[id]] === true;
 }

@@ -67,6 +67,7 @@ export async function adminRefund(req: Request, env: Env): Promise<Response> {
   const b = (await req.json().catch(() => ({}))) as any;
   const orderId = String(b.orderId || ""); const amount = Math.trunc(Number(b.amount));
   const reason = String(b.reason || "").trim();
+  if (orderId.startsWith("hdfc_sms-order:")) return json({ error: "manual_external_review_required" }, 409);
   if (!orderId || !(amount > 0) || !reason) return json({ error: "orderId, amount>0, reason required" }, 400);
   if (isAgentLiveOrder(orderId)) return json({ error: "agent_decision_required" }, 409);
 

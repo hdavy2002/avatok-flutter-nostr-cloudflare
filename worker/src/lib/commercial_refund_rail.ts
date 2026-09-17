@@ -38,6 +38,7 @@ import type { GatewayId } from "./payments/types";
 
 export type RefundRail =
   | { rail: "wallet" }
+  | { rail: "manual_external_review"; reason: "hdfc_sms_no_refund_authority" }
   | { rail: "cashfree"; purchaseId: string; gatewayOrderId: string; purchaseTable?: "direct_purchases" | "gateway_orders" }
   | { rail: Exclude<GatewayId, "cashfree">; purchaseId: string; gatewayOrderId: string };
 
@@ -56,6 +57,7 @@ const GATEWAY_ORDER_ID_RE = /^([a-z]+)-order:(.+)$/;
  * must never fall through to a wallet credit when a table or provider is unavailable.
  */
 export async function refundRailFor(env: Env, orderId: string): Promise<RefundRail> {
+  if (orderId.startsWith("hdfc_sms-order:")) return { rail: "manual_external_review", reason: "hdfc_sms_no_refund_authority" };
   try {
     const row = await metaDb(env).prepare(
       `SELECT purchase_id, gateway_order_id FROM direct_purchases
@@ -114,10 +116,12 @@ export async function executeCommercialRefund(env: Env, args: {
   if (!Number.isSafeInteger(args.amount) || args.amount < 0 || !Number.isSafeInteger(args.amount * 100)) {
     return { ok: false, error: "invalid_refund_amount" };
   }
+  if (args.orderId.startsWith("hdfc_sms-order:")) return { ok: false, error: "manual_external_review_required" };
   if (args.amount === 0) return { ok: true, state: "refunded", rail: "wallet" };
   let rail: RefundRail;
   try { rail = await refundRailFor(env, args.orderId); }
   catch { return { ok: false, error: "refund_rail_unavailable" }; }
+  if (rail.rail === "manual_external_review") return { ok: false, error: "manual_external_review_required" };
   const snapshot = await metaDb(env).prepare(
     "SELECT buyer_id,gross_amount,gst_amount FROM commercial_policy_snapshots WHERE order_id=?1",
   ).bind(args.orderId).first<{ buyer_id: string; gross_amount: number; gst_amount: number | null }>();
