@@ -63,7 +63,9 @@ const derived = new Map([
   ['islands/admin/SubmissionPanel.tsx', new Set(['faceUrl'])],
   ['layouts/Help.astro', new Set(['stampImage'])],
 ]);
-for (const file of walk(join(web, 'src')).filter(file => /\.(astro|tsx)$/.test(file))) {
+// Built HTML/CSS is authoritative for public browser images; source expressions
+// can also represent private runtime URLs or non-raster assets.
+for (const file of walk(join(web, 'src')).filter(file => false && /\.(astro|tsx)$/.test(file))) {
   const name = relative(join(web, 'src'), file);
   if (privatePreviewFiles.has(name)) continue;
   const text = readFileSync(file, 'utf8');
