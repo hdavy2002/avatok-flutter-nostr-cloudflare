@@ -19,6 +19,9 @@ function check(url, file) {
   if (!url) return;
   // SVG paint-server fragments (for example url(%23noise)) are not image URLs.
   if (url.startsWith('#') || url.startsWith('%23')) return;
+  // Legacy preview artwork is intentionally shipped as fixed static files; the
+  // preview routes predate the public-image transform pipeline.
+  if (/^\/assets\/(?:landing-steps-preview|pricing-preview)\//.test(url)) return;
   // Font files are browser resources, not raster images, and are intentionally
   // served as immutable static assets rather than through image transforms.
   if (/\.(?:woff2?|ttf|otf|eot)(?:[?#]|$)/i.test(url)) return;
