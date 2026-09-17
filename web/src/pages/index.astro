@@ -12,6 +12,7 @@ import BookingExpress from '../components/india-preview/BookingExpress.astro';
 import EarningsCalculator from '../components/india-preview/EarningsCalculator.astro';
 
 const ideas = creatorIdeas.slice(0, 6);
+const heroSrcSet = publicImageSrcSet('/assets/home/avatok-creator-constellation.png', [420, 640, 900, 1280], { fit: 'scale-down' });
 
 ---
 <Base
@@ -27,7 +28,7 @@ const ideas = creatorIdeas.slice(0, 6);
   <Fragment slot="head">
     <meta property="og:image:type" content="image/jpeg" />
     <meta name="theme-color" content="#f7ead5" />
-    <link rel="preload" as="image" href={publicImage('/assets/home/avatok-creator-constellation.png', { width: 1156, fit: 'scale-down' })} />
+    <link rel="preload" as="image" href={publicImage('/assets/home/avatok-creator-constellation.png', { width: 1156, fit: 'scale-down' })} imagesrcset={heroSrcSet} />
   </Fragment>
   <a data-i18n="web-landing.e4fa98b15a1e147a" class="rail-skip" href="#ideas-catalogue">Skip to earning ideas</a>
   <SiteHeader indiaLandingLanguage={true} />
@@ -64,7 +65,7 @@ const ideas = creatorIdeas.slice(0, 6);
             to close a plain .station-copy). */}
         <div class="station-art creator-hero__art">
             <span data-i18n="web-landing.f675ebf648fc78c6" class="creator-hero__live" aria-hidden="true">● Live around the world</span>
-          <img data-india-i18n-attr="alt:web-landing.7c72ea27bba5af71" src={publicImage('/assets/home/avatok-creator-constellation.png', { width: 1156, fit: 'scale-down' })} width="1156" height="1360" alt="Creators hosting a live stream, teaching a class, and offering a one-to-one conversation online." fetchpriority="high" decoding="async" />
+          <img data-india-i18n-attr="alt:web-landing.7c72ea27bba5af71" src={publicImage('/assets/home/avatok-creator-constellation.png', { width: 1156, fit: 'scale-down' })} srcset={heroSrcSet} width="1156" height="1360" alt="Creators hosting a live stream, teaching a class, and offering a one-to-one conversation online." fetchpriority="high" decoding="async" />
           <p class="creator-hero__share"><strong>80%</strong><span data-i18n="web-landing.6785ce181ad9bfd9">you keep</span></p>
         </div>
       </div>
